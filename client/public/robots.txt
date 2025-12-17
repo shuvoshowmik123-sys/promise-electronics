@@ -1,0 +1,43 @@
+# robots.txt for promiseelectronics.com
+# Promise Electronics - TV Repair & Electronics Service
+
+User-agent: *
+Allow: /
+
+# Explicitly allow favicon for Google Search results
+Allow: /favicon.png
+Allow: /favicon.ico
+
+# Allow search engines to crawl all public pages
+Allow: /shop
+Allow: /repair
+Allow: /about
+Allow: /track-order
+Allow: /track
+
+# Block admin and private areas
+Disallow: /admin
+Disallow: /admin/*
+Disallow: /api/
+Disallow: /checkout
+Disallow: /my-profile
+
+# Block development/utility pages
+Disallow: /*.json$
+Disallow: /*?*
+
+# Crawl delay for politeness
+Crawl-delay: 1
+
+# Sitemap location
+Sitemap: https://www.promiseelectronics.com/sitemap.xml
+
+# Google specific
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 0
+
+# Bing specific
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 1

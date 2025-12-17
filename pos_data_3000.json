@@ -1,0 +1,13 @@
+{
+    "id": "test_pos_unique_3001",
+    "items": "[]",
+    "subtotal": 1000,
+    "tax": 0,
+    "taxRate": 0,
+    "discount": 0,
+    "total": 1000,
+    "paymentMethod": "Due",
+    "paymentStatus": "Pending",
+    "customer": "Test Customer 3001",
+    "customerPhone": "01700000000"
+}

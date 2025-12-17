@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Promise Electronics</string>
+    <string name="title_activity_main">Promise Electronics</string>
+    <string name="package_name">com.promiseelectronics.customer</string>
+    <string name="custom_url_scheme">com.promiseelectronics.customer</string>
+</resources>

@@ -1,0 +1,45 @@
+# Dependencies
+node_modules
+npm-debug.log*
+
+# Build output (we rebuild in Docker)
+dist
+
+# Development files
+.git
+.gitignore
+.env
+.env.*
+*.md
+README*
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+
+# Testing
+coverage
+.nyc_output
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs
+
+# Replit specific
+.replit
+replit.nix
+.config
+
+# Drizzle migrations (handled separately)
+drizzle
+
+# Temporary files
+tmp
+temp
+*.tmp

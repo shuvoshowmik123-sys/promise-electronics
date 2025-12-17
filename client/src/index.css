@@ -1,0 +1,323 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* Fonts */
+  --font-sans: 'Inter', sans-serif;
+  --font-heading: 'Barlow', sans-serif;
+
+  /* Radius */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.375rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+
+  /* Colors - Promise Electronics Theme (Blue/Teal & Clean White) */
+  --color-background: hsl(210 40% 98%);
+  --color-foreground: hsl(222 47% 11%);
+
+  --color-card: hsl(0 0% 100%);
+  --color-card-foreground: hsl(222 47% 11%);
+
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(222 47% 11%);
+
+  --color-primary: hsl(199 89% 48%);
+  /* Bright Tech Blue */
+  --color-primary-foreground: hsl(210 40% 98%);
+
+  --color-secondary: hsl(210 40% 96.1%);
+  --color-secondary-foreground: hsl(222 47% 11%);
+
+  --color-muted: hsl(210 40% 96.1%);
+  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
+
+  --color-accent: hsl(199 89% 95%);
+  /* Light Blue Tint */
+  --color-accent-foreground: hsl(222 47% 11%);
+
+  --color-destructive: hsl(0 84.2% 60.2%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+
+  --color-border: hsl(214.3 31.8% 91.4%);
+  --color-input: hsl(214.3 31.8% 91.4%);
+  --color-ring: hsl(199 89% 48%);
+
+  --color-chart-1: hsl(199 89% 48%);
+  --color-chart-2: hsl(173 58% 39%);
+  --color-chart-3: hsl(197 37% 24%);
+  --color-chart-4: hsl(43 74% 66%);
+  --color-chart-5: hsl(27 87% 67%);
+
+  /* Sidebar Specifics (Dark Navy) */
+  --color-sidebar: hsl(222 47% 11%);
+  --color-sidebar-foreground: hsl(210 40% 98%);
+  --color-sidebar-primary: hsl(199 89% 48%);
+  --color-sidebar-primary-foreground: hsl(0 0% 100%);
+  --color-sidebar-accent: hsl(217 33% 17%);
+  --color-sidebar-accent-foreground: hsl(210 40% 98%);
+  --color-sidebar-border: hsl(217 33% 17%);
+  --color-sidebar-ring: hsl(199 89% 48%);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    padding-top: env(safe-area-inset-top);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-heading font-semibold tracking-tight;
+  }
+}
+
+/* ===========================================
+   NEUMORPHISM DESIGN SYSTEM - Customer Portal Only
+   =========================================== */
+
+/* Neumorphic Background */
+.neu-bg {
+  background: linear-gradient(145deg, #e2e8ec, #ffffff);
+}
+
+.neu-bg-soft {
+  background: #e8eef2;
+}
+
+/* Neumorphic Card - Raised Effect */
+.neu-card {
+  background: linear-gradient(145deg, #ffffff, #e6ecf0);
+  box-shadow:
+    8px 8px 16px rgba(163, 177, 198, 0.5),
+    -8px -8px 16px rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+.neu-card-sm {
+  background: linear-gradient(145deg, #ffffff, #e6ecf0);
+  box-shadow:
+    4px 4px 10px rgba(163, 177, 198, 0.4),
+    -4px -4px 10px rgba(255, 255, 255, 0.9);
+  border-radius: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.8);
+}
+
+/* Neumorphic Card - Inset/Pressed Effect */
+.neu-inset {
+  background: #e8eef2;
+  box-shadow:
+    inset 4px 4px 8px rgba(163, 177, 198, 0.5),
+    inset -4px -4px 8px rgba(255, 255, 255, 0.9);
+  border-radius: 16px;
+}
+
+/* Neumorphic Button - Raised */
+.neu-button {
+  background: linear-gradient(145deg, #ffffff, #e6ecf0);
+  box-shadow:
+    4px 4px 10px rgba(163, 177, 198, 0.5),
+    -4px -4px 10px rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  transition: all 0.2s ease;
+}
+
+.neu-button-pressed {
+  box-shadow:
+    inset 3px 3px 6px rgba(163, 177, 198, 0.5),
+    inset -3px -3px 6px rgba(255, 255, 255, 0.9);
+}
+
+/* Neumorphic Primary Button */
+.neu-button-primary {
+  background: linear-gradient(145deg, hsl(199 89% 52%), hsl(199 89% 44%));
+  box-shadow:
+    4px 4px 10px rgba(0, 135, 189, 0.35),
+    -4px -4px 10px rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  color: white;
+  border: none;
+  transition: all 0.2s ease;
+}
+
+
+/* Neumorphic Input - No hover/focus glass effects */
+.neu-input {
+  background: #e8eef2;
+  box-shadow:
+    inset 3px 3px 6px rgba(163, 177, 198, 0.5),
+    inset -3px -3px 6px rgba(255, 255, 255, 0.9);
+  border-radius: 12px;
+  border: 1px solid transparent;
+}
+
+.neu-input:focus {
+  outline: none;
+  border-color: hsl(199 89% 48%);
+}
+
+/* Neumorphic Badge */
+.neu-badge {
+  background: linear-gradient(145deg, #ffffff, #e6ecf0);
+  box-shadow:
+    2px 2px 5px rgba(163, 177, 198, 0.4),
+    -2px -2px 5px rgba(255, 255, 255, 0.9);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-weight: 500;
+}
+
+/* Neumorphic Icon Container */
+.neu-icon {
+  background: linear-gradient(145deg, #ffffff, #e6ecf0);
+  box-shadow:
+    4px 4px 10px rgba(163, 177, 198, 0.5),
+    -4px -4px 10px rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.neu-icon-inset {
+  background: #e8eef2;
+  box-shadow:
+    inset 3px 3px 6px rgba(163, 177, 198, 0.5),
+    inset -3px -3px 6px rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Neumorphic Progress Bar */
+.neu-progress-track {
+  background: #e8eef2;
+  box-shadow:
+    inset 2px 2px 4px rgba(163, 177, 198, 0.5),
+    inset -2px -2px 4px rgba(255, 255, 255, 0.9);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.neu-progress-bar {
+  background: linear-gradient(90deg, hsl(199 89% 48%), hsl(173 58% 39%));
+  border-radius: 10px;
+  box-shadow: 0 2px 8px rgba(0, 163, 224, 0.4);
+}
+
+/* Neumorphic Divider */
+.neu-divider {
+  height: 2px;
+  background: linear-gradient(90deg,
+      transparent,
+      rgba(163, 177, 198, 0.3) 20%,
+      rgba(163, 177, 198, 0.5) 50%,
+      rgba(163, 177, 198, 0.3) 80%,
+      transparent);
+  margin: 24px 0;
+}
+
+/* Neumorphic Section */
+.neu-section {
+  background: linear-gradient(180deg, #e8eef2 0%, #f0f4f8 100%);
+  position: relative;
+}
+
+/* Neumorphic Hero Overlay */
+.neu-hero-overlay {
+  background: linear-gradient(135deg,
+      rgba(232, 238, 242, 0.95) 0%,
+      rgba(232, 238, 242, 0.85) 50%,
+      rgba(232, 238, 242, 0.75) 100%);
+}
+
+/* Floating Animation for Neumorphic elements - No hover effects */
+.neu-float {
+  /* Static styling, no hover animation */
+}
+
+/* Neumorphic Shadow Utilities - No hover effects */
+.shadow-neumorph {
+  box-shadow:
+    6px 6px 12px rgba(163, 177, 198, 0.4),
+    -6px -6px 12px rgba(255, 255, 255, 0.9);
+}
+
+.shadow-neumorph-sm {
+  box-shadow:
+    3px 3px 6px rgba(163, 177, 198, 0.35),
+    -3px -3px 6px rgba(255, 255, 255, 0.9);
+}
+
+.shadow-neumorph-lg {
+  box-shadow:
+    10px 10px 20px rgba(163, 177, 198, 0.45),
+    -10px -10px 20px rgba(255, 255, 255, 0.9);
+}
+
+.shadow-neumorph-inset {
+  box-shadow:
+    inset 3px 3px 6px rgba(163, 177, 198, 0.4),
+    inset -3px -3px 6px rgba(255, 255, 255, 0.9);
+}
+
+/* Parallax Scroll Utilities */
+.parallax-slow {
+  will-change: transform;
+}
+
+.parallax-fast {
+  will-change: transform;
+}
+
+/* Smooth scroll behavior for parallax */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Custom Scrollbar for Admin Panels */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-muted-foreground/20 rounded-full;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/40;
+}
+
+/* Utility to hide scrollbar but keep functionality - Mobile Only */
+@media (max-width: 768px) {
+
+  /* Hide scrollbar for all elements on mobile */
+  *::-webkit-scrollbar {
+    display: none;
+  }
+
+  * {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
