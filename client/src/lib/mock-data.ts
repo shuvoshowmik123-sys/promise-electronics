@@ -1,9 +1,11 @@
 import { Monitor, Wrench, ShoppingCart, ShoppingBag, Users, Users2, BarChart3, ClipboardList, FileText, Package, Truck, DollarSign, HardHat, Settings, MessageSquare, UserCheck, Activity } from "lucide-react";
-import heroImage from "@assets/generated_images/electronics_workshop_and_showroom_interior.png";
-import repairImage from "@assets/generated_images/technician_repairing_tv.png";
-import tvImage from "@assets/generated_images/smart_tv_product_shot.png";
-import logoImage from "@assets/generated_images/minimalist_electronics_logo_icon.png";
-import showroomImage from "@assets/generated_images/modern_electronics_showroom_interior.png";
+
+// Placeholder images - replace with actual images in production
+const heroImage = "https://images.unsplash.com/photo-1593642532400-2682810df593?w=800";
+const repairImage = "https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=800";
+const tvImage = "https://images.unsplash.com/photo-1593784991095-a205069470b6?w=800";
+const logoImage = "/logo.png";
+const showroomImage = "https://images.unsplash.com/photo-1531829722641-0e2c9fa36036?w=800";
 
 export const products = [
   {
@@ -137,3 +139,4 @@ export const images = {
   logo: logoImage,
   showroom: showroomImage,
 };
+
