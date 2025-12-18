@@ -11,8 +11,20 @@ const app = express();
 const httpServer = createServer(app);
 
 // Middleware
+app.set("trust proxy", 1);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// Health Check Endpoint
+app.get("/api/health-check", async (req, res) => {
+    try {
+        const result = await pool.query("SELECT NOW()");
+        res.json({ status: "ok", time: result.rows[0].now, env: process.env.NODE_ENV });
+    } catch (error) {
+        console.error("Health check failed:", error);
+        res.status(500).json({ status: "error", error: String(error) });
+    }
+});
 
 const PgSession = pgSession(session);
 
