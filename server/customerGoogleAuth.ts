@@ -3,7 +3,7 @@ import { Strategy as GoogleStrategy, Profile } from "passport-google-oauth20";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import MemoryStore from "memorystore";
-import { storage } from "./storage";
+import { storage } from "./storage.js";
 
 declare global {
   namespace Express {

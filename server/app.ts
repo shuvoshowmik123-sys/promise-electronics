@@ -1,7 +1,7 @@
 import 'dotenv/config';
 import express from "express";
 import session from "express-session";
-import { registerRoutes } from "./routes";
+import { registerRoutes } from "./routes.js";
 import { createServer } from "http";
 import connectMemoryStore from "memorystore";
 

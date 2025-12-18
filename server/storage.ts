@@ -1,4 +1,4 @@
-﻿import { db } from "./db";
+﻿import { db } from "./db.js";
 import { eq, desc, lt, or, and, like, asc, sql, isNull, count, sum, gte, lte } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import * as schema from "@shared/schema";

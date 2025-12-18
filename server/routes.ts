@@ -1,7 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { v2 as cloudinary } from "cloudinary";
-import { storage } from "./storage";
+import { storage } from "./storage.js";
 import {
   insertJobTicketSchema,
   insertInventoryItemSchema,
@@ -24,10 +24,10 @@ import {
   insertCustomerReviewSchema,
   insertInquirySchema,
 } from "@shared/schema";
-import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
+import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage.js";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
-import { setupCustomerAuth } from "./customerGoogleAuth";
+import { setupCustomerAuth } from "./customerGoogleAuth.js";
 
 // SSE broker for real-time customer updates
 const customerSSEClients = new Map<string, Set<Response>>();
