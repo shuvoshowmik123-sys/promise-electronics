@@ -35,7 +35,10 @@ app.use(
 // We need to wait for routes to be registered
 let handler: any;
 
+import { seedSuperAdmin } from "../../server/seed";
+
 const init = async () => {
+    await seedSuperAdmin();
     await registerRoutes(httpServer, app);
     handler = serverless(app);
 };
