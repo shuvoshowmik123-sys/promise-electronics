@@ -23,7 +23,7 @@ import {
   insertPolicySchema,
   insertCustomerReviewSchema,
   insertInquirySchema,
-} from "@shared/schema";
+} from "../shared/schema.js";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage.js";
 import bcrypt from "bcryptjs";
 import { z } from "zod";

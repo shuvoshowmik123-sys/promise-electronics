@@ -1,7 +1,7 @@
 ﻿import { db } from "./db.js";
 import { eq, desc, lt, or, and, like, asc, sql, isNull, count, sum, gte, lte } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import * as schema from "@shared/schema";
+import * as schema from "../shared/schema.js";
 import type {
   User,
   InsertUser,
@@ -46,7 +46,7 @@ import type {
   InsertCustomerReview,
   Inquiry,
   InsertInquiry,
-} from "@shared/schema";
+} from "../shared/schema.js";
 
 export interface IStorage {
   // Users (Unified)
