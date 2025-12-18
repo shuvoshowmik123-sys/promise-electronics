@@ -49,7 +49,7 @@ app.use(
 );
 
 // We need to wait for routes to be registered
-let handler: any;
+let serverlessHandler: any;
 
 import { seedSuperAdmin } from "../../server/seed";
 
@@ -60,7 +60,7 @@ const init = async () => {
         // console.log("Seeding complete.");
         await registerRoutes(httpServer, app);
         console.log("Routes registered.");
-        handler = serverless(app);
+        serverlessHandler = serverless(app);
     } catch (error) {
         console.error("Initialization error:", error);
         throw error;
@@ -68,10 +68,10 @@ const init = async () => {
 };
 
 // Export the handler
-export const api = async (event: any, context: any) => {
+export const handler = async (event: any, context: any) => {
     context.callbackWaitsForEmptyEventLoop = false;
-    if (!handler) {
+    if (!serverlessHandler) {
         await init();
     }
-    return handler(event, context);
+    return serverlessHandler(event, context);
 };
