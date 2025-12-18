@@ -21,7 +21,8 @@ app.use(
         store: new PgSession({
             pool,
             tableName: 'session',
-            createTableIfMissing: true
+            createTableIfMissing: false,
+            pruneSessionInterval: false
         }),
         secret: process.env.SESSION_SECRET || "promise-electronics-secret-key-2025",
         resave: false,
@@ -41,13 +42,22 @@ let handler: any;
 import { seedSuperAdmin } from "../../server/seed";
 
 const init = async () => {
-    await seedSuperAdmin();
-    await registerRoutes(httpServer, app);
-    handler = serverless(app);
+    try {
+        console.log("Initializing Netlify function...");
+        await seedSuperAdmin();
+        console.log("Seeding complete.");
+        await registerRoutes(httpServer, app);
+        console.log("Routes registered.");
+        handler = serverless(app);
+    } catch (error) {
+        console.error("Initialization error:", error);
+        throw error;
+    }
 };
 
 // Export the handler
 export const api = async (event: any, context: any) => {
+    context.callbackWaitsForEmptyEventLoop = false;
     if (!handler) {
         await init();
     }

@@ -1,0 +1,14 @@
+Connecting to database...
+Super Admin already exists:
+Username: admin
+ID: jhUWnuWywKyotvJjbhGs8
+Connecting to database...
+Super Admin already exists:
+Username: admin
+ID: jhUWnuWywKyotvJjbhGs8
+Connecting to database...
+Super Admin already exists:
+Username: admin
+ID: jhUWnuWywKyotvJjbhGs8
+Creating session table...
+Session table created!
