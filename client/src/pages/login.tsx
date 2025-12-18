@@ -306,10 +306,12 @@ export default function LoginPage() {
           </Tabs>
         </Card>
 
-        <div className="mt-6 text-center">
-          <Link href="/" className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-primary">
-            <ArrowLeft className="h-4 w-4" />
-            Back to Home
+        <div className="mt-8">
+          <Link href="/home">
+            <Button variant="outline" className="w-full gap-2 border-2 border-dashed border-primary/20 hover:border-primary hover:bg-primary/5 transition-all duration-300 h-12 text-base font-medium">
+              <ArrowLeft className="h-4 w-4" />
+              Back to Home
+            </Button>
           </Link>
         </div>
       </div>
