@@ -113,6 +113,8 @@ function Router() {
 import { SplashScreen } from "@capacitor/splash-screen";
 import { useEffect } from "react";
 
+import { SpeedInsights } from "@vercel/speed-insights/react";
+
 function App() {
   useEffect(() => {
     // Hide splash screen after app mounts
@@ -132,6 +134,7 @@ function App() {
                 <SonnerToaster position="top-center" richColors />
                 <Router />
                 <PWAInstallPrompt />
+                <SpeedInsights />
               </TooltipProvider>
             </AdminSSEProvider>
           </AdminAuthProvider>
