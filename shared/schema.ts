@@ -1,17 +1,9 @@
-import { sql } from "drizzle-orm";
-import { sqliteTable, text, integer, real } from "drizzle-orm/sqlite-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
-// Session storage table (if using connect-sqlite3 or similar, but we might use memorystore for now)
-// Keeping it for future proofing or if we switch to sqlite session store
-export const sessions = sqliteTable("sessions", {
-  sid: text("sid").primaryKey(),
-  sess: text("sess", { mode: "json" }).notNull(),
-  expire: integer("expire", { mode: "timestamp" }).notNull(),
-});
-
-// Enums - SQLite doesn't support native enums, so we define them as const arrays for Zod
+// Enums - We'll keep them as const arrays for Zod validation, 
+// but in PG we could use native enums. For simplicity in migration, we'll use text columns with checks or just application-level validation.
 export const JOB_STATUSES = ["Pending", "In Progress", "Completed", "Cancelled"] as const;
 export const JOB_PRIORITIES = ["Low", "Medium", "High"] as const;
 export const CHALLAN_STATUSES = ["Pending", "Delivered", "Received"] as const;
@@ -24,24 +16,24 @@ export const PAYMENT_METHODS = ["Cash", "Bank", "bKash", "Nagad", "Due"] as cons
 export const PAYMENT_STATUSES = ["Paid", "Due"] as const;
 
 // Users Table
-export const users = sqliteTable("users", {
+export const users = pgTable("users", {
   id: text("id").primaryKey(), // App should generate UUID
   username: text("username").unique(),
   name: text("name").notNull(),
   email: text("email"),
   phone: text("phone").unique(),
   password: text("password").notNull(),
-  role: text("role", { enum: USER_ROLES }).notNull().default("Customer"),
+  role: text("role").notNull().default("Customer"), // We could use enum here but text is fine
   status: text("status").notNull().default("Active"),
-  permissions: text("permissions").notNull().default("{}"),
-  joinedAt: integer("joined_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
-  lastLogin: integer("last_login", { mode: "timestamp" }),
+  permissions: text("permissions").notNull().default("{}"), // Keeping as text for simple JSON parsing or could be jsonb
+  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  lastLogin: timestamp("last_login"),
   // Customer specific fields
   googleSub: text("google_sub").unique(),
   address: text("address"),
   profileImageUrl: text("profile_image_url"),
   avatar: text("avatar"),
-  isVerified: integer("is_verified", { mode: "boolean" }).default(0),
+  isVerified: boolean("is_verified").default(false),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -51,6 +43,13 @@ export const insertUserSchema = createInsertSchema(users).omit({
 });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+
+export type UpsertCustomerFromGoogle = {
+  googleSub: string;
+  email?: string | null;
+  name: string;
+  profileImageUrl?: string | null;
+};
 
 export type UserPermissions = {
   dashboard?: boolean;
@@ -73,7 +72,7 @@ export type UserPermissions = {
 };
 
 // Job Tickets Table
-export const jobTickets = sqliteTable("job_tickets", {
+export const jobTickets = pgTable("job_tickets", {
   id: text("id").primaryKey(),
   corporateJobNumber: text("corporate_job_number"),
   customer: text("customer").notNull(),
@@ -82,20 +81,20 @@ export const jobTickets = sqliteTable("job_tickets", {
   device: text("device").notNull(),
   tvSerialNumber: text("tv_serial_number"),
   issue: text("issue").notNull(),
-  status: text("status", { enum: JOB_STATUSES }).notNull().default("Pending"),
-  priority: text("priority", { enum: JOB_PRIORITIES }).notNull().default("Medium"),
+  status: text("status").notNull().default("Pending"),
+  priority: text("priority").notNull().default("Medium"),
   technician: text("technician").default("Unassigned"),
   screenSize: text("screen_size"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
-  completedAt: integer("completed_at", { mode: "timestamp" }),
-  deadline: integer("deadline", { mode: "timestamp" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  completedAt: timestamp("completed_at"),
+  deadline: timestamp("deadline"),
   notes: text("notes"),
-  estimatedCost: real("estimated_cost"), // Using real for money
+  estimatedCost: real("estimated_cost"),
   serviceWarrantyDays: integer("service_warranty_days").default(0),
-  serviceExpiryDate: integer("service_expiry_date", { mode: "timestamp" }),
+  serviceExpiryDate: timestamp("service_expiry_date"),
   partsWarrantyDays: integer("parts_warranty_days").default(0),
-  partsExpiryDate: integer("parts_expiry_date", { mode: "timestamp" }),
-  warrantyTermsAccepted: integer("warranty_terms_accepted", { mode: "boolean" }).default(0),
+  partsExpiryDate: timestamp("parts_expiry_date"),
+  warrantyTermsAccepted: boolean("warranty_terms_accepted").default(false),
   parentJobId: text("parent_job_id"),
 });
 
@@ -107,26 +106,26 @@ export type InsertJobTicket = z.infer<typeof insertJobTicketSchema>;
 export type JobTicket = typeof jobTickets.$inferSelect;
 
 // Inventory Items Table
-export const inventoryItems = sqliteTable("inventory_items", {
+export const inventoryItems = pgTable("inventory_items", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   category: text("category").notNull(),
   description: text("description"),
-  itemType: text("item_type", { enum: ITEM_TYPES }).notNull().default("product"),
+  itemType: text("item_type").notNull().default("product"),
   stock: integer("stock").notNull().default(0),
   price: real("price").notNull(),
   minPrice: real("min_price"),
   maxPrice: real("max_price"),
-  status: text("status", { enum: STOCK_STATUSES }).notNull().default("In Stock"),
+  status: text("status").notNull().default("In Stock"),
   lowStockThreshold: integer("low_stock_threshold").default(5),
   images: text("images"),
-  showOnWebsite: integer("show_on_website", { mode: "boolean" }).default(0),
+  showOnWebsite: boolean("show_on_website").default(false),
   icon: text("icon"),
   estimatedDays: text("estimated_days"),
   displayOrder: integer("display_order").default(0),
   features: text("features"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({
@@ -137,11 +136,11 @@ export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
 
 // Service Categories Table
-export const serviceCategories = sqliteTable("service_categories", {
+export const serviceCategories = pgTable("service_categories", {
   id: text("id").primaryKey(),
   name: text("name").notNull().unique(),
   displayOrder: integer("display_order").default(0),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertServiceCategorySchema = createInsertSchema(serviceCategories).omit({
@@ -152,11 +151,11 @@ export type InsertServiceCategory = z.infer<typeof insertServiceCategorySchema>;
 export type ServiceCategory = typeof serviceCategories.$inferSelect;
 
 // Challans Table
-export const challans = sqliteTable("challans", {
+export const challans = pgTable("challans", {
   id: text("id").primaryKey(),
   receiver: text("receiver").notNull(),
-  type: text("type", { enum: CHALLAN_TYPES }).notNull(),
-  status: text("status", { enum: CHALLAN_STATUSES }).notNull().default("Pending"),
+  type: text("type").notNull(),
+  status: text("status").notNull().default("Pending"),
   items: integer("items").notNull().default(1),
   lineItems: text("line_items"), // JSON string
   receiverAddress: text("receiver_address"),
@@ -165,8 +164,8 @@ export const challans = sqliteTable("challans", {
   driverName: text("driver_name"),
   driverPhone: text("driver_phone"),
   gatePassNo: text("gate_pass_no"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
-  deliveredAt: integer("delivered_at", { mode: "timestamp" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  deliveredAt: timestamp("delivered_at"),
   notes: text("notes"),
 });
 
@@ -178,14 +177,14 @@ export type InsertChallan = z.infer<typeof insertChallanSchema>;
 export type Challan = typeof challans.$inferSelect;
 
 // Petty Cash Records Table
-export const pettyCashRecords = sqliteTable("petty_cash_records", {
+export const pettyCashRecords = pgTable("petty_cash_records", {
   id: text("id").primaryKey(),
   description: text("description").notNull(),
   category: text("category").notNull(),
   amount: real("amount").notNull(),
   type: text("type").notNull(),
   dueRecordId: text("due_record_id"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertPettyCashRecordSchema = createInsertSchema(pettyCashRecords).omit({
@@ -196,15 +195,15 @@ export type InsertPettyCashRecord = z.infer<typeof insertPettyCashRecordSchema>;
 export type PettyCashRecord = typeof pettyCashRecords.$inferSelect;
 
 // Due Records Table
-export const dueRecords = sqliteTable("due_records", {
+export const dueRecords = pgTable("due_records", {
   id: text("id").primaryKey(),
   customer: text("customer").notNull(),
   amount: real("amount").notNull(),
-  status: text("status", { enum: DUE_STATUSES }).notNull().default("Pending"),
+  status: text("status").notNull().default("Pending"),
   invoice: text("invoice").notNull(),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
-  dueDate: integer("due_date", { mode: "timestamp" }).notNull(),
-  paidAt: integer("paid_at", { mode: "timestamp" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  dueDate: timestamp("due_date").notNull(),
+  paidAt: timestamp("paid_at"),
   paidAmount: real("paid_amount").default(0),
 });
 
@@ -217,7 +216,7 @@ export type InsertDueRecord = z.infer<typeof insertDueRecordSchema>;
 export type DueRecord = typeof dueRecords.$inferSelect;
 
 // Products Table
-export const products = sqliteTable("products", {
+export const products = pgTable("products", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   price: text("price").notNull(),
@@ -225,7 +224,7 @@ export const products = sqliteTable("products", {
   image: text("image").notNull(),
   rating: real("rating").default(0.0),
   reviews: integer("reviews").default(0),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertProductSchema = createInsertSchema(products).omit({
@@ -236,11 +235,11 @@ export type InsertProduct = z.infer<typeof insertProductSchema>;
 export type Product = typeof products.$inferSelect;
 
 // Settings Table
-export const settings = sqliteTable("settings", {
+export const settings = pgTable("settings", {
   id: text("id").primaryKey(),
   key: text("key").notNull().unique(),
   value: text("value").notNull(),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const insertSettingSchema = createInsertSchema(settings).omit({
@@ -251,7 +250,7 @@ export type InsertSetting = z.infer<typeof insertSettingSchema>;
 export type Setting = typeof settings.$inferSelect;
 
 // POS Transactions Table
-export const posTransactions = sqliteTable("pos_transactions", {
+export const posTransactions = pgTable("pos_transactions", {
   id: text("id").primaryKey(),
   invoiceNumber: text("invoice_number").unique(),
   customer: text("customer"),
@@ -266,7 +265,7 @@ export const posTransactions = sqliteTable("pos_transactions", {
   total: real("total").notNull(),
   paymentMethod: text("payment_method").notNull(),
   paymentStatus: text("payment_status").notNull().default("Paid"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertPosTransactionSchema = createInsertSchema(posTransactions).omit({
@@ -342,7 +341,7 @@ export function getStageFlow(requestIntent: string | null, serviceMode: string |
 export const JOB_CREATION_STAGES = ["picked_up", "device_received"] as const;
 
 // Service Catalog Table
-export const serviceCatalog = sqliteTable("service_catalog", {
+export const serviceCatalog = pgTable("service_catalog", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   description: text("description"),
@@ -351,10 +350,10 @@ export const serviceCatalog = sqliteTable("service_catalog", {
   maxPrice: real("max_price").notNull(),
   estimatedDays: text("estimated_days"),
   icon: text("icon"),
-  isActive: integer("is_active", { mode: "boolean" }).default(1),
+  isActive: boolean("is_active").default(true),
   displayOrder: integer("display_order").default(0),
   features: text("features"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertServiceCatalogSchema = createInsertSchema(serviceCatalog).omit({
@@ -364,10 +363,8 @@ export const insertServiceCatalogSchema = createInsertSchema(serviceCatalog).omi
 export type InsertServiceCatalog = z.infer<typeof insertServiceCatalogSchema>;
 export type ServiceCatalog = typeof serviceCatalog.$inferSelect;
 
-// Customers Table removed (merged into users)
-
 // Service Requests Table
-export const serviceRequests = sqliteTable("service_requests", {
+export const serviceRequests = pgTable("service_requests", {
   id: text("id").primaryKey(),
   ticketNumber: text("ticket_number").unique(),
   customerId: text("customer_id"),
@@ -382,35 +379,35 @@ export const serviceRequests = sqliteTable("service_requests", {
   phone: text("phone").notNull(),
   address: text("address"),
   servicePreference: text("service_preference"),
-  status: text("status", { enum: SERVICE_REQUEST_STATUSES }).notNull().default("Pending"),
-  trackingStatus: text("tracking_status", { enum: TRACKING_STATUSES }).notNull().default("Request Received"),
-  estimatedDelivery: integer("estimated_delivery", { mode: "timestamp" }),
+  status: text("status").notNull().default("Pending"),
+  trackingStatus: text("tracking_status").notNull().default("Request Received"),
+  estimatedDelivery: timestamp("estimated_delivery"),
   paymentStatus: text("payment_status").default("Due"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
-  expiresAt: integer("expires_at", { mode: "timestamp" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at"),
   convertedJobId: text("converted_job_id"),
 
-  requestIntent: text("request_intent", { enum: REQUEST_INTENTS }),
-  serviceMode: text("service_mode", { enum: SERVICE_MODES }),
-  stage: text("stage", { enum: REQUEST_STAGES }).default("intake"),
+  requestIntent: text("request_intent"),
+  serviceMode: text("service_mode"),
+  stage: text("stage").default("intake"),
 
-  isQuote: integer("is_quote", { mode: "boolean" }).default(0),
+  isQuote: boolean("is_quote").default(false),
   serviceId: text("service_id"),
-  quoteStatus: text("quote_status", { enum: QUOTE_STATUSES }),
+  quoteStatus: text("quote_status"),
   quoteAmount: real("quote_amount"),
   quoteNotes: text("quote_notes"),
-  quotedAt: integer("quoted_at", { mode: "timestamp" }),
-  quoteExpiresAt: integer("quote_expires_at", { mode: "timestamp" }),
-  acceptedAt: integer("accepted_at", { mode: "timestamp" }),
+  quotedAt: timestamp("quoted_at"),
+  quoteExpiresAt: timestamp("quote_expires_at"),
+  acceptedAt: timestamp("accepted_at"),
 
-  pickupTier: text("pickup_tier", { enum: PICKUP_TIERS }),
+  pickupTier: text("pickup_tier"),
   pickupCost: real("pickup_cost"),
   totalAmount: real("total_amount"),
 
-  scheduledPickupDate: integer("scheduled_pickup_date", { mode: "timestamp" }),
-  expectedPickupDate: integer("expected_pickup_date", { mode: "timestamp" }),
-  expectedReturnDate: integer("expected_return_date", { mode: "timestamp" }),
-  expectedReadyDate: integer("expected_ready_date", { mode: "timestamp" }),
+  scheduledPickupDate: timestamp("scheduled_pickup_date"),
+  expectedPickupDate: timestamp("expected_pickup_date"),
+  expectedReturnDate: timestamp("expected_return_date"),
+  expectedReadyDate: timestamp("expected_ready_date"),
 });
 
 export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({
@@ -464,13 +461,13 @@ export const insertQuoteRequestSchema = z.object({
 export type InsertQuoteRequest = z.infer<typeof insertQuoteRequestSchema>;
 
 // Service Request Events Table
-export const serviceRequestEvents = sqliteTable("service_request_events", {
+export const serviceRequestEvents = pgTable("service_request_events", {
   id: text("id").primaryKey(),
   serviceRequestId: text("service_request_id").notNull(),
-  status: text("status", { enum: TRACKING_STATUSES }).notNull(),
+  status: text("status").notNull(),
   message: text("message"),
   actor: text("actor"),
-  occurredAt: integer("occurred_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  occurredAt: timestamp("occurred_at").notNull().defaultNow(),
 });
 
 export const insertServiceRequestEventSchema = createInsertSchema(serviceRequestEvents).omit({
@@ -481,19 +478,19 @@ export type InsertServiceRequestEvent = z.infer<typeof insertServiceRequestEvent
 export type ServiceRequestEvent = typeof serviceRequestEvents.$inferSelect;
 
 // Pickup Schedules Table
-export const pickupSchedules = sqliteTable("pickup_schedules", {
+export const pickupSchedules = pgTable("pickup_schedules", {
   id: text("id").primaryKey(),
   serviceRequestId: text("service_request_id").notNull(),
-  tier: text("tier", { enum: PICKUP_TIERS }).notNull().default("Regular"),
+  tier: text("tier").notNull().default("Regular"),
   tierCost: real("tier_cost").notNull().default(0),
-  status: text("status", { enum: PICKUP_STATUSES }).notNull().default("Pending"),
-  scheduledDate: integer("scheduled_date", { mode: "timestamp" }),
+  status: text("status").notNull().default("Pending"),
+  scheduledDate: timestamp("scheduled_date"),
   pickupAddress: text("pickup_address"),
   assignedStaff: text("assigned_staff"),
   pickupNotes: text("pickup_notes"),
-  pickedUpAt: integer("picked_up_at", { mode: "timestamp" }),
-  deliveredAt: integer("delivered_at", { mode: "timestamp" }),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  pickedUpAt: timestamp("picked_up_at"),
+  deliveredAt: timestamp("delivered_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertPickupScheduleSchema = createInsertSchema(pickupSchedules).omit({
@@ -506,13 +503,13 @@ export type InsertPickupSchedule = z.infer<typeof insertPickupScheduleSchema>;
 export type PickupSchedule = typeof pickupSchedules.$inferSelect;
 
 // Attendance Records Table
-export const attendanceRecords = sqliteTable("attendance_records", {
+export const attendanceRecords = pgTable("attendance_records", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
   userName: text("user_name").notNull(),
   userRole: text("user_role").notNull(),
-  checkInTime: integer("check_in_time", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
-  checkOutTime: integer("check_out_time", { mode: "timestamp" }),
+  checkInTime: timestamp("check_in_time").notNull().defaultNow(),
+  checkOutTime: timestamp("check_out_time"),
   date: text("date").notNull(),
   notes: text("notes"),
 });
@@ -526,14 +523,14 @@ export type InsertAttendanceRecord = z.infer<typeof insertAttendanceRecordSchema
 export type AttendanceRecord = typeof attendanceRecords.$inferSelect;
 
 // Product Variants Table
-export const productVariants = sqliteTable("product_variants", {
+export const productVariants = pgTable("product_variants", {
   id: text("id").primaryKey(),
   productId: text("product_id").notNull(),
   variantName: text("variant_name").notNull(),
   price: real("price").notNull(),
   stock: integer("stock").notNull().default(0),
   sku: text("sku"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertProductVariantSchema = createInsertSchema(productVariants).omit({
@@ -544,21 +541,21 @@ export type InsertProductVariant = z.infer<typeof insertProductVariantSchema>;
 export type ProductVariant = typeof productVariants.$inferSelect;
 
 // Orders Table
-export const orders = sqliteTable("orders", {
+export const orders = pgTable("orders", {
   id: text("id").primaryKey(),
   orderNumber: text("order_number").unique(),
   customerId: text("customer_id").notNull(),
   customerName: text("customer_name").notNull(),
   customerPhone: text("customer_phone").notNull(),
   customerAddress: text("customer_address").notNull(),
-  status: text("status", { enum: ORDER_STATUSES }).notNull().default("Pending"),
+  status: text("status").notNull().default("Pending"),
   paymentMethod: text("payment_method").notNull().default("COD"),
   subtotal: real("subtotal").notNull(),
   total: real("total").notNull(),
   declineReason: text("decline_reason"),
   notes: text("notes"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
-  updatedAt: integer("updated_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
 
 export const insertOrderSchema = createInsertSchema(orders).omit({
@@ -571,7 +568,7 @@ export type InsertOrder = z.infer<typeof insertOrderSchema>;
 export type Order = typeof orders.$inferSelect;
 
 // Order Items Table
-export const orderItems = sqliteTable("order_items", {
+export const orderItems = pgTable("order_items", {
   id: text("id").primaryKey(),
   orderId: text("order_id").notNull(),
   productId: text("product_id").notNull(),
@@ -591,13 +588,13 @@ export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 export type OrderItem = typeof orderItems.$inferSelect;
 
 // Policies Table
-export const policies = sqliteTable("policies", {
+export const policies = pgTable("policies", {
   id: text("id").primaryKey(),
-  slug: text("slug", { enum: POLICY_SLUGS }).notNull().unique(),
+  slug: text("slug").notNull().unique(),
   title: text("title").notNull(),
   content: text("content").notNull(),
-  isPublished: integer("is_published", { mode: "boolean" }).notNull().default(1),
-  lastUpdated: integer("last_updated", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  isPublished: boolean("is_published").notNull().default(true),
+  lastUpdated: timestamp("last_updated").notNull().defaultNow(),
 });
 
 export const insertPolicySchema = createInsertSchema(policies).omit({
@@ -608,15 +605,15 @@ export type InsertPolicy = z.infer<typeof insertPolicySchema>;
 export type Policy = typeof policies.$inferSelect;
 
 // Customer Reviews Table
-export const customerReviews = sqliteTable("customer_reviews", {
+export const customerReviews = pgTable("customer_reviews", {
   id: text("id").primaryKey(),
   customerId: text("customer_id").notNull(),
   customerName: text("customer_name").notNull(),
   rating: integer("rating").notNull(),
   title: text("title"),
   content: text("content").notNull(),
-  isApproved: integer("is_approved", { mode: "boolean" }).notNull().default(0),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  isApproved: boolean("is_approved").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertCustomerReviewSchema = createInsertSchema(customerReviews).omit({
@@ -628,14 +625,14 @@ export type InsertCustomerReview = z.infer<typeof insertCustomerReviewSchema>;
 export type CustomerReview = typeof customerReviews.$inferSelect;
 
 // Inquiries Table
-export const inquiries = sqliteTable("inquiries", {
+export const inquiries = pgTable("inquiries", {
   id: text("id").primaryKey(),
   name: text("name").notNull(),
   phone: text("phone").notNull(),
   message: text("message").notNull(),
-  status: text("status", { enum: ["Pending", "Read", "Replied"] }).notNull().default("Pending"),
+  status: text("status").notNull().default("Pending"),
   reply: text("reply"),
-  createdAt: integer("created_at", { mode: "timestamp" }).notNull().default(sql`(unixepoch())`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
 export const insertInquirySchema = createInsertSchema(inquiries).omit({

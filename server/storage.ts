@@ -1,4 +1,4 @@
-import { db } from "./db";
+﻿import { db } from "./db";
 import { eq, desc, lt, or, and, like, asc, sql, isNull, count, sum, gte, lte } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import * as schema from "@shared/schema";
@@ -23,8 +23,6 @@ import type {
   InsertPosTransaction,
   ServiceRequest,
   InsertServiceRequest,
-  Customer,
-  InsertCustomer,
   ServiceRequestEvent,
   InsertServiceRequestEvent,
   AttendanceRecord,
@@ -295,7 +293,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteUser(id: string): Promise<boolean> {
     const result = await db.delete(schema.users).where(eq(schema.users.id, id));
-    return (result.changes ?? 0) > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   async updateUserLastLogin(id: string): Promise<void> {
@@ -356,7 +354,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteJobTicket(id: string): Promise<boolean> {
     const result = await db.delete(schema.jobTickets).where(eq(schema.jobTickets.id, id));
-    return (result.changes ?? 0) > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   async getJobTicketsByCustomerPhone(phone: string): Promise<JobTicket[]> {
@@ -396,7 +394,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteInventoryItem(id: string): Promise<boolean> {
     const result = await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, id));
-    return (result.changes ?? 0) > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   async updateInventoryStock(id: string, quantity: number): Promise<InventoryItem | undefined> {
@@ -447,7 +445,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteChalan(id: string): Promise<boolean> {
     const result = await db.delete(schema.challans).where(eq(schema.challans.id, id));
-    return (result.changes ?? 0) > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Petty Cash
@@ -462,7 +460,7 @@ export class DatabaseStorage implements IStorage {
 
   async deletePettyCashRecord(id: string): Promise<boolean> {
     const result = await db.delete(schema.pettyCashRecords).where(eq(schema.pettyCashRecords.id, id));
-    return (result.changes ?? 0) > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Due Records
@@ -486,7 +484,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteDueRecord(id: string): Promise<boolean> {
     const result = await db.delete(schema.dueRecords).where(eq(schema.dueRecords.id, id));
-    return (result.changes ?? 0) > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Products
@@ -515,7 +513,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProduct(id: string): Promise<boolean> {
     const result = await db.delete(schema.products).where(eq(schema.products.id, id));
-    return (result.changes ?? 0) > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Settings
@@ -665,7 +663,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteServiceRequest(id: string): Promise<boolean> {
     const result = await db.delete(schema.serviceRequests).where(eq(schema.serviceRequests.id, id));
-    return (result.changes ?? 0) > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   async getExpiredServiceRequests(): Promise<ServiceRequest[]> {
@@ -937,7 +935,7 @@ export class DatabaseStorage implements IStorage {
 
     recentTransactions.forEach(t => {
       activityLogs.push({
-        action: `Payment ${t.invoiceNumber || t.id} - ৳${t.total}`,
+        action: `Payment ${t.invoiceNumber || t.id} - à§³${t.total}`,
         user: "POS",
         time: new Date(t.createdAt),
         type: "payment",
@@ -1258,12 +1256,12 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProductVariant(id: string): Promise<boolean> {
     const result = await db.delete(schema.productVariants).where(eq(schema.productVariants.id, id));
-    return (result.changes ?? 0) > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   async deleteProductVariantsByProductId(productId: string): Promise<boolean> {
     const result = await db.delete(schema.productVariants).where(eq(schema.productVariants.productId, productId));
-    return (result.changes ?? 0) >= 0;
+    return (result.rowCount ?? 0) >= 0;
   }
 
   // Service Catalog
@@ -1298,7 +1296,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteServiceCatalogItem(id: string): Promise<boolean> {
     const result = await db.delete(schema.serviceCatalog).where(eq(schema.serviceCatalog.id, id));
-    return (result.changes ?? 0) > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Services from Inventory (itemType = 'service')
@@ -1654,7 +1652,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteServiceCategory(id: string): Promise<boolean> {
     const result = await db.delete(schema.serviceCategories).where(eq(schema.serviceCategories.id, id));
-    return result.changes !== null && result.changes > 0;
+    return result.rowCount !== null && result.rowCount > 0;
   }
 
   // Admin Data Management - Delete all business data (Super Admin only)
@@ -1665,55 +1663,54 @@ export class DatabaseStorage implements IStorage {
       // Delete in order to respect foreign key constraints
       // First delete dependent tables
       const orderItemsResult = await db.delete(schema.orderItems);
-      deletedCounts.orderItems = orderItemsResult.changes || 0;
+      deletedCounts.orderItems = orderItemsResult.rowCount || 0;
 
       const ordersResult = await db.delete(schema.orders);
-      deletedCounts.orders = ordersResult.changes || 0;
+      deletedCounts.orders = ordersResult.rowCount || 0;
 
       const pickupSchedulesResult = await db.delete(schema.pickupSchedules);
-      deletedCounts.pickupSchedules = pickupSchedulesResult.changes || 0;
+      deletedCounts.pickupSchedules = pickupSchedulesResult.rowCount || 0;
 
       const serviceRequestEventsResult = await db.delete(schema.serviceRequestEvents);
-      deletedCounts.serviceRequestEvents = serviceRequestEventsResult.changes || 0;
+      deletedCounts.serviceRequestEvents = serviceRequestEventsResult.rowCount || 0;
 
       const serviceRequestsResult = await db.delete(schema.serviceRequests);
-      deletedCounts.serviceRequests = serviceRequestsResult.changes || 0;
+      deletedCounts.serviceRequests = serviceRequestsResult.rowCount || 0;
 
-      const customersResult = await db.delete(schema.customers);
-      deletedCounts.customers = customersResult.changes || 0;
+
 
       const jobTicketsResult = await db.delete(schema.jobTickets);
-      deletedCounts.jobTickets = jobTicketsResult.changes || 0;
+      deletedCounts.jobTickets = jobTicketsResult.rowCount || 0;
 
       const productVariantsResult = await db.delete(schema.productVariants);
-      deletedCounts.productVariants = productVariantsResult.changes || 0;
+      deletedCounts.productVariants = productVariantsResult.rowCount || 0;
 
       const productsResult = await db.delete(schema.products);
-      deletedCounts.products = productsResult.changes || 0;
+      deletedCounts.products = productsResult.rowCount || 0;
 
       const inventoryItemsResult = await db.delete(schema.inventoryItems);
-      deletedCounts.inventoryItems = inventoryItemsResult.changes || 0;
+      deletedCounts.inventoryItems = inventoryItemsResult.rowCount || 0;
 
       const serviceCatalogResult = await db.delete(schema.serviceCatalog);
-      deletedCounts.serviceCatalog = serviceCatalogResult.changes || 0;
+      deletedCounts.serviceCatalog = serviceCatalogResult.rowCount || 0;
 
       const serviceCategoriesResult = await db.delete(schema.serviceCategories);
-      deletedCounts.serviceCategories = serviceCategoriesResult.changes || 0;
+      deletedCounts.serviceCategories = serviceCategoriesResult.rowCount || 0;
 
       const challansResult = await db.delete(schema.challans);
-      deletedCounts.challans = challansResult.changes || 0;
+      deletedCounts.challans = challansResult.rowCount || 0;
 
       const pettyCashRecordsResult = await db.delete(schema.pettyCashRecords);
-      deletedCounts.pettyCashRecords = pettyCashRecordsResult.changes || 0;
+      deletedCounts.pettyCashRecords = pettyCashRecordsResult.rowCount || 0;
 
       const dueRecordsResult = await db.delete(schema.dueRecords);
-      deletedCounts.dueRecords = dueRecordsResult.changes || 0;
+      deletedCounts.dueRecords = dueRecordsResult.rowCount || 0;
 
       const posTransactionsResult = await db.delete(schema.posTransactions);
-      deletedCounts.posTransactions = posTransactionsResult.changes || 0;
+      deletedCounts.posTransactions = posTransactionsResult.rowCount || 0;
 
       const attendanceRecordsResult = await db.delete(schema.attendanceRecords);
-      deletedCounts.attendanceRecords = attendanceRecordsResult.changes || 0;
+      deletedCounts.attendanceRecords = attendanceRecordsResult.rowCount || 0;
 
       return { success: true, deletedCounts };
     } catch (error) {
@@ -1763,7 +1760,7 @@ export class DatabaseStorage implements IStorage {
 
   async deletePolicy(slug: string): Promise<boolean> {
     const result = await db.delete(schema.policies).where(eq(schema.policies.slug, slug as any));
-    return (result.changes || 0) > 0;
+    return (result.rowCount || 0) > 0;
   }
 
   // Customer Reviews
@@ -1793,7 +1790,7 @@ export class DatabaseStorage implements IStorage {
 
   async deleteCustomerReview(id: string): Promise<boolean> {
     const result = await db.delete(schema.customerReviews).where(eq(schema.customerReviews.id, id));
-    return (result.changes || 0) > 0;
+    return (result.rowCount || 0) > 0;
   }
 
   // Due Records (Added for partial payments)

@@ -13,7 +13,6 @@ import {
   insertPosTransactionSchema,
   insertUserSchema,
   insertServiceRequestSchema,
-  insertCustomerSchema,
   insertAttendanceRecordSchema,
   insertOrderSchema,
   insertOrderItemSchema,
@@ -842,7 +841,7 @@ export async function registerRoutes(
 
       res.status(201).json(transaction);
     } catch (error) {
-      res.status(400).json({ error: "Invalid POS transaction data", details: { message: error.message, ...error } });
+      res.status(400).json({ error: "Invalid POS transaction data", details: { message: (error as any).message, ...(error as any) } });
     }
   });
 
