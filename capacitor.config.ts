@@ -7,7 +7,16 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://promise-electronics.netlify.app/',
     cleartext: true
-  }
+  },
+  plugins: {
+    SplashScreen: {
+      launchShowDuration: 2000,
+      launchAutoHide: false,
+      backgroundColor: "#ffffffff",
+      androidSplashResourceName: "splash",
+      showSpinner: false,
+    },
+  },
 };
 
 export default config;

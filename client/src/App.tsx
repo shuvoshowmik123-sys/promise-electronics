@@ -110,7 +110,17 @@ function Router() {
   );
 }
 
+import { SplashScreen } from "@capacitor/splash-screen";
+import { useEffect } from "react";
+
 function App() {
+  useEffect(() => {
+    // Hide splash screen after app mounts
+    if (Capacitor.isNativePlatform()) {
+      SplashScreen.hide();
+    }
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <CartProvider>
