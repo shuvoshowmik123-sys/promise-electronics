@@ -2,7 +2,8 @@ import 'dotenv/config';
 import express from "express";
 import serverless from "serverless-http";
 import session from "express-session";
-import connectMemoryStore from "memorystore";
+import pgSession from "connect-pg-simple";
+import { pool } from "../../server/db";
 import { registerRoutes } from "../../server/routes";
 import { createServer } from "http";
 
@@ -13,12 +14,14 @@ const httpServer = createServer(app);
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 
-const MemoryStore = connectMemoryStore(session);
+const PgSession = pgSession(session);
 
 app.use(
     session({
-        store: new MemoryStore({
-            checkPeriod: 86400000
+        store: new PgSession({
+            pool,
+            tableName: 'session',
+            createTableIfMissing: true
         }),
         secret: process.env.SESSION_SECRET || "promise-electronics-secret-key-2025",
         resave: false,
