@@ -56,8 +56,8 @@ import { seedSuperAdmin } from "../../server/seed";
 const init = async () => {
     try {
         console.log("Initializing Netlify function...");
-        await seedSuperAdmin();
-        console.log("Seeding complete.");
+        // await seedSuperAdmin(); // Removed to prevent startup timeout
+        // console.log("Seeding complete.");
         await registerRoutes(httpServer, app);
         console.log("Routes registered.");
         handler = serverless(app);
