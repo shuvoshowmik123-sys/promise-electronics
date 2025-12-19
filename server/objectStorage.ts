@@ -7,7 +7,7 @@ import {
   canAccessObject,
   getObjectAclPolicy,
   setObjectAclPolicy,
-} from "./objectAcl";
+} from "./objectAcl.js";
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
 
@@ -38,7 +38,7 @@ export class ObjectNotFoundError extends Error {
 }
 
 export class ObjectStorageService {
-  constructor() {}
+  constructor() { }
 
   getPublicObjectSearchPaths(): Array<string> {
     const pathsStr = process.env.PUBLIC_OBJECT_SEARCH_PATHS || "";
@@ -53,7 +53,7 @@ export class ObjectStorageService {
     if (paths.length === 0) {
       throw new Error(
         "PUBLIC_OBJECT_SEARCH_PATHS not set. Create a bucket in 'Object Storage' " +
-          "tool and set PUBLIC_OBJECT_SEARCH_PATHS env var (comma-separated paths)."
+        "tool and set PUBLIC_OBJECT_SEARCH_PATHS env var (comma-separated paths)."
       );
     }
     return paths;
@@ -64,7 +64,7 @@ export class ObjectStorageService {
     if (!dir) {
       throw new Error(
         "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
-          "tool and set PRIVATE_OBJECT_DIR env var."
+        "tool and set PRIVATE_OBJECT_DIR env var."
       );
     }
     return dir;
@@ -92,9 +92,8 @@ export class ObjectStorageService {
       res.set({
         "Content-Type": metadata.contentType || "application/octet-stream",
         "Content-Length": metadata.size,
-        "Cache-Control": `${
-          isPublic ? "public" : "private"
-        }, max-age=${cacheTtlSec}`,
+        "Cache-Control": `${isPublic ? "public" : "private"
+          }, max-age=${cacheTtlSec}`,
       });
 
       const stream = file.createReadStream();
@@ -118,7 +117,7 @@ export class ObjectStorageService {
     if (!privateObjectDir) {
       throw new Error(
         "PRIVATE_OBJECT_DIR not set. Create a bucket in 'Object Storage' " +
-          "tool and set PRIVATE_OBJECT_DIR env var."
+        "tool and set PRIVATE_OBJECT_DIR env var."
       );
     }
 
@@ -164,19 +163,19 @@ export class ObjectStorageService {
     if (!rawPath.startsWith("https://storage.googleapis.com/")) {
       return rawPath;
     }
-  
+
     const url = new URL(rawPath);
     const rawObjectPath = url.pathname;
-  
+
     let objectEntityDir = this.getPrivateObjectDir();
     if (!objectEntityDir.endsWith("/")) {
       objectEntityDir = `${objectEntityDir}/`;
     }
-  
+
     if (!rawObjectPath.startsWith(objectEntityDir)) {
       return rawObjectPath;
     }
-  
+
     const entityId = rawObjectPath.slice(objectEntityDir.length);
     return `/objects/${entityId}`;
   }
@@ -274,7 +273,7 @@ async function signObjectURL({
   if (!response.ok) {
     throw new Error(
       `Failed to sign object URL, errorcode: ${response.status}, ` +
-        `make sure you're running on Replit`
+      `make sure you're running on Replit`
     );
   }
 
