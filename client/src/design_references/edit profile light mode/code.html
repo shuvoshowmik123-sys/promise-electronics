@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Edit Profile - Promise Electronics</title>
+<!-- Google Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#36e27b",
+              "background-light": "#f6f8f7",
+              "background-dark": "#112117",
+              "surface-light": "#ffffff",
+              "surface-dark": "#1c3326",
+              "text-main": "#111714",
+              "text-subtle": "#648772",
+              "border-light": "#dce5df",
+              "border-dark": "#2a4234"
+            },
+            fontFamily: {
+              "display": ["Spline Sans", "sans-serif"]
+            },
+            borderRadius: {
+              "DEFAULT": "1rem", 
+              "lg": "2rem", 
+              "xl": "3rem", 
+              "full": "9999px"
+            },
+          },
+        },
+      }
+    </script>
+<style>
+        /* Custom scrollbar hiding for clean mobile look */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-text-main dark:text-white h-full min-h-screen selection:bg-primary selection:text-black">
+<div class="relative flex h-full min-h-screen w-full flex-col overflow-hidden bg-background-light dark:bg-background-dark transition-colors duration-300">
+<!-- Navigation Bar -->
+<header class="flex items-center justify-between px-4 py-3 bg-surface-light dark:bg-surface-dark border-b border-border-light dark:border-border-dark shrink-0 z-20">
+<button class="flex size-10 items-center justify-center rounded-full active:bg-gray-100 dark:active:bg-white/10 transition-colors text-text-main dark:text-white">
+<span class="material-symbols-outlined" style="font-size: 24px;">arrow_back_ios_new</span>
+</button>
+<h1 class="text-lg font-bold leading-tight tracking-[-0.015em] flex-1 text-center text-text-main dark:text-white">Edit Profile</h1>
+<button class="flex items-center justify-center h-10 px-2 rounded-full active:bg-gray-100 dark:active:bg-white/10">
+<p class="text-primary text-base font-bold leading-normal tracking-[0.015em]">Save</p>
+</button>
+</header>
+<!-- Main Content (Scrollable) -->
+<main class="flex-1 overflow-y-auto overflow-x-hidden no-scrollbar w-full pb-10">
+<!-- Avatar Section -->
+<div class="flex flex-col items-center justify-center pt-8 pb-6 px-4">
+<div class="relative group cursor-pointer">
+<div class="h-32 w-32 rounded-full border-4 border-surface-light dark:border-surface-dark shadow-sm bg-cover bg-center overflow-hidden" data-alt="Portrait of a user with a neutral background" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuBsogNnh3zvoPfeHFkdRAJ2_Lwwyu-EmpUGxc1951eOnOyAyCnq7qKURHzE-6ev53bs_9h3Xyn37RFEf5IXZpW7itokElR1LotVUYJh6BcYqavHeKSfBm-ZW66zcRge3BsUBDaiRg2W33HfUwDx5MM0qHESlH070KW9YiUOkawUY3P8is8XJBXB19g0kx2_hDFtly4bnxBUjV9-yfRin94g8g5f4oVy8ipLVmdjJtM6DU3kuFlTmqsKXFF8We3VU00M4JXWwHtMZqk');">
+</div>
+<!-- Camera Badge -->
+<div class="absolute bottom-0 right-0 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-black border-2 border-surface-light dark:border-surface-dark shadow-md transition-transform active:scale-95">
+<span class="material-symbols-outlined" style="font-size: 20px;">photo_camera</span>
+</div>
+</div>
+<button class="mt-4 text-primary font-bold text-sm tracking-wide">Edit Photo</button>
+</div>
+<!-- Form Section -->
+<div class="w-full max-w-[600px] mx-auto px-6 flex flex-col gap-6">
+<!-- Full Name -->
+<div class="flex flex-col gap-2">
+<label class="text-text-main dark:text-gray-200 text-sm font-bold ml-1">Full Name</label>
+<div class="relative flex items-center">
+<span class="absolute left-4 text-text-subtle material-symbols-outlined" style="font-size: 20px;">person</span>
+<input class="w-full rounded-full border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark h-14 pl-12 pr-4 text-base font-normal text-text-main dark:text-white placeholder:text-text-subtle focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all" placeholder="Enter your full name" type="text" value="Alex Morgan"/>
+</div>
+</div>
+<!-- Phone Number -->
+<div class="flex flex-col gap-2">
+<label class="text-text-main dark:text-gray-200 text-sm font-bold ml-1">Phone Number</label>
+<div class="relative flex items-center">
+<span class="absolute left-4 text-text-subtle material-symbols-outlined" style="font-size: 20px;">call</span>
+<input class="w-full rounded-full border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark h-14 pl-12 pr-4 text-base font-normal text-text-main dark:text-white placeholder:text-text-subtle focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all" placeholder="Enter your phone number" type="tel" value="+1 (555) 123-4567"/>
+</div>
+</div>
+<!-- Email Address -->
+<div class="flex flex-col gap-2">
+<label class="text-text-main dark:text-gray-200 text-sm font-bold ml-1">Email Address</label>
+<div class="relative flex items-center">
+<span class="absolute left-4 text-text-subtle material-symbols-outlined" style="font-size: 20px;">mail</span>
+<input class="w-full rounded-full border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark h-14 pl-12 pr-4 text-base font-normal text-text-main dark:text-white placeholder:text-text-subtle focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-all" placeholder="Enter your email address" type="email" value="alex.morgan@promise.com"/>
+</div>
+</div>
+<!-- Password Row (Optional but good UX) -->
+<div class="flex flex-col gap-2 pt-2">
+<label class="text-text-main dark:text-gray-200 text-sm font-bold ml-1">Security</label>
+<button class="w-full flex items-center justify-between rounded-full border border-border-light dark:border-border-dark bg-surface-light dark:bg-surface-dark h-14 px-4 active:bg-gray-50 dark:active:bg-white/5 transition-colors">
+<div class="flex items-center gap-3">
+<span class="text-text-subtle material-symbols-outlined ml-1" style="font-size: 20px;">lock</span>
+<span class="text-base font-medium text-text-main dark:text-white">Change Password</span>
+</div>
+<span class="material-symbols-outlined text-text-subtle">chevron_right</span>
+</button>
+</div>
+</div>
+<!-- Bottom Actions -->
+<div class="mt-10 w-full max-w-[600px] mx-auto px-6 pb-8 flex flex-col items-center gap-6">
+<!-- Main CTA -->
+<button class="w-full h-14 rounded-full bg-primary text-black font-bold text-lg shadow-lg hover:bg-[#2fd16f] active:scale-[0.98] transition-all flex items-center justify-center gap-2">
+<span>Save Changes</span>
+</button>
+<!-- Deactivate Link -->
+<button class="text-red-500 dark:text-red-400 text-sm font-medium hover:underline focus:outline-none">
+                    Deactivate Account
+                </button>
+</div>
+</main>
+</div>
+<!-- Script to simulate input interactions/validation styles visually -->
+<script>
+        // No JS logic added as per instructions, only Tailwind used.
+    </script>
+</body></html>

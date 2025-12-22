@@ -345,10 +345,11 @@ export async function registerRoutes(
       const { password, ...userWithoutPassword } = user;
       res.status(201).json(userWithoutPassword);
     } catch (error: any) {
+      console.error("Registration error:", error);
       if (error instanceof z.ZodError) {
         return res.status(400).json({ error: error.errors[0].message });
       }
-      res.status(500).json({ error: "Registration failed" });
+      res.status(500).json({ error: "Registration failed", details: error.message });
     }
   });
 

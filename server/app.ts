@@ -1,4 +1,9 @@
-import 'dotenv/config';
+import dotenv from "dotenv";
+import path from "path";
+
+// Load environment variables based on NODE_ENV
+const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
+dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 import express from "express";
 import session from "express-session";
 import { registerRoutes } from "./routes.js";

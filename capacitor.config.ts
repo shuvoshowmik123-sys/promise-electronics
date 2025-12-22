@@ -1,4 +1,10 @@
 import type { CapacitorConfig } from '@capacitor/cli';
+import dotenv from 'dotenv';
+import path from 'path';
+
+// Load environment variables
+const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.env';
+dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 const config: CapacitorConfig = {
   appId: 'com.promiseelectronics.app',
@@ -25,7 +31,7 @@ const config: CapacitorConfig = {
     },
     GoogleAuth: {
       scopes: ['profile', 'email'],
-      clientId: '158965145454-4mi8aafaqrm6b2tfkn5qum2epin3lk4j.apps.googleusercontent.com',
+      clientId: process.env.GOOGLE_CLIENT_ID || '158965145454-4mi8aafaqrm6b2tfkn5qum2epin3lk4j.apps.googleusercontent.com',
       forceCodeForRefreshToken: true,
     },
     PushNotifications: {

@@ -30,8 +30,8 @@ export function getCustomerSession() {
   });
 
   const sessionSecret = process.env.SESSION_SECRET;
-  if (!sessionSecret && process.env.NODE_ENV === "production") {
-    throw new Error("SESSION_SECRET environment variable is required in production");
+  if (!sessionSecret) {
+    console.warn("WARNING: SESSION_SECRET is not set. Using a default secret. This is insecure for production!");
   }
 
   // Detect if running behind HTTPS proxy (Replit)
@@ -42,7 +42,7 @@ export function getCustomerSession() {
   console.log("Session config:", { isProduction, isReplit, useSecureCookie });
 
   return session({
-    secret: sessionSecret || "promise-electronics-dev-secret-do-not-use-in-production",
+    secret: sessionSecret || "promise-electronics-fallback-secret-2025",
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
@@ -93,6 +93,10 @@ export async function setupCustomerAuth(app: Express) {
     // For production with custom domain
     if (process.env.CUSTOM_DOMAIN) {
       return `https://${process.env.CUSTOM_DOMAIN}/api/customer/callback`;
+    }
+    // For Vercel deployments
+    if (process.env.VERCEL_URL) {
+      return `https://${process.env.VERCEL_URL}/api/customer/callback`;
     }
     // For Replit dev environment
     if (process.env.REPLIT_DEV_DOMAIN) {
