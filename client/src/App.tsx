@@ -242,7 +242,7 @@ function App() {
 
       // Initialize Google Auth
       GoogleAuth.initialize({
-        clientId: 'YOUR_WEB_CLIENT_ID.apps.googleusercontent.com',
+        clientId: '158965145454-4mi8aafaqrm6b2tfkn5qum2epin3lk4j.apps.googleusercontent.com',
         scopes: ['profile', 'email'],
         grantOfflineAccess: true,
       });

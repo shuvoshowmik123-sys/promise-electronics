@@ -44,104 +44,103 @@ export default function Profile() {
     if (!customer) {
         return (
             <NativeLayout className="pb-32 bg-[var(--color-native-bg)]">
-                <header className="sticky top-0 z-20 bg-[var(--color-native-surface)]/90 backdrop-blur-md px-6 py-4 shadow-sm flex items-center justify-center transition-all duration-300">
-                    <h1 className="text-lg font-bold tracking-tight text-[var(--color-native-text)]">{t('profile.title')}</h1>
-                </header>
-                <main className="grid grid-cols-2 gap-4 px-5 pt-4 pb-24">
-                    {/* Welcome Guest Card */}
-                    <div className="col-span-2 relative overflow-hidden rounded-[2.5rem] bg-[var(--color-native-card)] p-6 shadow-sm border border-[var(--color-native-border)] flex items-center gap-6 group hover:border-[var(--color-native-primary)]/30 transition-all duration-300">
-                        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[var(--color-native-primary)]/5 blur-3xl group-hover:bg-[var(--color-native-primary)]/10 transition-all"></div>
-                        <div className="relative h-20 w-20 shrink-0 flex items-center justify-center rounded-full bg-[var(--color-native-input)] border-2 border-[var(--color-native-surface)] shadow-md text-[var(--color-native-text-muted)]">
-                            <User className="w-10 h-10" />
-                        </div>
-                        <div className="flex flex-col flex-1 min-w-0 z-10">
-                            <h2 className="text-[22px] font-bold leading-tight truncate text-[var(--color-native-text)]">{t('home.guest')}</h2>
-                            <p className="text-sm font-medium text-[var(--color-native-text-muted)] truncate mb-3">{t('profile.login_message')}</p>
-                            <Link href="/native/login">
-                                <button className="flex w-fit items-center gap-2 rounded-full bg-[var(--color-native-primary)] px-6 py-2 text-xs font-bold text-white hover:bg-[var(--color-native-primary)]/90 transition-colors shadow-lg shadow-[var(--color-native-primary)]/20">
-                                    <span>{t('profile.log_in')}</span>
-                                </button>
-                            </Link>
-                        </div>
-                    </div>
-
-                    {/* Locked Cards */}
-                    <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 border border-[var(--color-native-border)] min-h-[160px] opacity-60 select-none cursor-not-allowed">
-                        <div className="absolute right-5 top-5">
-                            <Lock className="text-[var(--color-native-text-muted)] w-5 h-5" />
-                        </div>
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] grayscale">
-                            <MapPin className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text-muted)] whitespace-pre-line">{t('profile.my_addresses')}</h3>
-                            <p className="mt-1 text-[11px] font-medium text-[var(--color-native-text-muted)]">Login to view</p>
-                        </div>
-                    </div>
-
-                    <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 border border-[var(--color-native-border)] min-h-[160px] opacity-60 select-none cursor-not-allowed">
-                        <div className="absolute right-5 top-5">
-                            <Lock className="text-[var(--color-native-text-muted)] w-5 h-5" />
-                        </div>
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] grayscale">
-                            <Headphones className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text-muted)] whitespace-pre-line">{t('profile.help_support')}</h3>
-                            <p className="mt-1 text-[11px] font-medium text-[var(--color-native-text-muted)]">Login to access</p>
-                        </div>
-                    </div>
-
-                    <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 border border-[var(--color-native-border)] min-h-[160px] opacity-60 select-none cursor-not-allowed">
-                        <div className="absolute right-5 top-5">
-                            <Lock className="text-[var(--color-native-text-muted)] w-5 h-5" />
-                        </div>
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] grayscale">
-                            <Wrench className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text-muted)] whitespace-pre-line">{t('profile.repair_history')}</h3>
-                        </div>
-                    </div>
-
-                    <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 border border-[var(--color-native-border)] min-h-[160px] opacity-60 select-none cursor-not-allowed">
-                        <div className="absolute right-5 top-5">
-                            <Lock className="text-[var(--color-native-text-muted)] w-5 h-5" />
-                        </div>
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] grayscale">
-                            <Package className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text-muted)] whitespace-pre-line">{t('profile.order_history')}</h3>
-                        </div>
-                    </div>
-
-                    <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 border border-[var(--color-native-border)] min-h-[160px] opacity-60 select-none cursor-not-allowed">
-                        <div className="absolute right-5 top-5">
-                            <Lock className="text-[var(--color-native-text-muted)] w-5 h-5" />
-                        </div>
-                        <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] grayscale">
-                            <CreditCard className="w-6 h-6" />
-                        </div>
-                        <div>
-                            <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text-muted)] whitespace-pre-line">Payment{"\n"}Methods</h3>
-                        </div>
-                    </div>
-
-                    {/* App Settings - Enabled */}
-                    <Link href="/native/settings">
-                        <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group min-h-[160px]">
-                            <div className="absolute right-0 top-0 p-5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <ArrowUpRight className="w-5 h-5 text-[var(--color-native-text-muted)]" />
+                <main className="flex-1 overflow-y-auto scrollbar-hide">
+                    <div className="grid grid-cols-2 gap-4 px-5 pt-4 pb-24">
+                        {/* Welcome Guest Card */}
+                        <div className="col-span-2 relative overflow-hidden rounded-[2.5rem] bg-[var(--color-native-card)] p-6 shadow-sm border border-[var(--color-native-border)] flex items-center gap-6 group hover:border-[var(--color-native-primary)]/30 transition-all duration-300">
+                            <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[var(--color-native-primary)]/5 blur-3xl group-hover:bg-[var(--color-native-primary)]/10 transition-all"></div>
+                            <div className="relative h-20 w-20 shrink-0 flex items-center justify-center rounded-full bg-[var(--color-native-input)] border-2 border-[var(--color-native-surface)] shadow-md text-[var(--color-native-text-muted)]">
+                                <User className="w-10 h-10" />
                             </div>
-                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)]">
-                                <Settings className="w-6 h-6" />
+                            <div className="flex flex-col flex-1 min-w-0 z-10">
+                                <h2 className="text-[22px] font-bold leading-tight truncate text-[var(--color-native-text)]">{t('home.guest')}</h2>
+                                <p className="text-sm font-medium text-[var(--color-native-text-muted)] truncate mb-3">{t('profile.login_message')}</p>
+                                <Link href="/native/login">
+                                    <button className="flex w-fit items-center gap-2 rounded-full bg-[var(--color-native-primary)] px-6 py-2 text-xs font-bold text-white hover:bg-[var(--color-native-primary)]/90 transition-colors shadow-lg shadow-[var(--color-native-primary)]/20">
+                                        <span>{t('profile.log_in')}</span>
+                                    </button>
+                                </Link>
+                            </div>
+                        </div>
+
+                        {/* Locked Cards */}
+                        <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 border border-[var(--color-native-border)] min-h-[160px] opacity-60 select-none cursor-not-allowed">
+                            <div className="absolute right-5 top-5">
+                                <Lock className="text-[var(--color-native-text-muted)] w-5 h-5" />
+                            </div>
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] grayscale">
+                                <MapPin className="w-6 h-6" />
                             </div>
                             <div>
-                                <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text)] whitespace-pre-line">{t('profile.app_settings')}</h3>
+                                <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text-muted)] whitespace-pre-line">{t('profile.my_addresses')}</h3>
+                                <p className="mt-1 text-[11px] font-medium text-[var(--color-native-text-muted)]">Login to view</p>
                             </div>
                         </div>
-                    </Link>
+
+                        <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 border border-[var(--color-native-border)] min-h-[160px] opacity-60 select-none cursor-not-allowed">
+                            <div className="absolute right-5 top-5">
+                                <Lock className="text-[var(--color-native-text-muted)] w-5 h-5" />
+                            </div>
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] grayscale">
+                                <Headphones className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text-muted)] whitespace-pre-line">{t('profile.help_support')}</h3>
+                                <p className="mt-1 text-[11px] font-medium text-[var(--color-native-text-muted)]">Login to access</p>
+                            </div>
+                        </div>
+
+                        <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 border border-[var(--color-native-border)] min-h-[160px] opacity-60 select-none cursor-not-allowed">
+                            <div className="absolute right-5 top-5">
+                                <Lock className="text-[var(--color-native-text-muted)] w-5 h-5" />
+                            </div>
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] grayscale">
+                                <Wrench className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text-muted)] whitespace-pre-line">{t('profile.repair_history')}</h3>
+                            </div>
+                        </div>
+
+                        <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 border border-[var(--color-native-border)] min-h-[160px] opacity-60 select-none cursor-not-allowed">
+                            <div className="absolute right-5 top-5">
+                                <Lock className="text-[var(--color-native-text-muted)] w-5 h-5" />
+                            </div>
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] grayscale">
+                                <Package className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text-muted)] whitespace-pre-line">{t('profile.order_history')}</h3>
+                            </div>
+                        </div>
+
+                        <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 border border-[var(--color-native-border)] min-h-[160px] opacity-60 select-none cursor-not-allowed">
+                            <div className="absolute right-5 top-5">
+                                <Lock className="text-[var(--color-native-text-muted)] w-5 h-5" />
+                            </div>
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] grayscale">
+                                <CreditCard className="w-6 h-6" />
+                            </div>
+                            <div>
+                                <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text-muted)] whitespace-pre-line">Payment{"\n"}Methods</h3>
+                            </div>
+                        </div>
+
+                        {/* App Settings - Enabled */}
+                        <Link href="/native/settings">
+                            <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group min-h-[160px]">
+                                <div className="absolute right-0 top-0 p-5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <ArrowUpRight className="w-5 h-5 text-[var(--color-native-text-muted)]" />
+                                </div>
+                                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)]">
+                                    <Settings className="w-6 h-6" />
+                                </div>
+                                <div>
+                                    <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text)] whitespace-pre-line">{t('profile.app_settings')}</h3>
+                                </div>
+                            </div>
+                        </Link>
+                    </div>
                 </main>
             </NativeLayout>
         );
@@ -160,7 +159,7 @@ export default function Profile() {
                             <div className="relative h-full w-full rounded-full border-2 border-[var(--color-native-surface)] bg-[var(--color-native-input)] shadow-md overflow-hidden flex items-center justify-center">
                                 {customer.profileImageUrl ? (
                                     <img
-                                        src={customer.profileImageUrl}
+                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${customer.profileImageUrl}`}
                                         alt={customer.name}
                                         className="w-full h-full object-cover"
                                     />
@@ -267,6 +266,6 @@ export default function Profile() {
 
                 </div>
             </main>
-        </NativeLayout>
+        </NativeLayout >
     );
 }
