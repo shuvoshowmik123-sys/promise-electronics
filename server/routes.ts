@@ -2,6 +2,8 @@ import type { Express, Request, Response, NextFunction } from "express";
 import type { Server } from "http";
 import { v2 as cloudinary } from "cloudinary";
 import { storage } from "./storage.js";
+import { db } from "./db.js";
+import { sql } from "drizzle-orm";
 import {
   insertJobTicketSchema,
   insertInventoryItemSchema,
