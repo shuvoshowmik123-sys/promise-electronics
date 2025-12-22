@@ -2696,7 +2696,7 @@ export async function registerRoutes(
           return res.status(400).json({ error: `Product ${item.productId} not found` });
         }
 
-        let price = parseFloat(product.price || "0");
+        let price = product.price;
         let variantName = null;
 
         // Check if variant is specified
@@ -2705,11 +2705,11 @@ export async function registerRoutes(
           if (!variant) {
             return res.status(400).json({ error: `Variant ${item.variantId} not found` });
           }
-          price = parseFloat(variant.price);
+          price = variant.price;
           variantName = variant.variantName;
         }
 
-        const quantity = parseInt(item.quantity) || 1;
+        const quantity = Number(item.quantity) || 1;
         const itemTotal = price * quantity;
         subtotal += itemTotal;
 
@@ -2719,8 +2719,8 @@ export async function registerRoutes(
           variantId: item.variantId || null,
           variantName,
           quantity,
-          price: price.toFixed(2),
-          total: itemTotal.toFixed(2),
+          price: price,
+          total: itemTotal,
         });
       }
 
@@ -2734,8 +2734,8 @@ export async function registerRoutes(
           customerAddress: address,
           status: "Pending",
           paymentMethod: "COD",
-          subtotal: subtotal.toFixed(2),
-          total: total.toFixed(2),
+          subtotal: subtotal,
+          total: total,
           notes: notes || null,
         },
         orderItems
@@ -3345,7 +3345,7 @@ export async function registerRoutes(
         servicePreference: validated.servicePreference || null,
         requestIntent: validated.requestIntent || "quote",
         serviceMode: validated.serviceMode || null,
-        stage: "intake", // Start at intake stage
+        stage: "intake" as const, // Start at intake stage
       });
 
       // Notify admins about new quote request

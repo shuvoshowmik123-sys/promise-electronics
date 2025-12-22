@@ -50,23 +50,24 @@ export default function AdminInventoryPage() {
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [showFilters, setShowFilters] = useState(false);
 
-  const [formData, setFormData] = useState<InsertInventoryItem>({
+  const [formData, setFormData] = useState({
     id: "",
     name: "",
     category: "",
     description: "",
     itemType: "product",
     stock: 0,
-    price: "0",
-    minPrice: null,
-    maxPrice: null,
+    price: "",
+    minPrice: null as string | null,
+    maxPrice: null as string | null,
     status: "In Stock",
     lowStockThreshold: 5,
-    images: null,
+    images: null as string | null,
     showOnWebsite: false,
-    icon: null,
-    estimatedDays: null,
+    icon: null as string | null,
+    estimatedDays: null as string | null,
     displayOrder: 0,
+    features: null as string | null,
   });
 
   const serviceIcons = [
@@ -240,7 +241,7 @@ export default function AdminInventoryPage() {
       description: "",
       itemType: "product",
       stock: 0,
-      price: "0",
+      price: "",
       minPrice: null,
       maxPrice: null,
       status: "In Stock",
@@ -311,9 +312,9 @@ export default function AdminInventoryPage() {
       description: item.description || "",
       itemType: item.itemType || "product",
       stock: Number(item.stock),
-      price: item.price,
-      minPrice: item.minPrice || null,
-      maxPrice: item.maxPrice || null,
+      price: item.price.toString(),
+      minPrice: item.minPrice ? item.minPrice.toString() : null,
+      maxPrice: item.maxPrice ? item.maxPrice.toString() : null,
       status: item.status,
       lowStockThreshold: item.lowStockThreshold || 5,
       images: item.images,

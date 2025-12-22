@@ -345,8 +345,8 @@ export default function AdminPOSPage() {
     const serviceItem = serviceItems?.find(s => s.id === serviceItemId);
     if (!serviceItem) return;
 
-    const minPrice = parseFloat(serviceItem.minPrice || serviceItem.price || "0");
-    const maxPrice = parseFloat(serviceItem.maxPrice || serviceItem.price || "0");
+    const minPrice = serviceItem.minPrice ?? serviceItem.price ?? 0;
+    const maxPrice = serviceItem.maxPrice ?? serviceItem.price ?? 0;
     const defaultAmount = minPrice;
 
     updateJobCharge(jobId, {
@@ -394,7 +394,7 @@ export default function AdminPOSPage() {
         const cartItem: CartItem = {
           id: item.id,
           name: item.name,
-          price: item.price,
+          price: String(item.price),
           quantity: selected.qty,
           image: itemImage,
         };
@@ -958,7 +958,7 @@ export default function AdminPOSPage() {
                   {linkedJobCharges.map(charge => {
                     const job = jobTickets?.find(j => j.id === charge.jobId);
                     const hasWarranty = job && (job.serviceWarrantyDays !== undefined || job.partsWarrantyDays !== undefined || job.serviceExpiryDate || job.partsExpiryDate);
-                    const checkWarrantyActive = (expiryDate: string | null | undefined) => {
+                    const checkWarrantyActive = (expiryDate: Date | string | null | undefined) => {
                       if (!expiryDate) return false;
                       return new Date(expiryDate) > new Date();
                     };

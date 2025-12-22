@@ -59,16 +59,16 @@ export default function AdminFinancePage() {
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cash");
 
-  const [pettyCashForm, setPettyCashForm] = useState<InsertPettyCashRecord>({
+  const [pettyCashForm, setPettyCashForm] = useState({
     description: "",
     category: "",
-    amount: "0",
+    amount: "",
     type: "Income",
   });
 
-  const [dueForm, setDueForm] = useState<InsertDueRecord>({
+  const [dueForm, setDueForm] = useState({
     customer: "",
-    amount: "0",
+    amount: "",
     status: "Pending",
     invoice: "",
     dueDate: new Date(),
@@ -276,7 +276,7 @@ export default function AdminFinancePage() {
     setPettyCashForm({
       description: "",
       category: "",
-      amount: "0",
+      amount: "",
       type: "Income",
     });
   };
@@ -284,7 +284,7 @@ export default function AdminFinancePage() {
   const resetDueForm = () => {
     setDueForm({
       customer: "",
-      amount: "0",
+      amount: "",
       status: "Pending",
       invoice: "",
       dueDate: new Date(),
@@ -733,7 +733,10 @@ export default function AdminFinancePage() {
                       Cancel
                     </Button>
                     <Button
-                      onClick={() => createPettyCashMutation.mutate(pettyCashForm)}
+                      onClick={() => createPettyCashMutation.mutate({
+                        ...pettyCashForm,
+                        amount: Number(pettyCashForm.amount) || 0
+                      } as InsertPettyCashRecord)}
                       disabled={createPettyCashMutation.isPending}
                       data-testid="button-submit-transaction"
                     >
@@ -994,7 +997,10 @@ export default function AdminFinancePage() {
                       Cancel
                     </Button>
                     <Button
-                      onClick={() => createDueMutation.mutate(dueForm)}
+                      onClick={() => createDueMutation.mutate({
+                        ...dueForm,
+                        amount: Number(dueForm.amount) || 0
+                      } as InsertDueRecord)}
                       disabled={createDueMutation.isPending}
                       data-testid="button-submit-due"
                     >
