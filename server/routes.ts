@@ -170,21 +170,37 @@ export function registerAdminAuthRoutes(app: Express) {
 
   app.post("/api/admin/login", async (req, res) => {
     try {
+      console.log("Admin login attempt for:", req.body.username);
       const { username, password } = adminLoginSchema.parse(req.body);
       const user = await storage.getUserByUsername(username);
 
-      if (!user || !user.password || !(await bcrypt.compare(password, user.password))) {
+      if (!user) {
+        console.log("Admin login failed: User not found");
+        return res.status(401).json({ error: "Invalid username or password" });
+      }
+
+      if (!user.password) {
+        console.log("Admin login failed: User has no password set");
+        return res.status(401).json({ error: "Invalid username or password" });
+      }
+
+      const isMatch = await bcrypt.compare(password, user.password);
+      if (!isMatch) {
+        console.log("Admin login failed: Password mismatch");
         return res.status(401).json({ error: "Invalid username or password" });
       }
 
       if (user.status !== "Active") {
+        console.log("Admin login failed: User inactive");
         return res.status(403).json({ error: "Account is inactive" });
       }
 
+      console.log("Admin login successful for:", username);
       req.session.adminUserId = user.id;
       const { password: _, ...safeUser } = user;
       res.json(safeUser);
     } catch (error) {
+      console.error("Admin login error:", error);
       res.status(400).json({ error: "Invalid login data" });
     }
   });
