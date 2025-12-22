@@ -199,8 +199,12 @@ export function registerAdminAuthRoutes(app: Express) {
       req.session.adminUserId = user.id;
       const { password: _, ...safeUser } = user;
       res.json(safeUser);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Admin login error:", error);
+      if (error instanceof z.ZodError) {
+        console.error("Validation error:", JSON.stringify(error.errors));
+        return res.status(400).json({ error: error.errors[0].message, details: error.errors });
+      }
       res.status(400).json({ error: "Invalid login data" });
     }
   });
