@@ -336,6 +336,20 @@ export async function registerRoutes(
   // Register Admin Auth Routes
   registerAdminAuthRoutes(app);
 
+  // Health Check Route
+  app.get("/api/health", async (req, res) => {
+    try {
+      const start = Date.now();
+      // Simple query to check DB connection
+      await db.execute(sql`SELECT 1`);
+      const duration = Date.now() - start;
+      res.json({ status: "ok", database: "connected", latency: `${duration}ms` });
+    } catch (error: any) {
+      console.error("Health check failed:", error);
+      res.status(500).json({ status: "error", database: "disconnected", error: error.message });
+    }
+  });
+
   // Customer Authentication Routes
 
   // Register

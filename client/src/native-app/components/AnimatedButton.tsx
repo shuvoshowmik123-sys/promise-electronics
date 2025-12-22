@@ -6,14 +6,17 @@ import { Haptics, ImpactStyle } from '@capacitor/haptics';
 interface AnimatedButtonProps extends HTMLMotionProps<"button"> {
     children: ReactNode;
     className?: string;
+    disableHaptics?: boolean;
 }
 
-export default function AnimatedButton({ children, className, onTapStart, ...props }: AnimatedButtonProps) {
+export default function AnimatedButton({ children, className, onTapStart, disableHaptics = false, ...props }: AnimatedButtonProps) {
     const handleTapStart = async (event: any, info: any) => {
-        try {
-            await Haptics.impact({ style: ImpactStyle.Light });
-        } catch (error) {
-            // Silently fail on non-supported platforms
+        if (!disableHaptics) {
+            try {
+                await Haptics.impact({ style: ImpactStyle.Light });
+            } catch (error) {
+                // Silently fail on non-supported platforms
+            }
         }
 
         if (onTapStart) {

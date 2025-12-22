@@ -10,8 +10,25 @@ import { registerRoutes } from "./routes.js";
 import { createServer } from "http";
 import connectMemoryStore from "memorystore";
 
+import cors from "cors";
+
 export const app = express();
 export const httpServer = createServer(app);
+
+// Configure CORS
+app.use(cors({
+    origin: [
+        "http://localhost:5083",
+        "http://localhost:5082",
+        "https://promiseelectronics.com",
+        "http://localhost",
+        "capacitor://localhost",
+        "http://192.168.0.103:5083" // Common local IP, can be adjusted
+    ],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "Cookie"]
+}));
 
 // Trust proxy for production (HTTPS behind proxy)
 app.set("trust proxy", 1);

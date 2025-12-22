@@ -133,7 +133,7 @@ export default function Home() {
                             <h3 className="text-lg font-bold px-2 mb-3 tracking-tight text-[var(--color-native-text)]">{t('home.quick_actions')}</h3>
                             <div className="grid grid-cols-2 gap-3">
                                 <Link href="/native/repair">
-                                    <AnimatedButton className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
+                                    <AnimatedButton disableHaptics className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
                                         <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-500">
                                             <Wrench className="w-5 h-5" />
                                         </div>
@@ -145,7 +145,7 @@ export default function Home() {
                                 </Link>
 
                                 <Link href="/native/shop">
-                                    <AnimatedButton className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
+                                    <AnimatedButton disableHaptics className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
                                         <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-500">
                                             <ShoppingBag className="w-5 h-5" />
                                         </div>
@@ -157,7 +157,7 @@ export default function Home() {
                                 </Link>
 
                                 <Link href="/native/bookings">
-                                    <AnimatedButton className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
+                                    <AnimatedButton disableHaptics className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
                                         <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-500">
                                             <Map className="w-5 h-5" />
                                         </div>
@@ -169,7 +169,7 @@ export default function Home() {
                                 </Link>
 
                                 <Link href="/native/support">
-                                    <AnimatedButton className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
+                                    <AnimatedButton disableHaptics className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
                                         <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-500">
                                             <Headphones className="w-5 h-5" />
                                         </div>
@@ -192,6 +192,7 @@ export default function Home() {
                                     </Link>
                                 </div>
                                 <AnimatedButton
+                                    disableHaptics
                                     onClick={() => setSelectedRepair(currentRepair)}
                                     className="w-full bg-[var(--color-native-card)] rounded-2xl p-5 border border-[var(--color-native-border)] shadow-sm cursor-pointer text-left group relative overflow-hidden"
                                 >
@@ -396,6 +397,7 @@ export default function Home() {
 
                     <div className="p-5 bg-[var(--color-native-card)] border-t border-[var(--color-native-border)]">
                         <AnimatedButton
+                            disableHaptics
                             onClick={() => setSelectedRepair(null)}
                             className="w-full bg-[var(--color-native-input)] text-[var(--color-native-text)] font-bold py-3 rounded-xl hover:bg-[var(--color-native-border)] transition-colors"
                         >
