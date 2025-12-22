@@ -43,7 +43,7 @@ export default function RepairRequestPage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [accountCreatedDuringSession, setAccountCreatedDuringSession] = useState(false);
   const { isAuthenticated, customer, register, updateProfile, checkAuth } = useCustomerAuth();
-  
+
   const [brand, setBrand] = useState("");
   const [screenSize, setScreenSize] = useState("");
   const [modelNumber, setModelNumber] = useState("");
@@ -60,15 +60,15 @@ export default function RepairRequestPage() {
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
   const [scheduledVisitDate, setScheduledVisitDate] = useState<Date | null>(null);
   const [showVisitDatePicker, setShowVisitDatePicker] = useState(false);
-  
+
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const clearError = (field: string) => {
     if (validationErrors[field]) {
       setValidationErrors(prev => ({ ...prev, [field]: false }));
     }
   };
-  
+
   // Auto-fill customer info when logged in
   useEffect(() => {
     if (isAuthenticated && customer) {
@@ -117,7 +117,7 @@ export default function RepairRequestPage() {
     if (step === 1) {
       const errors: Record<string, boolean> = {};
       const missingFields: string[] = [];
-      
+
       if (!brand) {
         errors.brand = true;
         missingFields.push("Brand");
@@ -126,14 +126,14 @@ export default function RepairRequestPage() {
         errors.screenSize = true;
         missingFields.push("Screen Size");
       }
-      
+
       if (missingFields.length > 0) {
         setValidationErrors(prev => ({ ...prev, ...errors }));
         toast.error(`Please fill required fields: ${missingFields.join(", ")}`);
         return;
       }
     }
-    
+
     if (step === 2) {
       if (!primaryIssue) {
         setValidationErrors(prev => ({ ...prev, primaryIssue: true }));
@@ -141,11 +141,11 @@ export default function RepairRequestPage() {
         return;
       }
     }
-    
+
     if (step === 3) {
       const errors: Record<string, boolean> = {};
       const missingFields: string[] = [];
-      
+
       if (!isAuthenticated) {
         if (!customerName.trim()) {
           errors.customerName = true;
@@ -156,7 +156,7 @@ export default function RepairRequestPage() {
           missingFields.push("Phone Number");
         }
       }
-      
+
       // Address required when pickup service is selected
       if (servicePreference === "home_pickup") {
         const effectiveAddress = isAuthenticated && customer?.address ? customer.address : address;
@@ -165,19 +165,19 @@ export default function RepairRequestPage() {
           missingFields.push("Pickup Address");
         }
       }
-      
+
       // Visit date required when service center is selected
       if (servicePreference === "service_center" && !scheduledVisitDate) {
         errors.scheduledVisitDate = true;
         missingFields.push("Visit Date");
       }
-      
+
       if (missingFields.length > 0) {
         setValidationErrors(prev => ({ ...prev, ...errors }));
         toast.error(`Please fill required fields: ${missingFields.join(", ")}`);
         return;
       }
-      
+
       if (isAuthenticated) {
         handleSubmit();
         return;
@@ -185,11 +185,11 @@ export default function RepairRequestPage() {
       setStep(4);
       return;
     }
-    
+
     if (step === 4) {
       const errors: Record<string, boolean> = {};
       const missingFields: string[] = [];
-      
+
       if (!password) {
         errors.password = true;
         missingFields.push("Password");
@@ -199,7 +199,7 @@ export default function RepairRequestPage() {
         setValidationErrors(prev => ({ ...prev, ...errors }));
         return;
       }
-      
+
       if (!confirmPassword) {
         errors.confirmPassword = true;
         missingFields.push("Confirm Password");
@@ -209,19 +209,19 @@ export default function RepairRequestPage() {
         setValidationErrors(prev => ({ ...prev, ...errors }));
         return;
       }
-      
+
       if (missingFields.length > 0) {
         setValidationErrors(prev => ({ ...prev, ...errors }));
         toast.error(`Please fill required fields: ${missingFields.join(", ")}`);
         return;
       }
-      
+
       handleSubmit();
       return;
     }
     setStep(s => s + 1);
   };
-  
+
   const prevStep = () => setStep(s => s - 1);
 
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
@@ -296,22 +296,22 @@ export default function RepairRequestPage() {
 
     setIsUploadingFiles(true);
     const newFiles: UploadedFile[] = [];
-    
+
     try {
       for (let i = 0; i < selectedFiles.length; i++) {
         const file = selectedFiles[i];
         const isVideo = file.type.startsWith("video/");
         setUploadProgress(`${isVideo ? "Compressing & uploading" : "Uploading"} ${i + 1} of ${selectedFiles.length}...`);
-        
+
         const reader = new FileReader();
         const preview = await new Promise<string>((resolve) => {
           reader.onload = () => resolve(reader.result as string);
           reader.readAsDataURL(file);
         });
-        
+
         // Upload to Cloudinary (automatically compresses images and videos)
         const cloudinaryMedia = await uploadToCloudinary(file);
-        
+
         newFiles.push({
           name: file.name,
           type: file.type,
@@ -342,7 +342,7 @@ export default function RepairRequestPage() {
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
-    
+
     try {
       if (!isAuthenticated && password) {
         await register({
@@ -356,11 +356,11 @@ export default function RepairRequestPage() {
       } else if (isAuthenticated && customer) {
         // Update customer profile with the form data if they're logged in
         // This saves their phone/address if they skipped profile completion earlier
-        const needsUpdate = 
-          (phone && phone !== customer.phone) || 
+        const needsUpdate =
+          (phone && phone !== customer.phone) ||
           (address && address !== customer.address) ||
           (customerName && customerName !== customer.name);
-        
+
         if (needsUpdate) {
           try {
             await updateProfile({
@@ -381,14 +381,14 @@ export default function RepairRequestPage() {
           }
         }
       }
-      
+
       // Store full media objects with publicId for cleanup (30-day auto-deletion)
       const mediaData = files.map(f => ({
         url: f.objectUrl,
         publicId: f.publicId,
         resourceType: f.resourceType,
       }));
-      
+
       const result = await createRequestMutation.mutateAsync({
         brand,
         screenSize: screenSize || undefined,
@@ -406,7 +406,7 @@ export default function RepairRequestPage() {
         requestIntent: "repair",
         serviceMode: servicePreference === "home_pickup" ? "pickup" : "service_center",
       });
-      
+
       setTicketNumber(result.ticketNumber || "");
       setStep(5);
       setIsSubmitting(false);
@@ -422,8 +422,8 @@ export default function RepairRequestPage() {
   };
 
   const toggleSymptom = (symptom: string) => {
-    setSelectedSymptoms(prev => 
-      prev.includes(symptom) 
+    setSelectedSymptoms(prev =>
+      prev.includes(symptom)
         ? prev.filter(s => s !== symptom)
         : [...prev, symptom]
     );
@@ -465,12 +465,11 @@ export default function RepairRequestPage() {
               const isComplete = s < step;
               const isCurrent = s === step;
               const isDone = s === 5 && step === 5;
-              
+
               return (
                 <div key={s} className={`flex flex-col items-center gap-2 bg-background p-2 ${s <= step ? 'text-primary' : 'text-muted-foreground'}`}>
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 transition-colors ${
-                    s <= step ? 'bg-primary text-white border-primary' : 'bg-white border-slate-300'
-                  }`}>
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold border-2 transition-colors ${s <= step ? 'bg-primary text-white border-primary' : 'bg-white border-slate-300'
+                    }`}>
                     {isComplete ? <CheckCircle className="w-6 h-6" /> : s}
                   </div>
                   <span className="text-xs font-medium hidden sm:block">
@@ -489,7 +488,7 @@ export default function RepairRequestPage() {
                     <h2 className="text-2xl font-bold">Device Details</h2>
                     <p className="text-muted-foreground">Tell us about the TV you need repaired.</p>
                   </div>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label>Brand *</Label>
@@ -507,7 +506,7 @@ export default function RepairRequestPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label>Screen Size *</Label>
                       <Select value={screenSize} onValueChange={(val) => { setScreenSize(val); clearError('screenSize'); }}>
@@ -516,8 +515,8 @@ export default function RepairRequestPage() {
                         </SelectTrigger>
                         <SelectContent>
                           {tvInches.map((inch) => (
-                            <SelectItem 
-                              key={inch} 
+                            <SelectItem
+                              key={inch}
                               value={inch}
                               data-testid={`option-size-${inch.toLowerCase().replace(/\s+/g, '-')}`}
                             >
@@ -532,8 +531,8 @@ export default function RepairRequestPage() {
 
                   <div className="space-y-2">
                     <Label>Model Number (Optional)</Label>
-                    <Input 
-                      placeholder="e.g. KD-55X80J" 
+                    <Input
+                      placeholder="e.g. KD-55X80J"
                       value={modelNumber}
                       onChange={(e) => setModelNumber(e.target.value)}
                       data-testid="input-model"
@@ -562,8 +561,8 @@ export default function RepairRequestPage() {
                       </SelectTrigger>
                       <SelectContent>
                         {serviceCategories.map((category) => (
-                          <SelectItem 
-                            key={category} 
+                          <SelectItem
+                            key={category}
                             value={category}
                             data-testid={`option-issue-${category.toLowerCase().replace(/\s+/g, '-')}`}
                           >
@@ -579,8 +578,8 @@ export default function RepairRequestPage() {
                     <div className="grid grid-cols-2 gap-4">
                       {commonSymptoms.map((sym) => (
                         <div key={sym} className="flex items-center space-x-2" data-testid={`symptom-checkbox-${sym.toLowerCase().replace(/\s+/g, '-')}`}>
-                          <Checkbox 
-                            id={sym} 
+                          <Checkbox
+                            id={sym}
                             checked={selectedSymptoms.includes(sym)}
                             onCheckedChange={() => toggleSymptom(sym)}
                           />
@@ -594,8 +593,8 @@ export default function RepairRequestPage() {
 
                   <div className="space-y-2">
                     <Label>Detailed Description</Label>
-                    <Textarea 
-                      placeholder="Please describe exactly what happens..." 
+                    <Textarea
+                      placeholder="Please describe exactly what happens..."
                       className="h-32"
                       value={description}
                       onChange={(e) => setDescription(e.target.value)}
@@ -605,7 +604,7 @@ export default function RepairRequestPage() {
 
                   <div className="space-y-2">
                     <Label>Upload Photos/Video (Optional)</Label>
-                    <div 
+                    <div
                       className={`border-2 border-dashed border-slate-300 rounded-lg p-8 text-center hover:bg-slate-50 transition-colors ${isUploadingFiles ? 'cursor-wait' : 'cursor-pointer'}`}
                       onClick={() => !isUploadingFiles && fileInputRef.current?.click()}
                       data-testid="file-upload-area"
@@ -714,8 +713,8 @@ export default function RepairRequestPage() {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       <div className="space-y-2">
                         <Label>Full Name *</Label>
-                        <Input 
-                          placeholder="Your Name" 
+                        <Input
+                          placeholder="Your Name"
                           value={customerName}
                           onChange={(e) => { setCustomerName(e.target.value); clearError('customerName'); }}
                           className={validationErrors.customerName ? 'border-red-500' : ''}
@@ -724,8 +723,8 @@ export default function RepairRequestPage() {
                       </div>
                       <div className="space-y-2">
                         <Label>Phone Number *</Label>
-                        <Input 
-                          placeholder="+880 1..." 
+                        <Input
+                          placeholder="+880 1..."
                           value={phone}
                           onChange={(e) => { setPhone(e.target.value); clearError('phone'); }}
                           className={validationErrors.phone ? 'border-red-500' : ''}
@@ -758,7 +757,7 @@ export default function RepairRequestPage() {
                   {servicePreference === "home_pickup" && (
                     <div className="space-y-2">
                       <Label>Pickup Address *</Label>
-                      <Textarea 
+                      <Textarea
                         placeholder="House No, Road No, Area, District"
                         value={address}
                         onChange={(e) => { setAddress(e.target.value); clearError('address'); }}
@@ -779,7 +778,7 @@ export default function RepairRequestPage() {
                         <p className="text-sm text-blue-700 mb-3">
                           Choose a date when you plan to bring your TV to our service center. <span className="text-blue-600 font-medium">(Fridays closed)</span>
                         </p>
-                        
+
                         {!scheduledVisitDate && !showVisitDatePicker && (
                           <Button
                             type="button"
@@ -792,7 +791,7 @@ export default function RepairRequestPage() {
                             Select Date
                           </Button>
                         )}
-                        
+
                         {showVisitDatePicker && (
                           <div className="bg-white rounded-lg border p-3">
                             <CalendarComponent
@@ -820,7 +819,7 @@ export default function RepairRequestPage() {
                             </div>
                           </div>
                         )}
-                        
+
                         {scheduledVisitDate && !showVisitDatePicker && (
                           <div className="flex items-center justify-between p-3 bg-white rounded-lg border border-green-200">
                             <div className="flex items-center gap-2">
@@ -892,7 +891,7 @@ export default function RepairRequestPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">
                       <Label>Password *</Label>
-                      <Input 
+                      <Input
                         type="password"
                         placeholder="Enter password (min 6 characters)"
                         value={password}
@@ -903,7 +902,7 @@ export default function RepairRequestPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Confirm Password *</Label>
-                      <Input 
+                      <Input
                         type="password"
                         placeholder="Confirm your password"
                         value={confirmPassword}
@@ -918,13 +917,13 @@ export default function RepairRequestPage() {
                     By creating an account, you'll be able to track your repair status online and manage future service requests.
                   </p>
 
-                  <div className="flex justify-between pt-4">
-                    <Button variant="outline" onClick={prevStep} size="lg" data-testid="button-back-4">Back</Button>
-                    <Button onClick={nextStep} size="lg" disabled={isSubmitting} data-testid="button-submit">
+                  <div className="flex gap-3 pt-4">
+                    <Button variant="outline" onClick={prevStep} className="flex-1 sm:flex-none sm:w-32" data-testid="button-back-4">Back</Button>
+                    <Button onClick={nextStep} disabled={isSubmitting} className="flex-[2] sm:flex-none sm:w-auto px-4" data-testid="button-submit">
                       {isSubmitting ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Creating Account...
+                          Creating...
                         </>
                       ) : (
                         "Create Account & Submit"
@@ -939,7 +938,7 @@ export default function RepairRequestPage() {
                   <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto">
                     <CheckCircle className="w-10 h-10" />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <h2 className="text-3xl font-heading font-bold text-green-700">Request Received!</h2>
                     <p className="text-lg text-muted-foreground">
@@ -978,8 +977,8 @@ export default function RepairRequestPage() {
                       <p className="text-muted-foreground text-sm mb-4">
                         Create a free account to track your repair status in real-time and get updates.
                       </p>
-                      <Button 
-                        onClick={() => setShowAuthModal(true)} 
+                      <Button
+                        onClick={() => setShowAuthModal(true)}
                         className="w-full"
                         data-testid="button-signup-prompt"
                       >

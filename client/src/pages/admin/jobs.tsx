@@ -15,7 +15,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { jobTicketsApi, settingsApi, adminUsersApi } from "@/lib/api";
 import { useState, useRef, useEffect, useCallback } from "react";
-import { playNotificationSound } from "@/lib/notification-sound";
+import { playNotificationSound, type NotificationTone } from "@/lib/notification-sound";
 import {
   Dialog,
   DialogContent,
@@ -88,20 +88,22 @@ export default function AdminJobsPage() {
     }
   }, [jobs, selectedJob]);
 
-  // Play notification sound when new jobs arrive via polling
-  useEffect(() => {
-    if (jobs.length > 0 && previousJobCountRef.current > 0) {
-      if (jobs.length > previousJobCountRef.current) {
-        playNotificationSound();
-      }
-    }
-    previousJobCountRef.current = jobs.length;
-  }, [jobs.length]);
-
   const { data: settings = [] } = useQuery({
     queryKey: ["settings"],
     queryFn: settingsApi.getAll,
   });
+
+  const notificationTone = (settings.find(s => s.key === "notification_tone")?.value as NotificationTone) || "default";
+
+  // Play notification sound when new jobs arrive via polling
+  useEffect(() => {
+    if (jobs.length > 0 && previousJobCountRef.current > 0) {
+      if (jobs.length > previousJobCountRef.current) {
+        playNotificationSound(notificationTone);
+      }
+    }
+    previousJobCountRef.current = jobs.length;
+  }, [jobs.length, notificationTone]);
 
   const { data: users = [] } = useQuery({
     queryKey: ["adminUsers"],

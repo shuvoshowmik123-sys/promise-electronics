@@ -34,6 +34,7 @@ export const users = pgTable("users", {
   profileImageUrl: text("profile_image_url"),
   avatar: text("avatar"),
   isVerified: boolean("is_verified").default(false),
+  preferences: text("preferences").default("{}"), // Stores JSON string of user preferences
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
@@ -43,6 +44,7 @@ export const insertUserSchema = createInsertSchema(users).omit({
 });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
+export type Customer = User;
 
 export type UpsertCustomerFromGoogle = {
   googleSub: string;
@@ -642,3 +644,40 @@ export const insertInquirySchema = createInsertSchema(inquiries).omit({
 });
 export type InsertInquiry = z.infer<typeof insertInquirySchema>;
 export type Inquiry = typeof inquiries.$inferSelect;
+
+// Customer Addresses Table
+export const customerAddresses = pgTable("customer_addresses", {
+  id: text("id").primaryKey(),
+  customerId: text("customer_id").notNull(),
+  label: text("label").notNull(), // e.g., "Home", "Office"
+  address: text("address").notNull(),
+  isDefault: boolean("is_default").default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertCustomerAddressSchema = createInsertSchema(customerAddresses).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertCustomerAddress = z.infer<typeof insertCustomerAddressSchema>;
+export type CustomerAddress = typeof customerAddresses.$inferSelect;
+
+// Notifications Table
+export const notifications = pgTable("notifications", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  type: text("type").notNull().default("info"), // info, success, warning, repair, shop
+  link: text("link"),
+  read: boolean("read").default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertNotificationSchema = createInsertSchema(notifications).omit({
+  id: true,
+  createdAt: true,
+  read: true,
+});
+export type InsertNotification = z.infer<typeof insertNotificationSchema>;
+export type Notification = typeof notifications.$inferSelect;

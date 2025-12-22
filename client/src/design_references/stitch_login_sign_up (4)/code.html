@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Service Category Selection - Promise Electronics</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "surface-dark": "#1c2e24", // Slightly lighter than background-dark for cards
+                    },
+                    fontFamily: {
+                        "display": ["Spline Sans", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "1rem", 
+                        "lg": "2rem", 
+                        "xl": "3rem", 
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>.no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+        body {
+          min-height: max(884px, 100dvh);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-gray-900 dark:text-white antialiased selection:bg-primary selection:text-black">
+<div class="relative flex min-h-screen w-full flex-col pb-24 overflow-x-hidden">
+<header class="sticky top-0 z-30 flex items-center justify-between bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-md p-4 transition-all duration-300">
+<div class="flex items-center gap-3">
+<div class="relative size-10 shrink-0 overflow-hidden rounded-full border border-gray-200 dark:border-white/10">
+<div class="h-full w-full bg-cover bg-center" data-alt="User profile avatar showing a smiling person" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuDFspuPxAu9bbMLDw8IF6m-WD3-2YjwdZZln4j-evCHut8SQUVNNIUcuw0WByPuCv5Jl7HOO0D33MuyM5o1NVN44t1J69LgHEn03LwNDZsWZibZXGlb8ChiB2X_YQnZ3p9bRfhteuYrVgWAoR2-GopoOGY3bYP3Te76ipD8Qfmi4-YwtAyrjPIzHbTgJ9HfgCVwNeIvxjsf6f6G6nIrDlEeL8Dj6jpDWYVxT3T8KmduK9vLJj4FzkRxRf--x2TOrFo31tW3QcEVWM4");'></div>
+</div>
+<div class="flex flex-col">
+<span class="text-xs font-medium text-gray-500 dark:text-gray-400">Welcome back</span>
+<h2 class="text-sm font-bold leading-tight tracking-wide text-gray-900 dark:text-white">Promise Electronics</h2>
+</div>
+</div>
+<button class="flex size-10 items-center justify-center rounded-full bg-white dark:bg-surface-dark text-gray-900 dark:text-white shadow-sm ring-1 ring-gray-900/5 dark:ring-white/10 transition-colors hover:text-primary">
+<span class="material-symbols-outlined text-2xl">support_agent</span>
+</button>
+</header>
+<div class="px-4 py-2">
+<label class="relative flex h-14 w-full flex-col">
+<div class="flex w-full flex-1 items-center overflow-hidden rounded-full bg-white dark:bg-surface-dark shadow-sm ring-1 ring-gray-900/5 dark:ring-white/5 transition-all focus-within:ring-2 focus-within:ring-primary/50">
+<div class="flex w-12 items-center justify-center pl-2 text-gray-400 dark:text-gray-500">
+<span class="material-symbols-outlined">search</span>
+</div>
+<input class="h-full w-full flex-1 bg-transparent px-2 text-base font-normal text-gray-900 placeholder-gray-400 focus:outline-none dark:text-white dark:placeholder-gray-500" placeholder="Search for TV, AC, Refrigerator..." value=""/>
+<div class="flex w-12 items-center justify-center pr-2 text-primary">
+<span class="material-symbols-outlined">mic</span>
+</div>
+</div>
+</label>
+</div>
+<div class="px-5 pt-4 pb-2">
+<h1 class="text-3xl font-bold leading-tight tracking-tight text-gray-900 dark:text-white">
+            What needs <span class="text-primary">fixing</span> today?
+        </h1>
+</div>
+<div class="w-full py-4 pl-4">
+<div class="no-scrollbar flex w-full gap-4 overflow-x-auto pr-4">
+<div class="relative flex h-40 min-w-[280px] shrink-0 flex-col justify-between overflow-hidden rounded-lg bg-[#2A4535] p-5 shadow-lg">
+<div class="absolute inset-0 opacity-40 bg-cover bg-center" data-alt="Abstract green patterns representing energy efficiency" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuD9GhwpIKCOIdKk49OzyEqwQT6EM6laYfeOpdzhmBwYSNLeAjB2YWrCqSbE9wjg62pvmfkTsznIgXbcF-A5khwIaS8HL67iIJ-mOcek-gPhMZl8hXxElMghZyghWmcj1v27-AXggGnoIO12q4lz1ZqsM2gPohLuPcVt05XyflpblfR-fBTPszaxiw_J0gKwbeqXB9suYDx3P-J1g67lZguWZIC5tzSeu0lkWyW5VvKf3sKpMNAQIEmKSRadjteLcxGZBL2J6_g6mdI"); mix-blend-mode: overlay;'></div>
+<div class="relative z-10">
+<span class="inline-block rounded-full bg-primary/20 px-2 py-1 text-xs font-bold text-primary backdrop-blur-sm">LIMITED OFFER</span>
+<h3 class="mt-2 text-xl font-bold text-white">Get 20% off AC Service</h3>
+<p class="text-sm font-medium text-gray-300">Summer special offer</p>
+</div>
+<button class="relative z-10 mt-2 w-fit rounded-full bg-primary px-4 py-2 text-xs font-bold text-black transition hover:bg-white">Book Now</button>
+</div>
+<div class="relative flex h-40 min-w-[280px] shrink-0 flex-col justify-between overflow-hidden rounded-lg bg-[#1E2E40] p-5 shadow-lg">
+<div class="absolute inset-0 opacity-30 bg-cover bg-center" data-alt="Blue technological abstract background" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuA0GJ40DI4rX8jZ308JnA_sT2odgVv6l9kyobSUfeuKsI9s2lNr5sxKi7bnCDw8EEcYBKDPQWoZEj1i1kurgHLKgXq3gCb_mOlKU6fex8kNdsM5ehuqUvL1mRDzsajficivVVTGy2RJyhxe0-Lu-5FumxdHtT9Cw9Y6bUqfXwSxEHvWX3cFYEIduIxRlbI0CTs45pDkiV3qqGA1k7KuEZs_RXDLvq3ji2jVt7b3wnFmgwN2RzeDn61t9Ca9Dm37BFUKsY7Ezh6FqvA"); mix-blend-mode: overlay;'></div>
+<div class="relative z-10">
+<span class="inline-block rounded-full bg-blue-400/20 px-2 py-1 text-xs font-bold text-blue-300 backdrop-blur-sm">NEW ARRIVAL</span>
+<h3 class="mt-2 text-xl font-bold text-white">Genuine Spare Parts</h3>
+<p class="text-sm font-medium text-gray-300">Fast delivery for all brands</p>
+</div>
+<button class="relative z-10 mt-2 w-fit rounded-full bg-white px-4 py-2 text-xs font-bold text-black transition hover:bg-gray-200">Shop Parts</button>
+</div>
+</div>
+</div>
+<div class="px-4 pt-2">
+<div class="flex items-center justify-between pb-4">
+<h2 class="text-lg font-bold text-gray-900 dark:text-white">Categories</h2>
+<button class="text-sm font-medium text-primary hover:text-green-400">See All</button>
+</div>
+<div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
+<div class="group relative flex aspect-[4/3] cursor-pointer flex-col justify-end overflow-hidden rounded-lg bg-gray-100 dark:bg-surface-dark shadow-md transition-transform active:scale-95">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Modern split air conditioner on a wall" style='background-image: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(17,33,23,0.9) 100%), url("https://lh3.googleusercontent.com/aida-public/AB6AXuAifeDRqmy7Y_VaMxFR83kZlmn2de8GokfKZADMtvmSyvEJPV71Lq4uc7yfqkjcikAZujC6qKidFa6fDATXaIbS2jVGH3dlZ3gYiz_rj06bESTDpFnz-JsnYricbe4-sK09kGItfPR-oQoSx_z2FAbwDl_zhwldiopHY3SULtFEtDhyEC1H069bJbx1b528ftJDRC44qWcDavN3b2OQzhbmvPy719sB7lCTtr1wCSKDaSAJAjYMQblFCSTcSCtXMk28SgzrDGbBOzQ");'></div>
+<div class="relative z-10 p-4">
+<div class="mb-2 flex size-8 items-center justify-center rounded-full bg-primary/20 backdrop-blur-sm">
+<span class="material-symbols-outlined text-primary text-lg">ac_unit</span>
+</div>
+<p class="font-bold text-white leading-tight">Air Conditioner</p>
+</div>
+</div>
+<div class="group relative flex aspect-[4/3] cursor-pointer flex-col justify-end overflow-hidden rounded-lg bg-gray-100 dark:bg-surface-dark shadow-md transition-transform active:scale-95">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Modern flat screen television in a living room" style='background-image: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(17,33,23,0.9) 100%), url("https://lh3.googleusercontent.com/aida-public/AB6AXuBxeGksOOyMt70GXpG-fxMkPxC36EJq_f2-bfmqPN0mIQkMBHM6cNikxCuEmRifFGHQqU8tV38sDeOeQQuusL6K-lvxeex7SjIrip_etAnyjC17QprjcsyKzeS5_17MHXmN7jlwyWvNRIXSMoRQ2x81ItI2kc_XhozOPkEKwiw8mGOVllPfOBkDFmZInEefGorvYnz8ibXmqq5idiiPqEvenqGaaoixgtBWgLQBoUbngJQY48AWACkLjqbWrqT9PlYn-ovD58Be7Gc");'></div>
+<div class="relative z-10 p-4">
+<div class="mb-2 flex size-8 items-center justify-center rounded-full bg-primary/20 backdrop-blur-sm">
+<span class="material-symbols-outlined text-primary text-lg">tv</span>
+</div>
+<p class="font-bold text-white leading-tight">Television</p>
+</div>
+</div>
+<div class="group relative flex aspect-[4/3] cursor-pointer flex-col justify-end overflow-hidden rounded-lg bg-gray-100 dark:bg-surface-dark shadow-md transition-transform active:scale-95">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Stainless steel refrigerator in a modern kitchen" style='background-image: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(17,33,23,0.9) 100%), url("https://lh3.googleusercontent.com/aida-public/AB6AXuDQEE3Ja9EZwgZbkoiiANgpd-PHu7Jdpp-X2eQ9liY9erg-shdMdi0btEvtltyXFu3berqezxGTpAiX7sdSOcT8Okz02PkjcoRaP_tutKGrFXO2qe5KJQE6tK1qqPhC1Tt4QfR_t0aOEmP3VO5FnWWKC9LRxhvKAZr0_APl6-ClP7NxY4AaVL3rSFnM3sTODgUeDl44MDynssciQzfXkMg_NYJwwXbaIrMgQRIDbdyx5TRhoWkyamm7SqDdcxowzt9Vqg4n8H-vGjo");'></div>
+<div class="relative z-10 p-4">
+<div class="mb-2 flex size-8 items-center justify-center rounded-full bg-primary/20 backdrop-blur-sm">
+<span class="material-symbols-outlined text-primary text-lg">kitchen</span>
+</div>
+<p class="font-bold text-white leading-tight">Refrigerator</p>
+</div>
+</div>
+<div class="group relative flex aspect-[4/3] cursor-pointer flex-col justify-end overflow-hidden rounded-lg bg-gray-100 dark:bg-surface-dark shadow-md transition-transform active:scale-95">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Front load washing machine with laundry" style='background-image: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(17,33,23,0.9) 100%), url("https://lh3.googleusercontent.com/aida-public/AB6AXuCAgJsWhQBAvEDc2PsxaMpQTThrLi6rVrst8AMDWle7xX6zZrMybD9FhoggZx3v4mhAoAl2M05-YZCyuJcMIpKAq_GTS9iA9qwB5BiwtB0XOfNonNt6HR7MISyp7grGrMwYRN7BjePSAoqOxZQ23GLqKkidkeqZUR7a-Mw6c9xxx4BNhdb8Ik20zg1DKowlt2CpCcL3kNKZ0FIKMfq6k248y2bAFNUCKus4OSB-nirxJcQdROwfI7yAjKb5V4KQ-1dkSpcQsEm3ZFA");'></div>
+<div class="relative z-10 p-4">
+<div class="mb-2 flex size-8 items-center justify-center rounded-full bg-primary/20 backdrop-blur-sm">
+<span class="material-symbols-outlined text-primary text-lg">local_laundry_service</span>
+</div>
+<p class="font-bold text-white leading-tight">Washing Machine</p>
+</div>
+</div>
+<div class="group relative flex aspect-[4/3] cursor-pointer flex-col justify-end overflow-hidden rounded-lg bg-gray-100 dark:bg-surface-dark shadow-md transition-transform active:scale-95">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Modern microwave oven on a kitchen counter" style='background-image: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(17,33,23,0.9) 100%), url("https://lh3.googleusercontent.com/aida-public/AB6AXuBgPnQe9pZ3uLinoG5z95AAPwGhpEcueYtJOz7UvmtfhT7PF5Is1zU8N-mD0inB7dF_oyNX5D5tuE10uqgxM0wD3LC7vEP4D-rpibD1Kfr4JNhLqe9QpDNY6QYMHSi7Mykg9kCq9iSAEaDmvwkZPTJK5OMVynqWzKWbtJjS05Rfp7f80ylhYy9iFZEumzZLr4P7zAnMX3UxUDrhkBFNFJancuFHbW3QIFZ8PQN2UPVaMHDybWWld2_B-9UGLccfvMQEBnsTvKaMsl0");'></div>
+<div class="relative z-10 p-4">
+<div class="mb-2 flex size-8 items-center justify-center rounded-full bg-primary/20 backdrop-blur-sm">
+<span class="material-symbols-outlined text-primary text-lg">microwave</span>
+</div>
+<p class="font-bold text-white leading-tight">Microwave</p>
+</div>
+</div>
+<div class="group relative flex aspect-[4/3] cursor-pointer flex-col justify-end overflow-hidden rounded-lg bg-gray-100 dark:bg-surface-dark shadow-md transition-transform active:scale-95">
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 group-hover:scale-110" data-alt="Glass of water being filled from a water purifier" style='background-image: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(17,33,23,0.9) 100%), url("https://lh3.googleusercontent.com/aida-public/AB6AXuDxKLckuXajwgtxazApFPL4AaqYI2UJZt7ktrw1RoNsnYfx4HaGCqxKsvIq8rWgF-3X_z2BKi46seqHsA5iQ94C7UKxlfuGQd66evFNZ96EK1zB0KrQPxCT1rIoDAneBgK9R-Mx-u2JStQECOy7xatxeEAvIDf107LD2wzs4IB64Y40sSRwAZbekkINUCrDTOramNwDLrWxjYJZPcMROAm1D_FCQ-oudaDCfqLG-YgWs9XcJVlG6QscztUx-c8YhQoj3EWt7LguVLM");'></div>
+<div class="relative z-10 p-4">
+<div class="mb-2 flex size-8 items-center justify-center rounded-full bg-primary/20 backdrop-blur-sm">
+<span class="material-symbols-outlined text-primary text-lg">water_drop</span>
+</div>
+<p class="font-bold text-white leading-tight">Water Purifier</p>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-8 flex justify-center pb-8">
+<button class="flex items-center gap-2 rounded-full border border-gray-200 dark:border-white/10 px-6 py-3 font-semibold text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+<span class="material-symbols-outlined">grid_view</span>
+            View All Categories
+        </button>
+</div>
+</div>
+<nav class="fixed bottom-0 z-50 w-full border-t border-gray-200 bg-white/80 pb-safe pt-2 backdrop-blur-xl dark:border-white/5 dark:bg-[#112117]/80 supports-[padding-bottom:env(safe-area-inset-bottom)]:pb-[env(safe-area-inset-bottom)]">
+<div class="flex items-center justify-around px-2">
+<button class="flex flex-col items-center gap-1 p-2 text-primary">
+<span class="material-symbols-outlined fill-current">home</span>
+<span class="text-[10px] font-medium">Home</span>
+</button>
+<button class="flex flex-col items-center gap-1 p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white">
+<span class="material-symbols-outlined">calendar_month</span>
+<span class="text-[10px] font-medium">Bookings</span>
+</button>
+<button class="flex flex-col items-center gap-1 p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white">
+<span class="material-symbols-outlined">shopping_cart</span>
+<span class="text-[10px] font-medium">Shop</span>
+</button>
+<button class="flex flex-col items-center gap-1 p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white">
+<span class="material-symbols-outlined">person</span>
+<span class="text-[10px] font-medium">Profile</span>
+</button>
+</div>
+</nav>
+
+</body></html>

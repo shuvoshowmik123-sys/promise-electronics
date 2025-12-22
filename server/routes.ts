@@ -23,6 +23,9 @@ import {
   insertPolicySchema,
   insertCustomerReviewSchema,
   insertInquirySchema,
+  insertCustomerAddressSchema,
+
+  insertNotificationSchema,
 } from "../shared/schema.js";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage.js";
 import bcrypt from "bcryptjs";
@@ -151,6 +154,52 @@ async function requireSuperAdmin(req: Request, res: Response, next: NextFunction
   next();
 }
 
+// Admin Auth Routes
+export function registerAdminAuthRoutes(app: Express) {
+  app.get("/api/admin/me", async (req, res) => {
+    if (!req.session.adminUserId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+    const user = await storage.getUser(req.session.adminUserId);
+    if (!user) {
+      return res.status(401).json({ error: "User not found" });
+    }
+    const { password, ...safeUser } = user;
+    res.json(safeUser);
+  });
+
+  app.post("/api/admin/login", async (req, res) => {
+    try {
+      const { username, password } = adminLoginSchema.parse(req.body);
+      const user = await storage.getUserByUsername(username);
+
+      if (!user || !user.password || !(await bcrypt.compare(password, user.password))) {
+        return res.status(401).json({ error: "Invalid username or password" });
+      }
+
+      if (user.status !== "Active") {
+        return res.status(403).json({ error: "Account is inactive" });
+      }
+
+      req.session.adminUserId = user.id;
+      const { password: _, ...safeUser } = user;
+      res.json(safeUser);
+    } catch (error) {
+      res.status(400).json({ error: "Invalid login data" });
+    }
+  });
+
+  app.post("/api/admin/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Logout failed" });
+      }
+      res.clearCookie("connect.sid");
+      res.json({ message: "Logged out successfully" });
+    });
+  });
+}
+
 // Customer auth middleware - supports both session-based and Google Auth
 function requireCustomerAuth(req: any, res: Response, next: NextFunction) {
   // Check Google Auth (Passport)
@@ -263,6 +312,297 @@ export async function registerRoutes(
 ): Promise<Server> {
   // Setup Customer Replit Auth (Google Sign-In)
   await setupCustomerAuth(app);
+
+  // Register Admin Auth Routes
+  registerAdminAuthRoutes(app);
+
+  // Customer Authentication Routes
+
+  // Register
+  app.post("/api/customer/register", async (req, res) => {
+    try {
+      const validated = customerRegisterSchema.parse(req.body);
+
+      const existingUser = await storage.getUserByPhone(validated.phone);
+      if (existingUser) {
+        return res.status(400).json({ error: "Phone number already registered" });
+      }
+
+      const hashedPassword = await bcrypt.hash(validated.password, 10);
+      const user = await storage.createUser({
+        ...validated,
+        password: hashedPassword,
+        role: "Customer",
+        username: validated.phone, // Use phone as username for customers
+        status: "Active",
+        permissions: JSON.stringify({}),
+      });
+
+      // Set session
+      req.session.customerId = user.id;
+      req.session.authMethod = 'phone';
+
+      const { password, ...userWithoutPassword } = user;
+      res.status(201).json(userWithoutPassword);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      res.status(500).json({ error: "Registration failed" });
+    }
+  });
+
+  // Login
+  app.post("/api/customer/login", async (req, res) => {
+    try {
+      const { phone, password } = customerLoginSchema.parse(req.body);
+
+      const user = await storage.getUserByPhone(phone);
+      if (!user || !user.password) {
+        return res.status(401).json({ error: "Invalid phone or password" });
+      }
+
+      const isValid = await bcrypt.compare(password, user.password);
+      if (!isValid) {
+        return res.status(401).json({ error: "Invalid phone or password" });
+      }
+
+      // Set session
+      req.session.customerId = user.id;
+      req.session.authMethod = 'phone';
+
+      const { password: _, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error: any) {
+      res.status(400).json({ error: "Login failed" });
+    }
+  });
+
+  // Logout
+  app.post("/api/customer/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Logout failed" });
+      }
+      res.clearCookie("connect.sid");
+      res.json({ message: "Logged out successfully" });
+    });
+  });
+
+  // Get Current User (Me)
+  app.get("/api/customer/me", async (req, res) => {
+    if (!req.session.customerId) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
+    try {
+      const user = await storage.getUser(req.session.customerId);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch user" });
+    }
+  });
+
+  // Update Profile
+  app.put("/api/customer/profile", requireCustomerAuth, async (req, res) => {
+    try {
+      const customerId = getCustomerId(req);
+      if (!customerId) return res.status(401).json({ error: "Unauthorized" });
+
+      const updates = req.body;
+      // Filter allowed updates
+      const allowedUpdates: any = {};
+      if (updates.name) allowedUpdates.name = updates.name;
+      if (updates.phone) allowedUpdates.phone = updates.phone;
+      if (updates.address) allowedUpdates.address = updates.address;
+      if (updates.email) allowedUpdates.email = updates.email;
+      if (updates.profileImageUrl) allowedUpdates.profileImageUrl = updates.profileImageUrl;
+      if (updates.preferences) allowedUpdates.preferences = updates.preferences;
+
+      const user = await storage.updateUser(customerId, allowedUpdates);
+      if (!user) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      const { password, ...userWithoutPassword } = user;
+      res.json(userWithoutPassword);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update profile" });
+    }
+  });
+
+  // Change Password
+  app.post("/api/customer/change-password", requireCustomerAuth, async (req, res) => {
+    try {
+      const customerId = getCustomerId(req);
+      if (!customerId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { currentPassword, newPassword } = z.object({
+        currentPassword: z.string().min(1, "Current password is required"),
+        newPassword: z.string().min(6, "New password must be at least 6 characters"),
+      }).parse(req.body);
+
+      const user = await storage.getUser(customerId);
+      if (!user || !user.password) {
+        return res.status(404).json({ error: "User not found" });
+      }
+
+      // Verify current password
+      const isValid = await bcrypt.compare(currentPassword, user.password);
+      if (!isValid) {
+        return res.status(400).json({ error: "Incorrect current password" });
+      }
+
+      // Hash new password
+      const hashedPassword = await bcrypt.hash(newPassword, 10);
+      await storage.updateUser(customerId, { password: hashedPassword });
+
+      res.json({ message: "Password updated successfully" });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      res.status(500).json({ error: "Failed to update password" });
+    }
+  });
+
+  // Customer Addresses API
+  app.get("/api/customer/addresses", requireCustomerAuth, async (req, res) => {
+    try {
+      const customerId = getCustomerId(req);
+      if (!customerId) return res.status(401).json({ error: "Unauthorized" });
+
+      const addresses = await storage.getCustomerAddresses(customerId);
+      res.json(addresses);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch addresses" });
+    }
+  });
+
+  app.post("/api/customer/addresses", requireCustomerAuth, async (req, res) => {
+    try {
+      const customerId = getCustomerId(req);
+      if (!customerId) return res.status(401).json({ error: "Unauthorized" });
+
+      const validated = insertCustomerAddressSchema.parse({
+        ...req.body,
+        customerId,
+      });
+
+      const address = await storage.createCustomerAddress(validated);
+      res.status(201).json(address);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      res.status(500).json({ error: "Failed to create address" });
+    }
+  });
+
+  app.patch("/api/customer/addresses/:id", requireCustomerAuth, async (req, res) => {
+    try {
+      const customerId = getCustomerId(req);
+      if (!customerId) return res.status(401).json({ error: "Unauthorized" });
+
+      const address = await storage.updateCustomerAddress(req.params.id, customerId, req.body);
+      if (!address) {
+        return res.status(404).json({ error: "Address not found" });
+      }
+      res.json(address);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update address" });
+    }
+  });
+
+  app.delete("/api/customer/addresses/:id", requireCustomerAuth, async (req, res) => {
+    try {
+      const customerId = getCustomerId(req);
+      if (!customerId) return res.status(401).json({ error: "Unauthorized" });
+
+      const success = await storage.deleteCustomerAddress(req.params.id, customerId);
+      if (!success) {
+        return res.status(404).json({ error: "Address not found" });
+      }
+      res.status(204).send();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete address" });
+    }
+  });
+
+  // Notifications API
+  app.get("/api/notifications", requireCustomerAuth, async (req, res) => {
+    console.log("[DEBUG] GET /api/notifications called");
+    try {
+      const customerId = getCustomerId(req);
+      console.log("[DEBUG] Customer ID:", customerId);
+      if (!customerId) return res.status(401).json({ error: "Unauthorized" });
+
+      const notifications = await storage.getNotifications(customerId);
+      console.log("[DEBUG] Fetched notifications count:", notifications.length);
+      res.json(notifications);
+    } catch (error) {
+      console.error("[DEBUG] Error fetching notifications:", error);
+      res.status(500).json({ error: "Failed to fetch notifications" });
+    }
+  });
+
+  app.post("/api/notifications", requireCustomerAuth, async (req, res) => {
+    try {
+      const customerId = getCustomerId(req);
+      if (!customerId) return res.status(401).json({ error: "Unauthorized" });
+
+      const validated = insertNotificationSchema.parse({
+        ...req.body,
+        userId: customerId,
+      });
+
+      const notification = await storage.createNotification(validated);
+
+      // Notify customer about new notification
+      notifyCustomerUpdate(customerId, {
+        type: "notification",
+        data: notification
+      });
+
+      res.status(201).json(notification);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors[0].message });
+      }
+      res.status(500).json({ error: "Failed to create notification" });
+    }
+  });
+
+  app.patch("/api/notifications/:id/read", requireCustomerAuth, async (req, res) => {
+    try {
+      const customerId = getCustomerId(req);
+      if (!customerId) return res.status(401).json({ error: "Unauthorized" });
+
+      const notification = await storage.markNotificationAsRead(req.params.id);
+      if (!notification) {
+        return res.status(404).json({ error: "Notification not found" });
+      }
+      res.json(notification);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update notification" });
+    }
+  });
+
+  app.patch("/api/notifications/read-all", requireCustomerAuth, async (req, res) => {
+    try {
+      const customerId = getCustomerId(req);
+      if (!customerId) return res.status(401).json({ error: "Unauthorized" });
+
+      await storage.markAllNotificationsAsRead(customerId);
+      res.json({ message: "All notifications marked as read" });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to update notifications" });
+    }
+  });
 
   // Job Tickets API
   app.get("/api/job-tickets", async (req, res) => {
@@ -938,19 +1278,23 @@ export async function registerRoutes(
         request = await storage.updateServiceRequest(request.id, { trackingStatus }) || request;
       }
 
-      // If customer is logged in, link the service request to their account
-      if (req.session?.customerId) {
-        await storage.linkServiceRequestToCustomer(request.id, req.session.customerId);
+      // Determine customer ID to link (Session > Phone Match)
+      let customerIdToLink = req.session?.customerId;
+
+      if (!customerIdToLink && validated.phone) {
+        const user = await storage.getUserByPhoneNormalized(validated.phone);
+        if (user) {
+          customerIdToLink = user.id;
+        }
+      }
+
+      // If we have a customer ID, link the service request
+      if (customerIdToLink) {
+        await storage.linkServiceRequestToCustomer(request.id, customerIdToLink);
         const linkedRequest = await storage.getServiceRequest(request.id);
-
-        // Notify all admins about new request
-        notifyAdminUpdate({
-          type: "service_request_created",
-          data: linkedRequest,
-          createdAt: new Date().toISOString()
-        });
-
-        return res.status(201).json(linkedRequest);
+        if (linkedRequest) {
+          request = linkedRequest;
+        }
       }
 
       // Notify all admins about new request
@@ -1093,7 +1437,15 @@ export async function registerRoutes(
       }
 
       // Notify customer if they have a linked account and status changed
+      console.log("[DEBUG] Service request updated:", {
+        id: request.id,
+        customerId: request.customerId,
+        trackingStatus: req.body.trackingStatus,
+        status: req.body.status,
+        paymentStatus: req.body.paymentStatus
+      });
       if (request.customerId && (req.body.trackingStatus || req.body.paymentStatus || req.body.status)) {
+        console.log("[DEBUG] Creating notification for customerId:", request.customerId);
         notifyCustomerUpdate(request.customerId, {
           type: "order_update",
           orderId: request.id,
@@ -1103,6 +1455,41 @@ export async function registerRoutes(
           status: request.status,
           convertedJobId: request.convertedJobId,
           updatedAt: new Date().toISOString()
+        });
+
+        // Create persistent notification
+        const notificationTitle = req.body.trackingStatus
+          ? `Update: ${req.body.trackingStatus}`
+          : req.body.status
+            ? `Status: ${req.body.status}`
+            : "Service Request Updated";
+
+        const notificationMessage = req.body.trackingStatus
+          ? `Your service request #${request.ticketNumber} is now ${req.body.trackingStatus}`
+          : `Your service request #${request.ticketNumber} has been updated.`;
+
+        console.log("[DEBUG] Creating notification with data:", {
+          userId: request.customerId,
+          title: notificationTitle,
+          message: notificationMessage,
+          type: "repair",
+          link: `/native/bookings`,
+        });
+
+        const notification = await storage.createNotification({
+          userId: request.customerId,
+          title: notificationTitle,
+          message: notificationMessage,
+          type: "repair",
+          link: `/native/bookings`,
+        });
+
+        console.log("[DEBUG] Notification created:", notification);
+
+        // Send notification event
+        notifyCustomerUpdate(request.customerId, {
+          type: "notification",
+          data: notification
         });
       }
 
@@ -1817,6 +2204,11 @@ export async function registerRoutes(
       req.session.customerId = user.id;
       req.session.authMethod = 'phone';
 
+      // Link any existing service requests by phone number
+      if (user.phone) {
+        await storage.linkServiceRequestsByPhone(user.phone, user.id);
+      }
+
       // Return user without password
       const { password: _, ...safeUser } = user;
       res.json(safeUser);
@@ -2320,7 +2712,8 @@ export async function registerRoutes(
       });
 
       // Notify customer
-      notifyCustomerUpdate(customer.id, {
+      // Notify customer
+      notifyCustomerUpdate(user.id, {
         type: "order_created",
         data: order,
         createdAt: new Date().toISOString(),

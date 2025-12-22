@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Promise Electronics Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script>
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "surface-dark": "#1A2C23", // Slightly lighter than background-dark for cards
+                    },
+                    fontFamily: {
+                        "display": ["Spline Sans", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "1rem",
+                        "lg": "2rem",
+                        "xl": "2.5rem", // Increased slightly for that modern rounded look
+                        "full": "9999px"
+                    },
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            min-height: max(884px, 100dvh);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display min-h-screen flex flex-col pb-24 text-slate-900 dark:text-white overflow-x-hidden selection:bg-primary selection:text-black">
+<header class="sticky top-0 z-20 bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-md px-6 pt-6 pb-2 flex items-center justify-between">
+<div class="flex flex-col">
+<span class="text-sm font-medium text-gray-500 dark:text-gray-400">Good Morning,</span>
+<h1 class="text-2xl font-bold leading-tight tracking-tight">Alex 👋</h1>
+</div>
+<button class="relative flex items-center justify-center w-12 h-12 rounded-full bg-white dark:bg-surface-dark shadow-sm border border-gray-100 dark:border-white/5 active:scale-95 transition-transform">
+<span class="material-symbols-outlined text-gray-700 dark:text-white" style="font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;">notifications</span>
+<span class="absolute top-3 right-3 w-2.5 h-2.5 bg-red-500 border-2 border-white dark:border-surface-dark rounded-full"></span>
+</button>
+</header>
+<main class="flex-1 flex flex-col gap-6 px-4 pt-4">
+<section class="w-full">
+<div class="group relative overflow-hidden rounded-xl bg-surface-dark shadow-xl dark:shadow-black/20">
+<div class="absolute inset-0 bg-cover bg-center opacity-60 mix-blend-overlay transition-transform duration-500 group-hover:scale-105" data-alt="Close up of electronic circuit board repair" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDhVvNAf5GuEnHFLZSPO8JSbUuDrVlacHiPZ7DfqG7VYzFwTtyPkFGItx_NMBffEluOIo_xeLHE3zqnK5vFFOlVCLN-9ixSRFWFezEuK-hkJogeyYFD3QD-7Fq_jPMO4Z19Tycm3OUDbEw497KjOOBi7uwoh8aqkurgUlQz5SmESe1fJFEhDBsp2ajf7Ht8DCJy_bqhtHdUv6RS-AojVuOwdFJb-y0SqjN0xwSeuWITz7TJwzMrEz99_KWEWjQK_LYWKSL95v0uajQ');">
+</div>
+<div class="absolute inset-0 bg-gradient-to-r from-black/90 via-black/60 to-transparent"></div>
+<div class="relative z-10 p-6 flex flex-col justify-center h-full min-h-[220px]">
+<div class="max-w-[70%]">
+<span class="inline-block py-1 px-3 rounded-full bg-primary/20 text-primary text-xs font-bold uppercase tracking-wider mb-3 backdrop-blur-sm border border-primary/20">Fast Service</span>
+<h2 class="text-2xl font-bold text-white leading-tight mb-2">Is your device acting up?</h2>
+<p class="text-gray-300 text-sm mb-6 leading-relaxed">Book a certified expert to diagnose and fix your electronics today.</p>
+<button class="flex items-center gap-2 bg-primary text-black px-6 py-3 rounded-full font-bold text-sm hover:bg-[#2cd06d] transition-colors shadow-[0_0_20px_rgba(54,226,123,0.3)]">
+<span>Book Now</span>
+<span class="material-symbols-outlined text-[18px]">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</section>
+<section>
+<h3 class="text-lg font-bold px-2 mb-3 tracking-tight">Quick Actions</h3>
+<div class="grid grid-cols-2 gap-3">
+<button class="flex flex-col items-start gap-3 p-4 rounded-lg bg-white dark:bg-surface-dark border border-gray-100 dark:border-white/5 shadow-sm active:scale-[0.98] transition-all">
+<div class="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400">
+<span class="material-symbols-outlined">build</span>
+</div>
+<div class="text-left">
+<span class="block text-base font-bold text-slate-900 dark:text-white">New Repair</span>
+<span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">Schedule service</span>
+</div>
+</button>
+<button class="flex flex-col items-start gap-3 p-4 rounded-lg bg-white dark:bg-surface-dark border border-gray-100 dark:border-white/5 shadow-sm active:scale-[0.98] transition-all">
+<div class="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-500/20 flex items-center justify-center text-orange-600 dark:text-orange-400">
+<span class="material-symbols-outlined">shopping_bag</span>
+</div>
+<div class="text-left">
+<span class="block text-base font-bold text-slate-900 dark:text-white">Buy Parts</span>
+<span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">Shop electronics</span>
+</div>
+</button>
+<button class="flex flex-col items-start gap-3 p-4 rounded-lg bg-white dark:bg-surface-dark border border-gray-100 dark:border-white/5 shadow-sm active:scale-[0.98] transition-all">
+<div class="w-10 h-10 rounded-full bg-purple-100 dark:bg-purple-500/20 flex items-center justify-center text-purple-600 dark:text-purple-400">
+<span class="material-symbols-outlined">map</span>
+</div>
+<div class="text-left">
+<span class="block text-base font-bold text-slate-900 dark:text-white">Track Order</span>
+<span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">Status updates</span>
+</div>
+</button>
+<button class="flex flex-col items-start gap-3 p-4 rounded-lg bg-white dark:bg-surface-dark border border-gray-100 dark:border-white/5 shadow-sm active:scale-[0.98] transition-all">
+<div class="w-10 h-10 rounded-full bg-green-100 dark:bg-primary/20 flex items-center justify-center text-green-600 dark:text-primary">
+<span class="material-symbols-outlined">support_agent</span>
+</div>
+<div class="text-left">
+<span class="block text-base font-bold text-slate-900 dark:text-white">Help Center</span>
+<span class="block text-xs text-gray-500 dark:text-gray-400 mt-0.5">Chat with us</span>
+</div>
+</button>
+</div>
+</section>
+<section>
+<div class="flex items-center justify-between px-2 mb-3">
+<h3 class="text-lg font-bold tracking-tight">Current Repair</h3>
+<a class="text-xs font-semibold text-green-600 dark:text-primary hover:underline" href="#">View Details</a>
+</div>
+<div class="bg-white dark:bg-surface-dark rounded-xl p-5 border border-gray-100 dark:border-white/5 shadow-sm">
+<div class="flex gap-4 items-center mb-4">
+<div class="h-14 w-14 rounded-lg bg-gray-100 dark:bg-white/5 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-gray-400 dark:text-gray-500 text-3xl">laptop_mac</span>
+</div>
+<div class="flex-1 min-w-0">
+<h4 class="text-base font-bold truncate">MacBook Pro 14"</h4>
+<p class="text-xs text-gray-500 dark:text-gray-400">Repair ID: #4029 • Battery Replacement</p>
+</div>
+<span class="px-2.5 py-1 rounded-full bg-yellow-100 dark:bg-yellow-500/10 text-yellow-700 dark:text-yellow-400 text-xs font-bold">Fixing</span>
+</div>
+<div class="relative w-full h-2 bg-gray-100 dark:bg-black/40 rounded-full overflow-hidden mb-2">
+<div class="absolute left-0 top-0 h-full bg-primary rounded-full" style="width: 60%;"></div>
+</div>
+<div class="flex justify-between text-[10px] font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+<span>Diagnosing</span>
+<span class="text-green-600 dark:text-primary">Fixing</span>
+<span>Ready</span>
+</div>
+</div>
+</section>
+<section>
+<h3 class="text-lg font-bold px-2 mb-3 tracking-tight">For You</h3>
+<div class="relative w-full overflow-x-auto snap-x snap-mandatory flex gap-4 pb-4 no-scrollbar">
+<div class="snap-start shrink-0 w-[85%] rounded-xl overflow-hidden relative bg-[#1E1E1E]">
+<div class="absolute inset-0 bg-gradient-to-br from-purple-900 to-blue-900 opacity-80"></div>
+<div class="absolute right-0 bottom-0 opacity-20 transform translate-x-10 translate-y-10">
+<span class="material-symbols-outlined text-[150px] text-white">battery_charging_full</span>
+</div>
+<div class="relative z-10 p-5 flex flex-col items-start h-full">
+<span class="bg-white/20 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded mb-3">LIMITED TIME</span>
+<h4 class="text-xl font-bold text-white leading-tight mb-1">15% OFF Batteries</h4>
+<p class="text-white/80 text-sm mb-4 max-w-[70%]">Get your iPhone battery replaced this week.</p>
+<button class="bg-white text-purple-900 text-xs font-bold px-4 py-2 rounded-full">Claim Offer</button>
+</div>
+</div>
+<div class="snap-start shrink-0 w-[85%] rounded-xl overflow-hidden relative bg-[#1E1E1E]">
+<div class="absolute inset-0 bg-gradient-to-br from-primary/80 to-emerald-900 opacity-80"></div>
+<div class="absolute right-0 bottom-0 opacity-20 transform translate-x-10 translate-y-10">
+<span class="material-symbols-outlined text-[150px] text-white">shield</span>
+</div>
+<div class="relative z-10 p-5 flex flex-col items-start h-full">
+<span class="bg-black/20 backdrop-blur-md text-white text-[10px] font-bold px-2 py-1 rounded mb-3">NEW</span>
+<h4 class="text-xl font-bold text-white leading-tight mb-1">Promise Care+</h4>
+<p class="text-white/80 text-sm mb-4 max-w-[70%]">Extend your warranty for just $4.99/mo.</p>
+<button class="bg-black text-white text-xs font-bold px-4 py-2 rounded-full">Learn More</button>
+</div>
+</div>
+</div>
+</section>
+</main>
+<nav class="fixed bottom-0 left-0 w-full bg-white/80 dark:bg-[#112117]/80 backdrop-blur-xl border-t border-gray-200 dark:border-white/5 pt-2 pb-6 px-6 z-50">
+<ul class="flex justify-between items-center">
+<li>
+<a class="flex flex-col items-center gap-1 text-primary" href="#">
+<span class="material-symbols-outlined fill-current" style="font-variation-settings: 'FILL' 1, 'wght' 400;">home</span>
+<span class="text-[10px] font-bold">Home</span>
+</a>
+</li>
+<li>
+<a class="flex flex-col items-center gap-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0, 'wght' 400;">shopping_bag</span>
+<span class="text-[10px] font-medium">Shop</span>
+</a>
+</li>
+<li>
+<a class="flex flex-col items-center gap-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0, 'wght' 400;">build</span>
+<span class="text-[10px] font-medium">Repairs</span>
+</a>
+</li>
+<li>
+<a class="flex flex-col items-center gap-1 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" href="#">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 0, 'wght' 400;">person</span>
+<span class="text-[10px] font-medium">Profile</span>
+</a>
+</li>
+</ul>
+</nav>
+
+</body></html>

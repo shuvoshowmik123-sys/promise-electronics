@@ -20,11 +20,24 @@ export default function LoginPage() {
     setIsLoading(true);
 
     const formData = new FormData(e.currentTarget);
-    const phone = formData.get("phone") as string;
+    const phoneSuffix = formData.get("phone") as string;
     const password = formData.get("password") as string;
 
+    // Validate 10-digit phone number
+    if (phoneSuffix.replace(/\D/g, '').length !== 10) {
+      toast({
+        title: "Invalid Phone Number",
+        description: "Please enter a valid 10-digit mobile number.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    const fullPhone = "+880" + phoneSuffix.replace(/\D/g, '');
+
     try {
-      await login(phone, password);
+      await login(fullPhone, password);
       toast({
         title: "Login Successful",
         description: "Welcome back to Promise Electronics!",
@@ -47,11 +60,22 @@ export default function LoginPage() {
 
     const formData = new FormData(e.currentTarget);
     const name = formData.get("name") as string;
-    const phone = formData.get("phone") as string;
+    const phoneSuffix = formData.get("phone") as string;
     const email = formData.get("email") as string;
     const address = formData.get("address") as string;
     const password = formData.get("password") as string;
     const confirmPassword = formData.get("confirmPassword") as string;
+
+    // Validate 10-digit phone number
+    if (phoneSuffix.replace(/\D/g, '').length !== 10) {
+      toast({
+        title: "Invalid Phone Number",
+        description: "Please enter a valid 10-digit mobile number.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+      return;
+    }
 
     if (password !== confirmPassword) {
       toast({
@@ -63,10 +87,12 @@ export default function LoginPage() {
       return;
     }
 
+    const fullPhone = "+880" + phoneSuffix.replace(/\D/g, '');
+
     try {
       await register({
         name,
-        phone,
+        phone: fullPhone,
         email: email || undefined,
         address: address || undefined,
         password,
@@ -113,15 +139,22 @@ export default function LoginPage() {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="login-phone">Phone Number</Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <div className="relative flex items-center">
+                      <div className="absolute left-3 flex items-center gap-1 text-muted-foreground">
+                        <Phone className="h-4 w-4" />
+                        <span className="text-sm font-semibold select-none text-foreground">+880</span>
+                      </div>
                       <Input
                         id="login-phone"
                         name="phone"
                         type="tel"
-                        placeholder="01XXXXXXXXX"
-                        className="pl-10"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="1XXXXXXXXX"
+                        className="pl-[4.25rem]"
                         data-testid="input-login-phone"
+                        maxLength={10}
+                        onChange={(e) => e.target.value = e.target.value.replace(/\D/g, '')}
                         required
                       />
                     </div>
@@ -211,15 +244,22 @@ export default function LoginPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="register-phone">Phone Number *</Label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                    <div className="relative flex items-center">
+                      <div className="absolute left-3 flex items-center gap-1 text-muted-foreground">
+                        <Phone className="h-4 w-4" />
+                        <span className="text-sm font-semibold select-none text-foreground">+880</span>
+                      </div>
                       <Input
                         id="register-phone"
                         name="phone"
                         type="tel"
-                        placeholder="01XXXXXXXXX"
-                        className="pl-10"
+                        inputMode="numeric"
+                        pattern="[0-9]*"
+                        placeholder="1XXXXXXXXX"
+                        className="pl-[4.25rem]"
                         data-testid="input-register-phone"
+                        maxLength={10}
+                        onChange={(e) => e.target.value = e.target.value.replace(/\D/g, '')}
                         required
                       />
                     </div>

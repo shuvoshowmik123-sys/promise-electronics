@@ -46,6 +46,10 @@ import type {
   InsertCustomerReview,
   Inquiry,
   InsertInquiry,
+  CustomerAddress,
+  InsertCustomerAddress,
+  Notification,
+  InsertNotification,
 } from "../shared/schema.js";
 
 export interface IStorage {
@@ -54,6 +58,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByPhone(phone: string): Promise<User | undefined>;
+  getUserByPhoneNormalized(phone: string): Promise<User | undefined>;
   getUserByGoogleSub(googleSub: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   getAllUsers(): Promise<User[]>;
@@ -61,6 +66,13 @@ export interface IStorage {
   deleteUser(id: string): Promise<boolean>;
   updateUserLastLogin(id: string): Promise<void>;
   upsertUserFromGoogle(data: UpsertCustomerFromGoogle): Promise<User>;
+  linkUserToGoogle(userId: string, data: UpsertCustomerFromGoogle): Promise<User>;
+
+  // Customer Addresses
+  getCustomerAddresses(customerId: string): Promise<CustomerAddress[]>;
+  createCustomerAddress(address: InsertCustomerAddress): Promise<CustomerAddress>;
+  updateCustomerAddress(id: string, customerId: string, updates: Partial<InsertCustomerAddress>): Promise<CustomerAddress | undefined>;
+  deleteCustomerAddress(id: string, customerId: string): Promise<boolean>;
 
   // Service Request Events (Timeline)
   getServiceRequestEvents(serviceRequestId: string): Promise<ServiceRequestEvent[]>;
@@ -188,6 +200,16 @@ export interface IStorage {
   createInquiry(inquiry: InsertInquiry): Promise<Inquiry>;
   getAllInquiries(): Promise<Inquiry[]>;
   updateInquiryStatus(id: string, status: "Pending" | "Read" | "Replied"): Promise<Inquiry | undefined>;
+
+  // Notifications
+  getNotifications(userId: string): Promise<Notification[]>;
+  createNotification(notification: InsertNotification): Promise<Notification>;
+  markNotificationAsRead(id: string): Promise<Notification | undefined>;
+  markAllNotificationsAsRead(userId: string): Promise<void>;
+
+  // Customer Aliases
+  getCustomer(id: string): Promise<User | undefined>;
+  updateCustomer(id: string, updates: Partial<User>): Promise<User | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -195,6 +217,14 @@ export class DatabaseStorage implements IStorage {
   async getUser(id: string): Promise<User | undefined> {
     const [user] = await db.select().from(schema.users).where(eq(schema.users.id, id));
     return user;
+  }
+
+  async getCustomer(id: string): Promise<User | undefined> {
+    return this.getUser(id);
+  }
+
+  async updateCustomer(id: string, updates: Partial<User>): Promise<User | undefined> {
+    return this.updateUser(id, updates);
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
@@ -210,6 +240,27 @@ export class DatabaseStorage implements IStorage {
   async getUserByPhone(phone: string): Promise<User | undefined> {
     const [user] = await db.select().from(schema.users).where(eq(schema.users.phone, phone));
     return user;
+  }
+
+  async getUserByPhoneNormalized(phone: string): Promise<User | undefined> {
+    // Normalize input phone to last 10 digits
+    const normalizeToDigits = (p: string): string => {
+      let digits = p.replace(/\D/g, '');
+      if (digits.startsWith('880')) digits = digits.slice(3);
+      if (digits.startsWith('0')) digits = digits.slice(1);
+      return digits.slice(-10);
+    };
+
+    const targetDigits = normalizeToDigits(phone);
+
+    // Get all users and filter in memory (not efficient for huge datasets but fine for this scale)
+    // A better approach would be to store a normalized_phone column
+    const users = await db.select().from(schema.users);
+
+    return users.find(user => {
+      if (!user.phone) return false;
+      return normalizeToDigits(user.phone) === targetDigits;
+    });
   }
 
   async getUserByGoogleSub(googleSub: string): Promise<User | undefined> {
@@ -273,6 +324,20 @@ export class DatabaseStorage implements IStorage {
     return newUser;
   }
 
+  async linkUserToGoogle(userId: string, data: UpsertCustomerFromGoogle): Promise<User> {
+    const [updated] = await db
+      .update(schema.users)
+      .set({
+        googleSub: data.googleSub,
+        email: data.email || undefined,
+        isVerified: true,
+        lastLogin: new Date(),
+      })
+      .where(eq(schema.users.id, userId))
+      .returning();
+    return updated;
+  }
+
   async createUser(user: InsertUser): Promise<User> {
     const [newUser] = await db.insert(schema.users).values({ ...user, id: nanoid() }).returning();
     return newUser;
@@ -301,6 +366,58 @@ export class DatabaseStorage implements IStorage {
       .update(schema.users)
       .set({ lastLogin: new Date() })
       .where(eq(schema.users.id, id));
+  }
+
+  // Customer Addresses
+  async getCustomerAddresses(customerId: string): Promise<CustomerAddress[]> {
+    return db.select().from(schema.customerAddresses)
+      .where(eq(schema.customerAddresses.customerId, customerId))
+      .orderBy(desc(schema.customerAddresses.isDefault), desc(schema.customerAddresses.createdAt));
+  }
+
+  async createCustomerAddress(address: InsertCustomerAddress): Promise<CustomerAddress> {
+    // If setting as default, unset other defaults for this customer
+    if (address.isDefault) {
+      await db.update(schema.customerAddresses)
+        .set({ isDefault: false })
+        .where(eq(schema.customerAddresses.customerId, address.customerId));
+    }
+
+    const [newAddress] = await db.insert(schema.customerAddresses)
+      .values({ ...address, id: nanoid() })
+      .returning();
+    return newAddress;
+  }
+
+  async updateCustomerAddress(id: string, customerId: string, updates: Partial<InsertCustomerAddress>): Promise<CustomerAddress | undefined> {
+    // If setting as default, unset other defaults for this customer
+    if (updates.isDefault) {
+      await db.update(schema.customerAddresses)
+        .set({ isDefault: false })
+        .where(and(
+          eq(schema.customerAddresses.customerId, customerId),
+          sql`${schema.customerAddresses.id} != ${id}`
+        ));
+    }
+
+    const [updated] = await db
+      .update(schema.customerAddresses)
+      .set(updates)
+      .where(and(
+        eq(schema.customerAddresses.id, id),
+        eq(schema.customerAddresses.customerId, customerId)
+      ))
+      .returning();
+    return updated;
+  }
+
+  async deleteCustomerAddress(id: string, customerId: string): Promise<boolean> {
+    const result = await db.delete(schema.customerAddresses)
+      .where(and(
+        eq(schema.customerAddresses.id, id),
+        eq(schema.customerAddresses.customerId, customerId)
+      ));
+    return (result.rowCount ?? 0) > 0;
   }
 
   // Job Tickets
@@ -1830,6 +1947,37 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(schema.inquiries)
       .where(eq(schema.inquiries.phone, phone))
       .orderBy(desc(schema.inquiries.createdAt));
+  }
+
+
+  // Notifications
+  async getNotifications(userId: string): Promise<Notification[]> {
+    return db.select().from(schema.notifications)
+      .where(eq(schema.notifications.userId, userId))
+      .orderBy(desc(schema.notifications.createdAt));
+  }
+
+  async createNotification(notification: InsertNotification): Promise<Notification> {
+    const [newNotification] = await db.insert(schema.notifications)
+      .values({ ...notification, id: nanoid() })
+      .returning();
+    return newNotification;
+  }
+
+  async markNotificationAsRead(id: string): Promise<Notification | undefined> {
+    const [updated] = await db
+      .update(schema.notifications)
+      .set({ read: true })
+      .where(eq(schema.notifications.id, id))
+      .returning();
+    return updated;
+  }
+
+  async markAllNotificationsAsRead(userId: string): Promise<void> {
+    await db
+      .update(schema.notifications)
+      .set({ read: true })
+      .where(eq(schema.notifications.userId, userId));
   }
 }
 

@@ -13,6 +13,7 @@ app.set("trust proxy", 1);
 
 app.use(
     express.json({
+        limit: "50mb",
         verify: (req, _res, buf) => {
             (req as any).rawBody = buf;
         },

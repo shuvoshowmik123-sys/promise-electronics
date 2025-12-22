@@ -2,7 +2,9 @@ import { createContext, useContext, useEffect, useRef, useState, ReactNode } fro
 import { useQueryClient } from "@tanstack/react-query";
 import { useAdminAuth } from "./AdminAuthContext";
 import { toast } from "sonner";
-import { playNotificationSound } from "@/lib/notification-sound";
+import { playNotificationSound, type NotificationTone } from "@/lib/notification-sound";
+import { settingsApi } from "@/lib/api";
+import { useQuery } from "@tanstack/react-query";
 
 interface AdminSSEContextType {
     sseSupported: boolean;
@@ -16,6 +18,14 @@ export function AdminSSEProvider({ children }: { children: ReactNode }) {
     const queryClient = useQueryClient();
     const [sseSupported, setSseSupported] = useState(false);
     const [lastEvent, setLastEvent] = useState<any | null>(null);
+
+    const { data: settings = [] } = useQuery({
+        queryKey: ["settings"],
+        queryFn: settingsApi.getAll,
+        staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    });
+
+    const notificationTone = (settings.find(s => s.key === "notification_tone")?.value as NotificationTone) || "default";
 
     const eventSourceRef = useRef<EventSource | null>(null);
     const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -71,7 +81,7 @@ export function AdminSSEProvider({ children }: { children: ReactNode }) {
                             queryClient.invalidateQueries({ queryKey: ["jobOverview"] });
 
                             if (data.type === "job_ticket_created") {
-                                playNotificationSound();
+                                playNotificationSound(notificationTone);
                                 toast.success(`New job ticket: ${data.data.id}`);
                             }
                         }
@@ -80,7 +90,7 @@ export function AdminSSEProvider({ children }: { children: ReactNode }) {
                             queryClient.invalidateQueries({ queryKey: ["dashboardStats"] });
 
                             if (data.type === "service_request_created") {
-                                playNotificationSound();
+                                playNotificationSound(notificationTone);
                                 toast.success(`New service request: #${data.data.ticketNumber}`);
                             }
                         }

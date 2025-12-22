@@ -73,15 +73,15 @@ export default function AdminCustomersPage() {
   useEffect(() => {
     let mounted = true;
     let connectionTimeout: NodeJS.Timeout | null = null;
-    
+
     const connectSSE = () => {
       if (!mounted) return;
-      
+
       try {
         const eventSource = new EventSource("/api/admin/events", { withCredentials: true });
         eventSourceRef.current = eventSource;
         sseConnectedRef.current = false;
-        
+
         connectionTimeout = setTimeout(() => {
           if (!sseConnectedRef.current && mounted) {
             eventSource.close();
@@ -98,9 +98,9 @@ export default function AdminCustomersPage() {
         eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            
+
             if (data.type === "connected") return;
-            
+
             if (data.type === "customer_created") {
               queryClient.invalidateQueries({ queryKey: ["admin-customers"] });
               toast.info("New customer registered!", {
@@ -121,9 +121,9 @@ export default function AdminCustomersPage() {
         console.error("Failed to create EventSource:", e);
       }
     };
-    
+
     connectSSE();
-    
+
     return () => {
       mounted = false;
       if (connectionTimeout) clearTimeout(connectionTimeout);
@@ -330,7 +330,7 @@ export default function AdminCustomersPage() {
                         <TableCell>
                           <div className="flex items-center gap-1 text-sm text-muted-foreground">
                             <Calendar className="w-3 h-3" />
-                            {format(new Date(customer.createdAt), "MMM d, yyyy")}
+                            {customer.joinedAt ? format(new Date(customer.joinedAt), "MMM d, yyyy") : "N/A"}
                           </div>
                         </TableCell>
                         <TableCell>
@@ -426,7 +426,7 @@ export default function AdminCustomersPage() {
                       )}
                       <div className="flex items-center gap-1">
                         <Calendar className="w-4 h-4" />
-                        Joined {format(new Date(customerDetails.createdAt), "MMMM d, yyyy")}
+                        Joined {customerDetails.joinedAt ? format(new Date(customerDetails.joinedAt), "MMMM d, yyyy") : "N/A"}
                       </div>
                     </div>
                   </div>

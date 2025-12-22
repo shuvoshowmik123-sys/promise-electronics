@@ -28,12 +28,14 @@ import type {
   InsertPickupSchedule,
   CustomerReview,
   InsertCustomerReview,
+  Notification,
 } from "@shared/schema";
+import { API_BASE_URL } from "./config";
 
 export type CustomerSession = Omit<Customer, "password">;
 export type OrderWithTimeline = ServiceRequest & { timeline: ServiceRequestEvent[] };
 
-const API_BASE = "/api";
+const API_BASE = `${API_BASE_URL}/api`;
 
 class ApiError extends Error {
   code?: string;
@@ -45,7 +47,10 @@ class ApiError extends Error {
 }
 
 async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
-  const response = await fetch(`${API_BASE}${url}`, {
+  const fullUrl = `${API_BASE}${url}`;
+  console.log(`[API] Fetching: ${fullUrl}`);
+
+  const response = await fetch(fullUrl, {
     ...options,
     credentials: 'include',
     headers: {
@@ -54,17 +59,33 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
     },
   });
 
+  console.log(`[API] Response status: ${response.status} ${response.statusText}`);
+
+  // Get raw text first for debugging
+  const rawText = await response.text();
+  console.log(`[API] Raw response (first 200 chars): ${rawText.substring(0, 200)}`);
+
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({ error: "Request failed" }));
-    const apiError = new ApiError(errorData.error || "Request failed", errorData.code);
-    throw apiError;
+    try {
+      const errorData = JSON.parse(rawText);
+      const apiError = new ApiError(errorData.error || "Request failed", errorData.code);
+      throw apiError;
+    } catch (parseError) {
+      console.error(`[API] Failed to parse error response:`, rawText.substring(0, 500));
+      throw new ApiError(`Request failed with status ${response.status}: ${rawText.substring(0, 100)}`);
+    }
   }
 
-  if (response.status === 204) {
+  if (response.status === 204 || !rawText) {
     return null as T;
   }
 
-  return response.json();
+  try {
+    return JSON.parse(rawText);
+  } catch (parseError) {
+    console.error(`[API] Failed to parse JSON response:`, rawText.substring(0, 500));
+    throw new ApiError(`Invalid JSON response: ${rawText.substring(0, 100)}`);
+  }
 }
 
 // Job Tickets API
@@ -268,9 +289,14 @@ export const customerAuthApi = {
     }),
   me: () => fetchApi<CustomerSession>("/customer/me"),
   googleMe: () => fetchApi<CustomerSession>("/customer/auth/me"),
-  updateProfile: (data: { phone?: string; address?: string; name?: string }) =>
+  updateProfile: (data: { phone?: string; address?: string; name?: string; email?: string; profileImageUrl?: string; preferences?: string }) =>
     fetchApi<CustomerSession>("/customer/profile", {
       method: "PUT",
+      body: JSON.stringify(data),
+    }),
+  changePassword: (data: { currentPassword: string; newPassword: string }) =>
+    fetchApi<{ message: string }>("/customer/change-password", {
+      method: "POST",
       body: JSON.stringify(data),
     }),
 };
@@ -482,7 +508,7 @@ export interface AdminCustomer {
   phone: string;
   address: string | null;
   isVerified: boolean | null;
-  createdAt: Date;
+  joinedAt: Date;
   totalOrders: number;
   totalServiceRequests: number;
 }
@@ -595,16 +621,16 @@ export const adminQuotesApi = {
 
 // Admin Stage Transitions API
 export const adminStageApi = {
-  getNextStages: (id: string) => 
+  getNextStages: (id: string) =>
     fetchApi<{ currentStage: string; validNextStages: string[]; stageFlow: string[] }>(`/admin/service-requests/${id}/next-stages`),
   transitionStage: (id: string, data: { stage: string; actorName?: string }) =>
     fetchApi<ServiceRequest>(`/admin/service-requests/${id}/transition-stage`, {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  updateExpectedDates: (id: string, data: { 
-    expectedPickupDate?: string | null; 
-    expectedReturnDate?: string | null; 
+  updateExpectedDates: (id: string, data: {
+    expectedPickupDate?: string | null;
+    expectedReturnDate?: string | null;
     expectedReadyDate?: string | null;
   }) =>
     fetchApi<ServiceRequest>(`/admin/service-requests/${id}/expected-dates`, {
@@ -657,7 +683,7 @@ export const adminPickupsApi = {
 
 // Customer Pickup Schedule API
 export const pickupScheduleApi = {
-  getByServiceRequest: (serviceRequestId: string) => 
+  getByServiceRequest: (serviceRequestId: string) =>
     fetchApi<PickupSchedule>(`/pickups/by-request/${serviceRequestId}`),
 };
 
@@ -704,5 +730,18 @@ export const adminReviewsApi = {
   delete: (id: string) =>
     fetchApi<void>(`/admin/reviews/${id}`, {
       method: "DELETE",
+    }),
+};
+
+// Notifications API
+export const notificationsApi = {
+  getAll: () => fetchApi<Notification[]>("/notifications"),
+  markAsRead: (id: string) =>
+    fetchApi<Notification>(`/notifications/${id}/read`, {
+      method: "PATCH",
+    }),
+  markAllAsRead: () =>
+    fetchApi<{ message: string }>("/notifications/read-all", {
+      method: "PATCH",
     }),
 };

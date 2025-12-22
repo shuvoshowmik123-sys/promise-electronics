@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Promise Electronics - Login</title>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "surface-dark": "#1c2e24",
+                        "surface-input": "#16261f",
+                    },
+                    fontFamily: {
+                        "display": ["Spline Sans", "sans-serif"],
+                        "sans": ["Spline Sans", "sans-serif"]
+                    },
+                    borderRadius: { "DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px" },
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar hide for cleaner mobile look */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display antialiased">
+<div class="relative flex min-h-screen w-full flex-col overflow-hidden max-w-md mx-auto shadow-2xl bg-background-light dark:bg-background-dark">
+<!-- Status Bar Spacer (Simulated) -->
+<div class="h-12 w-full"></div>
+<!-- Header / Nav -->
+<div class="flex items-center justify-between px-6 py-4">
+<div class="flex items-center justify-center w-10 h-10 rounded-full bg-surface-dark/50 text-white cursor-pointer hover:bg-surface-dark transition-colors">
+<span class="material-symbols-outlined text-2xl">arrow_back</span>
+</div>
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-primary" style="font-size: 20px;">bolt</span>
+<span class="text-sm font-semibold tracking-wide text-gray-900 dark:text-white uppercase opacity-80">Promise Electronics</span>
+</div>
+<div class="w-10"></div> <!-- Spacer for centering -->
+</div>
+<!-- Main Content Area -->
+<main class="flex-1 flex flex-col px-6 pt-4 pb-8">
+<!-- Hero Section -->
+<div class="mb-8 flex flex-col items-center text-center">
+<!-- Abstract Logo Placeholder -->
+<div class="relative mb-6 h-24 w-24 flex items-center justify-center rounded-3xl bg-gradient-to-tr from-surface-dark to-background-dark border border-surface-dark shadow-xl shadow-primary/5">
+<span class="material-symbols-outlined text-primary text-5xl">phonelink_setup</span>
+<div class="absolute -bottom-2 -right-2 h-8 w-8 bg-primary rounded-full flex items-center justify-center text-background-dark">
+<span class="material-symbols-outlined text-sm font-bold">check</span>
+</div>
+</div>
+<h1 class="text-3xl md:text-4xl font-bold text-gray-900 dark:text-white leading-tight mb-3">
+                    Welcome Back
+                </h1>
+<p class="text-gray-500 dark:text-gray-400 text-base font-normal leading-relaxed max-w-[280px]">
+                    Revive your tech. Book repairs and buy parts instantly.
+                </p>
+</div>
+<!-- Login Form -->
+<div class="w-full flex flex-col gap-5">
+<!-- Phone Input -->
+<div class="flex flex-col gap-2">
+<label class="text-sm font-medium text-gray-700 dark:text-gray-300 ml-4">Mobile Number</label>
+<div class="relative flex h-14 w-full items-center rounded-full border border-gray-200 dark:border-[#2f4036] bg-white dark:bg-surface-input px-4 transition-all focus-within:border-primary focus-within:ring-1 focus-within:ring-primary shadow-sm">
+<!-- Country Code -->
+<div class="flex items-center gap-1 border-r border-gray-200 dark:border-[#2f4036] pr-3 mr-3 cursor-pointer">
+<span class="text-base font-medium text-gray-900 dark:text-white">US +1</span>
+<span class="material-symbols-outlined text-gray-400 text-lg">expand_more</span>
+</div>
+<!-- Input -->
+<input class="flex-1 bg-transparent border-none p-0 text-base font-medium text-gray-900 dark:text-white placeholder:text-gray-400 focus:ring-0" placeholder="(555) 000-0000" type="tel"/>
+<!-- Icon -->
+<span class="material-symbols-outlined text-gray-400">smartphone</span>
+</div>
+</div>
+<!-- Primary Action -->
+<button class="group relative flex h-14 w-full items-center justify-center overflow-hidden rounded-full bg-primary text-background-dark font-bold text-base transition-transform active:scale-[0.98] shadow-lg shadow-primary/20 hover:shadow-primary/30">
+<span class="relative z-10">Send Code</span>
+<div class="absolute inset-0 bg-white/20 opacity-0 transition-opacity group-hover:opacity-100"></div>
+</button>
+<!-- Divider -->
+<div class="flex items-center gap-4 py-2">
+<div class="h-px flex-1 bg-gray-200 dark:bg-[#2f4036]"></div>
+<p class="text-xs font-medium text-gray-400 uppercase tracking-wider">Or continue with</p>
+<div class="h-px flex-1 bg-gray-200 dark:bg-[#2f4036]"></div>
+</div>
+<!-- Google Button -->
+<button class="relative flex h-14 w-full items-center justify-center gap-3 rounded-full border border-gray-200 dark:border-[#2f4036] bg-white dark:bg-surface-input text-gray-900 dark:text-white font-medium text-base transition-colors hover:bg-gray-50 dark:hover:bg-surface-dark active:scale-[0.98]">
+<!-- Google SVG Icon -->
+<svg class="h-5 w-5" fill="none" viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+<path d="M23.7663 12.2764C23.7663 11.4607 23.6999 10.6406 23.5588 9.83807H12.2402V14.4591H18.722C18.4331 15.9494 17.5888 17.2678 16.3233 18.1056V21.1039H20.1903C22.4611 19.0139 23.7663 15.9273 23.7663 12.2764Z" fill="#4285F4"></path>
+<path d="M12.2401 24.0008C15.4765 24.0008 18.2059 22.9382 20.1904 21.1039L16.3233 18.1055C15.2516 18.8375 13.8626 19.252 12.2444 19.252C9.11377 19.252 6.45935 17.1399 5.50694 14.3003H1.51648V17.3912C3.5536 21.4434 7.70279 24.0008 12.2401 24.0008Z" fill="#34A853"></path>
+<path d="M5.50266 14.3003C5.00225 12.8099 5.00225 11.1961 5.50266 9.70575V6.61481H1.51649C-0.185629 10.0056 -0.185629 14.0004 1.51649 17.3912L5.50266 14.3003Z" fill="#FBBC05"></path>
+<path d="M12.2401 4.74966C13.9508 4.7232 15.6043 5.36697 16.8433 6.54867L20.2694 3.12262C18.0999 1.0855 15.2206 -0.034466 12.2401 0.000808666C7.70279 0.000808666 3.5536 2.55822 1.51648 6.61481L5.50266 9.70575C6.45078 6.86173 9.10948 4.74966 12.2401 4.74966Z" fill="#EA4335"></path>
+</svg>
+                    Continue with Google
+                </button>
+</div>
+<!-- Footer -->
+<div class="mt-auto pt-8 text-center">
+<p class="text-xs text-gray-500 dark:text-gray-400">
+                    By continuing, you agree to our 
+                    <a class="text-primary hover:underline" href="#">Terms of Service</a> &amp; 
+                    <a class="text-primary hover:underline" href="#">Privacy Policy</a>.
+                </p>
+</div>
+</main>
+<!-- OTP Overlay (Hidden by default in flow, visualized as a bottom sheet "ready" state for design) -->
+<!-- In a real app, this would animate up. For this design, I'll place it hidden to keep the main view clean as requested, but structured. -->
+<div class="hidden absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex-col justify-end">
+<div class="w-full bg-background-light dark:bg-[#16211a] rounded-t-3xl p-6 pb-10 shadow-2xl animate-slide-up">
+<div class="w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full mx-auto mb-6"></div>
+<h3 class="text-xl font-bold text-gray-900 dark:text-white text-center mb-2">Verify Phone Number</h3>
+<p class="text-gray-500 dark:text-gray-400 text-sm text-center mb-8">
+                    Enter the 4-digit code sent to <br/> <span class="text-primary font-medium">+1 (555) 000-0000</span>
+</p>
+<div class="flex justify-center gap-4 mb-8">
+<input class="w-14 h-14 rounded-2xl bg-white dark:bg-[#0b140f] border border-gray-200 dark:border-[#2f4036] text-center text-2xl font-bold text-gray-900 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none" maxlength="1" type="text" value="5"/>
+<input autofocus="" class="w-14 h-14 rounded-2xl bg-white dark:bg-[#0b140f] border border-primary text-center text-2xl font-bold text-gray-900 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none shadow-[0_0_15px_rgba(54,226,123,0.15)]" maxlength="1" type="text"/>
+<input class="w-14 h-14 rounded-2xl bg-white dark:bg-[#0b140f] border border-gray-200 dark:border-[#2f4036] text-center text-2xl font-bold text-gray-900 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none" maxlength="1" type="text"/>
+<input class="w-14 h-14 rounded-2xl bg-white dark:bg-[#0b140f] border border-gray-200 dark:border-[#2f4036] text-center text-2xl font-bold text-gray-900 dark:text-white focus:border-primary focus:ring-1 focus:ring-primary outline-none" maxlength="1" type="text"/>
+</div>
+<button class="w-full h-14 rounded-full bg-primary text-background-dark font-bold text-base shadow-lg shadow-primary/20">Verify</button>
+<button class="w-full mt-4 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-white">Resend Code in 00:24</button>
+</div>
+</div>
+</div>
+</body></html>

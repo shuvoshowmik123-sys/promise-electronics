@@ -11,7 +11,7 @@ interface CustomerAuthContextType {
   register: (data: { name: string; phone: string; email?: string; address?: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
-  updateProfile: (data: { phone?: string; address?: string; name?: string }) => Promise<void>;
+  updateProfile: (data: { phone?: string; address?: string; name?: string; email?: string; profileImageUrl?: string; preferences?: string }) => Promise<void>;
 }
 
 const CustomerAuthContext = createContext<CustomerAuthContextType | undefined>(undefined);
@@ -30,7 +30,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Not logged in with Google, try session-based auth
     }
-    
+
     try {
       const session = await customerAuthApi.me();
       setCustomer(session);
@@ -65,11 +65,20 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore logout errors
     }
-    // Also try Google logout
-    window.location.href = "/api/customer/google/logout";
+    // Also try Google logout via fetch to avoid redirect
+    try {
+      await fetch("/api/customer/google/logout", {
+        headers: {
+          "Accept": "application/json"
+        }
+      });
+    } catch {
+      // Ignore
+    }
+    setCustomer(null);
   };
 
-  const updateProfile = async (data: { phone?: string; address?: string; name?: string }) => {
+  const updateProfile = async (data: { phone?: string; address?: string; name?: string; email?: string; profileImageUrl?: string; preferences?: string }) => {
     console.log("updateProfile called with:", data);
     try {
       const updated = await customerAuthApi.updateProfile(data);

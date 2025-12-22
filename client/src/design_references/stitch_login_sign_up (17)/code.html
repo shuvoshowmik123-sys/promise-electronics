@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Booking Summary &amp; Success</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "surface-dark": "#1c2e24",
+                        "surface-light": "#ffffff",
+                    },
+                    fontFamily: {
+                        "display": ["Spline Sans", "Noto Sans", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .icon-filled {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white antialiased overflow-x-hidden">
+<!-- Screen 1: Booking Summary -->
+<div class="relative flex flex-col w-full max-w-md mx-auto min-h-screen pb-24">
+<!-- Top App Bar -->
+<div class="sticky top-0 z-50 flex items-center bg-background-light/95 dark:bg-background-dark/95 backdrop-blur-md p-4 pb-2 justify-between">
+<button class="text-slate-900 dark:text-white flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-slate-200 dark:hover:bg-white/10 transition">
+<span class="material-symbols-outlined">arrow_back_ios_new</span>
+</button>
+<h2 class="text-slate-900 dark:text-white text-lg font-bold leading-tight tracking-tight flex-1 text-center pr-10">Review Order</h2>
+</div>
+<!-- Progress Indicators -->
+<div class="flex w-full flex-row items-center justify-center gap-2 py-4">
+<div class="h-1.5 w-8 rounded-full bg-primary/30"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary/30"></div>
+<div class="h-1.5 w-8 rounded-full bg-primary shadow-[0_0_10px_rgba(54,226,123,0.5)]"></div>
+</div>
+<!-- Service Details Section -->
+<div class="px-4 pt-2">
+<h3 class="text-slate-900 dark:text-white tracking-tight text-xl font-bold leading-tight text-left pb-4">Service Details</h3>
+<div class="flex items-stretch justify-between gap-4 rounded-[2rem] bg-surface-light dark:bg-surface-dark p-4 shadow-sm">
+<div class="flex flex-col justify-center gap-2 flex-[2_2_0px]">
+<div>
+<p class="text-slate-900 dark:text-white text-lg font-bold leading-tight">Galaxy S23 Ultra</p>
+<p class="text-primary text-sm font-medium leading-normal mt-1">Screen Repair - OLED</p>
+</div>
+<div class="flex items-center gap-1 mt-1 opacity-60">
+<span class="material-symbols-outlined text-[18px]">smartphone</span>
+<span class="text-xs">Midnight Black</span>
+</div>
+</div>
+<div class="w-24 h-24 bg-center bg-no-repeat bg-cover rounded-xl flex-shrink-0 bg-slate-200 dark:bg-slate-800" data-alt="Close up of a modern smartphone screen showing colorful abstract wallpaper" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuAZZHVD4cMx_FvkS0Q1vuTxQ_i7NoxHp5E9UwYCUB-EFA2Bh7bpzWtO8BOjFsjARw8MV3nvvskp0pg1KpwOsmRI06nxfjHt0SUF_TkqpwWUnKoqX36V3P-waGdvRT6kKVFTv4l0B2hG8Lro0aRVnIMYSQeUGTCSf0zQwRCsgZsbXs_Rppkz1C7-2aIHzrnzd2HmfQ3pMnMt4dm8iPZ6u0kBi31idtac-iIzG9puVgB0d0Zf0NAxRR1NiOmpRJRvaZVnRH-ecpQBcgM");'>
+</div>
+</div>
+</div>
+<!-- Logistics Section -->
+<div class="px-4 pt-6">
+<h3 class="text-slate-900 dark:text-white tracking-tight text-xl font-bold leading-tight text-left pb-4">Logistics</h3>
+<div class="flex flex-col gap-3">
+<!-- Date Time Card -->
+<div class="flex items-center gap-4 rounded-[1.5rem] bg-surface-light dark:bg-surface-dark p-4 shadow-sm">
+<div class="size-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+<span class="material-symbols-outlined text-primary">calendar_clock</span>
+</div>
+<div class="flex flex-col">
+<span class="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Scheduled For</span>
+<span class="text-slate-900 dark:text-white font-bold text-base">Nov 24, 10:00 AM</span>
+</div>
+<button class="ml-auto text-primary text-sm font-bold">Edit</button>
+</div>
+<!-- Location Card -->
+<div class="flex items-center gap-4 rounded-[1.5rem] bg-surface-light dark:bg-surface-dark p-4 shadow-sm relative overflow-hidden group">
+<div class="size-12 rounded-full bg-primary/10 flex items-center justify-center shrink-0 z-10">
+<span class="material-symbols-outlined text-primary icon-filled">location_on</span>
+</div>
+<div class="flex flex-col z-10">
+<span class="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wider">Location</span>
+<span class="text-slate-900 dark:text-white font-bold text-base">Downtown Branch</span>
+<span class="text-slate-500 dark:text-slate-400 text-sm">124 Tech Plaza, City Center</span>
+</div>
+<!-- Subtle Map Background Overlay -->
+<div class="absolute inset-0 opacity-10 dark:opacity-20 z-0 bg-cover bg-center" data-alt="Minimalist map showing city streets" data-location="City map view" style='background-image: url("https://placeholder.pics/svg/300");'></div>
+</div>
+</div>
+</div>
+<!-- Cost Breakdown Section -->
+<div class="px-4 pt-8 pb-4">
+<h3 class="text-slate-900 dark:text-white tracking-tight text-xl font-bold leading-tight text-left pb-4">Estimated Cost</h3>
+<div class="rounded-[2rem] bg-surface-light dark:bg-surface-dark p-6 shadow-sm">
+<div class="flex justify-between items-center mb-3 text-slate-600 dark:text-slate-300">
+<span class="text-sm font-medium">Labor Cost</span>
+<span class="text-sm font-semibold">$60.00</span>
+</div>
+<div class="flex justify-between items-center mb-3 text-slate-600 dark:text-slate-300">
+<span class="text-sm font-medium">OLED Screen Part</span>
+<span class="text-sm font-semibold">$180.00</span>
+</div>
+<div class="flex justify-between items-center mb-6 text-slate-600 dark:text-slate-300">
+<span class="text-sm font-medium">Service Fee</span>
+<span class="text-sm font-semibold">$5.00</span>
+</div>
+<div class="h-px w-full bg-slate-200 dark:bg-slate-700/50 mb-4"></div>
+<div class="flex justify-between items-end">
+<span class="text-slate-900 dark:text-white font-bold text-lg">Total Estimate</span>
+<span class="text-primary font-bold text-2xl tracking-tight">$245.00</span>
+</div>
+</div>
+<p class="text-xs text-center text-slate-400 mt-4 px-6">
+                Payment will be collected at the store after repair is completed.
+            </p>
+</div>
+<!-- Bottom Action Button -->
+<div class="fixed bottom-0 left-0 w-full p-4 bg-gradient-to-t from-background-light via-background-light to-transparent dark:from-background-dark dark:via-background-dark dark:to-transparent pt-10 z-50 max-w-md mx-auto right-0">
+<button class="w-full bg-primary hover:bg-[#2fd16f] active:scale-[0.98] transition-all duration-200 text-background-dark font-bold text-lg rounded-full py-4 shadow-[0_8px_20px_rgba(54,226,123,0.3)] flex items-center justify-center gap-2 group">
+<span>Confirm Booking</span>
+<span class="material-symbols-outlined group-hover:translate-x-1 transition-transform">arrow_forward</span>
+</button>
+</div>
+</div>
+<!-- Visual Separator for Design Preview Purposes -->
+<div class="w-full h-12 bg-slate-800 flex items-center justify-center text-white text-xs uppercase tracking-widest font-bold my-10">
+        Design State: Booking Success
+    </div>
+<!-- Screen 2: Success State (Simulated) -->
+<div class="relative flex flex-col w-full max-w-md mx-auto min-h-screen bg-background-light dark:bg-background-dark">
+<div class="flex-1 flex flex-col items-center justify-center px-6 text-center pt-10 pb-20">
+<!-- Success Animation Placeholder -->
+<div class="relative mb-8">
+<div class="absolute inset-0 bg-primary/20 blur-xl rounded-full scale-150 animate-pulse"></div>
+<div class="size-24 bg-primary rounded-full flex items-center justify-center relative shadow-[0_0_40px_rgba(54,226,123,0.6)]">
+<span class="material-symbols-outlined text-background-dark text-[48px] font-bold">check</span>
+</div>
+</div>
+<h1 class="text-3xl font-bold text-slate-900 dark:text-white mb-2 tracking-tight">Booking Confirmed!</h1>
+<p class="text-slate-500 dark:text-slate-400 text-base mb-10 max-w-[280px]">
+                Your repair slot has been reserved. We've sent a confirmation email to <span class="text-slate-900 dark:text-white font-medium">user@email.com</span>
+</p>
+<!-- Ticket Card -->
+<div class="w-full bg-surface-light dark:bg-surface-dark rounded-[2rem] p-8 border border-slate-200 dark:border-slate-800 shadow-lg relative overflow-hidden mb-8">
+<div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-transparent via-primary to-transparent opacity-50"></div>
+<p class="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-2">Ticket ID</p>
+<div class="flex items-center justify-center gap-3">
+<span class="text-3xl font-mono font-bold text-slate-900 dark:text-white tracking-widest">#PE-8839</span>
+<button aria-label="Copy Ticket ID" class="text-primary hover:text-white p-2 hover:bg-white/10 rounded-full transition-colors">
+<span class="material-symbols-outlined text-xl">content_copy</span>
+</button>
+</div>
+</div>
+<div class="flex flex-col w-full gap-3">
+<button class="w-full bg-surface-light dark:bg-surface-dark hover:bg-slate-100 dark:hover:bg-white/5 border border-slate-200 dark:border-slate-700 text-slate-900 dark:text-white font-bold text-lg rounded-full py-4 transition-all">
+                    Track Status
+                </button>
+<button class="w-full text-slate-500 dark:text-slate-400 font-medium text-base rounded-full py-4 hover:text-slate-900 dark:hover:text-white transition-colors">
+                    Back to Home
+                </button>
+</div>
+</div>
+</div>
+</body></html>

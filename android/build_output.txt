@@ -1,0 +1,17 @@
+
+FAILURE: Build failed with an exception.
+
+* Where:
+Build file 'E:\PromiseIntegratedSystem\PromiseIntegratedSystem\android\app\build.gradle' line: 30
+
+* What went wrong:
+A problem occurred evaluating project ':app'.
+> Could not find method kotlinOptions() for arguments [build_5n0pknck78zcc01yg4b3t130v$_run_closure1$_closure7@6511d5c] on extension 'android' of type com.android.build.gradle.internal.dsl.BaseAppModuleExtension.
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 3s

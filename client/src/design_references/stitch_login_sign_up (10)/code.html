@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Promise Electronics Splash Screen</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&amp;family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS with Plugins -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                    },
+                    fontFamily: {
+                        "display": ["Spline Sans", "sans-serif"],
+                        "body": ["Noto Sans", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom utilities that Tailwind might miss or for specific overrides */
+        body {
+            font-family: 'Spline Sans', 'Noto Sans', sans-serif;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="relative flex h-screen w-full flex-col bg-background-light dark:bg-background-dark overflow-hidden selection:bg-primary selection:text-background-dark">
+<!-- Decorative Background Elements -->
+<div class="absolute inset-0 overflow-hidden pointer-events-none">
+<div class="absolute -top-[20%] -right-[20%] w-[80%] h-[80%] bg-primary/5 rounded-full blur-[120px]"></div>
+<div class="absolute top-[40%] -left-[20%] w-[60%] h-[60%] bg-primary/5 rounded-full blur-[100px]"></div>
+</div>
+<!-- Main Content Wrapper -->
+<div class="relative z-10 flex flex-col h-full w-full max-w-md mx-auto p-6 justify-between items-center">
+<!-- Spacer to push content to visual center -->
+<div class="flex-grow flex flex-col justify-center items-center gap-8 w-full">
+<!-- Logo Section (Modified Image Component) -->
+<!-- Creating a logo container using the theme's primary color and dark mode aesthetics -->
+<div class="group relative flex items-center justify-center">
+<!-- Glow effect behind logo -->
+<div class="absolute inset-0 bg-primary/20 blur-2xl rounded-full scale-110"></div>
+<!-- Logo Container -->
+<div class="relative w-32 h-32 bg-background-dark border border-white/5 rounded-full flex items-center justify-center shadow-2xl overflow-hidden ring-4 ring-background-dark">
+<span class="material-symbols-outlined text-[64px] text-primary" style="font-variation-settings: 'FILL' 1, 'wght' 600;">
+                       electrical_services
+                   </span>
+</div>
+</div>
+<!-- Headline Text (Adapted Component) -->
+<div class="flex flex-col items-center text-center gap-2">
+<h1 class="text-3xl md:text-4xl font-bold text-slate-900 dark:text-white tracking-tight leading-tight">
+                    Promise Electronics
+                </h1>
+<p class="text-slate-500 dark:text-gray-400 text-sm font-medium tracking-widest uppercase">
+                    Repair • Parts • Service
+                </p>
+</div>
+</div>
+<!-- Footer Section: Loading & Version -->
+<div class="w-full flex flex-col gap-6 pb-8">
+<!-- Progress Bar (Adapted Component) -->
+<div class="flex flex-col gap-2 w-full max-w-[280px] mx-auto">
+<div class="flex justify-between items-end px-1">
+<p class="text-slate-600 dark:text-gray-300 text-xs font-medium">Initializing app...</p>
+</div>
+<!-- Progress Track -->
+<div class="h-1.5 w-full bg-slate-200 dark:bg-white/10 rounded-full overflow-hidden">
+<!-- Progress Fill -->
+<div class="h-full bg-primary rounded-full shadow-[0_0_12px_rgba(54,226,123,0.6)]" style="width: 65%;"></div>
+</div>
+</div>
+<!-- Meta Text (Adapted Component) -->
+<div class="text-center">
+<p class="text-slate-400 dark:text-[#5d7365] text-xs font-normal leading-normal">
+                    v2.4.0 (Build 1082)
+                </p>
+</div>
+</div>
+</div>
+</body></html>

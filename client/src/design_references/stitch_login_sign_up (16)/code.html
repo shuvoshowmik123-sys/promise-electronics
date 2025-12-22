@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Service Mode &amp; Scheduling</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Icons -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#36e27b",
+              "background-light": "#f6f8f7",
+              "background-dark": "#112117",
+            },
+            fontFamily: {
+              "display": ["Spline Sans", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-gray-900 dark:text-white antialiased selection:bg-primary selection:text-black">
+<div class="relative flex h-full min-h-screen w-full flex-col max-w-md mx-auto bg-background-light dark:bg-background-dark pb-32 shadow-2xl overflow-hidden">
+<!-- TopAppBar -->
+<header class="flex items-center justify-between p-4 pt-6 bg-background-light dark:bg-background-dark sticky top-0 z-20">
+<button class="flex items-center justify-center size-12 shrink-0 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors text-gray-900 dark:text-white">
+<span class="material-symbols-outlined" style="font-size: 24px;">arrow_back</span>
+</button>
+<h2 class="text-lg font-bold leading-tight tracking-tight flex-1 text-center pr-12">Schedule Service</h2>
+</header>
+<!-- SegmentedButtons -->
+<div class="px-4 py-2">
+<div class="flex h-14 flex-1 items-center justify-center rounded-full bg-gray-200 dark:bg-[#1C2E24] p-1.5 relative">
+<!-- Home Pickup (Active) -->
+<label class="flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-full px-2 z-10 bg-primary shadow-sm transition-all duration-300">
+<span class="material-symbols-outlined text-[20px] mr-2 text-black">home_pin</span>
+<span class="truncate text-black text-sm font-bold leading-normal">Home Pickup</span>
+<input checked="" class="invisible w-0 absolute" name="service-mode" type="radio" value="Home Pickup"/>
+</label>
+<!-- Drop-off (Inactive) -->
+<label class="flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-full px-2 z-10 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors duration-300">
+<span class="material-symbols-outlined text-[20px] mr-2">storefront</span>
+<span class="truncate text-sm font-medium leading-normal">Drop-off</span>
+<input class="invisible w-0 absolute" name="service-mode" type="radio" value="Drop-off"/>
+</label>
+</div>
+<p class="text-xs text-center text-gray-500 dark:text-gray-400 mt-2">Technician arrives at your location</p>
+</div>
+<div class="h-4"></div>
+<!-- SectionHeader: Address -->
+<div class="px-4 pb-2 pt-2 flex justify-between items-end">
+<h3 class="text-lg font-bold leading-tight tracking-tight">Pickup Address</h3>
+</div>
+<!-- ListItem: Address Card -->
+<div class="px-4">
+<div class="flex items-center gap-4 bg-white dark:bg-[#1C2E24] p-4 rounded-lg justify-between border border-gray-100 dark:border-white/5 shadow-sm">
+<div class="flex items-center gap-4 overflow-hidden">
+<div class="flex items-center justify-center rounded-full bg-primary/20 shrink-0 size-12 text-primary">
+<span class="material-symbols-outlined" style="font-size: 24px;">location_on</span>
+</div>
+<div class="flex flex-col justify-center min-w-0">
+<div class="flex items-center gap-2">
+<p class="text-base font-bold leading-normal line-clamp-1">Home</p>
+<span class="px-2 py-0.5 rounded-full bg-primary/20 text-primary text-[10px] font-bold uppercase tracking-wider">Default</span>
+</div>
+<p class="text-gray-500 dark:text-gray-400 text-sm font-normal leading-normal line-clamp-1 truncate">123 Tech Avenue, Apt 4B, Silicon Valley, CA</p>
+</div>
+</div>
+<div class="shrink-0 pl-2">
+<button class="flex items-center justify-center overflow-hidden rounded-full h-8 px-4 bg-gray-100 dark:bg-white/10 hover:bg-primary/20 hover:text-primary dark:hover:text-primary transition-colors text-sm font-medium leading-normal">
+<span class="truncate">Change</span>
+</button>
+</div>
+</div>
+</div>
+<div class="h-6"></div>
+<!-- SectionHeader: Date -->
+<div class="px-4 pb-3">
+<h3 class="text-lg font-bold leading-tight tracking-tight">Select Date</h3>
+</div>
+<!-- Date Scroller -->
+<div class="flex gap-3 overflow-x-auto no-scrollbar pb-2 px-4 -mx-4 md:mx-0 w-[calc(100%+32px)] md:w-full md:px-4">
+<!-- Active Date -->
+<button class="group flex flex-col items-center justify-center min-w-[76px] h-[92px] rounded-lg bg-primary text-black shrink-0 shadow-lg shadow-primary/20 relative overflow-hidden transition-transform active:scale-95">
+<span class="text-xs font-bold mb-1 opacity-80 uppercase tracking-wide">Mon</span>
+<span class="text-3xl font-bold tracking-tighter">12</span>
+<span class="absolute bottom-1.5 size-1.5 rounded-full bg-black"></span>
+</button>
+<!-- Inactive Dates -->
+<button class="flex flex-col items-center justify-center min-w-[76px] h-[92px] rounded-lg bg-white dark:bg-[#1C2E24] border border-gray-200 dark:border-white/5 shrink-0 text-gray-500 dark:text-gray-400 hover:border-primary/50 transition-all active:scale-95">
+<span class="text-xs font-medium mb-1">Tue</span>
+<span class="text-3xl font-semibold tracking-tighter">13</span>
+</button>
+<button class="flex flex-col items-center justify-center min-w-[76px] h-[92px] rounded-lg bg-white dark:bg-[#1C2E24] border border-gray-200 dark:border-white/5 shrink-0 text-gray-500 dark:text-gray-400 hover:border-primary/50 transition-all active:scale-95">
+<span class="text-xs font-medium mb-1">Wed</span>
+<span class="text-3xl font-semibold tracking-tighter">14</span>
+</button>
+<button class="flex flex-col items-center justify-center min-w-[76px] h-[92px] rounded-lg bg-white dark:bg-[#1C2E24] border border-gray-200 dark:border-white/5 shrink-0 text-gray-500 dark:text-gray-400 hover:border-primary/50 transition-all active:scale-95">
+<span class="text-xs font-medium mb-1">Thu</span>
+<span class="text-3xl font-semibold tracking-tighter">15</span>
+</button>
+<button class="flex flex-col items-center justify-center min-w-[76px] h-[92px] rounded-lg bg-white dark:bg-[#1C2E24] border border-gray-200 dark:border-white/5 shrink-0 text-gray-500 dark:text-gray-400 hover:border-primary/50 transition-all active:scale-95">
+<span class="text-xs font-medium mb-1">Fri</span>
+<span class="text-3xl font-semibold tracking-tighter">16</span>
+</button>
+</div>
+<div class="h-6"></div>
+<!-- SectionHeader: Time -->
+<div class="px-4 pb-3 flex justify-between items-center">
+<h3 class="text-lg font-bold leading-tight tracking-tight">Select Time</h3>
+<span class="text-xs text-gray-500 dark:text-gray-400">Duration: ~1h</span>
+</div>
+<!-- Time Grid -->
+<div class="px-4 grid grid-cols-3 gap-3">
+<button class="py-3 px-2 rounded-full border border-gray-200 dark:border-white/5 bg-white dark:bg-[#1C2E24] text-sm font-medium text-gray-500 dark:text-gray-400 hover:border-primary/50 hover:text-primary transition-all active:scale-95">
+                09:00 AM
+            </button>
+<!-- Active Time Slot -->
+<button class="relative py-3 px-2 rounded-full bg-primary/20 border-2 border-primary text-primary text-sm font-bold shadow-[0_0_12px_rgba(54,226,123,0.3)] transition-all active:scale-95">
+                10:00 AM
+                <span class="absolute -top-1 -right-1 flex h-3 w-3">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+<span class="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+</span>
+</button>
+<button class="py-3 px-2 rounded-full border border-gray-200 dark:border-white/5 bg-white dark:bg-[#1C2E24] text-sm font-medium text-gray-500 dark:text-gray-400 hover:border-primary/50 hover:text-primary transition-all active:scale-95">
+                11:00 AM
+            </button>
+<button class="py-3 px-2 rounded-full border border-gray-200 dark:border-white/5 bg-white dark:bg-[#1C2E24] text-sm font-medium text-gray-500 dark:text-gray-400 hover:border-primary/50 hover:text-primary transition-all active:scale-95">
+                01:00 PM
+            </button>
+<button class="py-3 px-2 rounded-full border border-gray-200 dark:border-white/5 bg-white dark:bg-[#1C2E24] text-sm font-medium text-gray-500 dark:text-gray-400 hover:border-primary/50 hover:text-primary transition-all active:scale-95">
+                02:00 PM
+            </button>
+<button class="py-3 px-2 rounded-full border border-gray-200 dark:border-white/5 bg-white dark:bg-[#1C2E24] text-sm font-medium text-gray-500 dark:text-gray-400 hover:border-primary/50 hover:text-primary transition-all active:scale-95">
+                03:00 PM
+            </button>
+</div>
+<!-- Info Note -->
+<div class="px-4 mt-6">
+<div class="p-3 rounded-lg bg-primary/5 border border-primary/10 flex gap-3 items-start">
+<span class="material-symbols-outlined text-primary text-[20px] shrink-0 mt-0.5">info</span>
+<p class="text-xs text-gray-600 dark:text-gray-300 leading-relaxed font-medium">
+                    A certified technician will arrive within the selected window. Please ensure your device is accessible.
+                 </p>
+</div>
+</div>
+<!-- Footer CTA -->
+<footer class="fixed bottom-0 left-0 right-0 p-4 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur-xl border-t border-gray-200 dark:border-white/5 z-30 max-w-md mx-auto">
+<div class="flex items-center justify-between mb-3 px-2">
+<span class="text-sm font-medium text-gray-500 dark:text-gray-400">Estimated Cost</span>
+<span class="text-xl font-bold text-gray-900 dark:text-white">$85.00</span>
+</div>
+<button class="w-full bg-primary text-black font-bold text-lg h-14 rounded-full shadow-lg shadow-primary/25 hover:shadow-primary/40 hover:brightness-105 active:scale-[0.99] transition-all flex items-center justify-center gap-2">
+<span>Confirm Schedule</span>
+<span class="material-symbols-outlined text-[20px] font-bold">arrow_forward</span>
+</button>
+</footer>
+</div>
+</body></html>

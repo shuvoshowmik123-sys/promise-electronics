@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>My Repairs</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#36e27b",
+              "background-light": "#f6f8f7",
+              "surface-light": "#ffffff",
+              "text-main": "#112117",
+              "text-secondary": "#5a6b61",
+            },
+            fontFamily: {
+              "display": ["Spline Sans", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light font-display antialiased min-h-screen flex flex-col relative overflow-x-hidden selection:bg-primary selection:text-white">
+<div class="sticky top-0 z-50 bg-background-light/80 backdrop-blur-md border-b border-gray-200">
+<div class="flex items-center px-4 py-3 justify-between">
+<button class="text-text-main flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-gray-200 transition-colors">
+<span class="material-symbols-outlined text-[20px]">arrow_back_ios_new</span>
+</button>
+<h1 class="text-text-main text-lg font-bold leading-tight tracking-tight flex-1 text-center">My Repairs</h1>
+<button class="text-text-main flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-gray-200 transition-colors">
+<span class="material-symbols-outlined">person</span>
+</button>
+</div>
+<div class="px-4 pb-3 pt-1">
+<div class="flex h-12 w-full items-center justify-center rounded-full bg-gray-200 p-1 relative">
+<label class="flex-1 cursor-pointer h-full relative z-10">
+<input checked="" class="peer sr-only" name="repair-view" type="radio" value="active"/>
+<div class="flex h-full w-full items-center justify-center rounded-full text-sm font-medium transition-all duration-200 text-text-secondary peer-checked:bg-white peer-checked:text-text-main peer-checked:shadow-sm">
+                        Active
+                    </div>
+</label>
+<label class="flex-1 cursor-pointer h-full relative z-10">
+<input class="peer sr-only" name="repair-view" type="radio" value="history"/>
+<div class="flex h-full w-full items-center justify-center rounded-full text-sm font-medium transition-all duration-200 text-text-secondary peer-checked:bg-white peer-checked:text-text-main peer-checked:shadow-sm">
+                        History
+                    </div>
+</label>
+</div>
+</div>
+</div>
+<main class="flex-1 px-4 py-6 flex flex-col gap-5">
+<div class="flex flex-col gap-4">
+<div class="group relative overflow-hidden rounded-[20px] bg-white p-4 shadow-sm ring-1 ring-black/5 hover:ring-primary/50 transition-all active:scale-[0.98]">
+<div class="flex items-start gap-4">
+<div class="shrink-0 size-[72px] rounded-2xl bg-gray-100 overflow-hidden flex items-center justify-center">
+<img alt="Samsung Galaxy S21" class="w-full h-full object-cover" data-alt="Modern smartphone screen closeup" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAU49h1E3aIdpMhxq7uViUt4Mr5bnPMdhPeQx0qrYDYmaiG8Ol6jcM1nRJUtQ2MT9YL54Zi_m3UVe6CGpes0OJFWV_YtJ_J95XhGNkowGC6sra4y1VGj3HsmdKvoZOvoSBZ7gsj4l6kcC_4u4Gdhz44hTLTT0HM74McEsOMVe0_dHWq-K-SFWQWTvhhEh6XoDxs1kipTQ7mdQUgU-UdsIhR1UuL5UbPEGi6gOhInpeU1tjGOBs-9ofZ5AOu1aBrcDFt8bW3ThFSGGY"/>
+</div>
+<div class="flex flex-1 flex-col min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="text-text-main text-base font-bold truncate pr-2">Samsung Galaxy S21</h3>
+<span class="text-text-secondary text-sm font-medium">$120.00</span>
+</div>
+<p class="text-gray-500 text-xs font-mono mt-1 mb-0.5">#REP-2024-102</p>
+<p class="text-gray-600 text-sm leading-tight line-clamp-1">Battery Replacement</p>
+<div class="mt-3 flex items-center gap-2">
+<span class="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-2.5 py-1 text-xs font-bold text-green-700">
+<span class="relative flex h-2 w-2">
+<span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+<span class="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+</span>
+                                In Progress
+                            </span>
+</div>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-[20px] bg-white p-4 shadow-sm ring-1 ring-black/5 hover:ring-primary/50 transition-all active:scale-[0.98]">
+<div class="flex items-start gap-4">
+<div class="shrink-0 size-[72px] rounded-2xl bg-gray-100 overflow-hidden flex items-center justify-center">
+<img alt="PlayStation 5" class="w-full h-full object-cover" data-alt="Game console controller detail" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCAVAMI9JVxJhIjAm82HwAOdPAqFRBJ9Jvxf2WSplGUbimO0iLjPHZAPFtCpJA24Yn-uR3i2Y2gbBBALqFSyPoobvWscYcTwIuw5HdpSJPQ795U1nWDcbMkjyrgSVZAiu0iZnQGeNE9pHJTksE1rBLNyiXGBTcntP0inGNkj82vYYCGrQ_PbK2HOGh6VjxmmmL9hpCRG3x_2HQ7LFcRqrzx8i5WqPsl9DqEUVDL3UQFB04vPBy_30GX59lv1bLUy3fAnV6QqISXTMc"/>
+</div>
+<div class="flex flex-1 flex-col min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="text-text-main text-base font-bold truncate pr-2">PlayStation 5</h3>
+<span class="text-text-secondary text-sm font-medium">$150.00</span>
+</div>
+<p class="text-gray-500 text-xs font-mono mt-1 mb-0.5">#REP-2024-098</p>
+<p class="text-gray-600 text-sm leading-tight line-clamp-1">HDMI Port Repair</p>
+<div class="mt-3 flex items-center gap-2">
+<span class="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-bold text-amber-700">
+<span class="material-symbols-outlined text-[14px]">inventory_2</span>
+                                Awaiting Parts
+                            </span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="pt-4">
+<h2 class="text-text-main text-lg font-bold leading-tight">Past Repairs</h2>
+</div>
+<div class="flex flex-col gap-4 opacity-90">
+<div class="group relative overflow-hidden rounded-[20px] bg-white p-4 shadow-sm ring-1 ring-black/5 transition-all">
+<div class="flex items-start gap-4">
+<div class="shrink-0 size-[72px] rounded-2xl bg-gray-100 overflow-hidden flex items-center justify-center">
+<img alt="Dell XPS 15" class="w-full h-full object-cover" data-alt="Laptop keyboard and screen" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBcwJsNAHpzfIMAwSEGiiHz-0E219kJXGzrdWkm0gUkPj-pMd5jK8eqtTk9nLlJNHf8SpQp6-P28sR6i_ZAxhS8KZGNIxdmntEgJvmOU1-1xo5IXZONufcAMnzUHO24CoB-efjeWFepvMKiat7dR4ao1zOi2coJsL2FbHfOFZKn-8XP5EhQokIRTJncUroGClt-ytikzIK29bRe2ic8f1k45SUj4GdzivdvV_1hm-acEsZ29imJKGks5DMtxZzeHTHt3bRverSv61E"/>
+</div>
+<div class="flex flex-1 flex-col min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="text-text-main text-base font-bold truncate pr-2">Dell XPS 15</h3>
+<span class="text-text-secondary text-sm font-medium">$220.00</span>
+</div>
+<p class="text-gray-500 text-xs font-mono mt-1 mb-0.5">#REP-2023-450</p>
+<p class="text-gray-600 text-sm leading-tight line-clamp-1">Keyboard Fix</p>
+<div class="mt-3 flex items-center justify-between">
+<span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-600">
+<span class="material-symbols-outlined text-[14px]">check_circle</span>
+                                Completed
+                            </span>
+<span class="text-xs text-gray-400 font-medium">Oct 12, 2023</span>
+</div>
+</div>
+</div>
+</div>
+<div class="group relative overflow-hidden rounded-[20px] bg-white p-4 shadow-sm ring-1 ring-black/5 transition-all">
+<div class="flex items-start gap-4">
+<div class="shrink-0 size-[72px] rounded-2xl bg-gray-100 overflow-hidden flex items-center justify-center">
+<img alt="MacBook Pro" class="w-full h-full object-cover" data-alt="Laptop computer closed on table" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBwxHUbgLlOdSoICr52Tvr7AFxiJt5Z18O1taDXfl6UtYopOLIjg0-sGiZzi4N7NRlLYzRaEtdEXtjzGBc9pJehzxnVkiayPHRy41virUwXR1aGAKi7ateMrSE43V9-e1-1Xw6BXwJnnv57MgMWoPmbbPnP-_-f1ysDyicGRElH_3ZsR8Abz9Mb_QGYOl3XR_vrPHSjCanahLbIf4wcUrFTHV828acl_9vQm74tiwrDcDm87CK0IDxVuVIk7_Fkc3AoS6zJjZu4IVw"/>
+</div>
+<div class="flex flex-1 flex-col min-w-0">
+<div class="flex justify-between items-start">
+<h3 class="text-text-main text-base font-bold truncate pr-2">MacBook Pro</h3>
+<span class="text-text-secondary text-sm font-medium">$450.00</span>
+</div>
+<p class="text-gray-500 text-xs font-mono mt-1 mb-0.5">#REP-2023-312</p>
+<p class="text-gray-600 text-sm leading-tight line-clamp-1">Screen Replacement</p>
+<div class="mt-3 flex items-center justify-between">
+<span class="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2.5 py-1 text-xs font-bold text-gray-600">
+<span class="material-symbols-outlined text-[14px]">check_circle</span>
+                                Completed
+                            </span>
+<span class="text-xs text-gray-400 font-medium">Sep 05, 2023</span>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="h-24"></div> 
+</main>
+<div class="fixed bottom-0 left-0 w-full p-4 bg-gradient-to-t from-background-light to-transparent pt-12">
+<button class="w-full flex items-center justify-center gap-2 bg-primary hover:bg-primary/90 text-white text-base font-bold py-4 px-6 rounded-full shadow-[0_8px_16px_-4px_rgba(54,226,123,0.3)] transition-transform active:scale-[0.98]">
+<span class="material-symbols-outlined">add</span>
+            Book New Repair
+        </button>
+</div>
+
+</body></html>

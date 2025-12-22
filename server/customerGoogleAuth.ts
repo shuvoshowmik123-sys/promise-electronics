@@ -4,6 +4,7 @@ import session from "express-session";
 import type { Express, RequestHandler } from "express";
 import MemoryStore from "memorystore";
 import { storage } from "./storage.js";
+import { OAuth2Client } from 'google-auth-library';
 
 declare global {
   namespace Express {
@@ -198,7 +199,12 @@ export async function setupCustomerAuth(app: Express) {
           console.error("Session destroy error:", err);
         }
         res.clearCookie("connect.sid");
-        res.redirect("/");
+
+        if (req.headers.accept?.includes("application/json") || req.query.json === "true") {
+          res.json({ message: "Logged out successfully" });
+        } else {
+          res.redirect("/");
+        }
       });
     });
   });
@@ -239,6 +245,64 @@ export async function setupCustomerAuth(app: Express) {
     } catch (error) {
       console.error("Error fetching customer auth:", error);
       res.status(500).json({ message: "Failed to fetch customer" });
+    }
+  });
+
+
+  const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+
+  app.post("/api/customer/google/native-login", async (req, res) => {
+    try {
+      const { idToken } = req.body;
+      if (!idToken) return res.status(400).json({ message: "Missing idToken" });
+
+      // Verify the token
+      const ticket = await client.verifyIdToken({
+        idToken,
+        audience: process.env.GOOGLE_CLIENT_ID,
+      });
+      const payload = ticket.getPayload();
+
+      if (!payload) return res.status(401).json({ message: "Invalid token" });
+
+      const googleSub = payload.sub;
+      const email = payload.email;
+      const name = payload.name || "Google User";
+      const profileImageUrl = payload.picture;
+
+      // Check if user is already logged in (Linking Flow)
+      if (req.session?.customerId) {
+        const user = await storage.linkUserToGoogle(req.session.customerId, {
+          googleSub,
+          name,
+          email,
+          profileImageUrl
+        });
+        return res.json({ message: "Account linked successfully", user });
+      }
+
+      // Login/Signup Flow (Native)
+      const user = await storage.upsertUserFromGoogle({
+        googleSub,
+        name,
+        email,
+        profileImageUrl
+      });
+
+      // Create Session
+      req.session.customerId = user.id;
+      req.session.authMethod = 'google';
+      req.session.save((err) => {
+        if (err) {
+          console.error("Session save error:", err);
+          return res.status(500).json({ message: "Session creation failed" });
+        }
+        res.json({ message: "Logged in successfully", user });
+      });
+
+    } catch (error) {
+      console.error("Native Google Auth Error:", error);
+      res.status(500).json({ message: "Authentication failed" });
     }
   });
 }

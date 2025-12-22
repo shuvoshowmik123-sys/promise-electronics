@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Repair Tracking Timeline</title>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "surface-dark": "#1c2e24", // Slightly lighter for cards
+                        "surface-light": "#ffffff",
+                    },
+                    fontFamily: {
+                        "display": ["Spline Sans", "sans-serif"],
+                        "body": ["Noto Sans", "sans-serif"],
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>.timeline-line {
+            width: 2px;
+            position: absolute;
+            left: 15px;top: 32px;
+            bottom: -8px; 
+            z-index: 0;
+        }
+        .last-item .timeline-line {
+            display: none;
+        }
+        body {
+            min-height: max(884px, 100dvh);
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white antialiased h-screen flex flex-col overflow-hidden">
+<header class="flex items-center px-4 py-4 justify-between bg-background-light dark:bg-background-dark shrink-0 z-20">
+<button class="flex size-10 items-center justify-center rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined text-2xl dark:text-white">arrow_back</span>
+</button>
+<h2 class="text-lg font-bold leading-tight tracking-tight flex-1 text-center pr-10">Order #12345</h2>
+</header>
+<main class="flex-1 overflow-y-auto px-4 pb-24 scrollbar-hide">
+<div class="mt-2 bg-white dark:bg-surface-dark rounded-xl p-6 shadow-sm border border-gray-100 dark:border-white/5 relative overflow-hidden group">
+<div class="absolute -right-10 -top-10 w-32 h-32 bg-primary/10 rounded-full blur-2xl pointer-events-none"></div>
+<div class="relative z-10">
+<span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-primary/10 text-green-700 text-xs font-bold uppercase tracking-wide mb-3">
+<span class="w-1.5 h-1.5 rounded-full bg-primary animate-pulse"></span>
+                    In Progress
+                </span>
+<h1 class="text-3xl font-bold leading-tight mb-1">Diagnosing</h1>
+<p class="text-gray-500 dark:text-gray-400 text-sm font-medium mb-6">iPhone 13 Pro Max • Screen Replacement</p>
+<div class="flex items-center gap-3 p-3 rounded-lg bg-gray-50 dark:bg-black/20 border border-gray-100 dark:border-white/5">
+<span class="material-symbols-outlined text-green-600">event_upcoming</span>
+<div class="flex flex-col">
+<span class="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase">Estimated Completion</span>
+<span class="text-sm font-bold text-gray-900 dark:text-white">Fri, Nov 12</span>
+</div>
+</div>
+</div>
+</div>
+<div class="mt-6">
+<h3 class="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-3 px-1">Technician</h3>
+<div class="flex items-center gap-4 bg-white dark:bg-surface-dark px-4 py-4 rounded-xl shadow-sm border border-gray-100 dark:border-white/5">
+<div class="relative">
+<div class="bg-center bg-no-repeat bg-cover rounded-full h-14 w-14 shrink-0 ring-2 ring-primary/20" data-alt="Portrait of a smiling technician named Alex wearing a uniform" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuBB7su4u9PXbA3pshugtru46pF1enRP9wr7F8uCdCI66HKuBgtMOG3wzidmlYDTCtoMF3_8hJYFNasL0iMu8NdShT66AYhu39cCI580kL_tbr3rxdgxMZYMkJfiFSYyvwxDZTpxNsxu-tSVSb0a4HAVV8m6_Fbedr6t4mnwNricOuroWOA0w0LyYTKAClVX4OzPPHARNXerlT_xwl_rfuoP2QOgt8D1PqBGWEJlhR7QEKrrfE36Si_v7bdeLMPeN14eW2RCzs35Tmw");'>
+</div>
+<div class="absolute -bottom-1 -right-1 bg-primary text-background-dark text-[10px] font-bold px-1.5 py-0.5 rounded-full border-2 border-surface-dark">
+                        4.9★
+                    </div>
+</div>
+<div class="flex flex-col flex-1 justify-center">
+<p class="text-gray-900 dark:text-white text-base font-bold leading-snug">Alex R.</p>
+<p class="text-gray-500 dark:text-gray-400 text-sm font-normal leading-snug">Certified Expert</p>
+</div>
+<button class="shrink-0 flex items-center justify-center size-10 rounded-full bg-primary/10 text-green-600 hover:bg-primary/20 transition-colors">
+<span class="material-symbols-outlined text-xl">chat</span>
+</button>
+</div>
+</div>
+<div class="mt-8 mb-6">
+<h3 class="text-sm font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-4 px-1">Timeline</h3>
+<div class="pl-2">
+<div class="flex gap-4 relative pb-8 group">
+<div class="timeline-line bg-primary"></div>
+<div class="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-background-dark shadow-[0_0_10px_rgba(54,226,123,0.3)]">
+<span class="material-symbols-outlined text-lg font-bold">check</span>
+</div>
+<div class="pt-1">
+<h4 class="text-base font-bold text-gray-900 dark:text-white leading-none">Request Received</h4>
+<p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Oct 20, 10:30 AM</p>
+</div>
+</div>
+<div class="flex gap-4 relative pb-8 group">
+<div class="timeline-line bg-primary"></div>
+<div class="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-background-dark shadow-[0_0_10px_rgba(54,226,123,0.3)]">
+<span class="material-symbols-outlined text-lg font-bold">check</span>
+</div>
+<div class="pt-1">
+<h4 class="text-base font-bold text-gray-900 dark:text-white leading-none">Technician Assigned</h4>
+<p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Oct 21, 09:15 AM</p>
+</div>
+</div>
+<div class="flex gap-4 relative pb-8 group">
+<div class="timeline-line bg-gray-200 dark:bg-gray-700"></div>
+<div class="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center">
+<span class="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary opacity-20"></span>
+<div class="relative inline-flex h-8 w-8 items-center justify-center rounded-full bg-primary text-background-dark shadow-[0_0_15px_rgba(54,226,123,0.6)]">
+<span class="material-symbols-outlined text-lg font-bold animate-pulse">manage_search</span>
+</div>
+</div>
+<div class="pt-1">
+<h4 class="text-base font-bold text-green-600 leading-none">Diagnosing</h4>
+<p class="text-sm text-gray-500 dark:text-gray-400 mt-1">Inspecting internal components...</p>
+</div>
+</div>
+<div class="flex gap-4 relative pb-8 group opacity-50">
+<div class="timeline-line bg-gray-200 dark:bg-gray-700"></div>
+<div class="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 dark:border-gray-600 bg-background-light dark:bg-background-dark">
+<span class="material-symbols-outlined text-sm text-gray-400">build</span>
+</div>
+<div class="pt-1">
+<h4 class="text-base font-medium text-gray-500 dark:text-gray-400 leading-none">Repairing</h4>
+</div>
+</div>
+<div class="flex gap-4 relative pb-0 group opacity-50 last-item">
+<div class="timeline-line bg-gray-200 dark:bg-gray-700"></div>
+<div class="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-gray-300 dark:border-gray-600 bg-background-light dark:bg-background-dark">
+<span class="material-symbols-outlined text-sm text-gray-400">inventory_2</span>
+</div>
+<div class="pt-1">
+<h4 class="text-base font-medium text-gray-500 dark:text-gray-400 leading-none">Ready for Pickup</h4>
+</div>
+</div>
+</div>
+</div>
+</main>
+<div class="fixed bottom-0 left-0 w-full bg-white/80 dark:bg-[#112117]/90 backdrop-blur-md border-t border-gray-200 dark:border-white/5 p-4 z-50">
+<div class="flex gap-3 max-w-lg mx-auto">
+<button class="flex-1 h-12 rounded-full border border-gray-300 dark:border-gray-600 text-gray-900 dark:text-white font-semibold text-sm hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+                Cancel
+            </button>
+<button class="flex-[2] h-12 rounded-full bg-primary text-background-dark font-bold text-sm shadow-[0_0_20px_rgba(54,226,123,0.3)] hover:shadow-[0_0_25px_rgba(54,226,123,0.5)] hover:bg-[#2dd16f] transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined text-xl">support_agent</span>
+                Contact Support
+            </button>
+</div>
+</div>
+
+</body></html>

@@ -10,7 +10,7 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Save, Plus, Trash2, Globe, Image as ImageIcon, Settings as SettingsIcon, PenTool, Loader2, Info, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, ArrowUp, ArrowDown, Pencil, Users, AlertTriangle, Search, X, FileText, Star, MessageSquare, Power, MonitorOff, Maximize, VolumeX, WifiOff, AlignJustify, HelpCircle } from "lucide-react";
+import { Save, Plus, Trash2, Globe, Image as ImageIcon, Settings as SettingsIcon, PenTool, Loader2, Info, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, ArrowUp, ArrowDown, Pencil, Users, AlertTriangle, Search, X, FileText, Star, MessageSquare, Power, MonitorOff, Maximize, VolumeX, WifiOff, AlignJustify, HelpCircle, Volume2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { images } from "@/lib/mock-data";
@@ -19,6 +19,7 @@ import type { CustomerReview } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { playNotificationSound, NOTIFICATION_TONES, type NotificationTone } from "@/lib/notification-sound";
 
 const POLICY_DEFINITIONS = [
   { slug: "privacy", title: "Privacy Policy", description: "How you collect, use, and protect customer data" },
@@ -259,6 +260,8 @@ export default function AdminSettingsPage() {
   const [newBrand, setNewBrand] = useState("");
   const [newInch, setNewInch] = useState("");
   const [newSymptom, setNewSymptom] = useState("");
+  const [nativeHomeBannerImage, setNativeHomeBannerImage] = useState("https://images.unsplash.com/photo-1593784991095-a205069470b6?ixlib=rb-4.0.3&auto=format&fit=crop&w=1000&q=80");
+  const [notificationTone, setNotificationTone] = useState<NotificationTone>("default");
 
   // About Us settings
   const [aboutTitle, setAboutTitle] = useState("Your Trusted Electronics Partner in Bangladesh");
@@ -717,6 +720,12 @@ export default function AdminSettingsPage() {
           case "home_google_map_url":
             setGoogleMapUrl(setting.value);
             break;
+          case "native_home_banner_image":
+            setNativeHomeBannerImage(setting.value);
+            break;
+          case "notification_tone":
+            setNotificationTone(setting.value as NotificationTone);
+            break;
         }
       });
     }
@@ -777,6 +786,8 @@ export default function AdminSettingsPage() {
       { key: "home_before_after_gallery", value: JSON.stringify(beforeAfterGallery) },
       { key: "home_pricing_table", value: JSON.stringify(pricingTable) },
       { key: "home_google_map_url", value: googleMapUrl },
+      { key: "native_home_banner_image", value: nativeHomeBannerImage },
+      { key: "notification_tone", value: notificationTone },
     ];
 
     try {
@@ -1575,6 +1586,39 @@ export default function AdminSettingsPage() {
                               </div>
                             </div>
                           ))}
+                        </div>
+                      </div>
+
+                      <Separator className="my-6" />
+
+                      {/* Native App Home Banner */}
+                      <div className="space-y-4">
+                        <div className="flex items-center gap-2">
+                          <Label className="text-base font-semibold">Native App Home Banner</Label>
+                          <Badge variant="secondary" className="text-xs">Mobile App</Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">
+                          This image appears on the home screen of the native mobile app.
+                        </p>
+                        <div className="flex gap-3 items-start">
+                          <div className="w-24 h-16 border rounded overflow-hidden bg-slate-100 flex-shrink-0 flex items-center justify-center">
+                            {nativeHomeBannerImage ? (
+                              <img src={nativeHomeBannerImage} alt="Native Banner" className="w-full h-full object-cover" />
+                            ) : (
+                              <ImageIcon className="h-6 w-6 text-slate-400" />
+                            )}
+                          </div>
+                          <div className="flex-1">
+                            <Input
+                              placeholder="Enter image URL"
+                              value={nativeHomeBannerImage}
+                              onChange={(e) => setNativeHomeBannerImage(e.target.value)}
+                              data-testid="input-native-banner-image"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Recommended: High quality landscape image.
+                            </p>
+                          </div>
                         </div>
                       </div>
                     </CardContent>
@@ -2745,6 +2789,37 @@ export default function AdminSettingsPage() {
                           />
                           <p className="text-xs text-muted-foreground">Enter a URL to your logo image. Recommended size: 128x128px or larger.</p>
                         </div>
+                      </div>
+                    </div>
+
+                    <Separator className="my-4" />
+
+                    <div className="flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <Label>Notification Tone</Label>
+                        <p className="text-sm text-muted-foreground">Select the sound for new request notifications.</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Select value={notificationTone} onValueChange={(v) => setNotificationTone(v as NotificationTone)}>
+                          <SelectTrigger className="w-[180px]">
+                            <SelectValue placeholder="Select tone" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {NOTIFICATION_TONES.map((tone) => (
+                              <SelectItem key={tone.value} value={tone.value}>
+                                {tone.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => playNotificationSound(notificationTone)}
+                          title="Test Sound"
+                        >
+                          <Volume2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
 

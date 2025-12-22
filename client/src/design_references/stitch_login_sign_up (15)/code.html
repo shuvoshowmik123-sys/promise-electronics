@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Device Details - Promise Electronics</title>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#36e27b",
+              "background-light": "#f6f8f7",
+              "background-dark": "#112117",
+              "surface-dark": "#1c2620",
+              "surface-border": "#3d5245",
+            },
+            fontFamily: {
+              "display": ["Spline Sans", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        /* Custom scrollbar hiding */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        
+        /* Custom form inputs style overrides */
+        .form-select {
+            background-image: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="font-display bg-background-light dark:bg-background-dark text-slate-900 dark:text-white antialiased min-h-screen flex flex-col selection:bg-primary selection:text-background-dark">
+<!-- Main Container -->
+<div class="relative mx-auto flex h-full min-h-screen w-full max-w-md flex-col overflow-hidden bg-background-light dark:bg-background-dark shadow-2xl">
+<!-- Top App Bar -->
+<header class="flex items-center justify-between px-4 pt-6 pb-2 sticky top-0 z-30 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md">
+<button class="flex h-10 w-10 items-center justify-center rounded-full text-slate-900 dark:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined">arrow_back_ios_new</span>
+</button>
+<h1 class="text-lg font-bold leading-tight tracking-tight flex-1 text-center pr-10">Device Details</h1>
+</header>
+<!-- Progress Indicator -->
+<div class="px-6 py-4">
+<div class="flex items-center justify-between text-xs font-medium text-slate-500 dark:text-[#9eb7a8] mb-2">
+<span>Details</span>
+<span>Step 2 of 3</span>
+</div>
+<div class="flex h-1.5 w-full gap-2 rounded-full bg-slate-200 dark:bg-[#1c2620]">
+<div class="h-full w-1/3 rounded-full bg-primary"></div>
+<div class="h-full w-1/3 rounded-full bg-primary shadow-[0_0_10px_rgba(54,226,123,0.5)]"></div>
+<div class="h-full w-1/3 rounded-full bg-transparent"></div>
+</div>
+</div>
+<!-- Scrollable Form Content -->
+<div class="flex-1 overflow-y-auto px-6 pb-32 pt-2 no-scrollbar space-y-8">
+<!-- Section Header -->
+<div class="space-y-1">
+<h2 class="text-2xl font-bold tracking-tight text-slate-900 dark:text-white">Tell us about your device</h2>
+<p class="text-sm text-slate-500 dark:text-[#9eb7a8]">Please provide accurate details for precise repair estimates.</p>
+</div>
+<!-- Identification Section -->
+<div class="space-y-5">
+<!-- Brand Selector -->
+<div class="flex flex-col gap-2">
+<label class="text-sm font-medium ml-1 text-slate-700 dark:text-white">Select Brand</label>
+<div class="relative group">
+<select class="form-select w-full appearance-none rounded-full border border-slate-200 dark:border-surface-border bg-white dark:bg-surface-dark px-5 py-4 text-base font-normal text-slate-900 dark:text-white placeholder-slate-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all cursor-pointer">
+<option disabled="" selected="" value="">Choose a manufacturer</option>
+<option value="apple">Apple</option>
+<option value="samsung">Samsung</option>
+<option value="sony">Sony</option>
+<option value="google">Google</option>
+<option value="lg">LG</option>
+</select>
+<div class="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 dark:text-[#9eb7a8] group-hover:text-primary transition-colors">
+<span class="material-symbols-outlined">expand_more</span>
+</div>
+</div>
+</div>
+<!-- Model Number -->
+<div class="flex flex-col gap-2">
+<label class="text-sm font-medium ml-1 text-slate-700 dark:text-white">Model Number</label>
+<div class="relative group">
+<input class="w-full rounded-full border border-slate-200 dark:border-surface-border bg-white dark:bg-surface-dark px-5 py-4 text-base font-normal text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-[#9eb7a8] focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all" placeholder="e.g., SM-G991B" type="text"/>
+<div class="absolute right-4 top-1/2 -translate-y-1/2 text-primary opacity-0 group-focus-within:opacity-100 transition-opacity">
+<span class="material-symbols-outlined">check_circle</span>
+</div>
+</div>
+<p class="flex items-center gap-1.5 px-1 text-xs text-slate-500 dark:text-[#9eb7a8]">
+<span class="material-symbols-outlined text-[16px]">info</span>
+                        Usually found on the back of the device or in Settings.
+                    </p>
+</div>
+</div>
+<div class="h-px w-full bg-slate-200 dark:bg-surface-border"></div>
+<!-- Issue Description -->
+<div class="space-y-5">
+<div class="flex flex-col gap-2">
+<div class="flex justify-between items-end px-1">
+<label class="text-sm font-medium text-slate-700 dark:text-white">What's wrong?</label>
+<span class="text-xs text-slate-400 dark:text-[#9eb7a8]">0/500</span>
+</div>
+<textarea class="min-h-[120px] w-full resize-none rounded-lg border border-slate-200 dark:border-surface-border bg-white dark:bg-surface-dark px-5 py-4 text-base font-normal text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-[#9eb7a8] focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all" placeholder="Describe the issue... (e.g. Screen cracked, Battery drains fast)"></textarea>
+</div>
+<!-- Photo Upload -->
+<div class="flex flex-col gap-3">
+<label class="text-sm font-medium ml-1 text-slate-700 dark:text-white">Upload Photos <span class="text-slate-400 dark:text-[#9eb7a8] font-normal">(Optional)</span></label>
+<div class="flex w-full gap-3 overflow-x-auto pb-2 no-scrollbar">
+<!-- Add Button -->
+<button class="group flex h-28 w-28 shrink-0 flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 dark:border-surface-border bg-slate-50 dark:bg-white/5 text-slate-400 dark:text-[#9eb7a8] transition-colors hover:border-primary hover:text-primary dark:hover:border-primary dark:hover:text-primary">
+<span class="material-symbols-outlined text-3xl">add_a_photo</span>
+<span class="text-xs font-medium">Add Photo</span>
+</button>
+<!-- Image Preview 1 -->
+<div class="relative h-28 w-28 shrink-0 overflow-hidden rounded-lg border border-slate-200 dark:border-surface-border group">
+<img class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="Cracked mobile phone screen closeup" src="https://lh3.googleusercontent.com/aida-public/AB6AXuB0FC0a8_dn-cl1sRCFzpU-CNKUmUnWxyA2qHxJJrFckQDPwLlsQ1F-0FPj2QCI76d3dGJxgXgY46nI4vcZmq06HP2wuFSk0XGQfN4wcrhH1hP596LKYMAew09fG_phg4e2jvoj63q0zqp2FgNuh1zI0WxURqbq-s3TW7Q9A0mUMZ1uNUMunl983Un0fI0VX8ZT-_D9C1JEMbQJOrHKTaF5X8rdPDktLfYg0Ln9yIjpHUyoMzoQsVMrR8hxgtYbuguhtK01GX0eeL4"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<button class="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow-md opacity-0 transform scale-75 group-hover:opacity-100 group-hover:scale-100 transition-all">
+<span class="material-symbols-outlined text-[16px]">close</span>
+</button>
+</div>
+<!-- Image Preview 2 -->
+<div class="relative h-28 w-28 shrink-0 overflow-hidden rounded-lg border border-slate-200 dark:border-surface-border group">
+<img class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110" data-alt="Back of smartphone with scratches" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD1k2uH1_pYF5y3fyiF6zdkCSJXd_vQ0UkwRsUE-Yhe_S7QPwJg86SUYBtCvPgL0CODDyxhdF1zYZ_mmFHpg6hMzKi9qxwcAmeXNFvNuBxmGnA95FGQ2hn5E2aNAcRXRVMeT1eOt7-gESQnrOZ-pHNC8OHRpNEe_ELTeA6aI2TjKJCA17A3CjJ3-UiDKmCdZwWF-7aV4KX3Wn7nRBHorkUMm-7l-zxaqvQ6VzJJfTQTA_d2dZJhczRHizjINKO-Y0HUIuCO9tgNF_w"/>
+<div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+<button class="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-full bg-red-500 text-white shadow-md opacity-0 transform scale-75 group-hover:opacity-100 group-hover:scale-100 transition-all">
+<span class="material-symbols-outlined text-[16px]">close</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+</div>
+<!-- Sticky Footer -->
+<div class="absolute bottom-0 left-0 right-0 z-20 bg-gradient-to-t from-background-light via-background-light to-transparent dark:from-background-dark dark:via-background-dark dark:to-transparent px-6 py-6 pt-12">
+<button class="flex w-full items-center justify-center gap-2 rounded-full bg-primary px-6 py-4 text-base font-bold text-[#112117] shadow-[0_4px_20px_rgba(54,226,123,0.25)] transition-transform hover:scale-[1.02] hover:shadow-[0_6px_25px_rgba(54,226,123,0.35)] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100">
+                Proceed to Booking
+                <span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</div>
+</div>
+</body></html>

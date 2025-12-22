@@ -28,7 +28,7 @@ export function AvatarSelector({ currentAvatar, onSelect }: AvatarSelectorProps)
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>
                 <div className="relative group cursor-pointer">
-                    <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-white shadow-neumorph bg-slate-100 flex items-center justify-center">
+                    <div className="w-16 h-16 md:w-24 md:h-24 rounded-full overflow-hidden border-4 border-white shadow-neumorph bg-slate-100 flex items-center justify-center">
                         {currentAvatar ? (
                             <img
                                 src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${currentAvatar}`}
@@ -36,7 +36,7 @@ export function AvatarSelector({ currentAvatar, onSelect }: AvatarSelectorProps)
                                 className="w-full h-full object-cover"
                             />
                         ) : (
-                            <User className="w-10 h-10 text-slate-400" />
+                            <User className="w-8 h-8 md:w-10 md:h-10 text-slate-400" />
                         )}
                     </div>
                     <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">

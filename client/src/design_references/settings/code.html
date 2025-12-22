@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>App Settings - Promise Electronics</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+            extend: {
+                colors: {
+                    "primary": "#36e27b",
+                    "background-light": "#f6f8f7",
+                    "background-dark": "#112117",
+                    "card-light": "#ffffff",
+                    "card-dark": "#1c3024", // Slightly lighter than background-dark
+                },
+                fontFamily: {
+                    "display": ["Spline Sans", "sans-serif"]
+                },
+                borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "2.5rem", "2xl": "3rem", "full": "9999px"},
+            },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }.no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white min-h-screen flex flex-col antialiased selection:bg-primary selection:text-black">
+<header class="sticky top-0 z-50 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md">
+<div class="px-4 py-4 flex items-center justify-between">
+<div class="flex items-center gap-3">
+<button class="flex items-center justify-center w-10 h-10 rounded-full hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined text-2xl">arrow_back</span>
+</button>
+<h1 class="text-2xl font-bold tracking-tight">Settings</h1>
+</div>
+<div class="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden border-2 border-transparent hover:border-primary transition-colors cursor-pointer bg-cover bg-center" data-alt="User profile avatar showing a smiling person" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuDx8sYFsmKVMNU-larkKCDjPPtFo9eEOyIQOz55n5Zj-U8SmHuv0oFaULFDSiFbglMQ4tTqVRQQGh6Gnkd7ZycKpkZNxucqVExSmHdV4J25_A8y3aBsJ4p9Z_dhkghtlCvbnjjLh6rUDwPU1bUFwh52o6Ov44tAbXbuY0evKoOnYhFkCrqVwF5Zu720rieE2DAvBIMMQvQ3LZqoEo7xsG6q6eUFlDDvlXsDhWuLHt6KQ_nQ6-AQhYBOmtB4yV4ad2_hFRbSftlxq6M');">
+</div>
+</div>
+</header>
+<main class="flex-1 px-4 pb-8 max-w-md mx-auto w-full">
+<div class="mb-6 mt-2">
+<h2 class="text-sm font-medium text-slate-500 dark:text-[#9eb7a8] uppercase tracking-wider ml-1">Personalize</h2>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<div class="col-span-2 bg-card-light dark:bg-card-dark p-5 rounded-lg shadow-sm dark:shadow-none border border-gray-100 dark:border-white/5">
+<div class="flex flex-col gap-4">
+<div class="flex items-center gap-3 mb-1">
+<div class="w-8 h-8 rounded-full bg-primary/20 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined text-lg">palette</span>
+</div>
+<span class="font-bold text-lg">Appearance</span>
+</div>
+<div class="flex h-12 w-full items-center justify-center rounded-full bg-gray-100 dark:bg-[#111714] p-1.5 border border-transparent dark:border-white/5">
+<label class="group flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-full px-2 has-[:checked]:bg-white dark:has-[:checked]:bg-[#29382f] has-[:checked]:shadow-sm has-[:checked]:text-black dark:has-[:checked]:text-primary transition-all duration-200">
+<span class="flex items-center gap-2 truncate text-sm font-medium text-slate-500 dark:text-[#9eb7a8] group-has-[:checked]:text-slate-900 dark:group-has-[:checked]:text-primary">
+<span class="material-symbols-outlined text-[18px]">light_mode</span>
+                                Light
+                            </span>
+<input checked="" class="invisible w-0 absolute" name="theme_toggle" type="radio" value="Light"/>
+</label>
+<label class="group flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-full px-2 has-[:checked]:bg-white dark:has-[:checked]:bg-[#29382f] has-[:checked]:shadow-sm has-[:checked]:text-black dark:has-[:checked]:text-primary transition-all duration-200">
+<span class="flex items-center gap-2 truncate text-sm font-medium text-slate-500 dark:text-[#9eb7a8] group-has-[:checked]:text-slate-900 dark:group-has-[:checked]:text-primary">
+<span class="material-symbols-outlined text-[18px]">dark_mode</span>
+                                Dark
+                            </span>
+<input class="invisible w-0 absolute" name="theme_toggle" type="radio" value="Dark"/>
+</label>
+<label class="group flex cursor-pointer h-full grow items-center justify-center overflow-hidden rounded-full px-2 has-[:checked]:bg-white dark:has-[:checked]:bg-[#29382f] has-[:checked]:shadow-sm has-[:checked]:text-black dark:has-[:checked]:text-primary transition-all duration-200">
+<span class="flex items-center gap-2 truncate text-sm font-medium text-slate-500 dark:text-[#9eb7a8] group-has-[:checked]:text-slate-900 dark:group-has-[:checked]:text-primary">
+<span class="material-symbols-outlined text-[18px]">contrast</span>
+                                Auto
+                            </span>
+<input class="invisible w-0 absolute" name="theme_toggle" type="radio" value="System"/>
+</label>
+</div>
+</div>
+</div>
+<div class="col-span-1 bg-card-light dark:bg-card-dark p-5 rounded-lg shadow-sm dark:shadow-none border border-gray-100 dark:border-white/5 flex flex-col justify-between aspect-square group relative overflow-hidden">
+<div class="absolute top-0 right-0 p-5 opacity-10 pointer-events-none">
+<span class="material-symbols-outlined text-6xl rotate-12">notifications</span>
+</div>
+<div class="w-10 h-10 rounded-full bg-primary flex items-center justify-center text-black shadow-lg shadow-primary/20 z-10">
+<span class="material-symbols-outlined">notifications_active</span>
+</div>
+<div class="z-10">
+<div class="flex justify-between items-end">
+<span class="font-bold text-base leading-tight">Push<br/>Notifs</span>
+<label class="relative flex h-[24px] w-[44px] cursor-pointer items-center rounded-full border-none bg-slate-200 dark:bg-[#111714] p-1 transition-colors has-[:checked]:bg-primary has-[:checked]:justify-end">
+<div class="h-[18px] w-[18px] rounded-full bg-white shadow-sm transition-all"></div>
+<input checked="" class="invisible absolute" type="checkbox"/>
+</label>
+</div>
+</div>
+</div>
+<div class="col-span-1 bg-card-light dark:bg-card-dark p-5 rounded-lg shadow-sm dark:shadow-none border border-gray-100 dark:border-white/5 flex flex-col justify-between aspect-square cursor-pointer hover:bg-gray-50 dark:hover:bg-[#233b2d] transition-colors group">
+<div class="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center text-orange-500 dark:text-orange-400">
+<span class="material-symbols-outlined">lock</span>
+</div>
+<div>
+<div class="flex justify-between items-end w-full">
+<span class="font-bold text-base leading-tight">Privacy<br/>&amp; Data</span>
+<div class="w-8 h-8 rounded-full bg-transparent flex items-center justify-center group-hover:bg-white/10 group-hover:translate-x-1 transition-all">
+<span class="material-symbols-outlined text-slate-400">chevron_right</span>
+</div>
+</div>
+</div>
+</div>
+<div class="col-span-2 bg-card-light dark:bg-card-dark rounded-lg shadow-sm dark:shadow-none border border-gray-100 dark:border-white/5 overflow-hidden">
+<div class="p-5 pb-2">
+<span class="text-xs font-semibold uppercase tracking-widest text-slate-400 dark:text-[#9eb7a8]">General</span>
+</div>
+<div class="flex flex-col">
+<button class="flex items-center justify-between p-5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-100 dark:border-white/5">
+<div class="flex items-center gap-3">
+<div class="bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 w-8 h-8 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-lg">language</span>
+</div>
+<span class="font-medium text-base">Language</span>
+</div>
+<div class="flex items-center gap-2 text-slate-500 dark:text-[#9eb7a8]">
+<span class="text-sm">English (US)</span>
+<span class="material-symbols-outlined text-lg">chevron_right</span>
+</div>
+</button>
+<button class="flex items-center justify-between p-5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors border-b border-gray-100 dark:border-white/5">
+<div class="flex items-center gap-3">
+<div class="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 w-8 h-8 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-lg">payments</span>
+</div>
+<span class="font-medium text-base">Currency</span>
+</div>
+<div class="flex items-center gap-2 text-slate-500 dark:text-[#9eb7a8]">
+<span class="text-sm">USD ($)</span>
+<span class="material-symbols-outlined text-lg">chevron_right</span>
+</div>
+</button>
+<button class="flex items-center justify-between p-5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+<div class="flex items-center gap-3">
+<div class="bg-pink-100 dark:bg-pink-900/30 text-pink-600 dark:text-pink-400 w-8 h-8 rounded-full flex items-center justify-center">
+<span class="material-symbols-outlined text-lg">location_on</span>
+</div>
+<span class="font-medium text-base">Location Services</span>
+</div>
+<div class="flex items-center gap-2 text-slate-500 dark:text-[#9eb7a8]">
+<span class="text-sm">While using</span>
+<span class="material-symbols-outlined text-lg">chevron_right</span>
+</div>
+</button>
+</div>
+</div>
+<div class="col-span-2 bg-card-light dark:bg-card-dark p-1 rounded-lg shadow-sm dark:shadow-none border border-gray-100 dark:border-white/5 flex flex-col gap-1">
+<button class="flex items-center justify-between p-4 rounded-md hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
+<span class="font-medium">About Promise Electronics</span>
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">open_in_new</span>
+</button>
+<div class="h-px bg-gray-100 dark:bg-white/5 mx-4"></div>
+<button class="flex items-center justify-between p-4 rounded-md hover:bg-gray-50 dark:hover:bg-white/5 transition-colors group">
+<span class="font-medium">Terms of Service</span>
+<span class="material-symbols-outlined text-slate-400 group-hover:text-primary transition-colors">description</span>
+</button>
+</div>
+</div>
+<div class="mt-8 flex flex-col items-center gap-6">
+<div class="bg-card-light dark:bg-card-dark px-4 py-1.5 rounded-full border border-gray-100 dark:border-white/5 shadow-sm">
+<span class="text-xs font-medium text-slate-400 dark:text-[#9eb7a8]">Version 2.4.0 (Build 302)</span>
+</div>
+<button class="w-full py-4 rounded-lg border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 font-bold hover:bg-red-50 dark:hover:bg-red-900/20 transition-all flex items-center justify-center gap-2">
+<span class="material-symbols-outlined">logout</span>
+                Log Out
+            </button>
+</div>
+<div class="h-10"></div>
+</main>
+
+</body></html>

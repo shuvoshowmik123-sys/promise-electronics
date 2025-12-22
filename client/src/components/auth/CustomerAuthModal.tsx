@@ -52,9 +52,18 @@ export function CustomerAuthModal({
       return;
     }
 
+    // Validate 10-digit phone number
+    const cleanPhone = loginPhone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      toast.error("Please enter a valid 10-digit mobile number");
+      return;
+    }
+
+    const fullPhone = "+880" + cleanPhone;
+
     setIsLoading(true);
     try {
-      await login(loginPhone, loginPassword);
+      await login(fullPhone, loginPassword);
       toast.success("Logged in successfully!");
       onOpenChange(false);
       onSuccess?.();
@@ -72,6 +81,13 @@ export function CustomerAuthModal({
       return;
     }
 
+    // Validate 10-digit phone number
+    const cleanPhone = registerPhone.replace(/\D/g, '');
+    if (cleanPhone.length !== 10) {
+      toast.error("Please enter a valid 10-digit mobile number");
+      return;
+    }
+
     if (registerPassword.length < 6) {
       toast.error("Password must be at least 6 characters");
       return;
@@ -82,11 +98,13 @@ export function CustomerAuthModal({
       return;
     }
 
+    const fullPhone = "+880" + cleanPhone;
+
     setIsLoading(true);
     try {
       await register({
         name: registerName,
-        phone: registerPhone,
+        phone: fullPhone,
         email: registerEmail || undefined,
         address: registerAddress || undefined,
         password: registerPassword,
@@ -162,15 +180,21 @@ export function CustomerAuthModal({
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="login-phone">Phone Number</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <div className="relative flex items-center">
+                  <div className="absolute left-3 flex items-center gap-1 text-muted-foreground">
+                    <Phone className="h-4 w-4" />
+                    <span className="text-sm font-semibold select-none text-foreground">+880</span>
+                  </div>
                   <Input
                     id="login-phone"
                     type="tel"
-                    placeholder="01XXXXXXXXX"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="1XXXXXXXXX"
                     value={loginPhone}
-                    onChange={(e) => setLoginPhone(e.target.value)}
-                    className="pl-10"
+                    onChange={(e) => setLoginPhone(e.target.value.replace(/\D/g, ''))}
+                    maxLength={10}
+                    className="pl-[4.25rem]"
                     data-testid="input-login-phone"
                   />
                 </div>
@@ -225,15 +249,21 @@ export function CustomerAuthModal({
 
               <div className="space-y-2">
                 <Label htmlFor="register-phone">Phone Number *</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                <div className="relative flex items-center">
+                  <div className="absolute left-3 flex items-center gap-1 text-muted-foreground">
+                    <Phone className="h-4 w-4" />
+                    <span className="text-sm font-semibold select-none text-foreground">+880</span>
+                  </div>
                   <Input
                     id="register-phone"
                     type="tel"
-                    placeholder="01XXXXXXXXX"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    placeholder="1XXXXXXXXX"
                     value={registerPhone}
-                    onChange={(e) => setRegisterPhone(e.target.value)}
-                    className="pl-10"
+                    onChange={(e) => setRegisterPhone(e.target.value.replace(/\D/g, ''))}
+                    maxLength={10}
+                    className="pl-[4.25rem]"
                     data-testid="input-register-phone"
                   />
                 </div>

@@ -12,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { MediaViewer } from "@/components/MediaViewer";
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { playNotificationSound } from "@/lib/notification-sound";
+import { playNotificationSound, type NotificationTone } from "@/lib/notification-sound";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { serviceRequestsApi, adminQuotesApi, settingsApi, adminStageApi, jobTicketsApi } from "@/lib/api";
 import { useAdminSSE } from "@/contexts/AdminSSEContext";
@@ -84,21 +84,29 @@ export default function AdminServiceRequestsPage() {
     }
   }, [requests, selectedRequest]);
 
-  // Play notification sound when new requests arrive via polling
-  useEffect(() => {
-    if (requests.length > 0 && previousRequestCountRef.current > 0) {
-      if (requests.length > previousRequestCountRef.current) {
-        playNotificationSound();
-      }
-    }
-    previousRequestCountRef.current = requests.length;
-  }, [requests.length]);
-
-  // Fetch settings to check developer mode
+  // Fetch settings
   const { data: settings = [] } = useQuery({
     queryKey: ["settings"],
     queryFn: settingsApi.getAll,
   });
+
+  // Get notification tone from settings
+  const notificationTone = useMemo(() => {
+    const setting = settings.find(s => s.key === "notification_tone");
+    return (setting?.value as NotificationTone) || "default";
+  }, [settings]);
+
+  // Play notification sound when new requests arrive via polling
+  useEffect(() => {
+    if (requests.length > 0 && previousRequestCountRef.current > 0) {
+      if (requests.length > previousRequestCountRef.current) {
+        playNotificationSound(notificationTone);
+      }
+    }
+    previousRequestCountRef.current = requests.length;
+  }, [requests.length, notificationTone]);
+
+
 
   const developerMode = settings.find(s => s.key === "developer_mode")?.value === "true";
 

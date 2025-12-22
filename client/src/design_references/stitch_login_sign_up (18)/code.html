@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Shop Home - Promise Electronics</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "surface-dark": "#1c2620",
+                        "surface-highlight": "#29382f",
+                        "text-secondary": "#9eb7a8"
+                    },
+                    fontFamily: {
+                        "display": ["Spline Sans", "Noto Sans", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar hiding */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        .material-symbols-outlined.filled {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white min-h-screen pb-24 relative selection:bg-primary selection:text-background-dark">
+<!-- Sticky Header -->
+<header class="sticky top-0 z-30 flex items-center justify-between p-4 bg-background-light/95 dark:bg-background-dark/95 backdrop-blur-md transition-colors duration-300">
+<div class="flex items-center gap-3">
+<div class="size-10 rounded-full bg-surface-highlight overflow-hidden ring-2 ring-transparent group-hover:ring-primary transition-all cursor-pointer">
+<img alt="Profile Avatar" class="w-full h-full object-cover" data-alt="Portrait of a smiling user with dark hair" src="https://lh3.googleusercontent.com/aida-public/AB6AXuArpBVz4yKPBomIXVTiS7Yc1yJuNiakQA6fC77L7S7cTFQWLdbSLHFwfxg4FVrZvxHa6ucvLO6J9MtdgCoDtiLGOTBF403k9ta3152r7Wfe8qJXrpPHD43BVaLR9dgQgZFdCYtobLbJ4Vy5B9kyusx2CPE-_nkYMYYxzzsoU7nxYrBVVCNr-fE9jqPQN-vSh1hvQVSR3a9ljYaWQRJGMcrh1adLM9oChIjAtH0kstkjC6GwYyzIBsO_xf28emD3H22VzXeSxaj-o78"/>
+</div>
+<div class="flex flex-col justify-center">
+<p class="text-xs text-text-secondary leading-none mb-1">Good Morning,</p>
+<h1 class="text-sm font-bold tracking-tight leading-none">Alex Johnson</h1>
+</div>
+</div>
+<button class="relative flex items-center justify-center size-10 rounded-full bg-surface-highlight hover:bg-surface-dark active:scale-95 transition-all text-white">
+<span class="material-symbols-outlined">shopping_basket</span>
+<span class="absolute top-2 right-2 size-2.5 rounded-full bg-primary ring-2 ring-background-dark"></span>
+</button>
+</header>
+<!-- Main Content Container -->
+<main class="flex flex-col w-full h-full">
+<!-- Search Bar -->
+<section class="px-4 mb-6">
+<div class="relative group w-full h-12 rounded-full bg-surface-dark border border-transparent focus-within:border-primary/50 focus-within:ring-1 focus-within:ring-primary/50 transition-all duration-300 overflow-hidden shadow-lg shadow-black/20">
+<div class="absolute left-4 top-1/2 -translate-y-1/2 text-text-secondary group-focus-within:text-primary transition-colors">
+<span class="material-symbols-outlined">search</span>
+</div>
+<input class="w-full h-full bg-transparent border-none pl-12 pr-4 text-white placeholder:text-text-secondary focus:ring-0 text-base font-normal leading-normal" placeholder="Search parts or book a repair..." type="text"/>
+</div>
+</section>
+<!-- Category Carousel -->
+<section class="mb-8">
+<div class="flex gap-3 px-4 overflow-x-auto no-scrollbar snap-x snap-mandatory">
+<!-- Repair Category (Primary) -->
+<button class="snap-start shrink-0 flex items-center justify-center gap-2 h-10 pl-3 pr-5 rounded-full bg-primary/10 border border-primary/40 text-primary active:bg-primary/20 transition-all">
+<span class="material-symbols-outlined text-[20px]">handyman</span>
+<span class="text-sm font-bold leading-normal">Repairs</span>
+</button>
+<!-- Standard Categories -->
+<button class="snap-start shrink-0 flex items-center justify-center gap-2 h-10 pl-3 pr-5 rounded-full bg-surface-highlight hover:bg-surface-dark text-white active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[20px] text-text-secondary">settings_remote</span>
+<span class="text-sm font-medium leading-normal">Remotes</span>
+</button>
+<button class="snap-start shrink-0 flex items-center justify-center gap-2 h-10 pl-3 pr-5 rounded-full bg-surface-highlight hover:bg-surface-dark text-white active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[20px] text-text-secondary">cable</span>
+<span class="text-sm font-medium leading-normal">Cables</span>
+</button>
+<button class="snap-start shrink-0 flex items-center justify-center gap-2 h-10 pl-3 pr-5 rounded-full bg-surface-highlight hover:bg-surface-dark text-white active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[20px] text-text-secondary">developer_board</span>
+<span class="text-sm font-medium leading-normal">Parts</span>
+</button>
+<button class="snap-start shrink-0 flex items-center justify-center gap-2 h-10 pl-3 pr-5 rounded-full bg-surface-highlight hover:bg-surface-dark text-white active:scale-95 transition-all">
+<span class="material-symbols-outlined text-[20px] text-text-secondary">smartphone</span>
+<span class="text-sm font-medium leading-normal">Screens</span>
+</button>
+</div>
+</section>
+<!-- Promotional Banner -->
+<section class="px-4 mb-8">
+<div class="relative w-full rounded-xl overflow-hidden bg-surface-dark shadow-xl group">
+<div class="absolute inset-0 bg-gradient-to-r from-surface-dark via-surface-dark/95 to-transparent z-10"></div>
+<!-- Background Image -->
+<div class="absolute inset-0 bg-cover bg-center opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="Technician repairing electronic circuit board with precision tools" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD7R8klmsnydt8h30DsS1PGb3j07W2n7iSTWhfEG8-jXqlNfBm5adapmDZZK9KJysW72UktRyEhf5WkcSvosiOgjJFaxMNdedhx9liYww7yW_Tx0oNuyL9kLGumGHHgykrrKR2TEmv8mfCO-TTnIsCj_IoVJKVq_mlAwEAVSQ4mLThhqJAluX6zSi5Kglf53O-j-EW6xCa4wbzfF5dzN9NodeqsJDzV32T1JGS00jFJhK8QNhriSwvtqUPXAvnnQhet-In9LAWZyf4');"></div>
+<div class="relative z-20 p-5 flex flex-col items-start gap-4">
+<div class="flex flex-col gap-1">
+<span class="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-primary text-background-dark mb-1 w-fit">Fast Service</span>
+<h2 class="text-xl md:text-2xl font-bold text-white leading-tight">Same Day Repair</h2>
+<p class="text-sm text-text-secondary max-w-[200px]">Get your electronics fixed today by our certified experts.</p>
+</div>
+<button class="flex items-center justify-center h-9 px-5 rounded-full bg-white text-background-dark text-sm font-bold shadow-lg shadow-white/10 active:scale-95 transition-all hover:bg-primary">
+                        Book Now
+                    </button>
+</div>
+</div>
+</section>
+<!-- Featured Products Grid -->
+<section class="px-4">
+<div class="flex items-end justify-between mb-4 pb-2 border-b border-white/5">
+<h2 class="text-lg font-bold text-white tracking-wide">Featured Parts</h2>
+<button class="text-primary text-xs font-semibold hover:text-white transition-colors">View All</button>
+</div>
+<div class="grid grid-cols-2 gap-4">
+<!-- Product 1 -->
+<div class="group flex flex-col gap-3">
+<div class="relative aspect-[4/5] w-full rounded-xl bg-surface-dark overflow-hidden">
+<img alt="Sony TV Remote" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" data-alt="Sleek black television remote control on dark background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCFltaZ3gc7j3dEfk-8N9wKMvHEpaGZah791aJEn0WAg5qvCKRyCJYSRY8hu4hkgLaNe7LhJ6_9B6jl5JNEPmpvI40QZY4kDLdSXhJ17s8XhmwhX66ivCzdcS-LodS9Pwh8f7e7PMSixOT1AHnqndt6oAzUrPMhYaOtBFXa6zO2q4X7GhwumoW1d0mTbtTXZM1J-tzdV4CL2v5CnCaXwpdDik4fqM0uMTzDmsgF6y9vhiW_c9rrvP2Ef4Jz9wTLB6V8YPtOgg2cY_4"/>
+<button class="absolute bottom-3 right-3 size-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-primary hover:text-background-dark transition-all duration-300 shadow-lg active:scale-90">
+<span class="material-symbols-outlined text-[20px]">add</span>
+</button>
+<div class="absolute top-3 left-3 px-2 py-1 bg-black/40 backdrop-blur-sm rounded text-[10px] font-bold text-white uppercase tracking-wider">
+                            Sale
+                        </div>
+</div>
+<div class="flex flex-col gap-0.5">
+<div class="flex justify-between items-start gap-2">
+<h3 class="text-sm font-bold text-white truncate">Sony TV Remote</h3>
+</div>
+<p class="text-xs text-text-secondary">Original OEM Part</p>
+<p class="text-primary font-bold text-sm mt-1">$15.00</p>
+</div>
+</div>
+<!-- Product 2 -->
+<div class="group flex flex-col gap-3">
+<div class="relative aspect-[4/5] w-full rounded-xl bg-surface-dark overflow-hidden">
+<img alt="HDMI 2.1 Cable" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" data-alt="Coiled high-speed HDMI cable with gold connectors" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDxBScU-HYRP4jJS1YnmpjoKevr3Sdw3U-34wonjqmKErJNl6xu6dMr1IiJfM8SwI8W_Qrblr0vlLk87oXkWrlpjraQZ1n0WMyjXMzB2H7mYV7Tb5uxO2uJutG5DsDpLA9fDLTS7rW7-LxF-8OljD9l3ZipgWMT6jUEZVOwYaHUu4Q5WYbPx_n2f83apEw1z7ck4JMnD5u9s_ni-vEuHMVzCwZQkHqyFMhc35H5-ZbNvRvJw1O0aL5JOFVn6Rvn49l-ywpq-ooydjg"/>
+<button class="absolute bottom-3 right-3 size-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-primary hover:text-background-dark transition-all duration-300 shadow-lg active:scale-90">
+<span class="material-symbols-outlined text-[20px]">add</span>
+</button>
+</div>
+<div class="flex flex-col gap-0.5">
+<h3 class="text-sm font-bold text-white truncate">HDMI 2.1 Cable</h3>
+<p class="text-xs text-text-secondary">4K Ultra HD Support</p>
+<p class="text-primary font-bold text-sm mt-1">$12.50</p>
+</div>
+</div>
+<!-- Product 3 -->
+<div class="group flex flex-col gap-3">
+<div class="relative aspect-[4/5] w-full rounded-xl bg-surface-dark overflow-hidden">
+<img alt="Samsung Power Board" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" data-alt="Green electronic circuit board component" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDf6RE0RFUv0rNzFgFOqbvSvCNH_7Y-S8iw79gNx8KGsUcKdpAaOWF5tUGD_9XuFI0tq3ti24HjtSTZboK8cwmM8ljv8JUb8Awjf1yNuaCoDTTTmlX-ohd6aGu14_9hM1Njdhp_c9uEUkTgmCCPSFNicnOBKek_py_DlU6SFFQNmRZEZG900oI8PdP_5a5Xfyyg_HIMWuK-nF8LSFxH7KEQKvHfzUA6zNqccQ_78w_hMzQitKaNLTAbXyf2SHo4aTLQ7P8A4JQuPIY"/>
+<button class="absolute bottom-3 right-3 size-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-primary hover:text-background-dark transition-all duration-300 shadow-lg active:scale-90">
+<span class="material-symbols-outlined text-[20px]">add</span>
+</button>
+</div>
+<div class="flex flex-col gap-0.5">
+<h3 class="text-sm font-bold text-white truncate">Samsung Power Board</h3>
+<p class="text-xs text-text-secondary">Internal TV Component</p>
+<p class="text-primary font-bold text-sm mt-1">$45.00</p>
+</div>
+</div>
+<!-- Product 4 -->
+<div class="group flex flex-col gap-3">
+<div class="relative aspect-[4/5] w-full rounded-xl bg-surface-dark overflow-hidden">
+<img alt="Universal Power Cord" class="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" data-alt="Black heavy-duty power cord bundled neatly" src="https://lh3.googleusercontent.com/aida-public/AB6AXuClOxoTvGUnhWjhEAmH9Lo0mr_owCzyq9MxL9tzgLsE1GW_1MCN-9wDAJfPny6yb8tGHDtfwltjp_EBWHurAj-738XwkThuEAEjci77e9UK1VKe-aUAiHRi0DbKFnXgZN3M7tU-txS3InvEUuQQ1rCzOIElcKKsqqpAlBOYwd0_Apr15N9RSEbQtkVnphRWRSs9L7Uy32NplON8lNvYsfZcljJoCJF3va-39PtkPCvzRcLMG-3YXGqYDY_yTQy4Q8maYVb7644yDu0"/>
+<button class="absolute bottom-3 right-3 size-10 rounded-full bg-white/10 backdrop-blur-md flex items-center justify-center text-white hover:bg-primary hover:text-background-dark transition-all duration-300 shadow-lg active:scale-90">
+<span class="material-symbols-outlined text-[20px]">add</span>
+</button>
+</div>
+<div class="flex flex-col gap-0.5">
+<h3 class="text-sm font-bold text-white truncate">AC Power Cord</h3>
+<p class="text-xs text-text-secondary">Universal Fit</p>
+<p class="text-primary font-bold text-sm mt-1">$8.99</p>
+</div>
+</div>
+</div>
+</section>
+</main>
+<!-- Bottom Navigation -->
+<nav class="fixed bottom-0 left-0 right-0 z-50 bg-background-dark/80 backdrop-blur-xl border-t border-white/5 px-6 pt-2 pb-6">
+<ul class="flex justify-between items-end">
+<li class="flex-1 flex justify-center">
+<a class="flex flex-col items-center gap-1 group w-full" href="#">
+<div class="p-1 rounded-full group-hover:bg-white/5 transition-colors">
+<span class="material-symbols-outlined text-primary filled text-[26px]">home</span>
+</div>
+<span class="text-[10px] font-semibold text-primary">Home</span>
+</a>
+</li>
+<li class="flex-1 flex justify-center">
+<a class="flex flex-col items-center gap-1 group w-full text-text-secondary hover:text-white transition-colors" href="#">
+<div class="p-1 rounded-full group-hover:bg-white/5 transition-colors">
+<span class="material-symbols-outlined text-[26px]">calendar_month</span>
+</div>
+<span class="text-[10px] font-medium">Bookings</span>
+</a>
+</li>
+<li class="flex-1 flex justify-center">
+<a class="flex flex-col items-center gap-1 group w-full text-text-secondary hover:text-white transition-colors" href="#">
+<div class="p-1 rounded-full group-hover:bg-white/5 transition-colors">
+<span class="material-symbols-outlined text-[26px]">person</span>
+</div>
+<span class="text-[10px] font-medium">Account</span>
+</a>
+</li>
+<li class="flex-1 flex justify-center">
+<a class="flex flex-col items-center gap-1 group w-full text-text-secondary hover:text-white transition-colors" href="#">
+<div class="p-1 rounded-full group-hover:bg-white/5 transition-colors">
+<span class="material-symbols-outlined text-[26px]">support_agent</span>
+</div>
+<span class="text-[10px] font-medium">Support</span>
+</a>
+</li>
+</ul>
+</nav>
+</body></html>

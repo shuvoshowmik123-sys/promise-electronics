@@ -22,8 +22,33 @@ allprojects {
         google()
         mavenCentral()
     }
+    afterEvaluate {
+        tasks.withType(JavaCompile).configureEach {
+            sourceCompatibility = JavaVersion.VERSION_17
+            targetCompatibility = JavaVersion.VERSION_17
+            options.release = null
+        }
+    }
+}
+
+// Force Java 17 for all tasks
+tasks.withType(JavaCompile).configureEach {
+    options.release = 17
 }
 
 task clean(type: Delete) {
     delete rootProject.buildDir
+}
+
+subprojects {
+    afterEvaluate {
+        if (project.hasProperty("android")) {
+            android {
+                compileOptions {
+                    sourceCompatibility = JavaVersion.VERSION_17
+                    targetCompatibility = JavaVersion.VERSION_17
+                }
+            }
+        }
+    }
 }

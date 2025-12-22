@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Not Logged In Profile</title>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#36e27b",
+              "background-light": "#f6f8f7",
+              "background-dark": "#112117",
+            },
+            fontFamily: {
+              "display": ["Spline Sans", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+          font-variation-settings:
+          'FILL' 0,
+          'wght' 400,
+          'GRAD' 0,
+          'opsz' 24
+        }
+        .icon-filled {
+            font-variation-settings: 'FILL' 1;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light font-display text-gray-900 antialiased selection:bg-primary selection:text-background-dark">
+<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden pb-28">
+<header class="sticky top-0 z-20 flex items-center justify-between px-6 py-4 bg-background-light/90 backdrop-blur-md transition-all duration-300">
+<div class="w-10"></div>
+<h1 class="text-lg font-bold tracking-tight">Profile</h1>
+<div class="w-10"></div>
+</header>
+<main class="grid grid-cols-2 gap-4 px-5 pt-2 pb-10">
+<div class="col-span-2 relative overflow-hidden rounded-[2.5rem] bg-white p-6 shadow-sm border border-gray-200 flex items-center gap-6 group hover:border-primary/30 transition-all duration-300">
+<div class="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-primary/5 blur-3xl group-hover:bg-primary/10 transition-all"></div>
+<div class="relative h-20 w-20 shrink-0 flex items-center justify-center rounded-full bg-gray-50 border-2 border-white shadow-md text-gray-400">
+<span class="material-symbols-outlined text-[40px]">person</span>
+</div>
+<div class="flex flex-col flex-1 min-w-0 z-10">
+<h2 class="text-[22px] font-bold leading-tight truncate">Welcome Guest</h2>
+<p class="text-sm font-medium text-gray-500 truncate mb-3">Sign in to view your profile</p>
+<button class="flex w-fit items-center gap-2 rounded-full bg-primary px-6 py-2 text-xs font-bold text-background-dark hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20">
+<span>Log In / Sign Up</span>
+</button>
+</div>
+</div>
+<div class="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-gray-50 p-5 border border-gray-200 min-h-[160px] opacity-60 select-none cursor-not-allowed">
+<div class="absolute right-5 top-5">
+<span class="material-symbols-outlined text-gray-400 text-lg">lock</span>
+</div>
+<div class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-gray-400 grayscale">
+<span class="material-symbols-outlined icon-filled">location_on</span>
+</div>
+<div>
+<h3 class="text-[17px] font-bold leading-tight text-gray-500">My<br/>Addresses</h3>
+<p class="mt-1 text-[11px] font-medium text-gray-400">Login to view</p>
+</div>
+</div>
+<div class="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-gray-50 p-5 border border-gray-200 min-h-[160px] opacity-60 select-none cursor-not-allowed">
+<div class="absolute right-5 top-5">
+<span class="material-symbols-outlined text-gray-400 text-lg">lock</span>
+</div>
+<div class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-gray-400 grayscale">
+<span class="material-symbols-outlined">support_agent</span>
+</div>
+<div>
+<h3 class="text-[17px] font-bold leading-tight text-gray-500">Help &amp;<br/>Support</h3>
+<p class="mt-1 text-[11px] font-medium text-gray-400">Login to access</p>
+</div>
+</div>
+<div class="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-gray-50 p-5 border border-gray-200 min-h-[160px] opacity-60 select-none cursor-not-allowed">
+<div class="absolute right-5 top-5">
+<span class="material-symbols-outlined text-gray-400 text-lg">lock</span>
+</div>
+<div class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-gray-400 grayscale">
+<span class="material-symbols-outlined">build</span>
+</div>
+<div>
+<h3 class="text-[17px] font-bold leading-tight text-gray-500">Repair<br/>History</h3>
+</div>
+</div>
+<div class="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-gray-50 p-5 border border-gray-200 min-h-[160px] opacity-60 select-none cursor-not-allowed">
+<div class="absolute right-5 top-5">
+<span class="material-symbols-outlined text-gray-400 text-lg">lock</span>
+</div>
+<div class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-gray-400 grayscale">
+<span class="material-symbols-outlined">inventory_2</span>
+</div>
+<div>
+<h3 class="text-[17px] font-bold leading-tight text-gray-500">Order<br/>History</h3>
+</div>
+</div>
+<div class="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-gray-50 p-5 border border-gray-200 min-h-[160px] opacity-60 select-none cursor-not-allowed">
+<div class="absolute right-5 top-5">
+<span class="material-symbols-outlined text-gray-400 text-lg">lock</span>
+</div>
+<div class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-200 text-gray-400 grayscale">
+<span class="material-symbols-outlined">credit_card</span>
+</div>
+<div>
+<h3 class="text-[17px] font-bold leading-tight text-gray-500">Payment<br/>Methods</h3>
+</div>
+</div>
+<a class="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-white p-5 shadow-sm border border-gray-200 hover:scale-[1.02] active:scale-[0.98] transition-all duration-300 group min-h-[160px]" href="#">
+<div class="absolute right-0 top-0 p-5 opacity-0 group-hover:opacity-100 transition-opacity">
+<span class="material-symbols-outlined text-gray-300 -rotate-45">arrow_forward</span>
+</div>
+<div class="flex h-12 w-12 items-center justify-center rounded-full bg-gray-100 text-gray-600">
+<span class="material-symbols-outlined">settings</span>
+</div>
+<div>
+<h3 class="text-[17px] font-bold leading-tight">App<br/>Settings</h3>
+</div>
+</a>
+</main>
+<div class="fixed bottom-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-xl border-t border-gray-200 pb-8 pt-4 px-6">
+<div class="flex justify-between items-center max-w-sm mx-auto">
+<button class="flex flex-col items-center gap-1.5 text-gray-400 hover:text-primary transition-colors group w-16">
+<span class="material-symbols-outlined text-[26px] group-hover:-translate-y-0.5 transition-transform">home</span>
+<span class="text-[11px] font-medium">Home</span>
+</button>
+<button class="flex flex-col items-center gap-1.5 text-gray-400 hover:text-primary transition-colors group w-16">
+<span class="material-symbols-outlined text-[26px] group-hover:-translate-y-0.5 transition-transform">shopping_bag</span>
+<span class="text-[11px] font-medium">Shop</span>
+</button>
+<button class="flex flex-col items-center gap-1.5 text-gray-400 hover:text-primary transition-colors group w-16">
+<span class="material-symbols-outlined text-[26px] group-hover:-translate-y-0.5 transition-transform">calendar_month</span>
+<span class="text-[11px] font-medium">Bookings</span>
+</button>
+<button class="flex flex-col items-center gap-1.5 text-primary w-16">
+<span class="material-symbols-outlined text-[26px] icon-filled drop-shadow-[0_0_8px_rgba(54,226,123,0.5)]">person</span>
+<span class="text-[11px] font-bold">Profile</span>
+</button>
+</div>
+</div>
+</div>
+
+</body></html>

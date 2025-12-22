@@ -111,27 +111,27 @@ export default function TechnicianDashboard() {
           </div>
           <div className="flex gap-2">
             {!todayAttendance ? (
-              <Button 
-                onClick={() => checkInMutation.mutate()} 
+              <Button
+                onClick={() => checkInMutation.mutate()}
                 disabled={checkInMutation.isPending}
                 data-testid="button-check-in"
               >
-                <CheckCircle className="w-4 h-4 mr-2" /> 
+                <CheckCircle className="w-4 h-4 mr-2" />
                 {checkInMutation.isPending ? "Checking In..." : "Check In"}
               </Button>
             ) : todayAttendance.checkOutTime ? (
               <Badge variant="outline" className="px-4 py-2 text-green-600 border-green-300">
-                <CheckCircle className="w-4 h-4 mr-2" /> 
+                <CheckCircle className="w-4 h-4 mr-2" />
                 Attendance Complete
               </Badge>
             ) : (
-              <Button 
-                variant="outline" 
-                onClick={() => checkOutMutation.mutate()} 
+              <Button
+                variant="outline"
+                onClick={() => checkOutMutation.mutate()}
                 disabled={checkOutMutation.isPending}
                 data-testid="button-check-out"
               >
-                <LogOut className="w-4 h-4 mr-2" /> 
+                <LogOut className="w-4 h-4 mr-2" />
                 {checkOutMutation.isPending ? "Checking Out..." : "Check Out"}
               </Button>
             )}
@@ -194,7 +194,7 @@ export default function TechnicianDashboard() {
             <Wrench className="w-5 h-5" />
             My Assigned Jobs
           </h2>
-          
+
           {jobsLoading ? (
             <div className="text-center py-8 text-muted-foreground">Loading jobs...</div>
           ) : activeJobs.length === 0 ? (
@@ -220,7 +220,7 @@ export default function TechnicianDashboard() {
                       <p className="text-xs text-muted-foreground mb-1">{job.screenSize}</p>
                     )}
                     <p className="text-muted-foreground text-sm mb-3">{job.issue}</p>
-                    
+
                     <div className="flex items-center justify-between mb-3">
                       <Badge className={getStatusColor(job.status)}>{job.status}</Badge>
                       <div className="flex items-center gap-1 text-xs text-muted-foreground">
@@ -251,7 +251,7 @@ export default function TechnicianDashboard() {
             <Calendar className="w-5 h-5" />
             Today's Schedule
           </h2>
-          
+
           {todayJobs.length === 0 ? (
             <Card className="bg-slate-50">
               <CardContent className="py-8 text-center text-muted-foreground">
@@ -268,11 +268,10 @@ export default function TechnicianDashboard() {
                       #{index + 1}
                     </span>
                   </div>
-                  <div className={`flex-1 p-3 rounded border ${
-                    job.priority === "High" ? "bg-red-50 border-red-200" :
-                    job.priority === "Medium" ? "bg-orange-50 border-orange-200" :
-                    "bg-blue-50 border-blue-200"
-                  }`}>
+                  <div className={`flex-1 p-3 rounded border ${job.priority === "High" ? "bg-red-50 border-red-200" :
+                      job.priority === "Medium" ? "bg-orange-50 border-orange-200" :
+                        "bg-blue-50 border-blue-200"
+                    }`}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-mono text-xs">{job.id}</span>
                       <Badge className={getStatusColor(job.status)} variant="secondary">{job.status}</Badge>

@@ -269,7 +269,7 @@ export default function MyProfilePage() {
 
   const handleAvatarUpdate = async (avatar: string) => {
     try {
-      await updateProfile({ avatar });
+      await updateProfile({ profileImageUrl: avatar });
       toast({ title: "Avatar updated successfully" });
     } catch (error) {
       toast({ title: "Failed to update avatar", variant: "destructive" });
@@ -352,18 +352,18 @@ export default function MyProfilePage() {
         transition={{ duration: 0.5 }}
       >
         <div className="container mx-auto px-4">
-          <div className="flex items-center gap-3 md:gap-6">
-            <div className="w-14 h-14 md:w-20 md:h-20 flex-shrink-0">
+          <div className="flex items-center gap-4 md:gap-6">
+            <div className="w-16 h-16 md:w-24 md:h-24 flex-shrink-0">
               <AvatarSelector
-                currentAvatar={(customer as any).avatar}
+                currentAvatar={(customer as any).profileImageUrl}
                 onSelect={handleAvatarUpdate}
               />
             </div>
-            <div className="min-w-0">
-              <h1 className="text-xl md:text-4xl font-heading font-bold mb-1 truncate">
+            <div className="min-w-0 flex-1 ml-2 md:ml-0">
+              <h1 className="text-lg md:text-4xl font-heading font-bold mb-1 truncate">
                 Welcome, {customer.name}!
               </h1>
-              <p className="text-white/80 text-sm md:text-base">
+              <p className="text-white/80 text-xs md:text-base">
                 Manage your profile and track your orders
               </p>
             </div>

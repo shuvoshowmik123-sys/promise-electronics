@@ -52,19 +52,19 @@ function parseImages(imagesJson: string | null): string[] {
 
 function ImageGallery({ images }: { images: string[] }) {
   const [currentIndex, setCurrentIndex] = useState(0);
-  
+
   if (images.length === 0) {
     return null;
   }
-  
+
   const goToPrevious = () => {
     setCurrentIndex((prev) => (prev === 0 ? images.length - 1 : prev - 1));
   };
-  
+
   const goToNext = () => {
     setCurrentIndex((prev) => (prev === images.length - 1 ? 0 : prev + 1));
   };
-  
+
   return (
     <div className="space-y-4">
       <div className="relative aspect-video w-full rounded-xl overflow-hidden bg-slate-100">
@@ -95,9 +95,8 @@ function ImageGallery({ images }: { images: string[] }) {
                 <button
                   key={index}
                   onClick={() => setCurrentIndex(index)}
-                  className={`w-2 h-2 rounded-full transition-colors ${
-                    index === currentIndex ? 'bg-white' : 'bg-white/50'
-                  }`}
+                  className={`w-2 h-2 rounded-full transition-colors ${index === currentIndex ? 'bg-white' : 'bg-white/50'
+                    }`}
                   data-testid={`button-dot-${index}`}
                 />
               ))}
@@ -105,16 +104,15 @@ function ImageGallery({ images }: { images: string[] }) {
           </>
         )}
       </div>
-      
+
       {images.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-2">
           {images.map((img, index) => (
             <button
               key={index}
               onClick={() => setCurrentIndex(index)}
-              className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-colors ${
-                index === currentIndex ? 'border-primary' : 'border-transparent'
-              }`}
+              className={`flex-shrink-0 w-20 h-20 rounded-lg overflow-hidden border-2 transition-colors ${index === currentIndex ? 'border-primary' : 'border-transparent'
+                }`}
               data-testid={`button-thumbnail-${index}`}
             >
               <img
@@ -134,26 +132,26 @@ export default function ServiceDetailsPage() {
   const [, params] = useRoute("/services/:id");
   const [, setLocation] = useLocation();
   const serviceId = params?.id;
-  
+
   const { data: services = [], isLoading, error } = useQuery<ServiceWithImages[]>({
     queryKey: ["serviceCatalog"],
     queryFn: serviceCatalogApi.getAll as () => Promise<ServiceWithImages[]>,
     staleTime: 5 * 60 * 1000,
   });
-  
+
   const service = services.find((s) => s.id === serviceId);
-  
+
   usePageTitle(service ? `${service.name} - Promise Electronics` : "Service Details");
-  
+
   const icon = service ? (iconMap[service.icon || ""] || <Wrench className="h-12 w-12" />) : null;
   const images = service ? parseImages(service.images ?? null) : [];
-  
+
   const handleGetQuote = () => {
     if (service) {
       setLocation(`/get-quote?service=${encodeURIComponent(service.name)}`);
     }
   };
-  
+
   if (isLoading) {
     return (
       <PublicLayout>
@@ -175,7 +173,7 @@ export default function ServiceDetailsPage() {
       </PublicLayout>
     );
   }
-  
+
   if (error) {
     return (
       <PublicLayout>
@@ -195,7 +193,7 @@ export default function ServiceDetailsPage() {
       </PublicLayout>
     );
   }
-  
+
   if (!service) {
     return (
       <PublicLayout>
@@ -215,7 +213,7 @@ export default function ServiceDetailsPage() {
       </PublicLayout>
     );
   }
-  
+
   return (
     <PublicLayout>
       <main className="flex-1">
@@ -230,7 +228,7 @@ export default function ServiceDetailsPage() {
               <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Services
             </Button>
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12">
               <div>
                 {images.length > 0 ? (
@@ -241,7 +239,7 @@ export default function ServiceDetailsPage() {
                   </div>
                 )}
               </div>
-              
+
               <div className="space-y-6">
                 <div>
                   <div className="flex items-center gap-3 mb-2">
@@ -262,15 +260,15 @@ export default function ServiceDetailsPage() {
                     <Badge variant="outline" className="mb-4">{service.category}</Badge>
                   )}
                 </div>
-                
+
                 <p className="text-lg text-muted-foreground leading-relaxed" data-testid="text-service-description">
                   {service.description}
                 </p>
-                
+
                 <div className="bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-6 rounded-xl">
                   <p className="text-sm text-muted-foreground uppercase tracking-wider mb-2">Estimated Price Range</p>
                   <p className="text-3xl md:text-4xl font-bold text-primary" data-testid="text-service-price">
-                    {formatPrice(service.minPrice) && formatPrice(service.maxPrice) 
+                    {formatPrice(service.minPrice) && formatPrice(service.maxPrice)
                       ? `${formatPrice(service.minPrice)} - ${formatPrice(service.maxPrice)}`
                       : formatPrice(service.minPrice) || formatPrice(service.maxPrice) || 'Contact for pricing'}
                   </p>
@@ -278,7 +276,7 @@ export default function ServiceDetailsPage() {
                     Final price will be determined after inspection of your device
                   </p>
                 </div>
-                
+
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
                     <CheckCircle className="h-5 w-5 text-green-500" />
@@ -297,9 +295,9 @@ export default function ServiceDetailsPage() {
                     <span>Genuine replacement parts</span>
                   </div>
                 </div>
-                
-                <Button 
-                  size="lg" 
+
+                <Button
+                  size="lg"
                   className="w-full md:w-auto"
                   onClick={handleGetQuote}
                   data-testid="button-get-quote"
@@ -311,7 +309,7 @@ export default function ServiceDetailsPage() {
             </div>
           </div>
         </section>
-        
+
         <section className="bg-primary/5 py-12 md:py-16">
           <div className="container mx-auto px-4">
             <div className="max-w-3xl mx-auto text-center">
@@ -319,7 +317,7 @@ export default function ServiceDetailsPage() {
               <p className="text-muted-foreground mb-8">
                 Our simple 4-step process ensures a hassle-free repair experience
               </p>
-              
+
               <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-left">
                 <div className="bg-white rounded-xl p-5 shadow-sm">
                   <div className="w-8 h-8 rounded-full bg-primary text-white flex items-center justify-center font-bold text-sm mb-3">1</div>

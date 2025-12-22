@@ -11,7 +11,7 @@ export const platform = Capacitor.getPlatform(); // 'android', 'ios', or 'web'
 // API base URL - for native apps, point to production server
 // For web, use same-origin (empty string)
 export const API_BASE_URL = isNative
-    ? 'https://promiseelectronics.com'
+    ? 'https://promise-electronics.vercel.app'
     : '';
 
 /**

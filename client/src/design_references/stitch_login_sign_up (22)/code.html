@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Product Details - Promise Electronics</title>
+<!-- Fonts -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<!-- Theme Configuration -->
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "surface-dark": "#1a2c22", // Slightly lighter for cards/sections
+                    },
+                    fontFamily: {
+                        "display": ["Spline Sans", "sans-serif"],
+                        "body": ["Noto Sans", "sans-serif"],
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom scrollbar hiding for cleaner UI */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+        details > summary {
+            list-style: none;
+        }
+        details > summary::-webkit-details-marker {
+            display: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-white antialiased selection:bg-primary selection:text-black">
+<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden pb-32">
+<!-- Navigation Bar -->
+<nav class="fixed top-0 left-0 right-0 z-50 flex items-center justify-between p-4 bg-background-light/80 dark:bg-background-dark/80 backdrop-blur-md border-b border-black/5 dark:border-white/5 transition-all duration-300">
+<button class="flex size-10 items-center justify-center rounded-full bg-black/5 dark:bg-white/10 text-slate-900 dark:text-white hover:bg-black/10 dark:hover:bg-white/20 transition-colors">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<h2 class="text-base font-bold leading-tight opacity-0 transition-opacity duration-300 md:opacity-100">Product Details</h2>
+<div class="flex items-center gap-2">
+<button class="flex size-10 items-center justify-center rounded-full bg-transparent text-slate-900 dark:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined">favorite</span>
+</button>
+<button class="flex size-10 items-center justify-center rounded-full bg-transparent text-slate-900 dark:text-white hover:bg-black/5 dark:hover:bg-white/10 transition-colors">
+<span class="material-symbols-outlined">share</span>
+</button>
+</div>
+</nav>
+<!-- Main Content -->
+<main class="mt-20 w-full max-w-3xl mx-auto px-4">
+<!-- Image Carousel -->
+<div class="@container mb-6">
+<div class="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-surface-dark group">
+<!-- Image -->
+<div class="absolute inset-0 bg-cover bg-center transition-transform duration-500 hover:scale-105" data-alt="Close up of an iPhone 13 OLED screen replacement part isolated on dark background" style='background-image: url("https://lh3.googleusercontent.com/aida-public/AB6AXuCQqvbrrz5BdpWEuv9-CKTgUkpEXrvYU-U9mbpWSDh4c8s466KmzlxED4GMWoeOzJKBDQuGWSVlwy09YXfwvBygm_fmKZ-Vy5vbnNf76Ui3fqPjKNcrPt3YDtukA29EL6be36FGRUFxtVgY3sCeRIhYTWLwjK2bKRg4BJ9FOiEexWVDCyLPs3Y1yePGxPvgW-aB9jAfvnnakT91fqaMfsPbKrquS7dhiunj6YP0zY5gK8kgfUHophVZ9nZk6mhx7Ld7bYhUu2ffnpY");'>
+</div>
+<!-- Gradient Overlay -->
+<div class="absolute inset-0 bg-gradient-to-t from-background-dark/80 via-transparent to-transparent"></div>
+<!-- Pagination Dots -->
+<div class="absolute bottom-4 left-0 right-0 flex justify-center gap-2">
+<div class="h-1.5 w-6 rounded-full bg-primary shadow-[0_0_10px_rgba(54,226,123,0.5)]"></div>
+<div class="size-1.5 rounded-full bg-white/30 backdrop-blur-sm"></div>
+<div class="size-1.5 rounded-full bg-white/30 backdrop-blur-sm"></div>
+<div class="size-1.5 rounded-full bg-white/30 backdrop-blur-sm"></div>
+</div>
+<!-- Floating Badge -->
+<div class="absolute top-4 left-4">
+<span class="inline-flex items-center gap-1 rounded-full bg-black/60 backdrop-blur-md px-3 py-1 text-xs font-semibold text-white border border-white/10">
+<span class="material-symbols-outlined text-[14px] text-primary">verified</span>
+                            Genuine Part
+                        </span>
+</div>
+</div>
+</div>
+<!-- Header Section -->
+<div class="flex flex-col gap-2 mb-6">
+<div class="flex items-start justify-between gap-4">
+<h1 class="text-2xl md:text-3xl font-bold leading-tight tracking-tight text-slate-900 dark:text-white">
+                        Replacement OLED Screen - iPhone 13
+                    </h1>
+</div>
+<div class="flex items-center gap-4 mt-1">
+<span class="text-3xl font-bold text-primary tracking-tight">$129.99</span>
+<div class="flex gap-2">
+<div class="flex h-7 items-center justify-center rounded-full bg-primary/20 border border-primary/20 px-3">
+<p class="text-primary text-xs font-bold uppercase tracking-wide">In Stock</p>
+</div>
+</div>
+</div>
+</div>
+<!-- Compatibility Section -->
+<div class="mb-8 rounded-2xl bg-surface-dark border border-white/5 p-4 flex items-start gap-4 shadow-sm">
+<div class="flex-shrink-0 size-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+<span class="material-symbols-outlined">phonelink_setup</span>
+</div>
+<div>
+<h3 class="text-sm font-bold text-white mb-1">Device Compatibility</h3>
+<p class="text-sm text-gray-400 leading-relaxed">
+                        Verified fit for <span class="text-white font-medium">iPhone 13</span> (Model A2638, A2483). Not compatible with Pro or Mini models.
+                    </p>
+</div>
+<div class="ml-auto self-center">
+<span class="material-symbols-outlined text-green-500">check_circle</span>
+</div>
+</div>
+<!-- Description -->
+<div class="mb-8">
+<h3 class="text-lg font-bold text-slate-900 dark:text-white mb-3">Description</h3>
+<p class="text-slate-600 dark:text-gray-400 leading-relaxed text-base font-body">
+                    Restore your device to its original glory with this premium OLED display assembly. This kit includes the digitizer, frame, and necessary adhesive for a water-resistant seal. Each unit is factory tested for color accuracy, brightness, and touch responsiveness to ensure it meets OEM specifications.
+                </p>
+</div>
+<!-- Details Accordions -->
+<div class="flex flex-col gap-4">
+<!-- Specs -->
+<details class="group bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-white/5 overflow-hidden transition-all duration-300" open="">
+<summary class="flex cursor-pointer items-center justify-between p-5 font-bold text-slate-900 dark:text-white select-none">
+<span>Specifications</span>
+<span class="material-symbols-outlined transition-transform duration-300 group-open:rotate-180">expand_more</span>
+</summary>
+<div class="px-5 pb-5 pt-0 text-slate-600 dark:text-gray-400 text-sm font-body">
+<ul class="grid grid-cols-1 gap-y-3 gap-x-8 sm:grid-cols-2">
+<li class="flex justify-between border-b border-gray-200 dark:border-white/5 pb-2">
+<span>Display Type</span>
+<span class="font-medium text-slate-900 dark:text-white">Super Retina XDR OLED</span>
+</li>
+<li class="flex justify-between border-b border-gray-200 dark:border-white/5 pb-2">
+<span>Size</span>
+<span class="font-medium text-slate-900 dark:text-white">6.1 inches</span>
+</li>
+<li class="flex justify-between border-b border-gray-200 dark:border-white/5 pb-2">
+<span>Resolution</span>
+<span class="font-medium text-slate-900 dark:text-white">2532 x 1170 px</span>
+</li>
+<li class="flex justify-between border-b border-gray-200 dark:border-white/5 pb-2">
+<span>Refresh Rate</span>
+<span class="font-medium text-slate-900 dark:text-white">60Hz</span>
+</li>
+</ul>
+</div>
+</details>
+<!-- Warranty -->
+<details class="group bg-white dark:bg-surface-dark rounded-2xl border border-gray-200 dark:border-white/5 overflow-hidden transition-all duration-300">
+<summary class="flex cursor-pointer items-center justify-between p-5 font-bold text-slate-900 dark:text-white select-none">
+<span>Warranty &amp; Returns</span>
+<span class="material-symbols-outlined transition-transform duration-300 group-open:rotate-180">expand_more</span>
+</summary>
+<div class="px-5 pb-5 pt-0 text-slate-600 dark:text-gray-400 text-sm font-body leading-relaxed">
+<div class="flex items-start gap-3 mb-3">
+<span class="material-symbols-outlined text-primary text-xl">verified_user</span>
+<p>Includes a 1-year limited warranty against manufacturing defects. Accidental damage during installation is not covered.</p>
+</div>
+<div class="flex items-start gap-3">
+<span class="material-symbols-outlined text-primary text-xl">assignment_return</span>
+<p>30-day money-back guarantee if the part is returned in original condition with seals intact.</p>
+</div>
+</div>
+</details>
+</div>
+</main>
+<!-- Sticky Bottom Action Bar -->
+<div class="fixed bottom-0 left-0 right-0 p-4 pb-8 bg-white/80 dark:bg-[#0d1410]/90 backdrop-blur-xl border-t border-gray-200 dark:border-white/5 z-40">
+<div class="max-w-3xl mx-auto flex items-center gap-4">
+<!-- Quantity Selector -->
+<div class="hidden sm:flex h-14 items-center rounded-full bg-gray-100 dark:bg-surface-dark border border-gray-200 dark:border-white/5 px-2">
+<button class="size-10 flex items-center justify-center rounded-full hover:bg-gray-200 dark:hover:bg-white/10 text-slate-600 dark:text-white transition-colors">
+<span class="material-symbols-outlined text-[20px]">remove</span>
+</button>
+<span class="w-8 text-center font-bold text-slate-900 dark:text-white">1</span>
+<button class="size-10 flex items-center justify-center rounded-full hover:bg-gray-200 dark:hover:bg-white/10 text-slate-600 dark:text-white transition-colors">
+<span class="material-symbols-outlined text-[20px]">add</span>
+</button>
+</div>
+<!-- Add to Cart Button -->
+<button class="flex-1 h-14 bg-primary hover:bg-[#2fd16f] text-[#0d1410] rounded-full font-bold text-lg flex items-center justify-between px-6 transition-all active:scale-[0.98] shadow-[0_0_20px_rgba(54,226,123,0.3)]">
+<span class="flex items-center gap-2">
+<span class="material-symbols-outlined">shopping_bag</span>
+                        Add to Cart
+                    </span>
+<span class="opacity-80 font-semibold text-base">$129.99</span>
+</button>
+</div>
+</div>
+</div>
+</body></html>
