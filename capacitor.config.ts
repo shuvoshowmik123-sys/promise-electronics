@@ -7,7 +7,7 @@ const envFile = process.env.NODE_ENV === 'production' ? '.env.production' : '.en
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 const config: CapacitorConfig = {
-  appId: 'com.promiseelectronics.app',
+  appId: 'com.promiseelectronics.customer',
   appName: 'Promise Electronics',
   webDir: 'dist/public',
   // server: {
@@ -18,7 +18,7 @@ const config: CapacitorConfig = {
     // Critical for Android 15+ - Ensures status bar icons are visible
     adjustMarginsForEdgeToEdge: "auto",
     // Custom User-Agent for Firewall Bypass (Stealth Mode - Mimic Chrome)
-    userAgentString: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36",
+    overrideUserAgent: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36",
   },
   plugins: {
     SplashScreen: {
