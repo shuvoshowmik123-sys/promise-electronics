@@ -11,6 +11,7 @@ import { AdminAuthProvider } from "@/contexts/AdminAuthContext";
 import { AdminSSEProvider } from "@/contexts/AdminSSEContext";
 import { CartProvider } from "@/contexts/CartContext";
 import { NativeThemeProvider } from "@/contexts/NativeThemeContext";
+import { PushNotificationProvider } from "@/contexts/PushNotificationContext";
 import { lazy, Suspense } from "react";
 
 // Lazy load web and admin pages
@@ -255,29 +256,6 @@ function App() {
         scopes: ['profile', 'email'],
         grantOfflineAccess: true,
       });
-
-      // Initialize Push Notifications
-      initPushNotifications().then((token) => {
-        if (token) {
-          console.log('[PUSH] Device registered with token:', token);
-          // TODO: Send this token to your backend to store for sending notifications
-        }
-      });
-
-      // Handle push notification received (while app is in foreground)
-      onPushNotificationReceived((notification) => {
-        console.log('[PUSH] Notification received:', notification);
-        // The notification sound will play automatically via native Android
-      });
-
-      // Handle push notification tapped (when user taps on notification)
-      onPushNotificationAction((notification) => {
-        console.log('[PUSH] Notification tapped:', notification);
-        // Navigate to relevant screen based on notification data
-        if (notification.data?.route) {
-          window.location.href = notification.data.route as string;
-        }
-      });
     }
   }, []);
 
@@ -285,19 +263,21 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <CartProvider>
         <CustomerAuthProvider>
-          <AdminAuthProvider>
-            <AdminSSEProvider>
-              <NativeThemeProvider>
-                <TooltipProvider>
-                  <Toaster />
-                  <SonnerToaster position="top-center" richColors />
-                  <Router />
-                  <PWAInstallPrompt />
-                  <SpeedInsights />
-                </TooltipProvider>
-              </NativeThemeProvider>
-            </AdminSSEProvider>
-          </AdminAuthProvider>
+          <PushNotificationProvider>
+            <AdminAuthProvider>
+              <AdminSSEProvider>
+                <NativeThemeProvider>
+                  <TooltipProvider>
+                    <Toaster />
+                    <SonnerToaster position="top-center" richColors />
+                    <Router />
+                    <PWAInstallPrompt />
+                    <SpeedInsights />
+                  </TooltipProvider>
+                </NativeThemeProvider>
+              </AdminSSEProvider>
+            </AdminAuthProvider>
+          </PushNotificationProvider>
         </CustomerAuthProvider>
       </CartProvider>
     </QueryClientProvider>

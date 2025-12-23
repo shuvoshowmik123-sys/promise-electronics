@@ -801,6 +801,23 @@ export async function registerRoutes(
     }
   });
 
+  // Push Notification API
+  app.post("/api/push/register", async (req, res) => {
+    try {
+      const { userId, token, platform } = req.body;
+
+      if (!userId || !token) {
+        return res.status(400).json({ error: "Missing userId or token" });
+      }
+
+      await import("./pushService.js").then(m => m.pushService.registerDeviceToken(userId, token, platform));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Push registration error:", error);
+      res.status(500).json({ error: "Failed to register push token" });
+    }
+  });
+
   app.post("/api/inventory", async (req, res) => {
     try {
       const validated = insertInventoryItemSchema.parse(req.body);
