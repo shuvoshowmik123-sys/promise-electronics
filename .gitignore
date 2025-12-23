@@ -9,4 +9,3 @@ sqlite.db
 *.log
 npm-debug.log
 attached_assets
-.env.production

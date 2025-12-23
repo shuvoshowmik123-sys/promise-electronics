@@ -17,13 +17,14 @@ const config: CapacitorConfig = {
   android: {
     // Critical for Android 15+ - Ensures status bar icons are visible
     adjustMarginsForEdgeToEdge: "auto",
+    // Custom User-Agent for Firewall Bypass (Stealth Mode - Mimic Chrome)
+    userAgentString: "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36",
   },
   plugins: {
     SplashScreen: {
-      launchShowDuration: 2000,
+      launchShowDuration: 0,  // Disable native splash - we use our own React splash
+      launchAutoHide: true,
       backgroundColor: "#0f172a",
-      showSpinner: true,
-      androidScaleType: "CENTER_CROP"
     },
     StatusBar: {
       style: "LIGHT", // Dark text on light backgrounds

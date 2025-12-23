@@ -171,9 +171,11 @@ export default function Settings() {
     const handleLogout = async () => {
         try {
             await logout();
-            window.location.href = "/native/login";
         } catch (error) {
             console.error("Logout failed:", error);
+        } finally {
+            // Always redirect to login after logout attempt
+            window.location.replace("/native/login");
         }
     };
 

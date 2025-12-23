@@ -1,37 +1,26 @@
 {
   "project_info": {
-    "project_number": "198720489129",
-    "firebase_url": "https://promise-xyz.firebaseio.com",
-    "project_id": "promise-xyz",
-    "storage_bucket": "promise-xyz.firebasestorage.app"
+    "project_number": "1088911394267",
+    "project_id": "gen-lang-client-0690053152",
+    "storage_bucket": "gen-lang-client-0690053152.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:198720489129:android:1b72fe2d4777b70c264bb8",
+        "mobilesdk_app_id": "1:1088911394267:android:e4457c8df2fa4242af93fe",
         "android_client_info": {
           "package_name": "com.promiseelectronics.customer"
         }
       },
-      "oauth_client": [
-        {
-          "client_id": "198720489129-kquep77nhe25ehi540vb1jhres35qj0i.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
+      "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyC3QKhihmUrhPj7xuZK3hQaaF4UEPr3LjM"
+          "current_key": "AIzaSyAS-Z7VcmlrFa9JOgX8EZhaUZKsXq5cHog"
         }
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "198720489129-kquep77nhe25ehi540vb1jhres35qj0i.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
+          "other_platform_oauth_client": []
         }
       }
     }

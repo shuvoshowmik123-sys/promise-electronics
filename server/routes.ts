@@ -2040,8 +2040,11 @@ export async function registerRoutes(
   app.get("/api/admin/users", requireAdminAuth, async (req, res) => {
     try {
       const users = await storage.getAllUsers();
+      // Filter out customers - only show staff users
+      const staffRoles = ["Super Admin", "Manager", "Cashier", "Technician"];
+      const staffUsers = users.filter(user => staffRoles.includes(user.role));
       // Remove passwords from response
-      const safeUsers = users.map(({ password: _, ...user }) => user);
+      const safeUsers = staffUsers.map(({ password: _, ...user }) => user);
       res.json(safeUsers);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch users" });
@@ -3965,6 +3968,65 @@ export async function registerRoutes(
       res.json(inquiries);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch inquiries" });
+    }
+  });
+  // ============ PUSH NOTIFICATION ROUTES ============
+
+  // Register device token for push notifications
+  app.post("/api/push/register", async (req, res) => {
+    try {
+      const { userId, token, platform } = req.body;
+
+      if (!userId || !token) {
+        return res.status(400).json({ error: "userId and token are required" });
+      }
+
+      // Import dynamically to avoid circular deps
+      const { pushService } = await import("./pushService.js");
+      await pushService.registerDeviceToken(userId, token, platform || "android");
+
+      res.json({ success: true, message: "Token registered" });
+    } catch (error) {
+      console.error("Push registration error:", error);
+      res.status(500).json({ error: "Failed to register token" });
+    }
+  });
+
+  // Unregister device token (on logout)
+  app.post("/api/push/unregister", async (req, res) => {
+    try {
+      const { userId, token } = req.body;
+
+      if (!userId) {
+        return res.status(400).json({ error: "userId is required" });
+      }
+
+      const { pushService } = await import("./pushService.js");
+      await pushService.removeUserTokens(userId, token);
+
+      res.json({ success: true, message: "Token removed" });
+    } catch (error) {
+      console.error("Push unregister error:", error);
+      res.status(500).json({ error: "Failed to unregister token" });
+    }
+  });
+
+  // Admin: Send promotional notification (Super Admin only)
+  app.post("/api/admin/push/send", requireSuperAdmin, async (req, res) => {
+    try {
+      const { userId, title, body, route } = req.body;
+
+      if (!userId || !title || !body) {
+        return res.status(400).json({ error: "userId, title, and body are required" });
+      }
+
+      const { pushService } = await import("./pushService.js");
+      const sent = await pushService.notifyPromotional(userId, title, body, route);
+
+      res.json({ success: true, sent });
+    } catch (error) {
+      console.error("Push send error:", error);
+      res.status(500).json({ error: "Failed to send notification" });
     }
   });
 

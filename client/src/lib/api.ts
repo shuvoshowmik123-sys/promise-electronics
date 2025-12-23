@@ -30,7 +30,8 @@ import type {
   InsertCustomerReview,
   Notification,
 } from "@shared/schema";
-import { API_BASE_URL } from "./config";
+import { API_BASE_URL, isNative } from "./config";
+import { CapacitorHttp, HttpResponse } from '@capacitor/core';
 
 export type CustomerSession = Omit<Customer, "password">;
 export type OrderWithTimeline = ServiceRequest & { timeline: ServiceRequestEvent[] };
@@ -50,6 +51,12 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   const fullUrl = `${API_BASE}${url}`;
   console.log(`[API] Fetching: ${fullUrl}`);
 
+  // Use CapacitorHttp on native platforms to bypass CORS/WebView restrictions
+  if (isNative) {
+    return nativeFetchApi<T>(fullUrl, options);
+  }
+
+  // Standard browser fetch for web
   const response = await fetch(fullUrl, {
     ...options,
     credentials: 'include',
@@ -86,6 +93,66 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
     console.error(`[API] Failed to parse JSON response:`, rawText.substring(0, 500));
     throw new ApiError(`Invalid JSON response: ${rawText.substring(0, 100)}`);
   }
+}
+
+// Native HTTP implementation using CapacitorHttp
+async function nativeFetchApi<T>(fullUrl: string, options?: RequestInit): Promise<T> {
+  const method = (options?.method?.toUpperCase() || 'GET') as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+
+  let response: HttpResponse;
+
+  const httpOptions = {
+    url: fullUrl,
+    headers: {
+      'Content-Type': 'application/json',
+      'User-Agent': 'PromiseNativeApp/1.0',
+      ...(options?.headers as Record<string, string> || {}),
+    },
+    connectTimeout: 15000,
+    readTimeout: 15000,
+  };
+
+  try {
+    if (method === 'GET') {
+      response = await CapacitorHttp.get(httpOptions);
+    } else if (method === 'POST') {
+      response = await CapacitorHttp.post({
+        ...httpOptions,
+        data: options?.body ? JSON.parse(options.body as string) : undefined,
+      });
+    } else if (method === 'PUT') {
+      response = await CapacitorHttp.put({
+        ...httpOptions,
+        data: options?.body ? JSON.parse(options.body as string) : undefined,
+      });
+    } else if (method === 'PATCH') {
+      response = await CapacitorHttp.patch({
+        ...httpOptions,
+        data: options?.body ? JSON.parse(options.body as string) : undefined,
+      });
+    } else if (method === 'DELETE') {
+      response = await CapacitorHttp.delete(httpOptions);
+    } else {
+      response = await CapacitorHttp.get(httpOptions);
+    }
+  } catch (err: any) {
+    console.error(`[Native API] Request failed:`, err);
+    throw new ApiError(err.message || 'Network request failed');
+  }
+
+  console.log(`[Native API] Response status: ${response.status}`);
+  console.log(`[Native API] Response data:`, JSON.stringify(response.data).substring(0, 200));
+
+  if (response.status >= 400) {
+    const errorData = response.data;
+    throw new ApiError(errorData?.error || `Request failed with status ${response.status}`, errorData?.code);
+  }
+
+  if (response.status === 204 || !response.data) {
+    return null as T;
+  }
+
+  return response.data as T;
 }
 
 // Job Tickets API

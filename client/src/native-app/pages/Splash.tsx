@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { Zap, RefreshCw, AlertCircle } from "lucide-react";
 import { API_BASE_URL } from "@/lib/config";
+import { CapacitorHttp } from '@capacitor/core';
 
 export default function Splash() {
     const [progress, setProgress] = useState(0);
@@ -20,18 +21,19 @@ export default function Splash() {
                 throw new Error("API URL is not configured");
             }
 
-            // 2. Attempt to connect
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
-
-            const res = await fetch(`${API_BASE_URL}/api/health`, {
-                signal: controller.signal
+            // 2. Attempt to connect using Native HTTP (Bypasses CORS/WebView)
+            const res = await CapacitorHttp.get({
+                url: `${API_BASE_URL}/api/health`,
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/114.0.0.0 Mobile Safari/537.36',
+                    'Content-Type': 'application/json'
+                },
+                connectTimeout: 10000,
+                readTimeout: 10000
             });
 
-            clearTimeout(timeoutId);
-
-            if (!res.ok) {
-                throw new Error(`Server returned ${res.status}`);
+            if (res.status !== 200) {
+                throw new Error(`Server returned ${res.status}: ${JSON.stringify(res.data)}`);
             }
 
             // 3. Success - Start the "fake" loading progress
@@ -51,7 +53,15 @@ export default function Splash() {
 
         } catch (err: any) {
             console.error("Connection failed:", err);
-            setError(err.message || "Failed to connect to server");
+            // Capture full error details for debugging
+            const errorDetails = JSON.stringify({
+                name: err.name,
+                message: err.message,
+                stack: err.stack,
+                cause: err.cause,
+                type: err.constructor.name
+            }, null, 2);
+            setError(errorDetails);
             setIsChecking(false);
         }
     }, []);
@@ -101,9 +111,9 @@ export default function Splash() {
             <div className="absolute bottom-16 w-full max-w-[280px] flex flex-col gap-3 px-8 z-20">
                 {error ? (
                     <div className="flex flex-col gap-4 animate-in fade-in slide-in-from-bottom-4">
-                        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-center">
+                        <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4 text-center max-h-[300px] overflow-y-auto">
                             <p className="text-red-400 font-bold text-sm mb-1">Connection Failed</p>
-                            <p className="text-red-300/80 text-xs">{error}</p>
+                            <pre className="text-red-300/80 text-[10px] text-left whitespace-pre-wrap font-mono">{error}</pre>
                             <p className="text-slate-500 text-[10px] mt-2 break-all">{API_BASE_URL}</p>
                         </div>
                         <button
@@ -138,4 +148,3 @@ export default function Splash() {
         </div>
     );
 }
-

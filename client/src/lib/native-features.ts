@@ -136,6 +136,56 @@ export async function initPushNotifications(): Promise<string | null> {
     }
 }
 
+// Register push token with backend (call this when user logs in)
+export async function registerPushTokenWithBackend(userId: string, token: string): Promise<boolean> {
+    if (!isNative || !token || !userId) return false;
+
+    try {
+        const { CapacitorHttp } = await import('@capacitor/core');
+        const { API_BASE_URL } = await import('./config');
+
+        const response = await CapacitorHttp.post({
+            url: `${API_BASE_URL}/api/push/register`,
+            headers: { 'Content-Type': 'application/json' },
+            data: { userId, token, platform: 'android' },
+        });
+
+        if (response.status === 200) {
+            console.log('[Push] Token registered with backend');
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('[Push] Failed to register token with backend:', error);
+        return false;
+    }
+}
+
+// Unregister push token from backend (call this when user logs out)
+export async function unregisterPushTokenFromBackend(userId: string, token?: string): Promise<boolean> {
+    if (!isNative || !userId) return false;
+
+    try {
+        const { CapacitorHttp } = await import('@capacitor/core');
+        const { API_BASE_URL } = await import('./config');
+
+        const response = await CapacitorHttp.post({
+            url: `${API_BASE_URL}/api/push/unregister`,
+            headers: { 'Content-Type': 'application/json' },
+            data: { userId, token },
+        });
+
+        if (response.status === 200) {
+            console.log('[Push] Token unregistered from backend');
+            return true;
+        }
+        return false;
+    } catch (error) {
+        console.error('[Push] Failed to unregister token from backend:', error);
+        return false;
+    }
+}
+
 // Add listener for incoming push notifications
 export function onPushNotificationReceived(
     callback: (notification: { title?: string; body?: string; data?: Record<string, unknown> }) => void
