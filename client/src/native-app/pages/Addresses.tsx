@@ -141,15 +141,6 @@ export default function Addresses() {
 
     return (
         <NativeLayout className="bg-[var(--color-native-bg)] text-[var(--color-native-text)] pb-32">
-            <header className="sticky top-0 z-20 bg-[var(--color-native-surface)]/90 backdrop-blur-md px-4 py-4 shadow-sm flex items-center gap-3 border-b border-[var(--color-native-border)] transition-colors duration-200">
-                <Link href="/native/profile">
-                    <button className="p-2 -ml-2 rounded-full active:bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] hover:text-[var(--color-native-text)]">
-                        <ArrowLeft className="w-5 h-5" />
-                    </button>
-                </Link>
-                <h1 className="text-xl font-bold text-[var(--color-native-text)]">My Addresses</h1>
-            </header>
-
             <main className="flex-1 px-4 pt-6 space-y-4 overflow-y-auto scrollbar-hide">
                 {isLoading ? (
                     <div className="text-center py-10 text-[var(--color-native-text-muted)]">Loading addresses...</div>

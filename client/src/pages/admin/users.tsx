@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -255,7 +254,7 @@ export default function AdminUsersPage() {
   const isSuperAdmin = currentUser?.role === "Super Admin";
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
@@ -680,6 +679,6 @@ export default function AdminUsersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AdminLayout>
+    </>
   );
 }

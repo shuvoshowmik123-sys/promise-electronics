@@ -461,3 +461,9 @@ input:-webkit-autofill:active {
   transition: background-color 5000s ease-in-out 0s;
   caret-color: var(--color-native-text);
 }
+
+/* Keyboard Handling */
+body.keyboard-open {
+  height: 100vh;
+  overflow-y: hidden;
+}

@@ -31,18 +31,8 @@ import {
     SheetTitle,
     SheetTrigger,
 } from "@/components/ui/sheet";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-    DialogFooter,
-} from "@/components/ui/dialog";
 import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 import AnimatedButton from "../components/AnimatedButton";
-import { useBiometrics } from "@/hooks/useBiometrics";
-import { Fingerprint } from "lucide-react";
 import { getApiUrl } from "@/lib/config";
 
 export default function Settings() {
@@ -52,59 +42,7 @@ export default function Settings() {
     const { t, i18n } = useTranslation();
     const [isLanguageSheetOpen, setIsLanguageSheetOpen] = useState(false);
 
-    // Biometric State
-    const { saveAuth, deleteAuth, checkAvailability } = useBiometrics();
-    const [isBiometricEnabled, setIsBiometricEnabled] = useState(false);
-    const [isPasswordDialogOpen, setIsPasswordDialogOpen] = useState(false);
-    const [confirmPassword, setConfirmPassword] = useState("");
 
-    useEffect(() => {
-        checkAvailability().then(available => {
-            if (available) {
-                // Check if we have credentials stored
-                // This is a simplified check; ideally useBiometrics would expose a hasCredentials method
-                // For now, we assume if available and user previously enabled (stored in local storage or prefs), it's on.
-                // But since we don't have a direct "check if credentials exist" without prompt in the simple hook,
-                // we'll rely on a local preference or just default to false and let user re-enable.
-                // A better approach: Store a flag in localStorage "biometric_enabled"
-                const enabled = localStorage.getItem("biometric_enabled") === "true";
-                setIsBiometricEnabled(enabled);
-            }
-        });
-    }, []);
-
-    const toggleBiometrics = async (checked: boolean) => {
-        if (checked) {
-            // Open password dialog to confirm identity before saving
-            setIsPasswordDialogOpen(true);
-        } else {
-            // Disable
-            await deleteAuth();
-            localStorage.setItem("biometric_enabled", "false");
-            setIsBiometricEnabled(false);
-            toast({ title: "Biometric Login Disabled" });
-        }
-    };
-
-    const confirmEnableBiometrics = async () => {
-        if (!confirmPassword) return;
-
-        // In a real app, verify password with backend first to ensure it's correct
-        // For this demo, we assume the user entered the correct current password
-        // Or we could try to re-login with it.
-
-        const success = await saveAuth(customer?.phone || "", confirmPassword); // Note: customer.phone might need formatting if it doesn't include prefix
-
-        if (success) {
-            localStorage.setItem("biometric_enabled", "true");
-            setIsBiometricEnabled(true);
-            toast({ title: "Success", description: "Biometric Login Enabled" });
-            setIsPasswordDialogOpen(false);
-            setConfirmPassword("");
-        } else {
-            toast({ title: "Error", description: "Failed to enable biometrics", variant: "destructive" });
-        }
-    };
 
     // Parse preferences from JSON string
     const [preferences, setPreferences] = useState<{
@@ -280,7 +218,7 @@ export default function Settings() {
 
                     {/* Privacy & Data Card */}
                     <Link href="/native/privacy-policy">
-                        <div className="col-span-1 bg-[var(--color-native-card)] p-5 rounded-[1rem] shadow-sm border border-[var(--color-native-border)] flex flex-col justify-between aspect-square cursor-pointer hover:bg-[var(--color-native-input)] group">
+                        <AnimatedButton variant="cardExpand" className="w-full col-span-1 bg-[var(--color-native-card)] p-5 rounded-[1rem] shadow-sm border border-[var(--color-native-border)] flex flex-col justify-between aspect-square cursor-pointer group text-left">
                             <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-500">
                                 <Lock className="w-5 h-5" />
                             </div>
@@ -292,28 +230,10 @@ export default function Settings() {
                                     </div>
                                 </div>
                             </div>
-                        </div>
+                        </AnimatedButton>
                     </Link>
 
-                    {/* Biometric Settings Card */}
-                    <div className="col-span-2 bg-[var(--color-native-card)] p-5 rounded-[1rem] shadow-sm border border-[var(--color-native-border)]">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-500">
-                                    <Fingerprint className="w-5 h-5" />
-                                </div>
-                                <div>
-                                    <span className="font-bold text-lg text-[var(--color-native-text)]">Biometric Login</span>
-                                    <p className="text-xs text-[var(--color-native-text-muted)]">Use Fingerprint or Face ID</p>
-                                </div>
-                            </div>
-                            <Switch
-                                checked={isBiometricEnabled}
-                                onCheckedChange={toggleBiometrics}
-                                className="transition-none data-[state=checked]:bg-[var(--color-native-primary)] data-[state=unchecked]:bg-[var(--color-native-input)] border-[var(--color-native-border)] [&>span]:bg-[var(--color-native-surface)]"
-                            />
-                        </div>
-                    </div>
+
 
                     {/* General Section */}
                     <div className="col-span-2 bg-[var(--color-native-card)] rounded-[1rem] shadow-sm border border-[var(--color-native-border)] overflow-hidden mt-2">
@@ -362,7 +282,7 @@ export default function Settings() {
 
                             {customer && (
                                 <Link href="/native/settings/change-password">
-                                    <button className="w-full flex items-center justify-between p-5 hover:bg-[var(--color-native-input)] border-b border-[var(--color-native-border)]">
+                                    <AnimatedButton variant="rowExpand" className="w-full flex items-center justify-between p-5 hover:bg-[var(--color-native-input)] border-b border-[var(--color-native-border)] text-left">
                                         <div className="flex items-center gap-3">
                                             <div className="bg-purple-500/20 text-purple-500 w-8 h-8 rounded-full flex items-center justify-center">
                                                 <Lock className="w-5 h-5" />
@@ -372,7 +292,7 @@ export default function Settings() {
                                         <div className="flex items-center gap-2 text-[var(--color-native-text-muted)]">
                                             <ChevronRight className="w-5 h-5" />
                                         </div>
-                                    </button>
+                                    </AnimatedButton>
                                 </Link>
                             )}
 
@@ -413,17 +333,17 @@ export default function Settings() {
                     {/* Info Links */}
                     <div className="col-span-2 bg-[var(--color-native-card)] p-1 rounded-[1rem] shadow-sm border border-[var(--color-native-border)] flex flex-col gap-1 mt-2">
                         <Link href="/native/about">
-                            <button className="w-full flex items-center justify-between p-4 rounded-md hover:bg-[var(--color-native-input)] group">
+                            <AnimatedButton variant="rowExpand" className="w-full flex items-center justify-between p-4 rounded-md group text-left">
                                 <span className="font-medium text-[var(--color-native-text)]">{t('settings.about')}</span>
                                 <ExternalLink className="w-5 h-5 text-[var(--color-native-text-muted)] group-hover:text-[var(--color-native-primary)]" />
-                            </button>
+                            </AnimatedButton>
                         </Link>
                         <div className="h-px bg-[var(--color-native-border)] mx-4"></div>
                         <Link href="/native/terms-and-conditions">
-                            <button className="w-full flex items-center justify-between p-4 rounded-md hover:bg-[var(--color-native-input)] group">
+                            <AnimatedButton variant="rowExpand" className="w-full flex items-center justify-between p-4 rounded-md group text-left">
                                 <span className="font-medium text-[var(--color-native-text)]">{t('settings.terms')}</span>
                                 <FileText className="w-5 h-5 text-[var(--color-native-text-muted)] group-hover:text-[var(--color-native-primary)]" />
-                            </button>
+                            </AnimatedButton>
                         </Link>
                     </div>
                 </div>
@@ -447,33 +367,6 @@ export default function Settings() {
                 </div>
                 <div className="h-10"></div>
             </main>
-            <Dialog open={isPasswordDialogOpen} onOpenChange={setIsPasswordDialogOpen}>
-                <DialogContent className="max-w-[90%] rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)]">
-                    <DialogHeader>
-                        <DialogTitle className="text-[var(--color-native-text)]">Confirm Password</DialogTitle>
-                        <DialogDescription className="text-[var(--color-native-text-muted)]">
-                            Please enter your password to enable biometric login.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="py-4">
-                        <input
-                            type="password"
-                            value={confirmPassword}
-                            onChange={(e) => setConfirmPassword(e.target.value)}
-                            placeholder="Current Password"
-                            className="w-full bg-[var(--color-native-input)] border border-[var(--color-native-border)] rounded-xl px-4 py-3 text-[var(--color-native-text)] focus:outline-none focus:ring-2 focus:ring-[var(--color-native-primary)]"
-                        />
-                    </div>
-                    <DialogFooter>
-                        <AnimatedButton
-                            onClick={confirmEnableBiometrics}
-                            className="w-full bg-[var(--color-native-primary)] text-white font-bold py-3 rounded-xl"
-                        >
-                            Enable
-                        </AnimatedButton>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
         </NativeLayout>
     );
 }

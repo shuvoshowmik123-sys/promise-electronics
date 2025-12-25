@@ -1,4 +1,3 @@
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Wrench, ShoppingBag, AlertTriangle, DollarSign, Loader2 } from "lucide-react";
@@ -33,30 +32,26 @@ export default function AdminDashboard() {
 
   if (isLoading) {
     return (
-      <AdminLayout>
-        <div className="flex items-center justify-center h-64">
-          <Loader2 className="w-8 h-8 animate-spin text-primary" />
-        </div>
-      </AdminLayout>
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
     );
   }
 
   if (error || !stats) {
     return (
-      <AdminLayout>
-        <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
-          <AlertTriangle className="w-12 h-12 mb-4 text-destructive" />
-          <p>Failed to load dashboard data</p>
-          <p className="text-sm">Please try refreshing the page</p>
-        </div>
-      </AdminLayout>
+      <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
+        <AlertTriangle className="w-12 h-12 mb-4 text-destructive" />
+        <p>Failed to load dashboard data</p>
+        <p className="text-sm">Please try refreshing the page</p>
+      </div>
     );
   }
 
   const hasJobData = stats.jobStatusDistribution.some(d => d.value > 0);
 
   return (
-    <AdminLayout>
+    <>
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
         <Card data-testid="card-total-revenue">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -121,7 +116,7 @@ export default function AdminDashboard() {
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
                 <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
                 <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `৳${value}`} />
-                <Tooltip 
+                <Tooltip
                   contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0' }}
                   itemStyle={{ color: '#1e293b' }}
                   formatter={(value: number) => [`৳${value.toLocaleString()}`, 'Revenue']}
@@ -177,6 +172,6 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
-    </AdminLayout>
+    </>
   );
 }

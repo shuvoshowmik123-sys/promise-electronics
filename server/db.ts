@@ -1,3 +1,10 @@
+import dotenv from "dotenv";
+import path from "path";
+
+// Load environment variables before initializing database
+const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
+dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as schema from "../shared/schema.js";

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { customerServiceRequestsApi } from "@/lib/api";
 import NativeLayout from "../NativeLayout";
+import AnimatedButton from "../components/AnimatedButton";
 import { Wrench, Clock, CheckCircle, Package, Loader2, AlertCircle, ChevronRight } from "lucide-react";
 import { format } from "date-fns";
 import { Link } from "wouter";
@@ -23,7 +24,7 @@ export default function Bookings() {
     const { isAuthenticated } = useCustomerAuth();
     const { t } = useTranslation();
     const { data: serviceRequests = [], isLoading } = useQuery({
-        queryKey: ["/customer/service-requests"],
+        queryKey: ["customer-service-requests"],
         queryFn: () => customerServiceRequestsApi.getAll(),
         enabled: isAuthenticated,
         refetchInterval: 3000, // Live feed update every 3 seconds
@@ -89,9 +90,9 @@ export default function Bookings() {
                             {t('bookings.no_repairs_subtitle')}
                         </p>
                         <Link href="/native/repair">
-                            <button className="bg-[var(--color-native-primary)] text-white px-6 py-3 rounded-full font-bold text-sm shadow-lg shadow-[var(--color-native-primary)]/30 active:scale-95 transition-transform">
+                            <AnimatedButton variant="pulse" className="bg-[var(--color-native-primary)] text-white px-6 py-3 rounded-full font-bold text-sm shadow-lg shadow-[var(--color-native-primary)]/30">
                                 {t('bookings.book_repair')}
-                            </button>
+                            </AnimatedButton>
                         </Link>
                     </div>
                 ) : (
@@ -100,9 +101,10 @@ export default function Bookings() {
                         const statusColorClass = getStatusColor(request.trackingStatus);
 
                         return (
-                            <div
+                            <AnimatedButton
                                 key={request.id}
-                                className="bg-[var(--color-native-card)] rounded-2xl p-4 border border-[var(--color-native-border)] shadow-sm active:scale-[0.99] transition-transform cursor-pointer"
+                                variant="cardExpand"
+                                className="w-full bg-[var(--color-native-card)] rounded-2xl p-4 border border-[var(--color-native-border)] shadow-sm cursor-pointer text-left"
                                 onClick={() => handleViewDetails(request)}
                             >
                                 <div className="flex items-start justify-between mb-3">
@@ -131,7 +133,7 @@ export default function Bookings() {
                                         </div>
                                     </div>
                                 </div>
-                            </div>
+                            </AnimatedButton>
                         );
                     })
                 )}

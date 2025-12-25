@@ -1,4 +1,3 @@
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Loader2, CheckCircle, MessageSquare, Clock, Search } from "lucide-react";
@@ -82,16 +81,16 @@ export default function InquiriesPage() {
 
     if (isLoading) {
         return (
-            <AdminLayout>
+            <>
                 <div className="flex items-center justify-center h-full">
                     <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 </div>
-            </AdminLayout>
+            </>
         );
     }
 
     return (
-        <AdminLayout>
+        <>
             <div className="space-y-6">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                     <div>
@@ -210,6 +209,6 @@ export default function InquiriesPage() {
                     </DialogContent>
                 </Dialog>
             </div>
-        </AdminLayout>
+        </>
     );
 }

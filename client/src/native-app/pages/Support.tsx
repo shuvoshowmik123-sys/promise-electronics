@@ -1,7 +1,8 @@
 import NativeLayout from "../NativeLayout";
-import { Phone, Mail, MessageCircle, MapPin, Clock, ChevronRight, HelpCircle, FileText, ShieldCheck } from "lucide-react";
+import { Phone, Mail, MessageCircle, MapPin, Clock, ChevronRight, HelpCircle, FileText, ShieldCheck, ArrowLeft } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { settingsApi } from "@/lib/api";
+import { Link } from "wouter";
 
 export default function Support() {
     const { data: settings = [] } = useQuery({
@@ -14,10 +15,18 @@ export default function Support() {
     const businessHours = settings.find(s => s.key === "business_hours")?.value || "9:00 AM - 9:00 PM";
 
     return (
-        <NativeLayout className="bg-[var(--color-native-bg)] text-[var(--color-native-text)] pb-32">
-            <header className="sticky top-0 z-20 bg-[var(--color-native-surface)]/90 backdrop-blur-md px-6 pt-6 pb-4 shadow-sm border-b border-[var(--color-native-border)] transition-colors duration-200">
-                <h1 className="text-2xl font-bold text-[var(--color-native-text)]">Help Center</h1>
-                <p className="text-sm text-[var(--color-native-text-muted)]">How can we help you today?</p>
+        <NativeLayout className="bg-[var(--color-native-bg)] text-[var(--color-native-text)] pb-20">
+            <header className="sticky top-0 z-20 bg-[var(--color-native-surface)]/90 backdrop-blur-md px-4 pt-[calc(1rem+env(safe-area-inset-top))] pb-4 shadow-sm border-b border-[var(--color-native-border)] transition-colors duration-200">
+                <div className="flex items-center gap-3 mb-1">
+                    <button
+                        onClick={() => window.history.back()}
+                        className="p-2 -ml-2 rounded-full active:bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] hover:text-[var(--color-native-text)] transition-colors"
+                    >
+                        <ArrowLeft className="w-6 h-6" />
+                    </button>
+                    <h1 className="text-2xl font-bold text-[var(--color-native-text)]">Help Center</h1>
+                </div>
+                <p className="text-sm text-[var(--color-native-text-muted)] pl-10">How can we help you today?</p>
             </header>
 
             <main className="flex-1 px-4 pt-6 space-y-6 overflow-y-auto scrollbar-hide">

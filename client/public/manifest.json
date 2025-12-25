@@ -9,7 +9,11 @@
   "orientation": "portrait-primary",
   "scope": "/",
   "lang": "en",
-  "categories": ["business", "utilities", "shopping"],
+  "categories": [
+    "business",
+    "utilities",
+    "shopping"
+  ],
   "icons": [
     {
       "src": "/favicon.png",
@@ -31,21 +35,36 @@
       "short_name": "Quote",
       "description": "Request a service quote",
       "url": "/get-quote",
-      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/favicon.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Track Order",
       "short_name": "Track",
       "description": "Track your repair status",
       "url": "/track-order",
-      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/favicon.png",
+          "sizes": "192x192"
+        }
+      ]
     },
     {
       "name": "Shop",
       "short_name": "Shop",
       "description": "Browse products",
       "url": "/shop",
-      "icons": [{ "src": "/favicon.png", "sizes": "192x192" }]
+      "icons": [
+        {
+          "src": "/favicon.png",
+          "sizes": "192x192"
+        }
+      ]
     }
   ]
 }

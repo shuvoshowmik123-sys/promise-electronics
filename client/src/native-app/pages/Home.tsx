@@ -2,6 +2,7 @@ import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import NativeLayout from "../NativeLayout";
 import NotificationsPopup, { Notification as UiNotification } from "../components/NotificationsPopup";
 import { useState, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
     Bell,
     Wrench,
@@ -17,7 +18,8 @@ import {
     Laptop,
     Watch,
     Monitor,
-    Speaker
+    Speaker,
+    Bot
 } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -32,7 +34,8 @@ import {
     DialogDescription,
 } from "@/components/ui/dialog";
 import { useTranslation } from "react-i18next";
-import AnimatedButton from "../components/AnimatedButton";
+import AnimatedButton, { AnimatedNavLink } from "../components/AnimatedButton";
+import { AppOpeningButton } from "@/contexts/AppOpeningContext";
 import PullToRefresh from "../components/PullToRefresh";
 import { RepairCardSkeleton } from "../components/SkeletonCard";
 import { getApiUrl } from "@/lib/config";
@@ -118,10 +121,10 @@ export default function Home() {
                                             {t('home.hero_subtitle')}
                                         </p>
                                         <Link href="/native/repair">
-                                            <button className="flex items-center gap-2 bg-[var(--color-native-primary)] text-white px-6 py-3 rounded-full font-bold text-sm hover:bg-opacity-90 shadow-lg shadow-[var(--color-native-primary)]/30">
+                                            <AnimatedButton variant="pulse" className="flex items-center gap-2 bg-[var(--color-native-primary)] text-white px-6 py-3 rounded-full font-bold text-sm hover:bg-opacity-90 shadow-lg shadow-[var(--color-native-primary)]/30">
                                                 <span>{t('home.book_now')}</span>
                                                 <ArrowRight className="w-4 h-4" />
-                                            </button>
+                                            </AnimatedButton>
                                         </Link>
                                     </div>
                                 </div>
@@ -130,55 +133,114 @@ export default function Home() {
 
                         {/* Quick Actions */}
                         <section>
-                            <h3 className="text-lg font-bold px-2 mb-3 tracking-tight text-[var(--color-native-text)]">{t('home.quick_actions')}</h3>
+                            <motion.h3
+                                initial={{ opacity: 0, y: 10 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.1 }}
+                                className="text-lg font-bold px-2 mb-3 tracking-tight text-[var(--color-native-text)]"
+                            >
+                                {t('home.quick_actions')}
+                            </motion.h3>
                             <div className="grid grid-cols-2 gap-3">
-                                <Link href="/native/repair">
-                                    <AnimatedButton disableHaptics className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
-                                        <div className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-500">
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    transition={{ delay: 0.15, type: "spring", stiffness: 300, damping: 24 }}
+                                >
+                                    <AppOpeningButton
+                                        href="/native/repair"
+                                        color="rgb(59, 130, 246)"
+                                        icon={<Wrench className="w-8 h-8" />}
+                                        className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm"
+                                    >
+                                        <div data-expand-origin className="w-10 h-10 rounded-full bg-blue-500/20 flex items-center justify-center text-blue-500">
                                             <Wrench className="w-5 h-5" />
                                         </div>
                                         <div className="text-left">
                                             <span className="block text-base font-bold text-[var(--color-native-text)]">{t('home.new_repair')}</span>
                                             <span className="block text-xs text-[var(--color-native-text-muted)] mt-0.5">{t('home.schedule_service')}</span>
                                         </div>
-                                    </AnimatedButton>
-                                </Link>
+                                    </AppOpeningButton>
+                                </motion.div>
 
-                                <Link href="/native/shop">
-                                    <AnimatedButton disableHaptics className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
-                                        <div className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-500">
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    transition={{ delay: 0.2, type: "spring", stiffness: 300, damping: 24 }}
+                                >
+                                    <AppOpeningButton
+                                        href="/native/shop"
+                                        color="rgb(249, 115, 22)"
+                                        icon={<ShoppingBag className="w-8 h-8" />}
+                                        className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm"
+                                    >
+                                        <div data-expand-origin className="w-10 h-10 rounded-full bg-orange-500/20 flex items-center justify-center text-orange-500">
                                             <ShoppingBag className="w-5 h-5" />
                                         </div>
                                         <div className="text-left">
                                             <span className="block text-base font-bold text-[var(--color-native-text)]">{t('home.buy_parts')}</span>
                                             <span className="block text-xs text-[var(--color-native-text-muted)] mt-0.5">{t('home.shop_electronics')}</span>
                                         </div>
-                                    </AnimatedButton>
-                                </Link>
+                                    </AppOpeningButton>
+                                </motion.div>
 
-                                <Link href="/native/bookings">
-                                    <AnimatedButton disableHaptics className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
-                                        <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-500">
-                                            <Map className="w-5 h-5" />
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    transition={{ delay: 0.25, type: "spring", stiffness: 300, damping: 24 }}
+                                >
+                                    <Link href="/native/bookings">
+                                        <AnimatedButton variant="iconExpand" className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
+                                            <div className="w-10 h-10 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-500">
+                                                <Map className="w-5 h-5" />
+                                            </div>
+                                            <div className="text-left">
+                                                <span className="block text-base font-bold text-[var(--color-native-text)]">{t('home.track_order')}</span>
+                                                <span className="block text-xs text-[var(--color-native-text-muted)] mt-0.5">{t('home.status_updates')}</span>
+                                            </div>
+                                        </AnimatedButton>
+                                    </Link>
+                                </motion.div>
+
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    transition={{ delay: 0.3, type: "spring", stiffness: 300, damping: 24 }}
+                                >
+                                    <Link href="/native/support">
+                                        <AnimatedButton variant="iconExpand" className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
+                                            <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-500">
+                                                <Headphones className="w-5 h-5" />
+                                            </div>
+                                            <div className="text-left">
+                                                <span className="block text-base font-bold text-[var(--color-native-text)]">{t('home.help_center')}</span>
+                                                <span className="block text-xs text-[var(--color-native-text-muted)] mt-0.5">{t('home.chat_with_us')}</span>
+                                            </div>
+                                        </AnimatedButton>
+                                    </Link>
+                                </motion.div>
+
+                                <motion.div
+                                    initial={{ opacity: 0, y: 20, scale: 0.95 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    transition={{ delay: 0.35, type: "spring", stiffness: 300, damping: 24 }}
+                                    className="col-span-2"
+                                >
+                                    <AppOpeningButton
+                                        href="/native/chat"
+                                        color="linear-gradient(135deg, rgb(59, 130, 246), rgb(147, 51, 234))"
+                                        icon={<Bot className="w-8 h-8" />}
+                                        className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-gradient-to-br from-blue-500/10 to-purple-500/10 border border-blue-500/20 shadow-sm"
+                                    >
+                                        <div data-expand-origin className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white">
+                                            <Bot className="w-5 h-5" />
                                         </div>
                                         <div className="text-left">
-                                            <span className="block text-base font-bold text-[var(--color-native-text)]">{t('home.track_order')}</span>
-                                            <span className="block text-xs text-[var(--color-native-text-muted)] mt-0.5">{t('home.status_updates')}</span>
+                                            <span className="block text-base font-bold text-[var(--color-native-text)]">Daktar Vai</span>
+                                            <span className="block text-xs text-[var(--color-native-text-muted)] mt-0.5">AI TV Doctor</span>
                                         </div>
-                                    </AnimatedButton>
-                                </Link>
-
-                                <Link href="/native/support">
-                                    <AnimatedButton disableHaptics className="w-full flex flex-col items-start gap-3 p-4 rounded-2xl bg-[var(--color-native-card)] border border-[var(--color-native-border)] shadow-sm">
-                                        <div className="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center text-green-500">
-                                            <Headphones className="w-5 h-5" />
-                                        </div>
-                                        <div className="text-left">
-                                            <span className="block text-base font-bold text-[var(--color-native-text)]">{t('home.help_center')}</span>
-                                            <span className="block text-xs text-[var(--color-native-text-muted)] mt-0.5">{t('home.chat_with_us')}</span>
-                                        </div>
-                                    </AnimatedButton>
-                                </Link>
+                                    </AppOpeningButton>
+                                </motion.div>
                             </div>
                         </section>
 
@@ -191,113 +253,121 @@ export default function Home() {
                                         {t('home.view_details')}
                                     </Link>
                                 </div>
-                                <AnimatedButton
-                                    disableHaptics
-                                    onClick={() => setSelectedRepair(currentRepair)}
-                                    className="w-full bg-[var(--color-native-card)] rounded-2xl p-5 border border-[var(--color-native-border)] shadow-sm cursor-pointer text-left group relative overflow-hidden"
+                                <motion.div
+                                    animate={{
+                                        scale: selectedRepair ? 0.97 : 1,
+                                        opacity: selectedRepair ? 0.7 : 1,
+                                    }}
+                                    transition={{ type: "spring", stiffness: 400, damping: 30 }}
                                 >
-                                    {/* Background decoration */}
-                                    <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--color-native-primary)]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
+                                    <AnimatedButton
+                                        variant="cardExpand"
+                                        onClick={() => setSelectedRepair(currentRepair)}
+                                        className="w-full bg-[var(--color-native-card)] rounded-2xl p-5 border border-[var(--color-native-border)] shadow-sm cursor-pointer text-left group relative overflow-hidden"
+                                    >
+                                        {/* Background decoration */}
+                                        <div className="absolute top-0 right-0 w-32 h-32 bg-[var(--color-native-primary)]/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none"></div>
 
-                                    <div className="flex gap-4 items-start mb-5 relative z-10">
-                                        {/* Icon Container */}
-                                        <div className="relative">
-                                            <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-[var(--color-native-input)] to-[var(--color-native-card)] border border-[var(--color-native-border)] flex items-center justify-center shrink-0 shadow-inner">
-                                                <DeviceIcon className="w-8 h-8 text-[var(--color-native-primary)] drop-shadow-sm" />
-                                            </div>
-                                            {/* Status Dot */}
-                                            <div className="absolute -bottom-1 -right-1 h-5 w-5 bg-[var(--color-native-card)] rounded-full flex items-center justify-center border border-[var(--color-native-border)]">
-                                                <div className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
-                                            </div>
-                                        </div>
-
-                                        <div className="flex-1 min-w-0 pt-1">
-                                            <div className="flex justify-between items-start gap-2">
-                                                <div>
-                                                    <h4 className="text-lg font-bold truncate text-[var(--color-native-text)] leading-tight">
-                                                        {currentRepair.brand}
-                                                    </h4>
-                                                    <p className="text-sm text-[var(--color-native-text-muted)] font-medium truncate">
-                                                        {currentRepair.modelNumber}
-                                                    </p>
+                                        <div className="flex gap-4 items-start mb-5 relative z-10">
+                                            {/* Icon Container */}
+                                            <div className="relative">
+                                                <div className="h-16 w-16 rounded-2xl bg-gradient-to-br from-[var(--color-native-input)] to-[var(--color-native-card)] border border-[var(--color-native-border)] flex items-center justify-center shrink-0 shadow-inner">
+                                                    <DeviceIcon className="w-8 h-8 text-[var(--color-native-primary)] drop-shadow-sm" />
                                                 </div>
-                                                <span className="px-2.5 py-1 rounded-lg bg-[var(--color-native-primary)]/10 text-[var(--color-native-primary)] text-[10px] font-bold uppercase tracking-wider border border-[var(--color-native-primary)]/20 shadow-sm">
-                                                    {currentRepair.trackingStatus}
-                                                </span>
+                                                {/* Status Dot */}
+                                                <div className="absolute -bottom-1 -right-1 h-5 w-5 bg-[var(--color-native-card)] rounded-full flex items-center justify-center border border-[var(--color-native-border)]">
+                                                    <div className="h-2.5 w-2.5 rounded-full bg-green-500 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]"></div>
+                                                </div>
                                             </div>
 
-                                            <div className="flex items-center gap-2 mt-2 text-xs text-[var(--color-native-text-muted)]">
-                                                <span className="bg-[var(--color-native-input)] px-1.5 py-0.5 rounded text-[10px] font-mono border border-[var(--color-native-border)]">
-                                                    #{currentRepair.convertedJobId || currentRepair.ticketNumber}
-                                                </span>
-                                                <span>•</span>
-                                                <span className="font-medium text-[var(--color-native-text)] truncate">
-                                                    {currentRepair.primaryIssue}
-                                                </span>
+                                            <div className="flex-1 min-w-0 pt-1">
+                                                <div className="flex justify-between items-start gap-2">
+                                                    <div>
+                                                        <h4 className="text-lg font-bold truncate text-[var(--color-native-text)] leading-tight">
+                                                            {currentRepair.brand}
+                                                        </h4>
+                                                        <p className="text-sm text-[var(--color-native-text-muted)] font-medium truncate">
+                                                            {currentRepair.modelNumber}
+                                                        </p>
+                                                    </div>
+                                                    <span className="px-2.5 py-1 rounded-lg bg-[var(--color-native-primary)]/10 text-[var(--color-native-primary)] text-[10px] font-bold uppercase tracking-wider border border-[var(--color-native-primary)]/20 shadow-sm">
+                                                        {currentRepair.trackingStatus}
+                                                    </span>
+                                                </div>
+
+                                                <div className="flex items-center gap-2 mt-2 text-xs text-[var(--color-native-text-muted)]">
+                                                    <span className="bg-[var(--color-native-input)] px-1.5 py-0.5 rounded text-[10px] font-mono border border-[var(--color-native-border)]">
+                                                        #{currentRepair.convertedJobId || currentRepair.ticketNumber}
+                                                    </span>
+                                                    <span>•</span>
+                                                    <span className="font-medium text-[var(--color-native-text)] truncate">
+                                                        {currentRepair.primaryIssue}
+                                                    </span>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    {/* Progress Bar */}
-                                    {/* Progress Bar */}
-                                    <div className="relative z-10">
-                                        {(() => {
-                                            const PICKUP_FLOW = [
-                                                "Request Received", "Arriving to Receive", "Received", "Technician Assigned",
-                                                "Diagnosis Completed", "Parts Pending", "Repairing", "Ready for Delivery", "Delivered"
-                                            ];
+                                        {/* Progress Bar */}
+                                        {/* Progress Bar */}
+                                        <div className="relative z-10">
+                                            {(() => {
+                                                const PICKUP_FLOW = [
+                                                    "Request Received", "Arriving to Receive", "Received", "Technician Assigned",
+                                                    "Diagnosis Completed", "Parts Pending", "Repairing", "Ready for Delivery", "Delivered"
+                                                ];
 
-                                            const SERVICE_CENTER_FLOW = [
-                                                "Request Received", "Awaiting Drop-off", "Received", "Technician Assigned",
-                                                "Diagnosis Completed", "Parts Pending", "Repairing", "Ready for Delivery", "Delivered"
-                                            ];
+                                                const SERVICE_CENTER_FLOW = [
+                                                    "Request Received", "Awaiting Drop-off", "Received", "Technician Assigned",
+                                                    "Diagnosis Completed", "Parts Pending", "Repairing", "Ready for Delivery", "Delivered"
+                                                ];
 
-                                            const isPickup = currentRepair.serviceMode === 'pickup' || !!currentRepair.pickupTier;
-                                            const flow = isPickup ? PICKUP_FLOW : SERVICE_CENTER_FLOW;
-                                            const currentStatusIndex = flow.indexOf(currentRepair.trackingStatus);
+                                                const isPickup = currentRepair.serviceMode === 'pickup' || !!currentRepair.pickupTier;
+                                                const flow = isPickup ? PICKUP_FLOW : SERVICE_CENTER_FLOW;
+                                                const currentStatusIndex = flow.indexOf(currentRepair.trackingStatus);
 
-                                            const safeIndex = currentStatusIndex === -1 ? 0 : currentStatusIndex;
+                                                const safeIndex = currentStatusIndex === -1 ? 0 : currentStatusIndex;
 
-                                            const pageIndex = Math.floor(safeIndex / 3);
-                                            const startStep = pageIndex * 3;
-                                            const displaySteps = flow.slice(startStep, startStep + 3);
+                                                const pageIndex = Math.floor(safeIndex / 3);
+                                                const startStep = pageIndex * 3;
+                                                const displaySteps = flow.slice(startStep, startStep + 3);
 
-                                            const indexInPage = safeIndex % 3;
-                                            const progressWidth = indexInPage === 0 ? 15 : indexInPage === 1 ? 50 : 100;
+                                                const indexInPage = safeIndex % 3;
+                                                const progressWidth = indexInPage === 0 ? 15 : indexInPage === 1 ? 50 : 100;
 
-                                            return (
-                                                <>
-                                                    <div className="flex justify-between text-[10px] font-bold text-[var(--color-native-text-muted)] uppercase tracking-wider mb-2">
-                                                        {displaySteps.map((step, idx) => {
-                                                            const isCompleted = idx < indexInPage;
-                                                            const isCurrent = idx === indexInPage;
-                                                            return (
-                                                                <span
-                                                                    key={step}
-                                                                    className={`
+                                                return (
+                                                    <>
+                                                        <div className="flex justify-between text-[10px] font-bold text-[var(--color-native-text-muted)] uppercase tracking-wider mb-2">
+                                                            {displaySteps.map((step, idx) => {
+                                                                const isCompleted = idx < indexInPage;
+                                                                const isCurrent = idx === indexInPage;
+                                                                return (
+                                                                    <span
+                                                                        key={step}
+                                                                        className={`
                                                                 ${isCompleted || isCurrent ? "text-[var(--color-native-primary)]" : ""}
                                                                 ${isCurrent ? "animate-pulse scale-105 transition-transform" : ""}
                                                             `}
-                                                                >
-                                                                    {step}
-                                                                </span>
-                                                            );
-                                                        })}
-                                                    </div>
-                                                    <div className="relative w-full h-2.5 bg-[var(--color-native-input)] rounded-full overflow-hidden shadow-inner border border-[var(--color-native-border)]/50">
-                                                        <div
-                                                            className="absolute left-0 top-0 h-full bg-gradient-to-r from-[var(--color-native-primary)] to-purple-500 rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(var(--color-native-primary-rgb),0.5)]"
-                                                            style={{ width: `${progressWidth}%` }}
-                                                        >
-                                                            {/* Shimmer effect */}
-                                                            <div className="absolute inset-0 bg-white/20 skew-x-12 animate-[shimmer_2s_infinite] w-full translate-x-[-100%]"></div>
+                                                                    >
+                                                                        {step}
+                                                                    </span>
+                                                                );
+                                                            })}
                                                         </div>
-                                                    </div>
-                                                </>
-                                            );
-                                        })()}
-                                    </div>
-                                </AnimatedButton>
+                                                        <div className="relative w-full h-2.5 bg-[var(--color-native-input)] rounded-full overflow-hidden shadow-inner border border-[var(--color-native-border)]/50">
+                                                            <div
+                                                                className="absolute left-0 top-0 h-full bg-gradient-to-r from-[var(--color-native-primary)] to-purple-500 rounded-full transition-all duration-1000 ease-out shadow-[0_0_10px_rgba(var(--color-native-primary-rgb),0.5)]"
+                                                                style={{ width: `${progressWidth}%` }}
+                                                            >
+                                                                {/* Shimmer effect */}
+                                                                <div className="absolute inset-0 bg-white/20 skew-x-12 animate-[shimmer_2s_infinite] w-full translate-x-[-100%]"></div>
+                                                            </div>
+                                                        </div>
+                                                    </>
+                                                );
+                                            })()}
+                                        </div>
+                                    </AnimatedButton>
+                                </motion.div>
                             </section>
                         )}
 
@@ -341,69 +411,76 @@ export default function Home() {
             </div >
 
             <Dialog open={!!selectedRepair} onOpenChange={(open) => !open && setSelectedRepair(null)}>
-                <DialogContent className="max-w-[90%] rounded-2xl p-0 overflow-hidden bg-[var(--color-native-bg)]">
-                    <DialogHeader className="p-5 bg-[var(--color-native-card)] border-b border-[var(--color-native-border)]">
-                        <DialogTitle className="text-lg font-bold text-[var(--color-native-text)]">{t('home.repair_details')}</DialogTitle>
-                        <DialogDescription className="text-xs text-[var(--color-native-text-muted)]">
-                            Job ID: #{selectedRepair?.ticketNumber} • {selectedRepair?.brand} {selectedRepair?.modelNumber}
-                        </DialogDescription>
-                    </DialogHeader>
+                <DialogContent className="max-w-[90%] rounded-2xl p-0 overflow-hidden bg-[var(--color-native-bg)] data-[state=open]:animate-none">
+                    <motion.div
+                        initial={{ scale: 0.95, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        exit={{ scale: 0.95, opacity: 0 }}
+                        transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    >
+                        <DialogHeader className="p-5 bg-[var(--color-native-card)] border-b border-[var(--color-native-border)]">
+                            <DialogTitle className="text-lg font-bold text-[var(--color-native-text)]">{t('home.repair_details')}</DialogTitle>
+                            <DialogDescription className="text-xs text-[var(--color-native-text-muted)]">
+                                Job ID: #{selectedRepair?.ticketNumber} • {selectedRepair?.brand} {selectedRepair?.modelNumber}
+                            </DialogDescription>
+                        </DialogHeader>
 
-                    <div className="p-5 space-y-6">
-                        {/* Status Timeline */}
-                        <div className="space-y-4">
-                            <h4 className="text-sm font-bold text-[var(--color-native-text)]">{t('home.status_timeline')}</h4>
-                            <div className="relative pl-4 border-l-2 border-[var(--color-native-border)] space-y-6">
-                                <div className="relative">
-                                    <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-green-500 ring-4 ring-[var(--color-native-bg)]"></div>
-                                    <p className="text-sm font-medium text-[var(--color-native-text)]">Request Received</p>
-                                    <p className="text-xs text-[var(--color-native-text-muted)]">
-                                        {selectedRepair?.createdAt && format(new Date(selectedRepair.createdAt), 'MMM d, h:mm a')}
-                                    </p>
+                        <div className="p-5 space-y-6">
+                            {/* Status Timeline */}
+                            <div className="space-y-4">
+                                <h4 className="text-sm font-bold text-[var(--color-native-text)]">{t('home.status_timeline')}</h4>
+                                <div className="relative pl-4 border-l-2 border-[var(--color-native-border)] space-y-6">
+                                    <div className="relative">
+                                        <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-green-500 ring-4 ring-[var(--color-native-bg)]"></div>
+                                        <p className="text-sm font-medium text-[var(--color-native-text)]">Request Received</p>
+                                        <p className="text-xs text-[var(--color-native-text-muted)]">
+                                            {selectedRepair?.createdAt && format(new Date(selectedRepair.createdAt), 'MMM d, h:mm a')}
+                                        </p>
+                                    </div>
+                                    <div className="relative">
+                                        <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-[var(--color-native-primary)] ring-4 ring-[var(--color-native-bg)] animate-pulse"></div>
+                                        <p className="text-sm font-medium text-[var(--color-native-primary)]">{selectedRepair?.trackingStatus}</p>
+                                        <p className="text-xs text-[var(--color-native-text-muted)]">Current Status</p>
+                                    </div>
                                 </div>
-                                <div className="relative">
-                                    <div className="absolute -left-[21px] top-1 w-3 h-3 rounded-full bg-[var(--color-native-primary)] ring-4 ring-[var(--color-native-bg)] animate-pulse"></div>
-                                    <p className="text-sm font-medium text-[var(--color-native-primary)]">{selectedRepair?.trackingStatus}</p>
-                                    <p className="text-xs text-[var(--color-native-text-muted)]">Current Status</p>
+                            </div>
+
+                            {/* Cost Estimate */}
+                            <div className="space-y-2">
+                                <h4 className="text-sm font-bold text-[var(--color-native-text)]">{t('home.estimated_cost')}</h4>
+                                <div className="bg-[var(--color-native-card)] p-4 rounded-xl border border-[var(--color-native-border)] shadow-sm space-y-2">
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-[var(--color-native-text-muted)]">{t('home.service_charge')}</span>
+                                        <span className="font-medium text-[var(--color-native-text)]">
+                                            {selectedRepair?.pickupCost ? `${selectedRepair.pickupCost} BDT` : 'TBD'}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-[var(--color-native-text-muted)]">{t('home.parts')}</span>
+                                        <span className="font-medium text-[var(--color-native-text)]">
+                                            {selectedRepair?.quoteAmount ? `${selectedRepair.quoteAmount} BDT` : 'TBD'}
+                                        </span>
+                                    </div>
+                                    <div className="border-t border-[var(--color-native-border)] pt-2 flex justify-between text-sm font-bold text-[var(--color-native-text)]">
+                                        <span>{t('home.total')}</span>
+                                        <span>
+                                            {selectedRepair?.totalAmount ? `${selectedRepair.totalAmount} BDT` : 'Calculating...'}
+                                        </span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        {/* Cost Estimate */}
-                        <div className="space-y-2">
-                            <h4 className="text-sm font-bold text-[var(--color-native-text)]">{t('home.estimated_cost')}</h4>
-                            <div className="bg-[var(--color-native-card)] p-4 rounded-xl border border-[var(--color-native-border)] shadow-sm space-y-2">
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-[var(--color-native-text-muted)]">{t('home.service_charge')}</span>
-                                    <span className="font-medium text-[var(--color-native-text)]">
-                                        {selectedRepair?.pickupCost ? `${selectedRepair.pickupCost} BDT` : 'TBD'}
-                                    </span>
-                                </div>
-                                <div className="flex justify-between text-sm">
-                                    <span className="text-[var(--color-native-text-muted)]">{t('home.parts')}</span>
-                                    <span className="font-medium text-[var(--color-native-text)]">
-                                        {selectedRepair?.quoteAmount ? `${selectedRepair.quoteAmount} BDT` : 'TBD'}
-                                    </span>
-                                </div>
-                                <div className="border-t border-[var(--color-native-border)] pt-2 flex justify-between text-sm font-bold text-[var(--color-native-text)]">
-                                    <span>{t('home.total')}</span>
-                                    <span>
-                                        {selectedRepair?.totalAmount ? `${selectedRepair.totalAmount} BDT` : 'Calculating...'}
-                                    </span>
-                                </div>
-                            </div>
+                        <div className="p-5 bg-[var(--color-native-card)] border-t border-[var(--color-native-border)]">
+                            <AnimatedButton
+                                disableHaptics
+                                onClick={() => setSelectedRepair(null)}
+                                className="w-full bg-[var(--color-native-input)] text-[var(--color-native-text)] font-bold py-3 rounded-xl hover:bg-[var(--color-native-border)] transition-colors"
+                            >
+                                {t('home.close')}
+                            </AnimatedButton>
                         </div>
-                    </div>
-
-                    <div className="p-5 bg-[var(--color-native-card)] border-t border-[var(--color-native-border)]">
-                        <AnimatedButton
-                            disableHaptics
-                            onClick={() => setSelectedRepair(null)}
-                            className="w-full bg-[var(--color-native-input)] text-[var(--color-native-text)] font-bold py-3 rounded-xl hover:bg-[var(--color-native-border)] transition-colors"
-                        >
-                            {t('home.close')}
-                        </AnimatedButton>
-                    </div>
+                    </motion.div>
                 </DialogContent>
             </Dialog>
         </NativeLayout >

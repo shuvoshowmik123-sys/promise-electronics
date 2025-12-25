@@ -1,4 +1,3 @@
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -506,7 +505,7 @@ export default function AdminInventoryPage() {
   );
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
@@ -564,7 +563,7 @@ export default function AdminInventoryPage() {
                         ))}
                         {formData.itemType === "service" && serviceFilterCategories.length === 0 && (
                           <div className="px-2 py-1 text-xs text-muted-foreground">
-                            No categories. Add them in Settings → Service Filter
+                            No categories. Add them in Settings â†’ Service Filter
                           </div>
                         )}
                       </SelectContent>
@@ -597,7 +596,7 @@ export default function AdminInventoryPage() {
                   <>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="min-price">Min Price (৳)</Label>
+                        <Label htmlFor="min-price">Min Price (à§³)</Label>
                         <Input
                           id="min-price"
                           data-testid="input-min-price"
@@ -608,7 +607,7 @@ export default function AdminInventoryPage() {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="max-price">Max Price (৳)</Label>
+                        <Label htmlFor="max-price">Max Price (à§³)</Label>
                         <Input
                           id="max-price"
                           data-testid="input-max-price"
@@ -725,7 +724,7 @@ export default function AdminInventoryPage() {
                           <ul className="space-y-1">
                             {getValidFeatures().map((feature, index) => (
                               <li key={index} className="text-sm flex items-center gap-2">
-                                <span className="text-green-500">✓</span>
+                                <span className="text-green-500">âœ“</span>
                                 {feature}
                               </li>
                             ))}
@@ -748,7 +747,7 @@ export default function AdminInventoryPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="price">Price (৳)</Label>
+                      <Label htmlFor="price">Price (à§³)</Label>
                       <Input
                         id="price"
                         data-testid="input-price"
@@ -835,10 +834,10 @@ export default function AdminInventoryPage() {
           <div className="bg-white p-4 rounded-lg border shadow-sm flex items-center justify-between" data-testid="card-total-value">
             <div>
               <p className="text-sm text-muted-foreground">Total Value</p>
-              <h3 className="text-2xl font-bold" data-testid="text-total-value">৳{totalValue.toLocaleString()}</h3>
+              <h3 className="text-2xl font-bold" data-testid="text-total-value">à§³{totalValue.toLocaleString()}</h3>
             </div>
             <div className="h-10 w-10 bg-green-100 rounded-full flex items-center justify-center text-green-600">
-              <span className="font-bold">৳</span>
+              <span className="font-bold">à§³</span>
             </div>
           </div>
           <div className="bg-white p-4 rounded-lg border shadow-sm flex items-center justify-between" data-testid="card-website-items">
@@ -992,7 +991,7 @@ export default function AdminInventoryPage() {
                         </TableCell>
                         <TableCell data-testid={`text-category-${item.id}`}>{item.category}</TableCell>
                         <TableCell data-testid={`text-stock-${item.id}`}>{item.stock}</TableCell>
-                        <TableCell data-testid={`text-price-${item.id}`}>৳{Number(item.price).toLocaleString()}</TableCell>
+                        <TableCell data-testid={`text-price-${item.id}`}>à§³{Number(item.price).toLocaleString()}</TableCell>
                         <TableCell>
                           <Badge
                             variant={
@@ -1101,7 +1100,7 @@ export default function AdminInventoryPage() {
                       ))}
                       {formData.itemType === "service" && serviceFilterCategories.length === 0 && (
                         <div className="px-2 py-1 text-xs text-muted-foreground">
-                          No categories. Add them in Settings → Service Filter
+                          No categories. Add them in Settings â†’ Service Filter
                         </div>
                       )}
                     </SelectContent>
@@ -1124,7 +1123,7 @@ export default function AdminInventoryPage() {
                 <>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
-                      <Label htmlFor="edit-min-price">Min Price (৳)</Label>
+                      <Label htmlFor="edit-min-price">Min Price (à§³)</Label>
                       <Input
                         id="edit-min-price"
                         data-testid="input-edit-min-price"
@@ -1135,7 +1134,7 @@ export default function AdminInventoryPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="edit-max-price">Max Price (৳)</Label>
+                      <Label htmlFor="edit-max-price">Max Price (à§³)</Label>
                       <Input
                         id="edit-max-price"
                         data-testid="input-edit-max-price"
@@ -1252,7 +1251,7 @@ export default function AdminInventoryPage() {
                         <ul className="space-y-1">
                           {getValidFeatures().map((feature, index) => (
                             <li key={index} className="text-sm flex items-center gap-2">
-                              <span className="text-green-500">✓</span>
+                              <span className="text-green-500">âœ“</span>
                               {feature}
                             </li>
                           ))}
@@ -1274,7 +1273,7 @@ export default function AdminInventoryPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="edit-price">Price (৳)</Label>
+                    <Label htmlFor="edit-price">Price (à§³)</Label>
                     <Input
                       id="edit-price"
                       data-testid="input-edit-price"
@@ -1444,6 +1443,6 @@ export default function AdminInventoryPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </AdminLayout>
+    </>
   );
 }

@@ -800,6 +800,44 @@ export const adminReviewsApi = {
     }),
 };
 
+// AI API
+export const aiApi = {
+  suggestTechnician: (jobDescription: string) =>
+    fetchApi<{ technicianId: string; reason: string } | null>("/ai/suggest-tech", {
+      method: "POST",
+      body: JSON.stringify({ jobDescription }),
+    }),
+  inspectImage: (base64Image: string) =>
+    fetchApi<{ component: string; damage: string[]; likelyCause: string; severity: string } | null>("/ai/inspect", {
+      method: "POST",
+      body: JSON.stringify({ image: base64Image }),
+    }),
+  chat: (message: string, history: any[], image?: string) =>
+    fetchApi<{ text: string; booking: any | null; ticketData?: any; error?: boolean; errorCode?: string }>("/ai/chat", {
+      method: "POST",
+      body: JSON.stringify({ message, history, image }),
+    }),
+};
+
+// Camera Lens API
+export const lensApi = {
+  identifyPart: (image: string) =>
+    fetchApi<{ label: string; confidence: number; partInfo?: any; rawText?: string }>("/lens/identify", {
+      method: "POST",
+      body: JSON.stringify({ image }),
+    }),
+  assessDamage: (image: string) =>
+    fetchApi<{ damage: string[]; rawText?: string }>("/lens/assess", {
+      method: "POST",
+      body: JSON.stringify({ image }),
+    }),
+  readBarcode: (image: string) =>
+    fetchApi<{ barcode: string; partInfo?: any }>("/lens/barcode", {
+      method: "POST",
+      body: JSON.stringify({ image }),
+    }),
+};
+
 // Notifications API
 export const notificationsApi = {
   getAll: () => fetchApi<Notification[]>("/notifications"),

@@ -8,7 +8,7 @@ dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
 const config: CapacitorConfig = {
   appId: 'com.promiseelectronics.customer',
-  appName: 'Promise Electronics',
+  appName: 'TV ডাক্তার',
   webDir: 'dist/public',
   // server: {
   //   url: 'http://192.168.1.114:5083',

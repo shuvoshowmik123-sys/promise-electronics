@@ -9,3 +9,26 @@ sqlite.db
 *.log
 npm-debug.log
 attached_assets
+
+# Build logs
+build_log*.txt
+full_error.txt
+gradle_build.log
+seed_output.txt
+run_log.txt
+output*.log
+
+# APK files (should be built locally, not committed)
+*.apk
+
+# Android build directories
+android/build/
+android/app/build/
+android/.gradle/
+
+# Environment files (keep .env.production template but not secrets)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local

@@ -1,4 +1,3 @@
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -182,30 +181,30 @@ export default function AdminOverview() {
 
   if (isLoading) {
     return (
-      <AdminLayout>
+      <>
         <div className="flex items-center justify-center h-64">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
-      </AdminLayout>
+      </>
     );
   }
 
   if (error || !overview) {
     return (
-      <AdminLayout>
+      <>
         <div className="flex flex-col items-center justify-center h-64 text-muted-foreground">
           <AlertTriangle className="w-12 h-12 mb-4 text-destructive" />
           <p>Failed to load job overview data</p>
           <p className="text-sm">Please try refreshing the page</p>
         </div>
-      </AdminLayout>
+      </>
     );
   }
 
   const { stats, dueToday, dueTomorrow, dueThisWeek, readyForDelivery, technicianWorkloads } = overview;
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Live Job Overview</h1>
@@ -413,6 +412,6 @@ export default function AdminOverview() {
           )}
         </CardContent>
       </Card>
-    </AdminLayout>
+    </>
   );
 }

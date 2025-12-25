@@ -1,4 +1,3 @@
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -246,7 +245,7 @@ export default function AdminPickupSchedulePage() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="p-6 space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -516,7 +515,7 @@ export default function AdminPickupSchedulePage() {
                   </div>
                 )}
                 <div className="text-sm text-muted-foreground">
-                  Tier Cost: ৳{selectedPickup.tierCost}
+                  Tier Cost: à§³{selectedPickup.tierCost}
                 </div>
               </div>
             )}
@@ -531,7 +530,7 @@ export default function AdminPickupSchedulePage() {
           </DialogContent>
         </Dialog>
       </div>
-    </AdminLayout>
+    </>
   );
 }
 
@@ -587,7 +586,7 @@ function PickupTable({ pickups, isLoading, getTierBadge, getStatusBadge, onSched
                 </div>
               </TableCell>
               <TableCell className="max-w-[200px] truncate">
-                {pickup.pickupAddress || "—"}
+                {pickup.pickupAddress || "â€”"}
               </TableCell>
               <TableCell>{getTierBadge(pickup.tier)}</TableCell>
               <TableCell>
@@ -597,7 +596,7 @@ function PickupTable({ pickups, isLoading, getTierBadge, getStatusBadge, onSched
                 }
               </TableCell>
               <TableCell>{getStatusBadge(pickup.status)}</TableCell>
-              <TableCell>{pickup.assignedStaff || "—"}</TableCell>
+              <TableCell>{pickup.assignedStaff || "â€”"}</TableCell>
               <TableCell className="text-right">
                 <div className="flex items-center justify-end gap-2">
                   <Button

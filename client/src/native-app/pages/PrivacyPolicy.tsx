@@ -35,16 +35,6 @@ export default function PrivacyPolicy() {
 
     return (
         <NativeLayout className="bg-[var(--color-native-bg)] text-[var(--color-native-text)]">
-            {/* Header */}
-            <header className="sticky top-0 z-20 bg-[var(--color-native-surface)]/90 backdrop-blur-md px-4 py-4 shadow-sm flex items-center gap-3 border-b border-[var(--color-native-border)] transition-colors duration-200">
-                <Link href="/native/profile">
-                    <button className="p-2 -ml-2 rounded-full active:bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] hover:text-[var(--color-native-text)] transition-colors">
-                        <ChevronLeft className="w-6 h-6" />
-                    </button>
-                </Link>
-                <h1 className="text-lg font-bold text-[var(--color-native-text)]">Privacy Policy</h1>
-            </header>
-
             <main className="flex-1 px-4 py-6 pb-24 overflow-y-auto scrollbar-hide">
                 {isLoading && (
                     <div className="flex items-center justify-center py-20">

@@ -1,19 +1,14 @@
 import NativeLayout from "../NativeLayout";
 import { useLocation, Link } from "wouter";
-import { Loader2, User, Check, ChevronRight, Phone, Mail, Lock, Camera } from "lucide-react";
-import { useEffect, useState } from "react";
+import { Loader2, User, ChevronRight, Phone, Mail, Lock, Camera, Image, X } from "lucide-react";
+import { useEffect, useState, useRef } from "react";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-
-const AVATAR_SEEDS = [
-    "Felix", "Aneka", "Zoe", "Jack", "Bella",
-    "Leo", "Mia", "Max", "Lily", "Sam",
-    "Chloe", "Oscar", "Ruby", "Charlie", "Luna"
-];
+import { takePhoto, selectFromGallery, isNative } from "@/lib/native-features";
 
 const editProfileSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters"),
@@ -27,9 +22,11 @@ export default function EditProfile() {
     const { customer, updateProfile, isLoading, isAuthenticated } = useCustomerAuth();
     const { toast } = useToast();
     const [, setLocation] = useLocation();
-    const [selectedAvatar, setSelectedAvatar] = useState<string>("");
-    const [isAvatarDialogOpen, setIsAvatarDialogOpen] = useState(false);
+    const [profileImage, setProfileImage] = useState<string>("");
+    const [isPhotoDialogOpen, setIsPhotoDialogOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
+    const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     if (!isLoading && !isAuthenticated) {
         setLocation("/native/login");
@@ -53,7 +50,13 @@ export default function EditProfile() {
                 phone: customer.phone || "",
                 email: customer.email || "",
             });
-            setSelectedAvatar(customer.profileImageUrl || "");
+            // Load existing profile image
+            if (customer.profileImageUrl) {
+                // Check if it's already a data URL or a regular URL
+                if (customer.profileImageUrl.startsWith('data:') || customer.profileImageUrl.startsWith('http')) {
+                    setProfileImage(customer.profileImageUrl);
+                }
+            }
         }
     }, [customer, form]);
 
@@ -64,13 +67,15 @@ export default function EditProfile() {
                 name: data.name,
                 phone: data.phone,
                 email: data.email || undefined,
-                profileImageUrl: selectedAvatar || undefined,
+
+                profileImageUrl: profileImage,
             });
+            console.log("Profile update request sent. Image length:", profileImage?.length);
             toast({
                 title: "Success",
                 description: "Profile updated successfully",
             });
-            setLocation("/native/settings");
+            setLocation("/native/profile");
         } catch (error) {
             toast({
                 title: "Error",
@@ -82,9 +87,76 @@ export default function EditProfile() {
         }
     };
 
-    const handleAvatarSelect = (seed: string) => {
-        setSelectedAvatar(seed);
-        setIsAvatarDialogOpen(false);
+    const handleTakePhoto = async () => {
+        setIsUploadingPhoto(true);
+        setIsPhotoDialogOpen(false);
+        try {
+            const photo = await takePhoto();
+            if (photo) {
+                setProfileImage(photo);
+                toast({
+                    title: "Photo captured",
+                    description: "Your profile photo has been updated",
+                });
+            }
+        } catch (error) {
+            toast({
+                title: "Error",
+                description: "Failed to take photo",
+                variant: "destructive",
+            });
+        } finally {
+            setIsUploadingPhoto(false);
+        }
+    };
+
+    const handleSelectFromGallery = async () => {
+        setIsUploadingPhoto(true);
+        setIsPhotoDialogOpen(false);
+        try {
+            const photo = await selectFromGallery();
+            if (photo) {
+                setProfileImage(photo);
+                toast({
+                    title: "Photo selected",
+                    description: "Your profile photo has been updated",
+                });
+            }
+        } catch (error) {
+            toast({
+                title: "Error",
+                description: "Failed to select photo",
+                variant: "destructive",
+            });
+        } finally {
+            setIsUploadingPhoto(false);
+        }
+    };
+
+    // Web fallback for file input
+    const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                setProfileImage(reader.result as string);
+                setIsPhotoDialogOpen(false);
+                toast({
+                    title: "Photo selected",
+                    description: "Your profile photo has been updated",
+                });
+            };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const handleRemovePhoto = () => {
+        setProfileImage("");
+        setIsPhotoDialogOpen(false);
+        toast({
+            title: "Photo removed",
+            description: "Profile photo has been removed",
+        });
     };
 
     return (
@@ -100,12 +172,14 @@ export default function EditProfile() {
                         <div className="flex flex-col items-center justify-center pt-8 pb-6 px-4">
                             <div
                                 className="relative group cursor-pointer"
-                                onClick={() => setIsAvatarDialogOpen(true)}
+                                onClick={() => setIsPhotoDialogOpen(true)}
                             >
                                 <div className="h-32 w-32 rounded-full border-4 border-[var(--color-native-surface)] shadow-sm bg-[var(--color-native-input)] overflow-hidden flex items-center justify-center">
-                                    {selectedAvatar ? (
+                                    {isUploadingPhoto ? (
+                                        <Loader2 className="w-10 h-10 animate-spin text-[var(--color-native-primary)]" />
+                                    ) : profileImage ? (
                                         <img
-                                            src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${selectedAvatar}`}
+                                            src={profileImage}
                                             alt="Profile"
                                             className="w-full h-full object-cover"
                                         />
@@ -120,10 +194,10 @@ export default function EditProfile() {
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setIsAvatarDialogOpen(true)}
+                                onClick={() => setIsPhotoDialogOpen(true)}
                                 className="mt-4 text-[var(--color-native-primary)] font-bold text-sm tracking-wide"
                             >
-                                Edit Photo
+                                {profileImage ? "Change Photo" : "Add Photo"}
                             </button>
                         </div>
 
@@ -227,42 +301,80 @@ export default function EditProfile() {
                 )}
             </main>
 
-            {/* Avatar Selection Dialog */}
-            <Dialog open={isAvatarDialogOpen} onOpenChange={setIsAvatarDialogOpen}>
+            {/* Hidden file input for web fallback */}
+            <input
+                type="file"
+                ref={fileInputRef}
+                accept="image/*"
+                onChange={handleFileInputChange}
+                className="hidden"
+            />
+
+            {/* Photo Selection Dialog */}
+            <Dialog open={isPhotoDialogOpen} onOpenChange={setIsPhotoDialogOpen}>
                 <DialogContent className="max-w-[90vw] rounded-3xl p-0 overflow-hidden bg-[var(--color-native-card)] border-[var(--color-native-border)]">
                     <DialogHeader className="px-6 pt-6 pb-4">
                         <DialogTitle className="text-xl font-bold text-[var(--color-native-text)]">
-                            Choose Avatar
+                            Profile Photo
                         </DialogTitle>
                     </DialogHeader>
-                    <div className="px-6 pb-6">
-                        <div className="grid grid-cols-5 gap-3">
-                            {AVATAR_SEEDS.map((seed) => (
-                                <button
-                                    key={seed}
-                                    type="button"
-                                    onClick={() => handleAvatarSelect(seed)}
-                                    className={`relative aspect-square rounded-full overflow-hidden border-2 transition-all ${selectedAvatar === seed
-                                            ? "border-[var(--color-native-primary)] ring-2 ring-[var(--color-native-primary)]/30 scale-105"
-                                            : "border-transparent hover:border-[var(--color-native-border)]"
-                                        }`}
-                                >
-                                    <img
-                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${seed}`}
-                                        alt={seed}
-                                        className="w-full h-full bg-[var(--color-native-input)]"
-                                    />
-                                    {selectedAvatar === seed && (
-                                        <div className="absolute inset-0 bg-[var(--color-native-primary)]/20 flex items-center justify-center">
-                                            <Check className="w-6 h-6 text-[var(--color-native-primary)] drop-shadow-md" />
-                                        </div>
-                                    )}
-                                </button>
-                            ))}
-                        </div>
+                    <div className="px-6 pb-6 space-y-3">
+                        {/* Take Photo Option */}
+                        <button
+                            type="button"
+                            onClick={isNative ? handleTakePhoto : () => fileInputRef.current?.click()}
+                            className="w-full flex items-center gap-4 p-4 rounded-2xl bg-[var(--color-native-input)] hover:bg-[var(--color-native-border)] active:scale-[0.98] transition-all"
+                        >
+                            <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
+                                <Camera className="w-6 h-6 text-blue-500" />
+                            </div>
+                            <div className="text-left">
+                                <p className="font-bold text-[var(--color-native-text)]">
+                                    {isNative ? "Take Photo" : "Upload Photo"}
+                                </p>
+                                <p className="text-xs text-[var(--color-native-text-muted)]">
+                                    {isNative ? "Use your camera" : "Select a file from your device"}
+                                </p>
+                            </div>
+                        </button>
+
+                        {/* Select from Gallery Option - Only on native */}
+                        {isNative && (
+                            <button
+                                type="button"
+                                onClick={handleSelectFromGallery}
+                                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-[var(--color-native-input)] hover:bg-[var(--color-native-border)] active:scale-[0.98] transition-all"
+                            >
+                                <div className="w-12 h-12 rounded-full bg-purple-500/20 flex items-center justify-center">
+                                    <Image className="w-6 h-6 text-purple-500" />
+                                </div>
+                                <div className="text-left">
+                                    <p className="font-bold text-[var(--color-native-text)]">Choose from Gallery</p>
+                                    <p className="text-xs text-[var(--color-native-text-muted)]">Select from your photos</p>
+                                </div>
+                            </button>
+                        )}
+
+                        {/* Remove Photo Option - Only if photo exists */}
+                        {profileImage && (
+                            <button
+                                type="button"
+                                onClick={handleRemovePhoto}
+                                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-red-500/10 hover:bg-red-500/20 active:scale-[0.98] transition-all"
+                            >
+                                <div className="w-12 h-12 rounded-full bg-red-500/20 flex items-center justify-center">
+                                    <X className="w-6 h-6 text-red-500" />
+                                </div>
+                                <div className="text-left">
+                                    <p className="font-bold text-red-500">Remove Photo</p>
+                                    <p className="text-xs text-red-400">Delete your profile photo</p>
+                                </div>
+                            </button>
+                        )}
                     </div>
                 </DialogContent>
             </Dialog>
         </NativeLayout>
     );
 }
+

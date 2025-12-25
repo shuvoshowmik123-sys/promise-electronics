@@ -1,4 +1,3 @@
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -379,7 +378,7 @@ export default function AdminChallanPage() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
@@ -880,6 +879,6 @@ export default function AdminChallanPage() {
           </DialogContent>
         </Dialog>
       </div>
-    </AdminLayout>
+    </>
   );
 }

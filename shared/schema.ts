@@ -15,6 +15,13 @@ export const DUE_STATUSES = ["Pending", "Overdue", "Paid"] as const;
 export const PAYMENT_METHODS = ["Cash", "Bank", "bKash", "Nagad", "Due"] as const;
 export const PAYMENT_STATUSES = ["Paid", "Due"] as const;
 
+// Session Table (Managed by connect-pg-simple, but defined here to prevent Drizzle from dropping it)
+export const userSessions = pgTable("user_sessions", {
+  sid: text("sid").primaryKey(),
+  sess: jsonb("sess").notNull(),
+  expire: timestamp("expire", { precision: 6 }).notNull(),
+});
+
 // Users Table
 export const users = pgTable("users", {
   id: text("id").primaryKey(), // App should generate UUID
@@ -91,6 +98,7 @@ export const jobTickets = pgTable("job_tickets", {
   completedAt: timestamp("completed_at"),
   deadline: timestamp("deadline"),
   notes: text("notes"),
+  aiDiagnosis: jsonb("ai_diagnosis"),
   estimatedCost: real("estimated_cost"),
   serviceWarrantyDays: integer("service_warranty_days").default(0),
   serviceExpiryDate: timestamp("service_expiry_date"),

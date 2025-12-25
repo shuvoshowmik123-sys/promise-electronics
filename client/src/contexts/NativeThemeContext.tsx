@@ -49,9 +49,15 @@ export function NativeThemeProvider({ children }: { children: ReactNode }) {
     }, []);
 
     // Helper function to apply theme class synchronously
+    // Only applies dark mode on native routes, admin/web always use light theme
     const applyThemeClass = (dark: boolean) => {
         const root = document.documentElement;
-        if (dark) {
+        const isNativeRoute = window.location.pathname.startsWith("/native");
+
+        // Only apply dark mode on native app routes
+        const shouldBeDark = dark && isNativeRoute;
+
+        if (shouldBeDark) {
             root.classList.add("native-dark");
             root.classList.add("dark");
         } else {
@@ -85,6 +91,18 @@ export function NativeThemeProvider({ children }: { children: ReactNode }) {
     // Use useLayoutEffect to run before paint and prevent flash
     useLayoutEffect(() => {
         applyThemeClass(isDark);
+    }, [isDark]);
+
+    // Re-apply theme when route changes (to handle admin vs native routes)
+    useEffect(() => {
+        const handleRouteChange = () => {
+            applyThemeClass(isDark);
+        };
+
+        // Listen to popstate for browser navigation
+        window.addEventListener("popstate", handleRouteChange);
+
+        return () => window.removeEventListener("popstate", handleRouteChange);
     }, [isDark]);
 
     return (

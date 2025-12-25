@@ -1,4 +1,3 @@
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -239,7 +238,7 @@ export default function AdminSettingsPage() {
   const [supportPhone, setSupportPhone] = useState("+880 1700-000000");
   const [serviceCenterContact, setServiceCenterContact] = useState("01700-000000");
   const [businessHours, setBusinessHours] = useState("9:00 AM - 9:00 PM");
-  const [currencySymbol, setCurrencySymbol] = useState("৳");
+  const [currencySymbol, setCurrencySymbol] = useState("à§³");
   const [vatPercentage, setVatPercentage] = useState("5");
   const [timezone, setTimezone] = useState("asia-dhaka");
   const [maintenanceMode, setMaintenanceMode] = useState(false);
@@ -325,7 +324,7 @@ export default function AdminSettingsPage() {
     { id: "1", question: "How long does a typical repair take?", answer: "Most repairs are completed within 24-48 hours. For complex issues like panel replacements, it may take 3-5 business days. We'll provide an accurate timeline after diagnosis." },
     { id: "2", question: "Do you offer warranty on repairs?", answer: "Yes! All our repairs come with a 90-day warranty covering both parts and labor. If the same issue recurs within this period, we'll fix it free of charge." },
     { id: "3", question: "What brands do you service?", answer: "We service all major TV brands including Samsung, LG, Sony, Panasonic, Philips, Toshiba, TCL, Hisense, and many more. Our technicians are trained on both LCD and LED/OLED technologies." },
-    { id: "4", question: "How much does a TV repair cost?", answer: "Repair costs vary depending on the issue. Common repairs range from ৳1,500 to ৳8,000. Panel replacements may cost more. We provide a free diagnosis and transparent quote before any work begins." },
+    { id: "4", question: "How much does a TV repair cost?", answer: "Repair costs vary depending on the issue. Common repairs range from à§³1,500 to à§³8,000. Panel replacements may cost more. We provide a free diagnosis and transparent quote before any work begins." },
     { id: "5", question: "Do you offer home pickup and delivery?", answer: "Yes, we offer convenient pickup and delivery services across Dhaka. Our team will safely transport your TV to our service center and return it after repair at a nominal fee." },
     { id: "6", question: "What payment methods do you accept?", answer: "We accept cash, bKash, Nagad, bank transfers, and all major credit/debit cards. Payment is only required after your TV is successfully repaired and tested." },
   ];
@@ -1395,7 +1394,7 @@ export default function AdminSettingsPage() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-4">
           <div className="flex items-center justify-between">
@@ -1580,7 +1579,7 @@ export default function AdminSettingsPage() {
                                     data-testid={`input-mobile-hero-image-${index}`}
                                   />
                                   <p className="text-xs text-muted-foreground mt-1">
-                                    Recommended: <span className="font-medium">375×667px</span> to <span className="font-medium">430×932px</span> (portrait 9:16 ratio)
+                                    Recommended: <span className="font-medium">375Ã—667px</span> to <span className="font-medium">430Ã—932px</span> (portrait 9:16 ratio)
                                   </p>
                                 </div>
                               </div>
@@ -3279,7 +3278,7 @@ export default function AdminSettingsPage() {
                                   <TableCell className="font-medium">{item.name}</TableCell>
                                   <TableCell>{item.category}</TableCell>
                                   <TableCell>{item.stock || "0"}</TableCell>
-                                  <TableCell>৳{parseFloat(item.price).toLocaleString()}</TableCell>
+                                  <TableCell>à§³{parseFloat(item.price).toLocaleString()}</TableCell>
                                   <TableCell>
                                     <Badge variant={item.status === "In Stock" ? "default" : item.status === "Low Stock" ? "secondary" : "destructive"}>
                                       {item.status || "In Stock"}
@@ -3516,7 +3515,7 @@ export default function AdminSettingsPage() {
           if (!open) setEditingPolicy(null);
         }}
       />
-    </AdminLayout >
+    </>
   );
 }
 

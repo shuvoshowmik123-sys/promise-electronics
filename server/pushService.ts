@@ -3,8 +3,9 @@ import { db } from "./db.js";
 import { eq, and } from "drizzle-orm";
 import * as schema from "../shared/schema.js";
 
-// FCM Server Key from environment
-const FCM_SERVER_KEY = process.env.FCM_SERVER_KEY;
+import admin from 'firebase-admin';
+import { readFileSync } from 'fs';
+import { join } from 'path';
 
 export interface PushNotificationPayload {
     title: string;
@@ -13,49 +14,56 @@ export interface PushNotificationPayload {
     icon?: string;
 }
 
+// Initialize Firebase Admin
+try {
+    // Check if already initialized to avoid errors on hot reload
+    if (!admin.apps.length) {
+        const serviceAccountPath = join(process.cwd(), 'server', 'service-account.json');
+        const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
+
+        admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount)
+        });
+        console.log("[Push] Firebase Admin initialized successfully");
+    }
+} catch (error) {
+    console.error("[Push] Failed to initialize Firebase Admin:", error);
+}
+
 // Send push notification to a single device
 async function sendToDevice(token: string, payload: PushNotificationPayload): Promise<boolean> {
-    if (!FCM_SERVER_KEY) {
-        console.warn("[Push] FCM_SERVER_KEY not configured, skipping push notification");
-        return false;
-    }
-
     try {
-        const response = await fetch("https://fcm.googleapis.com/fcm/send", {
-            method: "POST",
-            headers: {
-                "Authorization": `key=${FCM_SERVER_KEY}`,
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify({
-                to: token,
-                notification: {
-                    title: payload.title,
-                    body: payload.body,
-                    icon: payload.icon || "/icon-192.png",
-                    sound: "default",
-                },
-                data: payload.data || {},
-                priority: "high",
-            }),
-        });
-
-        const result = await response.json();
-
-        if (result.success === 1) {
-            console.log(`[Push] Notification sent successfully to ${token.substring(0, 20)}...`);
-            return true;
-        } else {
-            console.error("[Push] FCM error:", result);
-            // If token is invalid, mark it as inactive
-            if (result.results?.[0]?.error === "InvalidRegistration" ||
-                result.results?.[0]?.error === "NotRegistered") {
-                await deactivateToken(token);
-            }
+        if (!admin.apps.length) {
+            console.warn("[Push] Firebase Admin not initialized, skipping push");
             return false;
         }
-    } catch (error) {
+
+        await admin.messaging().send({
+            token: token,
+            notification: {
+                title: payload.title,
+                body: payload.body,
+            },
+            data: payload.data || {},
+            android: {
+                priority: 'high',
+                notification: {
+                    color: '#0f172a',
+                    sound: 'default'
+                }
+            }
+        });
+
+        console.log(`[Push] Notification sent successfully to ${token.substring(0, 20)}...`);
+        return true;
+    } catch (error: any) {
         console.error("[Push] Error sending notification:", error);
+
+        // If token is invalid, mark it as inactive
+        if (error.code === 'messaging/registration-token-not-registered' ||
+            error.code === 'messaging/invalid-registration-token') {
+            await deactivateToken(token);
+        }
         return false;
     }
 }

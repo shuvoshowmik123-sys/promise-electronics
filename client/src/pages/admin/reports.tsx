@@ -1,4 +1,3 @@
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -26,7 +25,7 @@ export default function AdminReportsPage() {
     if (!printWindow) return;
 
     const monthlyRows = reportData.monthlyFinancials.map(d => 
-      '<tr><td style="font-size:9px;padding:4px;">' + d.name + '</td><td style="font-size:9px;padding:4px;">৳' + d.income.toLocaleString() + '</td><td style="font-size:9px;padding:4px;">৳' + d.expense.toLocaleString() + '</td><td style="font-size:9px;padding:4px;">' + d.repairs + '</td></tr>'
+      '<tr><td style="font-size:9px;padding:4px;">' + d.name + '</td><td style="font-size:9px;padding:4px;">à§³' + d.income.toLocaleString() + '</td><td style="font-size:9px;padding:4px;">à§³' + d.expense.toLocaleString() + '</td><td style="font-size:9px;padding:4px;">' + d.repairs + '</td></tr>'
     ).join('');
 
     const techRows = reportData.technicianPerformance.map(t =>
@@ -37,7 +36,7 @@ export default function AdminReportsPage() {
       '<div style="padding:3px 0;border-bottom:1px solid #e5e7eb;font-size:8px;"><span style="font-weight:500;">' + log.action + '</span> <span style="color:#6b7280;">by ' + log.user + '</span></div>'
     ).join('');
 
-    const html = `<!DOCTYPE html><html><head><title>Promise Electronics - Work Reports</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; padding: 8mm; color: #1f2937; font-size: 10px; line-height: 1.3; } h1 { font-size: 16px; margin-bottom: 2px; color: #0ea5e9; } .date { font-size: 9px; color: #6b7280; margin-bottom: 8px; } .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; } .card { border: 1px solid #d1d5db; padding: 8px; border-radius: 4px; background: #f9fafb; } .card-title { font-size: 8px; font-weight: 600; color: #4b5563; margin-bottom: 2px; } .card-value { font-size: 18px; font-weight: bold; color: #0ea5e9; } .card-subtitle { font-size: 7px; color: #9ca3af; margin-top: 1px; } .section { margin-bottom: 8px; page-break-inside: avoid; } .section-title { font-size: 11px; font-weight: 600; margin-bottom: 3px; color: #1f2937; } table { width: 100%; border-collapse: collapse; margin-top: 2px; } th { background-color: #e5e7eb; font-weight: 600; font-size: 8px; padding: 3px 4px; text-align: left; border: 1px solid #d1d5db; } td { border: 1px solid #d1d5db; } @page { size: A4; margin: 5mm; } @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }</style></head><body><h1>Promise Electronics</h1><div class="date">Work Reports & Analytics - ${new Date().toLocaleDateString("en-BD")}</div><div class="grid"><div class="card"><div class="card-title">Total Revenue</div><div class="card-value" style="font-size:16px;">৳${reportData.summary.totalRevenue.toLocaleString()}</div></div><div class="card"><div class="card-title">Repair Jobs</div><div class="card-value" style="font-size:16px;">${reportData.summary.totalRepairs}</div></div><div class="card"><div class="card-title">Active Staff</div><div class="card-value" style="font-size:16px;">${reportData.summary.totalStaff}</div></div></div><div class="section"><div class="section-title">Financial Overview</div><table><thead><tr><th>Month</th><th>Income</th><th>Expense</th><th>Repairs</th></tr></thead><tbody>${monthlyRows}</tbody></table></div><div class="section"><div class="section-title">Technician Performance</div><table><thead><tr><th>Technician</th><th>Tasks</th><th>Efficiency</th></tr></thead><tbody>${techRows}</tbody></table></div><div class="section"><div class="section-title">Activity Logs</div>${logRows}</div></body></html>`;
+    const html = `<!DOCTYPE html><html><head><title>Promise Electronics - Work Reports</title><style>* { margin: 0; padding: 0; box-sizing: border-box; } body { font-family: Arial, sans-serif; padding: 8mm; color: #1f2937; font-size: 10px; line-height: 1.3; } h1 { font-size: 16px; margin-bottom: 2px; color: #0ea5e9; } .date { font-size: 9px; color: #6b7280; margin-bottom: 8px; } .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; } .card { border: 1px solid #d1d5db; padding: 8px; border-radius: 4px; background: #f9fafb; } .card-title { font-size: 8px; font-weight: 600; color: #4b5563; margin-bottom: 2px; } .card-value { font-size: 18px; font-weight: bold; color: #0ea5e9; } .card-subtitle { font-size: 7px; color: #9ca3af; margin-top: 1px; } .section { margin-bottom: 8px; page-break-inside: avoid; } .section-title { font-size: 11px; font-weight: 600; margin-bottom: 3px; color: #1f2937; } table { width: 100%; border-collapse: collapse; margin-top: 2px; } th { background-color: #e5e7eb; font-weight: 600; font-size: 8px; padding: 3px 4px; text-align: left; border: 1px solid #d1d5db; } td { border: 1px solid #d1d5db; } @page { size: A4; margin: 5mm; } @media print { body { print-color-adjust: exact; -webkit-print-color-adjust: exact; } }</style></head><body><h1>Promise Electronics</h1><div class="date">Work Reports & Analytics - ${new Date().toLocaleDateString("en-BD")}</div><div class="grid"><div class="card"><div class="card-title">Total Revenue</div><div class="card-value" style="font-size:16px;">à§³${reportData.summary.totalRevenue.toLocaleString()}</div></div><div class="card"><div class="card-title">Repair Jobs</div><div class="card-value" style="font-size:16px;">${reportData.summary.totalRepairs}</div></div><div class="card"><div class="card-title">Active Staff</div><div class="card-value" style="font-size:16px;">${reportData.summary.totalStaff}</div></div></div><div class="section"><div class="section-title">Financial Overview</div><table><thead><tr><th>Month</th><th>Income</th><th>Expense</th><th>Repairs</th></tr></thead><tbody>${monthlyRows}</tbody></table></div><div class="section"><div class="section-title">Technician Performance</div><table><thead><tr><th>Technician</th><th>Tasks</th><th>Efficiency</th></tr></thead><tbody>${techRows}</tbody></table></div><div class="section"><div class="section-title">Activity Logs</div>${logRows}</div></body></html>`;
 
     printWindow.document.write(html);
     printWindow.document.close();
@@ -54,29 +53,29 @@ export default function AdminReportsPage() {
 
   if (isLoading) {
     return (
-      <AdminLayout>
+      <>
         <div className="flex items-center justify-center h-96">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
           <span className="ml-2">Loading reports...</span>
         </div>
-      </AdminLayout>
+      </>
     );
   }
 
   if (error) {
     return (
-      <AdminLayout>
+      <>
         <div className="flex items-center justify-center h-96">
           <p className="text-destructive">Failed to load reports. Please try again.</p>
         </div>
-      </AdminLayout>
+      </>
     );
   }
 
   const { monthlyFinancials = [], technicianPerformance = [], activityLogs = [], summary = { totalRevenue: 0, totalRepairs: 0, totalStaff: 0 } } = reportData || {};
 
   return (
-    <AdminLayout>
+    <>
        <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
@@ -109,7 +108,7 @@ export default function AdminReportsPage() {
                     <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                    <div className="text-2xl font-bold" data-testid="text-total-revenue">৳{summary.totalRevenue.toLocaleString()}</div>
+                    <div className="text-2xl font-bold" data-testid="text-total-revenue">à§³{summary.totalRevenue.toLocaleString()}</div>
                     <p className="text-xs text-muted-foreground">For selected period</p>
                 </CardContent>
             </Card>
@@ -156,10 +155,10 @@ export default function AdminReportsPage() {
                                   <CartesianGrid strokeDasharray="3 3" />
                                   <XAxis dataKey="name" />
                                   <YAxis />
-                                  <Tooltip formatter={(value: number) => [`৳${value.toLocaleString()}`, '']} />
+                                  <Tooltip formatter={(value: number) => [`à§³${value.toLocaleString()}`, '']} />
                                   <Legend />
-                                  <Bar dataKey="income" fill="#0EA5E9" name="Income (৳)" />
-                                  <Bar dataKey="expense" fill="#EF4444" name="Expenses (৳)" />
+                                  <Bar dataKey="income" fill="#0EA5E9" name="Income (à§³)" />
+                                  <Bar dataKey="expense" fill="#EF4444" name="Expenses (à§³)" />
                               </BarChart>
                           </ResponsiveContainer>
                         ) : (
@@ -291,6 +290,6 @@ export default function AdminReportsPage() {
         </Tabs>
         </div>
        </div>
-    </AdminLayout>
+    </>
   );
 }

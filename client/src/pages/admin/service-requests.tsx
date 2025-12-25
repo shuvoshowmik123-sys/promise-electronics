@@ -1,4 +1,3 @@
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -541,7 +540,7 @@ export default function AdminServiceRequestsPage() {
   const pendingCount = requests.filter(r => r.status === "Pending").length;
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-6">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
@@ -666,7 +665,7 @@ export default function AdminServiceRequestsPage() {
                                 {getQuoteStatusBadge(request.quoteStatus)}
                                 {request.quoteAmount && (
                                   <p className="text-sm font-medium text-primary">
-                                    ৳{Number(request.quoteAmount).toLocaleString()}
+                                    à§³{Number(request.quoteAmount).toLocaleString()}
                                   </p>
                                 )}
                               </div>
@@ -996,7 +995,7 @@ export default function AdminServiceRequestsPage() {
 
                 // Customer Tracking: The dropdown itself is NEVER fully blocked
                 // Instead, individual job-related items are disabled until Converted AND technician assigned
-                // Pre-job states (Request Received → Received / Awaiting Drop-off → Queued) are always available
+                // Pre-job states (Request Received â†’ Received / Awaiting Drop-off â†’ Queued) are always available
                 const hasJobTicket = !!selectedRequest.convertedJobId;
                 // Check if job has technician assigned (from convertedJobData query)
                 // Technician field defaults to "Unassigned" when no one is assigned
@@ -1017,7 +1016,7 @@ export default function AdminServiceRequestsPage() {
                         <Label className="text-sm font-semibold text-slate-700">Workflow Stage</Label>
                         {selectedRequest.serviceMode && (
                           <Badge variant="outline" className="text-xs">
-                            {selectedRequest.serviceMode === "pickup" ? "🚗 Home Pickup" : "🏪 Service Center"}
+                            {selectedRequest.serviceMode === "pickup" ? "ðŸš— Home Pickup" : "ðŸª Service Center"}
                           </Badge>
                         )}
                       </div>
@@ -1656,7 +1655,7 @@ export default function AdminServiceRequestsPage() {
               <div className="space-y-2">
                 <Label htmlFor="quoteAmount">Quote Amount (BDT) *</Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">৳</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">à§³</span>
                   <Input
                     id="quoteAmount"
                     type="number"
@@ -1798,6 +1797,6 @@ export default function AdminServiceRequestsPage() {
         isOpen={mediaViewerOpen}
         onClose={() => setMediaViewerOpen(false)}
       />
-    </AdminLayout>
+    </>
   );
 }

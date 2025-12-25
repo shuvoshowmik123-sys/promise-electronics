@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>AI Lens Camera UI</title>
+<link href="https://fonts.googleapis.com/css2?family=Spline+Sans:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                    },
+                    fontFamily: {
+                        "display": ["Spline Sans", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        /* Custom pulsing animation for AI reticle */
+        @keyframes scan-pulse {
+            0% { box-shadow: 0 0 0 0 rgba(54, 226, 123, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(54, 226, 123, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(54, 226, 123, 0); }
+        }
+        .animate-scan-pulse {
+            animation: scan-pulse 2s infinite;
+        }
+        /* Hide scrollbar */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display h-screen overflow-hidden flex flex-col">
+<!-- Main Camera Viewport -->
+<div class="relative flex-1 w-full bg-black overflow-hidden group/design-root">
+<!-- Camera Feed Placeholder -->
+<div class="absolute inset-0 w-full h-full">
+<img class="w-full h-full object-cover opacity-90" data-alt="Close up view of complex electronic circuit board components in macro focus" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBbygyT-j8565BD2yHZnf5E9HPZ6t3gVU56i3kPo8y6vB71ehLJIIO9-As6XiIncjDcEXsTLKjd6qxfiDuynn8foiIfJtbubLGF50wXsZNbAsvKFzohsSzCPmqhgHonfcdZNqhP_RdQuB644OIUn5ovIUb4JNl6DJ_LjQcc_5QctEA-KuXPIS18xKu3mgOkfIvgZheK5tFW_N6ffqmG8dgGUULpFxSdxD-j0NmLOz3HA94PRfzJGj-OgsYnW-HJZ8xF_xVeCxx_au4"/>
+<!-- Overlay Gradient for better text visibility -->
+<div class="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/10"></div>
+</div>
+<!-- AI Overlay Layer -->
+<div class="absolute inset-0 pointer-events-none z-10 flex flex-col items-center justify-center">
+<!-- Scanning Reticle -->
+<div class="relative w-72 h-72 border border-primary/30 rounded-[2rem] flex items-center justify-center animate-scan-pulse">
+<!-- Corner Indicators -->
+<div class="absolute top-0 left-0 w-8 h-8 border-t-[3px] border-l-[3px] border-primary rounded-tl-2xl -mt-[1px] -ml-[1px]"></div>
+<div class="absolute top-0 right-0 w-8 h-8 border-t-[3px] border-r-[3px] border-primary rounded-tr-2xl -mt-[1px] -mr-[1px]"></div>
+<div class="absolute bottom-0 left-0 w-8 h-8 border-b-[3px] border-l-[3px] border-primary rounded-bl-2xl -mb-[1px] -ml-[1px]"></div>
+<div class="absolute bottom-0 right-0 w-8 h-8 border-b-[3px] border-r-[3px] border-primary rounded-br-2xl -mb-[1px] -mr-[1px]"></div>
+<!-- Center Crosshair -->
+<div class="w-2 h-2 bg-primary rounded-full opacity-80"></div>
+<!-- Dynamic AI Labels -->
+<div class="absolute -top-12 left-0 bg-white/90 dark:bg-black/80 backdrop-blur-sm px-3 py-1.5 rounded-lg border border-primary/50 shadow-lg flex items-center gap-2 transform transition-all duration-300">
+<span class="material-symbols-outlined text-primary text-[18px]">memory</span>
+<span class="text-xs font-bold text-background-dark dark:text-white uppercase tracking-wider">PCB Logic Board</span>
+</div>
+<!-- Floating Dots (Decor) -->
+<div class="absolute top-1/4 right-1/4 w-1.5 h-1.5 bg-primary rounded-full animate-ping"></div>
+</div>
+<p class="mt-4 text-white/90 text-sm font-medium tracking-wide drop-shadow-md">Analyzing component...</p>
+</div>
+<!-- Top Navigation Bar -->
+<div class="absolute top-0 w-full z-20 pt-12 pb-4 px-4 flex justify-between items-start">
+<!-- Close Button -->
+<button class="flex size-10 items-center justify-center rounded-full bg-black/20 backdrop-blur-md text-white hover:bg-black/30 transition-colors">
+<span class="material-symbols-outlined">close</span>
+</button>
+<!-- Top Right Controls -->
+<div class="flex flex-col gap-3">
+<button class="flex size-10 items-center justify-center rounded-full bg-black/20 backdrop-blur-md text-white hover:bg-black/30 transition-colors">
+<span class="material-symbols-outlined">flash_on</span>
+</button>
+<button class="flex size-10 items-center justify-center rounded-full bg-black/20 backdrop-blur-md text-white hover:bg-black/30 transition-colors">
+<span class="material-symbols-outlined">more_vert</span>
+</button>
+</div>
+</div>
+</div>
+<!-- Bottom Controls Sheet -->
+<!-- Using a white sheet to respect the 'Light Mode' default request while overlaying the camera -->
+<div class="relative z-30 w-full bg-background-light dark:bg-background-dark rounded-t-[2rem] -mt-6 pt-6 pb-8 px-6 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] flex flex-col items-center gap-6">
+<!-- Drag Handle -->
+<div class="w-12 h-1.5 bg-gray-300 dark:bg-gray-600 rounded-full mb-1"></div>
+<!-- Mode Selector (Segmented Button) -->
+<div class="flex w-full max-w-sm h-12 items-center justify-center rounded-full bg-gray-200 dark:bg-gray-800 p-1">
+<label class="flex cursor-pointer h-full flex-1 items-center justify-center overflow-hidden rounded-full px-2 has-[:checked]:bg-white dark:has-[:checked]:bg-gray-700 has-[:checked]:shadow-sm transition-all duration-200">
+<span class="truncate text-primary text-sm font-bold leading-normal">Identify Part</span>
+<input checked="" class="invisible w-0" name="camera-mode" type="radio" value="Identify Part"/>
+</label>
+<label class="flex cursor-pointer h-full flex-1 items-center justify-center overflow-hidden rounded-full px-2 has-[:checked]:bg-white dark:has-[:checked]:bg-gray-700 has-[:checked]:shadow-sm text-gray-500 dark:text-gray-400 text-sm font-medium leading-normal transition-all duration-200">
+<span class="truncate">Assess Damage</span>
+<input class="invisible w-0" name="camera-mode" type="radio" value="Assess Damage"/>
+</label>
+<label class="flex cursor-pointer h-full flex-1 items-center justify-center overflow-hidden rounded-full px-2 has-[:checked]:bg-white dark:has-[:checked]:bg-gray-700 has-[:checked]:shadow-sm text-gray-500 dark:text-gray-400 text-sm font-medium leading-normal transition-all duration-200">
+<span class="truncate">Barcode</span>
+<input class="invisible w-0" name="camera-mode" type="radio" value="Barcode"/>
+</label>
+</div>
+<!-- Instructional Chip -->
+<div class="flex items-center gap-2 bg-white dark:bg-gray-800 border border-gray-100 dark:border-gray-700 shadow-sm px-4 py-2 rounded-full">
+<span class="material-symbols-outlined text-primary text-[20px]">center_focus_weak</span>
+<span class="text-xs font-semibold text-gray-700 dark:text-gray-200">Hold steady to scan part</span>
+</div>
+<!-- Main Camera Controls Row -->
+<div class="flex items-center justify-between w-full max-w-sm mt-2">
+<!-- Gallery Thumbnail -->
+<button class="relative size-14 rounded-full overflow-hidden border-2 border-white dark:border-gray-600 shadow-md group">
+<img class="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition" data-alt="Thumbnail of recent electronics repair photo" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBa7A4WvhevLtg4wA09rTS-daeC6H-r4QhrGnUsIPxDoUHQ2ipao9vBrmaez1AsX6w9myQaMkyMmNX_E2LysnEhjxf9aYH_0Qdio6eAkZxZzSOqCSzO45wZ04T9v4TWrvasZXn4Mk6edqhQPNRIRuk3hmMBqBjp11QEJsCWhoOWuG_oN0UTvRufGEhU5AuT5lkpsluOXs8qvbM7OUnEBu-w_fa4MTsLEG3jY9X2V_fqziStuEGRocWKmb8LJIit_HjVYIoDpGKQL6w"/>
+</button>
+<!-- Shutter Button -->
+<!-- Large circular button with primary color ring -->
+<button class="relative size-20 rounded-full border-[4px] border-primary/20 flex items-center justify-center bg-transparent group active:scale-95 transition-transform duration-150">
+<div class="size-16 rounded-full bg-primary shadow-[0_0_20px_rgba(54,226,123,0.4)] group-hover:scale-105 transition-transform duration-200 flex items-center justify-center">
+<span class="material-symbols-outlined text-white text-[32px]">lens</span>
+</div>
+</button>
+<!-- Secondary Action (Rotate/Help) -->
+<button class="size-14 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 flex items-center justify-center hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors">
+<span class="material-symbols-outlined text-[24px]">cameraswitch</span>
+</button>
+</div>
+</div>
+</body></html>

@@ -166,15 +166,6 @@ export default function NativeWarranties() {
 
     return (
         <NativeLayout className="bg-[var(--color-native-bg)] text-[var(--color-native-text)] pb-20">
-            {/* Header */}
-            <div className="bg-[var(--color-native-surface)] px-4 pt-4 pb-4 sticky top-0 z-10 shadow-sm flex items-center gap-3 border-b border-[var(--color-native-border)] transition-colors duration-200">
-                <Link href="/native/profile">
-                    <button className="p-2 -ml-2 rounded-full active:bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] hover:text-[var(--color-native-text)] transition-colors">
-                        <ArrowLeft className="w-6 h-6" />
-                    </button>
-                </Link>
-                <h1 className="text-xl font-bold text-[var(--color-native-text)]">My Warranties</h1>
-            </div>
 
             <main className="flex-1 overflow-y-auto scrollbar-hide p-4 space-y-6">
                 {isLoading ? (

@@ -20,9 +20,17 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<SafeUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const permissions: UserPermissions = user?.permissions 
-    ? (typeof user.permissions === "string" ? JSON.parse(user.permissions) : user.permissions)
-    : {};
+  const permissions: UserPermissions = (() => {
+    if (!user?.permissions) return {};
+    try {
+      return typeof user.permissions === "string"
+        ? JSON.parse(user.permissions)
+        : user.permissions;
+    } catch (e) {
+      console.error("Failed to parse permissions:", e);
+      return {};
+    }
+  })();
 
   const fetchUser = async () => {
     try {

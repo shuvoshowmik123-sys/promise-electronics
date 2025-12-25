@@ -84,33 +84,73 @@ export default function NativeHeader() {
     };
 
     // SSE for Notifications
+    // SSE for Notifications
     useEffect(() => {
         if (!customer) return;
 
-        const eventSource = new EventSource(getApiUrl("/api/customer/events"));
+        let eventSource: EventSource | null = null;
+        let reconnectTimeout: NodeJS.Timeout | null = null;
+        let isMounted = true;
 
-        eventSource.onmessage = (event) => {
-            try {
-                const data = JSON.parse(event.data);
-                if (data.type === "notification" || data.type === "order_update") {
-                    playNotificationSound();
-                    queryClient.invalidateQueries({ queryKey: ["notifications"] });
-                    if (data.type === "order_update") {
-                        queryClient.invalidateQueries({ queryKey: ["customer-service-requests"] });
-                    }
-                }
-            } catch (error) {
-                console.error("SSE Parse Error:", error);
+        const connectSSE = () => {
+            if (!isMounted) return;
+
+            // Close existing connection if any
+            if (eventSource) {
+                eventSource.close();
             }
+
+            console.log("[SSE] Connecting to event stream...");
+            eventSource = new EventSource(getApiUrl("/api/customer/events"), { withCredentials: true });
+
+            eventSource.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+
+                    if (data.type === "connected") {
+                        console.log("[SSE] Connected successfully");
+                        return;
+                    }
+
+                    if (data.type === "notification" || data.type === "order_update") {
+                        console.log("[SSE] Received update:", data.type);
+                        playNotificationSound();
+                        queryClient.invalidateQueries({ queryKey: ["notifications"] });
+
+                        if (data.type === "order_update") {
+                            // Invalidate both keys to be safe
+                            queryClient.invalidateQueries({ queryKey: ["customer-service-requests"] });
+                            queryClient.invalidateQueries({ queryKey: ["/customer/service-requests"] });
+                        }
+                    }
+                } catch (error) {
+                    console.error("SSE Parse Error:", error);
+                }
+            };
+
+            eventSource.onerror = (error) => {
+                console.error("SSE Error:", error);
+                if (eventSource) {
+                    eventSource.close();
+                    eventSource = null;
+                }
+
+                // Attempt to reconnect after 5 seconds
+                if (isMounted) {
+                    console.log("[SSE] Attempting to reconnect in 5s...");
+                    reconnectTimeout = setTimeout(connectSSE, 5000);
+                }
+            };
         };
 
-        eventSource.onerror = (error) => {
-            console.error("SSE Error:", error);
-            eventSource.close();
-        };
+        connectSSE();
 
         return () => {
-            eventSource.close();
+            isMounted = false;
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            if (eventSource) {
+                eventSource.close();
+            }
         };
     }, [customer, queryClient]);
 
@@ -129,11 +169,22 @@ export default function NativeHeader() {
         return (
             <>
                 <header className="sticky top-0 z-20 bg-[var(--color-native-surface)]/90 backdrop-blur-md px-6 pt-[calc(1.5rem+env(safe-area-inset-top))] pb-2 flex items-center justify-between shadow-sm">
-                    <div className="flex flex-col">
-                        <span className="text-sm font-medium text-[var(--color-native-text-muted)]">{t('home.good_morning')}</span>
-                        <h1 className="text-2xl font-bold leading-tight tracking-tight text-[var(--color-native-text)]">
-                            {customer?.name?.split(" ")[0] || t('home.guest')} 👋
-                        </h1>
+                    <div className="flex items-center gap-3">
+                        <Link href="/native/profile">
+                            <div className="w-10 h-10 rounded-full bg-[var(--color-native-input)] overflow-hidden border border-[var(--color-native-border)] flex items-center justify-center">
+                                {customer?.profileImageUrl ? (
+                                    <img src={customer.profileImageUrl} alt="Profile" className="w-full h-full object-cover" />
+                                ) : (
+                                    <User className="w-5 h-5 text-[var(--color-native-text-muted)]" />
+                                )}
+                            </div>
+                        </Link>
+                        <div className="flex flex-col">
+                            <span className="text-sm font-medium text-[var(--color-native-text-muted)]">Hello,</span>
+                            <h1 className="text-xl font-bold leading-tight tracking-tight text-[var(--color-native-text)]">
+                                {customer?.name?.split(" ")[0] || t('home.guest')} 👋
+                            </h1>
+                        </div>
                     </div>
                     <div className="flex items-center gap-2">
                         <button
@@ -164,11 +215,12 @@ export default function NativeHeader() {
         return (
             <header className="sticky top-0 z-50 bg-[var(--color-native-surface)]/80 backdrop-blur-md px-4 py-4 pt-[calc(1rem+env(safe-area-inset-top))] flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                    <Link href="/native/profile">
-                        <button className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-[var(--color-native-input)]">
-                            <ChevronLeft className="w-6 h-6 text-[var(--color-native-text)]" />
-                        </button>
-                    </Link>
+                    <button
+                        onClick={() => window.history.back()}
+                        className="flex items-center justify-center w-10 h-10 rounded-full hover:bg-[var(--color-native-input)]"
+                    >
+                        <ChevronLeft className="w-6 h-6 text-[var(--color-native-text)]" />
+                    </button>
                     <h1 className="text-2xl font-bold tracking-tight text-[var(--color-native-text)]">{t('settings.title')}</h1>
                 </div>
                 <div className="w-10 h-10 rounded-full bg-[var(--color-native-input)] overflow-hidden border-2 border-transparent hover:border-[var(--color-native-primary)] flex items-center justify-center">
@@ -186,14 +238,13 @@ export default function NativeHeader() {
         );
     }
 
-    // 3. Generic Header Mapping
     const routeTitles: Record<string, string> = {
         '/native/shop': 'Shop',
         '/native/bookings': 'My Repairs', // Renamed from 'My Bookings'
         '/native/profile': 'My Profile',
-        '/native/support': 'Support',
         '/native/addresses': 'My Addresses',
-        '/native/repair': 'New Repair',
+        // '/native/repair' excluded - RepairRequest.tsx has its own header with progress indicator
+        // '/native/support' excluded - Support.tsx has its own custom Help Center header
         '/native/orders': 'Order History',
         '/native/repair-history': 'Repair History',
         '/native/warranties': 'My Warranties',

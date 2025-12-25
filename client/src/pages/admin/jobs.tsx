@@ -1,9 +1,8 @@
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, Filter, MoreHorizontal, QrCode, Printer, Loader2, Eye, Edit, Calendar as CalendarIcon, User, Wrench, FileText, X, Wifi, Download, Clock } from "lucide-react";
+import { Plus, Search, Filter, MoreHorizontal, QrCode, Printer, Loader2, Eye, Edit, Calendar as CalendarIcon, User, Wrench, FileText, X, Wifi, Download, Clock, Sparkles } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -13,7 +12,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { jobTicketsApi, settingsApi, adminUsersApi } from "@/lib/api";
+import { jobTicketsApi, settingsApi, adminUsersApi, aiApi } from "@/lib/api";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { playNotificationSound, type NotificationTone } from "@/lib/notification-sound";
 import {
@@ -67,6 +66,7 @@ export default function AdminJobsPage() {
   const { sseSupported } = useAdminSSE();
   const previousJobCountRef = useRef(0);
   const queryClient = useQueryClient();
+  const [isSuggesting, setIsSuggesting] = useState(false);
 
   const { data: jobsData, isLoading } = useQuery({
     queryKey: ["jobTickets"],
@@ -274,6 +274,39 @@ export default function AdminJobsPage() {
     }
 
     updateMutation.mutate({ id: selectedJob.id, data: dataToUpdate });
+    updateMutation.mutate({ id: selectedJob.id, data: dataToUpdate });
+  };
+
+  const handleSuggestTechnician = async (issue: string) => {
+    if (!issue) {
+      toast.error("Please enter an issue description first");
+      return;
+    }
+
+    setIsSuggesting(true);
+    try {
+      const suggestion = await aiApi.suggestTechnician(issue);
+      if (suggestion) {
+        // Find technician name by ID
+        const tech = users.find(u => u.id === suggestion.technicianId);
+        if (tech) {
+          if (createDialogOpen) {
+            setFormData(prev => ({ ...prev, technician: tech.name }));
+          } else if (editDialogOpen) {
+            setEditFormData(prev => ({ ...prev, technician: tech.name }));
+          }
+          toast.success(`AI Suggested: ${tech.name}`, { description: suggestion.reason });
+        } else {
+          toast.error("Suggested technician not found in list");
+        }
+      } else {
+        toast.error("AI could not make a suggestion");
+      }
+    } catch (error) {
+      toast.error("Failed to get AI suggestion");
+    } finally {
+      setIsSuggesting(false);
+    }
   };
 
   const handlePrintTicket = (job: JobTicket) => {
@@ -379,7 +412,7 @@ export default function AdminJobsPage() {
         ${job.estimatedCost ? `
         <div class="section">
           <div class="label">Estimated Cost</div>
-          <div class="value">৳ ${job.estimatedCost}</div>
+          <div class="value">à§³ ${job.estimatedCost}</div>
         </div>
         ` : ''}
         
@@ -438,7 +471,7 @@ export default function AdminJobsPage() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
@@ -600,7 +633,20 @@ export default function AdminJobsPage() {
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="technician">Assign To</Label>
+                    <div className="flex items-center justify-between">
+                      <Label htmlFor="technician">Assign To</Label>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                        onClick={() => handleSuggestTechnician(formData.issue || "")}
+                        disabled={isSuggesting}
+                        type="button"
+                      >
+                        {isSuggesting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Sparkles className="w-3 h-3 mr-1" />}
+                        AI Suggest
+                      </Button>
+                    </div>
                     <Select
                       value={formData.technician || ""}
                       onValueChange={(value) => setFormData({ ...formData, technician: value })}
@@ -1023,7 +1069,7 @@ export default function AdminJobsPage() {
                   <Card>
                     <CardContent className="pt-4">
                       <p className="text-sm text-muted-foreground mb-2">Estimated Cost</p>
-                      <p className="font-medium text-lg">৳ {selectedJob.estimatedCost}</p>
+                      <p className="font-medium text-lg">à§³ {selectedJob.estimatedCost}</p>
                     </CardContent>
                   </Card>
                 )}
@@ -1163,7 +1209,20 @@ export default function AdminJobsPage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="edit-technician">Assign To</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="edit-technician">Assign To</Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs text-purple-600 hover:text-purple-700 hover:bg-purple-50"
+                    onClick={() => handleSuggestTechnician(editFormData.issue || "")}
+                    disabled={isSuggesting}
+                    type="button"
+                  >
+                    {isSuggesting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Sparkles className="w-3 h-3 mr-1" />}
+                    AI Suggest
+                  </Button>
+                </div>
                 <Select
                   value={editFormData.technician || ""}
                   onValueChange={(value) => setEditFormData({ ...editFormData, technician: value })}
@@ -1182,7 +1241,7 @@ export default function AdminJobsPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-cost">Estimated Cost (৳)</Label>
+                <Label htmlFor="edit-cost">Estimated Cost (à§³)</Label>
                 <Input
                   id="edit-cost"
                   type="number"
@@ -1322,6 +1381,6 @@ export default function AdminJobsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </AdminLayout>
+    </>
   );
 }

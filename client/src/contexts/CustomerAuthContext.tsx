@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { customerAuthApi, type CustomerSession } from "@/lib/api";
+import { storeAuthSession, clearAuthSession, getStoredAuthSession } from "@/lib/authStorage";
+import { Capacitor } from "@capacitor/core";
 
 interface CustomerAuthContextType {
   customer: CustomerSession | null;
@@ -11,6 +13,7 @@ interface CustomerAuthContextType {
   register: (data: { name: string; phone: string; email?: string; address?: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
+  restoreSession: () => Promise<boolean>;
   updateProfile: (data: { phone?: string; address?: string; name?: string; email?: string; profileImageUrl?: string; preferences?: string }) => Promise<void>;
 }
 
@@ -41,6 +44,35 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // Restore session from stored auth (for native apps)
+  const restoreSession = async (): Promise<boolean> => {
+    if (!Capacitor.isNativePlatform()) {
+      return false;
+    }
+
+    try {
+      const storedAuth = await getStoredAuthSession();
+      if (!storedAuth) {
+        return false;
+      }
+
+      // Try to verify the session with the server
+      const session = await customerAuthApi.me();
+      if (session) {
+        setCustomer(session);
+        return true;
+      }
+
+      // If server session expired, clear stored auth
+      await clearAuthSession();
+      return false;
+    } catch {
+      // Session invalid, clear stored auth
+      await clearAuthSession();
+      return false;
+    }
+  };
+
   useEffect(() => {
     checkAuth();
   }, []);
@@ -48,6 +80,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const login = async (phone: string, password: string) => {
     const session = await customerAuthApi.login({ phone, password });
     setCustomer(session);
+
+    // Store auth for persistent session on native
+    if (Capacitor.isNativePlatform() && session.id && session.phone) {
+      await storeAuthSession(session.id, session.phone);
+    }
   };
 
   const loginWithGoogle = () => {
@@ -57,6 +94,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const register = async (data: { name: string; phone: string; email?: string; address?: string; password: string }) => {
     const session = await customerAuthApi.register(data);
     setCustomer(session);
+
+    // Store auth for persistent session on native
+    if (Capacitor.isNativePlatform() && session.id && session.phone) {
+      await storeAuthSession(session.id, session.phone);
+    }
   };
 
   const logout = async () => {
@@ -75,6 +117,12 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore
     }
+
+    // Clear stored auth on native
+    if (Capacitor.isNativePlatform()) {
+      await clearAuthSession();
+    }
+
     setCustomer(null);
   };
 
@@ -105,6 +153,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         register,
         logout,
         checkAuth,
+        restoreSession,
         updateProfile,
       }}
     >
@@ -120,3 +169,4 @@ export function useCustomerAuth() {
   }
   return context;
 }
+

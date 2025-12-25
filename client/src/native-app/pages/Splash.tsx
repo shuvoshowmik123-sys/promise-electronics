@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { Zap, RefreshCw, AlertCircle } from "lucide-react";
 import { API_BASE_URL } from "@/lib/config";
 import { CapacitorHttp } from '@capacitor/core';
+import { getStoredAuthSession } from "@/lib/authStorage";
 
 export default function Splash() {
     const [progress, setProgress] = useState(0);
@@ -70,10 +71,30 @@ export default function Splash() {
         checkConnection();
     }, [checkConnection]);
 
-    // Redirect when done
+    // Redirect when done - check for existing session first
     useEffect(() => {
         if (progress >= 100) {
-            const redirectTimer = setTimeout(() => navigate('/native/login'), 300);
+            const checkSessionAndRedirect = async () => {
+                try {
+                    // Try to restore session from stored auth
+                    const storedAuth = await getStoredAuthSession();
+
+                    if (storedAuth) {
+                        // User has stored auth - go directly to home
+                        console.log('[Splash] Found stored auth, navigating to home');
+                        navigate('/native/home');
+                    } else {
+                        // No stored auth - go to login
+                        console.log('[Splash] No stored auth, navigating to login');
+                        navigate('/native/login');
+                    }
+                } catch (error) {
+                    console.error('[Splash] Error checking session:', error);
+                    navigate('/native/login');
+                }
+            };
+
+            const redirectTimer = setTimeout(checkSessionAndRedirect, 300);
             return () => clearTimeout(redirectTimer);
         }
     }, [progress, navigate]);
@@ -92,7 +113,7 @@ export default function Splash() {
                         {error ? (
                             <AlertCircle className="w-16 h-16 text-red-500" />
                         ) : (
-                            <Zap className="w-16 h-16 text-sky-500 fill-current" />
+                            <img src="/tv-daktar-logo.png" alt="Logo" className="w-24 h-24 object-contain" />
                         )}
                     </div>
                 </div>

@@ -3,9 +3,9 @@ import { useLocation } from "wouter";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useToast } from "@/hooks/use-toast";
 import NativeLayout from "../NativeLayout";
-import { ArrowLeft, Upload, X, Loader2, CheckCircle, Smartphone, MapPin, Calendar as CalendarIcon, Camera, ChevronRight, AlertCircle, UserPlus } from "lucide-react";
+import { ArrowLeft, Upload, X, Loader2, CheckCircle, Smartphone, MapPin, Calendar as CalendarIcon, Camera, ChevronRight, AlertCircle, UserPlus, Sparkles } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { serviceRequestsApi, settingsApi } from "@/lib/api";
+import { serviceRequestsApi, settingsApi, aiApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { Calendar } from "@/components/ui/calendar";
@@ -111,6 +111,43 @@ export default function RepairRequest() {
     // File Upload Logic
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [isUploading, setIsUploading] = useState(false);
+    const [isAnalyzing, setIsAnalyzing] = useState(false);
+
+    const handleAIInspect = async (file: UploadedFile) => {
+        if (file.resourceType !== "image") {
+            toast({ title: "Not an image", description: "AI can only analyze images", variant: "destructive" });
+            return;
+        }
+
+        setIsAnalyzing(true);
+        try {
+            // Convert objectUrl to base64 or pass the URL if public
+            // Since objectUrl is a blob URL, we need to fetch it and convert to base64
+            const response = await fetch(file.objectUrl);
+            const blob = await response.blob();
+            const reader = new FileReader();
+            reader.readAsDataURL(blob);
+            reader.onloadend = async () => {
+                const base64data = reader.result as string;
+                const diagnosis = await aiApi.inspectImage(base64data);
+
+                if (diagnosis) {
+                    setDescription(prev => {
+                        const newDesc = `[AI Diagnosis]\nComponent: ${diagnosis.component}\nDamage: ${diagnosis.damage.join(", ")}\nLikely Cause: ${diagnosis.likelyCause}\nSeverity: ${diagnosis.severity}\n\n${prev}`;
+                        return newDesc;
+                    });
+                    toast({ title: "AI Analysis Complete", description: "Diagnosis added to description." });
+                } else {
+                    toast({ title: "Analysis Failed", description: "Could not analyze image.", variant: "destructive" });
+                }
+                setIsAnalyzing(false);
+            };
+        } catch (error) {
+            console.error("AI Inspect error:", error);
+            toast({ title: "Analysis Failed", description: "An error occurred.", variant: "destructive" });
+            setIsAnalyzing(false);
+        }
+    };
 
     const uploadToCloudinary = async (file: File) => {
         const paramsResponse = await fetch(getApiUrl("/api/cloudinary/upload-params"), {
@@ -478,6 +515,15 @@ export default function RepairRequest() {
                                         <button onClick={() => setFiles(files.filter((_, idx) => idx !== i))} className="absolute top-1 right-1 bg-black/50 text-white rounded-full p-1">
                                             <X className="w-3 h-3" />
                                         </button>
+                                        {f.resourceType === "image" && (
+                                            <button
+                                                onClick={() => handleAIInspect(f)}
+                                                disabled={isAnalyzing}
+                                                className="absolute bottom-1 right-1 bg-purple-600/90 text-white rounded-full p-1.5 shadow-sm z-10"
+                                            >
+                                                {isAnalyzing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                                            </button>
+                                        )}
                                     </div>
                                 ))}
                                 <button

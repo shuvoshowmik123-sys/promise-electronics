@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -211,7 +210,7 @@ export default function AdminCustomersPage() {
 
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return `৳${num.toLocaleString("en-BD")}`;
+    return `à§³${num.toLocaleString("en-BD")}`;
   };
 
   const getStatusBadge = (status: string) => {
@@ -228,7 +227,7 @@ export default function AdminCustomersPage() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col gap-6">
         <div className="flex items-center justify-between">
           <div>
@@ -634,6 +633,6 @@ export default function AdminCustomersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AdminLayout>
+    </>
   );
 }

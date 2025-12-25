@@ -1,4 +1,3 @@
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -317,7 +316,7 @@ export default function AdminFinancePage() {
     }
 
     if (paidAmountCents > remainingAmountCents) {
-      toast.error(`Payment amount cannot exceed remaining due (৳${remainingAmount})`);
+      toast.error(`Payment amount cannot exceed remaining due (à§³${remainingAmount})`);
       return;
     }
 
@@ -390,7 +389,7 @@ export default function AdminFinancePage() {
   });
 
   return (
-    <AdminLayout>
+    <>
       <div className="flex flex-col gap-6">
         <div>
           <h1 className="text-2xl font-heading font-bold" data-testid="text-page-title">Finance & Accounts</h1>
@@ -412,7 +411,7 @@ export default function AdminFinancePage() {
                   <ShoppingCart className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold" data-testid="text-total-sales">৳{totalSales.toLocaleString()}</div>
+                  <div className="text-2xl font-bold" data-testid="text-total-sales">à§³{totalSales.toLocaleString()}</div>
                   <p className="text-xs text-muted-foreground">{posTransactions.length} transactions</p>
                 </CardContent>
               </Card>
@@ -422,7 +421,7 @@ export default function AdminFinancePage() {
                   <Banknote className="h-4 w-4 text-green-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-xl font-bold text-green-600" data-testid="text-cash-sales">৳{salesByMethod.Cash.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-green-600" data-testid="text-cash-sales">à§³{salesByMethod.Cash.toLocaleString()}</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-bank-sales">
@@ -431,7 +430,7 @@ export default function AdminFinancePage() {
                   <CreditCard className="h-4 w-4 text-blue-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-xl font-bold text-blue-600" data-testid="text-bank-sales">৳{salesByMethod.Bank.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-blue-600" data-testid="text-bank-sales">à§³{salesByMethod.Bank.toLocaleString()}</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-bkash-sales">
@@ -440,7 +439,7 @@ export default function AdminFinancePage() {
                   <Smartphone className="h-4 w-4 text-pink-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-xl font-bold text-pink-600" data-testid="text-bkash-sales">৳{salesByMethod.bKash.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-pink-600" data-testid="text-bkash-sales">à§³{salesByMethod.bKash.toLocaleString()}</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-nagad-sales">
@@ -449,7 +448,7 @@ export default function AdminFinancePage() {
                   <Smartphone className="h-4 w-4 text-orange-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-xl font-bold text-orange-600" data-testid="text-nagad-sales">৳{salesByMethod.Nagad.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-orange-600" data-testid="text-nagad-sales">à§³{salesByMethod.Nagad.toLocaleString()}</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-due-sales">
@@ -458,7 +457,7 @@ export default function AdminFinancePage() {
                   <Clock className="h-4 w-4 text-red-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-xl font-bold text-red-600" data-testid="text-due-sales">৳{salesByMethod.Due.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-red-600" data-testid="text-due-sales">à§³{salesByMethod.Due.toLocaleString()}</div>
                 </CardContent>
               </Card>
             </div>
@@ -562,7 +561,7 @@ export default function AdminFinancePage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right font-bold" data-testid={`text-sale-amount-${transaction.id}`}>
-                          ৳{Number(transaction.total).toLocaleString()}
+                          à§³{Number(transaction.total).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
@@ -614,7 +613,7 @@ export default function AdminFinancePage() {
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold" data-testid="text-cash-in-hand">৳{cashInHand.toLocaleString()}</div>
+                  <div className="text-2xl font-bold" data-testid="text-cash-in-hand">à§³{cashInHand.toLocaleString()}</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-today-income">
@@ -623,7 +622,7 @@ export default function AdminFinancePage() {
                   <TrendingUp className="h-4 w-4 text-green-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-green-600" data-testid="text-today-income">+৳{todayIncome.toLocaleString()}</div>
+                  <div className="text-2xl font-bold text-green-600" data-testid="text-today-income">+à§³{todayIncome.toLocaleString()}</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-today-expense">
@@ -632,7 +631,7 @@ export default function AdminFinancePage() {
                   <TrendingDown className="h-4 w-4 text-red-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-red-600" data-testid="text-today-expense">-৳{todayExpense.toLocaleString()}</div>
+                  <div className="text-2xl font-bold text-red-600" data-testid="text-today-expense">-à§³{todayExpense.toLocaleString()}</div>
                 </CardContent>
               </Card>
             </div>
@@ -717,7 +716,7 @@ export default function AdminFinancePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="amount">Amount (৳)</Label>
+                      <Label htmlFor="amount">Amount (à§³)</Label>
                       <Input
                         id="amount"
                         data-testid="input-amount"
@@ -803,7 +802,7 @@ export default function AdminFinancePage() {
                           </Badge>
                         </TableCell>
                         <TableCell className={`text-right font-bold ${isIncome(record.type) ? "text-green-600" : "text-red-600"}`} data-testid={`text-amount-${record.id}`}>
-                          {isIncome(record.type) ? "+" : "-"}৳{Number(record.amount).toLocaleString()}
+                          {isIncome(record.type) ? "+" : "-"}à§³{Number(record.amount).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
@@ -855,7 +854,7 @@ export default function AdminFinancePage() {
                     <div className="bg-slate-50 p-3 rounded-md">
                       <p className="text-xs text-muted-foreground">Amount</p>
                       <p className={`text-2xl font-bold mt-1 ${selectedTransaction.type === "Income" ? "text-green-600" : "text-red-600"}`}>
-                        {selectedTransaction.type === "Income" ? "+" : "-"}৳{Number(selectedTransaction.amount).toLocaleString()}
+                        {selectedTransaction.type === "Income" ? "+" : "-"}à§³{Number(selectedTransaction.amount).toLocaleString()}
                       </p>
                     </div>
 
@@ -873,15 +872,15 @@ export default function AdminFinancePage() {
                             <div className="grid grid-cols-3 gap-2 text-sm">
                               <div>
                                 <p className="text-xs text-muted-foreground">Total Due</p>
-                                <p className="font-medium text-red-600">-৳{total.toLocaleString()}</p>
+                                <p className="font-medium text-red-600">-à§³{total.toLocaleString()}</p>
                               </div>
                               <div>
                                 <p className="text-xs text-muted-foreground">Total Paid</p>
-                                <p className="font-medium text-green-600">+৳{paid.toLocaleString()}</p>
+                                <p className="font-medium text-green-600">+à§³{paid.toLocaleString()}</p>
                               </div>
                               <div>
                                 <p className="text-xs text-muted-foreground">Remaining</p>
-                                <p className="font-bold text-red-600">{remaining > 0 ? "-" : ""}৳{remaining.toLocaleString()}</p>
+                                <p className="font-bold text-red-600">{remaining > 0 ? "-" : ""}à§³{remaining.toLocaleString()}</p>
                               </div>
                             </div>
                           );
@@ -936,7 +935,7 @@ export default function AdminFinancePage() {
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-lg font-bold">Outstanding Payments</h2>
-                <p className="text-sm text-muted-foreground">Total Due: <span className="font-bold text-destructive" data-testid="text-total-due">৳{totalDue.toLocaleString()}</span></p>
+                <p className="text-sm text-muted-foreground">Total Due: <span className="font-bold text-destructive" data-testid="text-total-due">à§³{totalDue.toLocaleString()}</span></p>
               </div>
               <Dialog open={isDueDialogOpen} onOpenChange={setIsDueDialogOpen}>
                 <DialogTrigger asChild>
@@ -971,7 +970,7 @@ export default function AdminFinancePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="due-amount">Amount (৳)</Label>
+                      <Label htmlFor="due-amount">Amount (à§³)</Label>
                       <Input
                         id="due-amount"
                         data-testid="input-due-amount"
@@ -1065,10 +1064,10 @@ export default function AdminFinancePage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right font-bold" data-testid={`text-due-amount-${record.id}`}>
-                          ৳{(Number(record.amount) - Number(record.paidAmount || 0)).toLocaleString()}
+                          à§³{(Number(record.amount) - Number(record.paidAmount || 0)).toLocaleString()}
                           {Number(record.paidAmount) > 0 && (
                             <span className="block text-xs text-muted-foreground font-normal">
-                              (Total: ৳{Number(record.amount).toLocaleString()})
+                              (Total: à§³{Number(record.amount).toLocaleString()})
                             </span>
                           )}
                         </TableCell>
@@ -1124,16 +1123,16 @@ export default function AdminFinancePage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Outstanding Amount</p>
                   <p className="font-bold text-lg text-destructive">
-                    ৳{(Number(selectedDueRecord.amount) - Number(selectedDueRecord.paidAmount || 0)).toLocaleString()}
+                    à§³{(Number(selectedDueRecord.amount) - Number(selectedDueRecord.paidAmount || 0)).toLocaleString()}
                     <span className="text-sm font-normal text-muted-foreground ml-2">
-                      (of ৳{Number(selectedDueRecord.amount).toLocaleString()})
+                      (of à§³{Number(selectedDueRecord.amount).toLocaleString()})
                     </span>
                   </p>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="payment-amount">Payment Amount (৳)</Label>
+                <Label htmlFor="payment-amount">Payment Amount (à§³)</Label>
                 <Input
                   id="payment-amount"
                   type="number"
@@ -1148,7 +1147,7 @@ export default function AdminFinancePage() {
                       <p className="text-green-600">Full payment - will mark as Paid</p>
                     ) : (
                       <p className="text-blue-600">
-                        Remaining after payment: ৳{(Number(selectedDueRecord.amount) - Number(paymentAmount)).toLocaleString()}
+                        Remaining after payment: à§³{(Number(selectedDueRecord.amount) - Number(paymentAmount)).toLocaleString()}
                       </p>
                     )}
                   </div>
@@ -1190,6 +1189,6 @@ export default function AdminFinancePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </AdminLayout >
+    </>
   );
 }

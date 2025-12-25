@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Allow cleartext (HTTP) traffic for local development -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Localhost for web browser testing -->
+        <domain includeSubdomains="true">localhost</domain>
+        <!-- Android Emulator's alias for host machine -->
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <!-- Common local network IPs -->
+        <domain includeSubdomains="true">192.168.0.1</domain>
+        <domain includeSubdomains="true">192.168.1.1</domain>
+        <domain includeSubdomains="true">192.168.0.103</domain>
+        <domain includeSubdomains="true">192.168.1.100</domain>
+    </domain-config>
+    
+    <!-- Production: Only HTTPS is allowed -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

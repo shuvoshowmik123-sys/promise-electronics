@@ -1,0 +1,52 @@
+/* Camera Lens Styles */
+
+:root {
+  --lens-primary: #36e27b;
+  --lens-primary-rgb: 54, 226, 123;
+}
+
+.dark {
+  /* Option to switch to blue if requested, currently keeping green for consistency */
+  /* --lens-primary: #3b82f6; */
+  /* --lens-primary-rgb: 59, 130, 246; */
+}
+
+/* Custom pulsing animation for AI reticle */
+@keyframes scan-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(var(--lens-primary-rgb), 0.4);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgba(var(--lens-primary-rgb), 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(var(--lens-primary-rgb), 0);
+  }
+}
+
+.animate-scan-pulse {
+  animation: scan-pulse 2s infinite;
+}
+
+/* Hide scrollbar */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Frosted glass effect */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.dark .glass-panel {
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}

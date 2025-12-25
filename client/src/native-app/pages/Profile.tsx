@@ -1,5 +1,6 @@
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import NativeLayout from "../NativeLayout";
+import AnimatedButton from "../components/AnimatedButton";
 import {
     User,
     Settings,
@@ -159,7 +160,7 @@ export default function Profile() {
                             <div className="relative h-full w-full rounded-full border-2 border-[var(--color-native-surface)] bg-[var(--color-native-input)] shadow-md overflow-hidden flex items-center justify-center">
                                 {customer.profileImageUrl ? (
                                     <img
-                                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${customer.profileImageUrl}`}
+                                        src={customer.profileImageUrl}
                                         alt={customer.name}
                                         className="w-full h-full object-cover"
                                     />
@@ -171,7 +172,9 @@ export default function Profile() {
 
                         <div className="flex flex-col flex-1 min-w-0 z-10">
                             <h2 className="text-[22px] font-bold leading-tight truncate text-[var(--color-native-text)]">{customer.name}</h2>
-                            <p className="text-sm font-medium text-[var(--color-native-text-muted)] truncate mb-3">{customer.email || customer.phone}</p>
+                            <p className="text-sm font-medium text-[var(--color-native-text-muted)] truncate mb-3">
+                                {customer.email || (customer.phone ? (customer.phone.startsWith('+') ? customer.phone : `+880${customer.phone.replace(/^0/, '')}`) : '')}
+                            </p>
                             <Link href="/native/settings/edit-profile">
                                 <button className="flex w-fit items-center gap-2 rounded-full bg-[var(--color-native-input)] px-4 py-1.5 text-xs font-bold text-[var(--color-native-text)] hover:bg-[var(--color-native-primary)] hover:text-white transition-colors">
                                     <span>{t('profile.edit_profile')}</span>
@@ -183,7 +186,7 @@ export default function Profile() {
 
                     {/* My Addresses */}
                     <Link href="/native/addresses">
-                        <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] active:scale-[0.98] min-h-[160px]">
+                        <AnimatedButton variant="cardExpand" className="w-full relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] min-h-[160px] text-left">
                             <div className="absolute right-0 top-0 p-5">
                                 <ArrowUpRight className="w-5 h-5 text-[var(--color-native-text-muted)]" />
                             </div>
@@ -194,12 +197,12 @@ export default function Profile() {
                                 <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text)] whitespace-pre-line">{t('profile.my_addresses')}</h3>
                                 <p className="mt-1 text-[11px] font-medium text-[var(--color-native-text-muted)]">{t('profile.manage_locations')}</p>
                             </div>
-                        </div>
+                        </AnimatedButton>
                     </Link>
 
                     {/* Help & Support */}
                     <Link href="/native/support">
-                        <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] active:scale-[0.98] min-h-[160px]">
+                        <AnimatedButton variant="cardExpand" className="w-full relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] min-h-[160px] text-left">
                             <div className="absolute right-0 top-0 p-5">
                                 <ArrowUpRight className="w-5 h-5 text-[var(--color-native-text-muted)]" />
                             </div>
@@ -210,36 +213,36 @@ export default function Profile() {
                                 <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text)] whitespace-pre-line">{t('profile.help_support')}</h3>
                                 <p className="mt-1 text-[11px] font-medium text-[var(--color-native-text-muted)]">{t('profile.faq_chat')}</p>
                             </div>
-                        </div>
+                        </AnimatedButton>
                     </Link>
 
                     {/* Repair History */}
                     <Link href="/native/repair-history">
-                        <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] active:scale-[0.98] min-h-[160px]">
+                        <AnimatedButton variant="cardExpand" className="w-full relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] min-h-[160px] text-left">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-500/10 text-orange-500">
                                 <Wrench className="w-6 h-6" />
                             </div>
                             <div>
                                 <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text)] whitespace-pre-line">{t('profile.repair_history')}</h3>
                             </div>
-                        </div>
+                        </AnimatedButton>
                     </Link>
 
                     {/* Order History */}
                     <Link href="/native/orders">
-                        <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] active:scale-[0.98] min-h-[160px]">
+                        <AnimatedButton variant="cardExpand" className="w-full relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] min-h-[160px] text-left">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-green-500/10 text-green-600">
                                 <Package className="w-6 h-6" />
                             </div>
                             <div>
                                 <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text)] whitespace-pre-line">{t('profile.order_history')}</h3>
                             </div>
-                        </div>
+                        </AnimatedButton>
                     </Link>
 
                     {/* Warranties */}
                     <Link href="/native/warranties">
-                        <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] active:scale-[0.98] min-h-[160px]">
+                        <AnimatedButton variant="cardExpand" className="w-full relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] min-h-[160px] text-left">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-blue-500/10 text-blue-600">
                                 <ShieldCheck className="w-6 h-6" />
                             </div>
@@ -247,19 +250,19 @@ export default function Profile() {
                                 <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text)] whitespace-pre-line">{t('profile.my_warranties')}</h3>
                                 <p className="mt-1 text-[11px] font-medium text-[var(--color-native-text-muted)]">{t('profile.view_coverage')}</p>
                             </div>
-                        </div>
+                        </AnimatedButton>
                     </Link>
 
                     {/* App Settings */}
                     <Link href="/native/settings">
-                        <div className="relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] active:scale-[0.98] min-h-[160px]">
+                        <AnimatedButton variant="cardExpand" className="w-full relative flex flex-col justify-between overflow-hidden rounded-[2rem] bg-[var(--color-native-card)] p-5 shadow-sm border border-[var(--color-native-border)] min-h-[160px] text-left group">
                             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[var(--color-native-input)] text-[var(--color-native-text-muted)]">
-                                <Settings className="w-6 h-6" />
+                                <Settings className="w-6 h-6 transition-transform duration-300 group-hover:rotate-90 group-active:rotate-180" />
                             </div>
                             <div>
                                 <h3 className="text-[17px] font-bold leading-tight text-[var(--color-native-text)] whitespace-pre-line">{t('profile.app_settings')}</h3>
                             </div>
-                        </div>
+                        </AnimatedButton>
                     </Link>
 
 

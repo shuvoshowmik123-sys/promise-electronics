@@ -1,4 +1,5 @@
 import { Capacitor } from "@capacitor/core";
+import { StatusBar, Style } from "@capacitor/status-bar";
 import { Switch, Route, useLocation } from "wouter";
 import { AnimatePresence, motion } from "framer-motion";
 import { queryClient } from "./lib/queryClient";
@@ -12,7 +13,8 @@ import { AdminSSEProvider } from "@/contexts/AdminSSEContext";
 import { CartProvider } from "@/contexts/CartContext";
 import { NativeThemeProvider } from "@/contexts/NativeThemeContext";
 import { PushNotificationProvider } from "@/contexts/PushNotificationContext";
-import { lazy, Suspense } from "react";
+import { AppOpeningProvider } from "@/contexts/AppOpeningContext";
+import { lazy, Suspense, useRef, useEffect } from "react";
 
 // Lazy load web and admin pages
 const NotFound = lazy(() => import("@/pages/not-found"));
@@ -35,25 +37,9 @@ const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy"));
 const WarrantyPolicyPage = lazy(() => import("@/pages/warranty-policy"));
 const TermsAndConditionsPage = lazy(() => import("@/pages/terms-and-conditions"));
 
-// Admin Pages
+// Admin Pages - Only login page separately, rest handled by AdminRouter
 const AdminLoginPage = lazy(() => import("@/pages/admin/login"));
-const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
-const AdminJobsPage = lazy(() => import("@/pages/admin/jobs"));
-const AdminInventoryPage = lazy(() => import("@/pages/admin/inventory"));
-const AdminChallanPage = lazy(() => import("@/pages/admin/challan"));
-const AdminFinancePage = lazy(() => import("@/pages/admin/finance"));
-const TechnicianDashboard = lazy(() => import("@/pages/admin/technician-dashboard"));
-const AdminPOSPage = lazy(() => import("@/pages/admin/pos"));
-const AdminSettingsPage = lazy(() => import("@/pages/admin/settings"));
-const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
-const AdminReportsPage = lazy(() => import("@/pages/admin/reports"));
-const AdminServiceRequestsPage = lazy(() => import("@/pages/admin/service-requests"));
-const StaffAttendanceReport = lazy(() => import("@/pages/admin/staff-attendance"));
-const AdminOrdersPage = lazy(() => import("@/pages/admin/orders"));
-const AdminCustomersPage = lazy(() => import("@/pages/admin/customers"));
-const AdminOverviewPage = lazy(() => import("@/pages/admin/overview"));
-const AdminPickupSchedulePage = lazy(() => import("@/pages/admin/pickup-schedule"));
-const AdminInquiriesPage = lazy(() => import("@/pages/admin/inquiries"));
+import { AdminRouter } from "@/components/layout/AdminRouter";
 
 import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 
@@ -77,9 +63,13 @@ import NativeOrderHistory from "@/native-app/pages/OrderHistory";
 import NativeRepairHistory from "@/native-app/pages/RepairHistory";
 import NativeRepairDetails from "@/native-app/pages/RepairDetails";
 import NativeWarranties from "@/native-app/pages/Warranties";
+import NativeChatTab from "@/native-app/pages/ChatTab";
+import NativeCameraLens from "@/native-app/pages/CameraLens";
 import BottomNav from "@/native-app/components/BottomNav";
 
 import NativeHeader from "@/native-app/components/NativeHeader";
+import { DaktarVaiChat } from "@/components/DaktarVaiChat";
+import { PageSkeleton } from "@/components/PageSkeleton";
 
 // Routes that should show the bottom navigation bar
 const routesWithBottomNav = [
@@ -87,9 +77,55 @@ const routesWithBottomNav = [
   "/native/shop",
   "/native/bookings",
   "/native/profile",
-  "/native/support",
   "/native/addresses",
 ];
+
+// Route order for directional animations (lower = left, higher = right)
+const ROUTE_ORDER: Record<string, number> = {
+  // Bottom nav tabs (main hierarchy)
+  '/native/home': 0,
+  '/native/shop': 1,
+  '/native/bookings': 2,
+  '/native/support': 3,
+  '/native/profile': 4,
+  // Detail pages (inherit from parent + 0.5)
+  '/native/repair': 0.5,
+  '/native/chat': 0.5,
+  '/native/cart': 1.5,
+  '/native/checkout': 1.5,
+  '/native/repair-history': 2.5,
+  '/native/addresses': 3.5,
+  '/native/settings': 4.5,
+  '/native/orders': 4.5,
+  '/native/warranties': 4.5,
+  '/native/about': 4.5,
+  '/native/privacy-policy': 4.5,
+  '/native/terms-and-conditions': 4.5,
+};
+
+// Get route order, handling dynamic routes like /native/repair/:id
+const getRouteOrder = (path: string): number => {
+  // Exact match first
+  if (ROUTE_ORDER[path] !== undefined) return ROUTE_ORDER[path];
+
+  // Check for dynamic route prefixes
+  if (path.startsWith('/native/repair/')) return 2.5;
+  if (path.startsWith('/native/settings/')) return 4.5;
+
+  // Default: not in hierarchy
+  return -1;
+};
+
+// Calculate animation direction
+const getDirection = (from: string, to: string): 'forward' | 'backward' | 'none' => {
+  const fromOrder = getRouteOrder(from);
+  const toOrder = getRouteOrder(to);
+
+  if (fromOrder === -1 || toOrder === -1) return 'none';
+  if (toOrder > fromOrder) return 'forward';
+  if (toOrder < fromOrder) return 'backward';
+  return 'none';
+};
 
 function RootRoute() {
   const [, setLocation] = useLocation();
@@ -108,6 +144,21 @@ import { App as CapacitorApp, URLOpenListenerEvent } from "@capacitor/app";
 
 function Router() {
   const [location, setLocation] = useLocation();
+  const previousLocationRef = useRef<string | null>(null);
+  const directionRef = useRef<'forward' | 'backward' | 'none'>('none');
+
+  // Calculate direction BEFORE updating the ref
+  if (previousLocationRef.current !== null && previousLocationRef.current !== location) {
+    directionRef.current = getDirection(previousLocationRef.current, location);
+    console.log(`[Navigation] ${previousLocationRef.current} → ${location} = ${directionRef.current}`);
+  }
+
+  // Update previous location after calculating direction
+  useEffect(() => {
+    previousLocationRef.current = location;
+  }, [location]);
+
+  const direction = directionRef.current;
 
   useEffect(() => {
     CapacitorApp.addListener('appUrlOpen', (event: URLOpenListenerEvent) => {
@@ -144,6 +195,16 @@ function Router() {
   const showBottomNav = routesWithBottomNav.includes(location);
 
   const isNative = location.startsWith("/native");
+  const isAdminRoute = location.startsWith("/admin") && location !== "/admin/login";
+
+  // Skip animation for splash and login screens
+  const noAnimationRoutes = ["/native/splash", "/native/login", "/native/register"];
+  const shouldAnimate = isNative && !noAnimationRoutes.includes(location);
+
+  // For admin routes (except login), render AdminRouter which has its own stable layout
+  if (isAdminRoute) {
+    return <AdminRouter />;
+  }
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[var(--color-native-bg)]">
@@ -155,13 +216,26 @@ function Router() {
         <AnimatePresence mode="wait">
           <motion.div
             key={location}
-            initial={isNative ? { x: "100%", opacity: 0 } : { opacity: 1 }}
-            animate={isNative ? { x: 0, opacity: 1 } : { opacity: 1 }}
-            exit={isNative ? { x: "-30%", opacity: 0 } : { opacity: 1 }}
-            transition={isNative ? { type: "spring", damping: 25, stiffness: 200 } : { duration: 0 }}
+            initial={shouldAnimate ? {
+              x: direction === 'forward' ? '100%' : direction === 'backward' ? '-100%' : 0,
+              opacity: direction === 'none' ? 0 : 1,
+              scale: direction === 'none' ? 0.96 : 1,
+            } : { opacity: 1 }}
+            animate={{ x: 0, opacity: 1, scale: 1 }}
+            exit={shouldAnimate ? {
+              x: direction === 'forward' ? '-30%' : direction === 'backward' ? '30%' : 0,
+              opacity: 0,
+              scale: direction === 'none' ? 0.98 : 1,
+            } : { opacity: 1 }}
+            transition={shouldAnimate ? {
+              type: "spring",
+              damping: 28,
+              stiffness: 300,
+              mass: 0.8
+            } : { duration: 0 }}
             className="w-full h-full"
           >
-            <Suspense fallback={<div className="flex items-center justify-center h-full"><div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div></div>}>
+            <Suspense fallback={<PageSkeleton />}>
               <Switch location={location}>
                 <Route path="/" component={RootRoute} />
                 <Route path="/home" component={HomePage} />
@@ -202,26 +276,11 @@ function Router() {
                 <Route path="/native/repair-history" component={NativeRepairHistory} />
                 <Route path="/native/repair/:id" component={NativeRepairDetails} />
                 <Route path="/native/warranties" component={NativeWarranties} />
+                <Route path="/native/chat" component={NativeChatTab} />
+                <Route path="/native/camera-lens" component={NativeCameraLens} />
 
-                {/* Admin Routes */}
+                {/* Admin Login - rendered separately without AdminRouter */}
                 <Route path="/admin/login" component={AdminLoginPage} />
-                <Route path="/admin" component={AdminDashboard} />
-                <Route path="/admin/jobs" component={AdminJobsPage} />
-                <Route path="/admin/pos" component={AdminPOSPage} />
-                <Route path="/admin/inventory" component={AdminInventoryPage} />
-                <Route path="/admin/challan" component={AdminChallanPage} />
-                <Route path="/admin/finance" component={AdminFinancePage} />
-                <Route path="/admin/technician" component={TechnicianDashboard} />
-                <Route path="/admin/reports" component={AdminReportsPage} />
-                <Route path="/admin/staff-attendance" component={StaffAttendanceReport} />
-                <Route path="/admin/users" component={AdminUsersPage} />
-                <Route path="/admin/settings" component={AdminSettingsPage} />
-                <Route path="/admin/service-requests" component={AdminServiceRequestsPage} />
-                <Route path="/admin/orders" component={AdminOrdersPage} />
-                <Route path="/admin/customers" component={AdminCustomersPage} />
-                <Route path="/admin/overview" component={AdminOverviewPage} />
-                <Route path="/admin/pickup-schedule" component={AdminPickupSchedulePage} />
-                <Route path="/admin/inquiries" component={AdminInquiriesPage} />
 
                 <Route component={NotFound} />
               </Switch>
@@ -232,13 +291,15 @@ function Router() {
 
       {/* Bottom Nav rendered outside AnimatePresence to stay fixed during transitions */}
       {showBottomNav && <BottomNav />}
+
+      {/* Daktar Vai Chatbot - Web Only */}
+      {!isNative && !isAdminRoute && <DaktarVaiChat />}
     </div>
   );
 }
 
 import { SplashScreen } from "@capacitor/splash-screen";
 import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
-import { useEffect } from "react";
 
 import { SpeedInsights } from "@vercel/speed-insights/react";
 
@@ -256,6 +317,22 @@ function App() {
         scopes: ['profile', 'email'],
         grantOfflineAccess: true,
       });
+
+      // Configure Status Bar
+      const configureStatusBar = async () => {
+        try {
+          // Make status bar transparent and overlay webview for immersive effect
+          await StatusBar.setOverlaysWebView({ overlay: true });
+
+          // Set style based on system theme or default to Light
+          // You might want to listen to theme changes if your app supports dynamic theming
+          await StatusBar.setStyle({ style: Style.Light });
+        } catch (err) {
+          console.warn("StatusBar config failed", err);
+        }
+      };
+
+      configureStatusBar();
     }
   }, []);
 
@@ -267,13 +344,15 @@ function App() {
             <AdminAuthProvider>
               <AdminSSEProvider>
                 <NativeThemeProvider>
-                  <TooltipProvider>
-                    <Toaster />
-                    <SonnerToaster position="top-center" richColors />
-                    <Router />
-                    <PWAInstallPrompt />
-                    <SpeedInsights />
-                  </TooltipProvider>
+                  <AppOpeningProvider>
+                    <TooltipProvider>
+                      <Toaster />
+                      <SonnerToaster position="top-center" richColors />
+                      <Router />
+                      <PWAInstallPrompt />
+                      <SpeedInsights />
+                    </TooltipProvider>
+                  </AppOpeningProvider>
                 </NativeThemeProvider>
               </AdminSSEProvider>
             </AdminAuthProvider>

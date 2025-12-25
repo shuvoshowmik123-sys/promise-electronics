@@ -1,4 +1,3 @@
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -197,7 +196,7 @@ export default function AdminOrdersPage() {
   });
 
   const formatCurrency = (amount: string) => {
-    return `৳${parseFloat(amount).toLocaleString("en-BD")}`;
+    return `à§³${parseFloat(amount).toLocaleString("en-BD")}`;
   };
 
   const orderStats = {
@@ -218,7 +217,7 @@ export default function AdminOrdersPage() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -597,6 +596,6 @@ export default function AdminOrdersPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </AdminLayout>
+    </>
   );
 }
