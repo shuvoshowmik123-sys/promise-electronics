@@ -27,6 +27,7 @@ export default function CameraLens({ onCapture, onClose }: CameraLensProps) {
     const [mode, setMode] = useState<CameraMode>('identify');
     const [isFlashOn, setIsFlashOn] = useState(false);
     const [isScanning, setIsScanning] = useState(true);
+    const [isStreamReady, setIsStreamReady] = useState(false);
 
     const videoRef = useRef<HTMLVideoElement>(null);
     const { analyzeImage, isAnalyzing } = useCameraLens();
@@ -96,7 +97,11 @@ export default function CameraLens({ onCapture, onClose }: CameraLensProps) {
                     autoPlay
                     playsInline
                     muted
-                    className="w-full h-full object-cover opacity-90"
+                    onLoadedMetadata={() => setIsStreamReady(true)}
+                    className={cn(
+                        "w-full h-full object-cover transition-opacity duration-500",
+                        isStreamReady ? "opacity-100" : "opacity-0"
+                    )}
                 />
                 {/* Overlay Gradient */}
                 <div className="absolute inset-0 bg-gradient-to-b from-black/40 via-transparent to-black/20 pointer-events-none"></div>

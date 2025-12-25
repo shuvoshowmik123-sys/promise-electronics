@@ -8,8 +8,38 @@ import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { v2 as cloudinary } from 'cloudinary';
 import { ObjectStorageService, ObjectNotFoundError } from '../objectStorage.js';
+import ImageKit from 'imagekit';
 
 const router = Router();
+
+// ============================================
+// ImageKit Configuration
+// ============================================
+
+const imagekit = new ImageKit({
+    publicKey: process.env.IMAGEKIT_PUBLIC_KEY || "",
+    privateKey: process.env.IMAGEKIT_PRIVATE_KEY || "",
+    urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT || "",
+});
+
+/**
+ * GET /api/upload/imagekit-auth - Returns auth params for client-side uploads
+ */
+router.get('/api/upload/imagekit-auth', (req: Request, res: Response) => {
+    try {
+        if (!process.env.IMAGEKIT_PRIVATE_KEY) {
+            return res.status(503).json({
+                error: 'ImageKit not configured',
+                message: 'Please configure IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, and IMAGEKIT_URL_ENDPOINT'
+            });
+        }
+        const result = imagekit.getAuthenticationParameters();
+        res.json(result);
+    } catch (error: any) {
+        console.error('ImageKit auth error:', error);
+        res.status(500).json({ error: 'Failed to generate auth parameters' });
+    }
+});
 
 // ============================================
 // Object Storage API (Legacy)

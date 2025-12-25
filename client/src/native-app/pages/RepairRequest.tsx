@@ -15,6 +15,7 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 import { getApiUrl } from "@/lib/config";
+import { ImageKitUpload } from "@/components/common/ImageKitUpload";
 
 interface UploadedFile {
     name: string;
@@ -109,8 +110,6 @@ export default function RepairRequest() {
     const commonSymptoms = getSettingArray("common_symptoms", ["Blinking Red Light", "Lines on Screen", "Dim Picture", "Wifi Not Connecting", "Remote Not Working", "Burning Smell"]);
 
     // File Upload Logic
-    const fileInputRef = useRef<HTMLInputElement>(null);
-    const [isUploading, setIsUploading] = useState(false);
     const [isAnalyzing, setIsAnalyzing] = useState(false);
 
     const handleAIInspect = async (file: UploadedFile) => {
@@ -146,54 +145,6 @@ export default function RepairRequest() {
             console.error("AI Inspect error:", error);
             toast({ title: "Analysis Failed", description: "An error occurred.", variant: "destructive" });
             setIsAnalyzing(false);
-        }
-    };
-
-    const uploadToCloudinary = async (file: File) => {
-        const paramsResponse = await fetch(getApiUrl("/api/cloudinary/upload-params"), {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ resourceType: file.type.startsWith("video/") ? "video" : "image" }),
-        });
-        const params = await paramsResponse.json();
-
-        const formData = new FormData();
-        formData.append("file", file);
-        formData.append("api_key", params.apiKey);
-        formData.append("timestamp", params.timestamp.toString());
-        formData.append("signature", params.signature);
-        formData.append("folder", params.folder);
-        formData.append("transformation", params.transformation);
-
-        const res = await fetch(`https://api.cloudinary.com/v1_1/${params.cloudName}/${file.type.startsWith("video/") ? "video" : "image"}/upload`, {
-            method: "POST",
-            body: formData
-        });
-        return await res.json();
-    };
-
-    const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
-        if (!e.target.files?.length) return;
-        setIsUploading(true);
-        try {
-            const newFiles: UploadedFile[] = [];
-            for (let i = 0; i < e.target.files.length; i++) {
-                const file = e.target.files[i];
-                const result = await uploadToCloudinary(file);
-                newFiles.push({
-                    name: file.name,
-                    type: file.type,
-                    preview: URL.createObjectURL(file),
-                    objectUrl: result.secure_url,
-                    publicId: result.public_id,
-                    resourceType: file.type.startsWith("video/") ? "video" : "image"
-                });
-            }
-            setFiles([...files, ...newFiles]);
-        } catch (error) {
-            toast({ title: "Upload Failed", variant: "destructive" });
-        } finally {
-            setIsUploading(false);
         }
     };
 
@@ -526,16 +477,20 @@ export default function RepairRequest() {
                                         )}
                                     </div>
                                 ))}
-                                <button
-                                    onClick={() => fileInputRef.current?.click()}
-                                    disabled={isUploading}
-                                    className="aspect-square rounded-xl border-2 border-dashed border-[var(--color-native-border)] flex flex-col items-center justify-center gap-2 text-[var(--color-native-text-muted)] active:bg-[var(--color-native-input)]"
-                                >
-                                    {isUploading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Camera className="w-6 h-6" />}
-                                    <span className="text-xs font-medium">Add</span>
-                                </button>
+                                <ImageKitUpload
+                                    folder="/service-requests"
+                                    onUploadSuccess={(result) => {
+                                        setFiles([...files, {
+                                            name: result.name,
+                                            type: result.url.includes("/video/") ? "video/mp4" : "image/jpeg",
+                                            preview: result.thumbnailUrl || result.url,
+                                            objectUrl: result.url,
+                                            publicId: result.fileId,
+                                            resourceType: result.url.includes("/video/") ? "video" : "image",
+                                        }]);
+                                    }}
+                                />
                             </div>
-                            <input ref={fileInputRef} type="file" multiple accept="image/*,video/*" className="hidden" onChange={handleFileSelect} />
                         </div>
                     </div>
                 )}

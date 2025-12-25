@@ -19,10 +19,11 @@ import { toast } from "sonner";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthModal } from "@/components/auth/CustomerAuthModal";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { getApiUrl } from "@/lib/config";
 
-interface CloudinaryMedia {
+interface ImageKitMedia {
   url: string;
-  publicId: string;
+  fileId: string;
   resourceType: "image" | "video";
 }
 
@@ -31,7 +32,7 @@ interface UploadedFile {
   type: string;
   preview: string;
   objectUrl: string;
-  publicId: string;
+  fileId: string;
   resourceType: "image" | "video";
 }
 
@@ -227,41 +228,44 @@ export default function RepairRequestPage() {
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string | null>(null);
 
-  // Upload directly to Cloudinary with automatic compression
-  const uploadToCloudinary = async (file: File): Promise<CloudinaryMedia> => {
-    // First get upload params from our server (includes signature for security)
-    const paramsResponse = await fetch("/api/cloudinary/upload-params", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        resourceType: file.type.startsWith("video/") ? "video" : "image",
-      }),
+  // Upload directly to ImageKit 
+  const uploadToImageKit = async (file: File): Promise<ImageKitMedia> => {
+    // First get auth parameters from our server
+    const authResponse = await fetch(getApiUrl("/api/upload/imagekit-auth"), {
+      method: "GET",
+      credentials: "include",
     });
 
-    if (!paramsResponse.ok) {
-      const errorData = await paramsResponse.json().catch(() => ({}));
-      if (paramsResponse.status === 503) {
+    if (!authResponse.ok) {
+      const errorData = await authResponse.json().catch(() => ({}));
+      if (authResponse.status === 503) {
         throw new Error("Upload service not configured. Please contact support.");
       }
       throw new Error(errorData.error || "Failed to get upload parameters");
     }
 
-    const params = await paramsResponse.json();
-    const { cloudName, apiKey, signature, timestamp, folder, transformation } = params;
+    const authParams = await authResponse.json();
+    const { token, expire, signature } = authParams;
 
-    // Upload directly to Cloudinary (bypasses our server for the actual file)
+    const urlEndpoint = import.meta.env.VITE_IMAGEKIT_URL_ENDPOINT;
+    const publicKey = import.meta.env.VITE_IMAGEKIT_PUBLIC_KEY;
+
+    if (!urlEndpoint || !publicKey) {
+      throw new Error("ImageKit not configured. Please set environment variables.");
+    }
+
+    // Upload directly to ImageKit
     const formData = new FormData();
     formData.append("file", file);
-    formData.append("api_key", apiKey);
-    formData.append("timestamp", timestamp.toString());
+    formData.append("publicKey", publicKey);
     formData.append("signature", signature);
-    formData.append("folder", folder);
-    // Apply automatic compression transformations (from server to match signature)
-    formData.append("transformation", transformation);
+    formData.append("expire", expire.toString());
+    formData.append("token", token);
+    formData.append("fileName", file.name);
+    formData.append("folder", "/service-requests");
 
-    const resourceType = file.type.startsWith("video/") ? "video" : "image";
     const uploadResponse = await fetch(
-      `https://api.cloudinary.com/v1_1/${cloudName}/${resourceType}/upload`,
+      "https://upload.imagekit.io/api/v1/files/upload",
       {
         method: "POST",
         body: formData,
@@ -270,14 +274,15 @@ export default function RepairRequestPage() {
 
     if (!uploadResponse.ok) {
       const errorData = await uploadResponse.json().catch(() => ({}));
-      throw new Error(errorData.error?.message || "Failed to upload file");
+      throw new Error(errorData.message || "Failed to upload file");
     }
 
     const result = await uploadResponse.json();
-    // Return both URL and publicId (needed for deletion later)
+    const resourceType = file.type.startsWith("video/") ? "video" : "image";
+
     return {
-      url: result.secure_url,
-      publicId: result.public_id,
+      url: result.url,
+      fileId: result.fileId,
       resourceType,
     };
   };
@@ -309,16 +314,16 @@ export default function RepairRequestPage() {
           reader.readAsDataURL(file);
         });
 
-        // Upload to Cloudinary (automatically compresses images and videos)
-        const cloudinaryMedia = await uploadToCloudinary(file);
+        // Upload to ImageKit
+        const imageKitMedia = await uploadToImageKit(file);
 
         newFiles.push({
           name: file.name,
           type: file.type,
           preview,
-          objectUrl: cloudinaryMedia.url,
-          publicId: cloudinaryMedia.publicId,
-          resourceType: cloudinaryMedia.resourceType,
+          objectUrl: imageKitMedia.url,
+          fileId: imageKitMedia.fileId,
+          resourceType: imageKitMedia.resourceType,
         });
       }
 
@@ -382,10 +387,10 @@ export default function RepairRequestPage() {
         }
       }
 
-      // Store full media objects with publicId for cleanup (30-day auto-deletion)
+      // Store full media objects with fileId for cleanup
       const mediaData = files.map(f => ({
         url: f.objectUrl,
-        publicId: f.publicId,
+        fileId: f.fileId,
         resourceType: f.resourceType,
       }));
 

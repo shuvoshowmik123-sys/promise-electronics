@@ -1,7 +1,7 @@
 import NativeLayout from "../NativeLayout";
 import { useLocation, Link } from "wouter";
 import { Loader2, User, ChevronRight, Phone, Mail, Lock, Camera, Image, X } from "lucide-react";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -9,6 +9,7 @@ import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { takePhoto, selectFromGallery, isNative } from "@/lib/native-features";
+import { ImageKitUpload } from "@/components/common/ImageKitUpload";
 
 const editProfileSchema = z.object({
     name: z.string().min(2, "Name must be at least 2 characters"),
@@ -26,7 +27,6 @@ export default function EditProfile() {
     const [isPhotoDialogOpen, setIsPhotoDialogOpen] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [isUploadingPhoto, setIsUploadingPhoto] = useState(false);
-    const fileInputRef = useRef<HTMLInputElement>(null);
 
     if (!isLoading && !isAuthenticated) {
         setLocation("/native/login");
@@ -133,29 +133,21 @@ export default function EditProfile() {
         }
     };
 
-    // Web fallback for file input
-    const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const file = e.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onloadend = () => {
-                setProfileImage(reader.result as string);
-                setIsPhotoDialogOpen(false);
-                toast({
-                    title: "Photo selected",
-                    description: "Your profile photo has been updated",
-                });
-            };
-            reader.readAsDataURL(file);
-        }
-    };
-
     const handleRemovePhoto = () => {
         setProfileImage("");
         setIsPhotoDialogOpen(false);
         toast({
             title: "Photo removed",
             description: "Profile photo has been removed",
+        });
+    };
+
+    const handleImageKitUpload = (result: { url: string; fileId: string; name: string; thumbnailUrl?: string }) => {
+        setProfileImage(result.url);
+        setIsPhotoDialogOpen(false);
+        toast({
+            title: "Photo uploaded",
+            description: "Your profile photo has been updated",
         });
     };
 
@@ -301,15 +293,6 @@ export default function EditProfile() {
                 )}
             </main>
 
-            {/* Hidden file input for web fallback */}
-            <input
-                type="file"
-                ref={fileInputRef}
-                accept="image/*"
-                onChange={handleFileInputChange}
-                className="hidden"
-            />
-
             {/* Photo Selection Dialog */}
             <Dialog open={isPhotoDialogOpen} onOpenChange={setIsPhotoDialogOpen}>
                 <DialogContent className="max-w-[90vw] rounded-3xl p-0 overflow-hidden bg-[var(--color-native-card)] border-[var(--color-native-border)]">
@@ -319,26 +302,26 @@ export default function EditProfile() {
                         </DialogTitle>
                     </DialogHeader>
                     <div className="px-6 pb-6 space-y-3">
-                        {/* Take Photo Option */}
-                        <button
-                            type="button"
-                            onClick={isNative ? handleTakePhoto : () => fileInputRef.current?.click()}
-                            className="w-full flex items-center gap-4 p-4 rounded-2xl bg-[var(--color-native-input)] hover:bg-[var(--color-native-border)] active:scale-[0.98] transition-all"
-                        >
-                            <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
-                                <Camera className="w-6 h-6 text-blue-500" />
-                            </div>
-                            <div className="text-left">
-                                <p className="font-bold text-[var(--color-native-text)]">
-                                    {isNative ? "Take Photo" : "Upload Photo"}
-                                </p>
-                                <p className="text-xs text-[var(--color-native-text-muted)]">
-                                    {isNative ? "Use your camera" : "Select a file from your device"}
-                                </p>
-                            </div>
-                        </button>
-
-                        {/* Select from Gallery Option - Only on native */}
+                        {/* Take Photo Option - Only on native */}
+                        {isNative && (
+                            <button
+                                type="button"
+                                onClick={handleTakePhoto}
+                                className="w-full flex items-center gap-4 p-4 rounded-2xl bg-[var(--color-native-input)] hover:bg-[var(--color-native-border)] active:scale-[0.98] transition-all"
+                            >
+                                <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center">
+                                    <Camera className="w-6 h-6 text-blue-500" />
+                                </div>
+                                <div className="text-left">
+                                    <p className="font-bold text-[var(--color-native-text)]">
+                                        Take Photo
+                                    </p>
+                                    <p className="text-xs text-[var(--color-native-text-muted)]">
+                                        Use your camera
+                                    </p>
+                                </div>
+                            </button>
+                        )}
                         {isNative && (
                             <button
                                 type="button"
@@ -371,6 +354,27 @@ export default function EditProfile() {
                                 </div>
                             </button>
                         )}
+
+                        {/* ImageKit Upload Option */}
+                        <div className="pt-2 border-t border-[var(--color-native-border)]">
+                            <p className="text-xs text-[var(--color-native-text-muted)] mb-3 px-1">Or upload directly:</p>
+                            <ImageKitUpload
+                                folder="/profile-pictures"
+                                accept="image/*"
+                                onUploadSuccess={handleImageKitUpload}
+                                className="w-full"
+                            >
+                                <div className="w-full flex items-center gap-4 p-4 rounded-2xl bg-[var(--color-native-primary)]/10 hover:bg-[var(--color-native-primary)]/20 active:scale-[0.98] transition-all cursor-pointer">
+                                    <div className="w-12 h-12 rounded-full bg-[var(--color-native-primary)]/20 flex items-center justify-center">
+                                        <Camera className="w-6 h-6 text-[var(--color-native-primary)]" />
+                                    </div>
+                                    <div className="text-left">
+                                        <p className="font-bold text-[var(--color-native-primary)]">Upload Photo</p>
+                                        <p className="text-xs text-[var(--color-native-text-muted)]">Select from your device</p>
+                                    </div>
+                                </div>
+                            </ImageKitUpload>
+                        </div>
                     </div>
                 </DialogContent>
             </Dialog>

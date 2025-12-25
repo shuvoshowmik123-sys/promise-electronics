@@ -91,6 +91,8 @@
     "google-auth-library": "^10.5.0",
     "i18next": "^25.7.3",
     "i18next-browser-languagedetector": "^8.2.0",
+    "imagekit": "^6.0.0",
+    "imagekitio-react": "^4.3.0",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.545.0",
     "memoizee": "^0.4.17",
