@@ -70,25 +70,6 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
     super.dispose();
   }
 
-  Future<void> _onRefresh() async {
-    // Haptic feedback
-    HapticFeedback.mediumImpact();
-
-    // Refresh settings (clearing cache)
-    await Provider.of<AppSettingsProvider>(context, listen: false)
-        .clearCacheAndRefresh();
-
-    // Refresh other data if user is logged in
-    if (mounted) {
-      final authProvider = Provider.of<AuthProvider>(context, listen: false);
-      if (authProvider.isAuthenticated) {
-        await context.read<RepairProvider>().fetchUserRepairs();
-        await context.read<CartProvider>().fetchCart();
-      }
-      await context.read<HotDealsProvider>().fetchHotDeals();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
@@ -101,36 +82,29 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
       extendBodyBehindAppBar: true,
       body: Stack(
         children: [
-          RefreshIndicator(
-            onRefresh: _onRefresh,
-            color: AppColors.primary,
-            backgroundColor:
-                isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-            child: SingleChildScrollView(
-              physics: const AlwaysScrollableScrollPhysics(
-                  parent: BouncingScrollPhysics()),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Announcement Banner (from admin settings)
-                  const AnnouncementBanner(),
+          SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Announcement Banner (from admin settings)
+                const AnnouncementBanner(),
 
-                  // Hero Section
-                  _buildHeroSection(context, isDark, size),
+                // Hero Section
+                _buildHeroSection(context, isDark, size),
 
-                  // Quick Actions
-                  _buildQuickActions(context, isDark),
+                // Quick Actions
+                _buildQuickActions(context, isDark),
 
-                  // Active Repair Card
-                  _buildActiveRepairSection(context, isDark),
+                // Active Repair Card
+                _buildActiveRepairSection(context, isDark),
 
-                  // Hot Deals Section
-                  _buildHotDealsSection(context, isDark),
+                // Hot Deals Section
+                _buildHotDealsSection(context, isDark),
 
-                  // Bottom padding for nav bar
-                  const SizedBox(height: 100),
-                ],
-              ),
+                // Bottom padding for nav bar
+                const SizedBox(height: 100),
+              ],
             ),
           ),
           // Floating Cart Button
