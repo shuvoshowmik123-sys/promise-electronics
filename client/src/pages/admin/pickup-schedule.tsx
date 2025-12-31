@@ -25,7 +25,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Search, Truck, Calendar as CalendarIcon, Clock, MapPin, User, Loader2, CheckCircle, Package, Zap, AlertTriangle, RefreshCw, Eye } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { adminPickupsApi, serviceRequestsApi } from "@/lib/api";
+import { adminPickupsApi, serviceRequestsApi, settingsApi } from "@/lib/api";
 import { useState, useEffect, useRef } from "react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -121,8 +121,8 @@ export default function AdminPickupSchedulePage() {
 
   const { data: pickups = [], isLoading, refetch } = useQuery({
     queryKey: ["adminPickups", filterStatus],
-    queryFn: () => filterStatus === "all" 
-      ? adminPickupsApi.getAll() 
+    queryFn: () => filterStatus === "all"
+      ? adminPickupsApi.getAll()
       : adminPickupsApi.getAll(filterStatus),
     refetchInterval: sseSupported ? false : 15000,
   });
@@ -131,6 +131,15 @@ export default function AdminPickupSchedulePage() {
     queryKey: ["serviceRequests"],
     queryFn: () => serviceRequestsApi.getAll(),
   });
+
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: settingsApi.getAll,
+  });
+
+  const getCurrencySymbol = () => {
+    return settings?.find(s => s.key === "currency_symbol")?.value || "৳";
+  };
 
   const updatePickupMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: Partial<PickupSchedule> }) =>
@@ -458,7 +467,7 @@ export default function AdminPickupSchedulePage() {
               <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button 
+              <Button
                 onClick={handleSaveSchedule}
                 disabled={updatePickupMutation.isPending}
                 data-testid="button-save-schedule"
@@ -515,7 +524,7 @@ export default function AdminPickupSchedulePage() {
                   </div>
                 )}
                 <div className="text-sm text-muted-foreground">
-                  Tier Cost: à§³{selectedPickup.tierCost}
+                  Tier Cost: {getCurrencySymbol()}{selectedPickup.tierCost}
                 </div>
               </div>
             )}
@@ -590,7 +599,7 @@ function PickupTable({ pickups, isLoading, getTierBadge, getStatusBadge, onSched
               </TableCell>
               <TableCell>{getTierBadge(pickup.tier)}</TableCell>
               <TableCell>
-                {pickup.scheduledDate 
+                {pickup.scheduledDate
                   ? format(new Date(pickup.scheduledDate), "MMM d, yyyy")
                   : <span className="text-muted-foreground">Not set</span>
                 }

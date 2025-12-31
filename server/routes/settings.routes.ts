@@ -60,6 +60,112 @@ router.post('/api/settings', async (req: Request, res: Response) => {
 });
 
 // ============================================
+// Mobile App Settings API (Public for Flutter app)
+// ============================================
+
+/**
+ * GET /api/mobile/settings - Get all mobile app settings (public)
+ * Returns settings keyed by mobile_ prefix as a configuration object
+ */
+router.get('/api/mobile/settings', async (req: Request, res: Response) => {
+    try {
+        const allSettings = await storage.getAllSettings();
+
+        // Filter and transform mobile-specific settings
+        const mobileSettings: Record<string, any> = {};
+
+        // Default values for mobile settings
+        const defaults: Record<string, any> = {
+            mobile_hero_slides: JSON.stringify([
+                {
+                    title1: "Your TV,",
+                    title2: "Our Care.",
+                    subtitle: "Expert repairs at your doorstep.",
+                    image: "https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=400"
+                },
+                {
+                    title1: "Fast &",
+                    title2: "Reliable.",
+                    subtitle: "Same-day service available.",
+                    image: "https://images.unsplash.com/photo-1593784991095-a205069470b6?w=400"
+                },
+                {
+                    title1: "Quality",
+                    title2: "Parts Only.",
+                    subtitle: "Genuine components guaranteed.",
+                    image: "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400"
+                }
+            ]),
+            mobile_banner_enabled: "false",
+            mobile_banner_text: "",
+            mobile_banner_type: "info",
+            mobile_banner_link: "none",
+            mobile_popup_enabled: "false",
+            mobile_popup_image: "",
+            mobile_popup_title: "",
+            mobile_popup_description: "",
+            mobile_popup_button_text: "Learn More",
+            mobile_popup_button_link: "none",
+            mobile_popup_show_once: "true",
+            mobile_maintenance_mode: "false",
+            mobile_maintenance_message: "We're updating our systems. Please check back soon.",
+            mobile_min_version: "1.0.0",
+            mobile_contact_phone: "",
+            mobile_contact_whatsapp: "",
+            mobile_contact_address: "",
+            mobile_business_hours: ""
+        };
+
+        // Start with defaults
+        Object.entries(defaults).forEach(([key, value]) => {
+            const settingKey = key.replace('mobile_', '');
+            mobileSettings[settingKey] = value;
+        });
+
+        // Override with actual database values
+        allSettings.forEach(setting => {
+            if (setting.key.startsWith('mobile_')) {
+                const settingKey = setting.key.replace('mobile_', '');
+                mobileSettings[settingKey] = setting.value;
+            }
+        });
+
+        // Parse JSON values
+        try {
+            if (mobileSettings.hero_slides) {
+                mobileSettings.hero_slides = JSON.parse(mobileSettings.hero_slides);
+            }
+        } catch {
+            // Keep as string if parsing fails
+        }
+
+        // Convert boolean strings to actual booleans
+        ['banner_enabled', 'popup_enabled', 'popup_show_once', 'maintenance_mode'].forEach(key => {
+            if (mobileSettings[key] === 'true') mobileSettings[key] = true;
+            else if (mobileSettings[key] === 'false') mobileSettings[key] = false;
+        });
+
+        res.json(mobileSettings);
+    } catch (error) {
+        console.error('Error fetching mobile settings:', error);
+        res.status(500).json({ error: 'Failed to fetch mobile settings' });
+    }
+});
+
+/**
+ * GET /api/mobile/inventory - Get inventory items visible on Android app
+ */
+router.get('/api/mobile/inventory', async (req: Request, res: Response) => {
+    try {
+        const items = await storage.getInventoryItemsForAndroidApp();
+        res.json(items);
+    } catch (error) {
+        console.error('Error fetching mobile inventory:', error);
+        res.status(500).json({ error: 'Failed to fetch inventory' });
+    }
+});
+
+// ============================================
 // Service Catalog API
 // ============================================
 
@@ -358,6 +464,25 @@ router.get('/api/policies/:slug', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/mobile/policies/:slug - Get published policy for mobile app
+ */
+router.get('/api/mobile/policies/:slug', async (req: Request, res: Response) => {
+    try {
+        const { slug } = req.params;
+        if (!validPolicySlugs.includes(slug as any)) {
+            return res.status(400).json({ error: 'Invalid policy slug. Must be one of: privacy, warranty, terms' });
+        }
+        const policy = await storage.getPolicyBySlug(slug);
+        if (!policy || !policy.isPublishedApp) {
+            return res.status(404).json({ error: 'Policy not found' });
+        }
+        res.json(policy);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch policy' });
+    }
+});
+
+/**
  * GET /api/admin/policies - Get all policies (admin)
  */
 router.get('/api/admin/policies', requireAdminAuth, async (req: Request, res: Response) => {
@@ -393,7 +518,7 @@ router.get('/api/admin/policies/:slug', requireAdminAuth, async (req: Request, r
  */
 router.post('/api/admin/policies', requireAdminAuth, async (req: Request, res: Response) => {
     try {
-        const { slug, title, content, isPublished } = req.body;
+        const { slug, title, content, isPublished, isPublishedApp } = req.body;
         if (!slug || !validPolicySlugs.includes(slug)) {
             return res.status(400).json({ error: 'Invalid policy slug. Must be one of: privacy, warranty, terms' });
         }
@@ -408,6 +533,7 @@ router.post('/api/admin/policies', requireAdminAuth, async (req: Request, res: R
             title,
             content,
             isPublished: isPublished !== false,
+            isPublishedApp: isPublishedApp !== false,
         });
         res.status(201).json(policy);
     } catch (error) {

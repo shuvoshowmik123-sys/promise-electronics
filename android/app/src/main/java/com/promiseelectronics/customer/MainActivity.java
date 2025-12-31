@@ -1,9 +1,19 @@
 package com.promiseelectronics.customer;
 
-import com.getcapacitor.BridgeActivity;
+import android.os.Bundle;
 import android.webkit.WebView;
+import androidx.core.view.WindowCompat;
+import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
+
+    @Override
+    public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
+        // Enable Edge-to-Edge: App draws behind status bar and navigation bar
+        WindowCompat.setDecorFitsSystemWindows(getWindow(), false);
+    }
+
     @Override
     public void onStart() {
         super.onStart();

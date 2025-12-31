@@ -17,14 +17,32 @@ export const httpServer = createServer(app);
 
 // Configure CORS
 app.use(cors({
-    origin: [
-        "http://localhost:5083",
-        "http://localhost:5082",
-        "https://promiseelectronics.com",
-        "http://localhost",
-        "capacitor://localhost",
-        "http://192.168.0.103:5083" // Common local IP, can be adjusted
-    ],
+    origin: (origin, callback) => {
+        // Allow requests with no origin (mobile apps, curl, etc.)
+        if (!origin) {
+            return callback(null, true);
+        }
+
+        // Allow localhost on any port (for Flutter web development)
+        if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+            return callback(null, true);
+        }
+
+        // Production and capacitor origins
+        const allowedOrigins = [
+            "https://promiseelectronics.com",
+            "capacitor://localhost",
+            "http://192.168.0.103:5083"
+        ];
+
+        if (allowedOrigins.includes(origin)) {
+            return callback(null, true);
+        }
+
+        // Log rejected origins for debugging
+        console.log(`[CORS] Rejected origin: ${origin}`);
+        callback(new Error('Not allowed by CORS'));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "Cookie"]
@@ -61,7 +79,8 @@ const sessionConfig: session.SessionOptions = {
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
         // sameSite: "none" required for cross-origin mobile apps (Capacitor)
         // sameSite: "lax" is safer but blocks cross-origin cookies
-        sameSite: isProduction ? "none" : "lax",
+        // In development, we use undefined to allow cookies from different origins (like Android emulator)
+        sameSite: isProduction ? "none" : undefined,
     },
 };
 

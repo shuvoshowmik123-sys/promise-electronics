@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Daktar Vai AI Assistant</title>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "primary": "#36e27b",
+              "primary-dark": "#2cc768",
+              "background-light": "#ffffff",
+              "background-dark": "#112117",
+              "chat-user": "#36e27b",
+              "chat-ai": "#f9fafb",
+              "text-main": "#0e1b13",
+            },
+            fontFamily: {
+              "display": ["Inter", "sans-serif"]
+            },
+            borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+            boxShadow: {
+                'emboss': 'inset 0 1px 0 0 rgba(255, 255, 255, 0.5), 0 1px 2px 0 rgba(0, 0, 0, 0.05)',
+            }
+          },
+        },
+      }
+    </script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<style>.no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }.no-scrollbar {
+            -ms-overflow-style: none;scrollbar-width: none;}
+        body {
+            min-height: 100dvh;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-text-main dark:text-white font-display h-screen flex flex-col overflow-hidden antialiased">
+<header class="flex items-center justify-between px-4 py-3 bg-white/90 dark:bg-gray-900/90 backdrop-blur-sm border-b border-gray-100 dark:border-gray-800 z-30 shrink-0 sticky top-0">
+<button class="flex items-center justify-center size-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer text-gray-600 dark:text-gray-300">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+<div class="flex flex-col items-center">
+<div class="flex items-center gap-2">
+<div class="relative">
+<div class="size-8 rounded-full overflow-hidden border border-gray-200">
+<div class="w-full h-full bg-cover bg-center" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA17DG7yjh7AVkx0YM71coXuP9rd79b-gyOCft-96fI8Vh-iPnN37Kc4WE88yahbvMP4x0rR9wWtOSb_NGLANOwSo8mnY9kjhG1tY6kv6qTPONrKXWCPmOAKCu4yArJ4JYmSvNUT4BTC28-0tCQvcGT5Fz6sJfpQMXTXsSTsBqdeAGr5s0rwc-R9vmUa5H1sEWQwh1eKHZimjuFz5IqpsIv2oqNLea78UcHNuQ9LeSVTZfl-JWab304QRW-4ZWtKWiyivka4woD0bY');"></div>
+</div>
+<div class="absolute bottom-0 right-0 size-2.5 bg-green-500 rounded-full border-2 border-white dark:border-gray-900"></div>
+</div>
+<div>
+<h1 class="text-sm font-bold text-gray-900 dark:text-white leading-tight">ডাক্তার ভাই AI</h1>
+<p class="text-[10px] text-primary font-medium leading-none">Always here to help</p>
+</div>
+</div>
+</div>
+<button class="flex items-center justify-center size-10 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors cursor-pointer text-gray-600 dark:text-gray-300">
+<span class="material-symbols-outlined">more_horiz</span>
+</button>
+</header>
+<main class="flex-1 overflow-y-auto no-scrollbar p-4 w-full max-w-3xl mx-auto flex flex-col gap-8 bg-white dark:bg-gray-950">
+<div class="flex justify-center pt-2">
+<span class="text-[11px] font-medium text-gray-400 bg-gray-50 dark:bg-gray-900 px-3 py-1 rounded-full border border-gray-100 dark:border-gray-800">Today, 9:41 AM</span>
+</div>
+<div class="flex justify-end w-full pl-12">
+<div class="flex flex-col items-end gap-1 max-w-[85%]">
+<div class="bg-primary text-[#0e1b13] px-4 py-3 rounded-2xl rounded-tr-sm shadow-sm">
+<p class="text-[15px] leading-relaxed font-medium">My TV is showing vertical lines</p>
+</div>
+<span class="text-[10px] text-gray-400 font-medium mr-1">9:42 AM</span>
+</div>
+</div>
+<div class="flex justify-start w-full pr-12">
+<div class="flex gap-3 max-w-[90%]">
+<div class="size-8 rounded-full overflow-hidden bg-gray-50 border border-gray-100 shrink-0 mt-1">
+<div class="w-full h-full bg-cover bg-center" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA17DG7yjh7AVkx0YM71coXuP9rd79b-gyOCft-96fI8Vh-iPnN37Kc4WE88yahbvMP4x0rR9wWtOSb_NGLANOwSo8mnY9kjhG1tY6kv6qTPONrKXWCPmOAKCu4yArJ4JYmSvNUT4BTC28-0tCQvcGT5Fz6sJfpQMXTXsSTsBqdeAGr5s0rwc-R9vmUa5H1sEWQwh1eKHZimjuFz5IqpsIv2oqNLea78UcHNuQ9LeSVTZfl-JWab304QRW-4ZWtKWiyivka4woD0bY');"></div>
+</div>
+<div class="flex flex-col items-start gap-1">
+<div class="bg-chat-ai dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-4 py-3 rounded-2xl rounded-tl-sm border border-gray-100 dark:border-gray-700 shadow-emboss">
+<p class="text-[15px] leading-relaxed">That sounds like a T-CON board issue. Can you send a photo?</p>
+</div>
+<span class="text-[10px] text-gray-400 font-medium ml-1">9:42 AM</span>
+</div>
+</div>
+</div>
+<div class="flex justify-end w-full pl-12">
+<div class="flex flex-col items-end gap-1 max-w-[85%]">
+<div class="bg-primary p-1 rounded-2xl rounded-tr-sm shadow-sm overflow-hidden">
+<div class="w-full h-48 bg-gray-900 rounded-xl overflow-hidden relative">
+<div class="absolute inset-0 bg-cover bg-center opacity-90" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuAEBMwTNkJWGvPRqg0BXtrcws-gUMIgkMNHBFR3Pc4jshCDQQlFpzx9QCh3S7K7XW41e60MBcUsOBSrA2OeguXdbzbqoXq0LhCe6Q-lMhtuRfLf9MVGzmrVSjnz3Mc5Im5TOnANQpZw3iVT1OtdtJg3tCKijadFSuqfyB_u9EI0V1rXADk841y5U6z--ks3RiDHQDldnvtstXMp-6Swbbz3SbgZarak_3hwiH-xsKd2BhUIFHBMj1n4acuByPMYPlaqq67FB_iIves');"></div>
+<div class="absolute inset-0 bg-[linear-gradient(90deg,transparent_0%,rgba(255,255,255,0.1)_50%,transparent_100%)]"></div>
+</div>
+</div>
+<span class="text-[10px] text-gray-400 font-medium mr-1">9:43 AM</span>
+</div>
+</div>
+<div class="flex justify-start w-full pr-4">
+<div class="flex gap-3 max-w-full">
+<div class="size-8 rounded-full overflow-hidden bg-gray-50 border border-gray-100 shrink-0 mt-1">
+<div class="w-full h-full bg-cover bg-center" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuA17DG7yjh7AVkx0YM71coXuP9rd79b-gyOCft-96fI8Vh-iPnN37Kc4WE88yahbvMP4x0rR9wWtOSb_NGLANOwSo8mnY9kjhG1tY6kv6qTPONrKXWCPmOAKCu4yArJ4JYmSvNUT4BTC28-0tCQvcGT5Fz6sJfpQMXTXsSTsBqdeAGr5s0rwc-R9vmUa5H1sEWQwh1eKHZimjuFz5IqpsIv2oqNLea78UcHNuQ9LeSVTZfl-JWab304QRW-4ZWtKWiyivka4woD0bY');"></div>
+</div>
+<div class="flex flex-col items-start gap-3 w-full">
+<div class="bg-chat-ai dark:bg-gray-800 text-gray-800 dark:text-gray-200 px-4 py-3 rounded-2xl rounded-tl-sm border border-gray-100 dark:border-gray-700 shadow-emboss max-w-[90%]">
+<p class="text-[15px] leading-relaxed">Based on the image, I recommend replacing the T-CON board. Would you like to proceed with a repair service or order the part yourself?</p>
+</div>
+<div class="flex flex-wrap gap-2.5 ml-1">
+<button class="group flex items-center gap-2 bg-transparent hover:bg-primary/5 border border-gray-300 dark:border-gray-600 hover:border-primary text-gray-700 dark:text-gray-300 hover:text-primary-dark px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200">
+<span class="material-symbols-outlined text-[18px] text-gray-400 group-hover:text-primary transition-colors">calendar_month</span>
+                            Book Repair
+                        </button>
+<button class="group flex items-center gap-2 bg-transparent hover:bg-primary/5 border border-gray-300 dark:border-gray-600 hover:border-primary text-gray-700 dark:text-gray-300 hover:text-primary-dark px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200">
+<span class="material-symbols-outlined text-[18px] text-gray-400 group-hover:text-primary transition-colors">shopping_bag</span>
+                            Buy Parts
+                        </button>
+</div>
+<span class="text-[10px] text-gray-400 font-medium ml-1">9:44 AM</span>
+</div>
+</div>
+</div>
+<div class="h-2"></div>
+</main>
+<footer class="bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 shrink-0 z-30 pb-safe">
+<div class="max-w-3xl mx-auto px-4 py-3">
+<div class="flex items-center gap-3">
+<button class="flex items-center justify-center size-10 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors shrink-0">
+<span class="material-symbols-outlined text-[24px]">add_a_photo</span>
+</button>
+<div class="flex-1 relative">
+<input class="w-full bg-gray-50 dark:bg-gray-800 border-0 text-gray-900 dark:text-white placeholder-gray-400 text-[15px] rounded-2xl py-3 pl-4 pr-10 focus:ring-1 focus:ring-primary/50 shadow-sm transition-all" placeholder="Describe your TV problem..." type="text"/>
+<button class="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 text-gray-400 hover:text-primary transition-colors rounded-full hover:bg-gray-200 dark:hover:bg-gray-700">
+<span class="material-symbols-outlined text-[20px]">mic</span>
+</button>
+</div>
+<button class="flex items-center justify-center size-12 bg-primary hover:bg-primary-dark text-[#0e1b13] rounded-full shadow-md shadow-primary/20 transition-transform active:scale-95 shrink-0">
+<span class="material-symbols-outlined text-[22px] ml-0.5">send</span>
+</button>
+</div>
+</div>
+<div class="h-6 w-full"></div>
+</footer>
+
+</body></html>

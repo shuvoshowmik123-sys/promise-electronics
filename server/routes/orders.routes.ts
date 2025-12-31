@@ -6,6 +6,9 @@
 
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
+import { db } from '../db.js';
+import { sparePartOrders } from '@shared/schema.js';
+import { eq } from 'drizzle-orm';
 import { requireCustomerAuth, requireAdminAuth, getCustomerId } from './middleware/auth.js';
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 
@@ -50,6 +53,7 @@ router.post('/api/orders', requireCustomerAuth, async (req: Request, res: Respon
 
             let price = product.price;
             let variantName = null;
+            let isFromHotDeal = false;
 
             if (item.variantId) {
                 const variant = await storage.getProductVariant(item.variantId);
@@ -58,6 +62,30 @@ router.post('/api/orders', requireCustomerAuth, async (req: Request, res: Respon
                 }
                 price = variant.price;
                 variantName = variant.variantName;
+            } else if (item.price !== undefined && item.isFromHotDeal) {
+                // Validate the hot deal price against the stored hot deal price
+                const clientPrice = Number(item.price);
+                const serverHotDealPrice = product.hotDealPrice;
+
+                // Accept the client price if it matches either regular price or hot deal price
+                if (serverHotDealPrice !== null && serverHotDealPrice !== undefined) {
+                    // If the client claims it's a hot deal, validate against hot deal price
+                    if (Math.abs(clientPrice - serverHotDealPrice) < 0.01) {
+                        price = clientPrice;
+                        isFromHotDeal = true;
+                    } else if (Math.abs(clientPrice - product.price) < 0.01) {
+                        // Fallback to regular price if that's what was sent
+                        price = product.price;
+                    } else {
+                        // Price doesn't match either - use hot deal price if marked as hot deal
+                        console.log(`Price mismatch for ${product.name}: client=${clientPrice}, hotDeal=${serverHotDealPrice}, regular=${product.price}. Using hot deal price.`);
+                        price = serverHotDealPrice;
+                        isFromHotDeal = true;
+                    }
+                } else {
+                    // No hot deal price set on server, use regular price
+                    price = product.price;
+                }
             }
 
             const quantity = Number(item.quantity) || 1;
@@ -197,7 +225,15 @@ router.get('/api/admin/orders/:id', requireAdminAuth, async (req: Request, res: 
         }
 
         const items = await storage.getOrderItems(order.id);
-        res.json({ ...order, items });
+
+        // Check for spare part details
+        const sparePartDetails = await db.select().from(sparePartOrders).where(eq(sparePartOrders.orderId, order.id)).limit(1);
+
+        res.json({
+            ...order,
+            items,
+            sparePartDetails: sparePartDetails.length > 0 ? sparePartDetails[0] : null
+        });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch order' });
     }

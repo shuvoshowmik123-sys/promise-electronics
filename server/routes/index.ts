@@ -32,6 +32,7 @@ import reviewsRoutes from './reviews.routes.js';
 import uploadRoutes from './upload.routes.js';
 import aiRoutes from './ai.routes.js';
 import lensRoutes from './lens.routes.js';
+import sparePartsRoutes from './spare-parts.routes.js';
 
 /**
  * Register all routes with the Express application.
@@ -47,6 +48,12 @@ export async function registerRoutes(
     console.log('[Routes] Registering route modules...');
 
     // ============================================
+    // Register Routes
+    // ============================================
+
+    // File upload routes (moved to top for priority)
+    app.use(uploadRoutes);
+    console.log('[Routes] ✓ Upload routes registered (priority)');
     // Setup Customer Authentication (Google OAuth)
     // ============================================
     await setupCustomerAuth(app);
@@ -130,8 +137,8 @@ export async function registerRoutes(
     console.log('[Routes] ✓ Reviews routes registered');
 
     // File upload routes (should be near the end)
-    app.use(uploadRoutes);
-    console.log('[Routes] ✓ Upload routes registered');
+    // app.use(uploadRoutes);
+    // console.log('[Routes] ✓ Upload routes registered (updated)');
 
     // AI Routes
     app.use('/api/ai', aiRoutes);
@@ -139,6 +146,9 @@ export async function registerRoutes(
 
     app.use('/api/lens', lensRoutes);
     console.log('[Routes] ✓ Lens routes registered');
+
+    app.use(sparePartsRoutes);
+    console.log('[Routes] ✓ Spare parts routes registered');
 
     console.log('[Routes] All route modules registered successfully!');
 

@@ -149,6 +149,11 @@ export default function AdminPOSPage() {
     queryFn: settingsApi.getAll,
   });
 
+  const getCurrencySymbol = () => {
+    const currencySetting = settings?.find(s => s.key === "currency_symbol");
+    return currencySetting?.value || "৳";
+  };
+
   const { data: customers, isLoading: customersLoading } = useQuery({
     queryKey: ["admin-customers"],
     queryFn: adminCustomersApi.getAll,
@@ -548,7 +553,7 @@ export default function AdminPOSPage() {
                       {product.name}
                     </h3>
                     <p className="font-bold text-primary mt-0.5 text-sm" data-testid={`text-product-price-${product.id}`}>
-                      à§³{price}
+                      {getCurrencySymbol()}{price}
                     </p>
                   </div>
                 </CardContent>
@@ -837,7 +842,7 @@ export default function AdminPOSPage() {
                                   {item.stock} left
                                 </Badge>
                               </TableCell>
-                              <TableCell>à§³{item.price}</TableCell>
+                              <TableCell>{getCurrencySymbol()}{item.price}</TableCell>
                               <TableCell>
                                 <Input
                                   type="number"
@@ -929,10 +934,10 @@ export default function AdminPOSPage() {
                           </Button>
                         </div>
                         <span className="text-xs text-muted-foreground">
-                          Ã— à§³{price.toFixed(2)}
+                          × {getCurrencySymbol()}{price.toFixed(2)}
                         </span>
                         <span className="text-xs font-bold ml-auto" data-testid={`text-cart-item-total-${item.id}`}>
-                          à§³{itemTotal.toFixed(2)}
+                          {getCurrencySymbol()}{itemTotal.toFixed(2)}
                         </span>
                       </div>
                     </div>
@@ -995,7 +1000,7 @@ export default function AdminPOSPage() {
                               <SelectContent>
                                 {serviceItems.map(item => (
                                   <SelectItem key={item.id} value={item.id} className="text-xs">
-                                    {item.name} (à§³{item.minPrice || item.price} - à§³{item.maxPrice || item.price})
+                                    {item.name} ({getCurrencySymbol()}{item.minPrice || item.price} - {getCurrencySymbol()}{item.maxPrice || item.price})
                                   </SelectItem>
                                 ))}
                               </SelectContent>
@@ -1007,7 +1012,7 @@ export default function AdminPOSPage() {
                               <div className="flex items-center justify-between mb-1">
                                 <Label className="text-[10px] text-blue-600">Bill Amount</Label>
                                 <span className="text-[10px] text-gray-500">
-                                  Range: à§³{charge.minPrice} - à§³{charge.maxPrice}
+                                  Range: {getCurrencySymbol()}{charge.minPrice} - {getCurrencySymbol()}{charge.maxPrice}
                                 </span>
                               </div>
                               <Input
@@ -1021,7 +1026,7 @@ export default function AdminPOSPage() {
                               />
                               {!charge.isValid && charge.billedAmount > 0 && (
                                 <p className="text-[10px] text-red-500 mt-1">
-                                  Amount must be between à§³{charge.minPrice} and à§³{charge.maxPrice}
+                                  Amount must be between {getCurrencySymbol()}{charge.minPrice} and {getCurrencySymbol()}{charge.maxPrice}
                                 </p>
                               )}
                             </div>
@@ -1061,11 +1066,11 @@ export default function AdminPOSPage() {
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Subtotal</span>
-              <span data-testid="text-subtotal">à§³{subtotal.toFixed(2)}</span>
+              <span data-testid="text-subtotal">{getCurrencySymbol()}{subtotal.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">VAT ({getVatPercentage()}%)</span>
-              <span data-testid="text-tax">à§³{tax.toFixed(2)}</span>
+              <span data-testid="text-tax">{getCurrencySymbol()}{tax.toFixed(2)}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Discount</span>
@@ -1081,7 +1086,7 @@ export default function AdminPOSPage() {
             <Separator />
             <div className="flex justify-between text-lg font-bold">
               <span>Total</span>
-              <span data-testid="text-total">à§³{total.toFixed(2)}</span>
+              <span data-testid="text-total">{getCurrencySymbol()}{total.toFixed(2)}</span>
             </div>
           </div>
 
@@ -1329,7 +1334,7 @@ export default function AdminPOSPage() {
             </div>
             <div className="flex justify-between text-lg font-bold border-t pt-2 mt-2">
               <span>Total:</span>
-              <span className="text-primary" data-testid="text-success-total">à§³{lastTransaction ? parseFloat(lastTransaction.total).toFixed(2) : "0.00"}</span>
+              <span className="text-primary" data-testid="text-success-total">{getCurrencySymbol()}{lastTransaction ? parseFloat(lastTransaction.total).toFixed(2) : "0.00"}</span>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
@@ -1462,7 +1467,7 @@ export default function AdminPOSPage() {
                       })}
                     </TableCell>
                     <TableCell className="text-right font-semibold">
-                      à§³{parseFloat(transaction.total).toFixed(2)}
+                      {getCurrencySymbol()}{Number(transaction.total).toFixed(2)}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex gap-1 justify-end">

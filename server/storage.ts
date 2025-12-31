@@ -150,6 +150,7 @@ export interface IStorage {
   // Services from Inventory (itemType = 'service')
   getServicesFromInventory(): Promise<InventoryItem[]>;
   getActiveServicesFromInventory(): Promise<InventoryItem[]>;
+  getInventoryItemsForAndroidApp(): Promise<InventoryItem[]>;
 
   // Pickup Schedules
   getAllPickupSchedules(): Promise<PickupSchedule[]>;
@@ -496,7 +497,33 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createInventoryItem(item: InsertInventoryItem): Promise<InventoryItem> {
-    const [newItem] = await db.insert(schema.inventoryItems).values({ ...item, id: item.id || nanoid() }).returning();
+    let id = item.id;
+    if (!id) {
+      const prefix = item.itemType === 'service' ? 'SVC' : 'PRD';
+      const now = new Date();
+      const datePrefix = now.toISOString().slice(0, 10).replace(/-/g, "");
+
+      const [lastItem] = await db
+        .select({ id: schema.inventoryItems.id })
+        .from(schema.inventoryItems)
+        .where(like(schema.inventoryItems.id, `${prefix}-${datePrefix}-%`))
+        .orderBy(desc(schema.inventoryItems.id))
+        .limit(1);
+
+      let maxSequence = 0;
+      if (lastItem?.id) {
+        const parts = lastItem.id.split('-');
+        const seq = parseInt(parts[parts.length - 1], 10);
+        if (!isNaN(seq)) {
+          maxSequence = seq;
+        }
+      }
+
+      const sequence = (maxSequence + 1).toString().padStart(4, "0");
+      id = `${prefix}-${datePrefix}-${sequence}`;
+    }
+
+    const [newItem] = await db.insert(schema.inventoryItems).values({ ...item, id }).returning();
     return newItem;
   }
 
@@ -809,6 +836,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async linkServiceRequestsByPhone(phone: string, customerId: string): Promise<number> {
+    console.time('linkServiceRequestsByPhone');
     // Normalize phone to last 10 digits for flexible matching
     const normalizeToDigits = (p: string): string => {
       let digits = p.replace(/\D/g, '');
@@ -837,7 +865,10 @@ export class DatabaseStorage implements IStorage {
       return reqPhone === normalizedPhone;
     });
 
-    if (requestsToLink.length === 0) return 0;
+    if (requestsToLink.length === 0) {
+      console.timeEnd('linkServiceRequestsByPhone');
+      return 0;
+    }
 
     // Update them
     let linkedCount = 0;
@@ -849,6 +880,7 @@ export class DatabaseStorage implements IStorage {
       linkedCount++;
     }
 
+    console.timeEnd('linkServiceRequestsByPhone');
     return linkedCount;
   }
 
@@ -1432,6 +1464,15 @@ export class DatabaseStorage implements IStorage {
       .orderBy(asc(schema.inventoryItems.displayOrder));
   }
 
+  async getInventoryItemsForAndroidApp(): Promise<InventoryItem[]> {
+    return db.select().from(schema.inventoryItems)
+      .where(and(
+        eq(schema.inventoryItems.itemType, 'product'),
+        eq(schema.inventoryItems.showOnAndroidApp, true)
+      ))
+      .orderBy(schema.inventoryItems.name);
+  }
+
   // Pickup Schedules
   async getAllPickupSchedules(): Promise<PickupSchedule[]> {
     return db.select().from(schema.pickupSchedules).orderBy(desc(schema.pickupSchedules.createdAt));
@@ -1846,7 +1887,7 @@ export class DatabaseStorage implements IStorage {
     return policy;
   }
 
-  async upsertPolicy(policy: { slug: string; title: string; content: string; isPublished?: boolean }): Promise<Policy> {
+  async upsertPolicy(policy: { slug: string; title: string; content: string; isPublished?: boolean; isPublishedApp?: boolean }): Promise<Policy> {
     const existing = await this.getPolicyBySlug(policy.slug);
     if (existing) {
       const [updated] = await db
@@ -1855,6 +1896,7 @@ export class DatabaseStorage implements IStorage {
           title: policy.title,
           content: policy.content,
           isPublished: policy.isPublished ?? true,
+          isPublishedApp: policy.isPublishedApp ?? true,
           lastUpdated: new Date(),
         })
         .where(eq(schema.policies.slug, policy.slug as any))
@@ -1869,6 +1911,7 @@ export class DatabaseStorage implements IStorage {
           title: policy.title,
           content: policy.content,
           isPublished: policy.isPublished ?? true,
+          isPublishedApp: policy.isPublishedApp ?? true,
         })
         .returning();
       return created;

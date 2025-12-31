@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/popover";
 import { getApiUrl } from "@/lib/config";
 import { ImageKitUpload } from "@/components/common/ImageKitUpload";
+import { compressImage, getCompressionPreset, formatFileSize } from "@/lib/imageCompression";
 
 interface UploadedFile {
     name: string;
@@ -120,30 +121,34 @@ export default function RepairRequest() {
 
         setIsAnalyzing(true);
         try {
-            // Convert objectUrl to base64 or pass the URL if public
-            // Since objectUrl is a blob URL, we need to fetch it and convert to base64
+            // Fetch the image and compress it before AI analysis
             const response = await fetch(file.objectUrl);
-            const blob = await response.blob();
-            const reader = new FileReader();
-            reader.readAsDataURL(blob);
-            reader.onloadend = async () => {
-                const base64data = reader.result as string;
-                const diagnosis = await aiApi.inspectImage(base64data);
+            const originalBlob = await response.blob();
 
-                if (diagnosis) {
-                    setDescription(prev => {
-                        const newDesc = `[AI Diagnosis]\nComponent: ${diagnosis.component}\nDamage: ${diagnosis.damage.join(", ")}\nLikely Cause: ${diagnosis.likelyCause}\nSeverity: ${diagnosis.severity}\n\n${prev}`;
-                        return newDesc;
-                    });
-                    toast({ title: "AI Analysis Complete", description: "Diagnosis added to description." });
-                } else {
-                    toast({ title: "Analysis Failed", description: "Could not analyze image.", variant: "destructive" });
-                }
-                setIsAnalyzing(false);
-            };
+            console.log(`[AI] Original image size: ${formatFileSize(originalBlob.size)}`);
+
+            // Compress image for AI analysis (max 1024x1024, 85% quality)
+            const compressionOptions = getCompressionPreset('ai-analysis');
+            const compressed = await compressImage(originalBlob, compressionOptions);
+
+            console.log(`[AI] Compressed to: ${formatFileSize(compressed.compressedSize)} (${compressed.compressionRatio.toFixed(1)}x smaller)`);
+
+            // Use compressed base64 for AI analysis
+            const diagnosis = await aiApi.inspectImage(compressed.base64);
+
+            if (diagnosis) {
+                setDescription(prev => {
+                    const newDesc = `[AI Diagnosis]\nComponent: ${diagnosis.component}\nDamage: ${diagnosis.damage.join(", ")}\nLikely Cause: ${diagnosis.likelyCause}\nSeverity: ${diagnosis.severity}\n\n${prev}`;
+                    return newDesc;
+                });
+                toast({ title: "AI Analysis Complete", description: "Diagnosis added to description." });
+            } else {
+                toast({ title: "Analysis Failed", description: "Could not analyze image.", variant: "destructive" });
+            }
         } catch (error) {
             console.error("AI Inspect error:", error);
             toast({ title: "Analysis Failed", description: "An error occurred.", variant: "destructive" });
+        } finally {
             setIsAnalyzing(false);
         }
     };
@@ -294,7 +299,11 @@ export default function RepairRequest() {
         <NativeLayout className="flex flex-col h-full bg-[var(--color-native-bg)]">
             {/* Header */}
             <div className="flex items-center gap-4 px-6 py-4 bg-[var(--color-native-surface)] border-b border-[var(--color-native-border)] sticky top-0 z-10 transition-colors duration-200">
-                <button onClick={() => step === 1 ? setLocation("/native/home") : setStep(s => s - 1)} className="p-2 -ml-2 rounded-full active:bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] hover:text-[var(--color-native-text)]">
+                <button
+                    onClick={() => step === 1 ? setLocation("/native/home") : setStep(s => s - 1)}
+                    className="p-2 -ml-2 rounded-full active:bg-[var(--color-native-input)] text-[var(--color-native-text-muted)] hover:text-[var(--color-native-text)]"
+                    {...(step > 1 ? { 'data-wizard-back': true } : {})}
+                >
                     <ArrowLeft className="w-6 h-6" />
                 </button>
                 <div className="flex-1">

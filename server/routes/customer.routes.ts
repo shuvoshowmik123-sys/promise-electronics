@@ -397,4 +397,107 @@ router.get('/api/customer/warranties', requireCustomerAuth, async (req: Request,
     }
 });
 
+// ============================================
+// Customer Addresses
+// ============================================
+
+import * as customerRepo from '../repositories/customer.repository.js';
+
+/**
+ * GET /api/customer/addresses - Get customer's saved addresses
+ */
+router.get('/api/customer/addresses', requireCustomerAuth, async (req: Request, res: Response) => {
+    try {
+        const customerId = getCustomerId(req);
+        if (!customerId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+        const addresses = await customerRepo.getCustomerAddresses(customerId);
+        res.json(addresses);
+    } catch (error) {
+        console.error('Error fetching addresses:', error);
+        res.status(500).json({ error: 'Failed to fetch addresses' });
+    }
+});
+
+/**
+ * POST /api/customer/addresses - Create a new address
+ */
+router.post('/api/customer/addresses', requireCustomerAuth, async (req: Request, res: Response) => {
+    try {
+        const customerId = getCustomerId(req);
+        if (!customerId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+        const { label, address, isDefault } = req.body;
+        if (!label || !address) {
+            return res.status(400).json({ error: 'Label and address are required' });
+        }
+
+        const newAddress = await customerRepo.createCustomerAddress({
+            customerId,
+            label,
+            address,
+            isDefault: isDefault || false,
+        });
+        res.status(200).json(newAddress);
+    } catch (error) {
+        console.error('Error creating address:', error);
+        res.status(500).json({ error: 'Failed to create address' });
+    }
+});
+
+/**
+ * PATCH /api/customer/addresses/:id - Update an address
+ */
+router.patch('/api/customer/addresses/:id', requireCustomerAuth, async (req: Request, res: Response) => {
+    try {
+        const customerId = getCustomerId(req);
+        if (!customerId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+        const { id } = req.params;
+        const { label, address, isDefault } = req.body;
+
+        const updates: any = {};
+        if (label !== undefined) updates.label = label;
+        if (address !== undefined) updates.address = address;
+        if (isDefault !== undefined) updates.isDefault = isDefault;
+
+        const updated = await customerRepo.updateCustomerAddress(id, customerId, updates);
+        if (!updated) {
+            return res.status(404).json({ error: 'Address not found' });
+        }
+        res.json(updated);
+    } catch (error) {
+        console.error('Error updating address:', error);
+        res.status(500).json({ error: 'Failed to update address' });
+    }
+});
+
+/**
+ * DELETE /api/customer/addresses/:id - Delete an address
+ */
+router.delete('/api/customer/addresses/:id', requireCustomerAuth, async (req: Request, res: Response) => {
+    try {
+        const customerId = getCustomerId(req);
+        if (!customerId) {
+            return res.status(401).json({ error: 'Not authenticated' });
+        }
+
+        const { id } = req.params;
+        const deleted = await customerRepo.deleteCustomerAddress(id, customerId);
+        if (!deleted) {
+            return res.status(404).json({ error: 'Address not found' });
+        }
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Error deleting address:', error);
+        res.status(500).json({ error: 'Failed to delete address' });
+    }
+});
+
 export default router;
+

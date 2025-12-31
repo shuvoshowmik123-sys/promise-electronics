@@ -28,6 +28,20 @@ router.get('/api/inventory', async (req: Request, res: Response) => {
 });
 
 /**
+ * GET /api/inventory/hot-deals - Get inventory items marked as hot deals
+ */
+router.get('/api/inventory/hot-deals', async (req: Request, res: Response) => {
+    try {
+        const items = await storage.getAllInventoryItems();
+        const hotDeals = items.filter(item => item.showOnHotDeals === true);
+        res.json(hotDeals);
+    } catch (error) {
+        console.error('Error fetching hot deals:', error);
+        res.status(500).json({ error: 'Failed to fetch hot deals' });
+    }
+});
+
+/**
  * GET /api/inventory/:id - Get inventory item by ID
  */
 router.get('/api/inventory/:id', async (req: Request, res: Response) => {
@@ -121,7 +135,7 @@ router.post('/api/inventory/bulk-import', async (req: Request, res: Response) =>
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
             try {
-                const id = item.id || `INV-${Date.now()}-${i}`;
+                const id = item.id;
 
                 if (!item.name || typeof item.name !== 'string' || item.name.trim() === '') {
                     errors.push(`Row ${i + 1}: Name is required`);
@@ -177,6 +191,9 @@ router.post('/api/inventory/bulk-import', async (req: Request, res: Response) =>
                     lowStockThreshold,
                     images: item.images || null,
                     showOnWebsite: item.showOnWebsite === 'true' || item.showOnWebsite === true,
+                    showOnAndroidApp: item.showOnAndroidApp === 'true' || item.showOnAndroidApp === true,
+                    showOnHotDeals: item.showOnHotDeals === 'true' || item.showOnHotDeals === true,
+                    hotDealPrice: item.hotDealPrice ? parseFloat(item.hotDealPrice) : null,
                 });
 
                 await storage.createInventoryItem(validated);

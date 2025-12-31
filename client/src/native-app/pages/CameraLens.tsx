@@ -16,6 +16,7 @@ import {
 import { cn } from "@/lib/utils";
 import "@/styles/camera-lens.css";
 import { useCameraLens, CameraMode, AnalysisResult } from "@/hooks/useCameraLens";
+import { compressImage, getCompressionPreset, formatFileSize } from "@/lib/imageCompression";
 
 interface CameraLensProps {
     onCapture?: (result: AnalysisResult, image: string) => void;
@@ -70,7 +71,7 @@ export default function CameraLens({ onCapture, onClose }: CameraLensProps) {
     const handleCapture = async () => {
         if (!videoRef.current || isAnalyzing) return;
 
-        // Capture image from video
+        // Capture image from video at full resolution first
         const canvas = document.createElement("canvas");
         canvas.width = videoRef.current.videoWidth;
         canvas.height = videoRef.current.videoHeight;
@@ -78,13 +79,29 @@ export default function CameraLens({ onCapture, onClose }: CameraLensProps) {
         if (!ctx) return;
 
         ctx.drawImage(videoRef.current, 0, 0);
-        const imageBase64 = canvas.toDataURL("image/jpeg", 0.8);
 
-        // Analyze
-        const result = await analyzeImage(imageBase64, mode);
+        // Get full resolution image as blob
+        const fullResBlob = await new Promise<Blob>((resolve) => {
+            canvas.toBlob(
+                (blob) => resolve(blob!),
+                "image/jpeg",
+                0.9
+            );
+        });
+
+        console.log(`[Camera] Original capture: ${formatFileSize(fullResBlob.size)}`);
+
+        // Compress for AI analysis (max 1024x1024, 85% quality)
+        const compressionOptions = getCompressionPreset('ai-analysis');
+        const compressed = await compressImage(fullResBlob, compressionOptions);
+
+        console.log(`[Camera] Compressed to: ${formatFileSize(compressed.compressedSize)} (${compressed.compressionRatio.toFixed(1)}x smaller)`);
+
+        // Analyze with compressed image
+        const result = await analyzeImage(compressed.base64, mode);
 
         if (result && onCapture) {
-            onCapture(result, imageBase64);
+            onCapture(result, compressed.base64);
         }
     };
 

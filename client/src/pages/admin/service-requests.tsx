@@ -89,6 +89,11 @@ export default function AdminServiceRequestsPage() {
     queryFn: settingsApi.getAll,
   });
 
+  const getCurrencySymbol = () => {
+    const currencySetting = settings?.find(s => s.key === "currency_symbol");
+    return currencySetting?.value || "৳";
+  };
+
   // Get notification tone from settings
   const notificationTone = useMemo(() => {
     const setting = settings.find(s => s.key === "notification_tone");
@@ -665,7 +670,7 @@ export default function AdminServiceRequestsPage() {
                                 {getQuoteStatusBadge(request.quoteStatus)}
                                 {request.quoteAmount && (
                                   <p className="text-sm font-medium text-primary">
-                                    à§³{Number(request.quoteAmount).toLocaleString()}
+                                    {getCurrencySymbol()}{Number(request.quoteAmount).toLocaleString()}
                                   </p>
                                 )}
                               </div>
@@ -1034,7 +1039,7 @@ export default function AdminServiceRequestsPage() {
                       </div>
 
                       {/* Stage transition dropdown */}
-                      {nextStagesData?.validNextStages?.length > 0 && !isTerminalState && (
+                      {(nextStagesData?.validNextStages?.length || 0) > 0 && !isTerminalState && (
                         <div className="space-y-2">
                           <Label className="text-xs text-muted-foreground">Move to next stage:</Label>
                           <div className="flex gap-2">
@@ -1655,7 +1660,7 @@ export default function AdminServiceRequestsPage() {
               <div className="space-y-2">
                 <Label htmlFor="quoteAmount">Quote Amount (BDT) *</Label>
                 <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">à§³</span>
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">{getCurrencySymbol()}</span>
                   <Input
                     id="quoteAmount"
                     type="number"

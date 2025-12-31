@@ -1,37 +1,72 @@
-node_modules
-dist
-.DS_Store
-server/public
-vite.config.ts.*
-*.tar.gz
-sqlite.db
-.vercel
-*.log
-npm-debug.log
-attached_assets
+# Dependencies
+node_modules/
 
-# Build logs
-build_log*.txt
-full_error.txt
-gradle_build.log
-seed_output.txt
-run_log.txt
-output*.log
+# Build outputs
+dist/
+.vercel/
+server/public/
 
-# APK files (should be built locally, not committed)
-*.apk
-
-# Android build directories
-android/build/
-android/app/build/
-android/.gradle/
-
-# Environment files (keep .env.production template but not secrets)
+# Environment files (sensitive - never commit)
 .env
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 .env.production
+!.env.example
+
+# Service account keys (sensitive)
 server/service-account.json
 android/gen-lang-client-*.json
+*.json.bak
+
+# APK files (should be built locally, not committed)
+*.apk
+
+# Android/Capacitor build directories
+android/build/
+android/app/build/
+android/.gradle/
+android/.idea/
+android/*.iml
+android/local.properties
+
+# Build logs and output files
+*.log
+build_log*.txt
+full_error.txt
+gradle_build.log
+seed_output.txt
+run_log.txt
+output*.log
+server_log.txt
+build_error.log
+
+# Temporary/debug files
+*.tar.gz
+sqlite.db
+cookies.txt
+login.json
+pos_data*.json
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE settings
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/settings.json
+
+# Misc
+vite.config.ts.*
+attached_assets/
+npm-debug.log
+
+# Python
+*.pyc
+__pycache__/
+.uv/
+uv.lock

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Profile Screen</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "mint-wash": "#E8F5E9",
+                        "coral-red": "#FF5252",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "2rem", "xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        /* Hide scrollbar for IE, Edge and Firefox */
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-slate-900 dark:text-white font-display overflow-x-hidden antialiased selection:bg-primary/30">
+<!-- Floating Back Button (Fixed) -->
+<!-- Positioned absolutely to float over the hero content, with glassmorphism effect -->
+<div class="fixed top-12 left-5 z-50">
+<button class="flex items-center justify-center size-10 rounded-full bg-white/60 dark:bg-black/30 backdrop-blur-md shadow-sm border border-white/40 text-slate-800 dark:text-white transition-transform active:scale-95 cursor-pointer">
+<span class="material-symbols-outlined">arrow_back</span>
+</button>
+</div>
+<!-- Main Scrollable Content Wrapper -->
+<!-- pb-32 adds padding at the bottom so content isn't hidden behind the floating nav bar -->
+<div class="relative flex flex-col w-full pb-32">
+<!-- Edge-to-Edge Hero Section -->
+<!-- Gradient from Mint Wash (#E8F5E9) to background-light to blend seamlessly -->
+<div class="relative flex flex-col items-center pt-28 pb-10 px-6 bg-gradient-to-b from-mint-wash via-[#F0F7F4] to-background-light dark:from-background-dark dark:to-background-dark w-full">
+<!-- Avatar -->
+<div class="relative mb-5 group">
+<div class="size-[100px] rounded-full shadow-xl overflow-hidden border-4 border-white dark:border-white/10 ring-1 ring-black/5">
+<img alt="Profile picture of Shuvo Showmik" class="w-full h-full object-cover" data-alt="Portrait of a smiling young man in a casual shirt" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAl_3IZJt3mXsnRmKTYAOm2NkIDKFQHKcQtWOMmCQr4KOw3aR5xD9tsruzQnPP4PDMZ46MdzNFLZ3z6_EV6QqauDL6co9jQ3rY2smLYfhaWTZ1lo1sdvCjn4Ebg0yJuIXoO-x2o3BMszZKkUl_q2NlyWJb9nW6brhOk8G1Ue1p9zFfE83L3vfKxgr19QYcPtW8kAE5WNmq4Ez4XdwW6ZDVLJRlUwyHBa2EkbcB-_lmbaftpXY6YwN8DlB9N9W0D7arenxrf5mcIQyg"/>
+</div>
+</div>
+<!-- User Info -->
+<div class="text-center mb-6">
+<h2 class="text-[22px] font-bold text-[#0e1b13] dark:text-white mb-1 tracking-tight">Shuvo Showmik</h2>
+<p class="text-[#50956c] dark:text-[#7ab58f] font-normal text-base">shuvo@example.com</p>
+</div>
+<!-- Edit Profile Button -->
+<!-- Pill shaped, primary color -->
+<button class="flex items-center justify-center h-10 px-8 bg-primary hover:bg-[#2fd16e] text-white text-sm font-bold rounded-full shadow-lg shadow-primary/25 transition-all active:scale-95 cursor-pointer">
+                Edit Profile
+            </button>
+</div>
+<!-- Menu Section: ACCOUNT -->
+<!-- Grouped items with white background cards -->
+<div class="flex flex-col px-4 mt-2 space-y-3">
+<h4 class="px-4 text-xs font-bold text-slate-400 tracking-wider uppercase">Account</h4>
+<div class="flex flex-col gap-3">
+<!-- List Item: Personal Information -->
+<div class="group flex items-center gap-4 bg-white dark:bg-white/5 px-4 min-h-[64px] rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-[0.99] cursor-pointer border border-slate-100 dark:border-white/5">
+<div class="flex items-center justify-center size-10 rounded-xl bg-[#e8f3ec] dark:bg-primary/20 text-[#0e1b13] dark:text-primary shrink-0 group-hover:bg-primary group-hover:text-white transition-colors duration-300">
+<span class="material-symbols-outlined text-[24px]">person</span>
+</div>
+<div class="flex-1 text-left">
+<p class="text-[#0e1b13] dark:text-white text-base font-medium">Personal Information</p>
+</div>
+<span class="material-symbols-outlined text-slate-300 dark:text-slate-600">chevron_right</span>
+</div>
+<!-- List Item: Saved Addresses -->
+<div class="group flex items-center gap-4 bg-white dark:bg-white/5 px-4 min-h-[64px] rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-[0.99] cursor-pointer border border-slate-100 dark:border-white/5">
+<div class="flex items-center justify-center size-10 rounded-xl bg-[#e8f3ec] dark:bg-primary/20 text-[#0e1b13] dark:text-primary shrink-0 group-hover:bg-primary group-hover:text-white transition-colors duration-300">
+<span class="material-symbols-outlined text-[24px]">location_on</span>
+</div>
+<div class="flex-1 text-left">
+<p class="text-[#0e1b13] dark:text-white text-base font-medium">Saved Addresses</p>
+</div>
+<span class="material-symbols-outlined text-slate-300 dark:text-slate-600">chevron_right</span>
+</div>
+<!-- List Item: Notifications -->
+<div class="group flex items-center gap-4 bg-white dark:bg-white/5 px-4 min-h-[64px] rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-[0.99] cursor-pointer border border-slate-100 dark:border-white/5">
+<div class="flex items-center justify-center size-10 rounded-xl bg-[#e8f3ec] dark:bg-primary/20 text-[#0e1b13] dark:text-primary shrink-0 group-hover:bg-primary group-hover:text-white transition-colors duration-300">
+<span class="material-symbols-outlined text-[24px]">notifications</span>
+</div>
+<div class="flex-1 text-left">
+<p class="text-[#0e1b13] dark:text-white text-base font-medium">Notifications</p>
+</div>
+<span class="material-symbols-outlined text-slate-300 dark:text-slate-600">chevron_right</span>
+</div>
+</div>
+</div>
+<!-- Menu Section: SUPPORT -->
+<div class="flex flex-col px-4 mt-8 space-y-3">
+<h4 class="px-4 text-xs font-bold text-slate-400 tracking-wider uppercase">Support</h4>
+<div class="flex flex-col gap-3">
+<!-- List Item: Help Center -->
+<div class="group flex items-center gap-4 bg-white dark:bg-white/5 px-4 min-h-[64px] rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-[0.99] cursor-pointer border border-slate-100 dark:border-white/5">
+<div class="flex items-center justify-center size-10 rounded-xl bg-[#e8f3ec] dark:bg-primary/20 text-[#0e1b13] dark:text-primary shrink-0 group-hover:bg-primary group-hover:text-white transition-colors duration-300">
+<span class="material-symbols-outlined text-[24px]">help</span>
+</div>
+<div class="flex-1 text-left">
+<p class="text-[#0e1b13] dark:text-white text-base font-medium">Help Center</p>
+</div>
+<span class="material-symbols-outlined text-slate-300 dark:text-slate-600">chevron_right</span>
+</div>
+<!-- List Item: Contact Us -->
+<div class="group flex items-center gap-4 bg-white dark:bg-white/5 px-4 min-h-[64px] rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-[0.99] cursor-pointer border border-slate-100 dark:border-white/5">
+<div class="flex items-center justify-center size-10 rounded-xl bg-[#e8f3ec] dark:bg-primary/20 text-[#0e1b13] dark:text-primary shrink-0 group-hover:bg-primary group-hover:text-white transition-colors duration-300">
+<span class="material-symbols-outlined text-[24px]">call</span>
+</div>
+<div class="flex-1 text-left">
+<p class="text-[#0e1b13] dark:text-white text-base font-medium">Contact Us</p>
+</div>
+<span class="material-symbols-outlined text-slate-300 dark:text-slate-600">chevron_right</span>
+</div>
+<!-- List Item: Privacy Policy -->
+<div class="group flex items-center gap-4 bg-white dark:bg-white/5 px-4 min-h-[64px] rounded-2xl shadow-sm hover:shadow-md transition-all active:scale-[0.99] cursor-pointer border border-slate-100 dark:border-white/5">
+<div class="flex items-center justify-center size-10 rounded-xl bg-[#e8f3ec] dark:bg-primary/20 text-[#0e1b13] dark:text-primary shrink-0 group-hover:bg-primary group-hover:text-white transition-colors duration-300">
+<span class="material-symbols-outlined text-[24px]">lock</span>
+</div>
+<div class="flex-1 text-left">
+<p class="text-[#0e1b13] dark:text-white text-base font-medium">Privacy Policy</p>
+</div>
+<span class="material-symbols-outlined text-slate-300 dark:text-slate-600">chevron_right</span>
+</div>
+</div>
+</div>
+<!-- Logout Action -->
+<div class="px-4 mt-10 mb-4">
+<button class="w-full flex items-center justify-center gap-2 bg-white dark:bg-white/5 border border-red-50 dark:border-red-900/30 p-4 rounded-full shadow-sm active:scale-[0.98] transition-all group cursor-pointer hover:bg-red-50/50">
+<span class="material-symbols-outlined text-coral-red group-hover:rotate-12 transition-transform">logout</span>
+<span class="text-coral-red font-bold text-base">Log Out</span>
+</button>
+<p class="text-center text-[10px] text-slate-300 dark:text-slate-600 mt-6 font-medium">v2.4.0 • TV Repair Services</p>
+</div>
+</div>
+<!-- Floating Bottom Navigation (Glassmorphism) -->
+<!-- Floating above content, with high blur for glass effect -->
+<div class="fixed bottom-6 left-4 right-4 z-50">
+<div class="flex items-center justify-around h-[72px] bg-white/85 dark:bg-[#1A2C22]/85 backdrop-blur-xl rounded-[2rem] shadow-[0_8px_40px_rgba(0,0,0,0.08)] border border-white/40 dark:border-white/10 px-2">
+<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-slate-400 hover:text-primary transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-[28px]">home</span>
+<span class="text-[10px] font-medium">Home</span>
+</button>
+<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-slate-400 hover:text-primary transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-[28px]">calendar_month</span>
+<span class="text-[10px] font-medium">Bookings</span>
+</button>
+<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-slate-400 hover:text-primary transition-colors cursor-pointer">
+<span class="material-symbols-outlined text-[28px]">chat</span>
+<span class="text-[10px] font-medium">Support</span>
+</button>
+<!-- Active State -->
+<button class="flex flex-col items-center justify-center w-16 h-full gap-1 text-primary relative cursor-pointer">
+<!-- Active Indicator dot -->
+<span class="absolute top-2 size-1 bg-primary rounded-full shadow-[0_0_8px_rgba(54,226,123,0.6)]"></span>
+<span class="material-symbols-outlined text-[28px] fill-current mt-1" style="font-variation-settings: 'FILL' 1;">person</span>
+<span class="text-[10px] font-bold">Profile</span>
+</button>
+</div>
+</div>
+</body></html>

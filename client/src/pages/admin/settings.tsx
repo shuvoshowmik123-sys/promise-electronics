@@ -9,7 +9,8 @@ import { Separator } from "@/components/ui/separator";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Save, Plus, Trash2, Globe, Image as ImageIcon, Settings as SettingsIcon, PenTool, Loader2, Info, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, ArrowUp, ArrowDown, Pencil, Users, AlertTriangle, Search, X, FileText, Star, MessageSquare, Power, MonitorOff, Maximize, VolumeX, WifiOff, AlignJustify, HelpCircle, Volume2 } from "lucide-react";
+import { Save, Plus, Trash2, Globe, Image as ImageIcon, Settings as SettingsIcon, PenTool, Loader2, Info, Upload, Download, FileSpreadsheet, CheckCircle, XCircle, AlertCircle, ArrowUp, ArrowDown, Pencil, Users, AlertTriangle, Search, X, FileText, Star, MessageSquare, Power, MonitorOff, Maximize, VolumeX, WifiOff, AlignJustify, HelpCircle, Volume2, Smartphone } from "lucide-react";
+import MobileAppSettingsTab from "./mobile-app-settings";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { useState, useEffect, useRef, useMemo } from "react";
 import { images } from "@/lib/mock-data";
@@ -149,7 +150,7 @@ function ReviewsModerationTab() {
   );
 }
 
-function PoliciesTab({ onEdit }: { onEdit: (policy: { slug: string; title: string; content: string; isPublished: boolean }) => void }) {
+function PoliciesTab({ onEdit }: { onEdit: (policy: { slug: string; title: string; content: string; isPublished: boolean; isPublishedApp: boolean }) => void }) {
   const { data: policies = [], isLoading } = useQuery({
     queryKey: ["admin-policies"],
     queryFn: policiesApi.getAll,
@@ -190,9 +191,9 @@ function PoliciesTab({ onEdit }: { onEdit: (policy: { slug: string; title: strin
             <CardContent>
               <div className="space-y-4">
                 <div className="text-sm text-muted-foreground">
-                  {policy?.updatedAt ? (
+                  {policy?.lastUpdated ? (
                     <span data-testid={`text-policy-updated-${def.slug}`}>
-                      Last updated: {new Date(policy.updatedAt).toLocaleDateString()}
+                      Last updated: {new Date(policy.lastUpdated).toLocaleDateString()}
                     </span>
                   ) : (
                     <span data-testid={`text-policy-updated-${def.slug}`}>Not created yet</span>
@@ -206,6 +207,7 @@ function PoliciesTab({ onEdit }: { onEdit: (policy: { slug: string; title: strin
                     title: policy?.title || def.title,
                     content: policy?.content || "",
                     isPublished: policy?.isPublished || false,
+                    isPublishedApp: policy?.isPublishedApp || false,
                   })}
                   data-testid={`button-edit-policy-${def.slug}`}
                 >
@@ -238,7 +240,7 @@ export default function AdminSettingsPage() {
   const [supportPhone, setSupportPhone] = useState("+880 1700-000000");
   const [serviceCenterContact, setServiceCenterContact] = useState("01700-000000");
   const [businessHours, setBusinessHours] = useState("9:00 AM - 9:00 PM");
-  const [currencySymbol, setCurrencySymbol] = useState("à§³");
+  const [currencySymbol, setCurrencySymbol] = useState("৳");
   const [vatPercentage, setVatPercentage] = useState("5");
   const [timezone, setTimezone] = useState("asia-dhaka");
   const [maintenanceMode, setMaintenanceMode] = useState(false);
@@ -324,7 +326,7 @@ export default function AdminSettingsPage() {
     { id: "1", question: "How long does a typical repair take?", answer: "Most repairs are completed within 24-48 hours. For complex issues like panel replacements, it may take 3-5 business days. We'll provide an accurate timeline after diagnosis." },
     { id: "2", question: "Do you offer warranty on repairs?", answer: "Yes! All our repairs come with a 90-day warranty covering both parts and labor. If the same issue recurs within this period, we'll fix it free of charge." },
     { id: "3", question: "What brands do you service?", answer: "We service all major TV brands including Samsung, LG, Sony, Panasonic, Philips, Toshiba, TCL, Hisense, and many more. Our technicians are trained on both LCD and LED/OLED technologies." },
-    { id: "4", question: "How much does a TV repair cost?", answer: "Repair costs vary depending on the issue. Common repairs range from à§³1,500 to à§³8,000. Panel replacements may cost more. We provide a free diagnosis and transparent quote before any work begins." },
+    { id: "4", question: "How much does a TV repair cost?", answer: "Repair costs vary depending on the issue. Common repairs range from ৳1,500 to ৳8,000. Panel replacements may cost more. We provide a free diagnosis and transparent quote before any work begins." },
     { id: "5", question: "Do you offer home pickup and delivery?", answer: "Yes, we offer convenient pickup and delivery services across Dhaka. Our team will safely transport your TV to our service center and return it after repair at a nominal fee." },
     { id: "6", question: "What payment methods do you accept?", answer: "We accept cash, bKash, Nagad, bank transfers, and all major credit/debit cards. Payment is only required after your TV is successfully repaired and tested." },
   ];
@@ -435,7 +437,7 @@ export default function AdminSettingsPage() {
   const [isImporting, setIsImporting] = useState(false);
 
   // Policy editing state
-  const [editingPolicy, setEditingPolicy] = useState<{ slug: string; title: string; content: string; isPublished: boolean } | null>(null);
+  const [editingPolicy, setEditingPolicy] = useState<{ slug: string; title: string; content: string; isPublished: boolean; isPublishedApp: boolean } | null>(null);
   const [showPolicyDialog, setShowPolicyDialog] = useState(false);
 
   // Settings Search
@@ -472,6 +474,11 @@ export default function AdminSettingsPage() {
     { id: "service-filter", tab: "service", title: "Service Filter Categories", keywords: ["filter", "service filter", "led", "lcd", "smart tv", "monitor"] },
     { id: "data-import", tab: "data-import", title: "Bulk Import Inventory", keywords: ["import", "csv", "bulk", "upload", "inventory"] },
     { id: "policies", tab: "policies", title: "Policies", keywords: ["privacy", "warranty", "terms", "policy", "legal"] },
+    { id: "mobile-hero", tab: "mobile-app", title: "Mobile App Hero Slides", keywords: ["mobile", "app", "hero", "carousel", "slides", "android", "flutter"] },
+    { id: "mobile-banner", tab: "mobile-app", title: "Mobile App Banner", keywords: ["mobile", "app", "banner", "announcement", "android"] },
+    { id: "mobile-popup", tab: "mobile-app", title: "Mobile App Popup", keywords: ["mobile", "app", "popup", "promotion", "dialog", "android"] },
+    { id: "mobile-control", tab: "mobile-app", title: "Mobile App Control", keywords: ["mobile", "app", "maintenance", "version", "update", "android"] },
+    { id: "mobile-contact", tab: "mobile-app", title: "Mobile App Contact", keywords: ["mobile", "app", "contact", "phone", "whatsapp", "android"] },
   ];
 
   const filteredSections = settingsSections.filter((section) => {
@@ -1453,6 +1460,7 @@ export default function AdminSettingsPage() {
               <TabsTrigger value="cms" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-2" data-testid="tab-cms"><Globe className="w-4 h-4 mr-2" /> Home Page (CMS)</TabsTrigger>
               <TabsTrigger value="about" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-2" data-testid="tab-about"><Info className="w-4 h-4 mr-2" /> About Us</TabsTrigger>
               <TabsTrigger value="service" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-2" data-testid="tab-service"><PenTool className="w-4 h-4 mr-2" /> Service Config</TabsTrigger>
+              <TabsTrigger value="mobile-app" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-2" data-testid="tab-mobile-app"><Smartphone className="w-4 h-4 mr-2" /> Mobile App</TabsTrigger>
               <TabsTrigger value="data-import" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-2" data-testid="tab-data-import"><FileSpreadsheet className="w-4 h-4 mr-2" /> Data Import</TabsTrigger>
               <TabsTrigger value="policies" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-2" data-testid="tab-policies"><FileText className="w-4 h-4 mr-2" /> Policies</TabsTrigger>
               <TabsTrigger value="reviews" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-0 py-2" data-testid="tab-reviews"><MessageSquare className="w-4 h-4 mr-2" /> Reviews</TabsTrigger>
@@ -3278,7 +3286,7 @@ export default function AdminSettingsPage() {
                                   <TableCell className="font-medium">{item.name}</TableCell>
                                   <TableCell>{item.category}</TableCell>
                                   <TableCell>{item.stock || "0"}</TableCell>
-                                  <TableCell>à§³{parseFloat(item.price).toLocaleString()}</TableCell>
+                                  <TableCell>{currencySymbol}{parseFloat(item.price).toLocaleString()}</TableCell>
                                   <TableCell>
                                     <Badge variant={item.status === "In Stock" ? "default" : item.status === "Low Stock" ? "secondary" : "destructive"}>
                                       {item.status || "In Stock"}
@@ -3341,6 +3349,10 @@ export default function AdminSettingsPage() {
                   }}
                 />
               )}
+            </TabsContent>
+
+            <TabsContent value="mobile-app" className="mt-6 space-y-6">
+              <MobileAppSettingsTab />
             </TabsContent>
 
             <TabsContent value="reviews" className="mt-6 space-y-6">
@@ -3524,7 +3536,7 @@ function PolicyEditDialog({
   open,
   onOpenChange,
 }: {
-  policy: { slug: string; title: string; content: string; isPublished: boolean } | null;
+  policy: { slug: string; title: string; content: string; isPublished: boolean; isPublishedApp: boolean } | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -3532,6 +3544,7 @@ function PolicyEditDialog({
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
   const [isPublished, setIsPublished] = useState(false);
+  const [isPublishedApp, setIsPublishedApp] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
@@ -3539,6 +3552,7 @@ function PolicyEditDialog({
       setTitle(policy.title);
       setContent(policy.content);
       setIsPublished(policy.isPublished);
+      setIsPublishedApp(policy.isPublishedApp);
     }
   }, [policy]);
 
@@ -3551,6 +3565,7 @@ function PolicyEditDialog({
         title,
         content,
         isPublished,
+        isPublishedApp,
       });
       queryClient.invalidateQueries({ queryKey: ["admin-policies"] });
       toast.success("Policy saved successfully");
@@ -3608,6 +3623,20 @@ function PolicyEditDialog({
               checked={isPublished}
               onCheckedChange={setIsPublished}
               data-testid="switch-policy-published"
+            />
+          </div>
+          <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
+            <div className="space-y-0.5">
+              <Label htmlFor="policy-published-app">Published in App</Label>
+              <p className="text-sm text-muted-foreground">
+                Make this policy visible on the mobile app
+              </p>
+            </div>
+            <Switch
+              id="policy-published-app"
+              checked={isPublishedApp}
+              onCheckedChange={setIsPublishedApp}
+              data-testid="switch-policy-published-app"
             />
           </div>
         </div>

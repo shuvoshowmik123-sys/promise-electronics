@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { Wrench, ShoppingBag, AlertTriangle, DollarSign, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
+import { settingsApi } from "@/lib/api";
 
 interface DashboardStats {
   totalRevenue: number;
@@ -29,6 +30,16 @@ export default function AdminDashboard() {
     queryFn: fetchDashboardStats,
     refetchInterval: 60000,
   });
+
+  const { data: settings = [] } = useQuery({
+    queryKey: ["settings"],
+    queryFn: settingsApi.getAll,
+  });
+
+  const getCurrencySymbol = () => {
+    const currencySetting = settings?.find(s => s.key === "currency_symbol");
+    return currencySetting?.value || "৳";
+  };
 
   if (isLoading) {
     return (
@@ -60,7 +71,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-total-revenue">
-              ৳{stats.totalRevenue.toLocaleString()}
+              {getCurrencySymbol()}{stats.totalRevenue.toLocaleString()}
             </div>
             <p className="text-xs text-muted-foreground">
               {stats.revenueChange >= 0 ? "+" : ""}{stats.revenueChange}% from last month
@@ -115,11 +126,11 @@ export default function AdminDashboard() {
               <BarChart data={stats.weeklyRevenue}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
                 <XAxis dataKey="name" stroke="#888888" fontSize={12} tickLine={false} axisLine={false} />
-                <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `৳${value}`} />
+                <YAxis stroke="#888888" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(value) => `${getCurrencySymbol()}${value}`} />
                 <Tooltip
                   contentStyle={{ backgroundColor: 'white', borderRadius: '8px', border: '1px solid #e2e8f0' }}
                   itemStyle={{ color: '#1e293b' }}
-                  formatter={(value: number) => [`৳${value.toLocaleString()}`, 'Revenue']}
+                  formatter={(value: number) => [`${getCurrencySymbol()}${value.toLocaleString()}`, 'Revenue']}
                 />
                 <Bar dataKey="revenue" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
               </BarChart>

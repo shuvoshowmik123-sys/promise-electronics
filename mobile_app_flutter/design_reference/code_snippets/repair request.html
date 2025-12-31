@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Repair Request Screen</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "text-main": "#0e1b13",
+                        "text-sub": "#5f7a6c",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {
+                        "DEFAULT": "1rem", 
+                        "lg": "1.5rem", 
+                        "xl": "2rem", 
+                        "full": "9999px"
+                    },
+                    boxShadow: {
+                        "soft": "0 4px 20px -2px rgba(0, 0, 0, 0.05)",
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Hide scrollbar for Chrome, Safari and Opera */
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        /* Hide scrollbar for IE, Edge and Firefox */
+        .no-scrollbar {
+            -ms-overflow-style: none;  /* IE and Edge */
+            scrollbar-width: none;  /* Firefox */
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark text-text-main antialiased selection:bg-primary/30">
+<div class="relative flex h-full min-h-screen w-full flex-col max-w-md mx-auto bg-background-light dark:bg-background-dark overflow-x-hidden pb-24">
+<!-- Header -->
+<header class="sticky top-0 z-20 flex items-center justify-between px-4 py-3 bg-background-light/90 dark:bg-background-dark/90 backdrop-blur-md">
+<button class="flex size-10 items-center justify-center rounded-full active:bg-black/5 dark:active:bg-white/5 transition-colors">
+<span class="material-symbols-outlined text-text-main" style="font-size: 24px;">arrow_back</span>
+</button>
+<h1 class="text-lg font-bold text-text-main dark:text-white">New Request</h1>
+<div class="size-10"></div> <!-- Spacer for center alignment -->
+</header>
+<!-- Progress Indicator -->
+<div class="px-6 py-2">
+<div class="flex items-center justify-between mb-2">
+<span class="text-xs font-semibold text-primary uppercase tracking-wider">Step 1 of 3</span>
+<span class="text-xs font-medium text-text-sub dark:text-gray-400">Device Details</span>
+</div>
+<div class="flex w-full gap-2">
+<div class="h-1.5 flex-1 rounded-full bg-primary"></div>
+<div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-gray-700"></div>
+<div class="h-1.5 flex-1 rounded-full bg-gray-200 dark:bg-gray-700"></div>
+</div>
+</div>
+<!-- Scrollable Content -->
+<div class="flex-1 flex flex-col px-6 pt-6 gap-8">
+<!-- Section 1: Device Type -->
+<section>
+<h3 class="text-text-main dark:text-white text-lg font-bold mb-4">Device Type</h3>
+<div class="grid grid-cols-2 gap-3">
+<!-- Selected Card (TV) -->
+<button class="relative flex flex-col items-center justify-center gap-3 p-4 rounded-xl border-2 border-primary bg-primary/10 transition-all">
+<div class="absolute top-2 right-2 flex items-center justify-center size-5 bg-primary rounded-full">
+<span class="material-symbols-outlined text-white" style="font-size: 14px; font-weight: bold;">check</span>
+</div>
+<div class="size-12 rounded-full bg-white dark:bg-white/10 flex items-center justify-center shadow-sm">
+<span class="material-symbols-outlined text-primary" style="font-size: 28px;">tv</span>
+</div>
+<span class="text-sm font-semibold text-text-main dark:text-white">TV</span>
+</button>
+<!-- Other Cards -->
+<button class="flex flex-col items-center justify-center gap-3 p-4 rounded-xl border border-transparent bg-white dark:bg-gray-800 shadow-soft hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
+<div class="size-12 rounded-full bg-gray-50 dark:bg-gray-700 flex items-center justify-center">
+<span class="material-symbols-outlined text-gray-400 dark:text-gray-300" style="font-size: 28px;">radio</span>
+</div>
+<span class="text-sm font-medium text-gray-500 dark:text-gray-300">Radio</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-3 p-4 rounded-xl border border-transparent bg-white dark:bg-gray-800 shadow-soft hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
+<div class="size-12 rounded-full bg-gray-50 dark:bg-gray-700 flex items-center justify-center">
+<span class="material-symbols-outlined text-gray-400 dark:text-gray-300" style="font-size: 28px;">speaker_group</span>
+</div>
+<span class="text-sm font-medium text-gray-500 dark:text-gray-300">Soundbar</span>
+</button>
+<button class="flex flex-col items-center justify-center gap-3 p-4 rounded-xl border border-transparent bg-white dark:bg-gray-800 shadow-soft hover:bg-gray-50 dark:hover:bg-gray-700 transition-all">
+<div class="size-12 rounded-full bg-gray-50 dark:bg-gray-700 flex items-center justify-center">
+<span class="material-symbols-outlined text-gray-400 dark:text-gray-300" style="font-size: 28px;">ac_unit</span>
+</div>
+<span class="text-sm font-medium text-gray-500 dark:text-gray-300">AC</span>
+</button>
+</div>
+</section>
+<!-- Section 2: Details Form -->
+<section class="flex flex-col gap-5">
+<!-- Brand Select -->
+<div class="flex flex-col gap-2">
+<label class="text-sm font-medium text-text-main dark:text-gray-200 ml-1">Brand</label>
+<div class="relative">
+<select class="w-full appearance-none rounded-xl border-none bg-white dark:bg-gray-800 py-4 pl-4 pr-10 text-text-main dark:text-white shadow-soft focus:ring-2 focus:ring-primary/50 outline-none text-base">
+<option>Samsung</option>
+<option>LG</option>
+<option>Sony</option>
+<option>Panasonic</option>
+</select>
+<div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-4 text-gray-500">
+<span class="material-symbols-outlined">expand_more</span>
+</div>
+</div>
+</div>
+<!-- Model Input -->
+<div class="flex flex-col gap-2">
+<div class="flex justify-between items-center ml-1">
+<label class="text-sm font-medium text-text-main dark:text-gray-200">Model</label>
+<span class="text-xs text-text-sub dark:text-gray-500">Optional</span>
+</div>
+<input class="w-full rounded-xl border-none bg-white dark:bg-gray-800 py-4 px-4 text-text-main dark:text-white shadow-soft placeholder:text-gray-400 focus:ring-2 focus:ring-primary/50 outline-none text-base" placeholder="e.g., UA55AU7000" type="text"/>
+</div>
+<!-- Problem Description -->
+<div class="flex flex-col gap-2">
+<label class="text-sm font-medium text-text-main dark:text-gray-200 ml-1">Problem Description</label>
+<textarea class="w-full rounded-xl border-none bg-white dark:bg-gray-800 py-4 px-4 text-text-main dark:text-white shadow-soft placeholder:text-gray-400 focus:ring-2 focus:ring-primary/50 outline-none text-base resize-none" placeholder="Describe the issue with your device..." rows="4"></textarea>
+</div>
+</section>
+<!-- Section 3: Attach Photos -->
+<section>
+<h3 class="text-text-main dark:text-white text-lg font-bold mb-4">Attach Photos</h3>
+<div class="flex gap-3 overflow-x-auto pb-2 no-scrollbar">
+<!-- Add Button -->
+<button class="flex flex-col items-center justify-center size-24 shrink-0 rounded-2xl border-2 border-dashed border-primary/40 bg-primary/5 hover:bg-primary/10 transition-colors">
+<span class="material-symbols-outlined text-primary mb-1">add_a_photo</span>
+<span class="text-xs font-semibold text-primary">Add</span>
+</button>
+<!-- Image 1 -->
+<div class="relative size-24 shrink-0 group">
+<div class="absolute -top-2 -right-2 z-10">
+<button class="flex items-center justify-center size-6 rounded-full bg-white shadow-md text-red-500 hover:text-red-600 transition-colors">
+<span class="material-symbols-outlined" style="font-size: 16px;">close</span>
+</button>
+</div>
+<div class="size-full rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800 bg-cover bg-center border border-white dark:border-gray-700 shadow-sm" data-alt="Cracked TV screen close up" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuC7fFQqk24RsiaP5c6bvahE--ThNQQfIVDG4EoEZZYqYDs8qM4zeowlNqfaphdSi_AgsDtZ8hesTQl6O7ovCUs1hEm9U1KnD4j9DSka4XMyQCX6x5fPus6jAYg4pKN-gMgDf8Y0ZNTVpGe4jJSL0L29p6VGCoUnV6XQMjZW13fNYyp5RbWHe84kldV0RjkESVGgI_oCw39kT90xXv-KfTs34jPutX8LlcgR_vQPLlDvL--vbf7C-WwhT2GyVwkt9Z4qCbLX0Nmd_yE');"></div>
+</div>
+<!-- Image 2 -->
+<div class="relative size-24 shrink-0 group">
+<div class="absolute -top-2 -right-2 z-10">
+<button class="flex items-center justify-center size-6 rounded-full bg-white shadow-md text-red-500 hover:text-red-600 transition-colors">
+<span class="material-symbols-outlined" style="font-size: 16px;">close</span>
+</button>
+</div>
+<div class="size-full rounded-2xl overflow-hidden bg-gray-100 dark:bg-gray-800 bg-cover bg-center border border-white dark:border-gray-700 shadow-sm" data-alt="Back of a TV set showing model number sticker" style="background-image: url('https://lh3.googleusercontent.com/aida-public/AB6AXuD708t8cnbQWbWq8ABYfs5329NGV87s2RkU3WtXcNznozOhmzmW4kBYBdB92aSi6AGiEn3_bSCyLMGquIZszltF4PbulNyCUzCGu7eSbb39TW0meaRtyb2yU1jU_Wrjyo5n_qX4JqlynkucWn-KdUo3VuZXxJWnSvQfVG8DEMEBZPOI45wIPlZnz-EiKu7WT0MohD-4axpSicDHNnoTdtb4LpUYarPMi8LN2WMRWqP7Yk1fDCgi5QBVazSdT1Q5xlfxc33Vwp10zUk');"></div>
+</div>
+</div>
+</section>
+</div>
+<!-- Sticky Footer -->
+<div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-background-light via-background-light to-transparent dark:from-background-dark dark:via-background-dark pointer-events-none flex justify-center max-w-md mx-auto z-10 h-32 items-end">
+<button class="pointer-events-auto w-full bg-primary hover:bg-[#2fd170] text-text-main font-bold py-4 rounded-full shadow-lg shadow-primary/30 flex items-center justify-center gap-2 transition-all active:scale-[0.98]">
+<span>NEXT: Schedule</span>
+<span class="material-symbols-outlined">arrow_forward</span>
+</button>
+</div>
+</div>
+</body></html>

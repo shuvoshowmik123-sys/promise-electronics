@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, Clock, LogOut, AlertCircle, Wrench, Calendar } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { attendanceApi } from "@/lib/api";
+import { attendanceApi, settingsApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import type { JobTicket } from "@shared/schema";
@@ -26,6 +26,16 @@ export default function TechnicianDashboard() {
     queryKey: ["todayAttendance"],
     queryFn: attendanceApi.getToday,
   });
+
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: settingsApi.getAll,
+  });
+
+  const getCurrencySymbol = () => {
+    const currencySetting = settings?.find(s => s.key === "currency_symbol");
+    return currencySetting?.value || "৳";
+  };
 
   // Check-in mutation
   const checkInMutation = useMutation({
@@ -234,7 +244,7 @@ export default function TechnicianDashboard() {
 
                     {job.estimatedCost && (
                       <div className="text-sm font-medium text-primary">
-                        Est. Cost: à§³{parseFloat(job.estimatedCost).toLocaleString()}
+                        Est. Cost: {getCurrencySymbol()}{Number(job.estimatedCost).toLocaleString()}
                       </div>
                     )}
                   </CardContent>
@@ -268,8 +278,8 @@ export default function TechnicianDashboard() {
                     </span>
                   </div>
                   <div className={`flex-1 p-3 rounded border ${job.priority === "High" ? "bg-red-50 border-red-200" :
-                      job.priority === "Medium" ? "bg-orange-50 border-orange-200" :
-                        "bg-blue-50 border-blue-200"
+                    job.priority === "Medium" ? "bg-orange-50 border-orange-200" :
+                      "bg-blue-50 border-blue-200"
                     }`}>
                     <div className="flex items-center justify-between mb-1">
                       <span className="font-mono text-xs">{job.id}</span>

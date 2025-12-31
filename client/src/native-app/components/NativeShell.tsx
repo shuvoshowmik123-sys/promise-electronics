@@ -26,12 +26,16 @@ export default function NativeShell({
         const initSystemUI = async () => {
             if (Capacitor.isNativePlatform()) {
                 try {
-                    // Set status bar style based on background
+                    // Edge-to-Edge: WebView draws behind status bar
+                    await StatusBar.setOverlaysWebView({ overlay: true });
+
+                    // Transparent status bar (actual color comes from app background)
+                    await StatusBar.setBackgroundColor({ color: '#00000000' });
+
+                    // Set icon color: 'dark' bg = Light (white) icons, 'light' bg = Dark icons
                     await StatusBar.setStyle({
                         style: statusBarStyle === 'dark' ? Style.Light : Style.Dark
                     });
-                    await StatusBar.setBackgroundColor({ color: backgroundColor });
-                    await StatusBar.setOverlaysWebView({ overlay: false });
                 } catch (error) {
                     console.error('Failed to initialize system UI:', error);
                 }

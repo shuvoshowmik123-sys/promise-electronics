@@ -41,6 +41,44 @@ router.get('/api/upload/imagekit-auth', (req: Request, res: Response) => {
     }
 });
 
+/**
+ * POST /api/imagekit/upload - Server-side upload
+ */
+router.post('/api/imagekit/upload', async (req: Request, res: Response) => {
+    try {
+        if (!process.env.IMAGEKIT_PRIVATE_KEY) {
+            return res.status(503).json({
+                error: 'ImageKit not configured',
+                message: 'Please configure IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, and IMAGEKIT_URL_ENDPOINT'
+            });
+        }
+
+        const { file, fileName = 'upload' } = req.body;
+
+        if (!file) {
+            return res.status(400).json({ error: 'No file provided' });
+        }
+
+        const result = await imagekit.upload({
+            file, // base64 string
+            fileName,
+            folder: 'service-requests',
+        });
+
+        res.json({
+            url: result.url,
+            fileId: result.fileId,
+            thumbnailUrl: result.thumbnailUrl,
+            name: result.name,
+            size: result.size,
+            fileType: result.fileType,
+        });
+    } catch (error: any) {
+        console.error('ImageKit upload error:', error);
+        res.status(500).json({ error: error.message || 'Failed to upload file' });
+    }
+});
+
 // ============================================
 // Object Storage API (Legacy)
 // ============================================

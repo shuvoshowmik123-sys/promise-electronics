@@ -63,7 +63,7 @@ export function AppOpeningProvider({ children }: AppOpeningProviderProps) {
                             left: expandingElement.rect.left,
                             width: expandingElement.rect.width,
                             height: expandingElement.rect.height,
-                            borderRadius: '50%',
+                            borderRadius: 16,
                             background: expandingElement.color,
                             zIndex: 9999,
                             display: 'flex',
@@ -75,7 +75,7 @@ export function AppOpeningProvider({ children }: AppOpeningProviderProps) {
                             left: 0,
                             width: '100vw',
                             height: '100vh',
-                            borderRadius: '44px',
+                            borderRadius: 0,
                         }}
                         exit={{
                             opacity: 0,

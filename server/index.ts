@@ -1,4 +1,5 @@
 import { app, httpServer, createApp, log } from "./app";
+// Trigger restart
 import { serveStatic } from "./static";
 import { seedSuperAdmin } from "./seed";
 import { Request, Response, NextFunction } from "express";

@@ -464,6 +464,36 @@ input:-webkit-autofill:active {
 
 /* Keyboard Handling */
 body.keyboard-open {
-  height: 100vh;
+  height: 100%;
   overflow-y: hidden;
+}
+
+/* ===========================================
+   BENGALI TYPOGRAPHY OPTIMIZATION
+   Better readability for Bangla text
+   =========================================== */
+
+/* Bengali text needs more line-height for proper rendering */
+:lang(bn),
+[lang="bn"],
+.bengali-text {
+  line-height: 1.8;
+  letter-spacing: 0.02em;
+  font-feature-settings: "kern" 1;
+}
+
+/* Mixed Bangla/English content */
+.native-app-mode :lang(bn),
+.native-app-mode [lang="bn"] {
+  line-height: 1.75;
+}
+
+/* Larger touch targets for Bengali labels */
+.native-app-mode [lang="bn"] button,
+.native-app-mode [lang="bn"] a,
+.native-app-mode button:lang(bn),
+.native-app-mode a:lang(bn) {
+  min-height: 48px;
+  padding-top: 0.75rem;
+  padding-bottom: 0.75rem;
 }

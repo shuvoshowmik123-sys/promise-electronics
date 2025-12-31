@@ -37,7 +37,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { adminCustomersApi, type AdminCustomer, type CustomerDetails } from "@/lib/api";
+import { adminCustomersApi, settingsApi, type AdminCustomer, type CustomerDetails } from "@/lib/api";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -64,6 +64,11 @@ export default function AdminCustomersPage() {
     queryKey: ["admin-customers"],
     queryFn: adminCustomersApi.getAll,
     enabled: !!currentUser,
+  });
+
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: settingsApi.getAll,
   });
 
   const eventSourceRef = useRef<EventSource | null>(null);
@@ -210,7 +215,8 @@ export default function AdminCustomersPage() {
 
   const formatCurrency = (amount: string | number) => {
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
-    return `à§³${num.toLocaleString("en-BD")}`;
+    const currencySymbol = settings?.find(s => s.key === "currency_symbol")?.value || "৳";
+    return `${currencySymbol}${num.toLocaleString("en-BD")}`;
   };
 
   const getStatusBadge = (status: string) => {

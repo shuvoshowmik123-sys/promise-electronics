@@ -56,3 +56,12 @@ try {
 } catch(Exception e) {
     logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
 }
+
+// Override Capacitor's Java version setting to ensure Java 17 compatibility
+// This block MUST be after 'apply from: capacitor.build.gradle' to take effect
+android {
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+}

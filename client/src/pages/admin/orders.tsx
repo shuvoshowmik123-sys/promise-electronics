@@ -9,11 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { adminOrdersApi, type Order } from "@/lib/api";
+import { adminOrdersApi, settingsApi, type Order } from "@/lib/api";
 import { format } from "date-fns";
-import { 
-  Search, Eye, Clock, CheckCircle, XCircle, Package, Truck, 
-  ShoppingBag, Phone, MapPin, Loader2, Wifi, Check, X, 
+import {
+  Search, Eye, Clock, CheckCircle, XCircle, Package, Truck,
+  ShoppingBag, Phone, MapPin, Loader2, Wifi, Check, X,
   ChevronRight, CreditCard
 } from "lucide-react";
 import { toast } from "sonner";
@@ -35,15 +35,15 @@ export default function AdminOrdersPage() {
   useEffect(() => {
     let mounted = true;
     let connectionTimeout: NodeJS.Timeout | null = null;
-    
+
     const connectSSE = () => {
       if (!mounted) return;
-      
+
       try {
         const eventSource = new EventSource("/api/admin/events", { withCredentials: true });
         eventSourceRef.current = eventSource;
         sseConnectedRef.current = false;
-        
+
         connectionTimeout = setTimeout(() => {
           if (!sseConnectedRef.current && mounted) {
             eventSource.close();
@@ -62,11 +62,11 @@ export default function AdminOrdersPage() {
         eventSource.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            
+
             if (data.type === "connected") return;
-            
-            if (data.type === "order_created" || data.type === "order_updated" || 
-                data.type === "order_accepted" || data.type === "order_declined") {
+
+            if (data.type === "order_created" || data.type === "order_updated" ||
+              data.type === "order_accepted" || data.type === "order_declined") {
               queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
               if (data.type === "order_created") {
                 toast.success(`New order: #${data.data.orderNumber}`);
@@ -90,7 +90,7 @@ export default function AdminOrdersPage() {
         setSseSupported(false);
       }
     };
-    
+
     connectSSE();
 
     return () => {
@@ -111,6 +111,11 @@ export default function AdminOrdersPage() {
     refetchInterval: sseSupported ? false : 15000,
   });
 
+  const { data: settings } = useQuery({
+    queryKey: ["settings"],
+    queryFn: settingsApi.getAll,
+  });
+
   const acceptMutation = useMutation({
     mutationFn: (id: string) => adminOrdersApi.accept(id),
     onSuccess: () => {
@@ -123,7 +128,7 @@ export default function AdminOrdersPage() {
   });
 
   const declineMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) => 
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
       adminOrdersApi.decline(id, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
@@ -158,6 +163,8 @@ export default function AdminOrdersPage() {
     switch (status) {
       case "Pending":
         return <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200"><Clock className="w-3 h-3 mr-1" /> Pending</Badge>;
+      case "Pending Verification":
+        return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200"><Eye className="w-3 h-3 mr-1" /> Pending Verification</Badge>;
       case "Accepted":
         return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200"><CheckCircle className="w-3 h-3 mr-1" /> Accepted</Badge>;
       case "Processing":
@@ -185,18 +192,19 @@ export default function AdminOrdersPage() {
   };
 
   const filteredOrders = orders.filter((order: Order) => {
-    const matchesSearch = 
+    const matchesSearch =
       order.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       order.customerPhone.includes(searchTerm);
-    
+
     const matchesStatus = statusFilter === "all" || order.status === statusFilter;
-    
+
     return matchesSearch && matchesStatus;
   });
 
   const formatCurrency = (amount: string) => {
-    return `à§³${parseFloat(amount).toLocaleString("en-BD")}`;
+    const currencySymbol = settings?.find(s => s.key === "currency_symbol")?.value || "৳";
+    return `${currencySymbol}${parseFloat(amount).toLocaleString("en-BD")}`;
   };
 
   const orderStats = {
@@ -306,6 +314,7 @@ export default function AdminOrdersPage() {
                   <SelectContent>
                     <SelectItem value="all">All Status</SelectItem>
                     <SelectItem value="Pending">Pending</SelectItem>
+                    <SelectItem value="Pending Verification">Pending Verification</SelectItem>
                     <SelectItem value="Accepted">Accepted</SelectItem>
                     <SelectItem value="Processing">Processing</SelectItem>
                     <SelectItem value="Shipped">Shipped</SelectItem>
@@ -391,9 +400,9 @@ export default function AdminOrdersPage() {
                               <Button
                                 size="sm"
                                 variant="outline"
-                                onClick={() => updateStatusMutation.mutate({ 
-                                  id: order.id, 
-                                  status: getNextStatus(order.status)! 
+                                onClick={() => updateStatusMutation.mutate({
+                                  id: order.id,
+                                  status: getNextStatus(order.status)!
                                 })}
                                 disabled={updateStatusMutation.isPending}
                                 data-testid={`button-next-status-${order.id}`}
@@ -472,6 +481,57 @@ export default function AdminOrdersPage() {
                 <div className="space-y-1">
                   <Label className="text-slate-500">Customer Notes</Label>
                   <p className="text-slate-600 bg-slate-50 p-2 rounded">{selectedOrder.notes}</p>
+                </div>
+              )}
+
+              {selectedOrder.sparePartDetails && (
+                <div className="bg-blue-50 p-4 rounded-lg space-y-4 border border-blue-100">
+                  <div className="flex items-center gap-2 text-blue-800 font-semibold">
+                    <Package className="w-5 h-5" />
+                    Spare Part Request Details
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-blue-700">Device</Label>
+                      <p className="font-medium">{selectedOrder.sparePartDetails.brand} {selectedOrder.sparePartDetails.screenSize} {selectedOrder.sparePartDetails.modelNumber}</p>
+                    </div>
+                    <div>
+                      <Label className="text-blue-700">Issue</Label>
+                      <p className="font-medium">{selectedOrder.sparePartDetails.primaryIssue}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-blue-700">Description</Label>
+                      <p className="text-sm">{selectedOrder.sparePartDetails.description || "No description provided"}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <Label className="text-blue-700">Fulfillment</Label>
+                      <p className="font-medium">
+                        {selectedOrder.sparePartDetails.fulfillmentType === 'pickup'
+                          ? `Pickup (${selectedOrder.sparePartDetails.pickupTier})`
+                          : 'Shop Visit'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {selectedOrder.sparePartDetails.images && (
+                    <div>
+                      <Label className="text-blue-700 mb-2 block">Device Images</Label>
+                      <div className="flex gap-2 overflow-x-auto pb-2">
+                        {JSON.parse(selectedOrder.sparePartDetails.images).map((url: string, i: number) => (
+                          <a key={i} href={url} target="_blank" rel="noopener noreferrer">
+                            <img src={url} alt={`Device ${i + 1}`} className="w-20 h-20 object-cover rounded border border-blue-200" />
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedOrder.status === 'Pending Verification' && (
+                    <Button className="w-full bg-blue-600 hover:bg-blue-700">
+                      Verify & Send Quote
+                    </Button>
+                  )}
                 </div>
               )}
 

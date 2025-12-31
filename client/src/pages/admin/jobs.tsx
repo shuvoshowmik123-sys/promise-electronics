@@ -83,7 +83,21 @@ export default function AdminJobsPage() {
       const updatedJob = jobs.find(j => j.id === selectedJob.id);
       if (updatedJob && updatedJob !== selectedJob) {
         setSelectedJob(updatedJob);
-        setEditFormData(updatedJob);
+        setEditFormData({
+          id: updatedJob.id,
+          customer: updatedJob.customer,
+          device: updatedJob.device,
+          issue: updatedJob.issue,
+          status: updatedJob.status,
+          priority: updatedJob.priority,
+          technician: updatedJob.technician || "Unassigned",
+          screenSize: updatedJob.screenSize || "",
+          notes: updatedJob.notes || "",
+          estimatedCost: updatedJob.estimatedCost || undefined,
+          deadline: updatedJob.deadline || undefined,
+          serviceWarrantyDays: updatedJob.serviceWarrantyDays || 0,
+          partsWarrantyDays: updatedJob.partsWarrantyDays || 0,
+        });
       }
     }
   }, [jobs, selectedJob]);
@@ -92,6 +106,11 @@ export default function AdminJobsPage() {
     queryKey: ["settings"],
     queryFn: settingsApi.getAll,
   });
+
+  const getCurrencySymbol = () => {
+    const currencySetting = settings?.find(s => s.key === "currency_symbol");
+    return currencySetting?.value || "৳";
+  };
 
   const notificationTone = (settings.find(s => s.key === "notification_tone")?.value as NotificationTone) || "default";
 
@@ -412,7 +431,7 @@ export default function AdminJobsPage() {
         ${job.estimatedCost ? `
         <div class="section">
           <div class="label">Estimated Cost</div>
-          <div class="value">à§³ ${job.estimatedCost}</div>
+          <div class="value">${getCurrencySymbol()} ${job.estimatedCost}</div>
         </div>
         ` : ''}
         
@@ -539,13 +558,31 @@ export default function AdminJobsPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="customerPhone">Phone Number</Label>
-                    <Input
-                      id="customerPhone"
-                      placeholder="01XXXXXXXXX"
-                      value={formData.customerPhone || ""}
-                      onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })}
-                      data-testid="input-customer-phone"
-                    />
+                    <div className="flex">
+                      <span className="inline-flex items-center px-3 rounded-l-md border border-r-0 border-input bg-muted text-muted-foreground text-sm select-none">
+                        +880
+                      </span>
+                      <Input
+                        id="customerPhone"
+                        placeholder="1XXXXXXXXX"
+                        value={formData.customerPhone || ""}
+                        onChange={(e) => {
+                          let value = e.target.value;
+                          // Remove any non-digit characters
+                          value = value.replace(/\D/g, '');
+                          // Remove leading 0 if present
+                          if (value.startsWith('0')) {
+                            value = value.slice(1);
+                          }
+                          // Limit to 10 digits
+                          value = value.slice(0, 10);
+                          setFormData({ ...formData, customerPhone: value });
+                        }}
+                        className="rounded-l-none"
+                        maxLength={10}
+                        data-testid="input-customer-phone"
+                      />
+                    </div>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -1069,7 +1106,7 @@ export default function AdminJobsPage() {
                   <Card>
                     <CardContent className="pt-4">
                       <p className="text-sm text-muted-foreground mb-2">Estimated Cost</p>
-                      <p className="font-medium text-lg">à§³ {selectedJob.estimatedCost}</p>
+                      <p className="font-medium text-lg">{getCurrencySymbol()} {selectedJob.estimatedCost}</p>
                     </CardContent>
                   </Card>
                 )}
@@ -1241,13 +1278,13 @@ export default function AdminJobsPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="edit-cost">Estimated Cost (à§³)</Label>
+                <Label htmlFor="edit-cost">Estimated Cost ({getCurrencySymbol()})</Label>
                 <Input
                   id="edit-cost"
                   type="number"
                   placeholder="0.00"
                   value={editFormData.estimatedCost || ""}
-                  onChange={(e) => setEditFormData({ ...editFormData, estimatedCost: e.target.value })}
+                  onChange={(e) => setEditFormData({ ...editFormData, estimatedCost: e.target.value ? parseFloat(e.target.value) : undefined })}
                   data-testid="input-edit-cost"
                 />
               </div>

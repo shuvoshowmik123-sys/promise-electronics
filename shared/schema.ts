@@ -130,10 +130,14 @@ export const inventoryItems = pgTable("inventory_items", {
   lowStockThreshold: integer("low_stock_threshold").default(5),
   images: text("images"),
   showOnWebsite: boolean("show_on_website").default(false),
+  showOnAndroidApp: boolean("show_on_android_app").default(true),
+  showOnHotDeals: boolean("show_on_hot_deals").default(false),
+  hotDealPrice: real("hot_deal_price"),
   icon: text("icon"),
   estimatedDays: text("estimated_days"),
   displayOrder: integer("display_order").default(0),
   features: text("features"),
+  isSparePart: boolean("is_spare_part").default(false),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });
@@ -141,6 +145,8 @@ export const inventoryItems = pgTable("inventory_items", {
 export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({
   createdAt: true,
   updatedAt: true,
+}).partial({
+  id: true,
 });
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
@@ -597,6 +603,60 @@ export const insertOrderItemSchema = createInsertSchema(orderItems).omit({
 export type InsertOrderItem = z.infer<typeof insertOrderItemSchema>;
 export type OrderItem = typeof orderItems.$inferSelect;
 
+// Spare Part Orders Table
+export const sparePartOrders = pgTable("spare_part_orders", {
+  id: text("id").primaryKey(),
+
+  // Link to main orders table
+  orderId: text("order_id").notNull().references(() => orders.id),
+
+  // Device Info (same as service_requests)
+  brand: text("brand").notNull(),
+  screenSize: text("screen_size"),
+  modelNumber: text("model_number"),
+  primaryIssue: text("primary_issue"),
+  symptoms: text("symptoms"), // JSON array
+  description: text("description"),
+  images: text("images"), // JSON array of image URLs
+
+  // Fulfillment
+  fulfillmentType: text("fulfillment_type").notNull(), // 'pickup' | 'service_center'
+  pickupTier: text("pickup_tier"), // 'Regular' | 'Priority' | 'Emergency'
+  pickupAddress: text("pickup_address"),
+  scheduledDate: timestamp("scheduled_date"),
+
+  // Verification & Quote
+  verificationStatus: text("verification_status").default("pending"),
+  // 'pending' | 'verified' | 'incompatible' | 'quoted'
+  isCompatible: boolean("is_compatible"),
+  quotedServiceCharge: real("quoted_service_charge"),
+  quotedAt: timestamp("quoted_at"),
+  quoteAccepted: boolean("quote_accepted"),
+  quoteAcceptedAt: timestamp("quote_accepted_at"),
+
+  // Token System
+  tokenNumber: text("token_number").unique(),
+  tokenExpiresAt: timestamp("token_expires_at"),
+  tokenStatus: text("token_status").default("pending"),
+  // 'pending' | 'active' | 'used' | 'expired'
+  tokenRedeemedAt: timestamp("token_redeemed_at"),
+
+  // Service Assignment
+  technicianId: text("technician_id"),
+  installationNotes: text("installation_notes"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const insertSparePartOrderSchema = createInsertSchema(sparePartOrders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSparePartOrder = z.infer<typeof insertSparePartOrderSchema>;
+export type SparePartOrder = typeof sparePartOrders.$inferSelect;
+
 // Policies Table
 export const policies = pgTable("policies", {
   id: text("id").primaryKey(),
@@ -604,6 +664,7 @@ export const policies = pgTable("policies", {
   title: text("title").notNull(),
   content: text("content").notNull(),
   isPublished: boolean("is_published").notNull().default(true),
+  isPublishedApp: boolean("is_published_app").notNull().default(true),
   lastUpdated: timestamp("last_updated").notNull().defaultNow(),
 });
 

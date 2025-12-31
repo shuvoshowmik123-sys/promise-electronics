@@ -70,6 +70,7 @@ import BottomNav from "@/native-app/components/BottomNav";
 import NativeHeader from "@/native-app/components/NativeHeader";
 import { DaktarVaiChat } from "@/components/DaktarVaiChat";
 import { PageSkeleton } from "@/components/PageSkeleton";
+import { useAndroidBack } from "@/hooks/useAndroidBack";
 
 // Routes that should show the bottom navigation bar
 const routesWithBottomNav = [
@@ -146,6 +147,9 @@ function Router() {
   const [location, setLocation] = useLocation();
   const previousLocationRef = useRef<string | null>(null);
   const directionRef = useRef<'forward' | 'backward' | 'none'>('none');
+
+  // Handle Android hardware back button
+  useAndroidBack();
 
   // Calculate direction BEFORE updating the ref
   if (previousLocationRef.current !== null && previousLocationRef.current !== location) {
@@ -304,9 +308,14 @@ import { GoogleAuth } from "@codetrix-studio/capacitor-google-auth";
 import { SpeedInsights } from "@vercel/speed-insights/react";
 
 import { initPushNotifications, onPushNotificationReceived, onPushNotificationAction } from "@/lib/native-features";
+import { initOTAUpdates, checkForUpdates } from "@/lib/otaUpdates";
+import { initQueryPersistence } from "@/lib/queryClient";
 
 function App() {
   useEffect(() => {
+    // Initialize offline persistence for React Query
+    initQueryPersistence();
+
     // Hide splash screen after app mounts
     if (Capacitor.isNativePlatform()) {
       SplashScreen.hide();
@@ -317,6 +326,16 @@ function App() {
         scopes: ['profile', 'email'],
         grantOfflineAccess: true,
       });
+
+      // Initialize OTA Updates (non-blocking, fire-and-forget)
+      initOTAUpdates()
+        .then(() => checkForUpdates())
+        .then((update) => {
+          if (update) console.log('[App] Update available:', update.version);
+        })
+        .catch((err) => {
+          console.warn('[App] OTA initialization skipped:', err?.message || err);
+        });
 
       // Configure Status Bar
       const configureStatusBar = async () => {

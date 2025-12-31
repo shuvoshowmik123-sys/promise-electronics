@@ -99,6 +99,7 @@ export const aiService = {
 
     /**
      * Analyze visual damage from a photo
+     * Returns full structure for Flutter Daktar er Lens assess feature
      */
     async analyzeVisualDamage(base64Image: string) {
         try {
@@ -106,18 +107,24 @@ export const aiService = {
             const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
 
             const prompt = `
-        Analyze this image of an electronic device/component.
+        You are an expert TV and electronics repair technician in Bangladesh.
+        Analyze this image of an electronic device/component for damage assessment.
+        
         Identify:
         1. The component (e.g., Circuit Board, Screen, Port).
         2. Visible damage (burn marks, cracks, corrosion, loose wires).
-        3. Likely cause (overheating, physical impact, water damage).
+        3. Likely cause in English and Bengali.
+        4. Severity level and estimated repair cost in BDT.
         
         Output JSON:
         {
           "component": "...",
-          "damage": ["...", "..."],
-          "likelyCause": "...",
-          "severity": "Low/Medium/High"
+          "damage": ["damage 1", "damage 2"],
+          "likelyCause": "Likely cause in English",
+          "likelyCauseBn": "সম্ভাব্য কারণ বাংলায়",
+          "severity": "Low|Medium|High",
+          "estimatedCostMin": 500,
+          "estimatedCostMax": 2000
         }
       `;
 
@@ -131,7 +138,7 @@ export const aiService = {
 
             let result;
             try {
-                // Primary: gemini-flash-latest (Working)
+                // Primary: gemini-flash-latest
                 result = await generateWithModel("gemini-flash-latest");
             } catch (error) {
                 console.warn("Gemini Flash Latest failed, falling back to 2.0 Flash:", error);
@@ -152,23 +159,39 @@ export const aiService = {
 
     /**
      * Identify an electronic component from a photo
+     * Returns full structure for Flutter Daktar er Lens feature
      */
     async identifyPart(base64Image: string) {
         try {
             const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
             const prompt = `
-                Analyze this image of an electronic component.
-                Identify:
-                1. The specific component name (e.g., "IC Chip", "Capacitor", "Resistor", "HDMI Port").
-                2. Technical specifications if visible (e.g., "10uF 50V", "ATmega328P").
-                3. Confidence level (0.0 to 1.0).
+                You are an expert TV and electronics repair technician in Bangladesh.
+                Analyze this image and identify the electronic component or issue.
                 
-                Output JSON:
+                Provide:
+                1. Component/Issue name in English (label)
+                2. Component/Issue name in Bengali (labelBn)
+                3. Confidence level (0.0 to 1.0)
+                4. Issue type: one of "power", "display", "audio", "connectivity", "physical", "general"
+                5. Description of what you see in English
+                6. Description in Bengali (descriptionBn)
+                
+                Examples:
+                - "Power Supply Board" (পাওয়ার সাপ্লাই বোর্ড) - power issue
+                - "T-Con Board" (টি-কন বোর্ড) - display issue
+                - "Capacitor Bulge" (ক্যাপাসিটর ফোলা) - power issue
+                - "HDMI Port" (এইচডিএমআই পোর্ট) - connectivity issue
+                - "Cracked Screen" (ভাঙা স্ক্রিন) - physical issue
+                
+                Output JSON only:
                 {
-                  "label": "...",
-                  "specs": "...",
+                  "label": "Component/Issue name in English",
+                  "labelBn": "উপাদান/সমস্যার নাম বাংলায়",
                   "confidence": 0.95,
-                  "rawText": "Brief description..."
+                  "issueType": "power|display|audio|connectivity|physical|general",
+                  "description": "Brief description of the component or issue in English",
+                  "descriptionBn": "সংক্ষিপ্ত বিবরণ বাংলায়",
+                  "rawText": "Any additional observations"
                 }
             `;
 
@@ -181,7 +204,30 @@ export const aiService = {
             const response = result.response;
             const text = response.text();
             const jsonMatch = text.match(/\{[\s\S]*\}/);
-            return jsonMatch ? JSON.parse(jsonMatch[0]) : { label: "Unknown Component", confidence: 0 };
+
+            if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                return {
+                    label: parsed.label || "Unknown Component",
+                    labelBn: parsed.labelBn || "অজানা উপাদান",
+                    confidence: parsed.confidence || 0.5,
+                    issueType: parsed.issueType || "general",
+                    description: parsed.description || "",
+                    descriptionBn: parsed.descriptionBn || "",
+                    rawText: parsed.rawText || text,
+                    boundingBox: null // Could be enhanced with vision bounding box in future
+                };
+            }
+
+            return {
+                label: "Unknown Component",
+                labelBn: "অজানা উপাদান",
+                confidence: 0,
+                issueType: "general",
+                description: "",
+                descriptionBn: "",
+                rawText: text
+            };
         } catch (err) {
             console.error("AI Part Identification failed:", err);
             return null;

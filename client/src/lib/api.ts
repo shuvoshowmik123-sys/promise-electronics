@@ -496,6 +496,34 @@ export interface OrderItem {
   total: string;
 }
 
+export interface SparePartOrder {
+  id: string;
+  orderId: string;
+  brand: string;
+  screenSize: string | null;
+  modelNumber: string | null;
+  primaryIssue: string | null;
+  symptoms: string | null;
+  description: string | null;
+  images: string | null;
+  fulfillmentType: string;
+  pickupTier: string | null;
+  pickupAddress: string | null;
+  scheduledDate: string | null;
+  verificationStatus: string | null;
+  isCompatible: boolean | null;
+  quotedServiceCharge: number | null;
+  quotedAt: string | null;
+  quoteAccepted: boolean | null;
+  quoteAcceptedAt: string | null;
+  tokenNumber: string | null;
+  tokenExpiresAt: string | null;
+  tokenStatus: string | null;
+  tokenRedeemedAt: string | null;
+  technicianId: string | null;
+  installationNotes: string | null;
+}
+
 export interface Order {
   id: string;
   orderNumber: string | null;
@@ -503,7 +531,7 @@ export interface Order {
   customerName: string;
   customerPhone: string;
   customerAddress: string;
-  status: "Pending" | "Accepted" | "Processing" | "Shipped" | "Delivered" | "Declined" | "Cancelled";
+  status: "Pending" | "Accepted" | "Processing" | "Shipped" | "Delivered" | "Declined" | "Cancelled" | "Pending Verification";
   paymentMethod: string;
   subtotal: string;
   total: string;
@@ -512,6 +540,7 @@ export interface Order {
   createdAt: Date;
   updatedAt: Date;
   items?: OrderItem[];
+  sparePartDetails?: SparePartOrder;
 }
 
 // Product Variants API
@@ -760,12 +789,13 @@ export interface Policy {
   title: string;
   content: string;
   isPublished: boolean;
-  updatedAt: string | null;
+  isPublishedApp: boolean;
+  lastUpdated: string | null;
 }
 
 export const policiesApi = {
   getAll: () => fetchApi<Policy[]>("/admin/policies"),
-  save: (data: { slug: string; title: string; content: string; isPublished: boolean }) =>
+  save: (data: { slug: string; title: string; content: string; isPublished: boolean; isPublishedApp: boolean }) =>
     fetchApi<Policy>("/admin/policies", {
       method: "POST",
       body: JSON.stringify(data),

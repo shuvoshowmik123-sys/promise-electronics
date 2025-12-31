@@ -93,6 +93,11 @@ export default function AdminFinancePage() {
     queryFn: settingsApi.getAll,
   });
 
+  const getCurrencySymbol = () => {
+    const currencySetting = settings?.find(s => s.key === "currency_symbol");
+    return currencySetting?.value || "৳";
+  };
+
   const getCompanyInfo = () => {
     const getSettingValue = (key: string, defaultValue: string) => {
       const setting = settings?.find((s) => s.key === key);
@@ -316,7 +321,7 @@ export default function AdminFinancePage() {
     }
 
     if (paidAmountCents > remainingAmountCents) {
-      toast.error(`Payment amount cannot exceed remaining due (à§³${remainingAmount})`);
+      toast.error(`Payment amount cannot exceed remaining due (${getCurrencySymbol()}${remainingAmount})`);
       return;
     }
 
@@ -411,7 +416,7 @@ export default function AdminFinancePage() {
                   <ShoppingCart className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold" data-testid="text-total-sales">à§³{totalSales.toLocaleString()}</div>
+                  <div className="text-2xl font-bold" data-testid="text-total-sales">{getCurrencySymbol()}{totalSales.toLocaleString()}</div>
                   <p className="text-xs text-muted-foreground">{posTransactions.length} transactions</p>
                 </CardContent>
               </Card>
@@ -421,7 +426,7 @@ export default function AdminFinancePage() {
                   <Banknote className="h-4 w-4 text-green-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-xl font-bold text-green-600" data-testid="text-cash-sales">à§³{salesByMethod.Cash.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-green-600" data-testid="text-cash-sales">{getCurrencySymbol()}{salesByMethod.Cash.toLocaleString()}</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-bank-sales">
@@ -430,7 +435,7 @@ export default function AdminFinancePage() {
                   <CreditCard className="h-4 w-4 text-blue-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-xl font-bold text-blue-600" data-testid="text-bank-sales">à§³{salesByMethod.Bank.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-blue-600" data-testid="text-bank-sales">{getCurrencySymbol()}{salesByMethod.Bank.toLocaleString()}</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-bkash-sales">
@@ -439,7 +444,7 @@ export default function AdminFinancePage() {
                   <Smartphone className="h-4 w-4 text-pink-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-xl font-bold text-pink-600" data-testid="text-bkash-sales">à§³{salesByMethod.bKash.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-pink-600" data-testid="text-bkash-sales">{getCurrencySymbol()}{salesByMethod.bKash.toLocaleString()}</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-nagad-sales">
@@ -448,7 +453,7 @@ export default function AdminFinancePage() {
                   <Smartphone className="h-4 w-4 text-orange-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-xl font-bold text-orange-600" data-testid="text-nagad-sales">à§³{salesByMethod.Nagad.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-orange-600" data-testid="text-nagad-sales">{getCurrencySymbol()}{salesByMethod.Nagad.toLocaleString()}</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-due-sales">
@@ -457,7 +462,7 @@ export default function AdminFinancePage() {
                   <Clock className="h-4 w-4 text-red-600" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-xl font-bold text-red-600" data-testid="text-due-sales">à§³{salesByMethod.Due.toLocaleString()}</div>
+                  <div className="text-xl font-bold text-red-600" data-testid="text-due-sales">{getCurrencySymbol()}{salesByMethod.Due.toLocaleString()}</div>
                 </CardContent>
               </Card>
             </div>
@@ -561,7 +566,7 @@ export default function AdminFinancePage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right font-bold" data-testid={`text-sale-amount-${transaction.id}`}>
-                          à§³{Number(transaction.total).toLocaleString()}
+                          {getCurrencySymbol()}{Number(transaction.total).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
@@ -613,7 +618,7 @@ export default function AdminFinancePage() {
                   <DollarSign className="h-4 w-4 text-muted-foreground" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold" data-testid="text-cash-in-hand">à§³{cashInHand.toLocaleString()}</div>
+                  <div className="text-2xl font-bold" data-testid="text-cash-in-hand">{getCurrencySymbol()}{cashInHand.toLocaleString()}</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-today-income">
@@ -622,7 +627,7 @@ export default function AdminFinancePage() {
                   <TrendingUp className="h-4 w-4 text-green-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-green-600" data-testid="text-today-income">+à§³{todayIncome.toLocaleString()}</div>
+                  <div className="text-2xl font-bold text-green-600" data-testid="text-today-income">+{getCurrencySymbol()}{todayIncome.toLocaleString()}</div>
                 </CardContent>
               </Card>
               <Card data-testid="card-today-expense">
@@ -631,7 +636,7 @@ export default function AdminFinancePage() {
                   <TrendingDown className="h-4 w-4 text-red-500" />
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold text-red-600" data-testid="text-today-expense">-à§³{todayExpense.toLocaleString()}</div>
+                  <div className="text-2xl font-bold text-red-600" data-testid="text-today-expense">-{getCurrencySymbol()}{todayExpense.toLocaleString()}</div>
                 </CardContent>
               </Card>
             </div>
@@ -716,7 +721,7 @@ export default function AdminFinancePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="amount">Amount (à§³)</Label>
+                      <Label htmlFor="amount">Amount ({getCurrencySymbol()})</Label>
                       <Input
                         id="amount"
                         data-testid="input-amount"
@@ -802,7 +807,7 @@ export default function AdminFinancePage() {
                           </Badge>
                         </TableCell>
                         <TableCell className={`text-right font-bold ${isIncome(record.type) ? "text-green-600" : "text-red-600"}`} data-testid={`text-amount-${record.id}`}>
-                          {isIncome(record.type) ? "+" : "-"}à§³{Number(record.amount).toLocaleString()}
+                          {isIncome(record.type) ? "+" : "-"}{getCurrencySymbol()}{Number(record.amount).toLocaleString()}
                         </TableCell>
                         <TableCell className="text-right">
                           <Button
@@ -854,7 +859,7 @@ export default function AdminFinancePage() {
                     <div className="bg-slate-50 p-3 rounded-md">
                       <p className="text-xs text-muted-foreground">Amount</p>
                       <p className={`text-2xl font-bold mt-1 ${selectedTransaction.type === "Income" ? "text-green-600" : "text-red-600"}`}>
-                        {selectedTransaction.type === "Income" ? "+" : "-"}à§³{Number(selectedTransaction.amount).toLocaleString()}
+                        {selectedTransaction.type === "Income" ? "+" : "-"}{getCurrencySymbol()}{Number(selectedTransaction.amount).toLocaleString()}
                       </p>
                     </div>
 
@@ -872,15 +877,15 @@ export default function AdminFinancePage() {
                             <div className="grid grid-cols-3 gap-2 text-sm">
                               <div>
                                 <p className="text-xs text-muted-foreground">Total Due</p>
-                                <p className="font-medium text-red-600">-à§³{total.toLocaleString()}</p>
+                                <p className="font-medium text-red-600">-{getCurrencySymbol()}{total.toLocaleString()}</p>
                               </div>
                               <div>
                                 <p className="text-xs text-muted-foreground">Total Paid</p>
-                                <p className="font-medium text-green-600">+à§³{paid.toLocaleString()}</p>
+                                <p className="font-medium text-green-600">+{getCurrencySymbol()}{paid.toLocaleString()}</p>
                               </div>
                               <div>
                                 <p className="text-xs text-muted-foreground">Remaining</p>
-                                <p className="font-bold text-red-600">{remaining > 0 ? "-" : ""}à§³{remaining.toLocaleString()}</p>
+                                <p className="font-bold text-red-600">{remaining > 0 ? "-" : ""}{getCurrencySymbol()}{remaining.toLocaleString()}</p>
                               </div>
                             </div>
                           );
@@ -935,7 +940,7 @@ export default function AdminFinancePage() {
             <div className="flex justify-between items-center">
               <div>
                 <h2 className="text-lg font-bold">Outstanding Payments</h2>
-                <p className="text-sm text-muted-foreground">Total Due: <span className="font-bold text-destructive" data-testid="text-total-due">à§³{totalDue.toLocaleString()}</span></p>
+                <p className="text-sm text-muted-foreground">Total Due: <span className="font-bold text-destructive" data-testid="text-total-due">{getCurrencySymbol()}{totalDue.toLocaleString()}</span></p>
               </div>
               <Dialog open={isDueDialogOpen} onOpenChange={setIsDueDialogOpen}>
                 <DialogTrigger asChild>
@@ -970,7 +975,7 @@ export default function AdminFinancePage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="due-amount">Amount (à§³)</Label>
+                      <Label htmlFor="due-amount">Amount ({getCurrencySymbol()})</Label>
                       <Input
                         id="due-amount"
                         data-testid="input-due-amount"
@@ -1064,10 +1069,10 @@ export default function AdminFinancePage() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-right font-bold" data-testid={`text-due-amount-${record.id}`}>
-                          à§³{(Number(record.amount) - Number(record.paidAmount || 0)).toLocaleString()}
+                          {getCurrencySymbol()}{(Number(record.amount) - Number(record.paidAmount || 0)).toLocaleString()}
                           {Number(record.paidAmount) > 0 && (
                             <span className="block text-xs text-muted-foreground font-normal">
-                              (Total: à§³{Number(record.amount).toLocaleString()})
+                              (Total: {getCurrencySymbol()}{Number(record.amount).toLocaleString()})
                             </span>
                           )}
                         </TableCell>
@@ -1123,16 +1128,16 @@ export default function AdminFinancePage() {
                 <div>
                   <p className="text-sm text-muted-foreground">Outstanding Amount</p>
                   <p className="font-bold text-lg text-destructive">
-                    à§³{(Number(selectedDueRecord.amount) - Number(selectedDueRecord.paidAmount || 0)).toLocaleString()}
+                    {getCurrencySymbol()}{(Number(selectedDueRecord.amount) - Number(selectedDueRecord.paidAmount || 0)).toLocaleString()}
                     <span className="text-sm font-normal text-muted-foreground ml-2">
-                      (of à§³{Number(selectedDueRecord.amount).toLocaleString()})
+                      (of {getCurrencySymbol()}{Number(selectedDueRecord.amount).toLocaleString()})
                     </span>
                   </p>
                 </div>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="payment-amount">Payment Amount (à§³)</Label>
+                <Label htmlFor="payment-amount">Payment Amount ({getCurrencySymbol()})</Label>
                 <Input
                   id="payment-amount"
                   type="number"
@@ -1147,7 +1152,7 @@ export default function AdminFinancePage() {
                       <p className="text-green-600">Full payment - will mark as Paid</p>
                     ) : (
                       <p className="text-blue-600">
-                        Remaining after payment: à§³{(Number(selectedDueRecord.amount) - Number(paymentAmount)).toLocaleString()}
+                        Remaining after payment: {getCurrencySymbol()}{(Number(selectedDueRecord.amount) - Number(paymentAmount)).toLocaleString()}
                       </p>
                     )}
                   </div>

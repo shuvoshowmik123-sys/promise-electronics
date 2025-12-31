@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>TV Repair Home Screen</title>
+<!-- Material Symbols -->
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Google Fonts: Inter -->
+<link href="https://fonts.googleapis.com" rel="preconnect"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<!-- Tailwind CSS -->
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    colors: {
+                        "primary": "#36e27b",
+                        "background-light": "#f6f8f7",
+                        "background-dark": "#112117",
+                        "surface-light": "#ffffff",
+                        "surface-dark": "#1e2e24",
+                        "mint-wash": "#E8F5E9",
+                    },
+                    fontFamily: {
+                        "display": ["Inter", "sans-serif"]
+                    },
+                    borderRadius: {"DEFAULT": "1rem", "lg": "1.5rem", "xl": "2rem", "2xl": "3rem", "full": "9999px"},
+                },
+            },
+        }
+    </script>
+<style>
+        .no-scrollbar::-webkit-scrollbar {
+            display: none;
+        }
+        .no-scrollbar {
+            -ms-overflow-style: none;
+            scrollbar-width: none;
+        }
+    </style>
+<style>
+    body {
+      min-height: max(884px, 100dvh);
+    }
+  </style>
+  </head>
+<body class="bg-background-light dark:bg-background-dark font-display text-slate-900 dark:text-slate-100 antialiased selection:bg-primary/30">
+<div class="relative flex min-h-screen w-full flex-col overflow-x-hidden pb-24">
+<!-- Hero Section -->
+<div class="relative w-full overflow-hidden bg-gradient-to-b from-[#E8F5E9] to-white dark:from-[#1a3324] dark:to-background-dark pt-12 pb-6 px-5 rounded-b-[2.5rem]">
+<!-- Header Top Row -->
+<div class="flex items-center justify-between mb-6">
+<div class="flex items-center gap-3">
+<div class="relative h-12 w-12 rounded-full overflow-hidden border-2 border-white shadow-sm" data-alt="Portrait of user Rahim">
+<img alt="User Avatar" class="h-full w-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDbhn5uDcrj9hX75mmySu6pK1_tnN1UGlH0aqtCtABtI9XYwfPUyO7Nqik_BvXlyVjyXhAr8lgozijEt6au5NkTU2YSVjBJauoqRLE1T8iznvydH_MKnXpmgwzEv3vHCrAd1RumUULyLTJ5uyzUA9M3h2rt5vXdwTA1ttFu6U4iTdKX8V_MHjFJmOvJQAdv2mbYWxgvoGmcJ1D0h4WRv_e4VnXn5IBuZXMqnP5nOQ4u0BIY-2bMLNskFWNZA-3Sn86hGJ7IT4rTkic"/>
+</div>
+<div class="flex flex-col">
+<span class="text-sm font-medium text-slate-500 dark:text-slate-400">Welcome back!</span>
+<h1 class="text-xl font-bold text-slate-900 dark:text-white">Hello, Rahim 👋</h1>
+</div>
+</div>
+<button class="relative h-10 w-10 flex items-center justify-center rounded-full bg-white dark:bg-surface-dark shadow-sm">
+<span class="material-symbols-outlined text-slate-700 dark:text-slate-200" style="font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;">notifications</span>
+<span class="absolute top-2 right-2.5 block h-2 w-2 rounded-full bg-red-500 ring-2 ring-white dark:ring-surface-dark"></span>
+</button>
+</div>
+<!-- Hero Banner Content -->
+<div class="relative mt-2 flex items-center justify-between">
+<div class="z-10 max-w-[60%]">
+<p class="text-3xl font-bold leading-tight tracking-tight text-slate-800 dark:text-white">
+                        Your TV, <br/>
+<span class="text-primary dark:text-primary">Our Care.</span>
+</p>
+<p class="mt-2 text-sm text-slate-600 dark:text-slate-400 font-medium">Expert repairs at your doorstep.</p>
+</div>
+<!-- Hero Image -->
+<div class="absolute right-[-20px] bottom-[-24px] h-40 w-40 z-0">
+<img alt="Technician fixing TV" class="h-full w-full object-cover mask-image-gradient rounded-xl rotate-[-6deg] shadow-lg border-4 border-white dark:border-surface-dark" data-alt="Technician repairing electronic device" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDJg8MiTEiXUZLQ9w_XmBTVPUch2pAWqsTqrO-mGH0wsuqie1kzEqWxmE9guEFUYDrVptDfLsJXnm4pMO5HICAmoiPv5iU16ijBZfqPagPTMH9Pa3x2z7JHt_s50M4B_KchHj2APQizh3JNTMRgWqFVL-sznY0tCjwNzn6Jvqsbr874Cc2VsX-Du7v6Qbps-5ci4E-WO_zzXIJBTkYNKgFr6TW_k7VvGF7UkeS6jd-A9Ff1VileSG1aTeARngYsseP1SHDpIvU9bTY"/>
+</div>
+</div>
+<!-- Search Bar Floating Over Bottom -->
+<div class="mt-10 relative z-20 shadow-[0_8px_30px_rgb(0,0,0,0.06)] rounded-full">
+<label class="flex w-full items-center rounded-full bg-white dark:bg-surface-dark px-4 py-3">
+<span class="material-symbols-outlined text-primary text-2xl mr-3">search</span>
+<input class="w-full bg-transparent border-none p-0 text-base text-slate-900 dark:text-white placeholder:text-slate-400 focus:ring-0" placeholder="What do you need help with?" type="text"/>
+</label>
+</div>
+</div>
+<!-- Quick Actions -->
+<div class="mt-6 pl-5">
+<h2 class="text-lg font-bold text-slate-900 dark:text-white mb-4">Quick Actions</h2>
+<div class="flex gap-4 overflow-x-auto no-scrollbar pr-5 pb-2">
+<!-- Action 1: New Repair (Highlighted) -->
+<button class="flex flex-col items-center gap-2 min-w-[80px] group">
+<div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-primary shadow-[0_4px_12px_rgba(54,226,123,0.3)] transition-transform group-active:scale-95">
+<span class="material-symbols-outlined text-slate-900 text-3xl">add</span>
+</div>
+<span class="text-xs font-semibold text-slate-900 dark:text-white">New Repair</span>
+</button>
+<!-- Action 2 -->
+<button class="flex flex-col items-center gap-2 min-w-[80px] group">
+<div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white dark:bg-surface-dark border border-slate-100 dark:border-slate-700 shadow-sm transition-transform group-active:scale-95">
+<span class="material-symbols-outlined text-slate-900 dark:text-white text-3xl">map</span>
+</div>
+<span class="text-xs font-medium text-slate-600 dark:text-slate-400">Track</span>
+</button>
+<!-- Action 3 -->
+<button class="flex flex-col items-center gap-2 min-w-[80px] group">
+<div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white dark:bg-surface-dark border border-slate-100 dark:border-slate-700 shadow-sm transition-transform group-active:scale-95">
+<span class="material-symbols-outlined text-slate-900 dark:text-white text-3xl">storefront</span>
+</div>
+<span class="text-xs font-medium text-slate-600 dark:text-slate-400">Shop</span>
+</button>
+<!-- Action 4 -->
+<button class="flex flex-col items-center gap-2 min-w-[80px] group">
+<div class="flex h-16 w-16 items-center justify-center rounded-2xl bg-white dark:bg-surface-dark border border-slate-100 dark:border-slate-700 shadow-sm transition-transform group-active:scale-95">
+<span class="material-symbols-outlined text-slate-900 dark:text-white text-3xl">history</span>
+</div>
+<span class="text-xs font-medium text-slate-600 dark:text-slate-400">History</span>
+</button>
+</div>
+</div>
+<!-- Active Repair Card -->
+<div class="px-5 mt-6">
+<h2 class="text-lg font-bold text-slate-900 dark:text-white mb-4">Active Repair</h2>
+<div class="bg-white dark:bg-surface-dark rounded-2xl shadow-[0_4px_20px_rgb(0,0,0,0.04)] overflow-hidden relative">
+<!-- Green Accent Line -->
+<div class="absolute left-0 top-0 bottom-0 w-1.5 bg-primary"></div>
+<div class="p-5 pl-7">
+<div class="flex justify-between items-start mb-2">
+<div>
+<h3 class="text-lg font-bold text-slate-900 dark:text-white">Samsung 55" LED TV</h3>
+<p class="text-xs text-slate-500 dark:text-slate-400 mt-1">Order #29381 • In Service Center</p>
+</div>
+<span class="px-2 py-1 rounded-lg bg-yellow-100 text-yellow-800 text-xs font-semibold">In Progress</span>
+</div>
+<!-- Progress Bar -->
+<div class="mt-4">
+<div class="flex justify-between text-sm mb-1">
+<span class="text-primary font-semibold">Repairing...</span>
+<span class="text-slate-500 font-medium">65%</span>
+</div>
+<div class="h-2 w-full bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+<div class="h-full bg-primary rounded-full" style="width: 65%"></div>
+</div>
+<p class="text-xs text-slate-400 mt-2">Currently replacing power board unit.</p>
+</div>
+<!-- Footer -->
+<div class="mt-5 flex items-center justify-between border-t border-slate-100 dark:border-slate-700 pt-3">
+<div class="flex items-center gap-1 text-slate-500">
+<span class="material-symbols-outlined text-base">schedule</span>
+<span class="text-xs font-medium">Est: 2 days</span>
+</div>
+<button class="text-sm font-semibold text-primary flex items-center gap-1 hover:underline">
+                            View Details <span class="material-symbols-outlined text-sm">arrow_forward</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Hot Deals -->
+<div class="mt-8 mb-4">
+<div class="flex items-center justify-between px-5 mb-4">
+<h2 class="text-lg font-bold text-slate-900 dark:text-white">Hot Deals 🔥</h2>
+<a class="text-sm font-medium text-primary" href="#">See all</a>
+</div>
+<div class="flex gap-4 overflow-x-auto no-scrollbar px-5 pb-4">
+<!-- Deal Card 1 -->
+<div class="flex-shrink-0 w-40 bg-white dark:bg-surface-dark rounded-2xl p-3 shadow-sm border border-slate-50 dark:border-slate-700">
+<div class="h-28 w-full bg-slate-50 dark:bg-slate-800 rounded-xl overflow-hidden mb-3" data-alt="TV T-CON Board circuit">
+<img alt="Circuit board part" class="h-full w-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDMO83CQRUYLBC-4uiT5zZPrcFiyzgkEVbc4g6kfk4UTr7FghAo8FzWXMnkb3URf_ROKQ7soPhc1vBcZxHzVMG6yv6HxLLExN79tLGsnS4oI_Azbnafv1QtC4cHIP1tGzOWWpzEaKioUKwYzftfAK5EQ8fD4z4L0jk-C00P7y5O-bHB-1Mm1CnN_zeaU9UN_Lka6CgVO7GVAW7_XvnI4QlNWTylCL7wuYmG4iX2h_dlxGS-sGYet0Gg5QxyHOuQkObbKRAAA38Cz2w"/>
+</div>
+<h4 class="text-sm font-semibold text-slate-900 dark:text-white truncate">T-CON Logic Board</h4>
+<div class="flex items-center justify-between mt-1">
+<span class="text-sm font-bold text-primary">$45.00</span>
+<button class="h-6 w-6 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-900 dark:text-white">
+<span class="material-symbols-outlined text-sm">add</span>
+</button>
+</div>
+</div>
+<!-- Deal Card 2 -->
+<div class="flex-shrink-0 w-40 bg-white dark:bg-surface-dark rounded-2xl p-3 shadow-sm border border-slate-50 dark:border-slate-700">
+<div class="h-28 w-full bg-slate-50 dark:bg-slate-800 rounded-xl overflow-hidden mb-3" data-alt="LED Backlight strips for TV">
+<img alt="LED Strips" class="h-full w-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAnVg9T3jKkoa3A5WsCpi3rPuCnXgqn2AuAZsM5kg7bf3K-h4fCHGw8zS2TX81oyVALwCVdbC71rNgRWm5IryqCx3-kCToU_8ADYZM_1rxEqyv-PgmlRizsTJrfQEUkiJrL0hrD_0UatbD2gcObHlj6HWQPLY_kvGd7CwHB0lIQHUFHO46tgJTljh_aCuvqcbzdh8Sj25fBPQ2Y8gcPwk81pHeNhRLG5lAm5ExdH6cG_RYB9tRqLmBE3t3NIylMaCLlhlF3pngE4X4"/>
+</div>
+<h4 class="text-sm font-semibold text-slate-900 dark:text-white truncate">LED Backlight Kit</h4>
+<div class="flex items-center justify-between mt-1">
+<span class="text-sm font-bold text-primary">$29.99</span>
+<button class="h-6 w-6 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-900 dark:text-white">
+<span class="material-symbols-outlined text-sm">add</span>
+</button>
+</div>
+</div>
+<!-- Deal Card 3 -->
+<div class="flex-shrink-0 w-40 bg-white dark:bg-surface-dark rounded-2xl p-3 shadow-sm border border-slate-50 dark:border-slate-700">
+<div class="h-28 w-full bg-slate-50 dark:bg-slate-800 rounded-xl overflow-hidden mb-3" data-alt="Close up of electronic power supply unit">
+<img alt="Power Supply" class="h-full w-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuBzWO4OtmAlR59O3T_rduZjaJoM3FLp77AberuN-CVTzsBNnDV-gfOHoohl1sqpL37eRLfIMB9u0xR0-pW3g2hG8_uNJAz8QbbSqul7gkDuHOeGcFKUfw7hIUvHnyoI4nDopSSFSzr8CcpCqC3Ijh9tqHmbqFJHyW1Qy_EeDnpTVkZqyplR9wwq3DsKkhypVMZOG-vYrmiEKsOooc5kR9OxmzhOoPZUmaS2w4SS9Xeyd7yajjbvA4ByGrbKWrCEocR0Lo_k5zpaHRg"/>
+</div>
+<h4 class="text-sm font-semibold text-slate-900 dark:text-white truncate">Power Supply Unit</h4>
+<div class="flex items-center justify-between mt-1">
+<span class="text-sm font-bold text-primary">$85.00</span>
+<button class="h-6 w-6 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-900 dark:text-white">
+<span class="material-symbols-outlined text-sm">add</span>
+</button>
+</div>
+</div>
+</div>
+</div>
+<!-- Bottom Spacer for Floating Nav -->
+<div class="h-8 w-full"></div>
+</div>
+<!-- Floating Navigation Bar -->
+<div class="fixed bottom-6 left-5 right-5 z-50">
+<div class="backdrop-blur-xl bg-white/80 dark:bg-surface-dark/80 border border-white/20 dark:border-white/10 rounded-2xl shadow-[0_8px_32px_rgba(0,0,0,0.12)] h-16 flex items-center justify-around px-2">
+<button class="flex flex-col items-center justify-center w-full h-full gap-1 group">
+<span class="material-symbols-outlined text-primary text-[28px] font-variation-filled">home</span>
+<span class="text-[10px] font-medium text-primary">Home</span>
+</button>
+<button class="flex flex-col items-center justify-center w-full h-full gap-1 group">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 text-[26px]">receipt_long</span>
+<span class="text-[10px] font-medium text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200">Orders</span>
+</button>
+<!-- Center FAB Placeholder -->
+<div class="-mt-8">
+<button class="h-14 w-14 rounded-full bg-slate-900 dark:bg-white text-white dark:text-slate-900 flex items-center justify-center shadow-lg transform transition-transform active:scale-95">
+<span class="material-symbols-outlined text-[28px]">qr_code_scanner</span>
+</button>
+</div>
+<button class="flex flex-col items-center justify-center w-full h-full gap-1 group">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 text-[26px]">chat</span>
+<span class="text-[10px] font-medium text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200">Support</span>
+</button>
+<button class="flex flex-col items-center justify-center w-full h-full gap-1 group">
+<span class="material-symbols-outlined text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 text-[26px]">person</span>
+<span class="text-[10px] font-medium text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200">Profile</span>
+</button>
+</div>
+</div>
+<style>
+        .font-variation-filled {
+            font-variation-settings: 'FILL' 1, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+    </style>
+</body></html>
