@@ -7,7 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { db } from '../db.js';
-import { sparePartOrders } from '@shared/schema.js';
+import { sparePartOrders } from '../../shared/schema.js';
 import { eq } from 'drizzle-orm';
 import { requireCustomerAuth, requireAdminAuth, getCustomerId } from './middleware/auth.js';
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';

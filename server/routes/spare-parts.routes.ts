@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { requireCustomerAuth, requireAdminAuth, getCustomerId } from './middleware/auth.js';
 import { db } from '../db.js';
-import { orders, orderItems, sparePartOrders, insertSparePartOrderSchema } from '@shared/schema.js';
+import { orders, orderItems, sparePartOrders, insertSparePartOrderSchema } from '../../shared/schema.js';
 import { eq, desc } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 
