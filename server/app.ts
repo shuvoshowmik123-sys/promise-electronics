@@ -122,6 +122,16 @@ app.use((req, res, next) => {
         return originalResJson.apply(res, [bodyJson, ...args]);
     };
 
+    const originalResSend = res.send;
+    res.send = function (body) {
+        if (typeof body === 'string' && (body.startsWith('A server error') || body.startsWith('A server e'))) {
+            console.log("[Middleware] Intercepted plain text error, converting to JSON:", body);
+            res.setHeader('Content-Type', 'application/json');
+            return originalResSend.call(this, JSON.stringify({ error: body }));
+        }
+        return originalResSend.call(this, body);
+    };
+
     res.on("finish", () => {
         const duration = Date.now() - start;
         if (path.startsWith("/api")) {
