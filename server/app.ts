@@ -31,6 +31,7 @@ app.use(cors({
         // Production and capacitor origins
         const allowedOrigins = [
             "https://promiseelectronics.com",
+            "https://www.promiseelectronics.com",
             "capacitor://localhost",
             "http://192.168.0.103:5083"
         ];
