@@ -143,19 +143,23 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Top Bar with Back Button and Language Toggle
+              // Top Bar with Back Button (only when from profile) and Language Toggle
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: Icon(
-                      Icons.arrow_back,
-                      color: isDark
-                          ? AppColors.textMainDark
-                          : AppColors.textMainLight,
-                    ),
-                  ),
+                  // Only show back button if navigated from profile
+                  if (widget.fromProfile)
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: Icon(
+                        Icons.arrow_back,
+                        color: isDark
+                            ? AppColors.textMainDark
+                            : AppColors.textMainLight,
+                      ),
+                    )
+                  else
+                    const SizedBox(width: 48), // Placeholder for alignment
                   _buildLanguageToggle(isDark),
                 ],
               ),

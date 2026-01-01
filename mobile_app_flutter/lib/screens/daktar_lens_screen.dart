@@ -742,7 +742,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
                   const SizedBox(width: 8),
                   _buildGlassButton(
                     icon: Icons.more_vert,
-                    onTap: () {},
+                    onTap: () => _showMoreMenu(isBangla),
                   ),
                 ],
               ),
@@ -1068,8 +1068,8 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
                         onPressed: _dismissResult,
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
-                          side:
-                              BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                          side: BorderSide(
+                              color: Colors.white.withValues(alpha: 0.3)),
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
@@ -1112,5 +1112,468 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
           .fadeIn(duration: 300.ms)
           .slideY(begin: 0.2, end: 0),
     );
+  }
+
+  void _showMoreMenu(bool isBangla) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 8),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey.withValues(alpha: 0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(Icons.help_outline),
+                title: Text(isBangla ? 'কিভাবে ব্যবহার করবেন' : 'How to use'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showHelpDialog(isBangla);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.history),
+                title: Text(isBangla ? 'স্ক্যান ইতিহাস' : 'Scan History'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showHistoryDialog(isBangla);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.feedback_outlined),
+                title: Text(isBangla ? 'মতামত দিন' : 'Send Feedback'),
+                onTap: () {
+                  Navigator.pop(context);
+                  // Show feedback form
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content:
+                          Text(isBangla ? 'শীঘ্রই আসছে...' : 'Coming soon...'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showHelpDialog(bool isBangla) {
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.help_outline,
+                        color: AppColors.primary),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Text(
+                      isBangla ? 'কিভাবে ব্যবহার করবেন' : 'How to use Lens',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // Instructions
+              SingleChildScrollView(
+                child: Column(
+                  children: [
+                    _buildHelpItem(
+                      icon: Icons.search,
+                      title: isBangla ? '১. সনাক্ত (Identify)' : '1. Identify',
+                      description: isBangla
+                          ? 'টিভির যেকোনো অংশের দিকে ক্যামেরা ধরুন। এআই বলে দেবে এটি কি এবং এর কাজ কি।'
+                          : 'Point camera at any TV part. AI will tell you what it is and what it does.',
+                      isBangla: isBangla,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildHelpItem(
+                      icon: Icons.analytics,
+                      title: isBangla ? '২. মূল্যায়ন (Assess)' : '2. Assess',
+                      description: isBangla
+                          ? 'টিভির ভাঙা বা নষ্ট অংশের ছবি তুলুন। এআই ক্ষতির পরিমাণ এবং মেরামতের খরচ জানাবে।'
+                          : 'Capture broken TV parts. AI will estimate damage severity and repair costs.',
+                      isBangla: isBangla,
+                    ),
+                    const SizedBox(height: 16),
+                    _buildHelpItem(
+                      icon: Icons.qr_code_scanner,
+                      title: isBangla ? '৩. QR স্ক্যান' : '3. QR Scan',
+                      description: isBangla
+                          ? 'আপনার জব কার্ডের QR কোড স্ক্যান করে মেরামতের বর্তমান অবস্থা জানুন।'
+                          : 'Scan your job card QR code to check current repair status instantly.',
+                      isBangla: isBangla,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
+
+              // Action Button
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: Text(isBangla ? 'বুঝেছি' : 'Got it'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHelpItem({
+    required IconData icon,
+    required String title,
+    required String description,
+    required bool isBangla,
+  }) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color:
+              isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey[300]!,
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 20, color: AppColors.textSubLight),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: isDark ? Colors.white : Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  description,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: isDark ? Colors.grey[400] : Colors.grey[700],
+                    height: 1.4,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showHistoryDialog(bool isBangla) {
+    // Mock history data
+    final historyItems = [];
+
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Header
+              Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(Icons.history, color: AppColors.primary),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isBangla ? 'স্ক্যান ইতিহাস' : 'Scan History',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          isBangla
+                              ? 'বিস্তারিত দেখতে ট্যাপ করুন'
+                              : 'Tap to view details',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[600],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+
+              // History List
+              Flexible(
+                child: historyItems.isEmpty
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(32.0),
+                          child: Text(
+                            isBangla
+                                ? 'কোনো ইতিহাস পাওয়া যায়নি'
+                                : 'No history found',
+                            style: TextStyle(color: Colors.grey[500]),
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        shrinkWrap: true,
+                        itemCount: historyItems.length,
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 12),
+                        itemBuilder: (context, index) {
+                          final item = historyItems[index];
+                          return _buildHistoryItem(item, isBangla);
+                        },
+                      ),
+              ),
+
+              const SizedBox(height: 16),
+
+              // Clear History Button (Mock)
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(isBangla
+                          ? 'ইতিহাস মুছে ফেলা হয়েছে'
+                          : 'History cleared'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                },
+                child: Text(
+                  isBangla ? 'ইতিহাস মুছুন' : 'Clear History',
+                  style: TextStyle(color: Colors.grey[600]),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHistoryItem(Map<String, dynamic> item, bool isBangla) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final color = item['color'] as Color;
+
+    return GestureDetector(
+      onTap: () {
+        // Restore result logic
+        Navigator.pop(context);
+        _restoreHistoryItem(item);
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color:
+              isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[100],
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : Colors.grey[300]!,
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(item['icon'] as IconData, size: 20, color: color),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    item['title'] as String,
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: isDark ? Colors.white : Colors.black,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item['subtitle'] as String,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: color,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item['date'] as String,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            // Chat Action Button
+            IconButton(
+              icon: const Icon(Icons.chat_bubble_outline, size: 20),
+              color: AppColors.primary,
+              tooltip:
+                  isBangla ? 'ডাক্তার ভাইয়ের সাথে কথা বলুন' : 'Ask Daktar Vai',
+              onPressed: () {
+                Navigator.pop(context);
+                _chatAboutHistoryItem(item);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _restoreHistoryItem(Map<String, dynamic> item) {
+    setState(() {
+      final type = item['type'] as String;
+      final data = item['data'] as Map<String, dynamic>;
+
+      if (type == 'identify') {
+        _currentMode = LensMode.identify;
+        _identifyResult = IdentifyResult(
+          label: data['label'],
+          labelBn: data['labelBn'],
+          confidence: (data['confidence'] as num).toDouble(),
+          issueType: data['issueType'],
+          description: data['description'],
+          descriptionBn: data['descriptionBn'] ?? data['description'] ?? '',
+          boundingBox:
+              BoundingBox(x: 100, y: 200, width: 200, height: 200), // Mock box
+          rawText: '',
+        );
+        _showResult = true;
+      } else if (type == 'assess') {
+        _currentMode = LensMode.assess;
+        _assessResult = AssessResult(
+          severity: data['severity'],
+          severityBn: data['severityBn'],
+          damage: [data['damage']], // Wrap in list
+          likelyCause: data['likelyCause'],
+          likelyCauseBn: data['likelyCauseBn'] ?? '',
+          rawText: '',
+        );
+        _showResult = true;
+      } else if (type == 'qr') {
+        _currentMode = LensMode.qrScan;
+        _jobInfo = JobTrackingInfo(
+          id: data['id'],
+          device: data['device'],
+          status: data['status'],
+          estimatedCost: double.tryParse(data['estimatedCost']
+              .toString()
+              .replaceAll(RegExp(r'[^0-9.]'), '')),
+        );
+        _showResult = true;
+      }
+    });
+  }
+
+  void _chatAboutHistoryItem(Map<String, dynamic> item) {
+    final type = item['type'] as String;
+    final title = item['title'] as String;
+    final imageUrl = item['imageUrl'] as String?;
+
+    // Navigate to chat with context
+    Navigator.pushNamed(context, '/chat', arguments: {
+      'source': 'history',
+      'message': 'Tell me more about the $title scan I did.',
+      'imageUrl': imageUrl,
+    });
   }
 }

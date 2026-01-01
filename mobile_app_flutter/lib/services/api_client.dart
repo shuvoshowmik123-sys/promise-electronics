@@ -244,15 +244,45 @@ class _LoggingInterceptor extends Interceptor {
 class _ErrorInterceptor extends Interceptor {
   @override
   void onError(DioException err, ErrorInterceptorHandler handler) {
-    // Handle 401 Unauthorized - session expired
+    // Handle 401 Unauthorized - session expired or not authenticated
     if (err.response?.statusCode == 401) {
       // Clear session
       ApiClient().clearSession();
 
+      // Parse server response for error code
+      String message = 'Please log in to continue.';
+      final data = err.response?.data;
+
+      if (data is Map<String, dynamic>) {
+        final code = data['code'];
+        final serverMessage = data['error'] ?? data['message'];
+
+        switch (code) {
+          case 'NOT_AUTHENTICATED':
+            message = 'Please log in to continue.';
+            break;
+          case 'SESSION_EXPIRED':
+            message = 'Your session has ended. Please log in again.';
+            break;
+          case 'INVALID_SESSION':
+            message = 'Your session is no longer valid. Please log in again.';
+            break;
+          case 'LOGGED_IN_ELSEWHERE':
+            message =
+                'You are logged in on another device. Please log out from that device first.';
+            break;
+          default:
+            // Use server message if available, otherwise use default
+            if (serverMessage != null && serverMessage.toString().isNotEmpty) {
+              message = serverMessage.toString();
+            }
+        }
+      }
+
       handler.reject(DioException(
         requestOptions: err.requestOptions,
         error: AuthException(
-          'Session expired. Please login again.',
+          message,
           statusCode: 401,
         ),
         type: err.type,

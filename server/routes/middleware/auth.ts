@@ -111,7 +111,10 @@ export function requireCustomerAuth(req: any, res: Response, next: NextFunction)
     if (req.session?.customerId) {
         return next();
     }
-    return res.status(401).json({ error: 'Please login to continue' });
+    return res.status(401).json({
+        error: 'Please login to continue',
+        code: 'NOT_AUTHENTICATED'
+    });
 }
 
 // ============================================

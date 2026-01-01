@@ -34,7 +34,7 @@ router.post('/api/customer/register', async (req: Request, res: Response) => {
     try {
         const validated = customerRegisterSchema.parse(req.body);
 
-        const existingUser = await storage.getUserByPhone(validated.phone);
+        const existingUser = await storage.getUserByPhoneNormalized(validated.phone);
         if (existingUser) {
             return res.status(400).json({ error: 'Phone number already registered. Please login instead.' });
         }
@@ -83,7 +83,7 @@ router.post('/api/customer/login', async (req: Request, res: Response) => {
     try {
         const validated = customerLoginSchema.parse(req.body);
 
-        const user = await storage.getUserByPhone(validated.phone);
+        const user = await storage.getUserByPhoneNormalized(validated.phone);
         if (!user) {
             return res.status(401).json({ error: 'Invalid phone number or password' });
         }
@@ -135,13 +135,19 @@ router.post('/api/customer/logout', (req: Request, res: Response) => {
  */
 router.get('/api/customer/me', async (req: Request, res: Response) => {
     if (!req.session?.customerId) {
-        return res.status(401).json({ error: 'Not logged in' });
+        return res.status(401).json({
+            error: 'Not logged in',
+            code: 'NOT_AUTHENTICATED'
+        });
     }
 
     const customer = await storage.getCustomer(req.session.customerId);
     if (!customer) {
         req.session.destroy(() => { });
-        return res.status(401).json({ error: 'Customer not found' });
+        return res.status(401).json({
+            error: 'Customer not found',
+            code: 'INVALID_SESSION'
+        });
     }
 
     const { password: _, ...safeCustomer } = customer;

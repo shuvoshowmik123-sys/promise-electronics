@@ -252,7 +252,12 @@ class AuthRepository {
       // If 401, session is invalid
       if (e.response?.statusCode == 401) {
         await logout();
-        return Result.failure('Session expired');
+        // Get meaningful message from error if available
+        String message = 'Please log in to continue.';
+        if (e.error is AuthException) {
+          message = (e.error as AuthException).message;
+        }
+        return Result.failure(message);
       }
       return _handleDioError(e);
     } catch (e) {

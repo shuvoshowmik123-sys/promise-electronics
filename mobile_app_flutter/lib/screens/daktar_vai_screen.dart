@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
+import 'package:image_picker/image_picker.dart';
 
 import '../config/app_theme.dart';
 import '../providers/chat_provider.dart';
 import '../providers/locale_provider.dart';
 import '../models/chat_message.dart';
+import 'chat_camera_screen.dart';
 
 /// Daktar Vai AI Chat Screen
 /// The hero feature - Premium AI assistant for TV repair
@@ -29,9 +32,13 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
   late stt.SpeechToText _speech;
   bool _isListening = false;
   bool _speechAvailable = false;
+  bool _hasInitialMessage = false;
 
   // Animation controllers
   late AnimationController _pulseController;
+
+  // Image picker
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
@@ -42,6 +49,30 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
       duration: const Duration(milliseconds: 1500),
       vsync: this,
     )..repeat(reverse: true);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_hasInitialMessage) {
+      final args =
+          ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
+      debugPrint('DaktarVaiScreen: args = $args');
+      if (args != null && args['message'] != null) {
+        _hasInitialMessage = true;
+        final message = args['message'] as String;
+        final imageUrl = args['imageUrl'] as String?;
+        debugPrint(
+            'DaktarVaiScreen: Sending message: $message, imageUrl: $imageUrl');
+
+        // Add message to chat
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final chatProvider =
+              Provider.of<ChatProvider>(context, listen: false);
+          chatProvider.sendMessage(message, imageBase64: imageUrl);
+        });
+      }
+    }
   }
 
   @override
@@ -132,6 +163,183 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
     chatProvider.sendQuickReply(reply);
 
     _scrollToBottom();
+  }
+
+  /// Show bottom sheet with image source options
+  void _showImageSourceOptions(BuildContext context, bool isDark) {
+    HapticFeedback.lightImpact();
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: isDark ? AppColors.surfaceDark : Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // Handle bar
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey[700] : Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Title
+              Text(
+                Provider.of<LocaleProvider>(context, listen: false).isBangla
+                    ? 'ছবি যোগ করুন'
+                    : 'Add Image',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white : Colors.black,
+                ),
+              ),
+              const SizedBox(height: 20),
+
+              // Camera option (only on mobile)
+              if (!kIsWeb)
+                ListTile(
+                  leading: Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child:
+                        const Icon(Icons.camera_alt, color: AppColors.primary),
+                  ),
+                  title: Text(
+                    Provider.of<LocaleProvider>(context, listen: false).isBangla
+                        ? 'ক্যামেরা দিয়ে ছবি তুলুন'
+                        : 'Take Photo',
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  subtitle: Text(
+                    Provider.of<LocaleProvider>(context, listen: false).isBangla
+                        ? 'ফ্ল্যাশলাইট ও অটোফোকাস সহ'
+                        : 'With flashlight & autofocus',
+                    style: TextStyle(
+                      color: isDark ? Colors.grey[400] : Colors.grey[600],
+                      fontSize: 12,
+                    ),
+                  ),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _openCamera();
+                  },
+                ),
+
+              // Gallery option
+              ListTile(
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.photo_library, color: Colors.purple),
+                ),
+                title: Text(
+                  Provider.of<LocaleProvider>(context, listen: false).isBangla
+                      ? 'গ্যালারি থেকে নির্বাচন করুন'
+                      : 'Choose from Gallery',
+                  style: TextStyle(
+                    color: isDark ? Colors.white : Colors.black,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickFromGallery();
+                },
+              ),
+
+              const SizedBox(height: 10),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Open custom camera screen
+  Future<void> _openCamera() async {
+    final imagePath = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ChatCameraScreen(),
+      ),
+    );
+
+    if (imagePath != null && mounted) {
+      _handleSelectedImage(imagePath);
+    }
+  }
+
+  /// Pick image from gallery
+  Future<void> _pickFromGallery() async {
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+
+      if (image != null && mounted) {
+        _handleSelectedImage(image.path);
+      }
+    } catch (e) {
+      debugPrint('Gallery pick error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              Provider.of<LocaleProvider>(context, listen: false).isBangla
+                  ? 'ছবি নির্বাচন করতে ব্যর্থ'
+                  : 'Failed to pick image',
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  /// Handle selected image - send to chat
+  void _handleSelectedImage(String imagePath) {
+    final chatProvider = context.read<ChatProvider>();
+
+    // Send message with image
+    chatProvider.sendMessageWithImage(
+      Provider.of<LocaleProvider>(context, listen: false).isBangla
+          ? 'এই ছবিটি দেখুন'
+          : 'Please look at this image',
+      imagePath,
+    );
+
+    _scrollToBottom();
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          Provider.of<LocaleProvider>(context, listen: false).isBangla
+              ? 'ছবি পাঠানো হয়েছে'
+              : 'Image sent',
+        ),
+        backgroundColor: AppColors.primary,
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -504,9 +712,8 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
           ),
         ],
       ),
-    )
-        .animate(onPlay: (controller) => controller.repeat())
-        .shimmer(duration: 1500.ms, color: AppColors.primary.withValues(alpha: 0.1));
+    ).animate(onPlay: (controller) => controller.repeat()).shimmer(
+        duration: 1500.ms, color: AppColors.primary.withValues(alpha: 0.1));
   }
 
   Widget _buildQuickReplies(bool isDark, List<String> replies) {
@@ -589,9 +796,7 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
         children: [
           // Camera button
           GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-            },
+            onTap: () => _showImageSourceOptions(context, isDark),
             child: Container(
               width: 44,
               height: 44,

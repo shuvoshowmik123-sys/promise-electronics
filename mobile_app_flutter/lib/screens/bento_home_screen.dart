@@ -87,6 +87,10 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Status bar padding - ensures content starts below status bar
+                // while background color still extends to top edge
+                SizedBox(height: MediaQuery.of(context).padding.top),
+
                 // Announcement Banner (from admin settings)
                 const AnnouncementBanner(),
 
@@ -283,309 +287,304 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
           bottomRight: Radius.circular(40),
         ),
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Header Row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  // Avatar and Greeting
-                  Row(
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                                builder: (context) => const ProfileScreen()),
-                          );
-                        },
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white,
-                              width: 2,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.1),
-                                blurRadius: 8,
-                              ),
-                            ],
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header Row
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                // Avatar and Greeting
+                Row(
+                  children: [
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (context) => const ProfileScreen()),
+                        );
+                      },
+                      child: Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white,
+                            width: 2,
                           ),
-                          child: ClipOval(
-                            child: _buildAvatarImage(
-                              isAuthenticated ? user?.avatar : null,
-                              name,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.1),
+                              blurRadius: 8,
                             ),
+                          ],
+                        ),
+                        child: ClipOval(
+                          child: _buildAvatarImage(
+                            isAuthenticated ? user?.avatar : null,
+                            name,
                           ),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            Provider.of<LocaleProvider>(context).isBangla
-                                ? 'স্বাগতম!'
-                                : 'Welcome back!',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                              color: isDark
-                                  ? AppColors.textSubDark
-                                  : AppColors.textSubLight,
-                            ),
-                          ),
-                          Text(
-                            Provider.of<LocaleProvider>(context).isBangla
-                                ? 'হ্যালো, $name 👋'
-                                : 'Hello, $name 👋',
-                            style: TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              color: isDark
-                                  ? AppColors.textMainDark
-                                  : AppColors.textMainLight,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-
-                  // Notification Bell
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: isDark
-                          ? AppColors.surfaceDark
-                          : AppColors.surfaceLight,
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.05),
-                          blurRadius: 8,
-                        ),
-                      ],
                     ),
-                    child: Stack(
+                    const SizedBox(width: 12),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Center(
-                          child: Icon(
-                            Icons.notifications_outlined,
+                        Text(
+                          Provider.of<LocaleProvider>(context).isBangla
+                              ? 'স্বাগতম!'
+                              : 'Welcome back!',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color: isDark
+                                ? AppColors.textSubDark
+                                : AppColors.textSubLight,
+                          ),
+                        ),
+                        Text(
+                          Provider.of<LocaleProvider>(context).isBangla
+                              ? 'হ্যালো, $name 👋'
+                              : 'Hello, $name 👋',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
                             color: isDark
                                 ? AppColors.textMainDark
                                 : AppColors.textMainLight,
-                            size: 22,
-                          ),
-                        ),
-                        Positioned(
-                          right: 10,
-                          top: 10,
-                          child: Container(
-                            width: 8,
-                            height: 8,
-                            decoration: BoxDecoration(
-                              color: AppColors.coralRed,
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: isDark
-                                    ? AppColors.surfaceDark
-                                    : AppColors.surfaceLight,
-                                width: 2,
-                              ),
-                            ),
                           ),
                         ),
                       ],
-                    ),
-                  ),
-                ],
-              ),
-
-              const SizedBox(height: 24),
-
-              // Swipeable Hero Content
-              SizedBox(
-                height: 160,
-                child: PageView.builder(
-                  controller: _heroPageController,
-                  onPageChanged: _onPageChanged,
-                  physics: const BouncingScrollPhysics(),
-                  itemCount: _heroSlides.length,
-                  itemBuilder: (context, index) {
-                    final slide = _heroSlides[index];
-                    return Row(
-                      children: [
-                        // Text content
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                slide.title1,
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.1,
-                                  color: isDark
-                                      ? AppColors.textMainDark
-                                      : AppColors.textMainLight,
-                                ),
-                              ),
-                              Text(
-                                slide.title2,
-                                style: const TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  height: 1.1,
-                                  color: AppColors.primary,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                slide.subtitle,
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: isDark
-                                      ? AppColors.textSubDark
-                                      : AppColors.textSubLight,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-
-                        // Image
-                        Container(
-                          width: 140,
-                          height: 140,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.15),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(16),
-                            child: slide.image.isNotEmpty
-                                ? Image.network(
-                                    slide.image,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return Container(
-                                        color: isDark
-                                            ? AppColors.surfaceDark
-                                            : AppColors.surfaceLight,
-                                        child: const Icon(
-                                          Icons.tv,
-                                          size: 60,
-                                          color: AppColors.primary,
-                                        ),
-                                      );
-                                    },
-                                  )
-                                : Container(
-                                    color: isDark
-                                        ? AppColors.surfaceDark
-                                        : AppColors.surfaceLight,
-                                    child: const Icon(
-                                      Icons.tv,
-                                      size: 60,
-                                      color: AppColors.primary,
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-
-              // Carousel Indicators
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(_heroSlides.length, (index) {
-                  final isActive = index == _currentHeroIndex;
-                  return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    width: isActive ? 24 : 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: isActive
-                          ? AppColors.primary
-                          : (isDark
-                              ? AppColors.borderDark
-                              : AppColors.borderLight),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                  );
-                }),
-              ),
-
-              const SizedBox(height: 20),
-
-              // Search Bar
-              Container(
-                decoration: BoxDecoration(
-                  color:
-                      isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-                  borderRadius: BorderRadius.circular(50),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.06),
-                      blurRadius: 30,
-                      offset: const Offset(0, 8),
                     ),
                   ],
                 ),
-                child: TextField(
-                  decoration: InputDecoration(
-                    hintText: Provider.of<LocaleProvider>(context).isBangla
-                        ? 'আপনার কি সাহায্য প্রয়োজন?'
-                        : 'What do you need help with?',
-                    hintStyle: TextStyle(
-                      color: isDark
-                          ? AppColors.textMutedDark
-                          : AppColors.textMutedLight,
-                      fontSize: 15,
-                    ),
-                    prefixIcon: const Padding(
-                      padding: EdgeInsets.only(left: 16, right: 8),
-                      child: Icon(
-                        Icons.search,
-                        color: AppColors.primary,
-                        size: 24,
+
+                // Notification Bell
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color:
+                        isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 8,
                       ),
+                    ],
+                  ),
+                  child: Stack(
+                    children: [
+                      Center(
+                        child: Icon(
+                          Icons.notifications_outlined,
+                          color: isDark
+                              ? AppColors.textMainDark
+                              : AppColors.textMainLight,
+                          size: 22,
+                        ),
+                      ),
+                      Positioned(
+                        right: 10,
+                        top: 10,
+                        child: Container(
+                          width: 8,
+                          height: 8,
+                          decoration: BoxDecoration(
+                            color: AppColors.coralRed,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: isDark
+                                  ? AppColors.surfaceDark
+                                  : AppColors.surfaceLight,
+                              width: 2,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 24),
+
+            // Swipeable Hero Content
+            SizedBox(
+              height: 160,
+              child: PageView.builder(
+                controller: _heroPageController,
+                onPageChanged: _onPageChanged,
+                physics: const BouncingScrollPhysics(),
+                itemCount: _heroSlides.length,
+                itemBuilder: (context, index) {
+                  final slide = _heroSlides[index];
+                  return Row(
+                    children: [
+                      // Text content
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Text(
+                              slide.title1,
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                height: 1.1,
+                                color: isDark
+                                    ? AppColors.textMainDark
+                                    : AppColors.textMainLight,
+                              ),
+                            ),
+                            Text(
+                              slide.title2,
+                              style: const TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                height: 1.1,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              slide.subtitle,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                                color: isDark
+                                    ? AppColors.textSubDark
+                                    : AppColors.textSubLight,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Image
+                      Container(
+                        width: 140,
+                        height: 140,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.15),
+                              blurRadius: 20,
+                              offset: const Offset(0, 10),
+                            ),
+                          ],
+                        ),
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(16),
+                          child: slide.image.isNotEmpty
+                              ? Image.network(
+                                  slide.image,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      color: isDark
+                                          ? AppColors.surfaceDark
+                                          : AppColors.surfaceLight,
+                                      child: const Icon(
+                                        Icons.tv,
+                                        size: 60,
+                                        color: AppColors.primary,
+                                      ),
+                                    );
+                                  },
+                                )
+                              : Container(
+                                  color: isDark
+                                      ? AppColors.surfaceDark
+                                      : AppColors.surfaceLight,
+                                  child: const Icon(
+                                    Icons.tv,
+                                    size: 60,
+                                    color: AppColors.primary,
+                                  ),
+                                ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+
+            // Carousel Indicators
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(_heroSlides.length, (index) {
+                final isActive = index == _currentHeroIndex;
+                return Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  width: isActive ? 24 : 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: isActive
+                        ? AppColors.primary
+                        : (isDark
+                            ? AppColors.borderDark
+                            : AppColors.borderLight),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                );
+              }),
+            ),
+
+            const SizedBox(height: 20),
+
+            // Search Bar
+            Container(
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
+                borderRadius: BorderRadius.circular(50),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.06),
+                    blurRadius: 30,
+                    offset: const Offset(0, 8),
+                  ),
+                ],
+              ),
+              child: TextField(
+                decoration: InputDecoration(
+                  hintText: Provider.of<LocaleProvider>(context).isBangla
+                      ? 'আপনার কি সাহায্য প্রয়োজন?'
+                      : 'What do you need help with?',
+                  hintStyle: TextStyle(
+                    color: isDark
+                        ? AppColors.textMutedDark
+                        : AppColors.textMutedLight,
+                    fontSize: 15,
+                  ),
+                  prefixIcon: const Padding(
+                    padding: EdgeInsets.only(left: 16, right: 8),
+                    child: Icon(
+                      Icons.search,
+                      color: AppColors.primary,
+                      size: 24,
                     ),
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 16,
-                    ),
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 16,
                   ),
                 ),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -627,10 +626,10 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
                 _buildActionButton(
                   context,
                   isDark,
-                  icon: Icons.smart_toy_outlined,
+                  icon: Icons.person_outline,
                   label: Provider.of<LocaleProvider>(context).isBangla
-                      ? 'এআই চ্যাট'
-                      : 'AI Chat',
+                      ? 'ডাক্তার ভাই'
+                      : 'Daktar Vai',
                   onTap: () => Navigator.pushNamed(context, '/chat'),
                 ),
                 _buildActionButton(

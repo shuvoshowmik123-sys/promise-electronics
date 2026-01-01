@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
@@ -25,6 +26,8 @@ class ChatProvider extends ChangeNotifier {
 
   /// Send a message to Daktar Vai AI
   Future<void> sendMessage(String text, {String? imageBase64}) async {
+    debugPrint(
+        'ChatProvider: sendMessage called with text: $text, hasImage: ${imageBase64 != null}');
     if (text.trim().isEmpty && imageBase64 == null) return;
 
     _error = null;
@@ -55,15 +58,17 @@ class ChatProvider extends ChangeNotifier {
       };
 
       // Make API call
-      final response = await http.post(
-        Uri.parse(ApiConfig.aiChatEndpoint),
-        headers: ApiConfig.headers,
-        body: jsonEncode(body),
-      ).timeout(const Duration(seconds: 30));
+      final response = await http
+          .post(
+            Uri.parse(ApiConfig.aiChatEndpoint),
+            headers: ApiConfig.headers,
+            body: jsonEncode(body),
+          )
+          .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-        
+
         // Parse booking data if present
         BookingData? booking;
         if (data['ticketData'] != null || data['booking'] != null) {
@@ -82,7 +87,7 @@ class ChatProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('Chat Error: $e');
       _error = e.toString();
-      
+
       // Add error message
       _messages.add(ChatMessage.assistant(
         'দুঃখিত, network e problem hocche. Abar try korun! 🔄',
@@ -96,6 +101,25 @@ class ChatProvider extends ChangeNotifier {
   /// Send a quick reply
   Future<void> sendQuickReply(String reply) async {
     await sendMessage(reply);
+  }
+
+  /// Send a message with an image from file path
+  Future<void> sendMessageWithImage(String text, String imagePath) async {
+    try {
+      // Read image file and convert to base64
+      final file = File(imagePath);
+      if (await file.exists()) {
+        final bytes = await file.readAsBytes();
+        final base64Image = base64Encode(bytes);
+        await sendMessage(text, imageBase64: base64Image);
+      } else {
+        debugPrint('Image file not found: $imagePath');
+        await sendMessage(text);
+      }
+    } catch (e) {
+      debugPrint('Error reading image: $e');
+      await sendMessage(text);
+    }
   }
 
   /// Clear chat history

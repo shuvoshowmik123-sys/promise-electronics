@@ -126,8 +126,8 @@ class FloatingNavBar extends StatelessWidget {
                         AppColors.surfaceDark.withValues(alpha: 0.8),
                       ]
                     : [
-                        Colors.white.withValues(alpha: 0.95),
-                        Colors.white.withValues(alpha: 0.85),
+                        Colors.white.withValues(alpha: 0.75),
+                        Colors.white.withValues(alpha: 0.65),
                       ],
               ),
               borderRadius: BorderRadius.circular(28),
@@ -266,7 +266,8 @@ class FloatingNavBar extends StatelessWidget {
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primary.withValues(alpha: isActive ? 0.5 : 0.3),
+                    color: AppColors.primary
+                        .withValues(alpha: isActive ? 0.5 : 0.3),
                     blurRadius: isActive ? 20 : 12,
                     spreadRadius: isActive ? 2 : 0,
                   ),

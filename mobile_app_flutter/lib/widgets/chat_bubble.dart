@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
@@ -33,7 +34,8 @@ class ChatBubble extends StatelessWidget {
             children: [
               // Message bubble
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [Color(0xFF36e27b), Color(0xFF22c55e)],
@@ -59,17 +61,7 @@ class ChatBubble extends StatelessWidget {
                     if (message.imageUrl != null) ...[
                       ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: Image.network(
-                          message.imageUrl!,
-                          height: 150,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) => Container(
-                            height: 100,
-                            color: Colors.black26,
-                            child: const Icon(Icons.image_not_supported, color: Colors.white54),
-                          ),
-                        ),
+                        child: _buildMessageImage(message.imageUrl!),
                       ),
                       const SizedBox(height: 8),
                     ],
@@ -86,7 +78,7 @@ class ChatBubble extends StatelessWidget {
                   ],
                 ),
               ),
-              
+
               // Timestamp
               Padding(
                 padding: const EdgeInsets.only(top: 4, right: 4),
@@ -102,10 +94,8 @@ class ChatBubble extends StatelessWidget {
           ),
         ),
       ],
-    )
-        .animate()
-        .fadeIn(duration: 300.ms)
-        .slideX(begin: 0.1, end: 0, duration: 300.ms, curve: Curves.easeOutCubic);
+    ).animate().fadeIn(duration: 300.ms).slideX(
+        begin: 0.1, end: 0, duration: 300.ms, curve: Curves.easeOutCubic);
   }
 
   Widget _buildAssistantBubble() {
@@ -149,7 +139,8 @@ class ChatBubble extends StatelessWidget {
 
               // Message bubble
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
                   color: const Color(0xFF1e293b),
                   borderRadius: const BorderRadius.only(
@@ -205,10 +196,8 @@ class ChatBubble extends StatelessWidget {
 
         const SizedBox(width: 60), // Right padding
       ],
-    )
-        .animate()
-        .fadeIn(duration: 300.ms)
-        .slideX(begin: -0.1, end: 0, duration: 300.ms, curve: Curves.easeOutCubic);
+    ).animate().fadeIn(duration: 300.ms).slideX(
+        begin: -0.1, end: 0, duration: 300.ms, curve: Curves.easeOutCubic);
   }
 
   Widget _buildBookingCard(BookingData booking) {
@@ -217,7 +206,8 @@ class ChatBubble extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF36e27b).withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF36e27b).withValues(alpha: 0.3)),
+        border:
+            Border.all(color: const Color(0xFF36e27b).withValues(alpha: 0.3)),
       ),
       child: Row(
         children: [
@@ -286,7 +276,8 @@ class ChatBubble extends StatelessWidget {
                   ? Image.network(
                       part.imageUrl,
                       fit: BoxFit.contain,
-                      errorBuilder: (_, __, ___) => const Icon(Icons.memory, color: Colors.grey),
+                      errorBuilder: (_, __, ___) =>
+                          const Icon(Icons.memory, color: Colors.grey),
                     )
                   : const Icon(Icons.memory, color: Colors.grey),
             ),
@@ -348,5 +339,41 @@ class ChatBubble extends StatelessWidget {
     final hour = time.hour > 12 ? time.hour - 12 : time.hour;
     final period = time.hour >= 12 ? 'PM' : 'AM';
     return '${hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')} $period';
+  }
+
+  Widget _buildMessageImage(String imageUrl) {
+    if (imageUrl.startsWith('http')) {
+      return Image.network(
+        imageUrl,
+        height: 150,
+        width: double.infinity,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => Container(
+          height: 100,
+          color: Colors.black26,
+          child: const Icon(Icons.image_not_supported, color: Colors.white54),
+        ),
+      );
+    } else {
+      try {
+        return Image.memory(
+          base64Decode(imageUrl),
+          height: 150,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => Container(
+            height: 100,
+            color: Colors.black26,
+            child: const Icon(Icons.image_not_supported, color: Colors.white54),
+          ),
+        );
+      } catch (e) {
+        return Container(
+          height: 100,
+          color: Colors.black26,
+          child: const Icon(Icons.broken_image, color: Colors.white54),
+        );
+      }
+    }
   }
 }

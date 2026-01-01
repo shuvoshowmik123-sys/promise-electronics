@@ -120,8 +120,9 @@ class RepairProvider with ChangeNotifier {
     notifyListeners();
 
     try {
+      // POST to /api/service-requests (not /api/customer/service-requests which is GET-only)
       final response = await _apiClient.post(
-        ApiConfig.userServiceRequestsEndpoint,
+        ApiConfig.serviceRequestsEndpoint,
         data: data,
       );
 

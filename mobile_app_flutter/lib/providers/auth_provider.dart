@@ -275,8 +275,9 @@ class AuthProvider with ChangeNotifier {
     if (result.isSuccess && result.data != null) {
       _user = result.data;
       notifyListeners();
-    } else if (result.error == 'Session expired') {
-      // Session expired, logout
+    } else if (result.error?.contains('log in') == true ||
+        result.error?.contains('session') == true) {
+      // Session expired or needs re-authentication, logout
       await logout();
     }
   }
