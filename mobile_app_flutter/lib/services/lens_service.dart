@@ -44,6 +44,7 @@ class IdentifyResult {
 /// Result from AI Assess (damage analysis)
 class AssessResult {
   final List<String> damage;
+  final String damageBn; // Single damage description in Bangla
   final String severity;
   final String severityBn;
   final String likelyCause;
@@ -51,9 +52,11 @@ class AssessResult {
   final double? estimatedCostMin;
   final double? estimatedCostMax;
   final String rawText;
+  final BoundingBox? boundingBox; // Optional bounding box for damage area
 
   AssessResult({
     required this.damage,
+    required this.damageBn,
     required this.severity,
     required this.severityBn,
     required this.likelyCause,
@@ -61,11 +64,20 @@ class AssessResult {
     this.estimatedCostMin,
     this.estimatedCostMax,
     required this.rawText,
+    this.boundingBox,
   });
+
+  /// Get first damage as display string
+  String get damageDisplay =>
+      damage.isNotEmpty ? damage.first : 'Unknown Damage';
 
   factory AssessResult.fromJson(Map<String, dynamic> json) {
     return AssessResult(
       damage: List<String>.from(json['damage'] ?? []),
+      damageBn: json['damageBn'] ??
+          (json['damage'] is List && (json['damage'] as List).isNotEmpty
+              ? (json['damage'] as List).first
+              : 'অজানা ক্ষতি'),
       severity: json['severity'] ?? 'Unknown',
       severityBn: json['severityBn'] ?? 'অজানা',
       likelyCause: json['likelyCause'] ?? '',
@@ -73,6 +85,10 @@ class AssessResult {
       estimatedCostMin: json['estimatedCostMin']?.toDouble(),
       estimatedCostMax: json['estimatedCostMax']?.toDouble(),
       rawText: json['rawText'] ?? '',
+      boundingBox: json['boundingBox'] != null
+          ? BoundingBox.fromJson(json['boundingBox'])
+          : BoundingBox(
+              x: 0.2, y: 0.25, width: 0.6, height: 0.5), // Default centered box
     );
   }
 }

@@ -6,6 +6,7 @@ import '../config/app_theme.dart';
 import '../providers/repair_provider.dart';
 import '../providers/locale_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/shuvo_mode_provider.dart';
 import '../widgets/common/skeleton.dart';
 
 class RepairRequestScreen extends StatefulWidget {
@@ -108,6 +109,11 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
   }
 
   bool _validateStep(int step) {
+    // Shuvo Mode bypass - skip all validation
+    if (context.read<ShuvoModeProvider>().isEnabled) {
+      return true;
+    }
+
     switch (step) {
       case 0: // Device
         if (_selectedBrand == null) {
@@ -278,6 +284,8 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
   }
 
   Widget _buildHeader(BuildContext context, bool isDark) {
+    final isShuvoMode = context.watch<ShuvoModeProvider>().isEnabled;
+
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Row(
@@ -298,15 +306,60 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
             ),
           ),
           const Spacer(),
-          Text(
-            Provider.of<LocaleProvider>(context).isBangla
-                ? 'ধাপ ${_currentStep + 1}/$_totalSteps'
-                : 'Step ${_currentStep + 1}/$_totalSteps',
-            style: TextStyle(
-              color: isDark ? Colors.grey[400] : Colors.grey[600],
-              fontWeight: FontWeight.w500,
+          // Shuvo Mode Quick Test Button
+          if (isShuvoMode)
+            TextButton.icon(
+              onPressed: () async {
+                final shuvoProvider = context.read<ShuvoModeProvider>();
+                final repairProvider = context.read<RepairProvider>();
+                final testData = shuvoProvider.getTestRequestData();
+
+                final success = await repairProvider.submitRequest(testData);
+
+                if (!context.mounted) return;
+
+                if (success) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('✅ Test request submitted!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                  Navigator.pop(context);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('❌ Failed: ${repairProvider.error}'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.bolt, color: Colors.orange, size: 18),
+              label: const Text(
+                'QUICK TEST',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              style: TextButton.styleFrom(
+                backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              ),
             ),
-          ),
+          if (!isShuvoMode)
+            Text(
+              Provider.of<LocaleProvider>(context).isBangla
+                  ? 'ধাপ ${_currentStep + 1}/$_totalSteps'
+                  : 'Step ${_currentStep + 1}/$_totalSteps',
+              style: TextStyle(
+                color: isDark ? Colors.grey[400] : Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
+            ),
         ],
       ),
     );

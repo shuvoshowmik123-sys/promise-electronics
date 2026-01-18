@@ -8,6 +8,8 @@ import {
   Sheet,
   SheetContent,
   SheetTrigger,
+  SheetHeader,
+  SheetTitle,
 } from "@/components/ui/sheet";
 import {
   DropdownMenu,
@@ -183,9 +185,9 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
                 </SheetTrigger>
                 <SheetContent side="right">
                   <div className="flex flex-col h-full">
-                    <div className="mb-4">
-                      <h2 className="text-xl font-heading font-bold text-primary">PROMISE<span className="text-foreground">ELECTRONICS</span></h2>
-                    </div>
+                    <SheetHeader className="mb-4 text-left">
+                      <SheetTitle className="text-xl font-heading font-bold text-primary">PROMISE<span className="text-foreground">ELECTRONICS</span></SheetTitle>
+                    </SheetHeader>
 
                     {!isAuthenticated && (
                       <Button className="w-full mb-4" onClick={() => setShowAuthModal(true)} data-testid="button-mobile-signin">

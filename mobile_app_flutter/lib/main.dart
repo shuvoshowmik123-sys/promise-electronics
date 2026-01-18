@@ -12,6 +12,8 @@ import 'providers/repair_provider.dart';
 import 'providers/locale_provider.dart';
 import 'providers/address_provider.dart';
 import 'providers/hot_deals_provider.dart';
+import 'providers/shuvo_mode_provider.dart';
+import 'providers/notification_provider.dart';
 import 'screens/splash_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
@@ -26,6 +28,8 @@ import 'screens/saved_addresses_screen.dart';
 import 'screens/maintenance_screen.dart';
 import 'screens/daktar_lens_screen.dart';
 import 'screens/order_history_screen.dart';
+import 'screens/shuvo_mode_screen.dart';
+import 'screens/notifications_screen.dart';
 import 'widgets/promo_popup.dart';
 
 void main() async {
@@ -79,6 +83,8 @@ class TVDaktarApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => RepairProvider()),
         ChangeNotifierProvider(create: (_) => AddressProvider()),
         ChangeNotifierProvider(create: (_) => HotDealsProvider()),
+        ChangeNotifierProvider(create: (_) => ShuvoModeProvider()),
+        ChangeNotifierProvider(create: (_) => NotificationProvider()),
       ],
       child: Consumer3<ThemeProvider, AppSettingsProvider, LocaleProvider>(
         builder: (context, themeProvider, appSettings, localeProvider, child) {
@@ -138,6 +144,8 @@ class TVDaktarApp extends StatelessWidget {
               '/profile': (context) => const ProfileScreen(),
               '/saved-addresses': (context) => const SavedAddressesScreen(),
               '/order-history': (context) => const OrderHistoryScreen(),
+              '/shuvo-mode': (context) => const ShuvoModeScreen(),
+              '/notifications': (context) => const NotificationsScreen(),
             },
           );
         },

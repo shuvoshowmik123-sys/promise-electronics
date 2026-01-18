@@ -149,8 +149,12 @@ app.use((req, res, next) => {
 });
 
 import { aiErrorHandler } from "./routes/middleware/ai-logger.js";
+import { setupSwagger } from "./swagger.js";
 
 export async function createApp() {
+    // Setup Swagger API documentation
+    setupSwagger(app);
+
     await registerRoutes(httpServer, app);
 
     // Register AI Error Handler last

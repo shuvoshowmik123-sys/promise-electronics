@@ -17,6 +17,7 @@ import '../providers/cart_provider.dart';
 import '../repositories/inventory_repository.dart';
 import '../widgets/shop/product_details_sheet.dart';
 import '../widgets/auth_guard.dart';
+import '../providers/notification_provider.dart';
 
 /// New Home Screen with edge-to-edge hero design
 /// Supports light and dark mode
@@ -55,6 +56,8 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
       }
       // Fetch hot deals
       context.read<HotDealsProvider>().fetchHotDeals();
+      // Fetch notification count
+      context.read<NotificationProvider>().fetchUnreadCount();
     });
   }
 
@@ -365,50 +368,62 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
                 ),
 
                 // Notification Bell
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color:
-                        isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
-                    shape: BoxShape.circle,
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.05),
-                        blurRadius: 8,
-                      ),
-                    ],
-                  ),
-                  child: Stack(
-                    children: [
-                      Center(
-                        child: Icon(
-                          Icons.notifications_outlined,
+                GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    Navigator.pushNamed(context, '/notifications');
+                  },
+                  child: Consumer<NotificationProvider>(
+                    builder: (context, notifProvider, _) {
+                      return Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
                           color: isDark
-                              ? AppColors.textMainDark
-                              : AppColors.textMainLight,
-                          size: 22,
-                        ),
-                      ),
-                      Positioned(
-                        right: 10,
-                        top: 10,
-                        child: Container(
-                          width: 8,
-                          height: 8,
-                          decoration: BoxDecoration(
-                            color: AppColors.coralRed,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: isDark
-                                  ? AppColors.surfaceDark
-                                  : AppColors.surfaceLight,
-                              width: 2,
+                              ? AppColors.surfaceDark
+                              : AppColors.surfaceLight,
+                          shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 8,
                             ),
-                          ),
+                          ],
                         ),
-                      ),
-                    ],
+                        child: Stack(
+                          children: [
+                            Center(
+                              child: Icon(
+                                Icons.notifications_outlined,
+                                color: isDark
+                                    ? AppColors.textMainDark
+                                    : AppColors.textMainLight,
+                                size: 22,
+                              ),
+                            ),
+                            if (notifProvider.hasUnread)
+                              Positioned(
+                                right: 10,
+                                top: 10,
+                                child: Container(
+                                  width: 8,
+                                  height: 8,
+                                  decoration: BoxDecoration(
+                                    color: AppColors.coralRed,
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: isDark
+                                          ? AppColors.surfaceDark
+                                          : AppColors.surfaceLight,
+                                      width: 2,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],

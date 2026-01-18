@@ -15,6 +15,24 @@ export const DUE_STATUSES = ["Pending", "Overdue", "Paid"] as const;
 export const PAYMENT_METHODS = ["Cash", "Bank", "bKash", "Nagad", "Due"] as const;
 export const PAYMENT_STATUSES = ["Paid", "Due"] as const;
 
+export const TV_BRANDS = [
+  "Sony", "Samsung", "LG", "Walton", "Singer", "Vision", "Minister",
+  "MyOne", "Jamuna", "Haier", "Hisense", "TCL", "Panasonic", "Xiaomi",
+  "Videocon", "General", "Sharp", "Toshiba", "Philips", "Hitachi",
+  "Rangs", "Konka", "Nova", "Other"
+] as const;
+
+export const ISSUE_TYPES = [
+  "Display Issue",
+  "Power Issue",
+  "Sound Issue",
+  "Connectivity Issue",
+  "Physical Damage",
+  "Software Issue",
+  "Remote Issue",
+  "Other"
+] as const;
+
 // Session Table (Managed by connect-pg-simple, but defined here to prevent Drizzle from dropping it)
 export const userSessions = pgTable("user_sessions", {
   sid: text("sid").primaryKey(),
@@ -769,3 +787,68 @@ export const insertDeviceTokenSchema = createInsertSchema(deviceTokens).omit({
 });
 export type InsertDeviceToken = z.infer<typeof insertDeviceTokenSchema>;
 export type DeviceToken = typeof deviceTokens.$inferSelect;
+
+// AI Insights Table
+export const aiInsights = pgTable("ai_insights", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(), // 'red', 'green', 'blue'
+  title: text("title").notNull(),
+  content: text("content").notNull(),
+  actionableStep: text("actionable_step"),
+  isRead: boolean("is_read").default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertAiInsightSchema = createInsertSchema(aiInsights).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAiInsight = z.infer<typeof insertAiInsightSchema>;
+export type AiInsight = typeof aiInsights.$inferSelect;
+
+// Diagnosis Training Data
+export const diagnosisTrainingData = pgTable("diagnosis_training_data", {
+  id: serial("id").primaryKey(),
+  jobId: text("job_id").references(() => jobTickets.id),
+  customerChatSummary: text("customer_chat_summary"),
+  aiPrediction: text("ai_prediction"),
+  actualIssue: text("actual_issue"),
+  wasAccurate: boolean("was_accurate"),
+  feedbackNotes: text("feedback_notes"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+
+
+export const aiDebugSuggestions = pgTable("ai_debug_suggestions", {
+  id: serial("id").primaryKey(),
+  error: text("error").notNull(),
+  stackTrace: text("stack_trace"),
+  suggestion: text("suggestion"),
+  status: text("status").default("NEEDS_REVIEW"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+
+export const insertDiagnosisTrainingDataSchema = createInsertSchema(diagnosisTrainingData).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertDiagnosisTrainingData = z.infer<typeof insertDiagnosisTrainingDataSchema>;
+export type DiagnosisTrainingData = typeof diagnosisTrainingData.$inferSelect;
+
+// AI Query Log (lightweight)
+export const aiQueryLog = pgTable("ai_query_log", {
+  id: serial("id").primaryKey(),
+  userId: text("user_id").references(() => users.id),
+  queryType: text("query_type"),
+  wasSuccessful: boolean("was_successful").default(true),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const insertAiQueryLogSchema = createInsertSchema(aiQueryLog).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertAiQueryLog = z.infer<typeof insertAiQueryLogSchema>;
+export type AiQueryLog = typeof aiQueryLog.$inferSelect;

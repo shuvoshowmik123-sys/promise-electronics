@@ -56,7 +56,7 @@ class ChatMessage {
     return ChatMessage(
       id: 'welcome',
       role: MessageRole.assistant,
-      content: 'Assalamu Alaikum! Ami Daktar Vai. TV niye kono pera nicchen? 📺',
+      content: 'Assalamu Alaikum Sir! Ami Daktar Vai. TV niye kono problem face korchen? 📺',
       quickReplies: ['Broken Screen', "Won't Turn On", 'Need Spare Parts'],
     );
   }

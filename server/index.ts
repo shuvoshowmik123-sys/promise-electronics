@@ -3,12 +3,16 @@ import { app, httpServer, createApp, log } from "./app";
 import { serveStatic } from "./static";
 import { seedSuperAdmin } from "./seed";
 import { Request, Response, NextFunction } from "express";
+import { aiErrorHandler } from "./middleware/ai-error-handler";
 
 (async () => {
   // Seed super admin if not exists
   await seedSuperAdmin();
 
   await createApp();
+
+  // AI Error Handler (Module C)
+  app.use(aiErrorHandler);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

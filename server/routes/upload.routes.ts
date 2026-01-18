@@ -9,6 +9,7 @@ import { storage } from '../storage.js';
 import { v2 as cloudinary } from 'cloudinary';
 import { ObjectStorageService, ObjectNotFoundError } from '../objectStorage.js';
 import ImageKit from 'imagekit';
+import { uploadLimiter } from './middleware/rate-limit.js';
 
 const router = Router();
 
@@ -42,9 +43,9 @@ router.get('/api/upload/imagekit-auth', (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/imagekit/upload - Server-side upload
+ * POST /api/imagekit/upload - Server-side upload (rate limited - 20/hour)
  */
-router.post('/api/imagekit/upload', async (req: Request, res: Response) => {
+router.post('/api/imagekit/upload', uploadLimiter, async (req: Request, res: Response) => {
     try {
         if (!process.env.IMAGEKIT_PRIVATE_KEY) {
             return res.status(503).json({

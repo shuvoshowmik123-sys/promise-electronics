@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -58,19 +59,34 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
       final args =
           ModalRoute.of(context)?.settings.arguments as Map<String, dynamic>?;
       debugPrint('DaktarVaiScreen: args = $args');
-      if (args != null && args['message'] != null) {
-        _hasInitialMessage = true;
-        final message = args['message'] as String;
-        final imageUrl = args['imageUrl'] as String?;
-        debugPrint(
-            'DaktarVaiScreen: Sending message: $message, imageUrl: $imageUrl');
 
-        // Add message to chat
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          final chatProvider =
-              Provider.of<ChatProvider>(context, listen: false);
-          chatProvider.sendMessage(message, imageBase64: imageUrl);
-        });
+      if (args != null) {
+        _hasInitialMessage = true;
+
+        // Handle message from Lens screen or other sources
+        String? message = args['message'] as String?;
+        String? imageBase64 = args['imageBase64'] as String?;
+        String? imageUrl = args['imageUrl'] as String?;
+
+        // Build message from diagnosis if not provided
+        if (message == null && args['diagnosis'] != null) {
+          final diagnosis = args['diagnosis'] as Map<String, dynamic>;
+          message = 'Daktar er Lens থেকে স্ক্যান: ${diagnosis['label']}';
+        }
+
+        if (message != null && message.isNotEmpty) {
+          debugPrint(
+              'DaktarVaiScreen: Sending message: $message, hasImage: ${imageBase64 != null || imageUrl != null}');
+
+          // Add message to chat
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final chatProvider =
+                Provider.of<ChatProvider>(context, listen: false);
+            // Prefer base64 from Lens, fallback to imageUrl
+            chatProvider.sendMessage(message!,
+                imageBase64: imageBase64 ?? imageUrl);
+          });
+        }
       }
     }
   }
@@ -293,11 +309,62 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 80,
+        imageQuality: 50, // Lower quality for smaller file size
+        maxWidth: 1024, // Max 1024px width (important for Gemini limits)
+        maxHeight: 1024, // Max 1024px height
       );
 
       if (image != null && mounted) {
-        _handleSelectedImage(image.path);
+        // Read bytes directly from XFile (works on web!)
+        final bytes = await image.readAsBytes();
+
+        // Check if image is still too large (max ~4MB for Gemini)
+        final imageSizeKB = bytes.length / 1024;
+        debugPrint('Gallery: Image size: ${imageSizeKB.toStringAsFixed(0)} KB');
+
+        if (bytes.length > 4 * 1024 * 1024) {
+          // Image is over 4MB, warn user
+          debugPrint(
+              'Gallery: Image too large! ${imageSizeKB.toStringAsFixed(0)} KB');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                Provider.of<LocaleProvider>(context, listen: false).isBangla
+                    ? 'ছবি খুব বড়। ছোট ছবি নির্বাচন করুন।'
+                    : 'Image too large. Please select a smaller image.',
+              ),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          return;
+        }
+
+        final base64Image = base64Encode(bytes);
+
+        debugPrint(
+            'Gallery: Image base64 length: ${base64Image.length} chars (~${(base64Image.length * 0.75 / 1024).toStringAsFixed(0)} KB)');
+
+        final chatProvider = context.read<ChatProvider>();
+        chatProvider.sendMessage(
+          Provider.of<LocaleProvider>(context, listen: false).isBangla
+              ? 'এই ছবিটি দেখুন'
+              : 'Please look at this image',
+          imageBase64: base64Image,
+        );
+
+        _scrollToBottom();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              Provider.of<LocaleProvider>(context, listen: false).isBangla
+                  ? 'ছবি পাঠানো হয়েছে'
+                  : 'Image sent',
+            ),
+            backgroundColor: AppColors.primary,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
       }
     } catch (e) {
       debugPrint('Gallery pick error: $e');
@@ -315,31 +382,49 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
     }
   }
 
-  /// Handle selected image - send to chat
-  void _handleSelectedImage(String imagePath) {
-    final chatProvider = context.read<ChatProvider>();
-
-    // Send message with image
-    chatProvider.sendMessageWithImage(
-      Provider.of<LocaleProvider>(context, listen: false).isBangla
-          ? 'এই ছবিটি দেখুন'
-          : 'Please look at this image',
-      imagePath,
-    );
-
-    _scrollToBottom();
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
+  /// Handle selected image from camera - send to chat
+  void _handleSelectedImage(String imagePath) async {
+    try {
+      // On mobile, we can read the file
+      if (!kIsWeb) {
+        final chatProvider = context.read<ChatProvider>();
+        chatProvider.sendMessageWithImage(
           Provider.of<LocaleProvider>(context, listen: false).isBangla
-              ? 'ছবি পাঠানো হয়েছে'
-              : 'Image sent',
+              ? 'এই ছবিটি দেখুন'
+              : 'Please look at this image',
+          imagePath,
+        );
+      } else {
+        // On web, camera returns XFile path which we can't read directly
+        debugPrint('Web platform: camera image handling not supported');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              Provider.of<LocaleProvider>(context, listen: false).isBangla
+                  ? 'ওয়েবে ক্যামেরা সাপোর্ট নেই, গ্যালারি ব্যবহার করুন'
+                  : 'Camera not supported on web, use gallery',
+            ),
+          ),
+        );
+        return;
+      }
+
+      _scrollToBottom();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            Provider.of<LocaleProvider>(context, listen: false).isBangla
+                ? 'ছবি পাঠানো হয়েছে'
+                : 'Image sent',
+          ),
+          backgroundColor: AppColors.primary,
+          behavior: SnackBarBehavior.floating,
         ),
-        backgroundColor: AppColors.primary,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+      );
+    } catch (e) {
+      debugPrint('Error handling image: $e');
+    }
   }
 
   @override
@@ -636,11 +721,7 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
                     const SizedBox(height: 8),
                     ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.network(
-                        message.imageUrl!,
-                        fit: BoxFit.cover,
-                        height: 180,
-                      ),
+                      child: _buildMessageImage(message.imageUrl!),
                     ),
                   ],
                 ],
@@ -651,6 +732,72 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
           if (isUser) const SizedBox(width: 40),
         ],
       ),
+    );
+  }
+
+  /// Build image widget - handles both network URLs and base64 data
+  Widget _buildMessageImage(String imageData) {
+    // Check if it's base64 data (no http prefix and looks like base64)
+    final isBase64 = !imageData.startsWith('http') &&
+        !imageData.startsWith('file://') &&
+        imageData.length > 100; // Base64 images are long
+
+    if (isBase64) {
+      try {
+        // Remove data URL prefix if present
+        String base64String = imageData;
+        if (imageData.contains(',')) {
+          base64String = imageData.split(',').last;
+        }
+
+        final bytes = base64Decode(base64String);
+        return Image.memory(
+          bytes,
+          fit: BoxFit.cover,
+          height: 180,
+          width: double.infinity,
+          errorBuilder: (context, error, stackTrace) {
+            debugPrint('Error loading base64 image: $error');
+            return Container(
+              height: 100,
+              color: Colors.grey[300],
+              child: const Center(child: Icon(Icons.broken_image)),
+            );
+          },
+        );
+      } catch (e) {
+        debugPrint('Error decoding base64 image: $e');
+        return Container(
+          height: 100,
+          color: Colors.grey[300],
+          child: const Center(child: Icon(Icons.broken_image)),
+        );
+      }
+    }
+
+    // Network image
+    return Image.network(
+      imageData,
+      fit: BoxFit.cover,
+      height: 180,
+      width: double.infinity,
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          height: 100,
+          color: Colors.grey[300],
+          child: const Center(child: Icon(Icons.broken_image)),
+        );
+      },
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) return child;
+        return Container(
+          height: 180,
+          color: Colors.grey[200],
+          child: const Center(
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      },
     );
   }
 

@@ -29,6 +29,24 @@ const router = Router();
 router.get('/api/admin/dashboard', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const stats = await storage.getDashboardStats();
+
+        // Check permissions to mask financial data
+        if (req.session.adminUserId) {
+            const user = await storage.getUser(req.session.adminUserId);
+            if (user) {
+                const permissions = user.permissions ? JSON.parse(user.permissions) : {};
+                const defaultPermissions = getDefaultPermissions(user.role);
+                const effectivePermissions = Object.keys(permissions).length > 0 ? permissions : defaultPermissions;
+
+                if (!effectivePermissions.finance) {
+                    // Mask financial data for non-finance users (e.g. Technicians)
+                    stats.totalRevenue = 0;
+                    stats.revenueChange = 0;
+                    stats.weeklyRevenue = stats.weeklyRevenue.map(d => ({ ...d, revenue: 0 }));
+                }
+            }
+        }
+
         res.json(stats);
     } catch (error) {
         console.error('Dashboard stats error:', error);

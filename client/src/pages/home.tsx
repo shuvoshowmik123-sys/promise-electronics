@@ -8,9 +8,10 @@ import { images } from "@/lib/mock-data";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence, useInView, useMotionValue, useTransform, animate } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { settingsApi, inventoryApi, reviewsApi } from "@/lib/api";
+import { settingsApi, inventoryApi, reviewsApi, customerServiceRequestsApi, shopOrdersApi } from "@/lib/api";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { formatDistanceToNow } from "date-fns";
 
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
@@ -65,6 +66,87 @@ export default function HomePage() {
   const [trackTicket, setTrackTicket] = useState("");
   const [, setLocation] = useLocation();
   const { customer } = useCustomerAuth();
+
+  const { data: serviceRequests = [] } = useQuery({
+    queryKey: ["customer-service-requests"],
+    queryFn: () => customerServiceRequestsApi.getAll(),
+    enabled: !!customer,
+  });
+
+  const { data: customerOrders = [] } = useQuery({
+    queryKey: ["customer-orders"],
+    queryFn: () => shopOrdersApi.getAll(),
+    enabled: !!customer,
+  });
+
+  const recentActivities = useMemo(() => {
+    const activities: {
+      id: string;
+      type: 'order' | 'repair';
+      title: string;
+      status: string;
+      date: string | Date;
+      message: string;
+      link: string;
+    }[] = [];
+
+    // Add Service Requests
+    serviceRequests.forEach(req => {
+      activities.push({
+        id: req.id,
+        type: 'repair',
+        title: `Repair Service`,
+        status: req.trackingStatus,
+        date: req.createdAt,
+        message: `${req.brand} ${req.modelNumber || ''} - ${req.trackingStatus}`,
+        link: `/native/repair/${req.id}`
+      });
+    });
+
+    // Add Orders
+    customerOrders.forEach(order => {
+      activities.push({
+        id: order.id,
+        type: 'order',
+        title: `Order #${order.orderNumber || order.id.slice(0, 8)}`,
+        status: order.status,
+        date: order.createdAt,
+        message: `${order.items?.length || 0} items - ${order.status}`,
+        link: `/customer/orders/${order.id}` // Assuming this route exists, otherwise generic /shop
+      });
+    });
+
+    // Sort by Date Descending
+    return activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
+  }, [serviceRequests, customerOrders]);
+
+  const activeTicket = useMemo(() => {
+    if (!serviceRequests.length) return null;
+    // Prioritize active statuses
+    const active = serviceRequests.find(req =>
+      !["Closed", "Cancelled", "Delivered", "Completed"].includes(req.status) &&
+      !["Delivered", "Cancelled"].includes(req.trackingStatus)
+    );
+    // If no active, maybe show the most recent one? For now, let's show the most recent active one.
+    return active || null;
+  }, [serviceRequests]);
+
+  const mapStatusToCardStatus = (status: string): "received" | "diagnosing" | "repairing" | "ready" => {
+    const s = status.toLowerCase();
+    if (s.includes("diagn") || s.includes("assess")) return "diagnosing";
+    if (s.includes("repair") || s.includes("wait") || s.includes("part")) return "repairing";
+    if (s.includes("ready") || s.includes("deliver")) return "ready";
+    return "received";
+  };
+
+  const calculateProgress = (status: string): number => {
+    const s = status.toLowerCase();
+    if (s.includes("request") || s.includes("arriv") || s.includes("receiv")) return 25;
+    if (s.includes("diagn") || s.includes("assess")) return 50;
+    if (s.includes("repair") || s.includes("wait") || s.includes("part")) return 75;
+    if (s.includes("ready")) return 100;
+    return 10;
+  };
 
   const handleTrack = () => {
     if (trackTicket.trim()) {
@@ -496,8 +578,20 @@ export default function HomePage() {
             </Link>
           </div>
 
-          {/* Active Repair Card (Mock Data for now) */}
-          <ActiveRepairCard />
+          {/* Active Repair Card (Real Data) */}
+          {activeTicket ? (
+            <Link href={`/native/repair/${activeTicket.id}`}>
+              <ActiveRepairCard
+                device={`${activeTicket.brand} ${activeTicket.modelNumber || ''}`}
+                ticketId={activeTicket.ticketNumber || activeTicket.id}
+                status={mapStatusToCardStatus(activeTicket.trackingStatus)}
+                progress={calculateProgress(activeTicket.trackingStatus)}
+              />
+            </Link>
+          ) : (
+            // Fallback or Empty State (Optional: Only show if we want to prompt them)
+            null
+          )}
 
           {/* Quick Actions */}
           <QuickActionsGrid />
@@ -506,22 +600,33 @@ export default function HomePage() {
           <div className="mb-6">
 
             <h3 className="text-lg font-bold text-slate-800 mb-3">Recent Updates</h3>
-            <ScrollableList className="flex gap-4 pb-4 -mx-4 px-4">
-              {[1, 2, 3].map((i) => (
-                <div key={i} className="min-w-[240px] bg-slate-100 rounded-xl p-4 shadow-neumorph">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center">
-                      <CheckCircle2 className="w-4 h-4" />
+            {recentActivities.length > 0 ? (
+              <ScrollableList className="flex gap-4 pb-4 -mx-4 px-4">
+                {recentActivities.map((activity) => (
+                  <Link key={`${activity.type}-${activity.id}`} href={activity.link}>
+                    <div className="min-w-[240px] bg-slate-100 rounded-xl p-4 shadow-neumorph shrink-0">
+                      <div className="flex items-center gap-3 mb-2">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${activity.type === 'repair' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
+                          }`}>
+                          {activity.type === 'repair' ? <Wrench className="w-4 h-4" /> : <Package className="w-4 h-4" />}
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-700">{activity.title}</p>
+                          <p className="text-[10px] text-slate-500">
+                            {formatDistanceToNow(new Date(activity.date), { addSuffix: true })}
+                          </p>
+                        </div>
+                      </div>
+                      <p className="text-sm text-slate-600 line-clamp-2">{activity.message}</p>
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-700">Order Delivered</p>
-                      <p className="text-[10px] text-slate-500">2 hours ago</p>
-                    </div>
-                  </div>
-                  <p className="text-sm text-slate-600">Your spare parts order #ORD-{8820 + i} has been delivered.</p>
-                </div>
-              ))}
-            </ScrollableList>
+                  </Link>
+                ))}
+              </ScrollableList>
+            ) : (
+              <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+                <p className="text-slate-500 text-sm">No recent activity</p>
+              </div>
+            )}
           </div>
 
           {/* Problem-Based Navigation (Mobile) */}

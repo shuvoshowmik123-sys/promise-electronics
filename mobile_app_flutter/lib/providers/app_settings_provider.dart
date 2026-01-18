@@ -245,12 +245,14 @@ class AppSettingsProvider with ChangeNotifier {
       final url = ApiConfig.mobileSettingsEndpoint;
       debugPrint('[Settings] Fetching from: $url');
 
-      final response = await http
-          .get(
-            Uri.parse(url),
-            headers: ApiConfig.headers,
-          )
-          .timeout(const Duration(seconds: 10));
+      // Use Dio via http package for web compatibility
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+        },
+      ).timeout(const Duration(seconds: 15)); // Increased timeout
 
       debugPrint('[Settings] Response status: ${response.statusCode}');
 

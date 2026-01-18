@@ -19,6 +19,7 @@ import {
     notifyAdminUpdate,
     notifyCustomerUpdate
 } from './middleware/sse-broker.js';
+import { authLimiter, registrationLimiter } from './middleware/rate-limit.js';
 import { z } from 'zod';
 
 const router = Router();
@@ -30,7 +31,7 @@ const router = Router();
 /**
  * POST /api/customer/register - Register new customer
  */
-router.post('/api/customer/register', async (req: Request, res: Response) => {
+router.post('/api/customer/register', registrationLimiter, async (req: Request, res: Response) => {
     try {
         const validated = customerRegisterSchema.parse(req.body);
 
@@ -79,7 +80,7 @@ router.post('/api/customer/register', async (req: Request, res: Response) => {
 /**
  * POST /api/customer/login - Customer login
  */
-router.post('/api/customer/login', async (req: Request, res: Response) => {
+router.post('/api/customer/login', authLimiter, async (req: Request, res: Response) => {
     try {
         const validated = customerLoginSchema.parse(req.body);
 

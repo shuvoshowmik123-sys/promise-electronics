@@ -1,4 +1,4 @@
-import { Monitor, Wrench, ShoppingCart, ShoppingBag, Users, Users2, BarChart3, ClipboardList, FileText, Package, Truck, DollarSign, HardHat, Settings, MessageSquare, UserCheck, Activity } from "lucide-react";
+import { Monitor, Wrench, ShoppingCart, ShoppingBag, Users, Users2, BarChart3, ClipboardList, FileText, Package, Truck, DollarSign, HardHat, Settings, MessageSquare, UserCheck, Activity, ShieldAlert } from "lucide-react";
 
 // Placeholder images - replace with actual images in production
 const heroImage = "https://images.unsplash.com/photo-1593642532400-2682810df593?w=800";
@@ -115,6 +115,7 @@ export const navItems = [
 export const adminNavItems = [
   { label: "Dashboard", href: "/admin", icon: BarChart3 },
   { label: "Overview", href: "/admin/overview", icon: Activity },
+  { label: "System Health", href: "/admin/system-health", icon: ShieldAlert },
   { label: "Service Requests", href: "/admin/service-requests", icon: MessageSquare },
   { label: "Pickup Schedule", href: "/admin/pickup-schedule", icon: Truck },
   { label: "Shop Orders", href: "/admin/orders", icon: ShoppingBag },

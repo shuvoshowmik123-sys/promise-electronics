@@ -8,6 +8,8 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { storage } from '../storage.js';
 import { adminLoginSchema, requireAdminAuth } from './middleware/auth.js';
+import { authLimiter } from './middleware/rate-limit.js';
+import { validateRequest } from './middleware/validation.js';
 import { z } from 'zod';
 
 const router = Router();
@@ -17,7 +19,28 @@ const router = Router();
 // ============================================
 
 /**
- * GET /api/admin/me - Get current admin user
+ * @openapi
+ * /api/admin/me:
+ *   get:
+ *     tags:
+ *       - Auth
+ *     summary: Get current admin user
+ *     description: Returns the currently authenticated admin user's profile
+ *     security:
+ *       - sessionAuth: []
+ *     responses:
+ *       200:
+ *         description: Current admin user
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Not authenticated
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
  */
 router.get('/api/admin/me', async (req: Request, res: Response) => {
     if (!req.session?.adminUserId) {
@@ -39,12 +62,53 @@ router.get('/api/admin/me', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/admin/login - Admin login
+ * @openapi
+ * /api/admin/login:
+ *   post:
+ *     tags:
+ *       - Auth
+ *     summary: Admin login
+ *     description: Authenticate an admin user and create a session
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required:
+ *               - username
+ *               - password
+ *             properties:
+ *               username:
+ *                 type: string
+ *                 description: Admin username
+ *                 example: admin
+ *               password:
+ *                 type: string
+ *                 description: Admin password
+ *                 example: password123
+ *     responses:
+ *       200:
+ *         description: Login successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/User'
+ *       401:
+ *         description: Invalid credentials
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Error'
+ *       403:
+ *         description: Account inactive
+ *       429:
+ *         description: Too many login attempts
  */
-router.post('/api/admin/login', async (req: Request, res: Response) => {
+router.post('/api/admin/login', authLimiter, validateRequest(adminLoginSchema), async (req: Request, res: Response) => {
     try {
         console.log('Admin login attempt for:', req.body.username);
-        const { username, password } = adminLoginSchema.parse(req.body);
+        const { username, password } = req.body;
         const user = await storage.getUserByUsername(username);
 
         if (!user) {
@@ -77,16 +141,33 @@ router.post('/api/admin/login', async (req: Request, res: Response) => {
         res.json(safeUser);
     } catch (error: any) {
         console.error('Admin login error:', error);
-        if (error instanceof z.ZodError) {
-            console.error('Validation error:', JSON.stringify(error.errors));
-            return res.status(400).json({ error: error.errors[0].message, details: error.errors });
-        }
-        res.status(400).json({ error: 'Invalid login data' });
+        res.status(500).json({ error: 'Internal server error' });
     }
 });
 
 /**
- * POST /api/admin/logout - Admin logout
+ * @openapi
+ * /api/admin/logout:
+ *   post:
+ *     tags:
+ *       - Auth
+ *     summary: Admin logout
+ *     description: Destroy the current admin session
+ *     security:
+ *       - sessionAuth: []
+ *     responses:
+ *       200:
+ *         description: Logout successful
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: Logged out successfully
+ *       500:
+ *         description: Logout failed
  */
 router.post('/api/admin/logout', (req: Request, res: Response) => {
     req.session.destroy((err) => {
@@ -99,3 +180,4 @@ router.post('/api/admin/logout', (req: Request, res: Response) => {
 });
 
 export default router;
+

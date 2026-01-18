@@ -1,5 +1,11 @@
 {
     "version": 2,
+    "crons": [
+        {
+            "path": "/api/ai/morning-brief",
+            "schedule": "0 3 * * *"
+        }
+    ],
     "rewrites": [
         {
             "source": "/api/(.*)",

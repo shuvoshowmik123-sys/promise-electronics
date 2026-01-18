@@ -9,6 +9,7 @@ import { storage } from '../storage.js';
 import { insertServiceRequestSchema } from '../../shared/schema.js';
 import { requireAdminAuth } from './middleware/auth.js';
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
+import { serviceRequestLimiter } from './middleware/rate-limit.js';
 
 const router = Router();
 
@@ -44,9 +45,9 @@ router.get('/api/service-requests/:id', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/service-requests - Create service request
+ * POST /api/service-requests - Create service request (rate limited - 10/hour)
  */
-router.post('/api/service-requests', async (req: Request, res: Response) => {
+router.post('/api/service-requests', serviceRequestLimiter, async (req: Request, res: Response) => {
     try {
         const validated = insertServiceRequestSchema.parse(req.body);
 

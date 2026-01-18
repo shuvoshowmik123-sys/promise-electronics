@@ -842,10 +842,16 @@ export const aiApi = {
       method: "POST",
       body: JSON.stringify({ image: base64Image }),
     }),
-  chat: (message: string, history: any[], image?: string) =>
+  chat: (message: string, history: any[], image?: string, modelType: 'customer' | 'admin' = 'customer') =>
     fetchApi<{ text: string; booking: any | null; ticketData?: any; error?: boolean; errorCode?: string }>("/ai/chat", {
       method: "POST",
-      body: JSON.stringify({ message, history, image }),
+      body: JSON.stringify({ message, history, image, modelType }),
+    }),
+  getDebugSuggestions: () => fetchApi<any[]>("/ai/debug-suggestions"),
+  updateDebugStatus: (id: number, status: string) =>
+    fetchApi<void>(`/ai/debug-suggestions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
     }),
 };
 

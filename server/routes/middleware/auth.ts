@@ -98,6 +98,35 @@ export async function requireSuperAdmin(req: Request, res: Response, next: NextF
 }
 
 /**
+ * Middleware to require a specific permission.
+ * Returns 403 if user does not have the required permission.
+ */
+export const requirePermission = (permission: string) => async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.session?.adminUserId) {
+        return res.status(401).json({ error: 'Admin authentication required' });
+    }
+
+    try {
+        const user = await storage.getUser(req.session.adminUserId);
+        if (!user) {
+            return res.status(401).json({ error: 'User not found' });
+        }
+
+        const permissions = user.permissions ? JSON.parse(user.permissions) : {};
+        // Fallback to default permissions if not set or empty
+        const effectivePermissions = Object.keys(permissions).length > 0 ? permissions : getDefaultPermissions(user.role);
+
+        if (!effectivePermissions[permission]) {
+            return res.status(403).json({ error: 'Access denied: Insufficient permissions' });
+        }
+        next();
+    } catch (error) {
+        console.error('Permission check error:', error);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+/**
  * Middleware to require customer authentication.
  * Supports both session-based and Google OAuth authentication.
  */

@@ -2,6 +2,7 @@ import { Switch, Route, useLocation } from "wouter";
 import { Suspense, lazy, memo } from "react";
 import { AdminLayoutShell } from "./AdminLayoutShell";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AdminAIChat } from "@/components/AdminAIChat";
 
 // Lazy load admin page CONTENTS (not full pages with layout)
 // These components will render without AdminLayout wrapper
@@ -22,6 +23,7 @@ const AdminCustomersPage = lazy(() => import("@/pages/admin/customers"));
 const AdminOverviewPage = lazy(() => import("@/pages/admin/overview"));
 const AdminPickupSchedulePage = lazy(() => import("@/pages/admin/pickup-schedule"));
 const AdminInquiriesPage = lazy(() => import("@/pages/admin/inquiries"));
+const SystemHealthPage = lazy(() => import("@/pages/admin/system-health"));
 
 // Loading skeleton for admin content - shown during page transitions
 function AdminContentSkeleton() {
@@ -61,6 +63,8 @@ const StableAdminShell = memo(function StableAdminShell({ children }: { children
     return <AdminLayoutShell>{children}</AdminLayoutShell>;
 });
 
+
+
 export function AdminRouter() {
     const [location] = useLocation();
 
@@ -85,8 +89,10 @@ export function AdminRouter() {
                     <Route path="/admin/overview" component={AdminOverviewPage} />
                     <Route path="/admin/pickup-schedule" component={AdminPickupSchedulePage} />
                     <Route path="/admin/inquiries" component={AdminInquiriesPage} />
+                    <Route path="/admin/system-health" component={SystemHealthPage} />
                 </Switch>
             </Suspense>
+            <AdminAIChat />
         </StableAdminShell>
     );
 }

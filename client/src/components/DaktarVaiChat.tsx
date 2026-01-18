@@ -27,21 +27,42 @@ export function DaktarVaiChat() {
     // Web Speech API
     const recognitionRef = useRef<any>(null);
 
+    const silenceTimer = useRef<NodeJS.Timeout | null>(null);
+
     useEffect(() => {
         if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
             const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
             recognitionRef.current = new SpeechRecognition();
-            recognitionRef.current.continuous = false;
-            recognitionRef.current.interimResults = false;
-            recognitionRef.current.lang = "bn-BD"; // Bengali (Bangladesh)
+            recognitionRef.current.continuous = true;
+            recognitionRef.current.interimResults = true;
+            recognitionRef.current.lang = "bn-BD";
 
             recognitionRef.current.onresult = (event: any) => {
-                const transcript = event.results[0][0].transcript;
-                setInput(transcript);
-                setIsListening(false);
+                if (silenceTimer.current) clearTimeout(silenceTimer.current);
+
+                let finalTranscript = "";
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
+                    }
+                }
+
+                if (finalTranscript) {
+                    setInput(prev => prev + " " + finalTranscript);
+                }
+
+                silenceTimer.current = setTimeout(() => {
+                    recognitionRef.current?.stop();
+                    setIsListening(false);
+                }, 3000);
             };
 
             recognitionRef.current.onerror = (event: any) => {
+                // Ignore benign errors
+                if (event.error === 'no-speech' || event.error === 'aborted') {
+                    setIsListening(false);
+                    return;
+                }
                 console.error("Speech recognition error", event.error);
                 setIsListening(false);
             };
@@ -50,12 +71,15 @@ export function DaktarVaiChat() {
                 setIsListening(false);
             };
         }
-    }, []);
+    }, []); // Run only once
 
     const toggleListening = () => {
         if (isListening) {
             recognitionRef.current?.stop();
+            if (silenceTimer.current) clearTimeout(silenceTimer.current);
+            setIsListening(false);
         } else {
+            setInput(""); // Clear previous input when starting new recording
             recognitionRef.current?.start();
             setIsListening(true);
         }
@@ -76,7 +100,7 @@ export function DaktarVaiChat() {
                 parts: [{ text: m.text }]
             }));
 
-            const response = await aiApi.chat(userMsg, history);
+            const response = await aiApi.chat(userMsg, history, undefined, 'customer');
 
             setMessages(prev => [...prev, { role: "model", text: response.text }]);
 
@@ -104,13 +128,33 @@ export function DaktarVaiChat() {
         }
     }, [messages, isOpen]);
 
+    // Click outside to close
+    const chatContainerRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (isOpen &&
+                chatContainerRef.current &&
+                !chatContainerRef.current.contains(event.target as Node) &&
+                !(event.target as Element).closest('button') // Prevent closing if clicking the toggle button
+            ) {
+                setIsOpen(false);
+            }
+        };
+
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [isOpen]);
+
     return (
         <>
             {/* Floating Button */}
             <Button
                 onClick={() => setIsOpen(!isOpen)}
                 className={cn(
-                    "fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50 transition-all duration-300",
+                    "fixed bottom-24 md:bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50 transition-all duration-300",
                     isOpen ? "rotate-90 bg-red-500 hover:bg-red-600" : "bg-blue-600 hover:bg-blue-700"
                 )}
             >
@@ -119,7 +163,7 @@ export function DaktarVaiChat() {
 
             {/* Chat Window */}
             {isOpen && (
-                <Card className="fixed bottom-24 right-6 w-[350px] h-[500px] shadow-xl z-50 flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-300 border-2 border-blue-100">
+                <Card ref={chatContainerRef} className="fixed bottom-24 right-6 w-[350px] h-[500px] shadow-xl z-50 flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-300 border-2 border-blue-100">
                     <CardHeader className="bg-blue-600 text-white rounded-t-lg py-3 px-4">
                         <CardTitle className="flex items-center gap-2 text-lg">
                             <Bot className="h-6 w-6" />

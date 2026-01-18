@@ -106,4 +106,64 @@ router.get('/api/customer/inquiries', requireCustomerAuth, async (req: Request, 
     }
 });
 
+// ============================================
+// Customer Notifications API
+// ============================================
+
+/**
+ * GET /api/customer/notifications - Get customer's notifications
+ */
+router.get('/api/customer/notifications', requireCustomerAuth, async (req: Request, res: Response) => {
+    try {
+        const notifications = await storage.getNotifications(req.session.customerId!);
+        res.json(notifications);
+    } catch (error) {
+        console.error('Get notifications error:', error);
+        res.status(500).json({ error: 'Failed to fetch notifications' });
+    }
+});
+
+/**
+ * GET /api/customer/notifications/unread-count - Get unread notification count
+ */
+router.get('/api/customer/notifications/unread-count', requireCustomerAuth, async (req: Request, res: Response) => {
+    try {
+        const notifications = await storage.getNotifications(req.session.customerId!);
+        const unreadCount = notifications.filter(n => !n.read).length;
+        res.json({ count: unreadCount });
+    } catch (error) {
+        console.error('Get unread count error:', error);
+        res.status(500).json({ error: 'Failed to fetch unread count' });
+    }
+});
+
+/**
+ * PATCH /api/customer/notifications/:id/read - Mark notification as read
+ */
+router.patch('/api/customer/notifications/:id/read', requireCustomerAuth, async (req: Request, res: Response) => {
+    try {
+        const updated = await storage.markNotificationAsRead(req.params.id);
+        if (!updated) {
+            return res.status(404).json({ error: 'Notification not found' });
+        }
+        res.json(updated);
+    } catch (error) {
+        console.error('Mark notification read error:', error);
+        res.status(500).json({ error: 'Failed to mark notification as read' });
+    }
+});
+
+/**
+ * POST /api/customer/notifications/mark-all-read - Mark all notifications as read
+ */
+router.post('/api/customer/notifications/mark-all-read', requireCustomerAuth, async (req: Request, res: Response) => {
+    try {
+        await storage.markAllNotificationsAsRead(req.session.customerId!);
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Mark all notifications read error:', error);
+        res.status(500).json({ error: 'Failed to mark all notifications as read' });
+    }
+});
+
 export default router;

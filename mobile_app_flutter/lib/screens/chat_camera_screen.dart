@@ -162,9 +162,11 @@ class _ChatCameraScreenState extends State<ChatCameraScreen>
       });
     } catch (e) {
       debugPrint('Capture error: $e');
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to capture image: $e')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to capture image: $e')),
+        );
+      }
     }
   }
 

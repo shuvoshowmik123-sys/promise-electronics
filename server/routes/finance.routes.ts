@@ -7,7 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { insertPettyCashRecordSchema } from '../../shared/schema.js';
-import { requireAdminAuth } from './middleware/auth.js';
+import { requireAdminAuth, requirePermission } from './middleware/auth.js';
 
 const router = Router();
 
@@ -18,7 +18,7 @@ const router = Router();
 /**
  * GET /api/petty-cash - Get all petty cash records
  */
-router.get('/api/petty-cash', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/petty-cash', requirePermission('finance'), async (req: Request, res: Response) => {
     try {
         const records = await storage.getAllPettyCashRecords();
         res.json(records);
@@ -30,7 +30,7 @@ router.get('/api/petty-cash', requireAdminAuth, async (req: Request, res: Respon
 /**
  * POST /api/petty-cash - Create petty cash record
  */
-router.post('/api/petty-cash', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/petty-cash', requirePermission('finance'), async (req: Request, res: Response) => {
     try {
         const validated = insertPettyCashRecordSchema.parse(req.body);
         const record = await storage.createPettyCashRecord(validated);
@@ -43,7 +43,7 @@ router.post('/api/petty-cash', requireAdminAuth, async (req: Request, res: Respo
 /**
  * DELETE /api/petty-cash/:id - Delete petty cash record
  */
-router.delete('/api/petty-cash/:id', requireAdminAuth, async (req: Request, res: Response) => {
+router.delete('/api/petty-cash/:id', requirePermission('finance'), async (req: Request, res: Response) => {
     try {
         const success = await storage.deletePettyCashRecord(req.params.id);
         if (!success) {
@@ -62,7 +62,7 @@ router.delete('/api/petty-cash/:id', requireAdminAuth, async (req: Request, res:
 /**
  * GET /api/due-records - Get all due records
  */
-router.get('/api/due-records', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/due-records', requirePermission('finance'), async (req: Request, res: Response) => {
     try {
         const records = await storage.getAllDueRecords();
         res.json(records);
@@ -74,7 +74,7 @@ router.get('/api/due-records', requireAdminAuth, async (req: Request, res: Respo
 /**
  * PATCH /api/due-records/:id - Update due record (partial payment)
  */
-router.patch('/api/due-records/:id', requireAdminAuth, async (req: Request, res: Response) => {
+router.patch('/api/due-records/:id', requirePermission('finance'), async (req: Request, res: Response) => {
     try {
         const { paymentAmount, paymentMethod } = req.body;
         const id = req.params.id;

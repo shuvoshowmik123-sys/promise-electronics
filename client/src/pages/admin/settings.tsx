@@ -20,6 +20,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { playNotificationSound, NOTIFICATION_TONES, type NotificationTone } from "@/lib/notification-sound";
+import { uploadToImageKit } from "@/lib/imagekit-upload";
 
 const POLICY_DEFINITIONS = [
   { slug: "privacy", title: "Privacy Policy", description: "How you collect, use, and protect customer data" },
@@ -931,42 +932,12 @@ export default function AdminSettingsPage() {
     setIsUploadingProblemIcon(itemId);
 
     try {
-      const paramsResponse = await fetch("/api/cloudinary/upload-params", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resourceType: "image" }),
+      const result = await uploadToImageKit(file, {
+        folder: "/admin-icons",
+        tags: ["icon", "problem-nav"],
       });
 
-      if (!paramsResponse.ok) {
-        const errorData = await paramsResponse.json().catch(() => ({}));
-        if (paramsResponse.status === 503) {
-          throw new Error("Image upload is not configured. Please contact support.");
-        }
-        throw new Error(errorData.message || "Failed to prepare upload");
-      }
-
-      const params = await paramsResponse.json();
-      const { cloudName, apiKey, signature, timestamp, folder, transformation } = params;
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("api_key", apiKey);
-      formData.append("timestamp", timestamp.toString());
-      formData.append("signature", signature);
-      formData.append("folder", folder);
-      formData.append("transformation", transformation);
-
-      const uploadResponse = await fetch(
-        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-        { method: "POST", body: formData }
-      );
-
-      if (!uploadResponse.ok) {
-        throw new Error("Failed to upload image");
-      }
-
-      const result = await uploadResponse.json();
-      setProblemNavItems(problemNavItems.map(item => item.id === itemId ? { ...item, iconUrl: result.secure_url } : item));
+      setProblemNavItems(problemNavItems.map(item => item.id === itemId ? { ...item, iconUrl: result.url } : item));
       toast.success("Icon uploaded. Click 'Save Settings' to persist.");
     } catch (error: any) {
       toast.error(error.message || "Failed to upload icon");
@@ -1142,42 +1113,12 @@ export default function AdminSettingsPage() {
     setIsUploadingBrandLogo(brandId);
 
     try {
-      const paramsResponse = await fetch("/api/cloudinary/upload-params", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ resourceType: "image" }),
+      const result = await uploadToImageKit(file, {
+        folder: "/brand-logos",
+        tags: ["logo", "brand"],
       });
 
-      if (!paramsResponse.ok) {
-        const errorData = await paramsResponse.json().catch(() => ({}));
-        if (paramsResponse.status === 503) {
-          throw new Error("Image upload is not configured. Please contact support.");
-        }
-        throw new Error(errorData.message || "Failed to prepare upload");
-      }
-
-      const params = await paramsResponse.json();
-      const { cloudName, apiKey, signature, timestamp, folder, transformation } = params;
-
-      const formData = new FormData();
-      formData.append("file", file);
-      formData.append("api_key", apiKey);
-      formData.append("timestamp", timestamp.toString());
-      formData.append("signature", signature);
-      formData.append("folder", folder);
-      formData.append("transformation", transformation);
-
-      const uploadResponse = await fetch(
-        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
-        { method: "POST", body: formData }
-      );
-
-      if (!uploadResponse.ok) {
-        throw new Error("Failed to upload image");
-      }
-
-      const result = await uploadResponse.json();
-      setHomepageBrands(homepageBrands.map(b => b.id === brandId ? { ...b, logoUrl: result.secure_url } : b));
+      setHomepageBrands(homepageBrands.map(b => b.id === brandId ? { ...b, logoUrl: result.url } : b));
       toast.success("Logo uploaded. Click 'Save Settings' to persist.");
     } catch (error: any) {
       toast.error(error.message || "Failed to upload logo");

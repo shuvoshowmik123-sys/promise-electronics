@@ -12,7 +12,9 @@ router.post("/identify", async (req, res) => {
             return res.status(400).json({ message: "Image is required" });
         }
 
-        console.log(`[Lens] Identify request received, image size: ${image.length} chars`);
+        console.log(`[Lens] Identify request received, image size: ${image.length} chars (~${Math.round(image.length * 0.75 / 1024)} KB)`);
+        console.log(`[Lens] Image base64 prefix: ${image.substring(0, 50)}...`);
+        console.log(`[Lens] Calling aiService.identifyPart...`);
         const result = await aiService.identifyPart(image);
 
         if (!result) {

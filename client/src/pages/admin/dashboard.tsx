@@ -3,6 +3,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { Wrench, ShoppingBag, AlertTriangle, DollarSign, Loader2 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { settingsApi } from "@/lib/api";
+import { MorningBrief } from "@/components/MorningBrief";
 
 interface DashboardStats {
   totalRevenue: number;
@@ -63,6 +64,10 @@ export default function AdminDashboard() {
 
   return (
     <>
+      <div className="mb-8">
+        <MorningBrief />
+      </div>
+
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4 mb-8">
         <Card data-testid="card-total-revenue">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">

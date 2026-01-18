@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/app_settings_provider.dart';
 import '../providers/locale_provider.dart';
+import '../providers/shuvo_mode_provider.dart';
 import '../utils/app_animations.dart';
 
 /// "System Boot" Splash Screen
@@ -75,36 +76,53 @@ class _SplashScreenState extends State<SplashScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Stage 1 & 2: Logo Power On
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF006a4e), // Bangladesh green
-                    Color(0xFF36e27b), // Bright green
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFF36e27b).withValues(alpha: 0.5),
-                    blurRadius: 30,
-                    spreadRadius: 2,
+            // Stage 1 & 2: Logo Power On (with secret Shuvo Mode activation)
+            GestureDetector(
+              onTap: () {
+                final message =
+                    context.read<ShuvoModeProvider>().handleActivationTap();
+                if (message != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(message),
+                      duration: const Duration(seconds: 2),
+                      backgroundColor: message.contains('Activated')
+                          ? const Color(0xFF36e27b)
+                          : Colors.orange,
+                    ),
+                  );
+                }
+              },
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFF006a4e), // Bangladesh green
+                      Color(0xFF36e27b), // Bright green
+                    ],
                   ),
-                ],
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  width: 1,
+                  borderRadius: BorderRadius.circular(30),
+                  boxShadow: [
+                    BoxShadow(
+                      color: const Color(0xFF36e27b).withValues(alpha: 0.5),
+                      blurRadius: 30,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    width: 1,
+                  ),
                 ),
-              ),
-              child: const Icon(
-                Icons.tv,
-                size: 60,
-                color: Colors.white,
+                child: const Icon(
+                  Icons.tv,
+                  size: 60,
+                  color: Colors.white,
+                ),
               ),
             )
                 .animate()
