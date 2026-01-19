@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { adminNavItems } from "@/lib/mock-data";
+import { adminNavGroups } from "@/lib/mock-data";
 import { LogOut, Bell, Settings, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -49,7 +49,7 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
             .slice(0, 2);
     };
 
-    const filteredNavItems = adminNavItems.filter((item) => {
+    const checkPermission = (href: string) => {
         const permissionMap: Record<string, string> = {
             "/admin": "dashboard",
             "/admin/overview": "jobs",
@@ -67,10 +67,15 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
             "/admin/orders": "orders",
             "/admin/customers": "users",
         };
-        const permission = permissionMap[item.href];
+        const permission = permissionMap[href];
         if (!permission) return true;
         return hasPermission(permission as any);
-    });
+    };
+
+    const filteredNavGroups = adminNavGroups.map(group => ({
+        ...group,
+        items: group.items.filter(item => checkPermission(item.href))
+    })).filter(group => group.items.length > 0);
 
     if (isLoading) {
         return (
@@ -92,27 +97,31 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
                         <div className="p-6">
                             <h2 className="text-xl font-heading font-bold text-sidebar-primary-foreground">PROMISE<br /><span className="text-sidebar-primary">ADMIN</span></h2>
                         </div>
-                        <SidebarGroup>
-                            <SidebarGroupLabel className="text-sidebar-foreground/50">Menu</SidebarGroupLabel>
-                            <SidebarGroupContent>
-                                <SidebarMenu>
-                                    {filteredNavItems.map((item) => (
-                                        <SidebarMenuItem key={item.href}>
-                                            <SidebarMenuButton
-                                                asChild
-                                                isActive={location === item.href}
-                                                className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground"
-                                            >
-                                                <Link href={item.href}>
-                                                    <item.icon />
-                                                    <span>{item.label}</span>
-                                                </Link>
-                                            </SidebarMenuButton>
-                                        </SidebarMenuItem>
-                                    ))}
-                                </SidebarMenu>
-                            </SidebarGroupContent>
-                        </SidebarGroup>
+                        {filteredNavGroups.map((group) => (
+                            <SidebarGroup key={group.title}>
+                                <SidebarGroupLabel className="text-sidebar-foreground/70 font-medium px-2 py-1 text-xs uppercase tracking-wider">
+                                    {group.title}
+                                </SidebarGroupLabel>
+                                <SidebarGroupContent>
+                                    <SidebarMenu>
+                                        {group.items.map((item) => (
+                                            <SidebarMenuItem key={item.href}>
+                                                <SidebarMenuButton
+                                                    asChild
+                                                    isActive={location === item.href}
+                                                    className="hover:bg-sidebar-accent hover:text-sidebar-accent-foreground data-[active=true]:bg-sidebar-primary data-[active=true]:text-sidebar-primary-foreground"
+                                                >
+                                                    <Link href={item.href}>
+                                                        <item.icon className="h-4 w-4" />
+                                                        <span>{item.label}</span>
+                                                    </Link>
+                                                </SidebarMenuButton>
+                                            </SidebarMenuItem>
+                                        ))}
+                                    </SidebarMenu>
+                                </SidebarGroupContent>
+                            </SidebarGroup>
+                        ))}
                         <div className="mt-auto p-4 border-t border-sidebar-border">
                             <div className="flex items-center gap-3 mb-4">
                                 <Avatar>

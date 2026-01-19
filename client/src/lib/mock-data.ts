@@ -112,26 +112,56 @@ export const navItems = [
   { label: "Track Order", href: "/track-order" },
 ];
 
-export const adminNavItems = [
-  { label: "Dashboard", href: "/admin", icon: BarChart3 },
-  { label: "Overview", href: "/admin/overview", icon: Activity },
-  { label: "System Health", href: "/admin/system-health", icon: ShieldAlert },
-  { label: "Service Requests", href: "/admin/service-requests", icon: MessageSquare },
-  { label: "Pickup Schedule", href: "/admin/pickup-schedule", icon: Truck },
-  { label: "Shop Orders", href: "/admin/orders", icon: ShoppingBag },
-  { label: "Customers", href: "/admin/customers", icon: Users2 },
-  { label: "Job Tickets", href: "/admin/jobs", icon: ClipboardList },
-  { label: "POS System", href: "/admin/pos", icon: ShoppingCart },
-  { label: "Inventory", href: "/admin/inventory", icon: Package },
-  { label: "Challans", href: "/admin/challan", icon: Truck },
-  { label: "Finance & Due", href: "/admin/finance", icon: DollarSign },
-  { label: "Technician View", href: "/admin/technician", icon: HardHat },
-  { label: "Staff Attendance", href: "/admin/staff-attendance", icon: UserCheck },
-  { label: "Work Reports", href: "/admin/reports", icon: FileText },
-  { label: "Users", href: "/admin/users", icon: Users },
-  { label: "Inquiries", href: "/admin/inquiries", icon: MessageSquare },
-  { label: "Settings", href: "/admin/settings", icon: Settings },
+export const adminNavGroups = [
+  {
+    title: "Overview",
+    items: [
+      { label: "Dashboard", href: "/admin", icon: BarChart3 },
+      { label: "Overview", href: "/admin/overview", icon: Activity },
+      { label: "System Health", href: "/admin/system-health", icon: ShieldAlert },
+    ]
+  },
+  {
+    title: "Operations",
+    items: [
+      { label: "Service Requests", href: "/admin/service-requests", icon: MessageSquare },
+      { label: "Job Tickets", href: "/admin/jobs", icon: ClipboardList },
+      { label: "Pickup Schedule", href: "/admin/pickup-schedule", icon: Truck },
+      { label: "Challans", href: "/admin/challan", icon: Truck },
+    ]
+  },
+  {
+    title: "Sales & Finance",
+    items: [
+      { label: "POS System", href: "/admin/pos", icon: ShoppingCart },
+      { label: "Shop Orders", href: "/admin/orders", icon: ShoppingBag },
+      { label: "Inventory", href: "/admin/inventory", icon: Package },
+      { label: "Finance & Due", href: "/admin/finance", icon: DollarSign },
+    ]
+  },
+  {
+    title: "People & Staff",
+    items: [
+      { label: "Customers", href: "/admin/customers", icon: Users2 },
+      { label: "Staff Attendance", href: "/admin/staff-attendance", icon: UserCheck },
+      { label: "Users", href: "/admin/users", icon: Users },
+      { label: "Technician View", href: "/admin/technician", icon: HardHat },
+    ]
+  },
+  {
+    title: "System",
+    items: [
+      { label: "Work Reports", href: "/admin/reports", icon: FileText },
+      { label: "Inquiries", href: "/admin/inquiries", icon: MessageSquare },
+      { label: "Settings", href: "/admin/settings", icon: Settings },
+    ]
+  }
 ];
+
+// Keep flat list for permission checking helper compatibility if needed, 
+// or derived it from groups. For now, let's keep a flattened export for backward compat
+// if other components rely on it, otherwise existing code might break.
+export const adminNavItems = adminNavGroups.flatMap(g => g.items);
 
 export const images = {
   hero: heroImage,

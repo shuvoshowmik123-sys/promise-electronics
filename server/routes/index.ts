@@ -33,6 +33,7 @@ import uploadRoutes from './upload.routes.js';
 import aiRoutes from './ai.routes.js';
 import lensRoutes from './lens.routes.js';
 import sparePartsRoutes from './spare-parts.routes.js';
+import messengerRoutes from './messenger.routes.js';
 
 /**
  * Register all routes with the Express application.
@@ -148,7 +149,11 @@ export async function registerRoutes(
     console.log('[Routes] ✓ Lens routes registered');
 
     app.use(sparePartsRoutes);
+    app.use(sparePartsRoutes);
     console.log('[Routes] ✓ Spare parts routes registered');
+
+    app.use('/api/messenger', messengerRoutes);
+    console.log('[Routes] ✓ Messenger webhook registered');
 
     console.log('[Routes] All route modules registered successfully!');
 

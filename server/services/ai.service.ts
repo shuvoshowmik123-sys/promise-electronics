@@ -37,6 +37,7 @@ const MODELS = {
     groq: {
         chat: "llama-3.3-70b-versatile",     // Best for chat
         fast: "llama-3.1-8b-instant",         // Quick responses
+        audio: "whisper-large-v3",             // Speech to Text
     },
     // Gemini models (for vision - ACCURATE)
     gemini: {
@@ -215,6 +216,41 @@ const ADMIN_PROMPT = `
 `;
 
 export const aiService = {
+    /**
+     * Transcribe audio file using Groq Whisper
+     */
+    async transcribeAudio(fileBuffer: Buffer, fileName: string = 'audio.mp3'): Promise<string | null> {
+        const fs = await import("fs");
+        const path = await import("path");
+        const os = await import("os");
+        const { promisify } = await import("util");
+        const writeFile = promisify(fs.writeFile);
+        const unlink = promisify(fs.unlink);
+
+        const tempFilePath = path.join(os.tmpdir(), `audio-${Date.now()}-${fileName}`);
+
+        try {
+            await writeFile(tempFilePath, fileBuffer);
+
+            const completion = await groq.audio.transcriptions.create({
+                file: fs.createReadStream(tempFilePath),
+                model: MODELS.groq.audio,
+                response_format: "json",
+                language: "bn", // Bias towards Bengali
+                temperature: 0.0,
+            });
+
+            // Cleanup
+            await unlink(tempFilePath).catch(console.error);
+
+            return completion.text;
+        } catch (err) {
+            console.error("[AI] Transcription failed:", err);
+            // Try cleanup if it failed during API call
+            await unlink(tempFilePath).catch(() => { });
+            return null;
+        }
+    },
     /**
      * Diagnose server errors and suggest fixes
      * Uses Groq (fast) for quick analysis

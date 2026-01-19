@@ -33,28 +33,20 @@ export function DaktarVaiChat() {
         if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
             const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
             recognitionRef.current = new SpeechRecognition();
-            recognitionRef.current.continuous = true;
-            recognitionRef.current.interimResults = true;
+            recognitionRef.current.continuous = false; // Changed to false to prevent mobile duplication
+            recognitionRef.current.interimResults = false; // We don't use interim results, so disable them
             recognitionRef.current.lang = "bn-BD";
 
             recognitionRef.current.onresult = (event: any) => {
                 if (silenceTimer.current) clearTimeout(silenceTimer.current);
 
-                let finalTranscript = "";
-                for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) {
-                        finalTranscript += event.results[i][0].transcript;
-                    }
+                const transcript = event.results[0][0].transcript;
+                if (transcript) {
+                    setInput(prev => {
+                        const trimmed = prev.trim();
+                        return trimmed ? trimmed + " " + transcript : transcript;
+                    });
                 }
-
-                if (finalTranscript) {
-                    setInput(prev => prev + " " + finalTranscript);
-                }
-
-                silenceTimer.current = setTimeout(() => {
-                    recognitionRef.current?.stop();
-                    setIsListening(false);
-                }, 3000);
             };
 
             recognitionRef.current.onerror = (event: any) => {

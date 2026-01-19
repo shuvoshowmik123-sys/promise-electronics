@@ -73,13 +73,20 @@ async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
   console.log(`[API] Raw response (first 200 chars): ${rawText.substring(0, 200)}`);
 
   if (!response.ok) {
+    let errorData;
     try {
-      const errorData = JSON.parse(rawText);
-      const apiError = new ApiError(errorData.error || "Request failed", errorData.code);
-      throw apiError;
+      errorData = JSON.parse(rawText);
     } catch (parseError) {
       console.error(`[API] Failed to parse error response:`, rawText.substring(0, 500));
       throw new ApiError(`Request failed with status ${response.status}: ${rawText.substring(0, 100)}`);
+    }
+
+    if (errorData) {
+      // Use message from server if available, fallback to error code or default
+      const message = errorData.message || errorData.error || "Request failed";
+      // Use error code from server (e.g. AI_SERVICE_UNAVAILABLE)
+      const code = errorData.error || errorData.code;
+      throw new ApiError(message, code);
     }
   }
 
