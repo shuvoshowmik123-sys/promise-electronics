@@ -4,7 +4,7 @@ import { z } from "zod";
 
 // Enums - We'll keep them as const arrays for Zod validation, 
 // but in PG we could use native enums. For simplicity in migration, we'll use text columns with checks or just application-level validation.
-export * from "./constants";
+export * from "./constants.js";
 
 // Session Table (Managed by connect-pg-simple, but defined here to prevent Drizzle from dropping it)
 export const userSessions = pgTable("user_sessions", {
