@@ -40,7 +40,7 @@ class ShuvoModeIndicator extends StatelessWidget {
                 borderRadius: BorderRadius.circular(20),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFFFF5722).withValues(alpha: 0.4),
+                    color: const Color(0xFFFF5722).withOpacity(0.4),
                     blurRadius: 12,
                     spreadRadius: 2,
                   ),

@@ -48,7 +48,7 @@ class ChatBubble extends StatelessWidget {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF36e27b).withValues(alpha: 0.2),
+                      color: const Color(0xFF36e27b).withOpacity(0.2),
                       blurRadius: 8,
                       offset: const Offset(0, 2),
                     ),
@@ -85,7 +85,7 @@ class ChatBubble extends StatelessWidget {
                 child: Text(
                   'Sent ${_formatTime(message.timestamp)}',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.4),
+                    color: Colors.white.withOpacity(0.4),
                     fontSize: 10,
                   ),
                 ),
@@ -130,7 +130,7 @@ class ChatBubble extends StatelessWidget {
                 child: Text(
                   'Daktar Vai',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
+                    color: Colors.white.withOpacity(0.5),
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
@@ -185,7 +185,7 @@ class ChatBubble extends StatelessWidget {
                 child: Text(
                   _formatTime(message.timestamp),
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.4),
+                    color: Colors.white.withOpacity(0.4),
                     fontSize: 10,
                   ),
                 ),
@@ -204,10 +204,10 @@ class ChatBubble extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: const Color(0xFF36e27b).withValues(alpha: 0.1),
+        color: const Color(0xFF36e27b).withOpacity(0.1),
         borderRadius: BorderRadius.circular(12),
         border:
-            Border.all(color: const Color(0xFF36e27b).withValues(alpha: 0.3)),
+            Border.all(color: const Color(0xFF36e27b).withOpacity(0.3)),
       ),
       child: Row(
         children: [
@@ -215,7 +215,7 @@ class ChatBubble extends StatelessWidget {
             width: 36,
             height: 36,
             decoration: BoxDecoration(
-              color: const Color(0xFF36e27b).withValues(alpha: 0.2),
+              color: const Color(0xFF36e27b).withOpacity(0.2),
               shape: BoxShape.circle,
             ),
             child: const Icon(
@@ -240,7 +240,7 @@ class ChatBubble extends StatelessWidget {
                 Text(
                   '#${booking.ticketNumber}',
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.6),
+                    color: Colors.white.withOpacity(0.6),
                     fontSize: 12,
                   ),
                 ),
@@ -300,7 +300,7 @@ class ChatBubble extends StatelessWidget {
                 Text(
                   part.partNumber,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.5),
+                    color: Colors.white.withOpacity(0.5),
                     fontSize: 11,
                   ),
                 ),

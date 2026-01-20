@@ -118,7 +118,7 @@ class CartScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(16),
                         border: Border.all(
                           color: item.isFromHotDeal
-                              ? Colors.orange.withValues(alpha: 0.5)
+                              ? Colors.orange.withOpacity(0.5)
                               : (isDark
                                   ? AppColors.borderDark
                                   : AppColors.cardBorderLight),
@@ -299,7 +299,7 @@ class CartScreen extends StatelessWidget {
                                 vertical: 4,
                               ),
                               decoration: BoxDecoration(
-                                color: Colors.green.withValues(alpha: 0.1),
+                                color: Colors.green.withOpacity(0.1),
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Row(
@@ -341,7 +341,7 @@ class CartScreen extends StatelessWidget {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.05),
+                      color: Colors.black.withOpacity(0.05),
                       blurRadius: 10,
                       offset: const Offset(0, -4),
                     ),

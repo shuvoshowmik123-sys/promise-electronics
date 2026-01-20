@@ -186,6 +186,38 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
+  /// Link Google Account
+  Future<bool> linkGoogleAccount() async {
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    final result = await _repository.linkGoogleAccount();
+
+    _isLoading = false;
+
+    if (result.isSuccess && result.data != null) {
+        // Update local user data with new info (e.g. googleSub implied)
+        _user = result.data;
+        _error = null;
+        notifyListeners();
+        return true;
+    } else {
+        _error = result.error ?? 'Failed to link Google account';
+        notifyListeners();
+        return false;
+    }
+  }
+
+  /// Check if profile is complete (phone and address requirements)
+  bool get isProfileComplete {
+    if (_user == null) return false;
+    // We require Phone and Address
+    final hasPhone = _user!.phone != null && _user!.phone!.isNotEmpty;
+    final hasAddress = _user!.address != null && _user!.address!.isNotEmpty;
+    return hasPhone && hasAddress;
+  }
+
   /// Logout
   Future<void> logout() async {
     _isLoading = true;

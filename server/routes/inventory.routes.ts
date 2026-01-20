@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { insertInventoryItemSchema, insertProductSchema } from '../../shared/schema.js';
 import { requireAdminAuth } from './middleware/auth.js';
+import { auditLogger } from '../utils/auditLogger.js';
 
 const router = Router();
 
@@ -63,6 +64,18 @@ router.post('/api/inventory', async (req: Request, res: Response) => {
     try {
         const validated = insertInventoryItemSchema.parse(req.body);
         const item = await storage.createInventoryItem(validated);
+
+        // Audit Log
+        await auditLogger.log({
+            userId: req.session?.adminUserId || 'system',
+            action: 'CREATE_INVENTORY',
+            entity: 'InventoryItem',
+            entityId: item.id,
+            details: `Created inventory item ${item.name}`,
+            newValue: item,
+            req: req
+        });
+
         res.status(201).json(item);
     } catch (error: any) {
         console.error('Inventory validation error:', error.message);
@@ -75,10 +88,26 @@ router.post('/api/inventory', async (req: Request, res: Response) => {
  */
 router.patch('/api/inventory/:id', async (req: Request, res: Response) => {
     try {
+        const existingItem = await storage.getInventoryItem(req.params.id);
         const item = await storage.updateInventoryItem(req.params.id, req.body);
         if (!item) {
             return res.status(404).json({ error: 'Inventory item not found' });
         }
+
+        // Audit Log
+        if (existingItem) {
+            await auditLogger.log({
+                userId: req.session?.adminUserId || 'system',
+                action: 'UPDATE_INVENTORY',
+                entity: 'InventoryItem',
+                entityId: item.id,
+                details: `Updated inventory item ${item.name}`,
+                oldValue: existingItem,
+                newValue: item,
+                req: req
+            });
+        }
+
         res.json(item);
     } catch (error) {
         res.status(500).json({ error: 'Failed to update inventory item' });
@@ -94,10 +123,26 @@ router.patch('/api/inventory/:id/stock', async (req: Request, res: Response) => 
         if (typeof quantity !== 'number') {
             return res.status(400).json({ error: 'Quantity must be a number' });
         }
+        const existingItem = await storage.getInventoryItem(req.params.id);
         const item = await storage.updateInventoryStock(req.params.id, quantity);
         if (!item) {
             return res.status(404).json({ error: 'Inventory item not found' });
         }
+
+        // Audit Log
+        if (existingItem) {
+            await auditLogger.log({
+                userId: req.session?.adminUserId || 'system',
+                action: 'UPDATE_STOCK',
+                entity: 'InventoryItem',
+                entityId: item.id,
+                details: `Updated stock content for ${item.name} by ${quantity}`,
+                oldValue: { stock: existingItem.stock },
+                newValue: { stock: item.stock, change: quantity },
+                req: req
+            });
+        }
+
         res.json(item);
     } catch (error) {
         res.status(500).json({ error: 'Failed to update inventory stock' });
@@ -109,10 +154,25 @@ router.patch('/api/inventory/:id/stock', async (req: Request, res: Response) => 
  */
 router.delete('/api/inventory/:id', async (req: Request, res: Response) => {
     try {
+        const existingItem = await storage.getInventoryItem(req.params.id);
         const success = await storage.deleteInventoryItem(req.params.id);
         if (!success) {
             return res.status(404).json({ error: 'Inventory item not found' });
         }
+
+        // Audit Log
+        if (existingItem) {
+            await auditLogger.log({
+                userId: req.session?.adminUserId || 'system',
+                action: 'DELETE_INVENTORY',
+                entity: 'InventoryItem',
+                entityId: req.params.id,
+                details: `Deleted inventory item ${existingItem.name}`,
+                oldValue: existingItem,
+                req: req
+            });
+        }
+
         res.status(204).send();
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete inventory item' });

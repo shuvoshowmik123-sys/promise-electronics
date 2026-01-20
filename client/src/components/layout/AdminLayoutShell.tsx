@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { adminNavGroups } from "@/lib/mock-data";
-import { LogOut, Bell, Settings, Loader2 } from "lucide-react";
+import { LogOut, Bell, Settings, Loader2, HardHat, UserCheck, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     Sidebar,
@@ -34,6 +34,13 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
         }
     }, [isLoading, isAuthenticated, setLocation]);
 
+    // TECHNICIAN REDIRECT: Redirect Technicians to their personal dashboard
+    useEffect(() => {
+        if (user?.role === "Technician" && (location === "/admin" || location === "/admin/overview")) {
+            setLocation("/admin/technician");
+        }
+    }, [user, location, setLocation]);
+
     const handleLogout = async () => {
         await logout();
         toast.success("Logged out successfully");
@@ -42,6 +49,7 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
 
     const getInitials = (name: string) => {
         return name
+            // ... (rest of function)
             .split(" ")
             .map((n) => n[0])
             .join("")
@@ -72,10 +80,31 @@ export function AdminLayoutShell({ children }: { children: React.ReactNode }) {
         return hasPermission(permission as any);
     };
 
-    const filteredNavGroups = adminNavGroups.map(group => ({
+    let filteredNavGroups = adminNavGroups.map(group => ({
         ...group,
         items: group.items.filter(item => checkPermission(item.href))
     })).filter(group => group.items.length > 0);
+
+    // CUSTOM SIDEBAR FOR TECHNICIANS
+    if (user?.role === "Technician") {
+        const workspaceItems = [
+            // Technician View is fundamental for them, usually implies 'technician' role/permission
+            // We check if they have 'technician' permission OR if they are just a technician (redundant but safe)
+            { label: "Technician View", href: "/admin/technician", icon: HardHat, show: hasPermission("technician" as any) || user.role === "Technician" },
+            { label: "My Attendance", href: "/admin/staff-attendance", icon: UserCheck, show: hasPermission("attendance" as any) },
+        ];
+
+        const myWorkspaceGroup = {
+            title: "My Workspace",
+            items: workspaceItems.filter(i => i.show !== false)
+        };
+
+        // Filter out "People & Staff" to avoid redundancy/clutter, but keep everything else 
+        // that the user has permission for (e.g. Service Requests in Operations)
+        const otherGroups = filteredNavGroups.filter(g => g.title !== "People & Staff");
+
+        filteredNavGroups = [myWorkspaceGroup, ...otherGroups];
+    }
 
     if (isLoading) {
         return (

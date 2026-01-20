@@ -199,7 +199,7 @@ class _RepairStatusPopupState extends State<RepairStatusPopup>
         borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.2),
+            color: AppColors.primary.withOpacity(0.2),
             blurRadius: 30,
             spreadRadius: 5,
           ),
@@ -337,10 +337,10 @@ class _RepairStatusPopupState extends State<RepairStatusPopup>
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
+              color: AppColors.primary.withOpacity(0.1),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.3),
+                color: AppColors.primary.withOpacity(0.3),
               ),
             ),
             child: Text(
@@ -415,7 +415,7 @@ class _RepairStatusPopupState extends State<RepairStatusPopup>
                 color: isCurrent
                     ? AppColors.primary
                     : (isCompleted
-                        ? AppColors.success.withValues(alpha: 0.15)
+                        ? AppColors.success.withOpacity(0.15)
                         : (isDark
                             ? AppColors.surfaceDark
                             : AppColors.surfaceLight)),
@@ -427,7 +427,7 @@ class _RepairStatusPopupState extends State<RepairStatusPopup>
                 boxShadow: isCurrent
                     ? [
                         BoxShadow(
-                          color: AppColors.primary.withValues(alpha: 0.4),
+                          color: AppColors.primary.withOpacity(0.4),
                           blurRadius: 12,
                           spreadRadius: 2,
                         ),
@@ -479,12 +479,12 @@ class _RepairStatusPopupState extends State<RepairStatusPopup>
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
               color: isCurrent
-                  ? AppColors.primary.withValues(alpha: 0.08)
+                  ? AppColors.primary.withOpacity(0.08)
                   : (isDark ? AppColors.surfaceDark : AppColors.surfaceLight),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: isCurrent
-                    ? AppColors.primary.withValues(alpha: 0.3)
+                    ? AppColors.primary.withOpacity(0.3)
                     : (isDark ? AppColors.borderDark : AppColors.borderLight),
               ),
             ),

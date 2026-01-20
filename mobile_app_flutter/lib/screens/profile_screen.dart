@@ -25,6 +25,8 @@ class ProfileScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final isAuthenticated = context.watch<AuthProvider>().isAuthenticated;
+    final user = context.watch<AuthProvider>().user;
+    final provider = Provider.of<LocaleProvider>(context);
 
     return Scaffold(
       backgroundColor:
@@ -114,6 +116,43 @@ class ProfileScreen extends StatelessWidget {
                         subtitle: _getThemeModeLabel(context),
                         onTap: () => _showThemeSelector(context),
                       ),
+
+                      // Bind Google Account (Only if not linked)
+                      if (isAuthenticated && user?.googleSub == null) ...[
+                        const SizedBox(height: 12),
+                        _buildMenuItem(
+                          context,
+                          isDark,
+                          icon: Icons.link,
+                          title: provider.isBangla
+                              ? 'গুগল অ্যাকাউন্ট লিঙ্ক করুন'
+                              : 'Bind with Google',
+                          onTap: () async {
+                              // Trigger linking
+                              final auth = Provider.of<AuthProvider>(context, listen: false);
+                              final success = await auth.linkGoogleAccount();
+                              if (context.mounted) {
+                                if (success) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(provider.isBangla
+                                          ? 'গুগল অ্যাকাউন্ট সফলভাবে সংযুক্ত করা হয়েছে'
+                                          : 'Google account linked successfully'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                } else if (auth.error != null) {
+                                   ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text(auth.error!),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
+                                }
+                              }
+                          },
+                        ),
+                      ],
 
                       const SizedBox(height: 32),
 
@@ -233,7 +272,7 @@ class ProfileScreen extends StatelessWidget {
               ? [AppColors.backgroundDark, AppColors.backgroundDark]
               : [
                   AppColors.mintWashLight,
-                  AppColors.mintWashLight.withValues(alpha: 0.5),
+                  AppColors.mintWashLight.withOpacity(0.5),
                   AppColors.backgroundLight
                 ],
         ),
@@ -253,7 +292,7 @@ class ProfileScreen extends StatelessWidget {
                   border: Border.all(color: Colors.white, width: 4),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
+                      color: Colors.black.withOpacity(0.15),
                       blurRadius: 20,
                     ),
                   ],
@@ -314,7 +353,7 @@ class ProfileScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(30),
                   ),
                   elevation: 4,
-                  shadowColor: AppColors.primary.withValues(alpha: 0.4),
+                  shadowColor: AppColors.primary.withOpacity(0.4),
                 ),
                 child: Text(
                   isAuthenticated
@@ -381,17 +420,17 @@ class ProfileScreen extends StatelessWidget {
             height: 40,
             decoration: BoxDecoration(
               color: isDark
-                  ? Colors.black.withValues(alpha: 0.3)
-                  : Colors.white.withValues(alpha: 0.6),
+                  ? Colors.black.withOpacity(0.3)
+                  : Colors.white.withOpacity(0.6),
               shape: BoxShape.circle,
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withValues(alpha: 0.1)
-                    : Colors.white.withValues(alpha: 0.4),
+                    ? Colors.white.withOpacity(0.1)
+                    : Colors.white.withOpacity(0.4),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.1),
+                  color: Colors.black.withOpacity(0.1),
                   blurRadius: 8,
                 ),
               ],
@@ -448,7 +487,7 @@ class ProfileScreen extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.03),
+                color: Colors.black.withOpacity(0.03),
                 blurRadius: 8,
               ),
             ],
@@ -460,7 +499,7 @@ class ProfileScreen extends StatelessWidget {
                 height: 40,
                 decoration: BoxDecoration(
                   color: isDark
-                      ? AppColors.primary.withValues(alpha: 0.2)
+                      ? AppColors.primary.withOpacity(0.2)
                       : const Color(0xFFe8f3ec),
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -526,7 +565,7 @@ class ProfileScreen extends StatelessWidget {
           color: isDark ? AppColors.surfaceDark : AppColors.surfaceLight,
           borderRadius: BorderRadius.circular(30),
           border: Border.all(
-            color: AppColors.coralRed.withValues(alpha: 0.2),
+            color: AppColors.coralRed.withOpacity(0.2),
           ),
         ),
         child: Row(
@@ -663,7 +702,7 @@ class ProfileScreen extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.primary.withValues(alpha: 0.15)
+              ? AppColors.primary.withOpacity(0.15)
               : (isDark ? AppColors.backgroundDark : AppColors.backgroundLight),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
@@ -675,7 +714,7 @@ class ProfileScreen extends StatelessWidget {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.2),
+                    color: AppColors.primary.withOpacity(0.2),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -692,7 +731,7 @@ class ProfileScreen extends StatelessWidget {
               height: 36,
               decoration: BoxDecoration(
                 color: isSelected
-                    ? AppColors.primary.withValues(alpha: 0.2)
+                    ? AppColors.primary.withOpacity(0.2)
                     : (isDark
                         ? AppColors.surfaceDark
                         : AppColors.backgroundLight),
@@ -759,7 +798,7 @@ class ProfileScreen extends StatelessWidget {
                     shape: BoxShape.circle,
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.primary.withValues(alpha: 0.3),
+                        color: AppColors.primary.withOpacity(0.3),
                         blurRadius: 6,
                       ),
                     ],
@@ -877,7 +916,7 @@ class ProfileScreen extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.primary.withValues(alpha: 0.15)
+              ? AppColors.primary.withOpacity(0.15)
               : (isDark ? AppColors.backgroundDark : AppColors.backgroundLight),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
@@ -894,7 +933,7 @@ class ProfileScreen extends StatelessWidget {
               height: 36,
               decoration: BoxDecoration(
                 color: isSelected
-                    ? AppColors.primary.withValues(alpha: 0.2)
+                    ? AppColors.primary.withOpacity(0.2)
                     : (isDark
                         ? AppColors.surfaceDark
                         : AppColors.backgroundLight),

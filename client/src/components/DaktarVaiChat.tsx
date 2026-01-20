@@ -72,8 +72,14 @@ export function DaktarVaiChat() {
             setIsListening(false);
         } else {
             setInput(""); // Clear previous input when starting new recording
-            recognitionRef.current?.start();
-            setIsListening(true);
+            try {
+                recognitionRef.current?.start();
+                setIsListening(true);
+            } catch (e) {
+                console.error("Speech recognition start error:", e);
+                // If already started, just ensure state is true
+                setIsListening(true);
+            }
         }
     };
 
@@ -106,7 +112,8 @@ export function DaktarVaiChat() {
 
         } catch (error) {
             console.error("Chat error:", error);
-            toast({ title: "Error", description: "Failed to send message", variant: "destructive" });
+            const errorMessage = error instanceof Error ? error.message : "Failed to send message";
+            toast({ title: "Error", description: errorMessage, variant: "destructive" });
         } finally {
             setIsLoading(false);
         }

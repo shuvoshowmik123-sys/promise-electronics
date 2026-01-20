@@ -54,24 +54,28 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
   "Super Admin": {
     dashboard: true, jobs: true, inventory: true, pos: true, challans: true,
     finance: true, attendance: true, reports: true, serviceRequests: true,
+    orders: true, technician: true, inquiries: true, systemHealth: true,
     users: true, settings: true, canCreate: true, canEdit: true, canDelete: true, canExport: true,
     canViewFullJobDetails: true, canPrintJobTickets: true,
   },
   "Manager": {
     dashboard: true, jobs: true, inventory: true, pos: true, challans: true,
     finance: true, attendance: true, reports: true, serviceRequests: true,
+    orders: true, technician: false, inquiries: true, systemHealth: false,
     users: false, settings: false, canCreate: true, canEdit: true, canDelete: false, canExport: true,
     canViewFullJobDetails: true, canPrintJobTickets: true,
   },
   "Cashier": {
     dashboard: true, jobs: false, inventory: true, pos: true, challans: false,
     finance: false, attendance: true, reports: false, serviceRequests: false,
+    orders: true, technician: false, inquiries: false, systemHealth: false,
     users: false, settings: false, canCreate: true, canEdit: false, canDelete: false, canExport: false,
     canViewFullJobDetails: false, canPrintJobTickets: false,
   },
   "Technician": {
-    dashboard: true, jobs: true, inventory: false, pos: false, challans: true,
+    dashboard: false, jobs: true, inventory: false, pos: false, challans: true,
     finance: false, attendance: true, reports: false, serviceRequests: true,
+    orders: false, technician: true, inquiries: false, systemHealth: false,
     users: false, settings: false, canCreate: false, canEdit: true, canDelete: false, canExport: false,
     canViewFullJobDetails: false, canPrintJobTickets: false,
   },
@@ -87,6 +91,10 @@ const PERMISSION_LABELS: Record<keyof UserPermissions, string> = {
   attendance: "Attendance",
   reports: "Reports",
   serviceRequests: "Service Requests",
+  orders: "Shop Orders",
+  technician: "Technician View",
+  inquiries: "Inquiries",
+  systemHealth: "System Health",
   users: "User Management",
   settings: "Settings",
   canCreate: "Can Create",
@@ -604,7 +612,7 @@ export default function AdminUsersPage() {
               <div>
                 <h4 className="font-medium mb-2">Tab Access</h4>
                 <div className="grid grid-cols-2 gap-3">
-                  {(["dashboard", "jobs", "inventory", "pos", "challans", "finance", "attendance", "reports", "serviceRequests", "users", "settings"] as const).map((key) => (
+                  {(["dashboard", "jobs", "inventory", "pos", "challans", "finance", "attendance", "reports", "serviceRequests", "orders", "technician", "inquiries", "systemHealth", "users", "settings"] as const).map((key) => (
                     <div key={key} className="flex items-center space-x-2">
                       <Checkbox
                         id={`perm-${key}`}

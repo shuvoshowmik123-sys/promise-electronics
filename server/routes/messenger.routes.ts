@@ -1,5 +1,5 @@
 import { Router, Request, Response } from "express";
-import { aiService } from "../services/ai.service";
+import { aiService } from "../services/ai.service.js";
 import { storage } from "../storage";
 import ImageKit from "imagekit";
 import { JobTicket, ServiceRequest } from "../../shared/schema";

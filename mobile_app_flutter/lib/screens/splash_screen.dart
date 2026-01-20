@@ -108,13 +108,13 @@ class _SplashScreenState extends State<SplashScreen> {
                   borderRadius: BorderRadius.circular(30),
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF36e27b).withValues(alpha: 0.5),
+                      color: const Color(0xFF36e27b).withOpacity(0.5),
                       blurRadius: 30,
                       spreadRadius: 2,
                     ),
                   ],
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.2),
+                    color: Colors.white.withOpacity(0.2),
                     width: 1,
                   ),
                 ),
@@ -135,18 +135,18 @@ class _SplashScreenState extends State<SplashScreen> {
                 )
                 .shimmer(
                   duration: 1200.ms,
-                  color: Colors.white.withValues(alpha: 0.8),
+                  color: Colors.white.withOpacity(0.8),
                   angle: 0.5,
                 )
                 // Stage 2: Glow Pulse
                 .boxShadow(
                   begin: BoxShadow(
-                    color: const Color(0xFF36e27b).withValues(alpha: 0),
+                    color: const Color(0xFF36e27b).withOpacity(0),
                     blurRadius: 0,
                     spreadRadius: 0,
                   ),
                   end: BoxShadow(
-                    color: const Color(0xFF36e27b).withValues(alpha: 0.5),
+                    color: const Color(0xFF36e27b).withOpacity(0.5),
                     blurRadius: 30,
                     spreadRadius: 5,
                   ),
@@ -192,7 +192,7 @@ class _SplashScreenState extends State<SplashScreen> {
               isBangla ? 'আপনার টিভির সেরা বন্ধু' : 'Your TV\'s Best Friend',
               style: TextStyle(
                 fontSize: 16,
-                color: Colors.white.withValues(alpha: 0.6),
+                color: Colors.white.withOpacity(0.6),
                 letterSpacing: 0.5,
               ),
             )
@@ -219,9 +219,9 @@ class _SplashScreenState extends State<SplashScreen> {
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     border:
-                        Border.all(color: Colors.white.withValues(alpha: 0.1)),
+                        Border.all(color: Colors.white.withOpacity(0.1)),
                     borderRadius: BorderRadius.circular(4),
-                    color: Colors.black.withValues(alpha: 0.2),
+                    color: Colors.black.withOpacity(0.2),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
@@ -242,7 +242,7 @@ class _SplashScreenState extends State<SplashScreen> {
                         statusText,
                         style: TextStyle(
                           fontSize: 12,
-                          color: const Color(0xFF36e27b).withValues(alpha: 0.8),
+                          color: const Color(0xFF36e27b).withOpacity(0.8),
                           fontFamily: 'Courier', // Monospace for tech feel
                           letterSpacing: 1,
                         ),

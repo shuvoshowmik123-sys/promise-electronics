@@ -178,6 +178,9 @@ export function getDefaultPermissions(role: string): Record<string, boolean> {
                 reports: true,
                 serviceRequests: true,
                 orders: true,
+                technician: true,
+                inquiries: true,
+                systemHealth: true,
                 users: true,
                 settings: true,
                 canCreate: true,
@@ -197,6 +200,9 @@ export function getDefaultPermissions(role: string): Record<string, boolean> {
                 reports: true,
                 serviceRequests: true,
                 orders: true,
+                technician: false,
+                inquiries: true,
+                systemHealth: false,
                 users: false,
                 settings: false,
                 canCreate: true,
@@ -216,6 +222,9 @@ export function getDefaultPermissions(role: string): Record<string, boolean> {
                 reports: false,
                 serviceRequests: false,
                 orders: true,
+                technician: false,
+                inquiries: false,
+                systemHealth: false,
                 users: false,
                 settings: false,
                 canCreate: true,
@@ -225,7 +234,7 @@ export function getDefaultPermissions(role: string): Record<string, boolean> {
             };
         case 'Technician':
             return {
-                dashboard: true,
+                dashboard: false,  // Technicians see Technician View, not Admin Dashboard
                 jobs: true,
                 inventory: false,
                 pos: false,
@@ -235,6 +244,9 @@ export function getDefaultPermissions(role: string): Record<string, boolean> {
                 reports: false,
                 serviceRequests: true,
                 orders: false,
+                technician: true,  // Technician View enabled by default
+                inquiries: false,
+                systemHealth: false,
                 users: false,
                 settings: false,
                 canCreate: false,

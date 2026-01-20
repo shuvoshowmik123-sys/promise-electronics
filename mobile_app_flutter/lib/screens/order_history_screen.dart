@@ -204,7 +204,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color: AppColors.primary.withValues(alpha: 0.3),
+                            color: AppColors.primary.withOpacity(0.3),
                             blurRadius: 12,
                             offset: const Offset(0, 4),
                           ),
@@ -308,7 +308,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
               width: 100,
               height: 100,
               decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.1),
+                color: AppColors.primary.withOpacity(0.1),
                 shape: BoxShape.circle,
               ),
               child: const Icon(
@@ -382,7 +382,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
+              color: Colors.black.withOpacity(0.04),
               blurRadius: 12,
               offset: const Offset(0, 4),
             ),
@@ -403,7 +403,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                         width: 40,
                         height: 40,
                         decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
+                          color: AppColors.primary.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: const Icon(
@@ -516,7 +516,7 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
                 width: double.infinity,
                 height: 44,
                 decoration: BoxDecoration(
-                  color: AppColors.primary.withValues(alpha: 0.1),
+                  color: AppColors.primary.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Center(
@@ -544,42 +544,42 @@ class _OrderHistoryScreenState extends State<OrderHistoryScreen> {
 
     switch (status) {
       case 'Pending':
-        backgroundColor = Colors.orange.withValues(alpha: 0.15);
+        backgroundColor = Colors.orange.withOpacity(0.15);
         textColor = Colors.orange;
         icon = Icons.schedule;
         break;
       case 'Accepted':
-        backgroundColor = Colors.blue.withValues(alpha: 0.15);
+        backgroundColor = Colors.blue.withOpacity(0.15);
         textColor = Colors.blue;
         icon = Icons.check_circle_outline;
         break;
       case 'Processing':
-        backgroundColor = Colors.purple.withValues(alpha: 0.15);
+        backgroundColor = Colors.purple.withOpacity(0.15);
         textColor = Colors.purple;
         icon = Icons.autorenew;
         break;
       case 'Shipped':
-        backgroundColor = Colors.cyan.withValues(alpha: 0.15);
+        backgroundColor = Colors.cyan.withOpacity(0.15);
         textColor = Colors.cyan;
         icon = Icons.local_shipping_outlined;
         break;
       case 'Delivered':
-        backgroundColor = Colors.green.withValues(alpha: 0.15);
+        backgroundColor = Colors.green.withOpacity(0.15);
         textColor = Colors.green;
         icon = Icons.check_circle;
         break;
       case 'Declined':
-        backgroundColor = Colors.red.withValues(alpha: 0.15);
+        backgroundColor = Colors.red.withOpacity(0.15);
         textColor = Colors.red;
         icon = Icons.cancel_outlined;
         break;
       case 'Cancelled':
-        backgroundColor = Colors.grey.withValues(alpha: 0.15);
+        backgroundColor = Colors.grey.withOpacity(0.15);
         textColor = Colors.grey;
         icon = Icons.block;
         break;
       default:
-        backgroundColor = Colors.grey.withValues(alpha: 0.15);
+        backgroundColor = Colors.grey.withOpacity(0.15);
         textColor = Colors.grey;
         icon = Icons.help_outline;
     }

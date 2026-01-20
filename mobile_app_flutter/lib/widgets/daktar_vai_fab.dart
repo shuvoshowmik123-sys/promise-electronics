@@ -107,7 +107,7 @@ class _DaktarVaiFabState extends State<DaktarVaiFab> with SingleTickerProviderSt
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: const Color(0xFF36e27b).withValues(alpha: 0.4),
+                      color: const Color(0xFF36e27b).withOpacity(0.4),
                       blurRadius: 20,
                       spreadRadius: 2,
                       offset: const Offset(0, 4),
@@ -127,7 +127,7 @@ class _DaktarVaiFabState extends State<DaktarVaiFab> with SingleTickerProviderSt
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: const Color(0xFF36e27b).withValues(alpha: 0.3 - (0.3 * _controller.value)),
+                              color: const Color(0xFF36e27b).withOpacity(0.3 - (0.3 * _controller.value)),
                               width: 2,
                             ),
                           ),
@@ -196,9 +196,9 @@ class _DaktarVaiFabState extends State<DaktarVaiFab> with SingleTickerProviderSt
             width: 48,
             height: 48,
             decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.15),
+              color: color.withOpacity(0.15),
               shape: BoxShape.circle,
-              border: Border.all(color: color.withValues(alpha: 0.3)),
+              border: Border.all(color: color.withOpacity(0.3)),
             ),
             child: Icon(
               icon,

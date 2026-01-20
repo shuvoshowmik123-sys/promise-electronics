@@ -34,6 +34,9 @@ import aiRoutes from './ai.routes.js';
 import lensRoutes from './lens.routes.js';
 import sparePartsRoutes from './spare-parts.routes.js';
 import messengerRoutes from './messenger.routes.js';
+import technicianRoutes from './technician.routes.js';
+import auditRoutes from './audit.routes.js';
+import adminNotificationsRoutes from './admin-notifications.routes.js';
 
 /**
  * Register all routes with the Express application.
@@ -51,6 +54,10 @@ export async function registerRoutes(
     // ============================================
     // Register Routes
     // ============================================
+
+    // Audit routes - PRIORITY CHECK
+    app.use(auditRoutes);
+    console.log('[Routes] ✓ Audit routes registered (PRIORITY)');
 
     // File upload routes (moved to top for priority)
     app.use(uploadRoutes);
@@ -127,9 +134,19 @@ export async function registerRoutes(
     app.use(attendanceRoutes);
     console.log('[Routes] ✓ Attendance routes registered');
 
+
+
+    // Technician personal dashboard routes
+    app.use(technicianRoutes);
+    console.log('[Routes] ✓ Technician routes registered');
+
     // Additional features
     app.use(notificationsRoutes);
     console.log('[Routes] ✓ Notifications routes registered');
+
+    // Admin Notifications (SSE + REST)
+    app.use(adminNotificationsRoutes);
+    console.log('[Routes] ✓ Admin notifications routes registered');
 
     app.use(quotesRoutes);
     console.log('[Routes] ✓ Quotes routes registered');

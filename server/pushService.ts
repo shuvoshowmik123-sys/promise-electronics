@@ -3,31 +3,13 @@ import { db } from "./db.js";
 import { eq, and } from "drizzle-orm";
 import * as schema from "../shared/schema.js";
 
-import admin from 'firebase-admin';
-import { readFileSync } from 'fs';
-import { join } from 'path';
+import { firebaseAdmin as admin } from './services/firebase.js';
 
 export interface PushNotificationPayload {
     title: string;
     body: string;
     data?: Record<string, string>;
     icon?: string;
-}
-
-// Initialize Firebase Admin
-try {
-    // Check if already initialized to avoid errors on hot reload
-    if (!admin.apps.length) {
-        const serviceAccountPath = join(process.cwd(), 'server', 'service-account.json');
-        const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
-
-        admin.initializeApp({
-            credential: admin.credential.cert(serviceAccount)
-        });
-        console.log("[Push] Firebase Admin initialized successfully");
-    }
-} catch (error) {
-    console.error("[Push] Failed to initialize Firebase Admin:", error);
 }
 
 // Send push notification to a single device

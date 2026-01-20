@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../services/api_client.dart';
+import '../services/google_auth_service.dart';
 import '../models/warranty.dart';
 
 /// Result wrapper for repository operations
@@ -28,6 +29,7 @@ class AuthUser {
   final String? avatar;
   final String role;
   final String? address;
+  final String? googleSub;
 
   AuthUser({
     required this.id,
@@ -37,6 +39,7 @@ class AuthUser {
     this.avatar,
     this.role = 'Customer',
     this.address,
+    this.googleSub,
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
@@ -48,6 +51,7 @@ class AuthUser {
       avatar: json['profileImageUrl']?.toString() ?? json['avatar']?.toString(),
       role: json['role']?.toString() ?? 'Customer',
       address: json['address']?.toString(),
+      googleSub: json['googleSub']?.toString(),
     );
   }
 
@@ -59,6 +63,7 @@ class AuthUser {
         'avatar': avatar,
         'role': role,
         'address': address,
+        'googleSub': googleSub,
       };
 
   AuthUser copyWith({
@@ -69,6 +74,7 @@ class AuthUser {
     String? avatar,
     String? role,
     String? address,
+    String? googleSub,
   }) {
     return AuthUser(
       id: id ?? this.id,
@@ -78,6 +84,7 @@ class AuthUser {
       avatar: avatar ?? this.avatar,
       role: role ?? this.role,
       address: address ?? this.address,
+      googleSub: googleSub ?? this.googleSub,
     );
   }
 }
@@ -104,6 +111,8 @@ class AuthRepository {
     );
     return _googleSignIn!;
   }
+
+  final GoogleAuthService _googleAuthService = GoogleAuthService();
 
   /// Login with phone and password
   /// Backend: POST /api/customer/login
@@ -168,53 +177,76 @@ class AuthRepository {
     }
   }
 
-  /// Login with Google (native)
-  /// Backend: POST /api/customer/google/native-login
-  Future<Result<AuthUser>> loginWithGoogle() async {
+  /// Link Google Account (Hybrid: Firebase Client -> Backend Verification)
+  /// Backend: POST /api/customer/link-google
+  Future<Result<AuthUser>> linkGoogleAccount() async {
     try {
-      // Trigger Google Sign-In flow
-      final googleUser = await googleSignIn.signIn();
-
-      if (googleUser == null) {
-        return Result.failure('Google sign-in was cancelled.');
-      }
-
-      // Get auth tokens
-      final googleAuth = await googleUser.authentication;
-      final idToken = googleAuth.idToken;
+      // 1. Get Firebase ID Token from GoogleAuthService
+      final String? idToken = await _googleAuthService.signIn();
 
       if (idToken == null) {
-        return Result.failure('Failed to get Google credentials.');
+        return Result.failure('Google sign-in was cancelled or failed.');
       }
 
-      // Send to backend for verification and session creation
+      // 2. Send to backend for verification and linking
       final response = await _client.post(
-        '/api/customer/google/native-login',
+        '/api/customer/link-google',
         data: {
-          'idToken': idToken,
+          'token': idToken,
         },
       );
 
       if (response.statusCode == 200 && response.data != null) {
-        final data = response.data as Map<String, dynamic>;
-
-        // Parse user from response
-        final userData = data['user'] ??
-            {
-              'id': googleUser.id,
-              'email': googleUser.email,
-              'name': googleUser.displayName,
-              'profileImageUrl': googleUser.photoUrl,
-            };
-        final user = AuthUser.fromJson(userData);
-
+        final user = AuthUser.fromJson(response.data as Map<String, dynamic>);
         return Result.success(user);
       }
 
-      return Result.failure('Google login failed. Please try again.');
+      return Result.failure('Failed to link Google account.');
     } on DioException catch (e) {
+      // If backend rejects token (409 conflict, etc.), sign out from firebase/google
+      await _googleAuthService.signOut();
       return _handleDioError(e);
     } catch (e) {
+      // Also sign out on generic errors
+      await _googleAuthService.signOut();
+      debugPrint('Link Google error: $e');
+      return Result.failure('An unexpected error occurred.');
+    }
+  }
+
+  /// Login with Google (native)
+  /// Backend: POST /api/customer/google-auth
+  Future<Result<AuthUser>> loginWithGoogle() async {
+    try {
+      // 1. Get Firebase ID Token from GoogleAuthService
+      final String? idToken = await _googleAuthService.signIn();
+
+      if (idToken == null) {
+        return Result.failure('Google sign-in was cancelled or failed.');
+      }
+
+      // 2. Send to backend for verification and session creation
+      final response = await _client.post(
+        '/api/customer/google-auth',
+        data: {
+          'token': idToken,
+        },
+      );
+
+      if (response.statusCode == 200 && response.data != null) {
+        // Session cookie is automatically stored by CookieManager
+        final user = AuthUser.fromJson(response.data as Map<String, dynamic>);
+        return Result.success(user);
+      }
+
+      return Result.failure('Google login verification failed.');
+    } on DioException catch (e) {
+      // If backend rejects token (401), sign out from firebase/google to allow retry
+      await _googleAuthService.signOut();
+      return _handleDioError(e);
+    } catch (e) {
+      // Also sign out on generic errors
+      await _googleAuthService.signOut();
       debugPrint('Google login error: $e');
       return Result.failure('Google sign-in failed. Please try again.');
     }

@@ -111,7 +111,7 @@ class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
                         color: (isDark
                                 ? AppColors.textSubDark
                                 : AppColors.textSubLight)
-                            .withValues(alpha: 0.5),
+                            .withOpacity(0.5),
                       ),
                       filled: true,
                       fillColor: isDark
@@ -173,7 +173,7 @@ class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
                         color: (isDark
                                 ? AppColors.textSubDark
                                 : AppColors.textSubLight)
-                            .withValues(alpha: 0.5),
+                            .withOpacity(0.5),
                       ),
                       filled: true,
                       fillColor: isDark
@@ -566,7 +566,7 @@ class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.2),
+                    color: AppColors.primary.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
@@ -604,7 +604,7 @@ class _SavedAddressesScreenState extends State<SavedAddressesScreen> {
                   color: Colors.red,
                 ),
                 style: IconButton.styleFrom(
-                  backgroundColor: Colors.red.withValues(alpha: 0.1),
+                  backgroundColor: Colors.red.withOpacity(0.1),
                 ),
               ),
             ],

@@ -485,7 +485,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
           ? MobileScanner(
               controller: _qrController!,
               onDetect: _onQrDetected,
-              errorBuilder: (context, error) {
+              errorBuilder: (context, error, child) {
                 return Center(
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
@@ -514,14 +514,14 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
               Icon(
                 Icons.camera_alt_outlined,
                 size: 64,
-                color: Colors.white.withValues(alpha: 0.5),
+                color: Colors.white.withOpacity(0.5),
               ),
               const SizedBox(height: 16),
               Text(
                 _cameraError!,
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.8),
+                  color: Colors.white.withOpacity(0.8),
                   fontSize: 14,
                 ),
               ),
@@ -558,7 +558,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
             const SizedBox(height: 16),
             Text(
               kIsWeb ? 'Loading camera...' : 'Initializing camera...',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.7)),
+              style: TextStyle(color: Colors.white.withOpacity(0.7)),
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
@@ -566,7 +566,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
               icon: const Icon(Icons.refresh, size: 18),
               label: const Text('Refresh Camera'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary.withValues(alpha: 0.8),
+                backgroundColor: AppColors.primary.withOpacity(0.8),
                 foregroundColor: Colors.white,
               ),
             ),
@@ -605,10 +605,10 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
             begin: Alignment.topCenter,
             end: Alignment.bottomCenter,
             colors: [
-              Colors.black.withValues(alpha: 0.5),
+              Colors.black.withOpacity(0.5),
               Colors.transparent,
               Colors.transparent,
-              Colors.black.withValues(alpha: 0.3),
+              Colors.black.withOpacity(0.3),
             ],
             stops: const [0.0, 0.2, 0.7, 1.0],
           ),
@@ -624,7 +624,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
         height: 280,
         decoration: BoxDecoration(
           border: Border.all(
-            color: AppColors.primary.withValues(alpha: 0.3),
+            color: AppColors.primary.withOpacity(0.3),
             width: 1,
           ),
           borderRadius: BorderRadius.circular(32),
@@ -644,7 +644,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
                   width: 8,
                   height: 8,
                   decoration: BoxDecoration(
-                    color: AppColors.primary.withValues(alpha: 0.8),
+                    color: AppColors.primary.withOpacity(0.8),
                     shape: BoxShape.circle,
                   ),
                 ),
@@ -748,10 +748,10 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.5),
+            color: Colors.black.withOpacity(0.5),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: AppColors.primary.withValues(alpha: 0.5),
+              color: AppColors.primary.withOpacity(0.5),
             ),
           ),
           child: Row(
@@ -800,7 +800,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
                     padding:
                         const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.3),
+                      color: Colors.black.withOpacity(0.3),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(
@@ -850,10 +850,10 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.1),
+              color: Colors.white.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.2),
+                color: Colors.white.withOpacity(0.2),
               ),
             ),
             child: Icon(icon, color: Colors.white, size: 22),
@@ -881,8 +881,8 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
             ),
             decoration: BoxDecoration(
               color: Theme.of(context).brightness == Brightness.dark
-                  ? Colors.black.withValues(alpha: 0.7)
-                  : Colors.white.withValues(alpha: 0.9),
+                  ? Colors.black.withOpacity(0.7)
+                  : Colors.white.withOpacity(0.9),
               borderRadius:
                   const BorderRadius.vertical(top: Radius.circular(32)),
             ),
@@ -894,7 +894,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
                   width: 40,
                   height: 4,
                   decoration: BoxDecoration(
-                    color: Colors.grey.withValues(alpha: 0.3),
+                    color: Colors.grey.withOpacity(0.3),
                     borderRadius: BorderRadius.circular(2),
                   ),
                 ),
@@ -918,7 +918,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
     return Container(
       height: 48,
       decoration: BoxDecoration(
-        color: Colors.grey.withValues(alpha: 0.15),
+        color: Colors.grey.withOpacity(0.15),
         borderRadius: BorderRadius.circular(24),
       ),
       padding: const EdgeInsets.all(4),
@@ -958,7 +958,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
             boxShadow: isActive
                 ? [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.1),
+                      color: Colors.black.withOpacity(0.1),
                       blurRadius: 8,
                     ),
                   ]
@@ -990,10 +990,10 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: Colors.grey.withValues(alpha: 0.2),
+            color: Colors.grey.withOpacity(0.2),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.3),
+              color: Colors.white.withOpacity(0.3),
               width: 2,
             ),
           ),
@@ -1012,7 +1012,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               border: Border.all(
-                color: AppColors.primary.withValues(alpha: 0.3),
+                color: AppColors.primary.withOpacity(0.3),
                 width: 4,
               ),
             ),
@@ -1023,7 +1023,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
                 color: AppColors.primary,
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.4),
+                    color: AppColors.primary.withOpacity(0.4),
                     blurRadius: 20,
                   ),
                 ],
@@ -1042,7 +1042,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: Colors.grey.withValues(alpha: 0.2),
+            color: Colors.grey.withOpacity(0.2),
             borderRadius: BorderRadius.circular(16),
           ),
           child: const Icon(
@@ -1328,12 +1328,12 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
           child: Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.6),
+              color: Colors.black.withOpacity(0.6),
               borderRadius: BorderRadius.circular(20),
               border: Border.all(
                 color: isNoComponent
-                    ? Colors.orange.withValues(alpha: 0.4)
-                    : AppColors.primary.withValues(alpha: 0.3),
+                    ? Colors.orange.withOpacity(0.4)
+                    : AppColors.primary.withOpacity(0.3),
               ),
             ),
             child: Column(
@@ -1347,8 +1347,8 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: isNoComponent
-                            ? Colors.orange.withValues(alpha: 0.2)
-                            : AppColors.primary.withValues(alpha: 0.2),
+                            ? Colors.orange.withOpacity(0.2)
+                            : AppColors.primary.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(
@@ -1389,7 +1389,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
                             Text(
                               displayDescription,
                               style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.7),
+                                color: Colors.white.withOpacity(0.7),
                                 fontSize: 12,
                               ),
                               maxLines: 2,
@@ -1434,7 +1434,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.white,
                             side: BorderSide(
-                                color: Colors.white.withValues(alpha: 0.3)),
+                                color: Colors.white.withOpacity(0.3)),
                             padding: const EdgeInsets.symmetric(vertical: 12),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
@@ -1493,7 +1493,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.grey.withValues(alpha: 0.3),
+                  color: Colors.grey.withOpacity(0.3),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -1554,7 +1554,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
+                      color: AppColors.primary.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.help_outline,
@@ -1646,11 +1646,11 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[100],
+        color: isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color:
-              isDark ? Colors.white.withValues(alpha: 0.1) : Colors.grey[300]!,
+              isDark ? Colors.white.withOpacity(0.1) : Colors.grey[300]!,
         ),
       ),
       child: Row(
@@ -1707,7 +1707,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
                   Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
+                      color: AppColors.primary.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Icon(Icons.history, color: AppColors.primary),
@@ -1811,11 +1811,11 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color:
-              isDark ? Colors.white.withValues(alpha: 0.05) : Colors.grey[100],
+              isDark ? Colors.white.withOpacity(0.05) : Colors.grey[100],
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isDark
-                ? Colors.white.withValues(alpha: 0.1)
+                ? Colors.white.withOpacity(0.1)
                 : Colors.grey[300]!,
           ),
         ),
@@ -1824,7 +1824,7 @@ class _DaktarLensScreenState extends State<DaktarLensScreen>
             Container(
               padding: const EdgeInsets.all(8),
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.1),
+                color: color.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Icon(item['icon'] as IconData, size: 20, color: color),

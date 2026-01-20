@@ -154,7 +154,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               leading: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.blue.withValues(alpha: 0.1),
+                  color: Colors.blue.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.camera_alt, color: Colors.blue),
@@ -180,7 +180,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               leading: Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.purple.withValues(alpha: 0.1),
+                  color: Colors.purple.withOpacity(0.1),
                   shape: BoxShape.circle,
                 ),
                 child: const Icon(Icons.photo_library, color: Colors.purple),
@@ -209,7 +209,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 leading: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.red.withValues(alpha: 0.1),
+                    color: Colors.red.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.delete, color: Colors.red),
@@ -224,7 +224,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                       ? 'আপনার প্রোফাইল ছবি মুছে ফেলুন'
                       : 'Delete your profile photo',
                   style: TextStyle(
-                      color: Colors.red.withValues(alpha: 0.7), fontSize: 12),
+                      color: Colors.red.withOpacity(0.7), fontSize: 12),
                 ),
                 onTap: () {
                   Navigator.pop(context);
@@ -292,7 +292,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
+                            color: Colors.black.withOpacity(0.1),
                             blurRadius: 20,
                           ),
                         ],

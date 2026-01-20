@@ -346,10 +346,10 @@ class _ShuvoModeScreenState extends State<ShuvoModeScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: color.withValues(alpha: onTap == null ? 0.1 : 0.2),
+          color: color.withOpacity(onTap == null ? 0.1 : 0.2),
           borderRadius: BorderRadius.circular(6),
           border: Border.all(
-              color: color.withValues(alpha: onTap == null ? 0.2 : 0.5)),
+              color: color.withOpacity(onTap == null ? 0.2 : 0.5)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -364,7 +364,7 @@ class _ShuvoModeScreenState extends State<ShuvoModeScreen> {
             else
               Icon(icon,
                   size: 14,
-                  color: color.withValues(alpha: onTap == null ? 0.4 : 1)),
+                  color: color.withOpacity(onTap == null ? 0.4 : 1)),
             const SizedBox(width: 6),
             Text(
               label,
@@ -372,7 +372,7 @@ class _ShuvoModeScreenState extends State<ShuvoModeScreen> {
                 fontFamily: 'monospace',
                 fontSize: 11,
                 fontWeight: FontWeight.bold,
-                color: color.withValues(alpha: onTap == null ? 0.4 : 1),
+                color: color.withOpacity(onTap == null ? 0.4 : 1),
               ),
             ),
           ],
@@ -630,7 +630,7 @@ class _ShuvoModeScreenState extends State<ShuvoModeScreen> {
                       padding: const EdgeInsets.symmetric(
                           horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: valueColor.withValues(alpha: 0.15),
+                        color: valueColor.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(

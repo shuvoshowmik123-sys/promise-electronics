@@ -5,7 +5,9 @@ import 'package:provider/provider.dart';
 import '../config/app_theme.dart';
 import '../providers/auth_provider.dart';
 import '../providers/locale_provider.dart';
+import '../providers/locale_provider.dart';
 import '../l10n/app_localizations.dart';
+import 'auth/complete_profile_sheet.dart';
 
 /// Login Screen
 /// Premium design with phone/password and Google sign-in
@@ -109,20 +111,46 @@ class _LoginScreenState extends State<LoginScreen> {
     final auth = Provider.of<AuthProvider>(context, listen: false);
     final success = await auth.loginWithGoogle();
 
-    if (success && mounted) {
-      if (widget.fromProfile) {
-        Navigator.pop(context);
+    if (!mounted) return;
+
+    if (success) {
+      if (!auth.isProfileComplete) {
+        // Show completion sheet
+        await showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          isDismissible: false,
+          enableDrag: false,
+          builder: (context) => Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: const CompleteProfileSheet(isDismissible: true),
+          ),
+        );
+        // After sheet closes (either saved or skipped), navigate home
+        if (mounted) {
+           if (widget.fromProfile) {
+            Navigator.pop(context);
+          } else {
+            Navigator.pushReplacementNamed(context, '/home');
+          }
+        }
       } else {
-        Navigator.pushReplacementNamed(context, '/home');
+        // Profile is complete, proceed normally
+        if (widget.fromProfile) {
+          Navigator.pop(context);
+        } else {
+          Navigator.pushReplacementNamed(context, '/home');
+        }
       }
-    } else if (mounted && auth.error != null) {
+    } else if (auth.error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(auth.error!),
           backgroundColor: Colors.red,
           behavior: SnackBarBehavior.floating,
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         ),
       );
     }
@@ -226,10 +254,10 @@ class _LoginScreenState extends State<LoginScreen> {
             Switch(
               value: localeProvider.isBangla,
               onChanged: (_) => localeProvider.toggleLocale(),
-              activeThumbColor: AppColors.primary,
+              activeColor: AppColors.primary,
               inactiveThumbColor: AppColors.primary,
-              inactiveTrackColor: AppColors.primary.withValues(alpha: 0.3),
-              trackOutlineColor: WidgetStateProperty.all(Colors.transparent),
+              inactiveTrackColor: AppColors.primary.withOpacity(0.3),
+              trackOutlineColor: MaterialStateProperty.all(Colors.transparent),
             ),
             Text(
               'বাং',
@@ -262,13 +290,13 @@ class _LoginScreenState extends State<LoginScreen> {
               end: Alignment.bottomRight,
               colors: [
                 AppColors.primary,
-                AppColors.primary.withValues(alpha: 0.8),
+                AppColors.primary.withOpacity(0.8),
               ],
             ),
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: AppColors.primary.withValues(alpha: 0.3),
+                color: AppColors.primary.withOpacity(0.3),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -488,7 +516,7 @@ class _LoginScreenState extends State<LoginScreen> {
         ),
         hintStyle: TextStyle(
           color: (isDark ? AppColors.textSubDark : AppColors.textSubLight)
-              .withValues(alpha: 0.5),
+              .withOpacity(0.5),
         ),
         prefixIcon: Icon(
           icon,
@@ -566,8 +594,8 @@ class _LoginScreenState extends State<LoginScreen> {
         Expanded(
           child: Divider(
             color: isDark
-                ? Colors.white.withValues(alpha: 0.1)
-                : Colors.black.withValues(alpha: 0.1),
+                ? Colors.white.withOpacity(0.1)
+                : Colors.black.withOpacity(0.1),
           ),
         ),
         Padding(
@@ -582,8 +610,8 @@ class _LoginScreenState extends State<LoginScreen> {
         Expanded(
           child: Divider(
             color: isDark
-                ? Colors.white.withValues(alpha: 0.1)
-                : Colors.black.withValues(alpha: 0.1),
+                ? Colors.white.withOpacity(0.1)
+                : Colors.black.withOpacity(0.1),
           ),
         ),
       ],
@@ -610,8 +638,8 @@ class _LoginScreenState extends State<LoginScreen> {
             padding: const EdgeInsets.symmetric(vertical: 16),
             side: BorderSide(
               color: isDark
-                  ? Colors.white.withValues(alpha: 0.2)
-                  : Colors.black.withValues(alpha: 0.2),
+                  ? Colors.white.withOpacity(0.2)
+                  : Colors.black.withOpacity(0.2),
             ),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(12),

@@ -7,7 +7,9 @@
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { insertJobTicketSchema } from '../../shared/schema.js';
+
 import { notifyAdminUpdate } from './middleware/sse-broker.js';
+import { auditLogger } from '../utils/auditLogger.js';
 
 const router = Router();
 
@@ -20,6 +22,19 @@ const router = Router();
  */
 router.get('/api/job-tickets', async (req: Request, res: Response) => {
     try {
+        // Access Control: Filter jobs for Technicians
+        const userId = req.session?.adminUserId;
+        if (userId) {
+            const user = await storage.getUser(userId);
+            if (user && user.role === 'Technician') {
+                const allJobs = await storage.getAllJobTickets();
+                // Filter: Only jobs assigned to this technician (by Name)
+                const myJobs = allJobs.filter(j => j.technician === user.name);
+                return res.json(myJobs);
+            }
+        }
+
+        // Managers/Admins view all
         const jobs = await storage.getAllJobTickets();
         res.json(jobs);
     } catch (error) {
@@ -80,6 +95,17 @@ router.post('/api/job-tickets', async (req: Request, res: Response) => {
             createdAt: new Date().toISOString()
         });
 
+        // Audit Log
+        await auditLogger.log({
+            userId: req.session?.adminUserId || 'system',
+            action: 'CREATE_JOB',
+            entity: 'JobTicket',
+            entityId: job.id,
+            details: `Created new job ticket ${job.id}`,
+            newValue: job,
+            req: req
+        });
+
         res.status(201).json(job);
     } catch (error: any) {
         console.error('Job ticket validation error:', error.message);
@@ -102,9 +128,27 @@ router.patch('/api/job-tickets/:id', async (req: Request, res: Response) => {
             }
         }
 
+
+
+        const existingJob = await storage.getJobTicket(req.params.id);
+
         const job = await storage.updateJobTicket(req.params.id, updateData);
         if (!job) {
             return res.status(404).json({ error: 'Job ticket not found' });
+        }
+
+        // Audit Log
+        if (existingJob) {
+            await auditLogger.log({
+                userId: req.session?.adminUserId || 'system',
+                action: 'UPDATE_JOB',
+                entity: 'JobTicket',
+                entityId: job.id,
+                details: `Updated job ticket ${job.id}`,
+                oldValue: existingJob,
+                newValue: job,
+                req: req
+            });
         }
 
         // Notify all admins about job ticket update
@@ -137,6 +181,17 @@ router.delete('/api/job-tickets/:id', async (req: Request, res: Response) => {
             type: 'job_ticket_deleted',
             id: jobId,
             deletedAt: new Date().toISOString()
+        });
+
+        // Audit Log
+        await auditLogger.log({
+            userId: req.session?.adminUserId || 'system',
+            action: 'DELETE_JOB',
+            entity: 'JobTicket',
+            entityId: jobId,
+            details: `Deleted job ticket ${jobId}`,
+            oldValue: { id: jobId }, // Minimal info since deleted
+            req: req
         });
 
         res.status(204).send();

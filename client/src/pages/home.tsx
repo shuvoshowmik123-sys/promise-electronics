@@ -170,7 +170,7 @@ export default function HomePage() {
     });
   };
 
-  const { data: settings = [] } = useQuery({
+  const { data: settings = [], isLoading: isSettingsLoading } = useQuery({
     queryKey: ["settings"],
     queryFn: settingsApi.getAll,
     staleTime: 0,
@@ -261,6 +261,9 @@ export default function HomePage() {
   }, []);
 
   const heroSlides = useMemo(() => {
+    // While settings are loading, return empty to show skeleton
+    if (isSettingsLoading) return [];
+
     const heroImagesSetting = settings.find((s) => s.key === "hero_images");
     if (heroImagesSetting?.value) {
       try {
@@ -276,7 +279,7 @@ export default function HomePage() {
       }
     }
     return defaultHeroSlides;
-  }, [settings]);
+  }, [settings, isSettingsLoading]);
 
   const mobileHeroSlides = useMemo(() => {
     const mobileHeroImagesSetting = settings.find((s) => s.key === "mobile_hero_images");
@@ -547,7 +550,21 @@ export default function HomePage() {
         <div className="min-h-screen bg-slate-50 pb-24 pt-4 px-4">
           {/* Mobile Hero */}
           <div className="mb-6 -mx-4">
-            <MobileHero heroImage={activeHeroSlides[0]} />
+            {activeHeroSlides.length > 0 ? (
+              <MobileHero heroImage={activeHeroSlides[0]} />
+            ) : (
+              /* Skeleton Loader for Mobile Hero */
+              <div className="relative w-full h-[85vh] overflow-hidden bg-slate-200 animate-pulse">
+                <div className="absolute inset-0 bg-gradient-to-b from-slate-300/30 via-transparent to-slate-400/50" />
+                <div className="absolute bottom-8 left-4 right-4">
+                  <div className="bg-slate-300/50 backdrop-blur-xl rounded-3xl p-6">
+                    <div className="h-10 bg-slate-400/50 rounded-lg mb-2 w-3/4" />
+                    <div className="h-4 bg-slate-400/40 rounded mb-6 w-full" />
+                    <div className="h-14 bg-slate-400/60 rounded-xl w-full" />
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Mobile Header */}
@@ -683,7 +700,21 @@ export default function HomePage() {
     <PublicLayout>
       {/* Mobile Hero Section */}
       <div className="md:hidden">
-        <MobileHero heroImage={activeHeroSlides[0]} />
+        {activeHeroSlides.length > 0 ? (
+          <MobileHero heroImage={activeHeroSlides[0]} />
+        ) : (
+          /* Skeleton Loader */
+          <div className="relative w-full h-[85vh] overflow-hidden bg-slate-200 animate-pulse">
+            <div className="absolute inset-0 bg-gradient-to-b from-slate-300/30 via-transparent to-slate-400/50" />
+            <div className="absolute bottom-8 left-4 right-4">
+              <div className="bg-slate-300/50 backdrop-blur-xl rounded-3xl p-6">
+                <div className="h-10 bg-slate-400/50 rounded-lg mb-2 w-3/4" />
+                <div className="h-4 bg-slate-400/40 rounded mb-6 w-full" />
+                <div className="h-14 bg-slate-400/60 rounded-xl w-full" />
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Desktop Hero Section - Split Layout */}
@@ -771,32 +802,43 @@ export default function HomePage() {
               transition={{ duration: 0.7, delay: 0.2 }}
             >
               <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-slate-300/50">
-                <AnimatePresence mode="wait">
-                  <motion.img
-                    key={`${isMobile ? 'mobile' : 'desktop'}-${currentSlide}`}
-                    src={activeHeroSlides[currentSlide]}
-                    alt="Electronics Workshop"
-                    className="w-full h-64 md:h-80 lg:h-[450px] object-cover"
-                    initial={animationVariants.initial}
-                    animate={animationVariants.animate}
-                    exit={animationVariants.exit}
-                    transition={{ duration: 0.8, ease: "easeInOut" }}
-                  />
-                </AnimatePresence>
-                {/* Slide Navigation Dots */}
-                {activeHeroSlides.length > 1 && (
-                  <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                    {activeHeroSlides.map((_, index) => (
-                      <button
-                        key={index}
-                        onClick={() => setCurrentSlide(index)}
-                        className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${currentSlide === index
-                          ? 'bg-white w-8'
-                          : 'bg-white/50 hover:bg-white/75'
-                          }`}
-                        aria-label={`Go to slide ${index + 1}`}
+                {activeHeroSlides.length > 0 ? (
+                  <>
+                    <AnimatePresence mode="wait">
+                      <motion.img
+                        key={`${isMobile ? 'mobile' : 'desktop'}-${currentSlide}`}
+                        src={activeHeroSlides[currentSlide]}
+                        alt="Electronics Workshop"
+                        className="w-full h-64 md:h-80 lg:h-[450px] object-cover"
+                        initial={animationVariants.initial}
+                        animate={animationVariants.animate}
+                        exit={animationVariants.exit}
+                        transition={{ duration: 0.8, ease: "easeInOut" }}
                       />
-                    ))}
+                    </AnimatePresence>
+                    {/* Slide Navigation Dots */}
+                    {activeHeroSlides.length > 1 && (
+                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
+                        {activeHeroSlides.map((_, index) => (
+                          <button
+                            key={index}
+                            onClick={() => setCurrentSlide(index)}
+                            className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${currentSlide === index
+                              ? 'bg-white w-8'
+                              : 'bg-white/50 hover:bg-white/75'
+                              }`}
+                            aria-label={`Go to slide ${index + 1}`}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* Skeleton Loader for Desktop Hero */
+                  <div className="w-full h-64 md:h-80 lg:h-[450px] bg-slate-200 animate-pulse">
+                    <div className="w-full h-full bg-gradient-to-br from-slate-200 via-slate-300 to-slate-200 relative overflow-hidden">
+                      <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
+                    </div>
                   </div>
                 )}
               </div>

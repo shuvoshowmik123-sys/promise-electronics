@@ -146,7 +146,7 @@ class _MyWarrantiesScreenState extends State<MyWarrantiesScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 4),
           ),
@@ -166,7 +166,7 @@ class _MyWarrantiesScreenState extends State<MyWarrantiesScreen> {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.blue.withValues(alpha: 0.1),
+                    color: Colors.blue.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.shield, color: Colors.blue),
@@ -279,8 +279,8 @@ class _MyWarrantiesScreenState extends State<MyWarrantiesScreen> {
     final isActive = details.isActive;
     final color = isActive ? Colors.green : Colors.red;
     final bgColor = isActive
-        ? (isDark ? Colors.green.withValues(alpha: 0.1) : Colors.green[50])
-        : (isDark ? Colors.red.withValues(alpha: 0.1) : Colors.red[50]);
+        ? (isDark ? Colors.green.withOpacity(0.1) : Colors.green[50])
+        : (isDark ? Colors.red.withOpacity(0.1) : Colors.red[50]);
 
     return Container(
       padding: const EdgeInsets.all(12),
@@ -290,9 +290,9 @@ class _MyWarrantiesScreenState extends State<MyWarrantiesScreen> {
         border: Border.all(
           color: isActive
               ? (isDark
-                  ? Colors.green.withValues(alpha: 0.3)
+                  ? Colors.green.withOpacity(0.3)
                   : Colors.green[100]!)
-              : (isDark ? Colors.red.withValues(alpha: 0.3) : Colors.red[100]!),
+              : (isDark ? Colors.red.withOpacity(0.3) : Colors.red[100]!),
         ),
       ),
       child: Column(

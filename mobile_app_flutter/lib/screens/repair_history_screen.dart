@@ -48,7 +48,7 @@ class _RepairHistoryScreenState extends State<RepairHistoryScreen> {
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    AppColors.primary.withValues(alpha: 0.05),
+                    AppColors.primary.withOpacity(0.05),
                     Colors.transparent,
                   ],
                 ),
@@ -162,7 +162,7 @@ class _RepairHistoryScreenState extends State<RepairHistoryScreen> {
         decoration: BoxDecoration(
           color: isDark
               ? AppColors.surfaceDark
-              : Colors.grey.shade200.withValues(alpha: 0.5),
+              : Colors.grey.shade200.withOpacity(0.5),
           borderRadius: BorderRadius.circular(30),
         ),
         child: Row(
@@ -181,7 +181,7 @@ class _RepairHistoryScreenState extends State<RepairHistoryScreen> {
                     boxShadow: _selectedTab == 0
                         ? [
                             BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.3),
+                              color: AppColors.primary.withOpacity(0.3),
                               blurRadius: 8,
                             ),
                           ]
@@ -219,7 +219,7 @@ class _RepairHistoryScreenState extends State<RepairHistoryScreen> {
                     boxShadow: _selectedTab == 1
                         ? [
                             BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.3),
+                              color: AppColors.primary.withOpacity(0.3),
                               blurRadius: 8,
                             ),
                           ]
@@ -335,7 +335,7 @@ class _RepairHistoryScreenState extends State<RepairHistoryScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
+            color: Colors.black.withOpacity(0.03),
             blurRadius: 8,
           ),
         ],
@@ -353,7 +353,7 @@ class _RepairHistoryScreenState extends State<RepairHistoryScreen> {
                   width: 48,
                   height: 48,
                   decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.1),
+                    color: statusColor.withOpacity(0.1),
                     shape: BoxShape.circle,
                   ),
                   child: Icon(
@@ -394,7 +394,7 @@ class _RepairHistoryScreenState extends State<RepairHistoryScreen> {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                   decoration: BoxDecoration(
-                    color: statusColor.withValues(alpha: 0.1),
+                    color: statusColor.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(

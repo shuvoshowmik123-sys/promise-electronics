@@ -345,7 +345,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
                 ),
               ),
               style: TextButton.styleFrom(
-                backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                backgroundColor: Colors.orange.withOpacity(0.1),
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
               ),
@@ -372,7 +372,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
         color: isDark ? AppColors.surfaceDark : Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, -5),
           ),
@@ -559,23 +559,21 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
                 border: Border.all(
                     color: isDark ? Colors.grey[800]! : Colors.grey[300]!),
               ),
-              child: RadioGroup<String>(
-                groupValue: _primaryIssue,
-                onChanged: (value) => setState(() => _primaryIssue = value),
-                child: Column(
-                  children: provider.serviceCategories
-                      .map((category) => RadioListTile<String>(
-                            title: Text(category,
-                                style: TextStyle(
-                                    color:
-                                        isDark ? Colors.white : Colors.black)),
-                            value: category,
-                            activeColor: AppColors.primary,
-                            contentPadding:
-                                const EdgeInsets.symmetric(horizontal: 16),
-                          ))
-                      .toList(),
-                ),
+              child: Column(
+                children: provider.serviceCategories
+                    .map((category) => RadioListTile<String>(
+                          title: Text(category,
+                              style: TextStyle(
+                                  color:
+                                      isDark ? Colors.white : Colors.black)),
+                          value: category,
+                          groupValue: _primaryIssue,
+                          onChanged: (value) => setState(() => _primaryIssue = value),
+                          activeColor: AppColors.primary,
+                          contentPadding:
+                              const EdgeInsets.symmetric(horizontal: 16),
+                        ))
+                    .toList(),
               ),
             ),
             const SizedBox(height: 24),
@@ -853,9 +851,9 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.1),
+            color: AppColors.primary.withOpacity(0.1),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
+            border: Border.all(color: AppColors.primary.withOpacity(0.3)),
           ),
           child: Row(
             children: [
@@ -988,7 +986,7 @@ class _RepairRequestScreenState extends State<RepairRequestScreen> {
         padding: const EdgeInsets.symmetric(vertical: 24),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.primary.withValues(alpha: 0.1)
+              ? AppColors.primary.withOpacity(0.1)
               : (isDark ? AppColors.surfaceDark : Colors.grey[100]),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(

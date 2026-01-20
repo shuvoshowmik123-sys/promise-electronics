@@ -50,6 +50,8 @@ import type {
   InsertCustomerAddress,
   Notification,
   InsertNotification,
+  AuditLog,
+  InsertAuditLog,
 } from "../shared/schema.js";
 
 export interface IStorage {
@@ -211,6 +213,9 @@ export interface IStorage {
   // Customer Aliases
   getCustomer(id: string): Promise<User | undefined>;
   updateCustomer(id: string, updates: Partial<User>): Promise<User | undefined>;
+  // Audit Logs
+  createAuditLog(log: InsertAuditLog): Promise<AuditLog>;
+  getAuditLogs(filters?: { userId?: string, entity?: string, limit?: number }): Promise<AuditLog[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -2021,6 +2026,29 @@ export class DatabaseStorage implements IStorage {
       .update(schema.notifications)
       .set({ read: true })
       .where(eq(schema.notifications.userId, userId));
+  }
+
+  // Audit Logs
+  async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
+    const [newLog] = await db.insert(schema.auditLogs)
+      .values({ ...log, id: nanoid() })
+      .returning();
+    return newLog;
+  }
+
+  async getAuditLogs(filters?: { userId?: string, entity?: string, limit?: number }): Promise<AuditLog[]> {
+    const conditions = [];
+    if (filters?.userId) conditions.push(eq(schema.auditLogs.userId, filters.userId));
+    if (filters?.entity) conditions.push(eq(schema.auditLogs.entity, filters.entity));
+
+    let query = db.select().from(schema.auditLogs);
+
+    if (conditions.length > 0) {
+      // @ts-ignore
+      query = query.where(and(...conditions));
+    }
+
+    return query.orderBy(desc(schema.auditLogs.createdAt)).limit(filters?.limit || 100);
   }
 }
 

@@ -16,7 +16,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { serviceRequestsApi, adminQuotesApi, settingsApi, adminStageApi, jobTicketsApi } from "@/lib/api";
 import { useAdminSSE } from "@/contexts/AdminSSEContext";
 import type { ServiceRequest } from "@shared/schema";
-import { PICKUP_STATUS_FLOW, SERVICE_CENTER_STATUS_FLOW, INTERNAL_STATUS_FLOW, getStageFlow } from "@shared/schema";
+import { PICKUP_STATUS_FLOW, SERVICE_CENTER_STATUS_FLOW, INTERNAL_STATUS_FLOW, getStageFlow } from "@shared/constants";
 import { format } from "date-fns";
 import { Search, Eye, Trash2, Clock, CheckCircle, ArrowRightCircle, XCircle, Image, Film, Phone, MapPin, Tv, AlertTriangle, Loader2, Wifi, FileQuestion, DollarSign, Send, Calendar } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";

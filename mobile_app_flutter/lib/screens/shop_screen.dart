@@ -266,7 +266,7 @@ class _ShopScreenState extends State<ShopScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
+              color: Colors.black.withOpacity(0.03),
               blurRadius: 8,
             ),
           ],
@@ -337,7 +337,7 @@ class _ShopScreenState extends State<ShopScreen> {
                   boxShadow: isSelected
                       ? [
                           BoxShadow(
-                            color: const Color(0xFF34D399).withValues(alpha: 0.3),
+                            color: const Color(0xFF34D399).withOpacity(0.3),
                             blurRadius: 8,
                             offset: const Offset(0, 2),
                           ),
@@ -421,7 +421,7 @@ class _ShopScreenState extends State<ShopScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.03),
+              color: Colors.black.withOpacity(0.03),
               blurRadius: 8,
             ),
           ],
@@ -573,7 +573,7 @@ class _ShopScreenState extends State<ShopScreen> {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: AppColors.primary.withValues(alpha: 0.3),
+                              color: AppColors.primary.withOpacity(0.3),
                               blurRadius: 8,
                             ),
                           ],

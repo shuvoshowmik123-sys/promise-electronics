@@ -145,6 +145,39 @@ const DAKTAR_VAI_PROMPT = `
   - If the user mentions a brand NOT in this list, or if you are unsure (e.g. they say "display broken" which is an issue, not a brand), ask them: "Doya kore brand er naam ta likhe din" (Please type the brand name).
   - DO NOT guess the brand if ambiguous.
 
+  [BRAND-MODEL MAPPING - CRITICAL]:
+  These are product line names, NOT brand names. If you detect these, infer the brand AND confirm with customer:
+  - "Bravia", "Triluminos", "X-Reality", "X90", "X80", "A80", "A90" → Sony
+  - "Neo QLED", "Crystal UHD", "QLED", "QN85", "QN90", "The Frame", "The Serif" → Samsung
+  - "NanoCell", "OLED C", "OLED G", "C3", "G3", "webOS" → LG
+  - "ULED", "Laser TV" → Hisense
+  - "QLED" alone → Ask: "Sir, QLED ta ki Samsung na TCL?"
+  - "OLED" alone → Ask: "Sir, OLED TV ta ki LG na Sony?"
+  
+  When you detect a product line name, ALWAYS confirm:
+  "Sir, apnar TV ta ki [Inferred Brand] [Product Line]? Please confirm korun."
+
+  [MODEL NUMBER EXTRACTION - CRITICAL]:
+  - Model numbers are alphanumeric codes like: X90J, QN85A, C3, G3, 43LM5500, 55X80K, UA43AU7000, etc.
+  - Model number is DIFFERENT from screen size. Example: "55X80K" has model "X80K" and size "55".
+  - Common patterns:
+    - Sony: KD-55X90J (model: X90J, size: 55), XR-65A80K (model: A80K, size: 65)
+    - Samsung: UA55CU7000 (model: CU7000, size: 55), QN55QN85A (model: QN85A, size: 55)
+    - LG: OLED55C3 (model: C3, size: 55), 43LM5500 (model: LM5500, size: 43)
+  - If model number is unclear, ask: "Sir, TV-r pichone sticker e model number ta ki?"
+  - SAVE the model number in the "model" field of the booking JSON.
+
+  [SCREEN SIZE EXTRACTION - CRITICAL]:
+  - Screen sizes are in inches: 24, 32, 40, 43, 50, 55, 65, 75, 85
+  - Look for numbers followed by: "inch", "inchi", '"', or standalone 2-digit numbers in context.
+  - Examples:
+    - "43 inch Samsung" → screenSize: "43"
+    - "55 er Sony" → screenSize: "55"
+    - "32 inchi ta" → screenSize: "32"
+    - "Bravia 55" → screenSize: "55"
+  - If screen size is unclear, ask: "Sir, TV ta koto inch er?"
+  - SAVE the screen size in the "screenSize" field of the booking JSON.
+
   [ISSUE CLASSIFICATION]:
   - Allowed Primary Issues: ${ISSUE_TYPES.join(", ")}
   - Analyze their description to INFER the Primary Issue.
@@ -153,6 +186,14 @@ const DAKTAR_VAI_PROMPT = `
     - "No sound" -> "Sound Issue"
     - "Broken screen" -> "Physical Damage"
   - If unsure, ask for clarification.
+
+  [DESCRIPTION vs ISSUE - CRITICAL]:
+  - "issue" field: MUST be one of the allowed Primary Issues (short category name).
+  - "description" field: The customer's EXACT original words about the problem.
+  - Example: Customer says "Display e vertical line ase, right side e"
+    - issue: "Display Issue"
+    - description: "Display e vertical line ase, right side e"
+  - DO NOT mix them up. Keep description as raw customer words.
 
   OUTPUT FORMAT:
   1. If you have all 4 items (Name, Phone, Valid Brand, Issue) BUT the user has NOT explicitly said "Yes", "Book ticket", or "Proceed":
@@ -166,6 +207,8 @@ const DAKTAR_VAI_PROMPT = `
        "name": "...", 
        "phone": "...", 
        "brand": "One of the allowed brands", 
+       "model": "Model number or product line if known, otherwise null",
+       "screenSize": "Screen size in inches if known, otherwise null",
        "issue": "One of the allowed Primary Issues",
        "description": "The user's original detailed description of the problem"
      }
@@ -792,7 +835,10 @@ Use this analysis to respond to the user's message naturally as Daktar Vai.
                                 customer_name: booking.name,
                                 phone: booking.phone,
                                 brand: booking.brand || imageAnalysis.brand,
+                                model: booking.model || imageAnalysis.model || null,
+                                screenSize: booking.screenSize || null,
                                 issue: booking.issue || imageAnalysis.issues?.[0],
+                                description: booking.description || null,
                                 address: userContext?.address || null
                             },
                             imageAnalysis: imageAnalysis
@@ -891,7 +937,10 @@ Use this analysis to respond to the user's message naturally as Daktar Vai.
                                 customer_name: booking.name,
                                 phone: booking.phone,
                                 brand: booking.brand,
+                                model: booking.model || null,
+                                screenSize: booking.screenSize || null,
                                 issue: booking.issue,
+                                description: booking.description || null,
                                 address: userContext?.address || null
                             }
                         };

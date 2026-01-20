@@ -122,31 +122,31 @@ class FloatingNavBar extends StatelessWidget {
                 end: Alignment.bottomRight,
                 colors: isDark
                     ? [
-                        AppColors.surfaceDark.withValues(alpha: 0.9),
-                        AppColors.surfaceDark.withValues(alpha: 0.8),
+                        AppColors.surfaceDark.withOpacity(0.9),
+                        AppColors.surfaceDark.withOpacity(0.8),
                       ]
                     : [
-                        Colors.white.withValues(alpha: 0.75),
-                        Colors.white.withValues(alpha: 0.65),
+                        Colors.white.withOpacity(0.75),
+                        Colors.white.withOpacity(0.65),
                       ],
               ),
               borderRadius: BorderRadius.circular(28),
               border: Border.all(
                 color: isDark
-                    ? Colors.white.withValues(alpha: 0.12)
-                    : Colors.white.withValues(alpha: 0.5),
+                    ? Colors.white.withOpacity(0.12)
+                    : Colors.white.withOpacity(0.5),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.15),
+                  color: Colors.black.withOpacity(0.15),
                   blurRadius: 30,
                   offset: const Offset(0, 10),
                   spreadRadius: -5,
                 ),
                 if (!isDark)
                   BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.8),
+                    color: Colors.white.withOpacity(0.8),
                     blurRadius: 10,
                     offset: const Offset(0, -2),
                   ),
@@ -200,7 +200,7 @@ class FloatingNavBar extends StatelessWidget {
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
                   color: isActive
-                      ? AppColors.primary.withValues(alpha: 0.15)
+                      ? AppColors.primary.withOpacity(0.15)
                       : Colors.transparent,
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -267,7 +267,7 @@ class FloatingNavBar extends StatelessWidget {
                 boxShadow: [
                   BoxShadow(
                     color: AppColors.primary
-                        .withValues(alpha: isActive ? 0.5 : 0.3),
+                        .withOpacity(isActive ? 0.5 : 0.3),
                     blurRadius: isActive ? 20 : 12,
                     spreadRadius: isActive ? 2 : 0,
                   ),
@@ -285,17 +285,17 @@ class FloatingNavBar extends StatelessWidget {
                   end: Alignment.bottomRight,
                   colors: [
                     AppColors.primary,
-                    AppColors.primary.withValues(alpha: 0.85),
+                    AppColors.primary.withOpacity(0.85),
                   ],
                 ),
                 shape: BoxShape.circle,
                 border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.3),
+                  color: Colors.white.withOpacity(0.3),
                   width: 2,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.4),
+                    color: AppColors.primary.withOpacity(0.4),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),

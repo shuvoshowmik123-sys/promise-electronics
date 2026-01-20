@@ -1,6 +1,6 @@
 {
-    "name": "tv_daktar",
-    "short_name": "tv_daktar",
+    "name": "mobile_app_flutter",
+    "short_name": "mobile_app_flutter",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

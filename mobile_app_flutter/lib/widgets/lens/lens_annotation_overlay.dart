@@ -478,7 +478,7 @@ class LensAnnotationPainter extends CustomPainter {
     final progress = (animationProgress * 3).clamp(0.0, 1.0);
 
     final glowPaint = Paint()
-      ..color = AppColors.primary.withValues(alpha: 0.3 * progress)
+      ..color = AppColors.primary.withOpacity(0.3 * progress)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 8
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8);
@@ -489,7 +489,7 @@ class LensAnnotationPainter extends CustomPainter {
     );
 
     final borderPaint = Paint()
-      ..color = AppColors.primary.withValues(alpha: 0.6 * progress)
+      ..color = AppColors.primary.withOpacity(0.6 * progress)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 2;
 
@@ -592,7 +592,7 @@ class LensAnnotationPainter extends CustomPainter {
         pathMetrics.extractPath(0, pathMetrics.length * lineProgress);
 
     final glowPaint = Paint()
-      ..color = AppColors.primary.withValues(alpha: 0.4)
+      ..color = AppColors.primary.withOpacity(0.4)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 6
       ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4);

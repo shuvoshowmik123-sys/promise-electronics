@@ -11,6 +11,7 @@ import 'profile_screen.dart';
 import '../widgets/daktar_vai_fab.dart';
 import '../repositories/inventory_repository.dart';
 import '../widgets/shop/product_details_sheet.dart';
+import 'auth/complete_profile_sheet.dart';
 
 /// Home Screen with quick actions and Daktar Vai FAB
 class HomeScreen extends StatefulWidget {
@@ -29,6 +30,23 @@ class _HomeScreenState extends State<HomeScreen> {
     Future.microtask(() {
       if (!mounted) return;
       Provider.of<HotDealsProvider>(context, listen: false).fetchHotDeals();
+      
+      // Check for profile completion
+      final auth = Provider.of<AuthProvider>(context, listen: false);
+      if (auth.isAuthenticated && !auth.isProfileComplete) {
+         showModalBottomSheet(
+          context: context,
+          isScrollControlled: true,
+          isDismissible: true, // Allow dismiss on home screen (persistent reminder but not blocking)
+          enableDrag: true,
+          builder: (context) => Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+            ),
+            child: const CompleteProfileSheet(isDismissible: true),
+          ),
+        );
+      }
     });
   }
 
@@ -95,7 +113,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   'Assalamu Alaikum! 👋',
                   style: TextStyle(
                     fontSize: 14,
-                    color: Colors.white.withValues(alpha: 0.6),
+                    color: Colors.white.withOpacity(0.6),
                   ),
                 ),
                 const SizedBox(height: 4),
@@ -180,7 +198,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   begin: Alignment.centerLeft,
                   end: Alignment.centerRight,
                   colors: [
-                    Colors.black.withValues(alpha: 0.8),
+                    Colors.black.withOpacity(0.8),
                     Colors.transparent,
                   ],
                 ),
@@ -197,11 +215,11 @@ class _HomeScreenState extends State<HomeScreen> {
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF36e27b).withValues(alpha: 0.2),
+                      color: const Color(0xFF36e27b).withOpacity(0.2),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
                           color:
-                              const Color(0xFF36e27b).withValues(alpha: 0.3)),
+                              const Color(0xFF36e27b).withOpacity(0.3)),
                     ),
                     child: const Text(
                       '⚡ FAST SERVICE',
@@ -347,7 +365,7 @@ class _HomeScreenState extends State<HomeScreen> {
               width: 44,
               height: 44,
               decoration: BoxDecoration(
-                color: color.withValues(alpha: 0.15),
+                color: color.withOpacity(0.15),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: color, size: 24),
@@ -366,7 +384,7 @@ class _HomeScreenState extends State<HomeScreen> {
               subtitle,
               style: TextStyle(
                 fontSize: 12,
-                color: Colors.white.withValues(alpha: 0.5),
+                color: Colors.white.withOpacity(0.5),
               ),
             ),
           ],
@@ -490,7 +508,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 image: NetworkImage(imageUrl),
                 fit: BoxFit.cover,
                 colorFilter: ColorFilter.mode(
-                  Colors.black.withValues(alpha: 0.6),
+                  Colors.black.withOpacity(0.6),
                   BlendMode.darken,
                 ),
               )
@@ -506,7 +524,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Icon(
                 icon,
                 size: 100,
-                color: Colors.white.withValues(alpha: 0.1),
+                color: Colors.white.withOpacity(0.1),
               ),
             ),
           Column(
@@ -515,7 +533,7 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
@@ -548,7 +566,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 subtitle,
                 style: TextStyle(
                   fontSize: 13,
-                  color: Colors.white.withValues(alpha: 0.9),
+                  color: Colors.white.withOpacity(0.9),
                   shadows: const [
                     Shadow(
                       offset: Offset(0, 1),
@@ -586,7 +604,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: TextStyle(
                           fontSize: 14,
                           decoration: TextDecoration.lineThrough,
-                          color: Colors.white.withValues(alpha: 0.8),
+                          color: Colors.white.withOpacity(0.8),
                           shadows: const [
                             Shadow(
                               offset: Offset(0, 1),

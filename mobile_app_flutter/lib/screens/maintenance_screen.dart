@@ -33,14 +33,14 @@ class MaintenanceScreen extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        const Color(0xFFf97316).withValues(alpha: 0.8),
+                        const Color(0xFFf97316).withOpacity(0.8),
                         const Color(0xFFea580c),
                       ],
                     ),
                     borderRadius: BorderRadius.circular(30),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFFf97316).withValues(alpha: 0.3),
+                        color: const Color(0xFFf97316).withOpacity(0.3),
                         blurRadius: 30,
                         spreadRadius: 5,
                       ),
@@ -89,7 +89,7 @@ class MaintenanceScreen extends StatelessWidget {
                       : 'We\'re currently updating our systems to serve you better. Please check back soon.',
                   style: TextStyle(
                     fontSize: 16,
-                    color: Colors.white.withValues(alpha: 0.7),
+                    color: Colors.white.withOpacity(0.7),
                     height: 1.6,
                   ),
                   textAlign: TextAlign.center,
@@ -105,7 +105,7 @@ class MaintenanceScreen extends StatelessWidget {
                     label: const Text('Try Again'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: Colors.white,
-                      side: BorderSide(color: Colors.white.withValues(alpha: 0.3)),
+                      side: BorderSide(color: Colors.white.withOpacity(0.3)),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 24,
                         vertical: 14,
@@ -122,10 +122,10 @@ class MaintenanceScreen extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
+                    color: Colors.white.withOpacity(0.05),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.1),
+                      color: Colors.white.withOpacity(0.1),
                     ),
                   ),
                   child: Column(
@@ -134,7 +134,7 @@ class MaintenanceScreen extends StatelessWidget {
                         'Need urgent help?',
                         style: TextStyle(
                           fontSize: 14,
-                          color: Colors.white.withValues(alpha: 0.5),
+                          color: Colors.white.withOpacity(0.5),
                         ),
                       ),
                       const SizedBox(height: 8),

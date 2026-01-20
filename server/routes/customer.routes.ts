@@ -19,6 +19,7 @@ import {
     notifyAdminUpdate,
     notifyCustomerUpdate
 } from './middleware/sse-broker.js';
+import { firebaseAdmin } from '../services/firebase.js';
 import { authLimiter, registrationLimiter } from './middleware/rate-limit.js';
 import { z } from 'zod';
 
@@ -115,6 +116,112 @@ router.post('/api/customer/login', authLimiter, async (req: Request, res: Respon
         }
         console.error('Login error:', error);
         res.status(500).json({ error: 'Failed to login. Please try again.' });
+    }
+});
+
+/**
+ * POST /api/customer/google-auth - Google Sign-In
+ */
+router.post('/api/customer/google-auth', authLimiter, async (req: Request, res: Response) => {
+    try {
+        const { token } = req.body;
+        if (!token) {
+            return res.status(400).json({ error: 'Token is required' });
+        }
+
+        let decodedToken;
+        try {
+            decodedToken = await firebaseAdmin.auth().verifyIdToken(token);
+        } catch (e) {
+            console.error('Token verification failed:', e);
+            return res.status(401).json({ error: 'Invalid token' });
+        }
+
+        const { uid, email, name, picture } = decodedToken;
+
+        const user = await storage.upsertUserFromGoogle({
+            googleSub: uid,
+            email: email || null,
+            name: name || 'Google User',
+            profileImageUrl: picture || null,
+        });
+
+        // Update last login
+        await storage.updateUserLastLogin(user.id);
+
+        req.session.customerId = user.id;
+        req.session.authMethod = 'google';
+
+        // If the user has a phone number, link any service requests
+        if (user.phone) {
+            await storage.linkServiceRequestsByPhone(user.phone, user.id);
+        }
+
+        const { password: _, ...safeUser } = user;
+        res.json(safeUser);
+
+    } catch (error) {
+        console.error('Google Auth Error:', error);
+        res.status(500).json({ error: 'Authentication failed' });
+    }
+});
+
+/**
+ * POST /api/customer/link-google - Link Google Account to existing user
+ */
+router.post('/api/customer/link-google', requireCustomerAuth, async (req: Request, res: Response) => {
+    try {
+        const { token } = req.body;
+        const currentUserId = req.session.customerId;
+
+        if (!token) {
+            return res.status(400).json({ error: 'Google token is required' });
+        }
+
+        let decodedToken;
+        try {
+            decodedToken = await firebaseAdmin.auth().verifyIdToken(token);
+        } catch (e) {
+            console.error('Token verification failed:', e);
+            return res.status(401).json({ error: 'Invalid Google token' });
+        }
+
+        const { uid: googleSub, email, picture } = decodedToken;
+
+        // Check if this Google account is already linked to another user
+        const existingUser = await storage.getUserByGoogleSub(googleSub);
+        if (existingUser && existingUser.id !== currentUserId) {
+            return res.status(409).json({ error: 'This Google account is already linked to another user.' });
+        }
+
+        // Update current user
+        // We will update googleSub, and optionally email/profileImage if they are missing
+        const currentUser = await storage.getUser(currentUserId!);
+
+        if (!currentUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const updates: Partial<User> = {
+            googleSub: googleSub,
+        };
+
+        if (!currentUser.email && email) {
+            updates.email = email;
+        }
+
+        if (!currentUser.profileImageUrl && picture) {
+            updates.profileImageUrl = picture;
+        }
+
+        const updatedUser = await storage.updateUser(currentUser.id, updates);
+
+        const { password: _, ...safeUser } = updatedUser;
+        res.json(safeUser);
+
+    } catch (error) {
+        console.error('Link Google Error:', error);
+        res.status(500).json({ error: 'Failed to link Google account' });
     }
 });
 

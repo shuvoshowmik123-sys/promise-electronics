@@ -121,7 +121,7 @@ class _PopupDialog extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.3),
+              color: Colors.black.withOpacity(0.3),
               blurRadius: 20,
               spreadRadius: 5,
             ),
@@ -157,7 +157,7 @@ class _PopupDialog extends StatelessWidget {
                   fit: BoxFit.cover,
                   errorBuilder: (context, error, stack) => Container(
                     height: 100,
-                    color: const Color(0xFF36e27b).withValues(alpha: 0.1),
+                    color: const Color(0xFF36e27b).withOpacity(0.1),
                     child: const Icon(
                       Icons.image,
                       size: 48,

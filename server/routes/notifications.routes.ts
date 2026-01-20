@@ -18,17 +18,21 @@ const router = Router();
 /**
  * POST /api/push/register - Register device token for push notifications
  */
-router.post('/api/push/register', async (req: Request, res: Response) => {
+/**
+ * POST /api/push/register - Register device token for push notifications
+ */
+router.post('/api/push/register', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
-        const { userId, token, platform } = req.body;
+        const { token, platform } = req.body;
+        const userId = req.session.customerId; // Get from session
 
         if (!userId || !token) {
-            return res.status(400).json({ error: 'userId and token are required' });
+            return res.status(400).json({ error: 'Token is required' });
         }
 
-        // Dynamic import of pushService
+        // Use the push service
         const { pushService } = await import('../pushService.js');
-        await pushService.registerDeviceToken(userId, token, platform);
+        await pushService.registerDeviceToken(userId, token, platform || 'android');
 
         res.json({ success: true });
     } catch (error) {

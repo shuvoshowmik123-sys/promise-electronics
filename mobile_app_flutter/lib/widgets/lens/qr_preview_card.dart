@@ -77,18 +77,18 @@ class QrPreviewCard extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  Colors.white.withValues(alpha: 0.15),
-                  Colors.white.withValues(alpha: 0.05),
+                  Colors.white.withOpacity(0.15),
+                  Colors.white.withOpacity(0.05),
                 ],
               ),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: Colors.white.withValues(alpha: 0.2),
+                color: Colors.white.withOpacity(0.2),
                 width: 1.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.2),
+                  color: Colors.black.withOpacity(0.2),
                   blurRadius: 20,
                   offset: const Offset(0, 10),
                 ),
@@ -103,7 +103,7 @@ class QrPreviewCard extends StatelessWidget {
                     Container(
                       padding: const EdgeInsets.all(8),
                       decoration: BoxDecoration(
-                        color: AppColors.primary.withValues(alpha: 0.2),
+                        color: AppColors.primary.withOpacity(0.2),
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(
@@ -128,7 +128,7 @@ class QrPreviewCard extends StatelessWidget {
                           Text(
                             isBangla ? 'জব তথ্য পাওয়া গেছে' : 'Job info found',
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.7),
+                              color: Colors.white.withOpacity(0.7),
                               fontSize: 12,
                             ),
                           ),
@@ -139,14 +139,14 @@ class QrPreviewCard extends StatelessWidget {
                       onPressed: onClose,
                       icon: Icon(
                         Icons.close,
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: Colors.white.withOpacity(0.7),
                       ),
                     ),
                   ],
                 ),
 
                 const SizedBox(height: 16),
-                Divider(color: Colors.white.withValues(alpha: 0.2)),
+                Divider(color: Colors.white.withOpacity(0.2)),
                 const SizedBox(height: 16),
 
                 // Job info
@@ -173,7 +173,7 @@ class QrPreviewCard extends StatelessWidget {
                     Text(
                       isBangla ? 'স্ট্যাটাস' : 'Status',
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.7),
+                        color: Colors.white.withOpacity(0.7),
                         fontSize: 12,
                       ),
                     ),
@@ -184,10 +184,10 @@ class QrPreviewCard extends StatelessWidget {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.2),
+                        color: statusColor.withOpacity(0.2),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: statusColor.withValues(alpha: 0.5),
+                          color: statusColor.withOpacity(0.5),
                         ),
                       ),
                       child: Text(
@@ -212,7 +212,7 @@ class QrPreviewCard extends StatelessWidget {
                 ],
 
                 const SizedBox(height: 20),
-                Divider(color: Colors.white.withValues(alpha: 0.2)),
+                Divider(color: Colors.white.withOpacity(0.2)),
                 const SizedBox(height: 16),
 
                 // Daktar Vai prompt
@@ -223,8 +223,8 @@ class QrPreviewCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            AppColors.primary.withValues(alpha: 0.3),
-                            AppColors.primary.withValues(alpha: 0.1),
+                            AppColors.primary.withOpacity(0.3),
+                            AppColors.primary.withOpacity(0.1),
                           ],
                         ),
                         borderRadius: BorderRadius.circular(12),
@@ -255,7 +255,7 @@ class QrPreviewCard extends StatelessWidget {
                                 ? 'এই মেরামত সম্পর্কে জিজ্ঞাসা করুন'
                                 : 'Ask about this repair',
                             style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
+                              color: Colors.white.withOpacity(0.6),
                               fontSize: 11,
                             ),
                           ),
@@ -280,7 +280,7 @@ class QrPreviewCard extends StatelessWidget {
                         style: OutlinedButton.styleFrom(
                           foregroundColor: Colors.white,
                           side: BorderSide(
-                            color: Colors.white.withValues(alpha: 0.3),
+                            color: Colors.white.withOpacity(0.3),
                           ),
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
@@ -348,13 +348,13 @@ class QrPreviewCard extends StatelessWidget {
         Icon(
           icon,
           size: 16,
-          color: Colors.white.withValues(alpha: 0.5),
+          color: Colors.white.withOpacity(0.5),
         ),
         const SizedBox(width: 8),
         Text(
           label,
           style: TextStyle(
-            color: Colors.white.withValues(alpha: 0.7),
+            color: Colors.white.withOpacity(0.7),
             fontSize: 12,
           ),
         ),

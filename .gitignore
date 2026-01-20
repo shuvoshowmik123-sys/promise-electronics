@@ -17,6 +17,7 @@ server/public/
 
 # Service account keys (sensitive)
 server/service-account.json
+server/firebase-service-account.json
 android/gen-lang-client-*.json
 *.json.bak
 

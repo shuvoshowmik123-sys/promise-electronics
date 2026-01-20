@@ -32,8 +32,21 @@ import 'screens/shuvo_mode_screen.dart';
 import 'screens/notifications_screen.dart';
 import 'widgets/promo_popup.dart';
 
+import 'package:firebase_core/firebase_core.dart';
+import 'services/push_notification_service.dart';
+import 'firebase_options.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialize Firebase
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+  
+  // Initialize Push Notifications
+  // We don't await this to not block app startup, but call it.
+  PushNotificationService().initialize();
 
   // Initialize providers
   final themeProvider = ThemeProvider();

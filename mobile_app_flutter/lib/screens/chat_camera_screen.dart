@@ -319,7 +319,7 @@ class _ChatCameraScreenState extends State<ChatCameraScreen>
             'Tap to focus • Capture your TV issue',
             textAlign: TextAlign.center,
             style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.7),
+              color: Colors.white.withOpacity(0.7),
               fontSize: 14,
             ),
           ),
@@ -364,7 +364,7 @@ class _ChatCameraScreenState extends State<ChatCameraScreen>
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.2),
+                      color: Colors.white.withOpacity(0.2),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: const Row(
@@ -432,7 +432,7 @@ class _ChatCameraScreenState extends State<ChatCameraScreen>
         decoration: BoxDecoration(
           color: isActive
               ? AppColors.primary
-              : Colors.black.withValues(alpha: 0.5),
+              : Colors.black.withOpacity(0.5),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(

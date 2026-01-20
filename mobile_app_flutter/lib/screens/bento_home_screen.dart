@@ -151,7 +151,7 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
                 borderRadius: BorderRadius.circular(30),
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.4),
+                    color: AppColors.primary.withOpacity(0.4),
                     blurRadius: 15,
                     offset: const Offset(0, 6),
                   ),
@@ -321,7 +321,7 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
+                              color: Colors.black.withOpacity(0.1),
                               blurRadius: 8,
                             ),
                           ],
@@ -385,7 +385,7 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
                           shape: BoxShape.circle,
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.05),
+                              color: Colors.black.withOpacity(0.05),
                               blurRadius: 8,
                             ),
                           ],
@@ -492,7 +492,7 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.15),
+                              color: Colors.black.withOpacity(0.15),
                               blurRadius: 20,
                               offset: const Offset(0, 10),
                             ),
@@ -566,7 +566,7 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
                 borderRadius: BorderRadius.circular(50),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.06),
+                    color: Colors.black.withOpacity(0.06),
                     blurRadius: 30,
                     offset: const Offset(0, 8),
                   ),
@@ -727,14 +727,14 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
                 boxShadow: isHighlighted
                     ? [
                         BoxShadow(
-                          color: AppColors.primary.withValues(alpha: 0.3),
+                          color: AppColors.primary.withOpacity(0.3),
                           blurRadius: 12,
                           offset: const Offset(0, 4),
                         ),
                       ]
                     : [
                         BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.04),
+                          color: Colors.black.withOpacity(0.04),
                           blurRadius: 8,
                         ),
                       ],
@@ -836,7 +836,7 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
+              color: Colors.black.withOpacity(0.04),
               blurRadius: 20,
               offset: const Offset(0, 4),
             ),
@@ -903,7 +903,7 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
                           vertical: 6,
                         ),
                         decoration: BoxDecoration(
-                          color: statusColor.withValues(alpha: 0.15),
+                          color: statusColor.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -1175,7 +1175,7 @@ class _BentoHomeScreenState extends State<BentoHomeScreen> {
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.04),
+                              color: Colors.black.withOpacity(0.04),
                               blurRadius: 8,
                             ),
                           ],

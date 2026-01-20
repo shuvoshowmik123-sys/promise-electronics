@@ -210,7 +210,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         gradient: LinearGradient(
           colors: [
             AppColors.primary,
-            AppColors.primary.withValues(alpha: 0.8),
+            AppColors.primary.withOpacity(0.8),
           ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -218,7 +218,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: AppColors.primary.withValues(alpha: 0.3),
+            color: AppColors.primary.withOpacity(0.3),
             blurRadius: 20,
             offset: const Offset(0, 8),
           ),
@@ -237,7 +237,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                     isBangla ? 'অর্ডার নম্বর' : 'Order Number',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Colors.white.withValues(alpha: 0.8),
+                      color: Colors.white.withOpacity(0.8),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -255,7 +255,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
+                  color: Colors.white.withOpacity(0.2),
                   borderRadius: BorderRadius.circular(20),
                 ),
                 child: Text(
@@ -300,7 +300,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
           label,
           style: TextStyle(
             fontSize: 11,
-            color: Colors.white.withValues(alpha: 0.7),
+            color: Colors.white.withOpacity(0.7),
           ),
         ),
         const SizedBox(height: 4),
@@ -333,9 +333,9 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
       return Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.red.withValues(alpha: 0.1),
+          color: Colors.red.withOpacity(0.1),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+          border: Border.all(color: Colors.red.withOpacity(0.3)),
         ),
         child: Row(
           children: [
@@ -365,7 +365,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       _order!.declineReason!,
                       style: TextStyle(
                         fontSize: 12,
-                        color: Colors.red.withValues(alpha: 0.8),
+                        color: Colors.red.withOpacity(0.8),
                       ),
                     ),
                   ],
@@ -412,7 +412,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                       decoration: BoxDecoration(
                         color: isCompleted
                             ? AppColors.primary
-                            : Colors.grey.withValues(alpha: 0.3),
+                            : Colors.grey.withOpacity(0.3),
                         shape: BoxShape.circle,
                       ),
                       child: Center(
@@ -434,7 +434,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
                           height: 2,
                           color: isCompleted && index < currentIndex
                               ? AppColors.primary
-                              : Colors.grey.withValues(alpha: 0.3),
+                              : Colors.grey.withOpacity(0.3),
                         ),
                       ),
                   ],
@@ -517,7 +517,7 @@ class _OrderDetailsScreenState extends State<OrderDetailsScreen> {
             width: 50,
             height: 50,
             decoration: BoxDecoration(
-              color: AppColors.primary.withValues(alpha: 0.1),
+              color: AppColors.primary.withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: const Icon(

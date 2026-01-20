@@ -478,6 +478,24 @@ export const attendanceApi = {
   getJobsByTechnician: (name: string) => fetchApi<JobTicket[]>(`/admin/jobs/technician/${encodeURIComponent(name)}`),
 };
 
+// Technician Personal Dashboard API
+export interface TechnicianStats {
+  assigned: number;
+  completed: number;
+  pending: number;
+  inProgress: number;
+}
+
+export interface TechnicianJob extends JobTicket {
+  pendingDays: number;
+}
+
+export const technicianApi = {
+  getStats: () => fetchApi<TechnicianStats>("/technician/stats"),
+  getJobs: (status?: 'all' | 'pending' | 'completed') =>
+    fetchApi<TechnicianJob[]>(`/technician/jobs${status ? `?status=${status}` : ''}`),
+};
+
 // Reports API
 export interface ReportData {
   monthlyFinancials: { name: string; income: number; expense: number; repairs: number }[];

@@ -227,7 +227,7 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
                   leading: Container(
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
+                      color: AppColors.primary.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child:
@@ -262,7 +262,7 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
                 leading: Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: Colors.purple.withValues(alpha: 0.1),
+                    color: Colors.purple.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: const Icon(Icons.photo_library, color: Colors.purple),
@@ -492,8 +492,8 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
         color: isDark
-            ? AppColors.backgroundDark.withValues(alpha: 0.9)
-            : AppColors.backgroundLight.withValues(alpha: 0.9),
+            ? AppColors.backgroundDark.withOpacity(0.9)
+            : AppColors.backgroundLight.withOpacity(0.9),
         border: Border(
           bottom: BorderSide(
             color: isDark ? AppColors.borderDark : AppColors.borderLight,
@@ -540,7 +540,7 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
                   borderRadius: BorderRadius.circular(14),
                   boxShadow: [
                     BoxShadow(
-                      color: AppColors.primary.withValues(alpha: 0.3),
+                      color: AppColors.primary.withOpacity(0.3),
                       blurRadius: 12,
                       offset: const Offset(0, 4),
                     ),
@@ -697,7 +697,7 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
                       ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
+                    color: Colors.black.withOpacity(0.04),
                     blurRadius: 4,
                   ),
                 ],
@@ -860,7 +860,7 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
         ],
       ),
     ).animate(onPlay: (controller) => controller.repeat()).shimmer(
-        duration: 1500.ms, color: AppColors.primary.withValues(alpha: 0.1));
+        duration: 1500.ms, color: AppColors.primary.withOpacity(0.1));
   }
 
   Widget _buildQuickReplies(bool isDark, List<String> replies) {
@@ -1019,8 +1019,8 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
                           decoration: BoxDecoration(
                             color: _isListening
                                 ? Color.lerp(
-                                    AppColors.coralRed.withValues(alpha: 0.1),
-                                    AppColors.coralRed.withValues(alpha: 0.3),
+                                    AppColors.coralRed.withOpacity(0.1),
+                                    AppColors.coralRed.withOpacity(0.3),
                                     _pulseController.value,
                                   )
                                 : Colors.transparent,
@@ -1057,7 +1057,7 @@ class _DaktarVaiScreenState extends State<DaktarVaiScreen>
                 shape: BoxShape.circle,
                 boxShadow: [
                   BoxShadow(
-                    color: AppColors.primary.withValues(alpha: 0.3),
+                    color: AppColors.primary.withOpacity(0.3),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),

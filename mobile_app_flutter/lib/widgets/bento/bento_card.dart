@@ -97,23 +97,23 @@ class _BentoCardState extends State<BentoCard>
         child: Container(
           decoration: BoxDecoration(
             gradient: widget.gradient,
-            color: widget.gradient == null ? defaultBg.withValues(alpha: 0.7) : null,
+            color: widget.gradient == null ? defaultBg.withOpacity(0.7) : null,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: _isPressed
-                  ? theme.colorScheme.secondary.withValues(alpha: 0.5)
-                  : Colors.white.withValues(alpha: 0.08),
+                  ? theme.colorScheme.secondary.withOpacity(0.5)
+                  : Colors.white.withOpacity(0.08),
               width: _isPressed ? 1.5 : 1,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
+                color: Colors.black.withOpacity(0.3),
                 blurRadius: 32,
                 offset: const Offset(0, 8),
               ),
               if (widget.showGlow)
                 BoxShadow(
-                  color: theme.colorScheme.secondary.withValues(alpha: 0.15),
+                  color: theme.colorScheme.secondary.withOpacity(0.15),
                   blurRadius: 24,
                   spreadRadius: 0,
                 ),

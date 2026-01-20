@@ -123,7 +123,7 @@ router.post("/chat", aiLimiter, async (req, res) => {
                     userContext = {
                         id: customer.id,
                         name: customer.name || undefined,
-                        phone: customer.phone,
+                        phone: customer.phone || undefined,
                         address: customer.address || undefined,
                         role: customer.role || 'Customer'
                     };
@@ -258,6 +258,10 @@ router.post("/chat", aiLimiter, async (req, res) => {
                             customerName: bookingData.customer_name || existingTicket.customerName,
                             phone: bookingData.phone || existingTicket.phone,
                             brand: bookingData.brand || existingTicket.brand,
+                            // Model number extracted from conversation
+                            modelNumber: bookingData.model || existingTicket.modelNumber,
+                            // Screen size in inches
+                            screenSize: bookingData.screenSize || existingTicket.screenSize,
                             // Primary Issue is the Category (e.g. Display Issue)
                             primaryIssue: bookingData.issue || existingTicket.primaryIssue,
                             // Description is the User's words
@@ -292,6 +296,8 @@ router.post("/chat", aiLimiter, async (req, res) => {
                         primaryIssue: bookingData.issue || "Other", // Default to Other if AI fails
                         description: bookingData.description || `AI Chat Booking: ${bookingData.issue}`,
                         brand: bookingData.brand || "Unknown",
+                        modelNumber: bookingData.model || null,
+                        screenSize: bookingData.screenSize || null,
                         status: "Pending",
                         customerId: customerIdToLink,
                     });

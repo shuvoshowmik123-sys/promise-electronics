@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "555794013028",
+    "project_id": "promsie-electronics-admin",
+    "storage_bucket": "promsie-electronics-admin.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:555794013028:android:37e2ec2a0c39d978def871",
+        "android_client_info": {
+          "package_name": "com.promiseelectronics.admin_app_flutter"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDZSKO8EuAjiQqm3TFpOsbv_R7nI7D4ls0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
