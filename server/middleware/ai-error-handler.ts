@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from "express";
-import { aiService } from "../services/ai.service";
-import { db } from "../db";
-import { aiDebugSuggestions } from "../../shared/schema";
+import { aiService } from "../services/ai.service.js";
+import { db } from "../db.js";
+import { aiDebugSuggestions } from "../../shared/schema.js";
 
 const KNOWN_ERRORS = [
     {
