@@ -1,4 +1,3 @@
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,6 +21,8 @@ import { useLocation, useSearch } from "wouter";
 import type { InventoryItem } from "@shared/schema";
 import { useCart } from "@/contexts/CartContext";
 import { toast } from "sonner";
+import { CustomerErrorBoundary } from "@/components/customer/CustomerErrorBoundary";
+import { QueryErrorState } from "@/components/customer/QueryErrorState";
 
 export default function ShopPage() {
   usePageTitle("Shop Spare Parts & Electronics");
@@ -56,12 +57,12 @@ export default function ShopPage() {
     }
   }, [searchString]);
 
-  const { data: items = [], isLoading } = useQuery({
+  const { data: items = [], isLoading, isError: isInventoryError, refetch: refetchInventory } = useQuery({
     queryKey: ["shop-inventory"],
     queryFn: inventoryApi.getWebsiteItems,
   });
 
-  const { data: settings = [] } = useQuery({
+  const { data: settings = [], isError: isSettingsError, refetch: refetchSettings } = useQuery({
     queryKey: ["settings"],
     queryFn: settingsApi.getAll,
   });
@@ -112,23 +113,23 @@ export default function ShopPage() {
         return false;
       }
     }
-    
+
     // Category filter
     if (selectedCategories.length > 0 && !selectedCategories.includes(item.category)) {
       return false;
     }
-    
+
     // Price filter
     const itemPrice = Number(item.price) || 0;
     if (itemPrice > pricePercentage) {
       return false;
     }
-    
+
     // Status filter
     if (selectedStatus.length > 0 && !selectedStatus.includes(item.status)) {
       return false;
     }
-    
+
     return true;
   });
 
@@ -159,8 +160,8 @@ export default function ShopPage() {
         <div className="space-y-2">
           {categories.length > 0 ? categories.map((cat) => (
             <div key={cat} className="flex items-center space-x-2">
-              <Checkbox 
-                id={cat} 
+              <Checkbox
+                id={cat}
                 data-testid={`checkbox-category-${cat}`}
                 checked={selectedCategories.includes(cat)}
                 onCheckedChange={() => toggleCategory(cat)}
@@ -172,8 +173,8 @@ export default function ShopPage() {
           )) : (
             ['Televisions', 'Audio Systems', 'Spare Parts', 'Accessories', 'Cables'].map((cat) => (
               <div key={cat} className="flex items-center space-x-2">
-                <Checkbox 
-                  id={cat} 
+                <Checkbox
+                  id={cat}
                   data-testid={`checkbox-category-${cat}`}
                   checked={selectedCategories.includes(cat)}
                   onCheckedChange={() => toggleCategory(cat)}
@@ -194,13 +195,13 @@ export default function ShopPage() {
             Max: ৳{(pricePercentage).toLocaleString()}
           </span>
         </div>
-        <Slider 
-          value={priceRange} 
+        <Slider
+          value={priceRange}
           onValueChange={setPriceRange}
-          max={100} 
-          step={1} 
-          className="py-4" 
-          data-testid="slider-price" 
+          max={100}
+          step={1}
+          className="py-4"
+          data-testid="slider-price"
         />
         <div className="flex items-center justify-between text-sm">
           <span className="text-muted-foreground">৳0</span>
@@ -215,8 +216,8 @@ export default function ShopPage() {
         <div className="space-y-2">
           {['In Stock', 'Low Stock'].map((status) => (
             <div key={status} className="flex items-center space-x-2">
-              <Checkbox 
-                id={status} 
+              <Checkbox
+                id={status}
                 data-testid={`checkbox-status-${status}`}
                 checked={selectedStatus.includes(status)}
                 onCheckedChange={() => toggleStatus(status)}
@@ -232,7 +233,7 @@ export default function ShopPage() {
   );
 
   return (
-    <PublicLayout>
+    <CustomerErrorBoundary>
       {/* Neumorphic Header */}
       <div className="bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 border-b border-slate-200/50 py-10">
         <div className="container mx-auto px-4">
@@ -248,10 +249,10 @@ export default function ShopPage() {
             <div className="p-5 rounded-2xl bg-slate-100 shadow-neumorph border-none">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold flex items-center"><Filter className="w-4 h-4 mr-2" /> Filters</h3>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="h-auto p-0 text-xs text-muted-foreground hover:text-primary" 
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto p-0 text-xs text-muted-foreground hover:text-primary"
                   data-testid="button-clear-filters"
                   onClick={clearFilters}
                 >
@@ -295,7 +296,7 @@ export default function ShopPage() {
               <p className="text-sm text-muted-foreground order-2 sm:order-1" data-testid="text-results-count">
                 Showing {filteredItems.length} results{searchQuery && ` for "${searchQuery}"`}
               </p>
-              
+
               <div className="flex items-center gap-2 w-full sm:w-auto order-1 sm:order-2 justify-between sm:justify-end">
                 <Sheet open={isFilterOpen} onOpenChange={setIsFilterOpen}>
                   <SheetTrigger asChild>
@@ -328,6 +329,17 @@ export default function ShopPage() {
                 <Loader2 className="h-12 w-12 animate-spin text-muted-foreground mb-4" />
                 <p className="text-sm text-muted-foreground">Loading products...</p>
               </div>
+            ) : isInventoryError || isSettingsError ? (
+              <div className="py-16">
+                <QueryErrorState
+                  title="Failed to Load Shop Data"
+                  message="We encountered an issue while loading the products. Please try again."
+                  onRetry={() => {
+                    refetchInventory();
+                    refetchSettings();
+                  }}
+                />
+              </div>
             ) : filteredItems.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16" data-testid="empty-state">
                 <ShoppingBag className="h-16 w-16 text-muted-foreground mb-4" />
@@ -341,19 +353,19 @@ export default function ShopPage() {
                   {filteredItems.map((item) => {
                     const itemImages = parseImages(item.images);
                     const hasImages = itemImages.length > 0;
-                    
+
                     return (
-                      <Card 
-                        key={item.id} 
-                        className="group overflow-hidden bg-slate-100 shadow-neumorph hover:shadow-neumorph-lg transition-all duration-300 border-none rounded-2xl" 
+                      <Card
+                        key={item.id}
+                        className="group overflow-hidden bg-slate-100 shadow-neumorph hover:shadow-neumorph-lg transition-all duration-300 border-none rounded-2xl"
                         data-testid={`card-product-${item.id}`}
                       >
                         <div className="aspect-[4/3] overflow-hidden bg-white m-2 md:m-3 rounded-lg md:rounded-xl shadow-neumorph-inset relative">
                           {hasImages ? (
                             <>
-                              <img 
-                                src={itemImages[0]} 
-                                alt={item.name} 
+                              <img
+                                src={itemImages[0]}
+                                alt={item.name}
                                 className="object-cover h-full w-full group-hover:scale-105 transition-transform duration-500"
                                 data-testid={`img-product-${item.id}`}
                               />
@@ -393,28 +405,28 @@ export default function ShopPage() {
                             </span>
                           </div>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 md:gap-2">
-                            <Button 
-                              variant="outline" 
-                              size="sm" 
-                              className="w-full h-7 md:h-9 text-xs md:text-sm" 
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full h-7 md:h-9 text-xs md:text-sm"
                               onClick={() => handleViewDetails(item)}
                               data-testid={`button-details-${item.id}`}
                             >
                               <Eye className="h-3 w-3 md:h-4 md:w-4 mr-1" /> Details
                             </Button>
                             {item.itemType === "service" ? (
-                              <Button 
-                                size="sm" 
-                                className="w-full h-7 md:h-9 text-xs md:text-sm bg-teal-600 hover:bg-teal-700" 
+                              <Button
+                                size="sm"
+                                className="w-full h-7 md:h-9 text-xs md:text-sm bg-teal-600 hover:bg-teal-700"
                                 onClick={() => setLocation("/repair")}
                                 data-testid={`button-get-quote-${item.id}`}
                               >
                                 <MessageSquare className="h-3 w-3 md:h-4 md:w-4 mr-1" /> Quote
                               </Button>
                             ) : (
-                              <Button 
-                                size="sm" 
-                                className="w-full h-7 md:h-9 text-xs md:text-sm" 
+                              <Button
+                                size="sm"
+                                className="w-full h-7 md:h-9 text-xs md:text-sm"
                                 disabled={item.status === "Out of Stock"}
                                 onClick={() => handleAddToCart(item)}
                                 data-testid={`button-add-to-cart-${item.id}`}
@@ -428,7 +440,7 @@ export default function ShopPage() {
                     );
                   })}
                 </div>
-                
+
                 {filteredItems.length > 0 && (
                   <div className="mt-12 flex justify-center">
                     <Button variant="outline" size="lg" data-testid="button-load-more">Load More Products</Button>
@@ -492,9 +504,8 @@ export default function ShopPage() {
                               <button
                                 key={i}
                                 onClick={() => setCurrentImageIndex(i)}
-                                className={`w-16 h-16 flex-shrink-0 rounded-md overflow-hidden border-2 transition-all ${
-                                  i === currentImageIndex ? "border-primary ring-2 ring-primary/30" : "border-transparent hover:border-slate-300"
-                                }`}
+                                className={`w-16 h-16 flex-shrink-0 rounded-md overflow-hidden border-2 transition-all ${i === currentImageIndex ? "border-primary ring-2 ring-primary/30" : "border-transparent hover:border-slate-300"
+                                  }`}
                                 data-testid={`thumbnail-${i}`}
                               >
                                 <img src={img} alt="" className="w-full h-full object-cover" />
@@ -510,22 +521,22 @@ export default function ShopPage() {
                     );
                   })()}
                 </div>
-                
+
                 <div className="space-y-4">
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Category</p>
                     <Badge variant="outline">{selectedItem.category}</Badge>
                   </div>
-                  
+
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Price</p>
                     <p className="text-2xl font-bold text-primary">৳{Number(selectedItem.price).toLocaleString()}</p>
                   </div>
-                  
+
                   <div>
                     <p className="text-sm text-muted-foreground mb-1">Availability</p>
                     <div className="flex items-center gap-2">
-                      <Badge 
+                      <Badge
                         variant={selectedItem.status === "Out of Stock" ? "destructive" : selectedItem.status === "Low Stock" ? "secondary" : "outline"}
                         className={selectedItem.status === "Low Stock" ? "bg-orange-100 text-orange-700" : ""}
                       >
@@ -534,18 +545,18 @@ export default function ShopPage() {
                       <span className="text-sm text-muted-foreground">({selectedItem.stock} units)</span>
                     </div>
                   </div>
-                  
+
                   {selectedItem.description && (
                     <div>
                       <p className="text-sm text-muted-foreground mb-1">Description</p>
                       <p className="text-sm">{selectedItem.description}</p>
                     </div>
                   )}
-                  
+
                   <div className="pt-4 space-y-3">
                     {selectedItem.itemType === "service" ? (
-                      <Button 
-                        className="w-full bg-teal-600 hover:bg-teal-700" 
+                      <Button
+                        className="w-full bg-teal-600 hover:bg-teal-700"
                         size="lg"
                         onClick={() => {
                           setIsDetailOpen(false);
@@ -556,8 +567,8 @@ export default function ShopPage() {
                         <MessageSquare className="h-4 w-4 mr-2" /> Get Quote
                       </Button>
                     ) : (
-                      <Button 
-                        className="w-full" 
+                      <Button
+                        className="w-full"
                         size="lg"
                         disabled={selectedItem.status === "Out of Stock"}
                         onClick={() => {
@@ -584,6 +595,6 @@ export default function ShopPage() {
           )}
         </DialogContent>
       </Dialog>
-    </PublicLayout>
+    </CustomerErrorBoundary>
   );
 }

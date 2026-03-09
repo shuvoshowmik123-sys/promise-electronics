@@ -6,7 +6,10 @@
 
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
+import { financeRepo, posRepo, userRepo } from '../repositories/index.js';
 import { insertPosTransactionSchema } from '../../shared/schema.js';
+import { requireAdminAuth, requirePermission } from './middleware/auth.js';
+import { auditLogger } from '../utils/auditLogger.js';
 
 const router = Router();
 
@@ -16,13 +19,39 @@ const router = Router();
 
 /**
  * GET /api/pos-transactions - Get all POS transactions
+ * Requires: Admin auth + pos permission
  */
-router.get('/api/pos-transactions', async (req: Request, res: Response) => {
+router.get('/api/pos-transactions', requireAdminAuth, requirePermission('pos'), async (req: Request, res: Response) => {
     try {
-        const transactions = await storage.getAllPosTransactions();
+        const { page, limit, search, paymentMethod, from, to } = req.query;
+        const transactions = await posRepo.getAllPosTransactions({
+            page: page ? Number(page) : undefined,
+            limit: limit ? Number(limit) : undefined,
+            search: search as string,
+            paymentMethod: paymentMethod as string,
+            from: from as string,
+            to: to as string,
+        });
         res.json(transactions);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch POS transactions' });
+    }
+});
+
+/**
+ * GET /api/pos-transactions/summary - Get aggregate POS stats
+ * Requires: Admin auth + pos permission
+ */
+router.get('/api/pos-transactions/summary', requireAdminAuth, requirePermission('pos'), async (req: Request, res: Response) => {
+    try {
+        const { from, to } = req.query;
+        const summary = await posRepo.getPosTransactionSummary({
+            from: from as string,
+            to: to as string,
+        });
+        res.json(summary);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch POS summary' });
     }
 });
 
@@ -31,7 +60,7 @@ router.get('/api/pos-transactions', async (req: Request, res: Response) => {
  */
 router.get('/api/pos-transactions/:id', async (req: Request, res: Response) => {
     try {
-        const transaction = await storage.getPosTransaction(req.params.id);
+        const transaction = await posRepo.getPosTransaction(req.params.id);
         if (!transaction) {
             return res.status(404).json({ error: 'POS transaction not found' });
         }
@@ -43,8 +72,9 @@ router.get('/api/pos-transactions/:id', async (req: Request, res: Response) => {
 
 /**
  * POST /api/pos-transactions - Create POS transaction
+ * Requires: Admin auth + process_payment permission (Cashier/Manager/Super Admin)
  */
-router.post('/api/pos-transactions', async (req: Request, res: Response) => {
+router.post('/api/pos-transactions', requireAdminAuth, requirePermission('process_payment'), async (req: Request, res: Response) => {
     try {
         const validated = insertPosTransactionSchema.parse(req.body);
 
@@ -60,7 +90,7 @@ router.post('/api/pos-transactions', async (req: Request, res: Response) => {
             return res.status(400).json({ error: 'Invalid payment method' });
         }
 
-        const transaction = await storage.createPosTransaction(validated);
+        const transaction = await posRepo.createPosTransaction(validated);
 
         // Handle Inventory Updates
         if (validated.items) {
@@ -77,7 +107,7 @@ router.post('/api/pos-transactions', async (req: Request, res: Response) => {
             const dueDate = new Date();
             dueDate.setDate(dueDate.getDate() + 7);
 
-            await storage.createDueRecord({
+            await financeRepo.createDueRecord({
                 customer: customer,
                 amount: validated.total,
                 status: 'Pending',
@@ -87,12 +117,20 @@ router.post('/api/pos-transactions', async (req: Request, res: Response) => {
         }
         // Handle Immediate Payments
         else if (['Cash', 'Bank', 'bKash', 'Nagad'].includes(paymentMethod)) {
-            await storage.createPettyCashRecord({
+            await financeRepo.createPettyCashRecord({
                 description: `POS Sale - Invoice ${transaction.invoiceNumber || transaction.id}`,
                 category: 'Sales',
                 amount: validated.total,
                 type: 'Income',
             });
+
+            // Update drawer expectedCash for CASH payments only
+            if (paymentMethod === 'Cash') {
+                const activeDrawer = await posRepo.getActiveDrawer();
+                if (activeDrawer) {
+                    await posRepo.updateDrawerExpectedCash(activeDrawer.id, validated.total);
+                }
+            }
         }
 
         // Handle Linked Jobs
@@ -100,7 +138,22 @@ router.post('/api/pos-transactions', async (req: Request, res: Response) => {
             const linkedJobs = JSON.parse(validated.linkedJobs);
             for (const job of linkedJobs) {
                 if (job.jobId) {
-                    await storage.updateJobTicket(job.jobId, { status: 'Completed' });
+                    const existingJob = await storage.getJobTicket(job.jobId);
+                    if (existingJob && existingJob.status !== 'Completed') {
+                        await storage.updateJobTicket(job.jobId, { status: 'Completed' });
+
+                        // Audit Log for job completion via POS
+                        await auditLogger.log({
+                            userId: req.session?.adminUserId || 'system',
+                            action: 'STATUS_CHANGE_TO_COMPLETED',
+                            entity: 'JobTicket',
+                            entityId: job.jobId,
+                            details: `Job marked as completed via POS transaction ${transaction.invoiceNumber || transaction.id}`,
+                            oldValue: { status: existingJob.status },
+                            newValue: { status: 'Completed' },
+                            req: req
+                        });
+                    }
                 }
             }
         }

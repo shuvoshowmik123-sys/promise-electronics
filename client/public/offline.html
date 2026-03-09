@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Offline — Promise Electronics</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Barlow:wght@600;700&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(145deg, #e2e8ec, #ffffff);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #1e293b;
+      overflow: hidden;
+    }
+
+    .container {
+      text-align: center;
+      padding: 2rem;
+      max-width: 420px;
+      animation: fadeUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(20px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Brand Header */
+    .brand {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      margin-bottom: 2rem;
+    }
+    .brand img { height: 36px; width: 36px; object-fit: contain; }
+    .brand span {
+      font-family: 'Barlow', sans-serif;
+      font-weight: 700;
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+    }
+
+    /* Signal Animation */
+    .signal-container {
+      position: relative;
+      width: 120px;
+      height: 120px;
+      margin: 0 auto 1.5rem;
+    }
+    .signal-dot {
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 16px; height: 16px;
+      background: #0ea5e9;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      z-index: 2;
+    }
+    .signal-wave {
+      position: absolute;
+      top: 50%; left: 50%;
+      border: 3px solid #0ea5e9;
+      border-radius: 50%;
+      transform: translate(-50%, -50%);
+      animation: pulse 2s ease-out infinite;
+    }
+    .signal-wave:nth-child(2) { animation-delay: 0.5s; }
+    .signal-wave:nth-child(3) { animation-delay: 1s; }
+
+    @keyframes pulse {
+      0% {
+        width: 16px; height: 16px;
+        opacity: 0.8;
+      }
+      100% {
+        width: 100px; height: 100px;
+        opacity: 0;
+      }
+    }
+
+    h1 {
+      font-family: 'Barlow', sans-serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: #0f172a;
+    }
+
+    .subtitle {
+      font-size: 0.875rem;
+      color: #64748b;
+      line-height: 1.6;
+      margin-bottom: 1.5rem;
+    }
+
+    /* Status indicator */
+    .status-bar {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      background: linear-gradient(145deg, #ffffff, #e6ecf0);
+      box-shadow: 4px 4px 10px rgba(163,177,198,0.4), -4px -4px 10px rgba(255,255,255,0.9);
+      border-radius: 20px;
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: #64748b;
+      border: 1px solid rgba(255,255,255,0.7);
+    }
+
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: #f59e0b;
+      animation: blink 1.2s infinite;
+    }
+
+    .status-dot.online {
+      background: #22c55e;
+      animation: none;
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+
+    /* Success state */
+    .success-msg {
+      display: none;
+      font-size: 0.875rem;
+      color: #16a34a;
+      font-weight: 600;
+      margin-top: 1rem;
+      animation: fadeUp 0.4s ease both;
+    }
+    .success-msg.show { display: block; }
+
+    .footer {
+      margin-top: 2rem;
+      font-size: 0.7rem;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Brand -->
+    <div class="brand">
+      <img src="/logo.png" alt="Promise Electronics Logo" />
+      <span>PROMISE ELECTRONICS</span>
+    </div>
+
+    <!-- Signal Animation -->
+    <div class="signal-container">
+      <div class="signal-dot"></div>
+      <div class="signal-wave"></div>
+      <div class="signal-wave"></div>
+      <div class="signal-wave"></div>
+    </div>
+
+    <h1>You're currently offline</h1>
+    <p class="subtitle">
+      Stay with us — we'll reconnect as soon as the signal is back.
+      <br />Your data is safe.
+    </p>
+
+    <!-- Status -->
+    <div class="status-bar">
+      <span class="status-dot" id="statusDot"></span>
+      <span id="statusText">Checking connection...</span>
+    </div>
+
+    <!-- Success message -->
+    <p class="success-msg" id="successMsg">✅ You're back online! Reloading...</p>
+
+    <p class="footer">© 2026 Promise Electronics BD</p>
+  </div>
+
+  <script>
+    (function() {
+      var statusDot = document.getElementById('statusDot');
+      var statusText = document.getElementById('statusText');
+      var successMsg = document.getElementById('successMsg');
+      var countdown = 3;
+
+      function checkConnection() {
+        if (navigator.onLine) {
+          statusDot.classList.add('online');
+          statusText.textContent = 'Connected!';
+          successMsg.classList.add('show');
+          setTimeout(function() { window.location.reload(); }, 1500);
+        } else {
+          countdown = countdown <= 1 ? 3 : countdown - 1;
+          statusText.textContent = 'Checking connection... (' + countdown + 's)';
+        }
+      }
+
+      // Check every 3 seconds
+      setInterval(checkConnection, 3000);
+
+      // Also listen for the online event
+      window.addEventListener('online', function() {
+        statusDot.classList.add('online');
+        statusText.textContent = 'Connected!';
+        successMsg.classList.add('show');
+        setTimeout(function() { window.location.reload(); }, 1500);
+      });
+    })();
+  </script>
+</body>
+</html>

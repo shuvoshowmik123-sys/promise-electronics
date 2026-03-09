@@ -1,7 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,6 +11,7 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { serviceCatalogApi, settingsApi } from "@/lib/api";
 import { Tv, Monitor, Smartphone, LayoutGrid, Cpu, Zap, Volume2, Gamepad2, Wrench, Clock, ArrowRight, Search, ChevronLeft, ChevronRight, X, Filter, Eye, CheckCircle } from "lucide-react";
 import type { ServiceCatalog, Setting } from "@shared/schema";
+import { QueryErrorState } from "@/components/customer/QueryErrorState";
 
 const iconMap: Record<string, React.ReactNode> = {
   Tv: <Tv className="h-8 w-8" />,
@@ -33,11 +33,11 @@ function formatPrice(price: number | string | null | undefined): string | null {
 
 function ServiceCard({ service, onGetQuote, onViewDetails }: { service: ServiceCatalog; onGetQuote: () => void; onViewDetails: () => void }) {
   const icon = iconMap[service.icon || ""] || <Wrench className="h-6 w-6" />;
-  
+
   return (
     <Card className="group relative overflow-hidden bg-slate-100 shadow-neumorph hover:shadow-neumorph-lg transition-all duration-300 border-none flex flex-col h-full rounded-2xl" data-testid={`card-service-${service.id}`}>
       <div className="absolute top-0 right-0 w-24 h-24 bg-primary/5 rounded-full -translate-y-12 translate-x-12 group-hover:scale-150 transition-transform duration-500" />
-      
+
       <CardHeader className="pb-2 relative">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-11 h-11 rounded-xl bg-white shadow-neumorph-inset flex items-center justify-center text-primary group-hover:shadow-neumorph transition-shadow">
@@ -53,7 +53,7 @@ function ServiceCard({ service, onGetQuote, onViewDetails }: { service: ServiceC
           </CardDescription>
         )}
       </CardHeader>
-      
+
       <CardContent className="flex-grow pt-2 pb-3">
         <div className="bg-gradient-to-r from-emerald-50 to-teal-50/50 border border-emerald-100/50 p-3 rounded-xl">
           <div className="flex items-center justify-between mb-1">
@@ -66,15 +66,15 @@ function ServiceCard({ service, onGetQuote, onViewDetails }: { service: ServiceC
             )}
           </div>
           <p className="text-lg font-bold text-emerald-700">
-            {formatPrice(service.minPrice) && formatPrice(service.maxPrice) 
+            {formatPrice(service.minPrice) && formatPrice(service.maxPrice)
               ? `${formatPrice(service.minPrice)} - ${formatPrice(service.maxPrice)}`
               : formatPrice(service.minPrice) || formatPrice(service.maxPrice) || 'Contact us'}
           </p>
         </div>
       </CardContent>
-      
+
       <CardFooter className="pt-0 pb-4 gap-2">
-        <Button 
+        <Button
           variant="ghost"
           size="sm"
           className="flex-1 h-9 text-xs hover:bg-slate-100"
@@ -85,7 +85,7 @@ function ServiceCard({ service, onGetQuote, onViewDetails }: { service: ServiceC
           <Eye className="mr-1.5 h-3.5 w-3.5" />
           Details
         </Button>
-        <Button 
+        <Button
           size="sm"
           className="flex-1 h-9 text-xs bg-primary hover:bg-primary/90 shadow-sm"
           onClick={onGetQuote}
@@ -131,8 +131,8 @@ export default function ServicesPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedService, setSelectedService] = useState<ServiceCatalog | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
-  
-  const { data: services = [], isLoading, error } = useQuery({
+
+  const { data: services = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["serviceCatalog"],
     queryFn: serviceCatalogApi.getAll,
     staleTime: 5 * 60 * 1000,
@@ -159,52 +159,52 @@ export default function ServicesPage() {
     }
     return ["LED TV Repair", "LCD TV Repair", "Smart TV Repair", "Monitor Repair", "Projector Repair"];
   }, [settings]);
-  
+
   const filteredServices = useMemo(() => {
     let result = [...services];
-    
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
-      result = result.filter(service => 
+      result = result.filter(service =>
         service.name.toLowerCase().includes(query) ||
         (service.description?.toLowerCase().includes(query))
       );
     }
-    
+
     if (selectedCategory !== "all") {
       result = result.filter(service => service.category === selectedCategory);
     }
-    
+
     result.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0));
-    
+
     return result;
   }, [services, searchQuery, selectedCategory]);
-  
+
   const totalPages = Math.ceil(filteredServices.length / ITEMS_PER_PAGE);
   const paginatedServices = useMemo(() => {
     const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
     return filteredServices.slice(startIndex, startIndex + ITEMS_PER_PAGE);
   }, [filteredServices, currentPage]);
-  
+
   const handleSearchChange = (value: string) => {
     setSearchQuery(value);
     setCurrentPage(1);
   };
-  
+
   const handleCategoryChange = (category: string) => {
     setSelectedCategory(category);
     setCurrentPage(1);
   };
-  
+
   const handleGetQuote = (service: ServiceCatalog) => {
     setLocation(`/get-quote?service=${encodeURIComponent(service.name)}`);
   };
-  
+
   const handleViewDetails = (service: ServiceCatalog) => {
     setSelectedService(service);
     setIsModalOpen(true);
   };
-  
+
   const groupedServices = services.reduce((acc, service) => {
     const category = service.category || "Other Services";
     // Only include services whose category is in the service_filter_categories
@@ -216,13 +216,13 @@ export default function ServicesPage() {
     }
     return acc;
   }, {} as Record<string, ServiceCatalog[]>);
-  
+
   const hasActiveFilters = searchQuery.trim() !== "" || selectedCategory !== "all";
   const showGroupedView = !hasActiveFilters;
   const showPagination = hasActiveFilters && totalPages > 1;
-  
+
   return (
-    <PublicLayout>
+    <>
       <main className="flex-1">
         {/* Neumorphic Hero Section */}
         <section className="bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 py-12 md:py-20">
@@ -233,7 +233,7 @@ export default function ServicesPage() {
                 Expert TV & Electronics <span className="text-primary">Repair Services</span>
               </h1>
               <p className="text-lg text-muted-foreground mb-8">
-                Get transparent pricing with no hidden fees. Request a free quote and we'll inspect your device 
+                Get transparent pricing with no hidden fees. Request a free quote and we'll inspect your device
                 before providing a final price.
               </p>
               <div className="flex flex-wrap justify-center gap-4 text-sm text-muted-foreground">
@@ -253,7 +253,7 @@ export default function ServicesPage() {
             </div>
           </div>
         </section>
-        
+
         {/* Neumorphic Services Section */}
         <section className="py-12 md:py-16 bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50">
           <div className="container mx-auto px-4">
@@ -269,7 +269,7 @@ export default function ServicesPage() {
                     data-testid="input-search-services"
                   />
                   {searchQuery && (
-                    <button 
+                    <button
                       onClick={() => handleSearchChange("")}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                       data-testid="button-clear-search"
@@ -279,7 +279,7 @@ export default function ServicesPage() {
                   )}
                 </div>
               </div>
-              
+
               {categories.length > 0 && (
                 <div className="flex flex-wrap gap-2 items-center">
                   <Filter className="h-4 w-4 text-muted-foreground mr-1" />
@@ -304,13 +304,13 @@ export default function ServicesPage() {
                   ))}
                 </div>
               )}
-              
+
               {hasActiveFilters && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <span>Showing {filteredServices.length} of {services.length} services</span>
                   {hasActiveFilters && (
-                    <Button 
-                      variant="ghost" 
+                    <Button
+                      variant="ghost"
                       size="sm"
                       onClick={() => {
                         setSearchQuery("");
@@ -326,17 +326,16 @@ export default function ServicesPage() {
                 </div>
               )}
             </div>
-            
+
             {isLoading ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                 {Array.from({ length: 8 }).map((_, i) => (
                   <ServiceCardSkeleton key={i} />
                 ))}
               </div>
-            ) : error ? (
-              <div className="text-center py-12">
-                <p className="text-destructive mb-4">Failed to load services. Please try again.</p>
-                <Button onClick={() => window.location.reload()}>Retry</Button>
+            ) : isError ? (
+              <div className="py-12">
+                <QueryErrorState message="Failed to load services" onRetry={() => refetch()} />
               </div>
             ) : filteredServices.length === 0 ? (
               <div className="text-center py-12">
@@ -345,7 +344,7 @@ export default function ServicesPage() {
                   {hasActiveFilters ? "No services match your search criteria." : "No services available at the moment."}
                 </p>
                 {hasActiveFilters && (
-                  <Button 
+                  <Button
                     variant="outline"
                     onClick={() => {
                       setSearchQuery("");
@@ -371,9 +370,9 @@ export default function ServicesPage() {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                       {categoryServices.sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0)).map((service) => (
-                        <ServiceCard 
-                          key={service.id} 
-                          service={service} 
+                        <ServiceCard
+                          key={service.id}
+                          service={service}
                           onGetQuote={() => handleGetQuote(service)}
                           onViewDetails={() => handleViewDetails(service)}
                         />
@@ -386,15 +385,15 @@ export default function ServicesPage() {
               <>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                   {paginatedServices.map((service) => (
-                    <ServiceCard 
-                      key={service.id} 
-                      service={service} 
+                    <ServiceCard
+                      key={service.id}
+                      service={service}
                       onGetQuote={() => handleGetQuote(service)}
                       onViewDetails={() => handleViewDetails(service)}
                     />
                   ))}
                 </div>
-                
+
                 {showPagination && (
                   <div className="flex items-center justify-center gap-2 mt-8">
                     <Button
@@ -437,7 +436,7 @@ export default function ServicesPage() {
             )}
           </div>
         </section>
-        
+
         <section className="bg-primary/5 py-12 md:py-16">
           <div className="container mx-auto px-4">
             <div className="max-w-4xl mx-auto text-center">
@@ -445,7 +444,7 @@ export default function ServicesPage() {
               <p className="text-muted-foreground mb-8">
                 Get a hassle-free repair experience with our transparent pricing process
               </p>
-              
+
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6">
                 <div className="bg-white rounded-lg md:rounded-xl p-3 md:p-6 shadow-sm">
                   <div className="w-8 h-8 md:w-10 md:h-10 text-sm md:text-base rounded-full bg-primary text-white flex items-center justify-center font-bold mx-auto mb-2 md:mb-4">1</div>
@@ -471,17 +470,17 @@ export default function ServicesPage() {
             </div>
           </div>
         </section>
-        
+
         <section className="py-12 md:py-16 bg-primary text-white">
           <div className="container mx-auto px-4 text-center">
             <h2 className="text-2xl md:text-3xl font-bold mb-4">Not Sure Which Service You Need?</h2>
             <p className="text-primary-foreground/80 mb-6 max-w-2xl mx-auto">
-              No problem! Submit a general quote request and our experts will diagnose your device 
+              No problem! Submit a general quote request and our experts will diagnose your device
               and recommend the best solution.
             </p>
-            <Button 
-              size="lg" 
-              variant="secondary" 
+            <Button
+              size="lg"
+              variant="secondary"
               onClick={() => setLocation('/get-quote')}
               data-testid="button-general-quote"
             >
@@ -509,14 +508,14 @@ export default function ServicesPage() {
                   </div>
                 </div>
               </DialogHeader>
-              
+
               <div className="space-y-4">
                 {selectedService.description && (
                   <DialogDescription className="text-sm text-foreground/80">
                     {selectedService.description}
                   </DialogDescription>
                 )}
-                
+
                 <div className="bg-gradient-to-r from-emerald-50 to-teal-50/50 border border-emerald-100/50 p-4 rounded-xl">
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-xs font-medium text-emerald-600 uppercase tracking-wider">Price Range</span>
@@ -528,13 +527,13 @@ export default function ServicesPage() {
                     )}
                   </div>
                   <p className="text-2xl font-bold text-emerald-700">
-                    {formatPrice(selectedService.minPrice) && formatPrice(selectedService.maxPrice) 
+                    {formatPrice(selectedService.minPrice) && formatPrice(selectedService.maxPrice)
                       ? `${formatPrice(selectedService.minPrice)} - ${formatPrice(selectedService.maxPrice)}`
                       : formatPrice(selectedService.minPrice) || formatPrice(selectedService.maxPrice) || 'Contact for pricing'}
                   </p>
                   <p className="text-xs text-muted-foreground mt-1">Final price after inspection</p>
                 </div>
-                
+
                 <div className="space-y-2">
                   <h4 className="text-sm font-medium">What's Included:</h4>
                   <ul className="space-y-1.5">
@@ -564,17 +563,17 @@ export default function ServicesPage() {
                     })()}
                   </ul>
                 </div>
-                
+
                 <div className="flex gap-2 pt-2">
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     className="flex-1"
                     onClick={() => setIsModalOpen(false)}
                     data-testid="button-modal-close"
                   >
                     Close
                   </Button>
-                  <Button 
+                  <Button
                     className="flex-1"
                     onClick={() => {
                       setIsModalOpen(false);
@@ -591,6 +590,6 @@ export default function ServicesPage() {
           )}
         </DialogContent>
       </Dialog>
-    </PublicLayout>
+    </>
   );
 }

@@ -18,6 +18,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { useEffect } from "react";
 import { toast } from "sonner";
+import { CommandPalette } from "@/components/admin/shared/CommandPalette";
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
@@ -62,6 +63,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       "/admin/pickup-schedule": "serviceRequests",
       "/admin/orders": "orders",
       "/admin/customers": "users",
+      "/admin/system-health": "systemHealth",
+      "/admin/inquiries": "inquiries",
+      "/admin/corporate": "corporate",
+      "/admin/technician": "technician",
     };
     const permission = permissionMap[href];
     if (!permission) return true;
@@ -91,8 +96,9 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       <div className="flex min-h-screen w-full bg-slate-50/50 dark:bg-slate-900/50">
         <Sidebar>
           <SidebarContent className="bg-sidebar text-sidebar-foreground">
-            <div className="p-6">
-              <h2 className="text-xl font-heading font-bold text-sidebar-primary-foreground">PROMISE<br /><span className="text-sidebar-primary">ADMIN</span></h2>
+            <div className="p-6 flex items-center gap-3">
+              <img src="/logo.png" alt="Promise Electronics" className="h-10 w-10 object-contain rounded-md" />
+              <h2 className="text-xl font-heading font-bold text-sidebar-primary-foreground leading-none">PROMISE<br /><span className="text-sm font-semibold tracking-widest uppercase text-sidebar-primary">ADMIN</span></h2>
             </div>
             {filteredNavGroups.map((group) => (
               <SidebarGroup key={group.title}>
@@ -162,6 +168,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             {children}
           </main>
         </div>
+        <CommandPalette />
       </div>
     </SidebarProvider>
   );

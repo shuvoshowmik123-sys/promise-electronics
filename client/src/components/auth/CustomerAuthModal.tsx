@@ -181,9 +181,9 @@ export function CustomerAuthModal({
               <div className="space-y-2">
                 <Label htmlFor="login-phone">Phone Number</Label>
                 <div className="relative flex items-center">
-                  <div className="absolute left-3 flex items-center gap-1 text-muted-foreground">
-                    <Phone className="h-4 w-4" />
-                    <span className="text-sm font-semibold select-none text-foreground">+880</span>
+                  <div className="absolute inset-y-0 left-3 flex items-center gap-1.5 text-muted-foreground pointer-events-none">
+                    <Phone className="h-4.5 w-4.5" />
+                    <span className="text-base font-medium select-none text-foreground">+880</span>
                   </div>
                   <Input
                     id="login-phone"
@@ -192,9 +192,9 @@ export function CustomerAuthModal({
                     pattern="[0-9]*"
                     placeholder="1XXXXXXXXX"
                     value={loginPhone}
-                    onChange={(e) => setLoginPhone(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => setLoginPhone(e.target.value.replace(/\D/g, '').replace(/^0+/, ''))}
                     maxLength={10}
-                    className="pl-[4.25rem]"
+                    className="pl-[5rem] h-11 text-base md:text-base py-2"
                     data-testid="input-login-phone"
                   />
                 </div>
@@ -203,20 +203,20 @@ export function CustomerAuthModal({
               <div className="space-y-2">
                 <Label htmlFor="login-password">Password</Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground" />
                   <Input
                     id="login-password"
                     type="password"
                     placeholder="Enter your password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 h-11 text-base md:text-base py-2"
                     data-testid="input-login-password"
                   />
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading} data-testid="button-login-submit">
+              <Button type="submit" className="w-full h-11 text-base" disabled={isLoading} data-testid="button-login-submit">
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -234,14 +234,14 @@ export function CustomerAuthModal({
               <div className="space-y-2">
                 <Label htmlFor="register-name">Full Name *</Label>
                 <div className="relative">
-                  <User className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground" />
                   <Input
                     id="register-name"
                     type="text"
                     placeholder="Your full name"
                     value={registerName}
                     onChange={(e) => setRegisterName(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 h-11 text-base md:text-base py-2"
                     data-testid="input-register-name"
                   />
                 </div>
@@ -250,9 +250,9 @@ export function CustomerAuthModal({
               <div className="space-y-2">
                 <Label htmlFor="register-phone">Phone Number *</Label>
                 <div className="relative flex items-center">
-                  <div className="absolute left-3 flex items-center gap-1 text-muted-foreground">
-                    <Phone className="h-4 w-4" />
-                    <span className="text-sm font-semibold select-none text-foreground">+880</span>
+                  <div className="absolute inset-y-0 left-3 flex items-center gap-1.5 text-muted-foreground pointer-events-none">
+                    <Phone className="h-4.5 w-4.5" />
+                    <span className="text-base font-medium select-none text-foreground">+880</span>
                   </div>
                   <Input
                     id="register-phone"
@@ -261,9 +261,9 @@ export function CustomerAuthModal({
                     pattern="[0-9]*"
                     placeholder="1XXXXXXXXX"
                     value={registerPhone}
-                    onChange={(e) => setRegisterPhone(e.target.value.replace(/\D/g, ''))}
+                    onChange={(e) => setRegisterPhone(e.target.value.replace(/\D/g, '').replace(/^0+/, ''))}
                     maxLength={10}
-                    className="pl-[4.25rem]"
+                    className="pl-[5rem] h-11 text-base md:text-base py-2"
                     data-testid="input-register-phone"
                   />
                 </div>
@@ -272,14 +272,14 @@ export function CustomerAuthModal({
               <div className="space-y-2">
                 <Label htmlFor="register-email">Email (Optional)</Label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground" />
                   <Input
                     id="register-email"
                     type="email"
                     placeholder="your@email.com"
                     value={registerEmail}
                     onChange={(e) => setRegisterEmail(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 h-11 text-base md:text-base py-2"
                     data-testid="input-register-email"
                   />
                 </div>
@@ -288,14 +288,14 @@ export function CustomerAuthModal({
               <div className="space-y-2">
                 <Label htmlFor="register-address">Address (Optional)</Label>
                 <div className="relative">
-                  <MapPin className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground" />
                   <Input
                     id="register-address"
                     type="text"
                     placeholder="House, Road, Area, District"
                     value={registerAddress}
                     onChange={(e) => setRegisterAddress(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 h-11 text-base md:text-base py-2"
                     data-testid="input-register-address"
                   />
                 </div>
@@ -304,14 +304,14 @@ export function CustomerAuthModal({
               <div className="space-y-2">
                 <Label htmlFor="register-password">Password *</Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground" />
                   <Input
                     id="register-password"
                     type="password"
                     placeholder="Min. 6 characters"
                     value={registerPassword}
                     onChange={(e) => setRegisterPassword(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 h-11 text-base md:text-base py-2"
                     data-testid="input-register-password"
                   />
                 </div>
@@ -320,20 +320,20 @@ export function CustomerAuthModal({
               <div className="space-y-2">
                 <Label htmlFor="register-confirm-password">Confirm Password *</Label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+                  <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-muted-foreground" />
                   <Input
                     id="register-confirm-password"
                     type="password"
                     placeholder="Confirm your password"
                     value={registerConfirmPassword}
                     onChange={(e) => setRegisterConfirmPassword(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 h-11 text-base md:text-base py-2"
                     data-testid="input-register-confirm-password"
                   />
                 </div>
               </div>
 
-              <Button type="submit" className="w-full" disabled={isLoading} data-testid="button-register-submit">
+              <Button type="submit" className="w-full h-11 text-base" disabled={isLoading} data-testid="button-register-submit">
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -8,14 +7,15 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { serviceCatalogApi } from "@/lib/api";
 import { Tv, Monitor, Smartphone, LayoutGrid, Cpu, Zap, Volume2, Gamepad2, Wrench, Clock, ArrowRight, ArrowLeft, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
 import { useState } from "react";
+import { QueryErrorState } from "@/components/customer/QueryErrorState";
 
 interface ServiceWithImages {
   id: string;
   name: string;
   description: string | null;
   category: string;
-  minPrice: string | null;
-  maxPrice: string | null;
+  minPrice: number | null;
+  maxPrice: number | null;
   estimatedDays: string | null;
   icon: string | null;
   isActive: boolean | null;
@@ -133,7 +133,7 @@ export default function ServiceDetailsPage() {
   const [, setLocation] = useLocation();
   const serviceId = params?.id;
 
-  const { data: services = [], isLoading, error } = useQuery<ServiceWithImages[]>({
+  const { data: services = [], isLoading, isError, refetch } = useQuery<ServiceWithImages[]>({
     queryKey: ["serviceCatalog"],
     queryFn: serviceCatalogApi.getAll as () => Promise<ServiceWithImages[]>,
     staleTime: 5 * 60 * 1000,
@@ -154,7 +154,7 @@ export default function ServiceDetailsPage() {
 
   if (isLoading) {
     return (
-      <PublicLayout>
+      <>
         <main className="flex-1 py-12">
           <div className="container mx-auto px-4">
             <Skeleton className="h-8 w-32 mb-8" />
@@ -170,33 +170,29 @@ export default function ServiceDetailsPage() {
             </div>
           </div>
         </main>
-      </PublicLayout>
+      </>
     );
   }
 
-  if (error) {
+  if (isError) {
     return (
-      <PublicLayout>
+      <>
         <main className="flex-1 py-12">
-          <div className="container mx-auto px-4 text-center">
-            <Wrench className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <h1 className="text-2xl font-bold mb-2">Something Went Wrong</h1>
-            <p className="text-muted-foreground mb-6">
-              We couldn't load the service details. Please try again later.
-            </p>
-            <Button onClick={() => setLocation('/services')} data-testid="button-error-back">
-              <ArrowLeft className="mr-2 h-4 w-4" />
-              Back to Services
-            </Button>
+          <div className="container mx-auto px-4">
+            <QueryErrorState
+              message="Failed to load service details"
+              onRetry={() => refetch()}
+              actionButton={<Button variant="outline" onClick={() => setLocation('/services')}><ArrowLeft className="mr-2 h-4 w-4" />Back to Services</Button>}
+            />
           </div>
         </main>
-      </PublicLayout>
+      </>
     );
   }
 
   if (!service) {
     return (
-      <PublicLayout>
+      <>
         <main className="flex-1 py-12">
           <div className="container mx-auto px-4 text-center">
             <Wrench className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
@@ -210,12 +206,12 @@ export default function ServiceDetailsPage() {
             </Button>
           </div>
         </main>
-      </PublicLayout>
+      </>
     );
   }
 
   return (
-    <PublicLayout>
+    <>
       <main className="flex-1">
         <section className="py-8 md:py-12">
           <div className="container mx-auto px-4">
@@ -344,6 +340,6 @@ export default function ServiceDetailsPage() {
           </div>
         </section>
       </main>
-    </PublicLayout>
+    </>
   );
 }

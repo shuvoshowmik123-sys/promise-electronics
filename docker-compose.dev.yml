@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  # -------------------------------------------------------------------
+  # PostgreSQL Database
+  # Run: docker-compose -f docker-compose.dev.yml up -d postgres
+  # -------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: promise_dev_postgres
+    environment:
+      POSTGRES_DB: promise_dev
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------
+  # Redis (Optional: Used for SSE broker and Cache)
+  # Run: docker-compose -f docker-compose.dev.yml up -d redis
+  # -------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: promise_dev_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --save 60 1 --loglevel warning
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

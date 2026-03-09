@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
+import { inventoryRepo, financeRepo } from '../repositories/index.js';
 import { requireCustomerAuth, requireAdminAuth, getCustomerId } from './middleware/auth.js';
 import { db } from '../db.js';
 import { orders, orderItems, sparePartOrders, insertSparePartOrderSchema } from '../../shared/schema.js';
@@ -45,7 +46,7 @@ router.post('/api/orders/spare-parts', requireCustomerAuth, async (req: Request,
             const orderItemsData = [];
 
             for (const item of items) {
-                const product = await storage.getInventoryItem(item.productId);
+                const product = await inventoryRepo.getInventoryItem(item.productId);
                 if (!product) throw new Error(`Product ${item.productId} not found`);
 
                 const price = product.price; // Spare parts usually don't have variants/hot deals logic yet, keep simple

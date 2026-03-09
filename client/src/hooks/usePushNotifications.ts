@@ -51,13 +51,24 @@ export function usePushNotifications(options: PushNotificationHookOptions = {}) 
     // Handle navigation based on notification data
     const handleNotificationNavigation = useCallback((data: any) => {
         if (data?.type === 'order_update' && data?.orderId) {
-            navigate(`/native/order/${data.orderId}`);
+            navigate(`/track-order?order=${encodeURIComponent(data.orderId)}&type=product`);
         } else if (data?.type === 'repair_update' && data?.ticketNumber) {
-            navigate(`/native/track/${data.ticketNumber}`);
+            navigate(`/track-order?order=${encodeURIComponent(data.ticketNumber)}&type=service`);
         } else if (data?.type === 'quote_ready' && data?.serviceRequestId) {
-            navigate(`/native/repairs`);
+            navigate(`/track-order?order=${encodeURIComponent(data.serviceRequestId)}&type=service`);
         } else if (data?.route) {
-            navigate(data.route);
+            const route = String(data.route);
+            if (route.startsWith('/native/order/')) {
+                const id = route.split('/').pop();
+                navigate(`/track-order?order=${encodeURIComponent(id || "")}&type=product`);
+            } else if (route.startsWith('/native/track/')) {
+                const id = route.split('/').pop();
+                navigate(`/track-order?order=${encodeURIComponent(id || "")}&type=service`);
+            } else if (route === '/native/repairs') {
+                navigate('/track-order?type=service');
+            } else {
+                navigate(route);
+            }
         }
     }, [navigate]);
 

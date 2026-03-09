@@ -1,0 +1,60 @@
+﻿Resolving dependencies...
+Downloading packages...
+  characters 1.4.0 (1.4.1 available)
+  flutter_svg 2.2.3 (2.2.4 available)
+  geocoding_android 4.0.1 (5.0.0 available)
+  geocoding_platform_interface 3.2.0 (5.0.0 available)
+  matcher 0.12.17 (0.12.19 available)
+  material_color_utilities 0.11.1 (0.13.0 available)
+  meta 1.17.0 (1.18.1 available)
+  test_api 0.7.7 (0.7.10 available)
+  win32 5.15.0 (6.0.0 available)
+Got dependencies!
+9 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Analyzing workforce_app_flutter...                              
+
+warning - The value of the local variable 'size' isn't used - lib\features\auth\login_screen.dart:74:11 - unused_local_variable
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\auth\login_screen.dart:121:63 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\auth\login_screen.dart:123:73 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\auth\login_screen.dart:145:56 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\auth\login_screen.dart:156:57 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\auth\login_screen.dart:179:65 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\auth\login_screen.dart:181:76 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\auth\login_screen.dart:212:58 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\auth\login_screen.dart:214:77 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\auth\login_screen.dart:306:39 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\auth\login_screen.dart:328:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\auth\login_screen.dart:332:33 - deprecated_member_use
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\features\auth\login_screen.dart:350:45 - deprecated_member_use
+   info - The variable name 'R_ring' isn't a lowerCamelCase identifier - lib\features\auth\login_screen.dart:388:18 - non_constant_identifier_names
+  error - Target of URI doesn't exist: '../models/user_model.dart' - lib\features\home\employee_home.dart:12:8 - uri_does_not_exist
+  error - Undefined class 'UserModel' - lib\features\home\employee_home.dart:71:69 - undefined_class
+   info - Statements in an if should be enclosed in a block - lib\features\home\employee_home.dart:107:46 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\features\home\employee_home.dart:108:51 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\features\home\employee_home.dart:109:50 - curly_braces_in_flow_control_structures
+  error - Target of URI doesn't exist: '../models/user_model.dart' - lib\features\home\super_admin_home.dart:14:8 - uri_does_not_exist
+  error - Undefined class 'UserModel' - lib\features\home\super_admin_home.dart:78:69 - undefined_class
+   info - Statements in an if should be enclosed in a block - lib\features\home\super_admin_home.dart:120:46 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\features\home\super_admin_home.dart:121:51 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\features\home\super_admin_home.dart:122:50 - curly_braces_in_flow_control_structures
+  error - Target of URI doesn't exist: '../models/user_model.dart' - lib\features\home\technician_home.dart:12:8 - uri_does_not_exist
+  error - Undefined class 'UserModel' - lib\features\home\technician_home.dart:72:69 - undefined_class
+   info - Statements in an if should be enclosed in a block - lib\features\home\technician_home.dart:110:46 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\features\home\technician_home.dart:111:51 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\features\home\technician_home.dart:112:50 - curly_braces_in_flow_control_structures
+  error - Target of URI doesn't exist: '../../../shared/widgets/custom_app_bar.dart' - lib\features\jobs\screens\job_list_screen.dart:8:8 - uri_does_not_exist
+warning - Unused import: '../../../shared/widgets/glass_card.dart' - lib\features\jobs\screens\job_list_screen.dart:9:8 - unused_import
+  error - The method 'CustomAppBar' isn't defined for the type '_JobListScreenState' - lib\features\jobs\screens\job_list_screen.dart:46:15 - undefined_method
+   info - Unnecessary use of multiple underscores - lib\features\jobs\screens\job_list_screen.dart:66:41 - unnecessary_underscores
+   info - Unnecessary use of multiple underscores - lib\features\jobs\screens\job_list_screen.dart:148:45 - unnecessary_underscores
+   info - Statements in an if should be enclosed in a block - lib\features\jobs\widgets\job_card.dart:22:19 - curly_braces_in_flow_control_structures
+   info - Statements in an if should be enclosed in a block - lib\features\jobs\widgets\job_card.dart:23:38 - curly_braces_in_flow_control_structures
+  error - Target of URI doesn't exist: '../../shared/widgets/custom_app_bar.dart' - lib\features\notifications\action_queue_screen.dart:7:8 - uri_does_not_exist
+  error - The method 'CustomAppBar' isn't defined for the type 'ActionQueueScreen' - lib\features\notifications\action_queue_screen.dart:20:15 - undefined_method
+  error - Target of URI doesn't exist: '../../shared/widgets/custom_app_bar.dart' - lib\features\notifications\notification_screen.dart:8:8 - uri_does_not_exist
+  error - The method 'CustomAppBar' isn't defined for the type '_NotificationScreenState' - lib\features\notifications\notification_screen.dart:45:15 - undefined_method
+   info - Unnecessary use of multiple underscores - lib\features\notifications\notification_screen.dart:65:41 - unnecessary_underscores
+   info - The import of 'dart:ui' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/material.dart' - lib\shared\widgets\glass_card.dart:1:8 - unnecessary_import
+   info - 'withOpacity' is deprecated and shouldn't be used. Use .withValues() to avoid precision loss - lib\shared\widgets\status_pill.dart:30:22 - deprecated_member_use
+

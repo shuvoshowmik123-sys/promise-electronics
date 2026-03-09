@@ -49,7 +49,7 @@ export async function getPolicyBySlug(slug: string): Promise<Policy | undefined>
     return policy;
 }
 
-export async function upsertPolicy(policy: { slug: string; title: string; content: string; isPublished?: boolean }): Promise<Policy> {
+export async function upsertPolicy(policy: { slug: string; title: string; content: string; isPublished?: boolean; isPublishedApp?: boolean }): Promise<Policy> {
     const existing = await getPolicyBySlug(policy.slug);
 
     if (existing) {
@@ -59,6 +59,7 @@ export async function upsertPolicy(policy: { slug: string; title: string; conten
                 title: policy.title,
                 content: policy.content,
                 isPublished: policy.isPublished ?? true,
+                isPublishedApp: policy.isPublishedApp ?? true,
                 lastUpdated: new Date(),
             })
             .where(eq(schema.policies.slug, policy.slug))
@@ -73,6 +74,7 @@ export async function upsertPolicy(policy: { slug: string; title: string; conten
             title: policy.title,
             content: policy.content,
             isPublished: policy.isPublished ?? true,
+            isPublishedApp: policy.isPublishedApp ?? true,
         })
         .returning();
     return newPolicy;

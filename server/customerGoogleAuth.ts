@@ -121,7 +121,7 @@ export async function setupCustomerAuth(app: Express) {
       async (accessToken, refreshToken, profile, done) => {
         try {
           const user = await upsertCustomerFromGoogle(profile);
-          done(null, { customerId: user.id, authMethod: 'google' as const });
+          done(null, { customerId: user.id, authMethod: 'google' } as Express.User);
         } catch (error) {
           console.error("Error in Google OAuth callback:", error);
           done(error as Error);

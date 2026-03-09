@@ -6,9 +6,13 @@
 
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
+import { settingsRepo, notificationRepo, systemRepo, userRepo, jobRepo, serviceRequestRepo, warrantyRepo, hrRepo } from '../repositories/index.js';
 import { insertQuoteRequestSchema } from '../../shared/schema.js';
-import { requireAdminAuth } from './middleware/auth.js';
+import { getCustomerId, requireAdminAuth, requireCustomerAuth } from './middleware/auth.js';
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
+import { pushService } from '../pushService.js';
+
+import { serviceRequestLimiter } from './middleware/rate-limit.js';
 
 const router = Router();
 
@@ -17,9 +21,9 @@ const router = Router();
 // ============================================
 
 /**
- * POST /api/quotes - Submit quote request
+ * POST /api/quotes - Submit quote request (rate limited)
  */
-router.post('/api/quotes', async (req: Request, res: Response) => {
+router.post('/api/quotes', serviceRequestLimiter, async (req: Request, res: Response) => {
     try {
         const validated = insertQuoteRequestSchema.parse(req.body);
 
@@ -54,7 +58,7 @@ router.post('/api/quotes', async (req: Request, res: Response) => {
  */
 router.get('/api/admin/quotes', requireAdminAuth, async (req: Request, res: Response) => {
     try {
-        const quotes = await storage.getQuoteRequests();
+        const quotes = await serviceRequestRepo.getQuoteRequests();
         res.json(quotes);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch quotes' });
@@ -71,7 +75,7 @@ router.patch('/api/admin/quotes/:id/price', requireAdminAuth, async (req: Reques
             return res.status(400).json({ error: 'Quote amount is required' });
         }
 
-        const updated = await storage.updateQuote(req.params.id, quoteAmount, quoteNotes);
+        const updated = await serviceRequestRepo.updateQuote(req.params.id, quoteAmount, quoteNotes);
         if (!updated) {
             return res.status(404).json({ error: 'Quote not found' });
         }
@@ -82,6 +86,11 @@ router.patch('/api/admin/quotes/:id/price', requireAdminAuth, async (req: Reques
                 data: updated,
                 updatedAt: new Date().toISOString()
             });
+
+            // Send push notification: Quote Ready
+            pushService.notifyQuoteReady(updated.customerId, updated.id, quoteAmount)
+                .then(() => console.log(`[Push] Sent quote ready notification for quote ${updated.id}`))
+                .catch(err => console.error('[Push] Failed to send quote ready notification:', err));
         }
 
         res.json(updated);
@@ -93,8 +102,21 @@ router.patch('/api/admin/quotes/:id/price', requireAdminAuth, async (req: Reques
 /**
  * POST /api/quotes/:id/accept - Accept quote (customer)
  */
-router.post('/api/quotes/:id/accept', async (req: Request, res: Response) => {
+router.post('/api/quotes/:id/accept', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
+        const customerId = getCustomerId(req);
+        if (!customerId) {
+            return res.status(401).json({ error: 'Please login to continue', code: 'NOT_AUTHENTICATED' });
+        }
+
+        const existingRequest = await serviceRequestRepo.getServiceRequest(req.params.id);
+        if (!existingRequest) {
+            return res.status(404).json({ error: 'Quote not found' });
+        }
+        if (!existingRequest.customerId || existingRequest.customerId !== customerId) {
+            return res.status(403).json({ error: 'Forbidden: You can only manage your own quote' });
+        }
+
         const { pickupTier, servicePreference, address, scheduledVisitDate } = req.body;
 
         if (!servicePreference || !['home_pickup', 'service_center'].includes(servicePreference)) {
@@ -117,7 +139,7 @@ router.post('/api/quotes/:id/accept', async (req: Request, res: Response) => {
             ? new Date(scheduledVisitDate)
             : null;
 
-        const updated = await storage.acceptQuote(
+        const updated = await serviceRequestRepo.acceptQuote(
             req.params.id,
             actualPickupTier,
             address || '',
@@ -128,7 +150,7 @@ router.post('/api/quotes/:id/accept', async (req: Request, res: Response) => {
             return res.status(404).json({ error: 'Quote not found' });
         }
 
-        await storage.updateServiceRequest(req.params.id, { trackingStatus: trackingStatus as any });
+        await serviceRequestRepo.updateServiceRequest(req.params.id, { trackingStatus: trackingStatus as any });
 
         let eventMessage = servicePreference === 'home_pickup'
             ? 'Our team is on the way to collect your TV.'
@@ -139,7 +161,7 @@ router.post('/api/quotes/:id/accept', async (req: Request, res: Response) => {
             eventMessage = `Your visit is scheduled for ${visitDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}. Please bring your TV to our service center.`;
         }
 
-        await storage.createServiceRequestEvent({
+        await serviceRequestRepo.createServiceRequestEvent({
             serviceRequestId: req.params.id,
             status: trackingStatus,
             message: eventMessage,
@@ -152,6 +174,12 @@ router.post('/api/quotes/:id/accept', async (req: Request, res: Response) => {
             acceptedAt: new Date().toISOString()
         });
 
+        // Send push notification: Quote Accepted confirmation
+        if (updated.customerId) {
+            pushService.notifyQuoteAccepted(updated.customerId, updated.ticketNumber || updated.id)
+                .catch(err => console.error('[Push] Failed to send quote accepted notification:', err));
+        }
+
         res.json({ ...updated, servicePreference, trackingStatus, scheduledPickupDate: parsedScheduledVisitDate });
     } catch (error) {
         console.error('Error accepting quote:', error);
@@ -162,9 +190,22 @@ router.post('/api/quotes/:id/accept', async (req: Request, res: Response) => {
 /**
  * POST /api/quotes/:id/decline - Decline quote (customer)
  */
-router.post('/api/quotes/:id/decline', async (req: Request, res: Response) => {
+router.post('/api/quotes/:id/decline', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
-        const updated = await storage.declineQuote(req.params.id);
+        const customerId = getCustomerId(req);
+        if (!customerId) {
+            return res.status(401).json({ error: 'Please login to continue', code: 'NOT_AUTHENTICATED' });
+        }
+
+        const existingRequest = await serviceRequestRepo.getServiceRequest(req.params.id);
+        if (!existingRequest) {
+            return res.status(404).json({ error: 'Quote not found' });
+        }
+        if (!existingRequest.customerId || existingRequest.customerId !== customerId) {
+            return res.status(403).json({ error: 'Forbidden: You can only manage your own quote' });
+        }
+
+        const updated = await serviceRequestRepo.declineQuote(req.params.id);
         if (!updated) {
             return res.status(404).json({ error: 'Quote not found' });
         }
@@ -310,7 +351,7 @@ router.patch('/api/admin/pickups/:id/status', requireAdminAuth, async (req: Requ
         }
 
         if (status === 'Delivered') {
-            await storage.updateServiceRequest(pickup.serviceRequestId, {
+            await serviceRequestRepo.updateServiceRequest(pickup.serviceRequestId, {
                 trackingStatus: 'Delivered'
             } as any);
         }

@@ -6,6 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
+import { userRepo, customerRepo, orderRepo, corporateRepo, notificationRepo } from '../repositories/index.js';
 import { requireCustomerAuth, requireAdminAuth, getCustomerId } from './middleware/auth.js';
 
 const router = Router();
@@ -36,7 +37,7 @@ router.post('/api/reviews', requireCustomerAuth, async (req: any, res: Response)
             return res.status(401).json({ error: 'Please login to submit a review' });
         }
 
-        const user = await storage.getUser(customerId);
+        const user = await userRepo.getUser(customerId);
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
@@ -50,7 +51,7 @@ router.post('/api/reviews', requireCustomerAuth, async (req: any, res: Response)
             return res.status(400).json({ error: 'Review content must be at least 10 characters' });
         }
 
-        const review = await storage.createCustomerReview({
+        const review = await customerRepo.createCustomerReview({
             customerId,
             customerName: user.name,
             rating,
@@ -104,7 +105,7 @@ router.patch('/api/admin/reviews/:id/approval', requireAdminAuth, async (req: Re
  */
 router.delete('/api/admin/reviews/:id', requireAdminAuth, async (req: Request, res: Response) => {
     try {
-        const success = await storage.deleteCustomerReview(req.params.id);
+        const success = await customerRepo.deleteCustomerReview(req.params.id);
         if (!success) {
             return res.status(404).json({ error: 'Review not found' });
         }

@@ -125,6 +125,68 @@ html.native-app-mode #root {
   --color-native-input: hsl(217 30% 12%);
 }
 
+/* ===========================================
+   CORPORATE PORTAL THEME (Phase 1)
+   =========================================== */
+:root {
+  --corp-blue: hsl(215 100% 50%);
+  /* Vibrant Electric Blue */
+  --corp-blue-hover: hsl(215 100% 60%);
+  --corp-bg: #ffffff;
+  --corp-bg-subtle: #f8faff;
+
+  /* Elite Premium Colors */
+  --elite-gold: #ffd700;
+  --elite-gold-light: #ffe55c;
+  --elite-gold-dark: #cc9900;
+  --elite-premium: #1e3a8a;
+  --elite-accent: #0ea5e9;
+}
+
+/* Corporate Button Glow Animation */
+@keyframes button-glow {
+  0% {
+    box-shadow: 0 0 0 0 rgba(0, 102, 255, 0.4);
+  }
+
+  70% {
+    box-shadow: 0 0 0 10px rgba(0, 102, 255, 0);
+  }
+
+  100% {
+    box-shadow: 0 0 0 0 rgba(0, 102, 255, 0);
+  }
+}
+
+.corp-btn-glow {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.corp-btn-glow::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 5px;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.5);
+  opacity: 0;
+  border-radius: 100%;
+  transform: scale(1, 1) translate(-50%, -50%);
+  transform-origin: 50% 50%;
+}
+
+.corp-btn-glow:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px -10px rgba(0, 102, 255, 0.5);
+}
+
+.corp-btn-glow:active {
+  transform: translateY(0);
+}
+
 @keyframes slide-up {
   from {
     transform: translateY(100%);
@@ -179,6 +241,12 @@ html.native-app-mode #root {
   h6 {
     @apply font-heading font-semibold tracking-tight;
   }
+}
+
+/* Accessibility: Global focus ring */
+:focus-visible {
+  outline: 2px solid var(--corp-blue);
+  outline-offset: 2px;
 }
 
 /* ===========================================
@@ -421,6 +489,34 @@ html.native-app-mode #root {
   }
 }
 
+/* ===========================================
+   UNIVERSAL KEYBOARD-AWARE INPUT BEHAVIOR
+   Ensures focused inputs are always visible
+   when the mobile virtual keyboard opens.
+   Applies to ALL admin panel input fields.
+   =========================================== */
+@media (max-width: 1024px) {
+
+  /* Use dynamic viewport height so containers shrink when keyboard opens */
+  .min-h-screen {
+    min-height: 100dvh;
+  }
+
+  /* Smooth scroll focused inputs into view */
+  input:focus,
+  textarea:focus,
+  select:focus {
+    scroll-margin-bottom: 120px;
+    scroll-margin-top: 40px;
+  }
+
+  /* Scrollable form containers expand upward when keyboard arrives */
+  [class*="overflow-y-auto"] {
+    scroll-behavior: smooth;
+    overscroll-behavior: contain;
+  }
+}
+
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
@@ -462,38 +558,372 @@ input:-webkit-autofill:active {
   caret-color: var(--color-native-text);
 }
 
-/* Keyboard Handling */
-body.keyboard-open {
-  height: 100%;
-  overflow-y: hidden;
+/* ===========================================
+   GLOBAL PRINT STYLES
+   Ensures authentic full-page printouts
+   =========================================== */
+@media print {
+
+  /* Reset page handling */
+  html,
+  body {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  /* Hide everything by default */
+  body {
+    visibility: hidden;
+  }
+
+  /* Force the print container to be visible and overlay everything */
+  .print-content {
+    visibility: visible !important;
+    position: absolute !important;
+    /* Absolute allows multi-page scrolling */
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    z-index: 99999 !important;
+    /* On top of everything */
+  }
+
+  /* Make sure children are visible */
+  .print-content * {
+    visibility: visible !important;
+  }
+
+  /* Reset layout for print content internal elements */
+  .print-content table,
+  .print-content tr,
+  .print-content td,
+  .print-content th,
+  .print-content div,
+  .print-content span {
+    /* Ensure they don't inherit 'hidden' display from parents if any */
+  }
+
+  /* Hide browser decorations/margins if possible */
+  @page {
+    margin: 0.5cm;
+    size: auto;
+  }
 }
 
 /* ===========================================
-   BENGALI TYPOGRAPHY OPTIMIZATION
-   Better readability for Bangla text
+   PERFORMANCE OPTIMIZED ANIMATIONS (Phase 4)
+   Replaces heavy JS animations with native CSS
    =========================================== */
 
-/* Bengali text needs more line-height for proper rendering */
-:lang(bn),
-[lang="bn"],
-.bengali-text {
-  line-height: 1.8;
-  letter-spacing: 0.02em;
-  font-feature-settings: "kern" 1;
+.animate-in {
+  animation-duration: 0.5s;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  animation-fill-mode: both;
 }
 
-/* Mixed Bangla/English content */
-.native-app-mode :lang(bn),
-.native-app-mode [lang="bn"] {
-  line-height: 1.75;
+.fade-in {
+  animation-name: fadeIn;
 }
 
-/* Larger touch targets for Bengali labels */
-.native-app-mode [lang="bn"] button,
-.native-app-mode [lang="bn"] a,
-.native-app-mode button:lang(bn),
-.native-app-mode a:lang(bn) {
-  min-height: 48px;
-  padding-top: 0.75rem;
-  padding-bottom: 0.75rem;
+.slide-in-from-bottom-2 {
+  animation-name: slideInFromBottom2;
+}
+
+.slide-in-from-bottom-4 {
+  animation-name: slideInFromBottom4;
+}
+
+.delay-100 {
+  animation-delay: 100ms;
+}
+
+.delay-200 {
+  animation-delay: 200ms;
+}
+
+.delay-300 {
+  animation-delay: 300ms;
+}
+
+.delay-500 {
+  animation-delay: 500ms;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slideInFromBottom4 {
+  from {
+    transform: translateY(1rem);
+    opacity: 0;
+  }
+
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+/* ===========================================
+   BENTO GRID UTILITIES (UI Overhaul)
+   =========================================== */
+
+.bento-card {
+  @apply bg-white dark:bg-slate-950 rounded-2xl border border-slate-200/60 dark:border-slate-800 shadow-sm transition-all duration-300;
+}
+
+.bento-card:hover {
+  @apply shadow-md transform scale-[1.005];
+}
+
+/* Entry Animations */
+.animate-enter {
+  animation: enter 0.5s ease-out forwards;
+}
+
+@keyframes enter {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Stagger delays */
+.delay-100 {
+  animation-delay: 100ms;
+}
+
+.delay-200 {
+  animation-delay: 200ms;
+}
+
+.delay-300 {
+  animation-delay: 300ms;
+}
+
+/* Scrollbar styling for independent scroll areas */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  @apply bg-slate-300 dark:bg-slate-700 rounded-full;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  @apply bg-slate-400 dark:bg-slate-600;
+}
+
+/* ===========================================
+   BENTO CARD DESIGN SYSTEM — v2 (CSS-First)
+   All hover effects, shimmer, glass illusion,
+   border glow, and icon pop defined statically.
+   Zero JavaScript injection needed.
+   =========================================== */
+
+/* ── Shimmer sweep (::before) on hover ── */
+.bc-hover {
+  position: relative;
+  transition: box-shadow 0.25s ease;
+}
+
+.bc-hover::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(105deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.22) 45%,
+      rgba(255, 255, 255, 0.08) 50%,
+      transparent 60%);
+  background-size: 250% 100%;
+  background-position: 200% 0;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 1;
+  transition: opacity 0.25s ease;
+}
+
+.bc-hover:hover::before {
+  opacity: 1;
+  animation: bc-shimmer 1.4s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes bc-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+
+  to {
+    background-position: -50% 0;
+  }
+}
+
+/* ── Border glow ring — Option A ── */
+.bc-hover:hover {
+  box-shadow:
+    0 0 0 2px rgba(99, 102, 241, 0.18),
+    0 4px 12px -2px rgba(0, 0, 0, 0.06);
+}
+
+/* ── Hover rise + perspective tilt — bc-rise cards ── */
+.bc-rise {
+  transition:
+    transform 0.28s cubic-bezier(0.34, 1.56, 0.64, 1),
+    box-shadow 0.28s ease;
+  will-change: transform;
+}
+
+.bc-rise:hover {
+  transform: translateY(-5px) perspective(700px) rotateX(1.2deg) rotateY(-1deg);
+  /* Combines lift shadow + indigo border glow ring */
+  box-shadow:
+    0 0 0 2px rgba(99, 102, 241, 0.18),
+    0 22px 40px -10px rgba(0, 0, 0, 0.10),
+    0 6px 16px -4px rgba(0, 0, 0, 0.06);
+}
+
+/* ── Glass variant frost illusion (no backdrop-blur) ── */
+.bc-glass {
+  background: linear-gradient(140deg,
+      rgba(255, 255, 255, 0.96) 0%,
+      rgba(248, 250, 252, 0.93) 60%,
+      rgba(241, 245, 249, 0.90) 100%);
+  box-shadow:
+    0 1px 3px rgba(0, 0, 0, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 0 rgba(15, 23, 42, 0.03);
+}
+
+/* ── Icon colour pop — Option D ── */
+.bc-icon-tint {
+  transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.bc-hover:hover .bc-icon-tint {
+  background: white !important;
+  color: var(--color-primary, rgb(37, 99, 235)) !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1), 0 0 0 2px rgba(255, 255, 255, 0.4) !important;
+  transform: scale(1.15) rotate(-3deg);
+}
+
+.bc-hover:hover .bc-icon-tint * {
+  color: var(--color-primary, rgb(37, 99, 235)) !important;
+}
+
+/* ── Clickable cursor ── */
+.bc-clickable {
+  cursor: pointer;
+}
+
+/* Global Search Motion System */
+.global-search-overlay {
+  background-color: rgba(2, 6, 23, 0);
+  backdrop-filter: blur(0px);
+  transition-property: opacity, background-color, backdrop-filter;
+  transition-duration: 140ms;
+  transition-timing-function: ease-out;
+}
+
+.global-search-overlay[data-state="open"] {
+  background-color: rgba(2, 6, 23, 0.42);
+  backdrop-filter: blur(10px);
+}
+
+.global-search-overlay[data-state="closed"] {
+  transition-duration: 120ms;
+  transition-timing-function: ease-in;
+}
+
+.global-search-list {
+  contain: content;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .global-search-overlay {
+    backdrop-filter: none !important;
+    transition-property: opacity, background-color;
+  }
+}
+
+/* ===========================================
+   MICRO-ANIMATIONS — UI Enhancement Phase 4
+   =========================================== */
+
+/* Button lift on hover (Neumorphic) */
+.neu-button-lift {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.neu-button-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 6px 6px 14px rgba(163, 177, 198, 0.55),
+    -6px -6px 14px rgba(255, 255, 255, 0.95);
+}
+
+.neu-button-lift:active {
+  transform: translateY(0);
+}
+
+/* Card tilt on hover (3D perspective) */
+.neu-card-tilt {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  transform-style: preserve-3d;
+}
+
+.neu-card-tilt:hover {
+  transform: perspective(800px) rotateX(1deg) rotateY(-1deg) translateY(-4px);
+  box-shadow: 10px 10px 20px rgba(163, 177, 198, 0.5),
+    -10px -10px 20px rgba(255, 255, 255, 0.9);
+}
+
+/* Fade-up entrance for scroll reveals */
+.animate-fade-up {
+  animation: fadeUpReveal 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes fadeUpReveal {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Respect reduced motion for ALL custom animations */
+@media (prefers-reduced-motion: reduce) {
+
+  .neu-button-lift,
+  .neu-card-tilt,
+  .animate-fade-up {
+    transition: none !important;
+    animation: none !important;
+    transform: none !important;
+  }
 }

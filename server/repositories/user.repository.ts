@@ -6,14 +6,67 @@
  */
 
 import { db, nanoid, eq, desc, schema, type User, type InsertUser, type UpsertCustomerFromGoogle } from './base.js';
+import { count, sql } from 'drizzle-orm';
+
+function isMissingDefaultWorkLocationColumn(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error ?? '');
+    return message.includes('default_work_location_id');
+}
+
+function mapLegacyUserRow(row: Record<string, any>): User {
+    return {
+        id: String(row.id ?? ''),
+        username: row.username ?? null,
+        name: row.name ?? '',
+        email: row.email ?? null,
+        phone: row.phone ?? null,
+        phoneNormalized: row.phone_normalized ?? row.phoneNormalized ?? null,
+        password: row.password ?? '',
+        role: row.role ?? 'Customer',
+        status: row.status ?? 'Active',
+        permissions: row.permissions ?? '{}',
+        skills: row.skills ?? null,
+        seniorityLevel: row.seniority_level ?? row.seniorityLevel ?? 'Junior',
+        performanceScore: Number(row.performance_score ?? row.performanceScore ?? 0),
+        joinedAt: row.joined_at ? new Date(row.joined_at) : new Date(),
+        lastLogin: row.last_login ? new Date(row.last_login) : null,
+        googleSub: row.google_sub ?? row.googleSub ?? null,
+        storeId: row.store_id ?? row.storeId ?? null,
+        address: row.address ?? null,
+        profileImageUrl: row.profile_image_url ?? row.profileImageUrl ?? null,
+        avatar: row.avatar ?? null,
+        isVerified: Boolean(row.is_verified ?? row.isVerified ?? false),
+        preferences: row.preferences ?? '{}',
+        corporateClientId: row.corporate_client_id ?? row.corporateClientId ?? null,
+        defaultWorkLocationId: row.default_work_location_id ?? row.defaultWorkLocationId ?? null,
+    } as User;
+}
+
+async function getLegacyUserByWhere(whereClause: ReturnType<typeof sql>): Promise<User | undefined> {
+    const result = await db.execute(sql`
+        SELECT *
+        FROM users
+        WHERE ${whereClause}
+        LIMIT 1
+    `);
+    const row = (result as any)?.rows?.[0] as Record<string, any> | undefined;
+    return row ? mapLegacyUserRow(row) : undefined;
+}
 
 // ============================================
 // User Queries
 // ============================================
 
 export async function getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(schema.users).where(eq(schema.users.id, id));
-    return user;
+    try {
+        const [user] = await db.select().from(schema.users).where(eq(schema.users.id, id));
+        return user;
+    } catch (error) {
+        if (isMissingDefaultWorkLocationColumn(error)) {
+            return getLegacyUserByWhere(sql`id = ${id}`);
+        }
+        throw error;
+    }
 }
 
 export async function getUserByEmail(email: string): Promise<User | undefined> {
@@ -22,8 +75,15 @@ export async function getUserByEmail(email: string): Promise<User | undefined> {
 }
 
 export async function getUserByUsername(username: string): Promise<User | undefined> {
-    const [user] = await db.select().from(schema.users).where(eq(schema.users.username, username));
-    return user;
+    try {
+        const [user] = await db.select().from(schema.users).where(eq(schema.users.username, username));
+        return user;
+    } catch (error) {
+        if (isMissingDefaultWorkLocationColumn(error)) {
+            return getLegacyUserByWhere(sql`username = ${username}`);
+        }
+        throw error;
+    }
 }
 
 export async function getUserByPhone(phone: string): Promise<User | undefined> {
@@ -60,8 +120,18 @@ export async function getUserByGoogleSub(googleSub: string): Promise<User | unde
     return user;
 }
 
-export async function getAllUsers(): Promise<User[]> {
-    return db.select().from(schema.users).orderBy(desc(schema.users.joinedAt));
+export async function getAllUsers(page: number = 1, limit: number = 50): Promise<{ items: User[], pagination: { total: number, page: number, limit: number, pages: number } }> {
+    const offset = (page - 1) * limit;
+    const [countResult] = await db.select({ count: count() }).from(schema.users);
+    const total = Number(countResult?.count || 0);
+    const pages = Math.ceil(total / limit);
+
+    const items = await db.select().from(schema.users)
+        .orderBy(desc(schema.users.joinedAt))
+        .limit(limit)
+        .offset(offset);
+
+    return { items, pagination: { total, page, limit, pages } };
 }
 
 // ============================================

@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -24,13 +24,13 @@ export default function GetQuotePage() {
   const searchString = useSearch();
   const searchParams = new URLSearchParams(searchString);
   const preselectedService = searchParams.get("service") || "";
-  
+
   const { isAuthenticated, customer } = useCustomerAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ticketNumber, setTicketNumber] = useState("");
-  
+
   const [serviceType, setServiceType] = useState(preselectedService);
   const [brand, setBrand] = useState("");
   const [screenSize, setScreenSize] = useState("");
@@ -40,8 +40,8 @@ export default function GetQuotePage() {
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
-  const [servicePreference, setServicePreference] = useState<"home_pickup" | "service_center" | "both" | "">(""); 
-  
+  const [servicePreference, setServicePreference] = useState<"home_pickup" | "service_center" | "both" | "">("");
+
   // Validation error states
   const [errors, setErrors] = useState<{
     serviceType?: boolean;
@@ -51,9 +51,9 @@ export default function GetQuotePage() {
     phone?: boolean;
     servicePreference?: boolean;
   }>({});
-  
+
   const screenSizes = ["24 Inch", "32 Inch", "40 Inch", "43 Inch", "50 Inch", "55 Inch", "65 Inch", "75 Inch", "Other"];
-  
+
   // Normalize phone number: remove +880, 880, or leading 0, keep only last 10 digits
   const normalizePhone = (rawPhone: string): string => {
     let digits = rawPhone.replace(/\D/g, '');
@@ -68,26 +68,26 @@ export default function GetQuotePage() {
     // Take only last 10 digits
     return digits.slice(0, 10);
   };
-  
+
   useEffect(() => {
     if (isAuthenticated && customer) {
       setCustomerName(customer.name || "");
       setPhone(normalizePhone(customer.phone || ""));
     }
   }, [isAuthenticated, customer]);
-  
+
   const { data: services = [] } = useQuery({
     queryKey: ["serviceCatalog"],
     queryFn: serviceCatalogApi.getAll,
     staleTime: 5 * 60 * 1000,
   });
-  
+
   const { data: settings = [] } = useQuery({
     queryKey: ["settings"],
     queryFn: settingsApi.getAll,
     staleTime: 0,
   });
-  
+
   const getSettingArray = (key: string, defaultValue: string[]): string[] => {
     const setting = settings.find((s) => s.key === key);
     if (setting?.value) {
@@ -99,14 +99,14 @@ export default function GetQuotePage() {
     }
     return defaultValue;
   };
-  
+
   const getSettingValue = (key: string, defaultValue: string): string => {
     const setting = settings.find((s) => s.key === key);
     return setting?.value || defaultValue;
   };
-  
+
   const serviceCenterContact = getSettingValue("service_center_contact", "01700-000000");
-  
+
   const tvBrands = getSettingArray("tv_brands", ["Sony", "Samsung", "LG", "Walton", "Vision"]);
   const commonIssues = getSettingArray("common_issues", [
     "No Power / Won't Turn On",
@@ -117,7 +117,7 @@ export default function GetQuotePage() {
     "Remote Not Responding",
     "Other Issue"
   ]);
-  
+
   const submitQuoteMutation = useMutation({
     mutationFn: quoteRequestsApi.submit,
     onSuccess: (data) => {
@@ -130,34 +130,34 @@ export default function GetQuotePage() {
       setIsSubmitting(false);
     },
   });
-  
+
   const handleSubmit = async () => {
     if (!customerName.trim() || !phone.trim()) {
       toast.error("Please enter your name and phone number");
       return;
     }
-    
+
     if (!brand || !primaryIssue) {
       toast.error("Please fill in all required fields");
       return;
     }
-    
+
     setIsSubmitting(true);
-    
+
     // Find the selected service to get its ID
     const selectedService = services.find(s => s.name === serviceType);
-    const serviceId = selectedService?.id || services[0]?.id || "";
-    
+    const serviceId = selectedService?.id || (services.length > 0 ? services[0].id : "general_repair");
+
     if (!serviceId) {
       toast.error("Please select a service type");
       setIsSubmitting(false);
       return;
     }
-    
+
     // Map servicePreference to new serviceMode field
-    const serviceMode = servicePreference === "home_pickup" ? "pickup" : 
-                        servicePreference === "service_center" ? "service_center" : undefined;
-    
+    const serviceMode = servicePreference === "home_pickup" ? "pickup" :
+      servicePreference === "service_center" ? "service_center" : undefined;
+
     submitQuoteMutation.mutate({
       serviceId,
       brand,
@@ -173,14 +173,14 @@ export default function GetQuotePage() {
       serviceMode,
     });
   };
-  
+
   const selectedService = services.find(s => s.name === serviceType);
-  
+
   // Validation function for Step 1
   const validateStep1 = (): boolean => {
     const newErrors: typeof errors = {};
     let hasError = false;
-    
+
     if (!serviceType) {
       newErrors.serviceType = true;
       hasError = true;
@@ -193,9 +193,9 @@ export default function GetQuotePage() {
       newErrors.primaryIssue = true;
       hasError = true;
     }
-    
+
     setErrors(newErrors);
-    
+
     if (hasError) {
       if (!serviceType) {
         toast.error("Please select a Service Type");
@@ -208,12 +208,12 @@ export default function GetQuotePage() {
     }
     return true;
   };
-  
+
   // Validation function for Step 2
   const validateStep2 = (): boolean => {
     const newErrors: typeof errors = {};
     let hasError = false;
-    
+
     if (!customerName.trim()) {
       newErrors.customerName = true;
       hasError = true;
@@ -226,9 +226,9 @@ export default function GetQuotePage() {
       newErrors.servicePreference = true;
       hasError = true;
     }
-    
+
     setErrors(newErrors);
-    
+
     if (hasError) {
       if (!customerName.trim()) {
         toast.error("Please enter your name");
@@ -241,28 +241,28 @@ export default function GetQuotePage() {
     }
     return true;
   };
-  
+
   const handleNextStep = () => {
     if (validateStep1()) {
       setStep(2);
     }
   };
-  
+
   const handleSubmitWithValidation = () => {
     if (validateStep2()) {
       handleSubmit();
     }
   };
-  
+
   // Clear error when field is filled
   const clearError = (field: keyof typeof errors) => {
     if (errors[field]) {
       setErrors(prev => ({ ...prev, [field]: false }));
     }
   };
-  
+
   return (
-    <PublicLayout>
+    <>
       {/* Neumorphic Get Quote Page */}
       <main className="flex-1 py-8 md:py-12 bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 min-h-screen">
         <div className="container mx-auto px-4 max-w-3xl">
@@ -271,9 +271,9 @@ export default function GetQuotePage() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.4 }}
           >
-            <Button 
-              variant="ghost" 
-              className="mb-6" 
+            <Button
+              variant="ghost"
+              className="mb-6"
               onClick={() => setLocation('/services')}
               data-testid="button-back-to-services"
             >
@@ -281,9 +281,9 @@ export default function GetQuotePage() {
               Back to Services
             </Button>
           </motion.div>
-          
+
           {/* Neumorphic Step Progress Indicator */}
-          <motion.div 
+          <motion.div
             className="mb-8 bg-slate-100 shadow-neumorph rounded-2xl p-6"
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -292,11 +292,10 @@ export default function GetQuotePage() {
             <div className="flex items-center justify-between mb-4">
               {[1, 2, 3].map((s) => (
                 <div key={s} className="flex items-center">
-                  <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center font-bold text-sm md:text-base transition-all duration-300 ${
-                    step >= s 
-                      ? 'bg-primary text-white shadow-neumorph-sm' 
-                      : 'bg-white shadow-neumorph-inset text-slate-400'
-                  }`}>
+                  <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center font-bold text-sm md:text-base transition-all duration-300 ${step >= s
+                    ? 'bg-primary text-white shadow-neumorph-sm'
+                    : 'bg-white shadow-neumorph-inset text-slate-400'
+                    }`}>
                     {step > s ? <CheckCircle2 className="h-4 w-4 md:h-5 md:w-5" /> : s}
                   </div>
                   {s < 3 && (
@@ -311,7 +310,7 @@ export default function GetQuotePage() {
               <span className={step >= 3 ? 'text-primary font-medium' : 'text-slate-400'}>Complete</span>
             </div>
           </motion.div>
-          
+
           {step === 1 && (
             <motion.div
               initial={{ opacity: 0, y: 30 }}
@@ -349,7 +348,7 @@ export default function GetQuotePage() {
                         </SelectItem>
                       </SelectContent>
                     </Select>
-                    
+
                     {selectedService && (
                       <div className="p-3 bg-white shadow-neumorph-inset rounded-xl text-sm">
                         <p className="text-muted-foreground">{selectedService.description}</p>
@@ -359,7 +358,7 @@ export default function GetQuotePage() {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label>TV Brand *</Label>
                     <Select value={brand} onValueChange={(v) => { setBrand(v); clearError('brand'); }}>
@@ -376,7 +375,7 @@ export default function GetQuotePage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label>Screen Size (Inch)</Label>
@@ -393,7 +392,7 @@ export default function GetQuotePage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    
+
                     <div className="space-y-2">
                       <Label>Model Number</Label>
                       <Input
@@ -405,7 +404,7 @@ export default function GetQuotePage() {
                       />
                     </div>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label>Main Issue *</Label>
                     <Select value={primaryIssue} onValueChange={(v) => { setPrimaryIssue(v); clearError('primaryIssue'); }}>
@@ -421,7 +420,7 @@ export default function GetQuotePage() {
                       </SelectContent>
                     </Select>
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label>Additional Details (Optional)</Label>
                     <Textarea
@@ -433,9 +432,9 @@ export default function GetQuotePage() {
                       data-testid="input-description"
                     />
                   </div>
-                  
+
                   <div className="flex justify-end pt-4">
-                    <Button 
+                    <Button
                       onClick={handleNextStep}
                       className="shadow-neumorph-sm hover:shadow-neumorph"
                       data-testid="button-next"
@@ -448,7 +447,7 @@ export default function GetQuotePage() {
               </Card>
             </motion.div>
           )}
-          
+
           {step === 2 && (
             <motion.div
               initial={{ opacity: 0, y: 30 }}
@@ -473,7 +472,7 @@ export default function GetQuotePage() {
                     <div className="p-4 bg-blue-50/50 shadow-neumorph-inset rounded-xl">
                       <p className="text-sm text-blue-800">
                         Already have an account?{" "}
-                        <button 
+                        <button
                           className="font-medium underline"
                           onClick={() => setShowAuthModal(true)}
                           data-testid="button-login-prompt"
@@ -484,7 +483,7 @@ export default function GetQuotePage() {
                       </p>
                     </div>
                   )}
-                  
+
                   <div className="space-y-2">
                     <Label>Your Name *</Label>
                     <Input
@@ -495,33 +494,28 @@ export default function GetQuotePage() {
                       data-testid="input-name"
                     />
                   </div>
-                  
+
                   <div className="space-y-2">
                     <Label>Phone Number *</Label>
                     <div className="flex">
-                      <div className={`flex items-center px-3 bg-slate-200 rounded-l-md text-sm font-medium text-slate-700 ${errors.phone ? 'border-2 border-r-0 border-red-500' : ''}`}>
-                        +880
-                      </div>
-                      <Input
+                      <PhoneInput
                         placeholder="1XXXXXXXXX"
-                        className={`bg-white shadow-neumorph-inset rounded-l-none ${errors.phone ? 'border-2 border-l-0 border-red-500' : 'border-none'}`}
+                        className={errors.phone ? 'border-red-500' : 'border-none shadow-neumorph-inset'}
                         value={phone}
-                        onChange={(e) => { 
-                          const digits = e.target.value.replace(/\D/g, '').slice(0, 10);
-                          setPhone(digits); 
-                          clearError('phone'); 
+                        onChange={(e) => {
+                          setPhone(e.target.value);
+                          clearError('phone');
                         }}
-                        maxLength={10}
                         data-testid="input-phone"
                       />
                     </div>
                     <p className="text-xs text-muted-foreground">We'll contact you at this number with your quote</p>
                   </div>
-                  
+
                   <div className="space-y-3">
                     <Label>Service Preference *</Label>
-                    <RadioGroup 
-                      value={servicePreference} 
+                    <RadioGroup
+                      value={servicePreference}
                       onValueChange={(value) => { setServicePreference(value as typeof servicePreference); clearError('servicePreference'); }}
                       className="space-y-3"
                     >
@@ -535,7 +529,7 @@ export default function GetQuotePage() {
                           <p className="text-sm text-muted-foreground">We'll collect your TV from your location</p>
                         </label>
                       </div>
-                      
+
                       <div className={`flex items-start space-x-3 p-3 bg-white shadow-neumorph-inset rounded-xl ${errors.servicePreference ? 'border-2 border-red-500' : ''}`}>
                         <RadioGroupItem value="service_center" id="service_center" className="mt-1" data-testid="radio-service-center" />
                         <label htmlFor="service_center" className="flex-1 cursor-pointer">
@@ -546,7 +540,7 @@ export default function GetQuotePage() {
                           <p className="text-sm text-muted-foreground">Bring your TV to our service center</p>
                         </label>
                       </div>
-                      
+
                       <div className={`flex items-start space-x-3 p-3 bg-white shadow-neumorph-inset rounded-xl ${errors.servicePreference ? 'border-2 border-red-500' : ''}`}>
                         <RadioGroupItem value="both" id="both" className="mt-1" data-testid="radio-both" />
                         <label htmlFor="both" className="flex-1 cursor-pointer">
@@ -558,17 +552,17 @@ export default function GetQuotePage() {
                         </label>
                       </div>
                     </RadioGroup>
-                    
+
                     {servicePreference === "service_center" && (
                       <div className="p-4 bg-green-50/50 shadow-neumorph-inset rounded-xl border-l-4 border-green-500">
                         <p className="text-sm text-green-800 font-medium mb-1">Welcome to Promise Electronics!</p>
                         <p className="text-sm text-green-700">
-                          Please call us at <span className="font-semibold">{serviceCenterContact}</span> before visiting our service center. 
+                          Please call us at <span className="font-semibold">{serviceCenterContact}</span> before visiting our service center.
                           We'll prepare everything for your arrival.
                         </p>
                       </div>
                     )}
-                    
+
                     {servicePreference === "home_pickup" && (
                       <div className="space-y-2">
                         <Label>Pickup Address</Label>
@@ -583,7 +577,7 @@ export default function GetQuotePage() {
                       </div>
                     )}
                   </div>
-                  
+
                   <div className="bg-white shadow-neumorph-inset p-4 rounded-xl">
                     <h4 className="font-medium mb-2">Quote Summary</h4>
                     <div className="text-sm space-y-1">
@@ -594,10 +588,10 @@ export default function GetQuotePage() {
                       <p><span className="text-muted-foreground">Issue:</span> {primaryIssue}</p>
                     </div>
                   </div>
-                  
+
                   <div className="flex justify-between pt-4">
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       onClick={() => setStep(1)}
                       className="bg-white shadow-neumorph-sm border-none"
                       data-testid="button-back"
@@ -605,7 +599,7 @@ export default function GetQuotePage() {
                       <ArrowLeft className="mr-2 h-4 w-4" />
                       Back
                     </Button>
-                    <Button 
+                    <Button
                       onClick={handleSubmitWithValidation}
                       disabled={isSubmitting}
                       className="shadow-neumorph-sm hover:shadow-neumorph"
@@ -628,7 +622,7 @@ export default function GetQuotePage() {
               </Card>
             </motion.div>
           )}
-          
+
           {step === 3 && (
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -640,19 +634,19 @@ export default function GetQuotePage() {
                   <div className="w-20 h-20 rounded-full bg-green-100 shadow-neumorph-inset flex items-center justify-center mx-auto mb-6">
                     <CheckCircle2 className="h-10 w-10 text-green-600" />
                   </div>
-                  
+
                   <h2 className="text-2xl font-bold mb-2">Quote Request Submitted!</h2>
                   <p className="text-muted-foreground mb-6">
                     We've received your request and will send you a quote within 24 hours.
                   </p>
-                  
+
                   {ticketNumber && (
                     <div className="bg-white shadow-neumorph-inset p-4 rounded-xl inline-block mb-6">
                       <p className="text-sm text-muted-foreground mb-1">Your Reference Number</p>
                       <p className="text-2xl font-mono font-bold text-primary" data-testid="text-ticket-number">{ticketNumber}</p>
                     </div>
                   )}
-                  
+
                   <div className="bg-blue-50/50 shadow-neumorph-inset rounded-xl p-4 mb-6 text-left max-w-md mx-auto">
                     <div className="flex items-start gap-3">
                       <Clock className="h-5 w-5 text-blue-600 mt-0.5" />
@@ -666,7 +660,7 @@ export default function GetQuotePage() {
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="bg-amber-50/50 shadow-neumorph-inset rounded-xl p-4 mb-6 text-left max-w-md mx-auto">
                     <h4 className="font-medium text-amber-900 mb-2">Terms & Conditions</h4>
                     <ul className="text-xs text-amber-800 space-y-1.5">
@@ -676,17 +670,17 @@ export default function GetQuotePage() {
                       <li>• After 30 days, you will need to re-submit your service request.</li>
                     </ul>
                   </div>
-                  
+
                   <div className="flex flex-col sm:flex-row gap-4 justify-center">
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setLocation(`/track-order?ticket=${ticketNumber}`)}
+                    <Button
+                      variant="outline"
+                      onClick={() => setLocation(`/track-order?order=${encodeURIComponent(ticketNumber)}&type=service`)}
                       className="bg-white shadow-neumorph-sm border-none"
                       data-testid="button-track-quote"
                     >
                       Track Quote Status
                     </Button>
-                    <Button 
+                    <Button
                       onClick={() => setLocation('/services')}
                       className="shadow-neumorph-sm hover:shadow-neumorph"
                       data-testid="button-browse-more"
@@ -700,7 +694,7 @@ export default function GetQuotePage() {
           )}
         </div>
       </main>
-      
+
       <CustomerAuthModal
         open={showAuthModal}
         onOpenChange={setShowAuthModal}
@@ -710,6 +704,6 @@ export default function GetQuotePage() {
           toast.success("Logged in successfully!");
         }}
       />
-    </PublicLayout>
+    </>
   );
 }

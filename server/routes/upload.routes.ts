@@ -6,10 +6,12 @@
 
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
+import { settingsRepo, notificationRepo, systemRepo, userRepo, jobRepo, serviceRequestRepo, warrantyRepo, hrRepo } from '../repositories/index.js';
 import { v2 as cloudinary } from 'cloudinary';
 import { ObjectStorageService, ObjectNotFoundError } from '../objectStorage.js';
 import ImageKit from 'imagekit';
-import { uploadLimiter } from './middleware/rate-limit.js';
+import { uploadLimiter, uploadAuthLimiter } from './middleware/rate-limit.js';
+import { requireAdminAuth } from './middleware/auth.js';
 
 const router = Router();
 
@@ -26,7 +28,7 @@ const imagekit = new ImageKit({
 /**
  * GET /api/upload/imagekit-auth - Returns auth params for client-side uploads
  */
-router.get('/api/upload/imagekit-auth', (req: Request, res: Response) => {
+router.get('/api/upload/imagekit-auth', uploadAuthLimiter, (req: Request, res: Response) => {
     try {
         if (!process.env.IMAGEKIT_PRIVATE_KEY) {
             return res.status(503).json({
@@ -122,7 +124,7 @@ router.get('/objects/:objectPath(*)', async (req: Request, res: Response) => {
 /**
  * POST /api/cloudinary/upload-params - Get signed upload parameters
  */
-router.post('/api/cloudinary/upload-params', async (req: Request, res: Response) => {
+router.post('/api/cloudinary/upload-params', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
         const apiKey = process.env.CLOUDINARY_API_KEY;
@@ -234,7 +236,7 @@ router.post('/api/cloudinary/upload', async (req: Request, res: Response) => {
 /**
  * POST /api/cleanup/expired-media - Cleanup expired media files
  */
-router.post('/api/cleanup/expired-media', async (req: Request, res: Response) => {
+router.post('/api/cleanup/expired-media', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
         const apiKey = process.env.CLOUDINARY_API_KEY;
@@ -300,14 +302,14 @@ router.post('/api/cleanup/expired-media', async (req: Request, res: Response) =>
                     }
 
                     if (!hasFailures || successfullyDeleted.length === mediaItems.length) {
-                        await storage.updateServiceRequest(request.id, {
+                        await serviceRequestRepo.updateServiceRequest(request.id, {
                             mediaUrls: null,
                             expiresAt: null
                         });
                         updatedRequestCount++;
                     } else if (successfullyDeleted.length > 0) {
                         const remainingItems = mediaItems.filter((_: any, i: number) => !successfullyDeleted.includes(i));
-                        await storage.updateServiceRequest(request.id, {
+                        await serviceRequestRepo.updateServiceRequest(request.id, {
                             mediaUrls: JSON.stringify(remainingItems)
                         });
                     }

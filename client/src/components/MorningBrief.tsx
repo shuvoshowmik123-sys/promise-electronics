@@ -12,9 +12,18 @@ interface Insight {
     createdAt: string;
 }
 
-export function MorningBrief() {
+interface MorningBriefProps {
+    className?: string;
+}
+
+export function MorningBrief({ className }: MorningBriefProps) {
     const { data: insights, isLoading } = useQuery<{ insights: Insight[] }>({
         queryKey: ['/api/ai/insights'],
+        queryFn: async () => {
+            const res = await fetch('/api/ai/insights');
+            if (!res.ok) return { insights: [] };
+            return res.json();
+        }
     });
 
     if (isLoading) return <div className="p-4">Loading insights...</div>;
@@ -49,14 +58,14 @@ export function MorningBrief() {
     };
 
     return (
-        <div className="space-y-4">
+        <div className={`space-y-4 ${className || ''}`}>
             <h2 className="text-xl font-bold flex items-center gap-2">
                 <Bell className="w-6 h-6" />
                 Morning Brief
             </h2>
 
             <div className="grid gap-4 md:grid-cols-3">
-                {insights.insights.map((insight: Insight) => (
+                {(insights?.insights || []).map((insight: Insight) => (
                     <Card key={insight.id} className={`${getCardClass(insight.type)} shadow-sm`}>
                         <CardHeader className="flex flex-row items-start gap-3 pb-2 space-y-0">
                             <div className="mt-1">{getIcon(insight.type)}</div>

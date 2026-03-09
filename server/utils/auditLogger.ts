@@ -1,4 +1,5 @@
 import { storage } from "../storage.js";
+import { redactLogData } from "./redact.js";
 
 type AuditAction = "CREATE" | "UPDATE" | "DELETE" | "LOGIN" | "LOGOUT" | "VIEW" | "ACTION";
 
@@ -26,8 +27,8 @@ export const auditLogger = {
             let changes = null;
             if (params.oldValue !== undefined || params.newValue !== undefined) {
                 changes = {
-                    old: params.oldValue,
-                    new: params.newValue,
+                    old: redactLogData(params.oldValue),
+                    new: redactLogData(params.newValue),
                 };
             }
 

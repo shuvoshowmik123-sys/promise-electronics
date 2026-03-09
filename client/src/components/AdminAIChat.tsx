@@ -24,9 +24,52 @@ interface Message {
     role: "user" | "model";
     text: string;
     visual?: VisualData;
+    settingsAction?: {
+        type: "UPDATE_SETTINGS";
+        changes: { key: string; oldValue: string; newValue: string; confidence: number }[];
+        requiresApproval: boolean;
+    };
 }
 
 const COLORS = ['#8884d8', '#82ca9d', '#ffc658', '#ff8042', '#0088FE', '#00C49F'];
+
+// Settings Preview Component
+const SettingsPreview = ({ action, onApply, onReject }: {
+    action: NonNullable<Message['settingsAction']>;
+    onApply: () => void;
+    onReject: () => void;
+}) => {
+    return (
+        <div className="mt-3 w-full bg-amber-50 rounded-lg p-3 border border-amber-200">
+            <h4 className="text-sm font-semibold mb-2 text-amber-800 flex items-center gap-2">
+                <Sparkles className="h-4 w-4" />
+                Proposed Settings Changes
+            </h4>
+
+            <div className="space-y-2 mb-3">
+                {action.changes.map((change, idx) => (
+                    <div key={idx} className="text-xs bg-white p-2 rounded border border-amber-100">
+                        <div className="font-medium text-slate-500 mb-1">{change.key}</div>
+                        <div className="flex items-center gap-2">
+                            <span className="line-through text-red-400 opacity-70">{change.oldValue}</span>
+                            <span className="text-slate-400">→</span>
+                            <span className="font-bold text-green-600">{change.newValue}</span>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            <div className="flex gap-2 justify-end">
+                <Button size="sm" variant="outline" className="h-7 text-xs border-amber-300 text-amber-700 hover:bg-amber-100" onClick={onReject}>
+                    Reject
+                </Button>
+                <Button size="sm" className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white" onClick={onApply}>
+                    Apply Changes
+                </Button>
+            </div>
+        </div>
+    );
+};
 
 const VisualRenderer = ({ visual }: { visual: VisualData }) => {
     if (!visual || !visual.data) return null;
@@ -87,14 +130,20 @@ const VisualRenderer = ({ visual }: { visual: VisualData }) => {
     );
 };
 
-export function AdminAIChat() {
-    const [isOpen, setIsOpen] = useState(false);
+export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) {
+    const [isOpen, setIsOpen] = useState(initialOpen);
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
     const [isListening, setIsListening] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
+
+    // Draggable state - supports snapping to 4 corners
+    const [corner, setCorner] = useState<'bottom-right' | 'bottom-left' | 'top-right' | 'top-left'>('bottom-right');
+    const [tempPosition, setTempPosition] = useState<{ x: number; y: number } | null>(null);
+    const [isDragging, setIsDragging] = useState(false);
+    const dragStartRef = useRef({ clientX: 0, clientY: 0 });
 
     // Web Speech API
     const recognitionRef = useRef<any>(null);
@@ -133,6 +182,22 @@ export function AdminAIChat() {
         }
     };
 
+    const handleApplySettings = async (changes: any[]) => {
+        try {
+            await aiApi.applySettings(changes);
+            toast({ title: "Success", description: "Settings updated successfully" });
+
+            // Add system message confirmation
+            setMessages(prev => [...prev, {
+                role: "model",
+                text: "✅ Changes applied successfully!"
+            }]);
+        } catch (error) {
+            console.error("Failed to apply settings:", error);
+            toast({ title: "Error", description: "Failed to apply settings", variant: "destructive" });
+        }
+    };
+
     const sendMessage = async () => {
         if (!input.trim()) return;
 
@@ -148,18 +213,13 @@ export function AdminAIChat() {
                 parts: [{ text: m.text }]
             }));
 
-            // Pass extra context that this is an admin chat
-            // The backend currently doesn't explicitly handle "admin" flag in the body, 
-            // but we can prepend it to the message or rely on session auth.
-            // For better results, we'll prepend a system instruction context if it's the first message
-            // or rely on the backend to see the user role.
-
             const response = await aiApi.chat(userMsg, history, undefined, 'admin');
 
             setMessages(prev => [...prev, {
                 role: "model",
                 text: response.text,
-                visual: response.visual
+                visual: response.visual,
+                settingsAction: response.settingsAction
             }]);
 
         } catch (error) {
@@ -178,22 +238,152 @@ export function AdminAIChat() {
         }
     }, [messages, isOpen]);
 
+    // Drag handlers for floating button - snaps to corners
+    const handleMouseDown = (e: React.MouseEvent) => {
+        e.preventDefault();
+        setIsDragging(true);
+        dragStartRef.current = { clientX: e.clientX, clientY: e.clientY };
+        setTempPosition({ x: e.clientX, y: e.clientY });
+    };
+
+    const handleMouseMove = (e: MouseEvent) => {
+        if (!isDragging) return;
+        setTempPosition({ x: e.clientX, y: e.clientY });
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+        if (!isDragging) return;
+        snapToCorner(e.clientX, e.clientY);
+    };
+
+    // Touch handlers for mobile devices
+    const handleTouchStart = (e: React.TouchEvent) => {
+        e.preventDefault();
+        const touch = e.touches[0];
+        setIsDragging(true);
+        dragStartRef.current = { clientX: touch.clientX, clientY: touch.clientY };
+        setTempPosition({ x: touch.clientX, y: touch.clientY });
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+        if (!isDragging) return;
+        const touch = e.touches[0];
+        setTempPosition({ x: touch.clientX, y: touch.clientY });
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+        if (!isDragging) return;
+        const touch = e.changedTouches[0];
+        snapToCorner(touch.clientX, touch.clientY);
+    };
+
+    // Common snap-to-corner logic
+    const snapToCorner = (clientX: number, clientY: number) => {
+        setIsDragging(false);
+        setTempPosition(null);
+
+        const midX = window.innerWidth / 2;
+        const midY = window.innerHeight / 2;
+        const isRight = clientX > midX;
+        const isBottom = clientY > midY;
+
+        if (isRight && isBottom) setCorner('bottom-right');
+        else if (!isRight && isBottom) setCorner('bottom-left');
+        else if (isRight && !isBottom) setCorner('top-right');
+        else setCorner('top-left');
+    };
+
+    // Add/remove drag listeners (mouse + touch)
+    useEffect(() => {
+        if (isDragging) {
+            window.addEventListener('mousemove', handleMouseMove);
+            window.addEventListener('mouseup', handleMouseUp);
+            window.addEventListener('touchmove', handleTouchMove, { passive: false });
+            window.addEventListener('touchend', handleTouchEnd);
+        }
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+            window.removeEventListener('touchmove', handleTouchMove);
+            window.removeEventListener('touchend', handleTouchEnd);
+        };
+    }, [isDragging]);
+
+    // Get button position style based on corner or temp position during drag
+    const getButtonStyle = (): React.CSSProperties => {
+        const offset = 24;
+        if (isDragging && tempPosition) {
+            return {
+                left: tempPosition.x - 28,
+                top: tempPosition.y - 28,
+                transition: 'none',
+            };
+        }
+
+        switch (corner) {
+            case 'bottom-right':
+                return { right: offset, bottom: offset };
+            case 'bottom-left':
+                return { left: offset, bottom: offset };
+            case 'top-right':
+                return { right: offset, top: offset };
+            case 'top-left':
+                return { left: offset, top: offset };
+        }
+    };
+
+    // Get chat window position based on icon corner
+    const getChatWindowStyle = (): React.CSSProperties => {
+        const offset = 24;
+        const buttonSize = 56; // h-14 = 56px
+        const gap = 12; // Gap between button and chat
+
+        switch (corner) {
+            case 'bottom-right':
+                return { right: offset, bottom: offset + buttonSize + gap };
+            case 'bottom-left':
+                return { left: offset, bottom: offset + buttonSize + gap };
+            case 'top-right':
+                return { right: offset, top: offset + buttonSize + gap };
+            case 'top-left':
+                return { left: offset, top: offset + buttonSize + gap };
+        }
+    };
+
+    // Get animation class based on corner
+    const getChatAnimationClass = () => {
+        if (corner.includes('bottom')) {
+            return 'animate-in slide-in-from-bottom-10 fade-in duration-300';
+        }
+        return 'animate-in slide-in-from-top-10 fade-in duration-300';
+    };
+
     return (
         <>
-            {/* Floating Button */}
+            {/* Floating Button - Draggable, snaps to corners */}
             <Button
-                onClick={() => setIsOpen(!isOpen)}
+                onMouseDown={handleMouseDown}
+                onTouchStart={handleTouchStart}
+                onClick={() => !isDragging && setIsOpen(!isOpen)}
                 className={cn(
-                    "fixed bottom-6 right-6 h-14 w-14 rounded-full shadow-lg z-50 transition-all duration-300",
+                    "fixed h-14 w-14 rounded-full shadow-lg z-50 cursor-grab active:cursor-grabbing touch-none",
+                    isDragging ? "transition-none" : "transition-all duration-300",
                     isOpen ? "rotate-90 bg-slate-800 hover:bg-slate-900" : "bg-violet-600 hover:bg-violet-700"
                 )}
+                style={getButtonStyle()}
             >
                 {isOpen ? <X className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
             </Button>
 
-            {/* Chat Window */}
+            {/* Chat Window - positions relative to button corner */}
             {isOpen && (
-                <Card className="fixed bottom-24 right-6 w-[380px] h-[600px] shadow-2xl z-50 flex flex-col animate-in slide-in-from-bottom-10 fade-in duration-300 border-2 border-violet-100">
+                <Card
+                    className={cn(
+                        "fixed w-[380px] h-[600px] shadow-2xl z-50 flex flex-col border-2 border-violet-100",
+                        getChatAnimationClass()
+                    )}
+                    style={getChatWindowStyle()}
+                >
                     <CardHeader className="bg-violet-600 text-white rounded-t-lg py-3 px-4">
                         <CardTitle className="flex items-center gap-2 text-lg">
                             <Sparkles className="h-5 w-5" />
@@ -216,8 +406,8 @@ export function AdminAIChat() {
                                         <Button variant="outline" size="sm" className="justify-start h-auto py-2" onClick={() => setInput("Show me today's revenue summary")}>
                                             "Show me today's revenue"
                                         </Button>
-                                        <Button variant="outline" size="sm" className="justify-start h-auto py-2" onClick={() => setInput("Which technician has the most pending jobs?")}>
-                                            "Technician performance?"
+                                        <Button variant="outline" size="sm" className="justify-start h-auto py-2" onClick={() => setInput("Update shop name to Promise Electronics BD")}>
+                                            "Update shop name..."
                                         </Button>
                                         <Button variant="outline" size="sm" className="justify-start h-auto py-2" onClick={() => setInput("Draft a message for customers about Eid holiday")}>
                                             "Draft holiday announcement"
@@ -243,6 +433,13 @@ export function AdminAIChat() {
                                     >
                                         {m.text}
                                         {m.visual && <VisualRenderer visual={m.visual} />}
+                                        {m.settingsAction && (
+                                            <SettingsPreview
+                                                action={m.settingsAction}
+                                                onApply={() => handleApplySettings(m.settingsAction!.changes)}
+                                                onReject={() => toast({ title: "Cancelled", description: "Changes rejected" })}
+                                            />
+                                        )}
                                     </div>
                                 </div>
                             ))}

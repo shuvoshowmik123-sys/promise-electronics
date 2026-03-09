@@ -6,12 +6,13 @@
 
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
+import { settingsRepo, notificationRepo, systemRepo, userRepo, jobRepo, serviceRequestRepo, warrantyRepo, hrRepo } from '../repositories/index.js';
 import {
     insertSettingSchema,
     insertServiceCatalogSchema,
     insertProductVariantSchema
 } from '../../shared/schema.js';
-import { requireAdminAuth } from './middleware/auth.js';
+import { requireAdminAuth, requirePermission } from './middleware/auth.js';
 
 const router = Router();
 
@@ -19,12 +20,190 @@ const router = Router();
 // Settings API
 // ============================================
 
+const ALLOWED_SETTING_KEYS = [
+    // Core Ops
+    'maintenance_mode',
+    'allow_registrations',
+    'developer_mode',
+
+    // UI & Brand
+    'site_name',
+    'logo_url',
+    'support_phone',
+    'service_center_contact',
+    'business_hours',
+    'currency_symbol',
+    'vat_percentage',
+    'timezone',
+    'hero_slides',
+    'banner_enabled',
+    'banner_text',
+    'banner_type',
+    'banner_link',
+    'popup_enabled',
+    'popup_image',
+    'popup_title',
+    'popup_description',
+    'popup_button_text',
+    'popup_button_link',
+    'popup_show_once',
+    'maintenance_message',
+    'min_version',
+
+    // Contact & Info
+    'contact_phone',
+    'contact_whatsapp',
+    'contact_address',
+    'social_facebook',
+    'social_instagram',
+    'social_youtube',
+
+    // Service Catalogs
+    'service_categories',
+    'shop_categories',
+    'tv_brands',
+    'tv_sizes',
+    'common_symptoms',
+    'service_filter_categories',
+
+    // CMS / Home
+    'hero_title',
+    'hero_subtitle',
+    'hero_animation_type',
+    'hero_images',
+    'mobile_hero_images',
+    'info_boxes',
+    'homepage_stats',
+    'faq_items',
+    'homepage_contact_info',
+    'service_areas',
+    'homepage_brands',
+    'home_problems_list',
+    'home_before_after_gallery',
+    'home_pricing_table',
+    'home_track_repair_enabled',
+    'home_google_map_url',
+
+    // About Us
+    'about_title',
+    'about_description',
+    'about_mission',
+    'about_vision',
+    'about_capabilities',
+    'about_team',
+    'about_address',
+    'about_email',
+    'about_working_hours',
+    'team_members',
+
+    // Mobile Specific
+    'mobile_hero_slides',
+    'mobile_banner_enabled',
+    'mobile_banner_text',
+    'mobile_banner_type',
+    'mobile_banner_link',
+    'mobile_popup_enabled',
+    'mobile_popup_image',
+    'mobile_popup_title',
+    'mobile_popup_description',
+    'mobile_popup_button_text',
+    'mobile_popup_button_link',
+    'mobile_popup_show_once',
+    'mobile_maintenance_mode',
+    'mobile_maintenance_message',
+    'mobile_min_version',
+    'mobile_contact_phone',
+    'mobile_contact_whatsapp',
+    'mobile_contact_address',
+    'mobile_business_hours',
+
+    // POS / Drawer Day-End
+    'drawer_day_close_enabled',
+    'drawer_day_close_time',
+    'drawer_day_close_timezone',
+    'drawer_day_close_last_run_date'
+];
+
 /**
- * GET /api/settings - Get all settings
+ * Public settings keys that are safe to expose without authentication.
+ * These are used by the customer portal layout, repair forms, and track pages.
  */
-router.get('/api/settings', async (req: Request, res: Response) => {
+const PUBLIC_SETTING_KEYS = [
+    // Brand & UI
+    'site_name', 'logo_url', 'support_phone', 'business_hours',
+    'service_center_contact', 'currency_symbol',
+    // Hero/Banner
+    'hero_slides', 'hero_title', 'hero_subtitle', 'hero_images',
+    'hero_animation_type', 'banner_enabled', 'banner_text', 'banner_type', 'banner_link',
+    // Service Catalogs (needed by repair form)
+    'tv_brands', 'tv_sizes', 'common_symptoms', 'service_categories',
+    'service_filter_categories', 'shop_categories',
+    // CMS / Home
+    'info_boxes', 'homepage_stats', 'faq_items', 'homepage_contact_info',
+    'service_areas', 'homepage_brands', 'home_problems_list',
+    'home_before_after_gallery', 'home_pricing_table',
+    'home_track_repair_enabled', 'home_google_map_url',
+    // About
+    'about_title', 'about_description', 'about_mission', 'about_vision',
+    'about_capabilities', 'about_team', 'about_address', 'about_email',
+    'about_working_hours', 'team_members',
+    // Social
+    'social_facebook', 'social_instagram', 'social_youtube',
+    // Contact
+    'contact_phone', 'contact_whatsapp', 'contact_address',
+];
+
+/**
+ * GET /api/public/settings - Get public settings (No Auth Required)
+ */
+router.get('/api/public/settings', async (req: Request, res: Response) => {
     try {
-        const settings = await storage.getAllSettings();
+        const allSettings = await settingsRepo.getAllSettings();
+        const publicSettings = allSettings.filter(s => PUBLIC_SETTING_KEYS.includes(s.key));
+        res.json(publicSettings);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch settings' });
+    }
+});
+
+/**
+ * GET /api/public/track/:ticketNumber - Public ticket tracking (No Auth)
+ * Returns limited info: ticket number, brand, status, stage, tracking status
+ */
+router.get('/api/public/track/:ticketNumber', async (req: Request, res: Response) => {
+    try {
+        const { ticketNumber } = req.params;
+        // Search across all service requests for this ticket number
+        const allRequests = await storage.getAllServiceRequests();
+        const sr = allRequests.find((r: any) => r.ticketNumber === ticketNumber);
+
+        if (!sr) {
+            return res.status(404).json({ error: 'Ticket not found' });
+        }
+
+        // Return only safe public info
+        res.json({
+            ticketNumber: sr.ticketNumber,
+            brand: sr.brand,
+            screenSize: sr.screenSize,
+            primaryIssue: sr.primaryIssue,
+            trackingStatus: sr.trackingStatus,
+            stage: sr.stage,
+            status: sr.status,
+            createdAt: sr.createdAt,
+            serviceMode: sr.serviceMode,
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to track ticket' });
+    }
+});
+
+/**
+ * GET /api/settings - Get all settings (Admin Only)
+ */
+router.get('/api/settings', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
+    try {
+        const settings = await settingsRepo.getAllSettings();
         res.json(settings);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch settings' });
@@ -32,11 +211,11 @@ router.get('/api/settings', async (req: Request, res: Response) => {
 });
 
 /**
- * GET /api/settings/:key - Get setting by key
+ * GET /api/settings/:key - Get setting by key (Admin Only)
  */
-router.get('/api/settings/:key', async (req: Request, res: Response) => {
+router.get('/api/settings/:key', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
-        const setting = await storage.getSetting(req.params.key);
+        const setting = await settingsRepo.getSetting(req.params.key);
         if (!setting) {
             return res.status(404).json({ error: 'Setting not found' });
         }
@@ -47,14 +226,21 @@ router.get('/api/settings/:key', async (req: Request, res: Response) => {
 });
 
 /**
- * POST /api/settings - Create/update setting
+ * POST /api/settings - Create/update setting (Admin Only, validates allowlist)
  */
-router.post('/api/settings', async (req: Request, res: Response) => {
+router.post('/api/settings', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         const validated = insertSettingSchema.parse(req.body);
+
+        if (!ALLOWED_SETTING_KEYS.includes(validated.key)) {
+            console.error(`[Settings API] Attempt to write unknown key rejected: ${validated.key}`);
+            return res.status(400).json({ error: `Setting key '${validated.key}' is not allowed.` });
+        }
+
         const setting = await storage.upsertSetting(validated);
         res.json(setting);
     } catch (error) {
+        console.error('[Settings API] Error upserting setting:', error);
         res.status(400).json({ error: 'Invalid setting data' });
     }
 });
@@ -69,7 +255,7 @@ router.post('/api/settings', async (req: Request, res: Response) => {
  */
 router.get('/api/mobile/settings', async (req: Request, res: Response) => {
     try {
-        const allSettings = await storage.getAllSettings();
+        const allSettings = await settingsRepo.getAllSettings();
 
         // Filter and transform mobile-specific settings
         const mobileSettings: Record<string, any> = {};

@@ -6,8 +6,9 @@
 
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
+import { settingsRepo, notificationRepo, systemRepo, userRepo, jobRepo, serviceRequestRepo, warrantyRepo, hrRepo } from '../repositories/index.js';
 import { insertInquirySchema } from '../../shared/schema.js';
-import { requireCustomerAuth, requireAdminAuth } from './middleware/auth.js';
+import { requireCustomerAuth, requireAdminAuth, requirePermission } from './middleware/auth.js';
 
 const router = Router();
 
@@ -61,7 +62,7 @@ router.post('/api/inquiries', async (req: Request, res: Response) => {
 /**
  * GET /api/inquiries - Get all inquiries (admin)
  */
-router.get('/api/inquiries', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/inquiries', requireAdminAuth, requirePermission('inquiries'), async (req: Request, res: Response) => {
     try {
         const inquiries = await storage.getAllInquiries();
         res.json(inquiries);
@@ -73,7 +74,7 @@ router.get('/api/inquiries', requireAdminAuth, async (req: Request, res: Respons
 /**
  * PATCH /api/inquiries/:id/status - Update inquiry status
  */
-router.patch('/api/inquiries/:id/status', requireAdminAuth, async (req: Request, res: Response) => {
+router.patch('/api/inquiries/:id/status', requireAdminAuth, requirePermission('inquiries'), async (req: Request, res: Response) => {
     try {
         const { status, reply } = req.body;
         if (status && !['Pending', 'Read', 'Replied'].includes(status)) {
@@ -99,7 +100,7 @@ router.patch('/api/inquiries/:id/status', requireAdminAuth, async (req: Request,
  */
 router.get('/api/customer/inquiries', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
-        const user = await storage.getUser(req.session.customerId!);
+        const user = await userRepo.getUser(req.session.customerId!);
         if (!user || !user.phone) {
             return res.json([]);
         }
@@ -119,7 +120,7 @@ router.get('/api/customer/inquiries', requireCustomerAuth, async (req: Request, 
  */
 router.get('/api/customer/notifications', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
-        const notifications = await storage.getNotifications(req.session.customerId!);
+        const notifications = await notificationRepo.getNotifications(req.session.customerId!);
         res.json(notifications);
     } catch (error) {
         console.error('Get notifications error:', error);
@@ -132,7 +133,7 @@ router.get('/api/customer/notifications', requireCustomerAuth, async (req: Reque
  */
 router.get('/api/customer/notifications/unread-count', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
-        const notifications = await storage.getNotifications(req.session.customerId!);
+        const notifications = await notificationRepo.getNotifications(req.session.customerId!);
         const unreadCount = notifications.filter(n => !n.read).length;
         res.json({ count: unreadCount });
     } catch (error) {
@@ -146,7 +147,7 @@ router.get('/api/customer/notifications/unread-count', requireCustomerAuth, asyn
  */
 router.patch('/api/customer/notifications/:id/read', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
-        const updated = await storage.markNotificationAsRead(req.params.id);
+        const updated = await notificationRepo.markNotificationAsRead(req.params.id);
         if (!updated) {
             return res.status(404).json({ error: 'Notification not found' });
         }
@@ -162,7 +163,7 @@ router.patch('/api/customer/notifications/:id/read', requireCustomerAuth, async 
  */
 router.post('/api/customer/notifications/mark-all-read', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
-        await storage.markAllNotificationsAsRead(req.session.customerId!);
+        await notificationRepo.markAllNotificationsAsRead(req.session.customerId!);
         res.json({ success: true });
     } catch (error) {
         console.error('Mark all notifications read error:', error);

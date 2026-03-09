@@ -8,20 +8,19 @@ import { Haptics, ImpactStyle } from '@capacitor/haptics';
  * Root screens where pressing back should exit the app
  */
 const ROOT_SCREENS = [
-    '/native/home',
-    '/native/login',
-    '/native/splash',
+    '/home',
+    '/login',
+    '/track-order',
 ];
 
 /**
  * Screens that should navigate to a specific parent instead of going back
  */
 const PARENT_ROUTES: Record<string, string> = {
-    '/native/settings/edit-profile': '/native/settings',
-    '/native/settings/change-password': '/native/settings',
-    '/native/repair': '/native/home',
-    '/native/chat': '/native/home',
-    '/native/camera-lens': '/native/home',
+    '/my-profile': '/home',
+    '/my-warranties': '/home',
+    '/repair': '/home',
+    '/track': '/track-order',
 };
 
 /**
@@ -45,6 +44,7 @@ export function useAndroidBack() {
 
         const handleBackButton = async () => {
             console.log('[BackButton] Pressed on:', location);
+            const pathOnly = location.split('?')[0];
 
             // 1. Check for open modals/dialogs (Radix UI uses data-state="open")
             const openModals = document.querySelectorAll(
@@ -97,7 +97,7 @@ export function useAndroidBack() {
             }
 
             // 4. Check if on root screen
-            if (ROOT_SCREENS.includes(location)) {
+            if (ROOT_SCREENS.includes(pathOnly)) {
                 const now = Date.now();
 
                 // Double-tap to exit (within 2 seconds)
@@ -113,9 +113,9 @@ export function useAndroidBack() {
             }
 
             // 5. Check for predefined parent route
-            if (PARENT_ROUTES[location]) {
-                console.log('[BackButton] Navigating to parent:', PARENT_ROUTES[location]);
-                setLocation(PARENT_ROUTES[location]);
+            if (PARENT_ROUTES[pathOnly]) {
+                console.log('[BackButton] Navigating to parent:', PARENT_ROUTES[pathOnly]);
+                setLocation(PARENT_ROUTES[pathOnly]);
                 return;
             }
 
@@ -134,7 +134,7 @@ export function useAndroidBack() {
             } else {
                 // No history, go to home
                 console.log('[BackButton] No history, going home');
-                setLocation('/native/home');
+                setLocation('/home');
             }
         };
 

@@ -1,4 +1,3 @@
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -12,7 +11,7 @@ import { settingsApi, inventoryApi, reviewsApi, customerServiceRequestsApi, shop
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { formatDistanceToNow } from "date-fns";
-
+import { toast } from "sonner";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
@@ -99,7 +98,7 @@ export default function HomePage() {
         status: req.trackingStatus,
         date: req.createdAt,
         message: `${req.brand} ${req.modelNumber || ''} - ${req.trackingStatus}`,
-        link: `/native/repair/${req.id}`
+        link: `/track-order?order=${encodeURIComponent(req.id)}&type=service`
       });
     });
 
@@ -112,7 +111,7 @@ export default function HomePage() {
         status: order.status,
         date: order.createdAt,
         message: `${order.items?.length || 0} items - ${order.status}`,
-        link: `/customer/orders/${order.id}` // Assuming this route exists, otherwise generic /shop
+        link: `/track-order?order=${encodeURIComponent(order.id)}&type=product`
       });
     });
 
@@ -149,8 +148,11 @@ export default function HomePage() {
   };
 
   const handleTrack = () => {
-    if (trackTicket.trim()) {
-      setLocation(`/track-order?id=${trackTicket.trim()}`);
+    const ticket = trackTicket.trim();
+    if (ticket) {
+      setLocation(`/track-order?order=${encodeURIComponent(ticket)}&type=service`);
+    } else {
+      toast.error("Please enter a ticket number to track your repair.");
     }
   };
 
@@ -546,7 +548,7 @@ export default function HomePage() {
   // Mobile Dashboard Logic
   if (isMobile) {
     return (
-      <PublicLayout>
+      <>
         <div className="min-h-screen bg-slate-50 pb-24 pt-4 px-4">
           {/* Mobile Hero */}
           <div className="mb-6 -mx-4">
@@ -597,7 +599,7 @@ export default function HomePage() {
 
           {/* Active Repair Card (Real Data) */}
           {activeTicket ? (
-            <Link href={`/native/repair/${activeTicket.id}`}>
+            <Link href={`/track-order?order=${encodeURIComponent(activeTicket.id)}&type=service`}>
               <ActiveRepairCard
                 device={`${activeTicket.brand} ${activeTicket.modelNumber || ''}`}
                 ticketId={activeTicket.ticketNumber || activeTicket.id}
@@ -692,12 +694,12 @@ export default function HomePage() {
             </div>
           </div>
         </div>
-      </PublicLayout>
+      </>
     );
   }
 
   return (
-    <PublicLayout>
+    <>
       {/* Mobile Hero Section */}
       <div className="md:hidden">
         {activeHeroSlides.length > 0 ? (
@@ -1696,6 +1698,6 @@ export default function HomePage() {
           </section>
         )
       }
-    </PublicLayout >
+    </>
   );
 }

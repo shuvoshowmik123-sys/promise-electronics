@@ -1,15 +1,17 @@
 import { app, httpServer, createApp, log } from "./app";
-// Trigger restart
+// Trigger restart v3 - inlined module auth
 import { serveStatic } from "./static";
 import { seedSuperAdmin } from "./seed";
 import { Request, Response, NextFunction } from "express";
 import { aiErrorHandler } from "./middleware/ai-error-handler";
+import { startDrawerDayCloseScheduler, stopDrawerDayCloseScheduler } from "./services/drawer-day-close.service.js";
 
 (async () => {
   // Seed super admin if not exists
   await seedSuperAdmin();
 
   await createApp();
+  startDrawerDayCloseScheduler();
 
   // AI Error Handler (Module C)
   app.use(aiErrorHandler);
@@ -23,6 +25,11 @@ import { aiErrorHandler } from "./middleware/ai-error-handler";
     if (!res.headersSent) {
       res.status(status).json({ message });
     }
+  });
+
+  // Catch-all for unmet /api routes so they return JSON 404 instead of HTML
+  app.use("/api", (req, res) => {
+    res.status(404).json({ message: "API route not found" });
   });
 
   // importantly only setup vite in development and after
@@ -49,6 +56,32 @@ import { aiErrorHandler } from "./middleware/ai-error-handler";
       log(`serving on port ${port}`);
     },
   );
+
+  // Graceful shutdown — always release the port on exit so EADDRINUSE
+  // never occurs on the next startup (especially critical on Windows
+  // where sockets can stay in TIME_WAIT/CLOSE_WAIT state).
+  const shutdown = (signal: string) => {
+    log(`Received ${signal}. Closing HTTP server gracefully...`);
+    stopDrawerDayCloseScheduler();
+    httpServer.close((err) => {
+      if (err) {
+        console.error("[Shutdown] Error closing server:", err);
+        process.exit(1);
+      } else {
+        log(`[Shutdown] Server closed. Port ${port} released. Goodbye.`);
+        process.exit(0);
+      }
+    });
+
+    // Force-kill after 10 seconds if connections won't drain
+    setTimeout(() => {
+      console.error("[Shutdown] Could not drain connections in time, forcing exit.");
+      process.exit(1);
+    }, 10000).unref();
+  };
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
 })().catch((err) => {
   console.error("Fatal error during startup:", err);
   process.exit(1);

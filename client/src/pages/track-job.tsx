@@ -5,9 +5,9 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, Clock, Wrench, AlertCircle, Loader2, Phone, MapPin, ArrowLeft } from "lucide-react";
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Link } from "wouter";
 import { usePageTitle } from "@/hooks/usePageTitle";
+import { motion } from "framer-motion";
 
 interface JobTrackingInfo {
   id: string;
@@ -49,6 +49,27 @@ const statusConfig: Record<string, { icon: React.ReactNode; color: string; bgCol
     label: "Completed",
     description: "Your repair is complete! You can pick up your device."
   },
+  "Ready": {
+    icon: <CheckCircle className="w-10 h-10" />,
+    color: "text-emerald-600",
+    bgColor: "bg-emerald-100",
+    label: "Ready for Pickup",
+    description: "Your device is ready to be picked up."
+  },
+  "Delivered": {
+    icon: <CheckCircle className="w-10 h-10" />,
+    color: "text-indigo-600",
+    bgColor: "bg-indigo-100",
+    label: "Delivered",
+    description: "Your device has been delivered to you."
+  },
+  "Closed": {
+    icon: <CheckCircle className="w-10 h-10" />,
+    color: "text-slate-600",
+    bgColor: "bg-slate-100",
+    label: "Closed",
+    description: "This job has been finalized and closed."
+  },
   "Cancelled": {
     icon: <AlertCircle className="w-10 h-10" />,
     color: "text-red-600",
@@ -81,6 +102,7 @@ export default function TrackJobPage() {
       return response.json();
     },
     enabled: !!jobId,
+    refetchInterval: 30000,
   });
 
   const statusInfo = job ? (statusConfig[job.status] || statusConfig["Pending"]) : null;
@@ -95,7 +117,7 @@ export default function TrackJobPage() {
 
   if (!jobId) {
     return (
-      <PublicLayout>
+      <>
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
           <Card className="w-full max-w-md">
             <CardContent className="p-8 text-center">
@@ -115,13 +137,13 @@ export default function TrackJobPage() {
             </CardContent>
           </Card>
         </div>
-      </PublicLayout>
+      </>
     );
   }
 
   if (isLoading) {
     return (
-      <PublicLayout>
+      <>
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
           <Card className="w-full max-w-md">
             <CardContent className="p-8 text-center">
@@ -131,13 +153,13 @@ export default function TrackJobPage() {
             </CardContent>
           </Card>
         </div>
-      </PublicLayout>
+      </>
     );
   }
 
   if (error || !job) {
     return (
-      <PublicLayout>
+      <>
         <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
           <Card className="w-full max-w-md">
             <CardContent className="p-8 text-center">
@@ -146,7 +168,7 @@ export default function TrackJobPage() {
               </div>
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Job Not Found</h2>
               <p className="text-muted-foreground mb-6">
-                We couldn't find a job with ID <span className="font-mono font-bold">#{jobId}</span>. 
+                We couldn't find a job with ID <span className="font-mono font-bold">#{jobId}</span>.
                 Please check your ticket and try again.
               </p>
               <div className="space-y-3">
@@ -165,108 +187,150 @@ export default function TrackJobPage() {
             </CardContent>
           </Card>
         </div>
-      </PublicLayout>
+      </>
     );
   }
 
+  const getStepIndex = (status: string | undefined) => {
+    if (status === 'Cancelled') return -1;
+    if (status === 'Pending') return 0;
+    if (status === 'Waiting for Parts') return 1;
+    if (status === 'In Progress') return 1;
+    if (status === 'Ready') return 2;
+    if (status === 'Completed' || status === 'Delivered' || status === 'Closed') return 3;
+    return 0;
+  };
+
+  const currentStep = getStepIndex(job?.status);
+  const steps = ["Received", "In Repair", "Ready", "Complete"];
+
   return (
-    <PublicLayout>
-      <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md animate-in slide-in-from-bottom-4 duration-300">
-          <CardContent className="p-8">
-            <div className="text-center space-y-6">
-              <div className={`w-20 h-20 ${statusInfo?.bgColor} ${statusInfo?.color} rounded-full flex items-center justify-center mx-auto`}>
+    <>
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+        <Card className="w-full max-w-xl animate-in slide-in-from-bottom-4 duration-300 shadow-2xl border-0 rounded-[2rem] overflow-hidden">
+          {/* Header Banner */}
+          <div className={`p-8 text-center text-white ${job?.status === 'Cancelled' ? 'bg-red-500' : 'bg-gradient-to-br from-blue-600 to-indigo-700'}`}>
+            <div className="flex justify-center mb-4">
+              <div className="w-16 h-16 bg-white/20 backdrop-blur-md rounded-2xl flex items-center justify-center p-3 shadow-inner">
                 {statusInfo?.icon}
               </div>
-              
-              <div className="space-y-2">
-                <h2 className="text-2xl font-bold text-gray-900">Job Status</h2>
-                <p className="text-lg text-muted-foreground">
-                  Ticket: <span className="font-mono font-bold text-foreground">#{job.id}</span>
-                </p>
+            </div>
+            <h2 className="text-3xl font-black tracking-tighter mb-1">Repair Tracker</h2>
+            <p className="text-blue-100 font-medium tracking-widest uppercase text-xs">
+              Ticket <span className="font-bold text-white">#{job.id}</span>
+            </p>
+          </div>
+
+          <CardContent className="p-8">
+            {/* PIZZA TRACKER UI */}
+            {job.status !== 'Cancelled' ? (
+              <div className="mb-10 mt-2 relative">
+                {/* Background Line */}
+                <div className="absolute top-5 left-0 w-full h-1 bg-slate-100" />
+
+                {/* Animated Progress Line */}
+                <motion.div
+                  className="absolute top-5 left-0 h-1 bg-blue-500 origin-left"
+                  initial={{ scaleX: 0 }}
+                  animate={{ scaleX: currentStep / 2 }}
+                  transition={{ duration: 0.8, ease: "easeInOut" }}
+                />
+
+                <div className="flex justify-between relative z-10">
+                  {steps.map((step, index) => {
+                    const isActive = index === currentStep;
+                    const isCompleted = index < currentStep;
+
+                    return (
+                      <div key={step} className="flex flex-col items-center gap-2">
+                        <motion.div
+                          initial={{ scale: 0.8, opacity: 0 }}
+                          animate={{ scale: 1, opacity: 1 }}
+                          transition={{ delay: index * 0.2 }}
+                          className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shadow-sm transition-colors duration-500 ${isActive ? 'bg-blue-600 text-white shadow-blue-500/30' :
+                            isCompleted ? 'bg-blue-500 text-white' :
+                              'bg-white border-2 border-slate-100 text-slate-300'
+                            }`}
+                        >
+                          {isCompleted ? <CheckCircle className="w-5 h-5" /> : index + 1}
+                        </motion.div>
+                        <span className={`text-[11px] uppercase tracking-widest font-bold ${isActive ? 'text-blue-600' : isCompleted ? 'text-slate-600' : 'text-slate-400'
+                          }`}>
+                          {step}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
+            ) : (
+              <div className="mb-8 text-center">
+                <Badge variant="destructive" className="px-4 py-2 text-base">Cancelled</Badge>
+              </div>
+            )}
 
-              <Badge 
-                variant="outline" 
-                className={`text-lg px-4 py-2 ${statusInfo?.color} border-current`}
-                data-testid="badge-status"
-              >
-                {statusInfo?.label}
-              </Badge>
-
-              <p className="text-muted-foreground">
+            <div className="text-center mb-8">
+              <h3 className="text-xl font-bold text-slate-800 mb-2">{statusInfo?.label}</h3>
+              <p className="text-slate-500 text-sm leading-relaxed max-w-sm mx-auto">
                 {statusInfo?.description}
               </p>
+            </div>
 
-              <div className="bg-slate-50 p-6 rounded-lg text-left space-y-4 border">
-                <div className="flex justify-between border-b pb-2">
-                  <span className="text-muted-foreground">Device</span>
-                  <span className="font-medium" data-testid="text-device">
-                    {job.device} {job.screenSize ? `(${job.screenSize})` : ""}
+            <div className="bg-slate-50/50 p-6 rounded-2xl space-y-4 border border-slate-100">
+              <div className="flex justify-between border-b border-slate-100 pb-3">
+                <span className="text-slate-400 font-medium text-sm">Device</span>
+                <span className="font-bold text-slate-700 text-sm text-right" data-testid="text-device">
+                  {job.device} {job.screenSize ? `\n(${job.screenSize})` : ""}
+                </span>
+              </div>
+              <div className="flex justify-between border-b border-slate-100 pb-3">
+                <span className="text-slate-400 font-medium text-sm">Received</span>
+                <span className="font-bold text-slate-700 text-sm" data-testid="text-received-date">
+                  {formatDate(job.createdAt)}
+                </span>
+              </div>
+              {job.deadline && !job.completedAt && (
+                <div className="flex justify-between border-b border-slate-100 pb-3">
+                  <span className="text-slate-400 font-medium text-sm">Expected Completion</span>
+                  <span className="font-bold text-blue-600 text-sm" data-testid="text-deadline">
+                    {formatDate(job.deadline)}
                   </span>
                 </div>
-                <div className="flex justify-between border-b pb-2">
-                  <span className="text-muted-foreground">Received</span>
-                  <span className="font-medium" data-testid="text-received-date">
-                    {formatDate(job.createdAt)}
+              )}
+              {job.completedAt && (
+                <div className="flex justify-between border-b border-slate-100 pb-3">
+                  <span className="text-slate-400 font-medium text-sm">Completed</span>
+                  <span className="font-bold text-emerald-600 text-sm" data-testid="text-completed-date">
+                    {formatDate(job.completedAt)}
                   </span>
                 </div>
-                {job.deadline && !job.completedAt && (
-                  <div className="flex justify-between border-b pb-2">
-                    <span className="text-muted-foreground">Expected Completion</span>
-                    <span className="font-medium text-blue-600" data-testid="text-deadline">
-                      {formatDate(job.deadline)}
-                    </span>
-                  </div>
-                )}
-                {job.completedAt && (
-                  <div className="flex justify-between border-b pb-2">
-                    <span className="text-muted-foreground">Completed</span>
-                    <span className="font-medium" data-testid="text-completed-date">
-                      {formatDate(job.completedAt)}
-                    </span>
-                  </div>
-                )}
-                {job.estimatedCost && (
-                  <div className="flex justify-between pb-2">
-                    <span className="text-muted-foreground">Estimated Cost</span>
-                    <span className="font-medium text-green-600" data-testid="text-cost">
-                      ৳{parseFloat(job.estimatedCost).toLocaleString()}
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-primary/5 border border-primary/20 p-4 rounded-lg">
-                <h3 className="font-semibold mb-2">Need Help?</h3>
-                <p className="text-sm text-muted-foreground mb-3">
-                  Contact us for any questions about your repair.
-                </p>
-                <div className="flex flex-col gap-2 text-sm">
-                  <a href="tel:+8801234567890" className="flex items-center justify-center gap-2 text-primary hover:underline" data-testid="link-call-support">
-                    <Phone className="w-4 h-4" />
-                    Call Support
-                  </a>
+              )}
+              {job.estimatedCost && (
+                <div className="flex justify-between pb-1">
+                  <span className="text-slate-400 font-medium text-sm">Estimated Cost</span>
+                  <span className="font-black text-slate-800" data-testid="text-cost">
+                    ৳{parseFloat(job.estimatedCost).toLocaleString()}
+                  </span>
                 </div>
-              </div>
+              )}
+            </div>
 
-              <div className="flex justify-center gap-4 pt-4">
-                <Link href="/">
-                  <Button variant="outline" size="lg" data-testid="button-home">
-                    <ArrowLeft className="w-4 h-4 mr-2" />
-                    Home
-                  </Button>
-                </Link>
-                <Link href="/repair">
-                  <Button size="lg" data-testid="button-new-repair">
-                    New Repair
-                  </Button>
-                </Link>
-              </div>
+            <div className="mt-8 flex justify-center gap-3">
+              <Link href="/">
+                <Button variant="ghost" className="rounded-xl h-12 px-6 font-bold text-slate-500 bg-slate-50 hover:bg-slate-100" data-testid="button-home">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  Home
+                </Button>
+              </Link>
+              <Link href="/repair">
+                <Button className="rounded-xl h-12 px-6 font-bold bg-slate-900 text-white hover:bg-slate-800" data-testid="button-new-repair">
+                  New Repair Request
+                </Button>
+              </Link>
             </div>
           </CardContent>
         </Card>
       </div>
-    </PublicLayout>
+    </>
   );
 }

@@ -1,17 +1,17 @@
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/contexts/CartContext";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
-import { 
-  ShoppingCart, 
-  Trash2, 
-  Plus, 
-  Minus, 
+import {
+  ShoppingCart,
+  Trash2,
+  Plus,
+  Minus,
   Package,
   ArrowRight
 } from "lucide-react";
+import { CustomerErrorBoundary } from "@/components/customer/CustomerErrorBoundary";
 
 export default function CartPage() {
   const [, setLocation] = useLocation();
@@ -19,7 +19,7 @@ export default function CartPage() {
 
   if (items.length === 0) {
     return (
-      <PublicLayout>
+      <CustomerErrorBoundary>
         <div className="min-h-[60vh] bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 py-16">
           <div className="container mx-auto px-4">
             <motion.div
@@ -36,8 +36,8 @@ export default function CartPage() {
                   <p className="text-muted-foreground mb-6">
                     Add some products to your cart and they will appear here.
                   </p>
-                  <Button 
-                    onClick={() => setLocation("/shop")} 
+                  <Button
+                    onClick={() => setLocation("/shop")}
                     data-testid="button-continue-shopping"
                     className="shadow-neumorph-sm hover:shadow-neumorph"
                   >
@@ -48,12 +48,12 @@ export default function CartPage() {
             </motion.div>
           </div>
         </div>
-      </PublicLayout>
+      </CustomerErrorBoundary>
     );
   }
 
   return (
-    <PublicLayout>
+    <CustomerErrorBoundary>
       {/* Neumorphic Header */}
       <div className="bg-gradient-to-br from-slate-200 via-slate-100 to-slate-200 py-12">
         <div className="container mx-auto px-4">
@@ -77,9 +77,9 @@ export default function CartPage() {
             <div className="lg:col-span-2 space-y-4">
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-xl font-bold">Cart Items ({itemCount})</h2>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="text-destructive hover:text-destructive"
                   onClick={clearCart}
                   data-testid="button-clear-cart"
@@ -106,7 +106,7 @@ export default function CartPage() {
                             <Package className="w-6 h-6 md:w-8 md:h-8 text-muted-foreground" />
                           )}
                         </div>
-                    
+
                         <div className="flex-1 min-w-0">
                           <h3 className="font-medium text-sm md:text-base truncate" data-testid={`text-item-name-${item.productId}`}>{item.name}</h3>
                           {item.variantName && (
@@ -116,8 +116,8 @@ export default function CartPage() {
                         </div>
 
                         <div className="flex items-center gap-1 md:gap-2">
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="icon"
                             className="h-6 w-6 md:h-8 md:w-8 rounded-md md:rounded-lg shadow-neumorph-sm border-none bg-white"
                             onClick={() => updateQuantity(item.productId, item.quantity - 1)}
@@ -127,8 +127,8 @@ export default function CartPage() {
                             <Minus className="w-3 h-3 md:w-4 md:h-4" />
                           </Button>
                           <span className="w-6 md:w-8 text-center text-sm md:text-base font-medium" data-testid={`text-quantity-${item.productId}`}>{item.quantity}</span>
-                          <Button 
-                            variant="outline" 
+                          <Button
+                            variant="outline"
                             size="icon"
                             className="h-6 w-6 md:h-8 md:w-8 rounded-md md:rounded-lg shadow-neumorph-sm border-none bg-white"
                             onClick={() => updateQuantity(item.productId, item.quantity + 1)}
@@ -144,8 +144,8 @@ export default function CartPage() {
                           </p>
                         </div>
 
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="icon"
                           className="h-6 w-6 md:h-8 md:w-8 text-destructive hover:text-destructive"
                           onClick={() => removeItem(item.productId)}
@@ -194,8 +194,8 @@ export default function CartPage() {
                       </p>
                     </div>
 
-                    <Button 
-                      className="w-full shadow-neumorph-sm hover:shadow-neumorph" 
+                    <Button
+                      className="w-full shadow-neumorph-sm hover:shadow-neumorph"
                       size="lg"
                       onClick={() => setLocation("/checkout")}
                       data-testid="button-proceed-checkout"
@@ -204,8 +204,8 @@ export default function CartPage() {
                       <ArrowRight className="w-4 h-4 ml-2" />
                     </Button>
 
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       className="w-full bg-white shadow-neumorph-sm hover:shadow-neumorph border-none"
                       onClick={() => setLocation("/shop")}
                       data-testid="button-continue-shopping"
@@ -219,6 +219,6 @@ export default function CartPage() {
           </div>
         </div>
       </div>
-    </PublicLayout>
+    </CustomerErrorBoundary>
   );
 }

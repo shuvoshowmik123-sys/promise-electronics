@@ -4,7 +4,7 @@
  * Handles all database operations for inventory items and products.
  */
 
-import { db, nanoid, eq, desc, and, schema, type InventoryItem, type InsertInventoryItem, type Product, type InsertProduct } from './base.js';
+import { db, nanoid, eq, desc, and, schema, type InventoryItem, type InsertInventoryItem, type Product, type InsertProduct, type PurchaseOrder, type InsertPurchaseOrder, type PurchaseOrderItem, type InsertPurchaseOrderItem } from './base.js';
 
 // ============================================
 // Inventory Queries
@@ -165,4 +165,26 @@ export async function updateProduct(id: string, updates: Partial<InsertProduct>)
 export async function deleteProduct(id: string): Promise<boolean> {
     const result = await db.delete(schema.products).where(eq(schema.products.id, id));
     return (result.rowCount ?? 0) > 0;
+}
+
+export async function getPurchaseOrders(): Promise<PurchaseOrder[]> {
+    return db.select().from(schema.purchaseOrders).orderBy(desc(schema.purchaseOrders.createdAt));
+}
+export async function getAllPurchaseOrders(): Promise<PurchaseOrder[]> {
+    return getPurchaseOrders();
+}
+export async function getPurchaseOrder(id: string): Promise<PurchaseOrder | undefined> {
+    const [po] = await db.select().from(schema.purchaseOrders).where(eq(schema.purchaseOrders.id, id));
+    return po;
+}
+export async function createPurchaseOrder(po: InsertPurchaseOrder, items: InsertPurchaseOrderItem[]): Promise<PurchaseOrder> {
+    const [newPo] = await db.insert(schema.purchaseOrders).values({ ...po, id: nanoid() }).returning();
+    for (const item of items) {
+        await db.insert(schema.purchaseOrderItems).values({ ...item, id: nanoid(), purchaseOrderId: newPo.id });
+    }
+    return newPo;
+}
+export async function updatePurchaseOrder(id: string, updates: Partial<InsertPurchaseOrder>): Promise<PurchaseOrder | undefined> {
+    const [updated] = await db.update(schema.purchaseOrders).set(updates).where(eq(schema.purchaseOrders.id, id)).returning();
+    return updated;
 }

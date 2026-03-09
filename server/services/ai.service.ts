@@ -33,13 +33,15 @@ function getNextGeminiClient(): GoogleGenerativeAI {
 
 // Model configurations
 const MODELS = {
-    // Groq models (for text chat - FAST)
+    // Groq models (FAST & Primary)
     groq: {
         chat: "llama-3.3-70b-versatile",     // Best for chat
         fast: "llama-3.1-8b-instant",         // Quick responses
+        vision: "llama-3.2-90b-vision-preview", // Primary Vision (High Quality)
+        visionFast: "llama-3.2-11b-vision-preview", // Secondary Vision (Fast)
         audio: "whisper-large-v3",             // Speech to Text
     },
-    // Gemini models (for vision - ACCURATE)
+    // Gemini models (BACKUP for vision - ACCURATE)
     gemini: {
         vision: "gemini-2.5-flash",           // Latest stable model (Jan 2026)
         visionFallback: "gemini-2.0-flash",   // Fallback option
@@ -253,10 +255,47 @@ const ADMIN_PROMPT = `
   - If you output JSON, do NOT wrap it in markdown code blocks. Output raw JSON.
   - If no visual is needed, just reply with plain text.
   
+
   RESTRICTIONS:
   - Do NOT use "Banglish" or slang unless the user initiates it.
   - Maintain a professional tone.
 `;
+
+const ADMIN_SETTINGS_PROMPT = `
+  SETTINGS MANAGEMENT CAPABILITY:
+  You can help admins update shop settings. When asked to change settings, generate a JSON action plan.
+
+  SAFE SETTINGS (Text-Based Only):
+  - Shop Info: shop_name, shop_address, shop_phone, shop_email
+  - Content: hero_title, hero_subtitle, about_us_text, warranty_policy, terms_conditions
+  - Business: operating_hours, holiday_schedule, service_areas
+
+  CRITICAL RULES:
+  - You can ONLY modify the keys listed above.
+  - Generative images (logo, banner) are NOT supported in this version.
+  - If asked to change a setting, output this JSON structure inside your response:
+
+  \`\`\`json
+  {
+    "text": "Confirmation message...",
+    "settingsAction": {
+      "type": "UPDATE_SETTINGS",
+      "changes": [
+        {
+          "key": "shop_name",
+          "oldValue": "Old Name",
+          "newValue": "New Name",
+          "confidence": 0.95
+        }
+      ],
+      "requiresApproval": true
+    }
+  }
+  \`\`\`
+`;
+
+const COMBINED_ADMIN_PROMPT = ADMIN_PROMPT + ADMIN_SETTINGS_PROMPT;
+
 
 export const aiService = {
     /**
@@ -294,6 +333,49 @@ export const aiService = {
             return null;
         }
     },
+
+    /**
+     * Transliterate Bengali text (script) into Banglish (Roman alphabet)
+     * e.g. "আমি ভালো আছি" -> "Ami bhalo achi"
+     */
+    async transliterateToBanglish(bengaliText: string): Promise<string> {
+        try {
+            const prompt = `
+You are an expert translator specializing in everyday Bangladeshi texting.
+Your only job is to convert Bengali script accurately into "Banglish" (Romanized text/English letters).
+Write it EXACTLY how a typical person from Dhaka would type it in WhatsApp or Messenger.
+
+Example 1 Input: ডিসপ্লে ভাঙ্গা, কিছু দেখা যায় না
+Example 1 Output: Display bhanga, kichu dekha jay na
+
+Example 2 Input: আমি কালকে আসবো
+Example 2 Output: Ami kalke asbo
+
+Input: ${bengaliText}
+
+Rules:
+- DO NOT translate the meaning to English.
+- DO NOT wrap the output in quotes.
+- Output ONLY the Banglish text, nothing else.
+`;
+            const gemini = getNextGeminiClient();
+            const model = gemini.getGenerativeModel({ model: MODELS.gemini.vision }); // Also serves as fast text backup
+
+            const result = await model.generateContent({
+                contents: [{ role: "user", parts: [{ text: prompt }] }],
+                generationConfig: {
+                    temperature: 0.1,
+                    maxOutputTokens: 200,
+                }
+            });
+
+            return result.response.text().trim() || bengaliText;
+        } catch (err) {
+            console.error("AI Transliteration failed:", err);
+            return bengaliText; // Fallback to original
+        }
+    },
+
     /**
      * Diagnose server errors and suggest fixes
      * Uses Groq (fast) for quick analysis
@@ -365,18 +447,17 @@ export const aiService = {
 
     /**
      * Analyze visual damage from a photo
-     * Uses GEMINI (accurate) for image analysis with key rotation
+     * PRIMARY: Groq Llama 3.2 Vision (Fast & High Limit)
+     * BACKUP: Gemini 2.5 Flash (Accurate)
      */
     async analyzeVisualDamage(base64Image: string) {
-        const maxRetries = geminiKeys.length || 1;
-
         // Log image stats for debugging
         const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
-        console.log(`[Gemini] analyzeVisualDamage called. Image base64 length: ${base64Data.length} chars (~${Math.round(base64Data.length * 0.75 / 1024)} KB)`);
+        console.log(`[AI] analyzeVisualDamage called. Image base64 length: ${base64Data.length} chars (~${Math.round(base64Data.length * 0.75 / 1024)} KB)`);
 
         // Validate image
         if (!base64Data || base64Data.length < 100) {
-            console.error("[Gemini] Invalid image: too small or empty");
+            console.error("[AI] Invalid image: too small or empty");
             return {
                 damage: ["Invalid image"],
                 severity: "Unknown",
@@ -387,6 +468,80 @@ export const aiService = {
             };
         }
 
+        // ---------------------------------------------------------
+        // ATTEMPT 1: Groq Vision (Primary)
+        // ---------------------------------------------------------
+        try {
+            console.log(`[Groq] Attempting Vision Analysis with ${MODELS.groq.vision}...`);
+
+            const completion = await groq.chat.completions.create({
+                model: MODELS.groq.vision,
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            {
+                                type: "text",
+                                text: `You are an expert TV and electronics repair technician in Bangladesh.
+                                Analyze this image and identify any damage or issues.
+                                
+                                Provide:
+                                1. A list of visible damage (each item max 10 words)
+                                2. Severity: "Low", "Medium", or "High"
+                                3. Likely cause of the damage
+                                4. Estimated repair cost range in BDT (if possible)
+                                
+                                Output JSON only:
+                                {
+                                  "damage": ["damage 1", "damage 2"],
+                                  "severity": "Low|Medium|High",
+                                  "likelyCause": "Brief explanation",
+                                  "likelyCauseBn": "সংক্ষিপ্ত কারণ বাংলায়",
+                                  "estimatedCostMin": 500,
+                                  "estimatedCostMax": 2000
+                                }`
+                            },
+                            {
+                                type: "image_url",
+                                image_url: {
+                                    url: `data:image/jpeg;base64,${base64Data}`
+                                }
+                            }
+                        ]
+                    }
+                ],
+                temperature: 0.1,
+                max_tokens: 1024,
+                response_format: { type: "json_object" }
+            });
+
+            const text = completion.choices[0]?.message?.content || "";
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+            if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                console.log("[Groq] Vision Analysis Successful");
+                return {
+                    damage: parsed.damage || [],
+                    severity: parsed.severity || "Unknown",
+                    severityBn: parsed.severity === "High" ? "গুরুতর" : parsed.severity === "Medium" ? "মাঝারি" : "হালকা",
+                    likelyCause: parsed.likelyCause || "",
+                    likelyCauseBn: parsed.likelyCauseBn || "",
+                    estimatedCostMin: parsed.estimatedCostMin || null,
+                    estimatedCostMax: parsed.estimatedCostMax || null,
+                    rawText: text,
+                    provider: "groq"
+                };
+            }
+        } catch (groqErr: any) {
+            console.error("[Groq] Vision Analysis Failed:", groqErr?.message || groqErr);
+            console.log("[AI] Falling back to Gemini...");
+        }
+
+        // ---------------------------------------------------------
+        // ATTEMPT 2: Gemini Vision (Backup)
+        // ---------------------------------------------------------
+        const maxRetries = geminiKeys.length || 1;
         for (let retry = 0; retry < maxRetries; retry++) {
             try {
                 const genAI = getNextGeminiClient();
@@ -433,7 +588,8 @@ export const aiService = {
                         likelyCauseBn: parsed.likelyCauseBn || "",
                         estimatedCostMin: parsed.estimatedCostMin || null,
                         estimatedCostMax: parsed.estimatedCostMax || null,
-                        rawText: text
+                        rawText: text,
+                        provider: "gemini"
                     };
                 }
 
@@ -467,18 +623,17 @@ export const aiService = {
 
     /**
      * Identify an electronic component from a photo
-     * Uses GEMINI (accurate) for image analysis with key rotation
+     * PRIMARY: Groq Llama 3.2 Vision (Fast & High Limit)
+     * BACKUP: Gemini 2.5 Flash (Accurate)
      */
     async identifyPart(base64Image: string) {
-        const maxRetries = geminiKeys.length || 1;
-
         // Log image stats for debugging
         const base64Data = base64Image.replace(/^data:image\/\w+;base64,/, "");
-        console.log(`[Gemini] identifyPart called. Image base64 length: ${base64Data.length} chars (~${Math.round(base64Data.length * 0.75 / 1024)} KB)`);
+        console.log(`[AI] identifyPart called. Image base64 length: ${base64Data.length} chars (~${Math.round(base64Data.length * 0.75 / 1024)} KB)`);
 
         // Validate image
         if (!base64Data || base64Data.length < 100) {
-            console.error("[Gemini] Invalid image: too small or empty");
+            console.error("[AI] Invalid image: too small or empty");
             return {
                 label: "Invalid Image",
                 labelBn: "অবৈধ ছবি",
@@ -491,6 +646,90 @@ export const aiService = {
             };
         }
 
+        // ---------------------------------------------------------
+        // ATTEMPT 1: Groq Vision (Primary)
+        // ---------------------------------------------------------
+        try {
+            console.log(`[Groq] Attempting Component ID with ${MODELS.groq.vision}...`);
+
+            const completion = await groq.chat.completions.create({
+                model: MODELS.groq.vision,
+                messages: [
+                    {
+                        role: "user",
+                        content: [
+                            {
+                                type: "text",
+                                text: `You are an expert TV and electronics repair technician in Bangladesh.
+                                Analyze this image and identify the electronic component or issue.
+                                
+                                Provide:
+                                1. Component/Issue name in English (label)
+                                2. Component/Issue name in Bengali (labelBn)
+                                3. Confidence level (0.0 to 1.0)
+                                4. Issue type: one of "power", "display", "audio", "connectivity", "physical", "general"
+                                5. Description of what you see in English
+                                6. Description in Bengali (descriptionBn)
+                                
+                                Examples:
+                                - "Power Supply Board" (পাওয়ার সাপ্লাই বোর্ড) - power issue
+                                - "T-Con Board" (টি-কন বোর্ড) - display issue
+                                - "Capacitor Bulge" (ক্যাপাসিটর ফোলা) - power issue
+                                - "HDMI Port" (এইচডিএমআই পোর্ট) - connectivity issue
+                                - "Cracked Screen" (ভাঙা স্ক্রিন) - physical issue
+                                
+                                Output JSON only:
+                                {
+                                  "label": "Component/Issue name in English",
+                                  "labelBn": "উপাদান/সমস্যার নাম বাংলায়",
+                                  "confidence": 0.95,
+                                  "issueType": "power|display|audio|connectivity|physical|general",
+                                  "description": "Brief description of the component or issue in English",
+                                  "descriptionBn": "সংক্ষিপ্ত বিবরণ বাংলায়",
+                                  "rawText": "Any additional observations"
+                                }`
+                            },
+                            {
+                                type: "image_url",
+                                image_url: {
+                                    url: `data:image/jpeg;base64,${base64Data}`
+                                }
+                            }
+                        ]
+                    }
+                ],
+                temperature: 0.1,
+                max_tokens: 1024,
+                response_format: { type: "json_object" }
+            });
+
+            const text = completion.choices[0]?.message?.content || "";
+            const jsonMatch = text.match(/\{[\s\S]*\}/);
+
+            if (jsonMatch) {
+                const parsed = JSON.parse(jsonMatch[0]);
+                console.log("[Groq] Component ID Successful");
+                return {
+                    label: parsed.label || "Unknown Component",
+                    labelBn: parsed.labelBn || "অজানা উপাদান",
+                    confidence: parsed.confidence || 0.5,
+                    issueType: parsed.issueType || "general",
+                    description: parsed.description || "",
+                    descriptionBn: parsed.descriptionBn || "",
+                    rawText: parsed.rawText || text,
+                    boundingBox: null,
+                    provider: "groq"
+                };
+            }
+        } catch (groqErr: any) {
+            console.error("[Groq] Component ID Failed:", groqErr?.message || groqErr);
+            console.log("[AI] Falling back to Gemini...");
+        }
+
+        // ---------------------------------------------------------
+        // ATTEMPT 2: Gemini Vision (Backup)
+        // ---------------------------------------------------------
+        const maxRetries = geminiKeys.length || 1;
         for (let retry = 0; retry < maxRetries; retry++) {
             try {
                 const genAI = getNextGeminiClient();
@@ -547,7 +786,8 @@ export const aiService = {
                         description: parsed.description || "",
                         descriptionBn: parsed.descriptionBn || "",
                         rawText: parsed.rawText || text,
-                        boundingBox: null
+                        boundingBox: null,
+                        provider: "gemini"
                     };
                 }
 
@@ -643,7 +883,7 @@ export const aiService = {
 
         // Build context-aware system prompt
         function buildContextPrompt() {
-            let basePrompt = modelType === 'admin' ? ADMIN_PROMPT : DAKTAR_VAI_PROMPT;
+            let basePrompt = modelType === 'admin' ? COMBINED_ADMIN_PROMPT : DAKTAR_VAI_PROMPT;
 
             if (userContext) {
                 const contextAddition = `
@@ -744,11 +984,75 @@ INSTRUCTIONS FOR EXISTING TICKET:
             }
 
             try {
+                // ---------------------------------------------------------
+                // ATTEMPT 1: Groq Vision (Primary)
+                // ---------------------------------------------------------
+                console.log(`[Groq] Attempting Vision Chat with ${MODELS.groq.vision}...`);
+                const visionSystemPrompt = buildContextPrompt();
+
+                const completion = await groq.chat.completions.create({
+                    model: MODELS.groq.vision,
+                    messages: [
+                        {
+                            role: "system",
+                            content: visionSystemPrompt
+                        },
+                        {
+                            role: "user",
+                            content: [
+                                {
+                                    type: "text",
+                                    text: message
+                                },
+                                {
+                                    type: "image_url",
+                                    image_url: {
+                                        url: `data:${mimeType};base64,${base64Data}`
+                                    }
+                                }
+                            ]
+                        }
+                    ],
+                    temperature: 0.1,
+                    max_tokens: 1024,
+                });
+
+                const text = completion.choices[0]?.message?.content || "";
+
+                // Parse booking JSON if present
+                const jsonMatch = text.match(/\{[\s\S]*\}/);
+                let bookingData = null;
+                if (jsonMatch) {
+                    try {
+                        bookingData = JSON.parse(jsonMatch[0]);
+                        // Only return booking if action is explicitly set
+                        if (!bookingData.action) bookingData = null;
+                    } catch (e) {
+                        console.error("JSON Parse error:", e);
+                    }
+                }
+
+                return {
+                    text: text.replace(/\{[\s\S]*\}/, "").trim(),
+                    booking: bookingData,
+                    error: false,
+                    provider: "groq-vision"
+                };
+
+            } catch (groqErr: any) {
+                console.error("[Groq] Vision Chat Failed:", groqErr?.message || groqErr);
+                console.log("[AI] Falling back to Gemini Vision...");
+            }
+
+            // ---------------------------------------------------------
+            // ATTEMPT 2: Gemini Vision (Backup)
+            // ---------------------------------------------------------
+            try {
                 // STEP 1: Gemini analyzes the image
                 const genAI = getNextGeminiClient();
                 const visionModel = genAI.getGenerativeModel({ model: MODELS.gemini.vision });
 
-                console.log(`[AI] Using Gemini model: ${MODELS.gemini.vision}, mimeType: ${mimeType}`);
+                console.log(`[Gemini] Using model: ${MODELS.gemini.vision}, mimeType: ${mimeType}`);
 
                 const visionPrompt = `
                     You are an expert TV and electronics repair technician.
@@ -906,31 +1210,22 @@ Use this analysis to respond to the user's message naturally as Daktar Vai.
 
                 const response = completion.choices[0]?.message?.content || "";
 
-                // Check for Visual JSON first (Admin mode)
-                if (modelType === 'admin') {
-                    const jsonMatch = response.match(/\{[\s\S]*"visual":[\s\S]*\}/);
-                    if (jsonMatch) {
-                        try {
-                            const parsed = JSON.parse(jsonMatch[0]);
-                            return {
-                                text: parsed.text || "Here is the data.",
-                                visual: parsed.visual,
-                                booking: null
-                            };
-                        } catch (e) {
-                            console.error("Failed to parse visual JSON", e);
-                        }
-                    }
-                }
+                // Check for JSON block in response (for visuals or settings)
+                const genericJsonMatch = response.match(/```json\n([\s\S]*?)\n```/) || response.match(/{[\s\S]*}/);
 
-                // Check for booking JSON (Customer mode)
-                const jsonMatch = response.match(/\{[\s\S]*"action":\s*"BOOK_TICKET"[\s\S]*\}/);
+                let visualData = null;
+                let settingsAction = null;
+                let responseText = response;
 
-                if (jsonMatch) {
+                // Check for Booking JSON specifically (High priority)
+                // Use a distinct variable name to avoid conflicts
+                const bookingMatch = response.match(/\{[\s\S]*"action":\s*"BOOK_TICKET"[\s\S]*\}/);
+
+                if (bookingMatch) {
                     try {
-                        const booking = JSON.parse(jsonMatch[0]);
+                        const booking = JSON.parse(bookingMatch[0]);
                         return {
-                            text: response.replace(jsonMatch[0], "").trim() ||
+                            text: response.replace(bookingMatch[0], "").trim() ||
                                 "Apnar booking confirm hoyeche! 🎉 Amader team apnake call korbe.",
                             booking: {
                                 action: "BOOK_TICKET",
@@ -949,7 +1244,36 @@ Use this analysis to respond to the user's message naturally as Daktar Vai.
                     }
                 }
 
-                return { text: response, booking: null };
+                if (genericJsonMatch) {
+                    try {
+                        const jsonContent = genericJsonMatch[1] ? genericJsonMatch[1] : genericJsonMatch[0];
+                        const parsed = JSON.parse(jsonContent);
+
+                        // Handle Visuals
+                        if (parsed.visual) {
+                            visualData = parsed.visual;
+                        }
+
+                        // Handle Settings Actions (New)
+                        if (parsed.settingsAction && modelType === 'admin') {
+                            settingsAction = parsed.settingsAction;
+                        }
+
+                        // If the JSON contains a text field, use that as the response text
+                        if (parsed.text) {
+                            responseText = parsed.text;
+                        }
+                    } catch (e) {
+                        console.error("[AI] Failed to parse JSON from response:", e);
+                    }
+                }
+
+                return {
+                    text: responseText,
+                    visual: visualData,
+                    settingsAction: settingsAction, // Return settings intent
+                    booking: null
+                };
 
             } catch (error: any) {
                 lastError = error;

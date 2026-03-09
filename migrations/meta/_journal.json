@@ -1,0 +1,27 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1772644264775,
+      "tag": "0000_productive_ser_duncan",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1773072000000,
+      "tag": "0001_job_ticket_received_accessories",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1773075600000,
+      "tag": "0002_service_requests_admin_interacted",
+      "breakpoints": true
+    }
+  ]
+}

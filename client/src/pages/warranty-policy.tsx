@@ -1,4 +1,3 @@
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { useQuery } from "@tanstack/react-query";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { Loader2 } from "lucide-react";
@@ -35,7 +34,7 @@ export default function WarrantyPolicyPage() {
   };
 
   return (
-    <PublicLayout>
+    <>
       <div className="min-h-screen bg-gradient-to-b from-slate-100 via-slate-50 to-slate-100">
         <div className="container mx-auto px-4 py-12">
           <div className="max-w-4xl mx-auto">
@@ -71,6 +70,6 @@ export default function WarrantyPolicyPage() {
           </div>
         </div>
       </div>
-    </PublicLayout>
+    </>
   );
 }

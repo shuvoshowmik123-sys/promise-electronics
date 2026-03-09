@@ -1,18 +1,51 @@
 import dotenv from "dotenv";
 import path from "path";
+import crypto from "crypto";
+import { validateEnv } from "./utils/validateEnv.js";
 
 // Load environment variables based on NODE_ENV
 const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+
+// Immediately validate environment after loading
+validateEnv();
 import express from "express";
 import session from "express-session";
 import { registerRoutes } from "./routes/index.js";
 import { createServer } from "http";
 import pgSession from "connect-pg-simple";
+import cookieParser from "cookie-parser";
 
 import cors from "cors";
 
+// Augment express-session with user data
+declare module "express-session" {
+    interface SessionData {
+        adminUserId?: string;
+        adminUserRole?: string;
+        passport?: { user: any };
+    }
+}
+
+import compression from "compression";
+import helmet from "helmet";
+
 export const app = express();
+app.use(compression({
+    filter: (req, res) => {
+        if (req.headers['accept'] === 'text/event-stream') {
+            return false; // Disable compression for SSE
+        }
+        return compression.filter(req, res);
+    }
+})); // Enable GZIP compression
+
+// HTTP Security Headers
+app.use(helmet({
+    contentSecurityPolicy: false, // Disable CSP for now — SPA injects scripts dynamically
+    crossOriginEmbedderPolicy: false, // Allow loading third-party images/fonts
+}));
+
 export const httpServer = createServer(app);
 
 // Configure CORS
@@ -23,7 +56,7 @@ app.use(cors({
             return callback(null, true);
         }
 
-        // Allow localhost on any port (for Flutter web development)
+        // Allow localhost on any port
         if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
             return callback(null, true);
         }
@@ -33,7 +66,6 @@ app.use(cors({
             "https://promiseelectronics.com",
             "https://www.promiseelectronics.com",
             "capacitor://localhost",
-            "http://192.168.0.103:5083"
         ];
 
         if (allowedOrigins.includes(origin)) {
@@ -46,7 +78,14 @@ app.use(cors({
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Cookie"]
+    allowedHeaders: [
+        "Content-Type",
+        "Authorization",
+        "Cookie",
+        "X-Correlation-ID",
+        "X-XSRF-TOKEN",
+        "X-CSRF-TOKEN",
+    ]
 }));
 
 // Trust proxy for production (HTTPS behind proxy)
@@ -54,7 +93,7 @@ app.set("trust proxy", 1);
 
 app.use(
     express.json({
-        limit: "50mb",
+        limit: "2mb",
         verify: (req, _res, buf) => {
             (req as any).rawBody = buf;
         },
@@ -71,17 +110,15 @@ const isProduction = process.env.NODE_ENV === "production";
 const PgStore = pgSession(session);
 
 const sessionConfig: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET || "promise-electronics-secret-key-2025",
+    secret: process.env.SESSION_SECRET!,
     resave: false,
     saveUninitialized: false,
     cookie: {
         secure: isProduction,
         httpOnly: true,
         maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        // sameSite: "none" required for cross-origin mobile apps (Capacitor)
-        // sameSite: "lax" is safer but blocks cross-origin cookies
-        // In development, we use undefined to allow cookies from different origins (like Android emulator)
-        sameSite: isProduction ? "none" : undefined,
+        // sameSite: "lax" is standard, but "none" is required if cross-origin credentials are used
+        sameSite: isProduction ? "lax" : "lax", // Change to lax by default unless specific cross-origin demands it
     },
 };
 
@@ -95,11 +132,15 @@ if (process.env.DATABASE_URL) {
     });
     console.log('[Session] Using PostgreSQL session store (persistent)');
 } else {
-    // Development fallback - use memory store (imported dynamically in createApp)
-    console.log('[Session] DATABASE_URL not set - session store will be configured in createApp()');
+    console.log('[Session] DATABASE_URL not set - using memory store');
 }
 
 app.use(session(sessionConfig));
+app.use(cookieParser());
+
+import { setCsrfToken } from "./routes/middleware/csrf.js";
+import { redactLogData } from "./utils/redact.js";
+app.use(setCsrfToken);
 
 export function log(message: string, source = "express") {
     const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -115,6 +156,12 @@ export function log(message: string, source = "express") {
 app.use((req, res, next) => {
     const start = Date.now();
     const path = req.path;
+
+    // Attach Correlation ID for distributed tracing
+    const correlationId = (req.headers['x-correlation-id'] as string) || crypto.randomUUID();
+    (req as any).correlationId = correlationId;
+    res.setHeader('X-Correlation-ID', correlationId);
+
     let capturedJsonResponse: Record<string, any> | undefined = undefined;
 
     const originalResJson = res.json;
@@ -136,9 +183,11 @@ app.use((req, res, next) => {
     res.on("finish", () => {
         const duration = Date.now() - start;
         if (path.startsWith("/api")) {
-            let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
+            const correlationId = (req as any).correlationId;
+            let logLine = `[${correlationId}] ${req.method} ${path} ${res.statusCode} in ${duration}ms`;
             if (capturedJsonResponse) {
-                logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
+                const redactedResponse = redactLogData(capturedJsonResponse);
+                logLine += ` :: ${JSON.stringify(redactedResponse)}`;
             }
 
             log(logLine);
@@ -150,6 +199,7 @@ app.use((req, res, next) => {
 
 import { aiErrorHandler } from "./routes/middleware/ai-logger.js";
 import { setupSwagger } from "./swagger.js";
+import { errorHandler } from "./routes/middleware/error-handler.js";
 
 export async function createApp() {
     // Setup Swagger API documentation
@@ -159,6 +209,7 @@ export async function createApp() {
 
     // Register AI Error Handler last
     app.use(aiErrorHandler);
+    app.use(errorHandler);
 
     return app;
 }

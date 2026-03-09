@@ -1,4 +1,4 @@
-import { Monitor, Wrench, ShoppingCart, ShoppingBag, Users, Users2, BarChart3, ClipboardList, FileText, Package, Truck, DollarSign, HardHat, Settings, MessageSquare, UserCheck, Activity, ShieldAlert } from "lucide-react";
+import { LogOut, Bell, Settings, Loader2, HardHat, UserCheck, ClipboardList, PenTool, LayoutDashboard, ShoppingBag, Users, Wrench, Package, FileText, CheckSquare, MessageSquare, CreditCard, ShoppingCart, Truck, Calendar, Building2, Receipt, Monitor, BarChart3, Activity, ShieldAlert, DollarSign, Users2 } from "lucide-react";
 
 // Placeholder images - replace with actual images in production
 const heroImage = "https://images.unsplash.com/photo-1593642532400-2682810df593?w=800";
@@ -134,6 +134,7 @@ export const adminNavGroups = [
     title: "Sales & Finance",
     items: [
       { label: "POS System", href: "/admin/pos", icon: ShoppingCart },
+      { label: "Cashier Dashboard", href: "/admin/cashier", icon: DollarSign },
       { label: "Shop Orders", href: "/admin/orders", icon: ShoppingBag },
       { label: "Inventory", href: "/admin/inventory", icon: Package },
       { label: "Finance & Due", href: "/admin/finance", icon: DollarSign },
@@ -144,8 +145,16 @@ export const adminNavGroups = [
     items: [
       { label: "Customers", href: "/admin/customers", icon: Users2 },
       { label: "Staff Attendance", href: "/admin/staff-attendance", icon: UserCheck },
+      { label: "Salary & HR", href: "/admin/salary", icon: Receipt },
       { label: "Users", href: "/admin/users", icon: Users },
       { label: "Technician View", href: "/admin/technician", icon: HardHat },
+    ]
+  },
+  {
+    title: "Corporate B2B",
+    items: [
+      { label: "Manage Clients", href: "/admin/corporate", icon: Building2 },
+      { label: "Corporate Messages", href: "/admin/corporate-messages", icon: MessageSquare },
     ]
   },
   {

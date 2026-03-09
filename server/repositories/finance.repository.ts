@@ -7,14 +7,110 @@
  * - Challans
  */
 
-import { db, nanoid, eq, desc, schema, type Challan, type InsertChallan, type PettyCashRecord, type InsertPettyCashRecord, type DueRecord, type InsertDueRecord } from './base.js';
+import { db, nanoid, eq, desc, asc, and, gte, lte, or, like, count, sql, schema, type Challan, type InsertChallan, type PettyCashRecord, type InsertPettyCashRecord, type DueRecord, type InsertDueRecord, type PaginationResult } from './base.js';
 
 // ============================================
 // Petty Cash Operations
 // ============================================
 
-export async function getAllPettyCashRecords(): Promise<PettyCashRecord[]> {
-    return db.select().from(schema.pettyCashRecords).orderBy(desc(schema.pettyCashRecords.createdAt));
+export async function getAllPettyCashRecords(filters?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    from?: string;
+    to?: string;
+    type?: string;
+}): Promise<PaginationResult<PettyCashRecord>> {
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 25;
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+
+    if (filters?.search) {
+        conditions.push(or(
+            like(schema.pettyCashRecords.description, `%${filters.search}%`),
+            like(schema.pettyCashRecords.category, `%${filters.search}%`)
+        ));
+    }
+
+    if (filters?.from) {
+        // Assume from is a date string YYYY-MM-DD
+        const fromDate = new Date(filters.from);
+        fromDate.setHours(0, 0, 0, 0);
+        conditions.push(gte(schema.pettyCashRecords.createdAt, fromDate));
+    }
+
+    if (filters?.to) {
+        const toDate = new Date(filters.to);
+        toDate.setHours(23, 59, 59, 999);
+        conditions.push(lte(schema.pettyCashRecords.createdAt, toDate));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [{ total }] = await db
+        .select({ total: count() })
+        .from(schema.pettyCashRecords)
+        .where(whereClause);
+
+    const items = await db
+        .select()
+        .from(schema.pettyCashRecords)
+        .where(whereClause)
+        .orderBy(desc(schema.pettyCashRecords.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+    return {
+        items,
+        pagination: {
+            total: Number(total),
+            page,
+            limit,
+            pages: Math.ceil(Number(total) / limit),
+        },
+    };
+}
+
+export async function getPettyCashSummary(filters?: {
+    from?: string;
+    to?: string;
+}): Promise<{ totalIncome: number; totalExpense: number; count: number }> {
+    const conditions = [];
+
+    if (filters?.from) {
+        const fromDate = new Date(filters.from);
+        fromDate.setHours(0, 0, 0, 0);
+        conditions.push(gte(schema.pettyCashRecords.createdAt, fromDate));
+    }
+
+    if (filters?.to) {
+        const toDate = new Date(filters.to);
+        toDate.setHours(23, 59, 59, 999);
+        conditions.push(lte(schema.pettyCashRecords.createdAt, toDate));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const records = await db
+        .select()
+        .from(schema.pettyCashRecords)
+        .where(whereClause);
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+
+    for (const record of records) {
+        if (record.type === 'Income') totalIncome += record.amount;
+        if (record.type === 'Expense') totalExpense += record.amount;
+    }
+
+    return {
+        totalIncome,
+        totalExpense,
+        count: records.length
+    };
 }
 
 export async function createPettyCashRecord(record: InsertPettyCashRecord): Promise<PettyCashRecord> {
@@ -33,8 +129,113 @@ export async function deletePettyCashRecord(id: string): Promise<boolean> {
 // Due Records Operations
 // ============================================
 
-export async function getAllDueRecords(): Promise<DueRecord[]> {
-    return db.select().from(schema.dueRecords).orderBy(desc(schema.dueRecords.createdAt));
+export async function getAllDueRecords(filters?: {
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    from?: string;
+    to?: string;
+}): Promise<PaginationResult<DueRecord>> {
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 25;
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+
+    if (filters?.search) {
+        conditions.push(or(
+            like(schema.dueRecords.customer, `%${filters.search}%`),
+            like(schema.dueRecords.invoice, `%${filters.search}%`)
+        ));
+    }
+
+    if (filters?.status && filters.status !== 'All') {
+        conditions.push(eq(schema.dueRecords.status, filters.status));
+    }
+
+    if (filters?.from) {
+        const fromDate = new Date(filters.from);
+        fromDate.setHours(0, 0, 0, 0);
+        conditions.push(gte(schema.dueRecords.createdAt, fromDate));
+    }
+
+    if (filters?.to) {
+        const toDate = new Date(filters.to);
+        toDate.setHours(23, 59, 59, 999);
+        conditions.push(lte(schema.dueRecords.createdAt, toDate));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [{ total }] = await db
+        .select({ total: count() })
+        .from(schema.dueRecords)
+        .where(whereClause);
+
+    const items = await db
+        .select()
+        .from(schema.dueRecords)
+        .where(whereClause)
+        .orderBy(desc(schema.dueRecords.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+    return {
+        items,
+        pagination: {
+            total: Number(total),
+            page,
+            limit,
+            pages: Math.ceil(Number(total) / limit),
+        },
+    };
+}
+
+export async function getDueSummary(filters?: {
+    from?: string;
+    to?: string;
+}): Promise<{ totalDueAmount: number; overdueCount: number; pendingCount: number }> {
+    const conditions = [];
+
+    if (filters?.from) {
+        const fromDate = new Date(filters.from);
+        fromDate.setHours(0, 0, 0, 0);
+        conditions.push(gte(schema.dueRecords.createdAt, fromDate));
+    }
+
+    if (filters?.to) {
+        const toDate = new Date(filters.to);
+        toDate.setHours(23, 59, 59, 999);
+        conditions.push(lte(schema.dueRecords.createdAt, toDate));
+    }
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const records = await db
+        .select()
+        .from(schema.dueRecords)
+        .where(whereClause);
+
+    let totalDueAmount = 0;
+    let overdueCount = 0;
+    let pendingCount = 0;
+
+    for (const record of records) {
+        // calculate remaining due (amount - paidAmount)
+        const paidAmount = record.paidAmount || 0;
+        const remaining = record.amount - paidAmount;
+        totalDueAmount += remaining;
+
+        if (record.status === 'Overdue') overdueCount++;
+        else if (record.status === 'Pending' || record.status === 'Partial') pendingCount++;
+    }
+
+    return {
+        totalDueAmount,
+        overdueCount,
+        pendingCount
+    };
 }
 
 export async function getDueRecord(id: string): Promise<DueRecord | undefined> {

@@ -6,10 +6,11 @@
 
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
+import { userRepo, customerRepo, orderRepo, corporateRepo, notificationRepo } from '../repositories/index.js';
 import { db } from '../db.js';
 import { sparePartOrders } from '../../shared/schema.js';
 import { eq } from 'drizzle-orm';
-import { requireCustomerAuth, requireAdminAuth, getCustomerId } from './middleware/auth.js';
+import { requireCustomerAuth, requireAdminAuth, requirePermission, getCustomerId } from './middleware/auth.js';
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 
 const router = Router();
@@ -23,7 +24,7 @@ const router = Router();
  */
 router.post('/api/orders', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
-        const user = await storage.getUser(req.session.customerId!);
+        const user = await userRepo.getUser(req.session.customerId!);
         if (!user) {
             return res.status(401).json({ error: 'User not found' });
         }
@@ -105,7 +106,7 @@ router.post('/api/orders', requireCustomerAuth, async (req: Request, res: Respon
 
         const total = subtotal;
 
-        const order = await storage.createOrder(
+        const order = await orderRepo.createOrder(
             {
                 customerId: user.id,
                 customerName: user.name,
@@ -148,7 +149,7 @@ router.get('/api/customer/orders', requireCustomerAuth, async (req: Request, res
         if (!customerId) {
             return res.status(401).json({ error: 'Customer ID not found' });
         }
-        const orders = await storage.getOrdersByCustomerId(customerId);
+        const orders = await orderRepo.getOrdersByCustomerId(customerId);
         res.json(orders);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch orders' });
@@ -165,7 +166,7 @@ router.get('/api/customer/orders/:id', requireCustomerAuth, async (req: Request,
             return res.status(401).json({ error: 'Customer ID not found' });
         }
 
-        const order = await storage.getOrder(req.params.id);
+        const order = await orderRepo.getOrder(req.params.id);
         if (!order) {
             return res.status(404).json({ error: 'Order not found' });
         }
@@ -174,7 +175,7 @@ router.get('/api/customer/orders/:id', requireCustomerAuth, async (req: Request,
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        const items = await storage.getOrderItems(order.id);
+        const items = await orderRepo.getOrderItems(order.id);
         res.json({ ...order, items });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch order' });
@@ -191,7 +192,7 @@ router.get('/api/orders/track/:orderNumber', async (req: Request, res: Response)
             return res.status(404).json({ error: 'Order not found' });
         }
 
-        const items = await storage.getOrderItems(order.id);
+        const items = await orderRepo.getOrderItems(order.id);
         res.json({ ...order, items });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch order' });
@@ -205,9 +206,9 @@ router.get('/api/orders/track/:orderNumber', async (req: Request, res: Response)
 /**
  * GET /api/admin/orders - Get all orders (admin)
  */
-router.get('/api/admin/orders', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/admin/orders', requireAdminAuth, requirePermission('orders'), async (req: Request, res: Response) => {
     try {
-        const orders = await storage.getAllOrders();
+        const orders = await orderRepo.getAllOrders();
         res.json(orders);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch orders' });
@@ -217,14 +218,14 @@ router.get('/api/admin/orders', requireAdminAuth, async (req: Request, res: Resp
 /**
  * GET /api/admin/orders/:id - Get order details (admin)
  */
-router.get('/api/admin/orders/:id', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/admin/orders/:id', requireAdminAuth, requirePermission('orders'), async (req: Request, res: Response) => {
     try {
-        const order = await storage.getOrder(req.params.id);
+        const order = await orderRepo.getOrder(req.params.id);
         if (!order) {
             return res.status(404).json({ error: 'Order not found' });
         }
 
-        const items = await storage.getOrderItems(order.id);
+        const items = await orderRepo.getOrderItems(order.id);
 
         // Check for spare part details
         const sparePartDetails = await db.select().from(sparePartOrders).where(eq(sparePartOrders.orderId, order.id)).limit(1);
@@ -242,11 +243,11 @@ router.get('/api/admin/orders/:id', requireAdminAuth, async (req: Request, res: 
 /**
  * PATCH /api/admin/orders/:id - Update order (admin)
  */
-router.patch('/api/admin/orders/:id', requireAdminAuth, async (req: Request, res: Response) => {
+router.patch('/api/admin/orders/:id', requireAdminAuth, requirePermission('orders'), async (req: Request, res: Response) => {
     try {
         const { status, declineReason, notes } = req.body;
 
-        const order = await storage.getOrder(req.params.id);
+        const order = await orderRepo.getOrder(req.params.id);
         if (!order) {
             return res.status(404).json({ error: 'Order not found' });
         }
@@ -281,9 +282,9 @@ router.patch('/api/admin/orders/:id', requireAdminAuth, async (req: Request, res
 /**
  * POST /api/admin/orders/:id/accept - Accept order (admin)
  */
-router.post('/api/admin/orders/:id/accept', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/admin/orders/:id/accept', requireAdminAuth, requirePermission('orders'), async (req: Request, res: Response) => {
     try {
-        const order = await storage.getOrder(req.params.id);
+        const order = await orderRepo.getOrder(req.params.id);
         if (!order) {
             return res.status(404).json({ error: 'Order not found' });
         }
@@ -317,11 +318,11 @@ router.post('/api/admin/orders/:id/accept', requireAdminAuth, async (req: Reques
 /**
  * POST /api/admin/orders/:id/decline - Decline order (admin)
  */
-router.post('/api/admin/orders/:id/decline', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/admin/orders/:id/decline', requireAdminAuth, requirePermission('orders'), async (req: Request, res: Response) => {
     try {
         const { reason } = req.body;
 
-        const order = await storage.getOrder(req.params.id);
+        const order = await orderRepo.getOrder(req.params.id);
         if (!order) {
             return res.status(404).json({ error: 'Order not found' });
         }

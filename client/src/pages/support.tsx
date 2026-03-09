@@ -1,7 +1,7 @@
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Textarea } from "@/components/ui/textarea";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Phone, Mail, MessageSquare, Send, MapPin, Clock } from "lucide-react";
@@ -43,7 +43,7 @@ export default function SupportPage() {
 
         const data = {
             name: nameInput.value,
-            phone: phoneInput.value,
+            phone: "+880" + phoneInput.value,
             message: messageInput.value,
         };
 
@@ -92,7 +92,7 @@ export default function SupportPage() {
     ];
 
     return (
-        <PublicLayout>
+        <>
             <div className="min-h-screen bg-slate-50 pb-24 pt-4 px-4">
                 {/* Header */}
                 <div className="mb-6">
@@ -162,7 +162,7 @@ export default function SupportPage() {
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-xs font-medium text-slate-700">Phone Number</label>
-                                    <Input name="phone" placeholder="017..." type="tel" required className="bg-slate-50 border-slate-200" />
+                                    <PhoneInput name="phone" placeholder="1XXXXXXXXX" required className="bg-slate-50 border-slate-200" />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-xs font-medium text-slate-700">Message</label>
@@ -191,6 +191,6 @@ export default function SupportPage() {
                     </Accordion>
                 </div>
             </div>
-        </PublicLayout>
+        </>
     );
 }

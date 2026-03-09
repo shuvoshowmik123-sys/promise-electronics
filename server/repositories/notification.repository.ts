@@ -8,6 +8,7 @@
 
 import { db, nanoid, eq, desc, and, schema, type Notification, type InsertNotification } from './base.js';
 import type { DeviceToken, InsertDeviceToken } from '../../shared/schema.js';
+import { publishAdminNotificationEvent } from '../services/admin-realtime.service.js';
 
 // ============================================
 // Notification Queries
@@ -42,6 +43,16 @@ export async function createNotification(notification: InsertNotification): Prom
     const [newNotification] = await db.insert(schema.notifications)
         .values({ ...notification, id: nanoid() })
         .returning();
+
+    publishAdminNotificationEvent({
+        action: 'created',
+        invalidate: ["notifications", "notificationCount", "dashboardStats"],
+        payload: {
+            notificationId: newNotification.id,
+            status: 'unread',
+        },
+    });
+
     return newNotification;
 }
 
@@ -51,6 +62,18 @@ export async function markNotificationAsRead(id: string): Promise<Notification |
         .set({ read: true })
         .where(eq(schema.notifications.id, id))
         .returning();
+
+    if (updated) {
+        publishAdminNotificationEvent({
+            action: 'updated',
+            invalidate: ["notifications", "notificationCount"],
+            payload: {
+                notificationId: updated.id,
+                status: 'read',
+            },
+        });
+    }
+
     return updated;
 }
 

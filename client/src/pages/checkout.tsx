@@ -1,4 +1,3 @@
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,7 +94,7 @@ export default function CheckoutPage() {
 
   if (orderSuccess) {
     return (
-      <PublicLayout>
+      <>
         <div className="min-h-[60vh] bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 py-12">
           <div className="container mx-auto px-4">
             <motion.div
@@ -121,7 +120,7 @@ export default function CheckoutPage() {
                   </p>
                   <div className="flex flex-col sm:flex-row gap-3 justify-center">
                     <Button asChild variant="outline" className="bg-white shadow-neumorph-sm border-none">
-                      <Link href={`/track-order?id=${orderSuccess}`}>
+                      <Link href={`/track-order?order=${encodeURIComponent(orderSuccess)}&type=product`}>
                         Track Order
                       </Link>
                     </Button>
@@ -136,13 +135,13 @@ export default function CheckoutPage() {
             </motion.div>
           </div>
         </div>
-      </PublicLayout>
+      </>
     );
   }
 
   if (!isAuthenticated) {
     return (
-      <PublicLayout>
+      <>
         <div className="min-h-[60vh] bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 py-12">
           <div className="container mx-auto px-4">
             <motion.div
@@ -174,13 +173,13 @@ export default function CheckoutPage() {
           defaultTab="login"
           onSuccess={() => setShowAuthModal(false)}
         />
-      </PublicLayout>
+      </>
     );
   }
 
   if (items.length === 0) {
     return (
-      <PublicLayout>
+      <>
         <div className="min-h-[60vh] bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 py-12">
           <div className="container mx-auto px-4">
             <motion.div
@@ -208,12 +207,12 @@ export default function CheckoutPage() {
             </motion.div>
           </div>
         </div>
-      </PublicLayout>
+      </>
     );
   }
 
   return (
-    <PublicLayout>
+    <>
       {/* Neumorphic Checkout */}
       <div className="bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 min-h-screen py-8">
         <div className="container mx-auto px-4">
@@ -446,6 +445,6 @@ export default function CheckoutPage() {
           </div>
         </div>
       </div>
-    </PublicLayout>
+    </>
   );
 }

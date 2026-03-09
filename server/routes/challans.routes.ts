@@ -6,9 +6,14 @@
 
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
+import { financeRepo, posRepo, userRepo } from '../repositories/index.js';
 import { insertChallanSchema } from '../../shared/schema.js';
+import { requireAdminAuth } from './middleware/auth.js';
 
 const router = Router();
+
+// Secure challans routes (Admin only)
+router.use('/api/challans', requireAdminAuth);
 
 // ============================================
 // Challans API
@@ -19,8 +24,10 @@ const router = Router();
  */
 router.get('/api/challans', async (req: Request, res: Response) => {
     try {
-        const challans = await storage.getAllChallans();
-        res.json(challans);
+        const page = parseInt(req.query.page as string) || 1;
+        const limit = parseInt(req.query.limit as string) || 50;
+        const result = await financeRepo.getAllChallans();
+        res.json(result);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch challans' });
     }
@@ -31,7 +38,7 @@ router.get('/api/challans', async (req: Request, res: Response) => {
  */
 router.get('/api/challans/:id', async (req: Request, res: Response) => {
     try {
-        const challan = await storage.getChallan(req.params.id);
+        const challan = await financeRepo.getChallan(req.params.id);
         if (!challan) {
             return res.status(404).json({ error: 'Challan not found' });
         }
@@ -47,7 +54,7 @@ router.get('/api/challans/:id', async (req: Request, res: Response) => {
 router.post('/api/challans', async (req: Request, res: Response) => {
     try {
         const validated = insertChallanSchema.parse(req.body);
-        const challan = await storage.createChallan(validated);
+        const challan = await financeRepo.createChallan(validated);
         res.status(201).json(challan);
     } catch (error) {
         res.status(400).json({ error: 'Invalid challan data' });
@@ -59,7 +66,7 @@ router.post('/api/challans', async (req: Request, res: Response) => {
  */
 router.patch('/api/challans/:id', async (req: Request, res: Response) => {
     try {
-        const challan = await storage.updateChallan(req.params.id, req.body);
+        const challan = await financeRepo.updateChallan(req.params.id, req.body);
         if (!challan) {
             return res.status(404).json({ error: 'Challan not found' });
         }
@@ -74,7 +81,7 @@ router.patch('/api/challans/:id', async (req: Request, res: Response) => {
  */
 router.delete('/api/challans/:id', async (req: Request, res: Response) => {
     try {
-        const success = await storage.deleteChalan(req.params.id);
+        const success = await financeRepo.deleteChallan(req.params.id);
         if (!success) {
             return res.status(404).json({ error: 'Challan not found' });
         }

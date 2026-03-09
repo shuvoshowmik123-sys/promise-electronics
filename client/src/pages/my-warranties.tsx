@@ -1,13 +1,13 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { customerWarrantiesApi, type WarrantyInfo } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { 
+import { QueryErrorState } from "@/components/customer/QueryErrorState";
+import {
   Shield,
   ShieldCheck,
   ShieldX,
@@ -62,7 +62,7 @@ function WarrantyCard({ warranty }: { warranty: WarrantyInfo }) {
                 ) : (
                   <ShieldX className="w-5 h-5 text-red-600" />
                 )}
-                <Badge 
+                <Badge
                   variant={warranty.serviceWarranty.isActive ? "default" : "destructive"}
                   className={warranty.serviceWarranty.isActive ? "bg-green-600" : ""}
                   data-testid={`badge-service-warranty-${warranty.jobId}`}
@@ -105,7 +105,7 @@ function WarrantyCard({ warranty }: { warranty: WarrantyInfo }) {
                 ) : (
                   <ShieldX className="w-5 h-5 text-red-600" />
                 )}
-                <Badge 
+                <Badge
                   variant={warranty.partsWarranty.isActive ? "default" : "destructive"}
                   className={warranty.partsWarranty.isActive ? "bg-green-600" : ""}
                   data-testid={`badge-parts-warranty-${warranty.jobId}`}
@@ -115,7 +115,7 @@ function WarrantyCard({ warranty }: { warranty: WarrantyInfo }) {
               </div>
               <div className="mt-2 text-sm">
                 <p className="text-muted-foreground">
-                  {warranty.partsWarranty.days >= 365 
+                  {warranty.partsWarranty.days >= 365
                     ? `${Math.floor(warranty.partsWarranty.days / 365)} year warranty`
                     : `${warranty.partsWarranty.days} days warranty`
                   }
@@ -154,7 +154,7 @@ export default function MyWarrantiesPage() {
     }
   }, [isAuthenticated, authLoading, setLocation]);
 
-  const { data: warranties = [], isLoading } = useQuery({
+  const { data: warranties = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["customer-warranties"],
     queryFn: customerWarrantiesApi.getAll,
     enabled: isAuthenticated,
@@ -162,11 +162,11 @@ export default function MyWarrantiesPage() {
 
   if (authLoading) {
     return (
-      <PublicLayout>
+      <>
         <div className="flex items-center justify-center min-h-[60vh]">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
-      </PublicLayout>
+      </>
     );
   }
 
@@ -178,7 +178,7 @@ export default function MyWarrantiesPage() {
   const expiredWarranties = warranties.filter(w => !w.serviceWarranty.isActive && !w.partsWarranty.isActive);
 
   return (
-    <PublicLayout>
+    <>
       <div className="container mx-auto px-4 py-6 md:py-8">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -195,7 +195,11 @@ export default function MyWarrantiesPage() {
             </div>
           </div>
 
-          {isLoading ? (
+          {isError ? (
+            <div className="py-12">
+              <QueryErrorState message="Failed to load your warranties" onRetry={() => refetch()} />
+            </div>
+          ) : isLoading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
@@ -246,7 +250,7 @@ export default function MyWarrantiesPage() {
                     <div className="text-sm">
                       <p className="font-medium text-blue-800 mb-1">Warranty Terms</p>
                       <p className="text-blue-700">
-                        Parts warranty is VOID if damage is caused by: Electrical Fluctuation (High Voltage/Thunder), 
+                        Parts warranty is VOID if damage is caused by: Electrical Fluctuation (High Voltage/Thunder),
                         Water/Liquid Damage, or Physical Impact. Service warranty covers workmanship issues only.
                       </p>
                     </div>
@@ -257,6 +261,6 @@ export default function MyWarrantiesPage() {
           )}
         </motion.div>
       </div>
-    </PublicLayout>
+    </>
   );
 }

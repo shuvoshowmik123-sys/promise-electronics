@@ -5,7 +5,7 @@
  * Includes timeline events, quotes, and stage transitions.
  */
 
-import { db, nanoid, eq, desc, like, isNull, schema, type ServiceRequest, type InsertServiceRequest, type ServiceRequestEvent, type InsertServiceRequestEvent } from './base.js';
+import { db, nanoid, eq, desc, like, isNull, and, lt, sql, schema, type ServiceRequest, type InsertServiceRequest, type ServiceRequestEvent, type InsertServiceRequestEvent } from './base.js';
 
 // ============================================
 // Service Request Queries
@@ -44,10 +44,22 @@ export async function getQuoteRequests(): Promise<ServiceRequest[]> {
         .orderBy(desc(schema.serviceRequests.createdAt));
 }
 
+export async function getExpiredServiceRequests(): Promise<ServiceRequest[]> {
+    const now = new Date();
+    return db.select().from(schema.serviceRequests).where(lt(schema.serviceRequests.expiresAt, now));
+}
+
 export async function getPendingServiceRequestsCount(): Promise<number> {
     const requests = await db.select().from(schema.serviceRequests)
         .where(eq(schema.serviceRequests.status, 'Pending'));
     return requests.length;
+}
+
+export async function getUnreadServiceRequestsCount(): Promise<number> {
+    const [result] = await db.select({ count: sql<number>`count(*)` })
+        .from(schema.serviceRequests)
+        .where(eq(schema.serviceRequests.adminInteracted, false));
+    return Number(result?.count || 0);
 }
 
 // ============================================
@@ -120,12 +132,30 @@ export async function updateServiceRequest(
         expiresAt?: Date | null;
         stage?: string;
         quoteStatus?: string;
-        quoteAmount?: number;
+        quoteAmount?: number | null;
+        quoteNotes?: string | null;
+        quoteExpiresAt?: Date | null;
     }
 ): Promise<ServiceRequest | undefined> {
     const [updated] = await db
         .update(schema.serviceRequests)
         .set(updates as any)
+        .where(eq(schema.serviceRequests.id, id))
+        .returning();
+    return updated;
+}
+
+export async function markServiceRequestAsInteracted(
+    id: string,
+    adminName?: string | null
+): Promise<ServiceRequest | undefined> {
+    const [updated] = await db
+        .update(schema.serviceRequests)
+        .set({
+            adminInteracted: true,
+            adminInteractedAt: new Date(),
+            adminInteractedBy: adminName || null,
+        })
         .where(eq(schema.serviceRequests.id, id))
         .returning();
     return updated;
@@ -224,10 +254,20 @@ export async function updateQuote(
     } as any);
 }
 
-export async function acceptQuote(id: string): Promise<ServiceRequest | undefined> {
+export async function acceptQuote(
+    id: string,
+    pickupTier?: string | null,
+    pickupAddress?: string,
+    servicePreference?: string,
+    scheduledPickupDate?: Date | null
+): Promise<ServiceRequest | undefined> {
     return updateServiceRequest(id, {
         quoteStatus: 'Accepted',
         acceptedAt: new Date(),
+        pickupTier,
+        pickupAddress,
+        servicePreference,
+        scheduledPickupDate
     } as any);
 }
 
@@ -235,4 +275,21 @@ export async function declineQuote(id: string): Promise<ServiceRequest | undefin
     return updateServiceRequest(id, {
         quoteStatus: 'Declined',
     } as any);
+}
+
+export async function getServiceRequestByConvertedJobId(jobId: string): Promise<ServiceRequest | undefined> {
+    const [request] = await db.select().from(schema.serviceRequests).where(eq(schema.serviceRequests.convertedJobId, jobId));
+    return request;
+}
+
+export async function getNextValidStages(id: string): Promise<string[]> {
+    const request = await getServiceRequest(id);
+    if (!request) return [];
+
+    const stageFlow = schema.getStageFlow(request.requestIntent, request.serviceMode);
+    const currentStageIndex = stageFlow.indexOf(request.stage || "intake");
+
+    if (currentStageIndex === -1 || currentStageIndex >= stageFlow.length - 1) return [];
+
+    return stageFlow.slice(currentStageIndex + 1);
 }

@@ -5,7 +5,38 @@
  * These are typically read-only aggregation queries.
  */
 
-import { db, eq, or, and, gte, lte, lt, count, sum, schema, type JobTicket } from './base.js';
+import { db, eq, or, and, gte, lte, lt, count, sum, desc, sql, schema, notInArray, type JobTicket } from './base.js';
+
+const ACTIVE_JOB_STATUSES = ['In Progress', 'Diagnosing', 'Repairing'] as const;
+const PENDING_JOB_STATUSES = ['Pending', 'Waiting for Parts', 'Approval Requested'] as const;
+
+type DashboardJobSummary = {
+    id: string;
+    ticketNumber: string;
+    deviceModel: string;
+    problemDescription: string;
+    technician: string | null;
+    status: string;
+    customerName: string;
+    createdAt: Date | null;
+    updatedAt: Date | null;
+};
+
+function toDashboardJobSummary(job: JobTicket): DashboardJobSummary {
+    return {
+        id: job.id,
+        ticketNumber: job.corporateJobNumber || job.id,
+        deviceModel: job.device || '—',
+        problemDescription: job.issue || 'No description',
+        technician: job.technician || null,
+        status: job.status,
+        customerName: job.customer || '—',
+        createdAt: job.createdAt ?? null,
+        // Job tickets do not currently expose a dedicated updatedAt field.
+        // Use the most recent known operational timestamp and fall back to creation time.
+        updatedAt: job.lastPaymentAt ?? job.paidAt ?? job.completedAt ?? job.createdAt ?? null,
+    };
+}
 
 // ============================================
 // Dashboard Statistics
@@ -121,6 +152,126 @@ export async function getDashboardStats(): Promise<{
 }
 
 // ============================================
+// Comprehensive Full-Scale Dashboard
+// ============================================
+
+export async function getComprehensiveDashboard() {
+    const now = new Date();
+    const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 5, 1);
+    const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthLabels = Array.from({ length: 6 }, (_, index) => {
+        const date = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+        return {
+            key: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`,
+            name: date.toLocaleString('default', { month: 'short' }),
+        };
+    });
+    const activeStatusFilter = or(...ACTIVE_JOB_STATUSES.map((status) => eq(schema.jobTickets.status, status)));
+
+    const [
+        activeJobs,
+        recentJobs,
+        pendingRequests,
+        lowStockItemsList,
+        monthlyRevenueRows,
+        currentMonthRevenueResult,
+        currentMonthCorporateRevenueResult,
+        currentMonthWastageSummary,
+        techWorkloadRows,
+        jobsCount,
+    ] = await Promise.all([
+        db.select().from(schema.jobTickets).where(or(...ACTIVE_JOB_STATUSES.map(status => eq(schema.jobTickets.status, status)))).orderBy(desc(schema.jobTickets.createdAt)).limit(5),
+        db.select().from(schema.jobTickets).orderBy(desc(schema.jobTickets.createdAt)).limit(6),
+        db.select().from(schema.jobTickets).where(or(...PENDING_JOB_STATUSES.map(status => eq(schema.jobTickets.status, status)))).orderBy(desc(schema.jobTickets.createdAt)).limit(5),
+        db.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.status, "Low Stock")),
+        db.select({
+            month: sql<string>`to_char(date_trunc('month', ${schema.posTransactions.createdAt}), 'YYYY-MM')`,
+            total: sql<string>`coalesce(sum(${schema.posTransactions.total}), 0)`,
+        })
+            .from(schema.posTransactions)
+            .where(gte(schema.posTransactions.createdAt, sixMonthsAgo))
+            .groupBy(sql`date_trunc('month', ${schema.posTransactions.createdAt})`)
+            .orderBy(sql`date_trunc('month', ${schema.posTransactions.createdAt})`),
+        db.select({
+            total: sql<string>`coalesce(sum(${schema.posTransactions.total}), 0)`,
+        })
+            .from(schema.posTransactions)
+            .where(gte(schema.posTransactions.createdAt, thisMonthStart)),
+        db.select({
+            total: sql<string>`coalesce(sum(${schema.posTransactions.total}), 0)`,
+        })
+            .from(schema.posTransactions)
+            .where(and(
+                gte(schema.posTransactions.createdAt, thisMonthStart),
+                eq(schema.posTransactions.paymentMethod, 'Corporate'),
+            )),
+        db.select({
+            count: count(),
+            totalLoss: sql<string>`coalesce(sum(${schema.wastageLogs.financialLoss}), 0)`,
+        })
+            .from(schema.wastageLogs)
+            .where(gte(schema.wastageLogs.createdAt, thisMonthStart)),
+        db.select({
+            technician: sql<string>`coalesce(${schema.jobTickets.technician}, 'Unassigned')`,
+            jobs: count(),
+        })
+            .from(schema.jobTickets)
+            .where(activeStatusFilter)
+            .groupBy(sql`coalesce(${schema.jobTickets.technician}, 'Unassigned')`),
+        db.select({ status: schema.jobTickets.status, count: count() })
+            .from(schema.jobTickets)
+            .groupBy(schema.jobTickets.status),
+    ]);
+    const activeCount = jobsCount.reduce((total, row) => (
+        ACTIVE_JOB_STATUSES.includes(row.status as (typeof ACTIVE_JOB_STATUSES)[number])
+            ? total + Number(row.count || 0)
+            : total
+    ), 0);
+    const pendingCount = jobsCount.reduce((total, row) => (
+        PENDING_JOB_STATUSES.includes(row.status as (typeof PENDING_JOB_STATUSES)[number])
+            ? total + Number(row.count || 0)
+            : total
+    ), 0);
+
+    const revenueByMonth = new Map(monthlyRevenueRows.map((row) => [row.month, Number(row.total || 0)]));
+    const revenueData = monthLabels.map(({ key, name }) => ({
+        name,
+        value: revenueByMonth.get(key) || 0,
+    }));
+    const totalRevenue = Number(currentMonthRevenueResult[0]?.total || 0);
+    const corporateRevenueThisMonth = Number(currentMonthCorporateRevenueResult[0]?.total || 0);
+    const posRevenueThisMonth = totalRevenue - corporateRevenueThisMonth;
+    const totalWastageLoss = Number(currentMonthWastageSummary[0]?.totalLoss || 0);
+    const wastageCount = Number(currentMonthWastageSummary[0]?.count || 0);
+    const jobStatusData = jobsCount.map((row) => ({
+        name: row.status || "Unknown",
+        value: Number(row.count || 0),
+    }));
+    const techData = techWorkloadRows
+        .map((row) => ({ name: row.technician, jobs: Number(row.jobs || 0) }))
+        .sort((a, b) => b.jobs - a.jobs)
+        .slice(0, 8);
+
+    return {
+        revenueData,
+        jobStatusData,
+        techData,
+        lowStockItems: lowStockItemsList,
+        activeJobsList: activeJobs.map(toDashboardJobSummary),
+        pendingJobsList: pendingRequests.map(toDashboardJobSummary),
+        recentJobs: recentJobs.map(toDashboardJobSummary),
+        totalRevenue,
+        posRevenueThisMonth,
+        corporateRevenueThisMonth,
+        totalWastageLoss,
+        activeCount,
+        pendingCount,
+        lowStockCount: lowStockItemsList.length,
+        wastageCount
+    };
+}
+
+// ============================================
 // Job Overview (Live Stats)
 // ============================================
 
@@ -147,8 +298,9 @@ export async function getJobOverview(): Promise<{
     const endOfWeek = new Date(today);
     endOfWeek.setDate(endOfWeek.getDate() + 7);
 
-    const allJobs = await db.select().from(schema.jobTickets);
-    const activeJobs = allJobs.filter(j => j.status !== 'Completed' && j.status !== 'Cancelled');
+    const activeJobs = await db.select().from(schema.jobTickets).where(
+        notInArray(schema.jobTickets.status, ['Completed', 'Cancelled'])
+    );
 
     // Filter jobs by deadline
     const dueToday = activeJobs.filter(j => {
@@ -169,9 +321,16 @@ export async function getJobOverview(): Promise<{
         return deadline >= today && deadline < endOfWeek;
     });
 
-    const readyForDelivery = allJobs.filter(j => j.status === 'Completed');
+    const readyForDelivery = await db.select().from(schema.jobTickets).where(
+        eq(schema.jobTickets.status, 'Completed')
+    ).limit(25);
 
-    const inProgress = allJobs.filter(j => j.status === 'In Progress');
+    const readyForDeliveryCountRes = await db.select({ count: sql<number>`count(*)` }).from(schema.jobTickets).where(
+        eq(schema.jobTickets.status, 'Completed')
+    );
+    const totalReadyForDelivery = readyForDeliveryCountRes[0]?.count || 0;
+
+    const inProgress = activeJobs.filter(j => j.status === 'In Progress');
 
     // Group by technician
     const technicianMap = new Map<string, JobTicket[]>();
@@ -197,7 +356,7 @@ export async function getJobOverview(): Promise<{
             totalDueToday: dueToday.length,
             totalDueTomorrow: dueTomorrow.length,
             totalDueThisWeek: dueThisWeek.length,
-            totalReadyForDelivery: readyForDelivery.length,
+            totalReadyForDelivery: totalReadyForDelivery,
             totalInProgress: inProgress.length,
         },
     };

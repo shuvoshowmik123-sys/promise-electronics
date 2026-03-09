@@ -1,34 +1,23 @@
-import { Switch, Route, useLocation } from "wouter";
-import { Suspense, lazy, memo } from "react";
-import { AdminLayoutShell } from "./AdminLayoutShell";
+import { Switch, Route, useLocation, Redirect } from "wouter";
+import { Suspense, lazy } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { AdminAIChat } from "@/components/AdminAIChat";
+import { AdminAIChatLauncher } from "@/components/AdminAIChatLauncher";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 
-// Lazy load admin page CONTENTS (not full pages with layout)
-// These components will render without AdminLayout wrapper
-const AdminDashboard = lazy(() => import("@/pages/admin/dashboard"));
-const AdminJobsPage = lazy(() => import("@/pages/admin/jobs"));
-const AdminInventoryPage = lazy(() => import("@/pages/admin/inventory"));
-const AdminChallanPage = lazy(() => import("@/pages/admin/challan"));
-const AdminFinancePage = lazy(() => import("@/pages/admin/finance"));
-const TechnicianDashboard = lazy(() => import("@/pages/admin/technician-dashboard"));
-const AdminPOSPage = lazy(() => import("@/pages/admin/pos"));
-const AdminSettingsPage = lazy(() => import("@/pages/admin/settings"));
-const AdminUsersPage = lazy(() => import("@/pages/admin/users"));
-const AdminReportsPage = lazy(() => import("@/pages/admin/reports"));
-const AdminServiceRequestsPage = lazy(() => import("@/pages/admin/service-requests"));
-const StaffAttendanceReport = lazy(() => import("@/pages/admin/staff-attendance"));
-const AdminOrdersPage = lazy(() => import("@/pages/admin/orders"));
-const AdminCustomersPage = lazy(() => import("@/pages/admin/customers"));
-const AdminOverviewPage = lazy(() => import("@/pages/admin/overview"));
-const AdminPickupSchedulePage = lazy(() => import("@/pages/admin/pickup-schedule"));
-const AdminInquiriesPage = lazy(() => import("@/pages/admin/inquiries"));
-const SystemHealthPage = lazy(() => import("@/pages/admin/system-health"));
+// The new unified Admin SPA
+const DesignConcept = lazy(() => import("@/pages/admin/design-concept"));
+
+// Standalone Print Views (Not part of the Bento Dashboard Shell)
+const CorporateBillPrint = lazy(() => import("@/pages/admin/corporate-bill-print"));
+
+// Super Admin Workbench (Standalone)
+const SuperAdminWorkbench = lazy(() => import("@/pages/admin/workbench"));
 
 // Loading skeleton for admin content - shown during page transitions
 function AdminContentSkeleton() {
     return (
-        <div className="space-y-6 animate-pulse">
+        <div className="space-y-6 animate-pulse p-8">
             {/* Stats row skeleton */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
                 {[1, 2, 3, 4].map((i) => (
@@ -58,41 +47,53 @@ function AdminContentSkeleton() {
     );
 }
 
-// Memoized shell to prevent re-renders
-const StableAdminShell = memo(function StableAdminShell({ children }: { children: React.ReactNode }) {
-    return <AdminLayoutShell>{children}</AdminLayoutShell>;
-});
-
-
-
 export function AdminRouter() {
     const [location] = useLocation();
+    const { status } = useAdminAuth();
 
-    return (
-        <StableAdminShell>
-            <Suspense key={location} fallback={<AdminContentSkeleton />}>
+    if (status === "unauthenticated" && location !== "/admin/login") {
+        return <Redirect to="/admin/login" />;
+    }
+
+    // Standalone Routes
+    if (location.includes("/corporate/bills/") && location.includes("/print")) {
+        return (
+            <Suspense fallback={<AdminContentSkeleton />}>
                 <Switch>
-                    <Route path="/admin" component={AdminDashboard} />
-                    <Route path="/admin/jobs" component={AdminJobsPage} />
-                    <Route path="/admin/pos" component={AdminPOSPage} />
-                    <Route path="/admin/inventory" component={AdminInventoryPage} />
-                    <Route path="/admin/challan" component={AdminChallanPage} />
-                    <Route path="/admin/finance" component={AdminFinancePage} />
-                    <Route path="/admin/technician" component={TechnicianDashboard} />
-                    <Route path="/admin/reports" component={AdminReportsPage} />
-                    <Route path="/admin/staff-attendance" component={StaffAttendanceReport} />
-                    <Route path="/admin/users" component={AdminUsersPage} />
-                    <Route path="/admin/settings" component={AdminSettingsPage} />
-                    <Route path="/admin/service-requests" component={AdminServiceRequestsPage} />
-                    <Route path="/admin/orders" component={AdminOrdersPage} />
-                    <Route path="/admin/customers" component={AdminCustomersPage} />
-                    <Route path="/admin/overview" component={AdminOverviewPage} />
-                    <Route path="/admin/pickup-schedule" component={AdminPickupSchedulePage} />
-                    <Route path="/admin/inquiries" component={AdminInquiriesPage} />
-                    <Route path="/admin/system-health" component={SystemHealthPage} />
+                    <Route path="/admin/corporate/bills/:id/print" component={CorporateBillPrint} />
                 </Switch>
             </Suspense>
-            <AdminAIChat />
-        </StableAdminShell>
-    );
+        );
+    }
+
+    // Legacy Redirects
+    if (location.startsWith("/admin/repairs")) {
+        return <Redirect to="/admin#jobs" />;
+    }
+
+    // Super Admin Workbench Route
+    if (location === "/admin/workbench") {
+        return (
+            <Suspense fallback={<AdminContentSkeleton />}>
+                <SuperAdminWorkbench />
+            </Suspense>
+        );
+    }
+
+    // Capture all other /admin routes and serve the Bento SPA
+    if (location.startsWith("/admin")) {
+        return (
+            <>
+                <Suspense fallback={<AdminContentSkeleton />}>
+                    <ErrorBoundary name="AdminPanel">
+                        <DesignConcept />
+                    </ErrorBoundary>
+                </Suspense>
+                <AdminAIChatLauncher />
+            </>
+        );
+    }
+
+    // Fallback if somehow reached here without /admin
+    return null;
 }

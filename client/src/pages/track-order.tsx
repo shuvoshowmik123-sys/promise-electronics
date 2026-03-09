@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
-import { PublicLayout } from "@/components/layout/PublicLayout";
+
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Badge } from "@/components/ui/badge";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthModal } from "@/components/auth/CustomerAuthModal";
-import { customerServiceRequestsApi, shopOrdersApi, settingsApi, customerWarrantiesApi, type WarrantyInfo } from "@/lib/api";
+import { QueryErrorState } from "@/components/customer/QueryErrorState";
+import { publicSettingsApi, customerServiceRequestsApi, shopOrdersApi, customerWarrantiesApi, type WarrantyInfo, fetchApi } from "@/lib/api";
 import type { ServiceRequest, ServiceRequestEvent, Order } from "@shared/schema";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -108,6 +110,24 @@ const pickupTiers = [
   { id: "Priority", name: "Priority Pickup", description: "Within 1-2 days", price: 500 },
   { id: "Emergency", name: "Emergency Pickup", description: "Same day service", price: 1000 },
 ];
+
+type TrackingType = "service" | "product";
+
+function parseTrackingQuery(search: string): { orderId: string | null; type: TrackingType } {
+  const params = new URLSearchParams(search);
+  const order = params.get("order");
+  const legacyId = params.get("id");
+  const ticket = params.get("ticket");
+  const resolved = order || legacyId || ticket;
+  const rawType = params.get("type");
+  const type: TrackingType = rawType === "product" ? "product" : "service";
+
+  return { orderId: resolved, type };
+}
+
+function buildTrackingUrl(orderId: string, type: TrackingType): string {
+  return `/track-order?order=${encodeURIComponent(orderId)}&type=${type}`;
+}
 
 function getQuoteStatusDisplay(quoteStatus: string | null) {
   switch (quoteStatus) {
@@ -587,8 +607,8 @@ function QuoteDetailView({
               >
                 {isAccepting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Accepting...
+                    <CheckCircle2 className="mr-2 h-4 w-4" />
+                    Confirming...
                   </>
                 ) : showAcceptForm ? (
                   <>
@@ -904,82 +924,144 @@ function ServiceRequestTimeline({ order, events, warranty }: { order: ServiceReq
               )}
             </div>
 
-            {/* NEW: Stage-based timeline */}
+            {/* NEW: Stage-based timeline as Accordion */}
             {useNewStageSystem ? (
-              <div className="relative">
+              <Accordion
+                type="single"
+                collapsible
+                defaultValue={currentStageIndex >= 0 ? stageSteps[currentStageIndex].stage : undefined}
+                className="w-full space-y-3"
+              >
                 {stageSteps.map((step, index) => {
                   const isCurrent = index === currentStageIndex;
                   const isComplete = index < currentStageIndex;
                   const Icon = step.icon;
 
+                  // Find any relevant events for this stage (could match by stage or label for legacy data)
+                  const stepEvents = events.filter(e => e.status === step.label || e.status === step.stage);
+
                   return (
-                    <div key={step.stage} className="flex gap-3 md:gap-4 pb-6 md:pb-8 last:pb-0">
-                      <div className="flex flex-col items-center">
-                        <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center ${isCurrent
-                          ? "bg-primary text-white animate-pulse"
-                          : isComplete
-                            ? "bg-green-500 text-white"
-                            : "bg-slate-100 text-slate-400"
-                          }`}>
-                          <Icon className="w-4 h-4 md:w-5 md:h-5" />
+                    <AccordionItem
+                      key={step.stage}
+                      value={step.stage}
+                      className={`border rounded-lg px-4 ${isCurrent ? 'bg-primary/5 border-primary/30' : isComplete ? 'bg-slate-50 border-slate-200' : 'bg-white border-dashed border-slate-200 text-slate-400'}`}
+                    >
+                      <AccordionTrigger className={`hover:no-underline py-4 ${!isCurrent && !isComplete ? 'pointer-events-none' : ''}`}>
+                        <div className="flex items-center gap-4 text-left">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isCurrent
+                            ? "bg-primary text-white shadow-md animate-pulse"
+                            : isComplete
+                              ? "bg-green-500 text-white shadow-sm"
+                              : "bg-slate-100 text-slate-400"
+                            }`}>
+                            <Icon className="w-5 h-5" />
+                          </div>
+                          <div className="flex-1">
+                            <p className={`font-semibold text-base ${isCurrent ? "text-primary" : isComplete ? "text-slate-800" : "text-slate-400"}`}>
+                              {step.label}
+                            </p>
+                            <p className="text-sm font-normal text-muted-foreground line-clamp-1">{step.description}</p>
+                          </div>
+                          <div className="mr-2">
+                            {isCurrent && <Badge className="bg-primary/20 text-primary hover:bg-primary/20 pointer-events-none">Active</Badge>}
+                            {isComplete && <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50 pointer-events-none"><CheckCircle2 className="w-3 h-3 mr-1" /> Done</Badge>}
+                          </div>
                         </div>
-                        {index < stageSteps.length - 1 && (
-                          <div className={`w-0.5 flex-1 mt-2 ${isComplete ? "bg-green-500" : "bg-slate-200"
-                            }`} />
-                        )}
-                      </div>
-                      <div className="flex-1 pt-1">
-                        <p className={`font-medium ${isCurrent ? "text-primary" : isComplete ? "text-foreground" : "text-muted-foreground"}`}>
-                          {step.label}
-                          {isCurrent && <span className="ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">Current</span>}
-                        </p>
-                        <p className="text-sm text-muted-foreground">{step.description}</p>
-                      </div>
-                    </div>
+                      </AccordionTrigger>
+                      {(isCurrent || isComplete) && (
+                        <AccordionContent className="pb-4 pt-1 pl-18">
+                          <div className="ml-14 pl-4 border-l-2 border-slate-100 space-y-3">
+                            <p className="text-sm text-slate-600">{step.description}</p>
+
+                            {stepEvents.length > 0 && (
+                              <div className="mt-3 space-y-2">
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Updates</p>
+                                {stepEvents.map((event, i) => (
+                                  <div key={i} className="text-sm bg-white p-3 rounded-md border text-slate-700 shadow-sm">
+                                    <div className="flex items-center gap-2 mb-1 text-xs text-slate-500">
+                                      <Clock className="w-3 h-3" />
+                                      {format(new Date(event.occurredAt), "MMM d, yyyy h:mm a")}
+                                    </div>
+                                    {event.message && <p>{event.message}</p>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </AccordionContent>
+                      )}
+                    </AccordionItem>
                   );
                 })}
-              </div>
+              </Accordion>
             ) : (
-              /* Legacy timeline */
-              <div className="relative">
+              /* Legacy timeline as Accordion */
+              <Accordion
+                type="single"
+                collapsible
+                defaultValue={currentStepIndex >= 0 ? filteredSteps[currentStepIndex].status : undefined}
+                className="w-full space-y-3"
+              >
                 {filteredSteps.map((step, index) => {
                   const isCurrent = index === currentStepIndex;
-                  const event = events.find(e => e.status === step.status);
+                  const isComplete = index < currentStepIndex;
+                  const stepEvents = events.filter(e => e.status === step.status);
                   const Icon = step.icon;
 
                   return (
-                    <div key={step.status} className="flex gap-3 md:gap-4 pb-6 md:pb-8 last:pb-0">
-                      <div className="flex flex-col items-center">
-                        <div className={`w-8 h-8 md:w-10 md:h-10 rounded-full flex items-center justify-center ${isCurrent
-                          ? "bg-primary text-white animate-pulse"
-                          : index < currentStepIndex
-                            ? "bg-green-500 text-white"
-                            : "bg-slate-100 text-slate-400"
-                          }`}>
-                          <Icon className="w-4 h-4 md:w-5 md:h-5" />
-                        </div>
-                        {index < filteredSteps.length - 1 && (
-                          <div className={`w-0.5 flex-1 mt-2 ${index < currentStepIndex ? "bg-green-500" : "bg-slate-200"
-                            }`} />
-                        )}
-                      </div>
-                      <div className="flex-1 pt-1">
-                        <p className={`font-medium ${isCurrent ? "text-primary" : index < currentStepIndex ? "text-foreground" : "text-muted-foreground"}`}>
-                          {step.status}
-                          {isCurrent && <span className="ml-2 text-xs bg-primary/10 text-primary px-2 py-0.5 rounded">Current</span>}
-                        </p>
-                        <p className="text-sm text-muted-foreground">{step.description}</p>
-                        {event && (
-                          <div className="mt-1 text-xs text-muted-foreground">
-                            <span>{format(new Date(event.occurredAt), "MMM d, yyyy h:mm a")}</span>
-                            {event.message && <span className="block mt-1 text-primary">{event.message}</span>}
+                    <AccordionItem
+                      key={step.status}
+                      value={step.status}
+                      className={`border rounded-lg px-4 ${isCurrent ? 'bg-primary/5 border-primary/30' : isComplete ? 'bg-slate-50 border-slate-200' : 'bg-white border-dashed border-slate-200 text-slate-400'}`}
+                    >
+                      <AccordionTrigger className={`hover:no-underline py-4 ${!isCurrent && !isComplete ? 'pointer-events-none' : ''}`}>
+                        <div className="flex items-center gap-4 text-left">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${isCurrent
+                            ? "bg-primary text-white shadow-md animate-pulse"
+                            : isComplete
+                              ? "bg-green-500 text-white shadow-sm"
+                              : "bg-slate-100 text-slate-400"
+                            }`}>
+                            <Icon className="w-5 h-5" />
                           </div>
-                        )}
-                      </div>
-                    </div>
+                          <div className="flex-1">
+                            <p className={`font-semibold text-base ${isCurrent ? "text-primary" : isComplete ? "text-slate-800" : "text-slate-400"}`}>
+                              {step.status}
+                            </p>
+                            <p className="text-sm font-normal text-muted-foreground line-clamp-1">{step.description}</p>
+                          </div>
+                          <div className="mr-2">
+                            {isCurrent && <Badge className="bg-primary/20 text-primary hover:bg-primary/20 pointer-events-none">Active</Badge>}
+                            {isComplete && <Badge variant="outline" className="text-green-600 border-green-200 bg-green-50 pointer-events-none"><CheckCircle2 className="w-3 h-3 mr-1" /> Done</Badge>}
+                          </div>
+                        </div>
+                      </AccordionTrigger>
+                      {(isCurrent || isComplete) && (
+                        <AccordionContent className="pb-4 pt-1 pl-18">
+                          <div className="ml-14 pl-4 border-l-2 border-slate-100 space-y-3">
+                            <p className="text-sm text-slate-600">{step.description}</p>
+
+                            {stepEvents.length > 0 && (
+                              <div className="mt-3 space-y-2">
+                                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Updates</p>
+                                {stepEvents.map((event, i) => (
+                                  <div key={i} className="text-sm bg-white p-3 rounded-md border text-slate-700 shadow-sm">
+                                    <div className="flex items-center gap-2 mb-1 text-xs text-slate-500">
+                                      <Clock className="w-3 h-3" />
+                                      {format(new Date(event.occurredAt), "MMM d, yyyy h:mm a")}
+                                    </div>
+                                    {event.message && <p>{event.message}</p>}
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </AccordionContent>
+                      )}
+                    </AccordionItem>
                   );
                 })}
-              </div>
+              </Accordion>
             )}
 
             <div className="mt-6 pt-6 border-t">
@@ -1271,7 +1353,7 @@ export default function TrackOrderPage() {
     return () => window.removeEventListener("resize", checkMobile);
   }, []);
 
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { customer, isAuthenticated, isLoading: authLoading, logout } = useCustomerAuth();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
@@ -1285,46 +1367,67 @@ export default function TrackOrderPage() {
   const [sseSupported, setSseSupported] = useState(false);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const orderId = params.get("order");
-    const orderType = params.get("type") as "service" | "product" | null;
+    const rawType = new URLSearchParams(window.location.search).get("type");
+    const { orderId, type } = parseTrackingQuery(window.location.search);
     if (orderId) {
       setSelectedOrderId(orderId);
-      setSelectedOrderType(orderType || "service");
+      setSelectedOrderType(type);
+      const canonical = buildTrackingUrl(orderId, type);
+      if (`${window.location.pathname}${window.location.search}` !== canonical) {
+        window.history.replaceState({}, "", canonical);
+      }
+    } else {
+      setSelectedOrderId(null);
+      setSelectedOrderType(null);
+      if (rawType === "product") {
+        setActiveTab("products");
+      } else if (rawType === "service") {
+        setActiveTab("repairs");
+      }
     }
-  }, []);
+  }, [location]);
 
-  const { data: serviceRequests, isLoading: serviceLoading } = useQuery({
+  const { data: serviceRequests, isLoading: serviceLoading, isError: serviceListError, refetch: refetchServiceRequests } = useQuery({
     queryKey: ["/customer/service-requests"],
     queryFn: () => customerServiceRequestsApi.getAll(),
     enabled: isAuthenticated,
     refetchInterval: sseSupported ? false : 15000,
   });
 
-  const { data: productOrders, isLoading: ordersLoading } = useQuery({
+  const { data: productOrders, isLoading: ordersLoading, isError: productListError, refetch: refetchProductOrders } = useQuery({
     queryKey: ["/customer/orders"],
     queryFn: () => shopOrdersApi.getAll(),
     enabled: isAuthenticated,
     refetchInterval: sseSupported ? false : 15000,
   });
 
-  const { data: serviceRequestDetails } = useQuery({
+  const { data: serviceRequestDetails, isError: serviceRequestError, refetch: refetchServiceDetails } = useQuery({
     queryKey: ["/customer/service-requests", selectedOrderId],
     queryFn: () => customerServiceRequestsApi.getOne(selectedOrderId!),
     enabled: !!selectedOrderId && selectedOrderType === "service" && isAuthenticated,
     refetchInterval: sseSupported ? false : 15000,
+    retry: 1,
   });
 
-  const { data: productOrderDetails } = useQuery({
+  // Anonymous ticket lookup - works without auth using ticket number
+  const { data: anonymousLookup, isError: anonymousError, isLoading: anonymousLoading, refetch: refetchAnonymous } = useQuery({
+    queryKey: ["/public/track", selectedOrderId],
+    queryFn: () => fetchApi<any>(`/public/track/${encodeURIComponent(selectedOrderId!)}`),
+    enabled: !!selectedOrderId && !isAuthenticated && !authLoading,
+    retry: 1,
+  });
+
+  const { data: productOrderDetails, isError: productOrderError, refetch: refetchProductDetails } = useQuery({
     queryKey: ["/customer/orders/detail", selectedOrderId],
     queryFn: () => shopOrdersApi.getOne(selectedOrderId!),
     enabled: !!selectedOrderId && selectedOrderType === "product" && isAuthenticated,
     refetchInterval: sseSupported ? false : 15000,
+    retry: 1,
   });
 
   const { data: settings = [] } = useQuery({
-    queryKey: ["settings"],
-    queryFn: settingsApi.getAll,
+    queryKey: ["public-settings"],
+    queryFn: publicSettingsApi.getAll,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -1514,10 +1617,10 @@ export default function TrackOrderPage() {
   }, [isAuthenticated, selectedOrderId, queryClient, toast]);
 
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
+    if (!authLoading && !isAuthenticated && !selectedOrderId) {
       setShowAuthModal(true);
     }
-  }, [authLoading, isAuthenticated]);
+  }, [authLoading, isAuthenticated, selectedOrderId]);
 
   const handleLogout = async () => {
     await logout();
@@ -1530,6 +1633,12 @@ export default function TrackOrderPage() {
     window.history.replaceState({}, "", "/track-order");
   };
 
+  const handleSelectOrder = (orderId: string, type: TrackingType) => {
+    setSelectedOrderId(orderId);
+    setSelectedOrderType(type);
+    window.history.replaceState({}, "", buildTrackingUrl(orderId, type));
+  };
+
   const isLoading = serviceLoading || ordersLoading;
   const allServiceRequests = serviceRequests || [];
   const allProductOrders = productOrders || [];
@@ -1537,18 +1646,18 @@ export default function TrackOrderPage() {
 
   if (authLoading) {
     return (
-      <PublicLayout>
+      <>
         <div className="container mx-auto px-4 py-20 flex items-center justify-center">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
-      </PublicLayout>
+      </>
     );
   }
 
   // Mobile View
   if (isMobile && selectedOrderId && selectedOrderType === "service" && serviceRequestDetails) {
     return (
-      <PublicLayout>
+      <>
         <div className="min-h-screen bg-slate-50 pb-24 pt-4 px-4">
           <div className="flex items-center gap-2 mb-6">
             <Button variant="ghost" size="icon" onClick={handleBackToList} className="rounded-full">
@@ -1577,12 +1686,12 @@ export default function TrackOrderPage() {
           <h3 className="text-lg font-bold text-slate-800 px-2 mb-2">Repair Progress</h3>
           <TrackingTimeline order={serviceRequestDetails} />
         </div>
-      </PublicLayout>
+      </>
     );
   }
 
   return (
-    <PublicLayout>
+    <>
       <div className="bg-slate-900 text-white py-12">
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between">
@@ -1610,55 +1719,132 @@ export default function TrackOrderPage() {
 
       <div className="container mx-auto px-4 py-8">
         {!isAuthenticated ? (
-          <div className="max-w-md mx-auto text-center py-12">
-            <Package className="w-20 h-20 mx-auto mb-6 text-primary/30" />
-            <h2 className="text-2xl font-bold mb-3">Sign In to Track Orders</h2>
-            <p className="text-muted-foreground mb-6">
-              Login or create an account to view and track your orders in real-time.
-            </p>
-            <Button size="lg" onClick={() => setShowAuthModal(true)} data-testid="button-open-auth">
-              Sign In / Register
-            </Button>
-          </div>
+          selectedOrderId ? (
+            anonymousLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+              </div>
+            ) : anonymousError ? (
+              <div className="max-w-2xl mx-auto py-8">
+                <QueryErrorState
+                  title="Search Failed"
+                  message="We couldn't connect to our tracking system. Please check your connection and try again."
+                  onRetry={() => refetchAnonymous()}
+                  showHomeLink={false}
+                />
+              </div>
+            ) : anonymousLookup ? (
+              <div className="max-w-2xl mx-auto">
+                <Card className="border-none shadow-lg">
+                  <CardHeader>
+                    <CardTitle>Tracking: #{anonymousLookup.ticketNumber}</CardTitle>
+                    <CardDescription>{anonymousLookup.brand} — {anonymousLookup.primaryIssue}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-3 mb-4">
+                      <Badge variant="outline">{anonymousLookup.trackingStatus}</Badge>
+                      <span className="text-sm text-muted-foreground">
+                        Submitted: {format(new Date(anonymousLookup.createdAt), "MMM d, yyyy")}
+                      </span>
+                    </div>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Sign in for full timeline, real-time updates, and warranty info.
+                    </p>
+                    <Button onClick={() => setShowAuthModal(true)}>Sign In for Full Details</Button>
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              <div className="max-w-md mx-auto text-center py-12">
+                <XCircle className="w-16 h-16 mx-auto mb-4 text-red-400" />
+                <h3 className="text-xl font-bold mb-2">Ticket Not Found</h3>
+                <p className="text-muted-foreground mb-6">
+                  No repair request found for "{selectedOrderId}".
+                </p>
+                <Button variant="outline" onClick={() => setLocation("/home")}>Return Home</Button>
+              </div>
+            )
+          ) : (
+            <div className="max-w-md mx-auto text-center py-12">
+              <Package className="w-20 h-20 mx-auto mb-6 text-primary/30" />
+              <h2 className="text-2xl font-bold mb-3">Sign In to Track Orders</h2>
+              <p className="text-muted-foreground mb-6">
+                Login or create an account to view and track your orders in real-time.
+              </p>
+              <Button size="lg" onClick={() => setShowAuthModal(true)} data-testid="button-open-auth">
+                Sign In / Register
+              </Button>
+            </div>
+          )
         ) : isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
           </div>
         ) : selectedOrderId && selectedOrderType ? (
-          <div className="max-w-2xl mx-auto">
-            <Button
-              variant="ghost"
-              className="mb-4"
-              onClick={handleBackToList}
-              data-testid="button-back-to-orders"
-            >
-              &larr; Back to Orders
-            </Button>
-            {selectedOrderType === "service" && serviceRequestDetails ? (
-              serviceRequestDetails.isQuote && serviceRequestDetails.quoteStatus !== "Accepted" ? (
-                <QuoteDetailView
-                  order={serviceRequestDetails}
-                  onAccept={(pickupTier, address, servicePreference, scheduledVisitDate) =>
-                    acceptQuoteMutation.mutate({ id: serviceRequestDetails.id, pickupTier, address, servicePreference, scheduledVisitDate })
-                  }
-                  onDecline={() => declineQuoteMutation.mutate(serviceRequestDetails.id)}
-                  isAccepting={acceptQuoteMutation.isPending}
-                  isDeclining={declineQuoteMutation.isPending}
-                  serviceCenterContact={serviceCenterContact}
-                />
+          (selectedOrderType === "service" && serviceRequestError) || (selectedOrderType === "product" && productOrderError) ? (
+            <div className="max-w-2xl mx-auto">
+              <Button
+                variant="ghost"
+                className="mb-4"
+                onClick={handleBackToList}
+              >
+                &larr; Back to Orders
+              </Button>
+              <QueryErrorState
+                title="Order Not Found"
+                message={`We couldn't load the details for this ${selectedOrderType}. It may have been removed or you may have a connection issue.`}
+                onRetry={() => selectedOrderType === "service" ? refetchServiceDetails() : refetchProductDetails()}
+                showHomeLink={false}
+              />
+            </div>
+          ) : (
+            <div className="max-w-2xl mx-auto">
+              <Button
+                variant="ghost"
+                className="mb-4"
+                onClick={handleBackToList}
+                data-testid="button-back-to-orders"
+              >
+                &larr; Back to Orders
+              </Button>
+              {selectedOrderType === "service" && serviceRequestDetails ? (
+                serviceRequestDetails.isQuote && serviceRequestDetails.quoteStatus !== "Accepted" ? (
+                  <QuoteDetailView
+                    order={serviceRequestDetails}
+                    onAccept={(pickupTier, address, servicePreference, scheduledVisitDate) =>
+                      acceptQuoteMutation.mutate({ id: serviceRequestDetails.id, pickupTier, address, servicePreference, scheduledVisitDate })
+                    }
+                    onDecline={() => declineQuoteMutation.mutate(serviceRequestDetails.id)}
+                    isAccepting={acceptQuoteMutation.isPending}
+                    isDeclining={declineQuoteMutation.isPending}
+                    serviceCenterContact={serviceCenterContact}
+                  />
+                ) : (
+                  <ServiceRequestTimelineWithWarranty
+                    order={serviceRequestDetails}
+                    events={(serviceRequestDetails as any).timeline || []}
+                  />
+                )
+              ) : selectedOrderType === "product" && productOrderDetails ? (
+                <ProductOrderTimeline order={productOrderDetails as unknown as Order & { items?: any[] }} />
               ) : (
-                <ServiceRequestTimelineWithWarranty
-                  order={serviceRequestDetails}
-                  events={(serviceRequestDetails as any).timeline || []}
-                />
-              )
-            ) : selectedOrderType === "product" && productOrderDetails ? (
-              <ProductOrderTimeline order={productOrderDetails as Order & { items?: any[] }} />
-            ) : (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-8 h-8 animate-spin text-primary" />
-              </div>
-            )}
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                </div>
+              )}
+            </div>
+          )
+        ) : serviceListError || productListError ? (
+          <div className="max-w-2xl mx-auto py-12">
+            <QueryErrorState
+              title="Failed to Load Orders"
+              message="We couldn't load your orders and repair requests. Please check your connection and try again."
+              onRetry={() => {
+                refetchServiceRequests();
+                refetchProductOrders();
+              }}
+              showHomeLink={false}
+            />
           </div>
         ) : totalOrders > 0 ? (
           <div className="max-w-2xl mx-auto">
@@ -1685,20 +1871,14 @@ export default function TrackOrderPage() {
                     order.type === "product" ? (
                       <ProductOrderCard
                         key={`product-${order.id}`}
-                        order={order as Order}
-                        onClick={() => {
-                          setSelectedOrderId(order.id);
-                          setSelectedOrderType("product");
-                        }}
+                        order={order as unknown as Order}
+                        onClick={() => handleSelectOrder(order.id, "product")}
                       />
                     ) : (
                       <ServiceRequestCard
                         key={`service-${order.id}`}
                         order={order as ServiceRequest}
-                        onClick={() => {
-                          setSelectedOrderId(order.id);
-                          setSelectedOrderType("service");
-                        }}
+                        onClick={() => handleSelectOrder(order.id, "service")}
                       />
                     )
                   )}
@@ -1717,11 +1897,8 @@ export default function TrackOrderPage() {
                   allProductOrders.map(order => (
                     <ProductOrderCard
                       key={order.id}
-                      order={order}
-                      onClick={() => {
-                        setSelectedOrderId(order.id);
-                        setSelectedOrderType("product");
-                      }}
+                      order={order as unknown as Order}
+                      onClick={() => handleSelectOrder(order.id, "product")}
                     />
                   ))
                 )}
@@ -1741,10 +1918,7 @@ export default function TrackOrderPage() {
                     <ServiceRequestCard
                       key={order.id}
                       order={order}
-                      onClick={() => {
-                        setSelectedOrderId(order.id);
-                        setSelectedOrderType("service");
-                      }}
+                      onClick={() => handleSelectOrder(order.id, "service")}
                     />
                   ))
                 )}
@@ -1778,6 +1952,6 @@ export default function TrackOrderPage() {
         title="Track Your Order"
         description="Sign in or create an account to track your repair orders and view their status."
       />
-    </PublicLayout>
+    </>
   );
 }

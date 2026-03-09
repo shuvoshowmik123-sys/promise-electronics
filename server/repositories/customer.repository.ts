@@ -148,6 +148,25 @@ export async function updateInquiryStatus(
     return updated;
 }
 
+export async function updateInquiry(
+    id: string,
+    updates: Partial<Inquiry>
+): Promise<Inquiry | undefined> {
+    const [updated] = await db
+        .update(schema.inquiries)
+        .set(updates)
+        .where(eq(schema.inquiries.id, id))
+        .returning();
+    return updated;
+}
+
+export async function getInquiriesByPhone(phone: string): Promise<Inquiry[]> {
+    return db.select()
+        .from(schema.inquiries)
+        .where(eq(schema.inquiries.phone, phone))
+        .orderBy(desc(schema.inquiries.createdAt));
+}
+
 export async function deleteInquiry(id: string): Promise<boolean> {
     const result = await db.delete(schema.inquiries).where(eq(schema.inquiries.id, id));
     return (result.rowCount ?? 0) > 0;

@@ -1,6 +1,6 @@
 # Promise Integrated System - Complete Project Documentation
 
-> **Last Updated:** December 24, 2024 (8:17 AM CST)  
+> **Last Updated:** February 12, 2026 (11:25 PM CST)  
 > **Version:** 1.0.0  
 > **Status:** Production Ready
 
@@ -579,6 +579,39 @@ validateRequest(opts)    // Combined validation
 
 ---
 
+## 🏢 Corporate Suite & B2B Portal
+
+### Module Overview
+
+The **Corporate Suite** is a dedicated environment for high-value B2B clients, separate from the standard customer portal. It focuses on large-scale repair management, bulk actions, and direct communication.
+
+### Key Features
+
+#### 1. Corporate Portal (`/corporate/*`)
+- **Dedicated Login:** Separate authentication flow for corporate clients.
+- **Dashboard:** High-level view of active repairs, finished jobs, and total spend.
+- **repair Management:**
+  - **Batch Actions:** Upload varying quantities of devices via Excel/CSV.
+  - **Repair Manager:** A grid-based "Excel-like" interface for managing hundreds of active tickets.
+  - **Status Tracking:** Real-time updates on all fleet devices.
+
+#### 2. Corporate Client Management (Admin)
+- **Client Profiles:** Manage company details, Master accounts, and Branches.
+- **Hierarchy System:**
+  - **Master Client:** Head office account (e.g., "Square Group").
+  - **Branches:** Subsidiary accounts (e.g., "Square Dhammondi", "Square Uttara") linked to the Master.
+  - **Consolidated Billing:** Option to bill branches individually or centrally.
+- **Contract Terms:** Custom SLA tracking and priority assignment.
+
+#### 3. Corporate Messages (`/admin/corporate-messages`)
+- **Real-time Chat:** Direct line between corporate clients and admin staff.
+- **Contextual Threading:** Chat is context-aware, often linked to specific batch jobs or challans.
+- **Interface:**
+  - **Fixed Layout:** Full-height application shell for focused communication.
+  - **Media Support:** Drag-and-drop image/document sharing.
+
+---
+
 ## 📱 Native Mobile App
 
 ### Capacitor Configuration
@@ -786,6 +819,23 @@ npm run android
 ---
 
 ## 🔧 Recent Changes & Fixes
+
+### February 12, 2026 - Corporate Suite Enhancements
+
+#### UI & Layout Refinements
+1. **Admin Layout Shell (`AdminLayoutShell.tsx`)**
+   - Transformed from document-flow layout (`min-h-screen`) to strict application shell (`h-screen overflow-hidden`).
+   - Fixed scrolling issues where the entire window would scroll instead of content areas.
+   - Applied conditional padding/overflow rules for chat interfaces.
+
+2. **Corporate Messages (`corporate-messages.tsx`)**
+   - Updated to utilize full available height.
+   - Fixed chat input container to be properly anchored.
+   - Refined input focus states for better visual feedback.
+
+3. **Corporate Client Management (Planning)**
+   - Designing hierarchy/branching system for corporate clients.
+   - Planning schema updates (`parent_client_id`) and UI for "Manage Clients".
 
 ### December 24, 2024 - Session 2
 

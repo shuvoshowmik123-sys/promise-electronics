@@ -12,6 +12,7 @@ type LinkedJobCharge = {
   serviceItemId: string | null;
   serviceItemName: string | null;
   billedAmount: number;
+  assistedByNames?: string | null;
 };
 
 type ReceiptData = {
@@ -56,7 +57,7 @@ export const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ data, company
   };
 
   return (
-    <div 
+    <div
       ref={ref}
       className="bg-white p-2 font-mono text-[10px] leading-tight"
       style={{ width: "57mm", minHeight: "40mm" }}
@@ -64,9 +65,9 @@ export const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ data, company
     >
       <div className="text-center mb-2 pb-2 border-b border-dashed border-gray-400">
         {company.logo && (
-          <img 
-            src={company.logo} 
-            alt={company.name} 
+          <img
+            src={company.logo}
+            alt={company.name}
             className="h-8 w-8 object-contain mx-auto mb-1"
             data-testid="receipt-logo"
           />
@@ -161,6 +162,7 @@ export const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ data, company
             <div key={job.jobId}>
               <span>{job.jobId}</span>
               {job.serviceItemName && <span> - {job.serviceItemName}</span>}
+              {job.assistedByNames && <div className="text-[6px] italic ml-2">Asst: {job.assistedByNames}</div>}
               {job.billedAmount > 0 && <span className="float-right">৳{job.billedAmount.toFixed(0)}</span>}
             </div>
           ))}

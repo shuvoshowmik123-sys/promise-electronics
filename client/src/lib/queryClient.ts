@@ -1,4 +1,5 @@
-import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { QueryClient, QueryFunction, QueryCache } from "@tanstack/react-query";
+import { handleCorporateError } from "./corporateApiErrorHandler";
 import { API_BASE_URL } from "./config";
 import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
@@ -12,14 +13,25 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+function getCsrfToken(): string | undefined {
+  if (typeof document === 'undefined') return undefined;
+  const match = document.cookie.match(/(?:^|;\s*)XSRF-TOKEN=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : undefined;
+}
+
 export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
+  const csrfToken = getCsrfToken();
+  const headers: Record<string, string> = {};
+  if (data) headers["Content-Type"] = "application/json";
+  if (csrfToken) headers["X-XSRF-TOKEN"] = csrfToken;
+
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers,
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
   });
@@ -63,6 +75,30 @@ export const queryClient = new QueryClient({
       retry: false,
     },
   },
+  queryCache: new QueryCache({
+    onError: (error: any, query) => {
+      // Global error handler for corporate queries
+      if ((query as any).meta?.scope === 'corporate') {
+        handleCorporateError(error, "Data Sync");
+      }
+
+      // Global 401 Unauthorized handler for admin requests
+      // This catches 401s from both fetch and api.ts throws
+      if (
+        error?.message?.includes('401') ||
+        error?.statusCode === 401 ||
+        error?.code === 'UNAUTHORIZED'
+      ) {
+        // If we're on an admin route and it's not the login page, redirect
+        if (typeof window !== 'undefined' &&
+          window.location.pathname.startsWith('/admin') &&
+          !window.location.pathname.includes('/login')) {
+          console.warn('[QueryClient] 401 Unauthorized detected, redirecting to login');
+          window.location.href = '/admin/login';
+        }
+      }
+    }
+  })
 });
 
 /**
@@ -167,6 +203,12 @@ export function initQueryPersistence() {
           '/customer/warranties',
           '/notifications',
           '/customer/addresses',
+          // Admin offline-critical queries
+          '/api/inventory',
+          '/api/jobs',
+          '/api/pos',
+          '/api/modules',
+          '/api/users/me',
         ];
         return typeof key === 'string' && persistedQueries.some(q => key.includes(q));
       },

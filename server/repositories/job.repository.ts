@@ -4,7 +4,7 @@
  * Handles all database operations for job tickets (repair jobs).
  */
 
-import { db, nanoid, eq, desc, like, schema, type JobTicket, type InsertJobTicket } from './base.js';
+import { db, nanoid, eq, desc, like, or, schema, type JobTicket, type InsertJobTicket } from './base.js';
 
 // ============================================
 // Job Queries
@@ -86,6 +86,14 @@ export async function createJobTicket(job: InsertJobTicket): Promise<JobTicket> 
     return newJob;
 }
 
+export async function createJobTicketsBulk(jobs: InsertJobTicket[]): Promise<JobTicket[]> {
+    if (jobs.length === 0) return [];
+
+    // Perform bulk insert
+    const newJobs = await db.insert(schema.jobTickets).values(jobs).returning();
+    return newJobs;
+}
+
 export async function updateJobTicket(id: string, updates: Partial<InsertJobTicket>): Promise<JobTicket | undefined> {
     const [updated] = await db
         .update(schema.jobTickets)
@@ -115,4 +123,28 @@ export async function completeJobTicket(id: string): Promise<JobTicket | undefin
  */
 export async function assignTechnician(id: string, technicianName: string): Promise<JobTicket | undefined> {
     return updateJobTicket(id, { technician: technicianName });
+}
+
+export async function getJobTicketsList(page: number = 1, limit: number = 50) {
+    const offset = (page - 1) * limit;
+    const items = await db.select().from(schema.jobTickets)
+        .orderBy(desc(schema.jobTickets.createdAt))
+        .limit(limit).offset(offset);
+    
+    return { items, pagination: { total: items.length, page, limit, pages: 1 } };
+}
+
+export async function searchJobTickets(query: string): Promise<JobTicket[]> {
+    const searchPattern = `%${query}%`;
+    return db.select()
+        .from(schema.jobTickets)
+        .where(
+            or(
+                like(schema.jobTickets.id, searchPattern),
+                like(schema.jobTickets.customer, searchPattern),
+                like(schema.jobTickets.device, searchPattern)
+            )
+        )
+        .orderBy(desc(schema.jobTickets.createdAt))
+        .limit(20);
 }

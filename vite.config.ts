@@ -12,18 +12,7 @@ export default defineConfig({
     react(),
     runtimeErrorOverlay(),
     tailwindcss(),
-    metaImagesPlugin(),
-    ...(process.env.NODE_ENV !== "production" &&
-      process.env.REPL_ID !== undefined
-      ? [
-        await import("@replit/vite-plugin-cartographer").then((m) =>
-          m.cartographer(),
-        ),
-        await import("@replit/vite-plugin-dev-banner").then((m) =>
-          m.devBanner(),
-        ),
-      ]
-      : []),
+    metaImagesPlugin()
   ],
   resolve: {
     alias: {
@@ -43,6 +32,19 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom')) return 'vendor-react';
+            if (id.includes('framer-motion')) return 'vendor-motion';
+            if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
+            if (id.includes('@tanstack/react-query')) return 'vendor-query';
+            if (id.includes('@radix-ui')) return 'vendor-radix';
+          }
+        },
+      },
+    },
   },
   optimizeDeps: {
     exclude: ['@capgo/capacitor-updater']
@@ -50,15 +52,8 @@ export default defineConfig({
   server: {
     host: "0.0.0.0",
     allowedHosts: true,
-    proxy: {
-      "/api": {
-        target: "http://localhost:5083",
-        changeOrigin: true,
-      },
-    },
-    fs: {
-      strict: true,
-      deny: ["**/.*"],
+    watch: {
+      usePolling: true,
     },
   },
 });

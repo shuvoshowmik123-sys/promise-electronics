@@ -7,6 +7,7 @@
 
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
+import { jobRepo, userRepo, notificationRepo } from '../repositories/index.js';
 import { requireAdminAuth } from './middleware/auth.js';
 
 const router = Router();
@@ -22,7 +23,7 @@ const router = Router();
 router.get('/api/technician/stats', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const userId = req.session!.adminUserId;
-        const user = await storage.getUser(userId!);
+        const user = await userRepo.getUser(userId!);
 
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
@@ -34,9 +35,8 @@ router.get('/api/technician/stats', requireAdminAuth, async (req: Request, res: 
 
         // Filter jobs assigned to this technician
         const myJobs = allJobs.filter((job: any) =>
-            job.technician === techName || job.technicianId === userId
+            job.technician === techName || job.assignedTechnicianId === userId
         );
-
         // Calculate stats
         const stats = {
             assigned: myJobs.length,
@@ -62,7 +62,7 @@ router.get('/api/technician/stats', requireAdminAuth, async (req: Request, res: 
 router.get('/api/technician/jobs', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const userId = req.session!.adminUserId;
-        const user = await storage.getUser(userId!);
+        const user = await userRepo.getUser(userId!);
         const statusFilter = req.query.status as string || 'all';
 
         if (!user) {
@@ -74,7 +74,7 @@ router.get('/api/technician/jobs', requireAdminAuth, async (req: Request, res: R
 
         // Filter jobs assigned to this technician
         let myJobs = allJobs.filter((job: any) =>
-            job.technician === techName || job.technicianId === userId
+            job.technician === techName || job.assignedTechnicianId === userId
         );
 
         // Apply status filter

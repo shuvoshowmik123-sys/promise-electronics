@@ -1,0 +1,332 @@
+/* Corporate Notifications Page Styles */
+
+.corporate-notifications-page {
+    padding: 24px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.corporate-notifications-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 32px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #e9ecef;
+}
+
+.corporate-notifications-header-left h1 {
+    margin: 0 0 8px 0;
+    font-size: 28px;
+    font-weight: 700;
+    color: #212529;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.corporate-notifications-header-left p {
+    margin: 0;
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.corporate-notifications-header-right {
+    display: flex;
+    gap: 12px;
+}
+
+.refresh-btn,
+.mark-all-read-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    border: none;
+}
+
+.refresh-btn {
+    background-color: #e9ecef;
+    color: #495057;
+}
+
+.refresh-btn:hover {
+    background-color: #dee2e6;
+}
+
+.mark-all-read-btn {
+    background-color: #007bff;
+    color: white;
+}
+
+.mark-all-read-btn:hover {
+    background-color: #0056b3;
+}
+
+.corporate-notifications-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 32px;
+}
+
+.stat-card {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    text-align: center;
+    border-left: 4px solid #6c757d;
+}
+
+.stat-card.unread {
+    border-left-color: #007bff;
+}
+
+.stat-card.repair {
+    border-left-color: #20c997;
+}
+
+.stat-card.warning {
+    border-left-color: #ffc107;
+}
+
+.stat-number {
+    font-size: 32px;
+    font-weight: 700;
+    color: #212529;
+    margin-bottom: 4px;
+}
+
+.stat-label {
+    font-size: 14px;
+    color: #6c757d;
+}
+
+.corporate-notifications-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    padding: 16px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.filter-controls {
+    display: flex;
+    gap: 16px;
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: white;
+    padding: 8px 12px;
+    border-radius: 6px;
+    border: 1px solid #dee2e6;
+}
+
+.filter-select {
+    border: none;
+    background: transparent;
+    font-size: 14px;
+    color: #495057;
+    cursor: pointer;
+    outline: none;
+}
+
+.filter-select:focus {
+    outline: none;
+}
+
+.results-count {
+    font-size: 14px;
+    color: #6c757d;
+}
+
+.corporate-notifications-loading {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 60px;
+    font-size: 16px;
+    color: #6c757d;
+}
+
+.corporate-notifications-empty {
+    text-align: center;
+    padding: 60px 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.empty-icon {
+    font-size: 64px;
+    margin-bottom: 16px;
+}
+
+.corporate-notifications-empty h3 {
+    margin: 0 0 8px 0;
+    font-size: 20px;
+    color: #212529;
+}
+
+.corporate-notifications-empty p {
+    margin: 0;
+    color: #6c757d;
+    font-size: 14px;
+}
+
+.corporate-notifications-list {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.corporate-notification-card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s;
+}
+
+.corporate-notification-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+}
+
+.corporate-notification-card.unread {
+    border-left: 4px solid #007bff;
+}
+
+.corporate-notification-card.read {
+    opacity: 0.8;
+}
+
+.corporate-notification-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+}
+
+.corporate-notification-type {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #495057;
+}
+
+.notification-icon {
+    font-size: 18px;
+}
+
+.corporate-notification-actions {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.mark-read-btn {
+    background: none;
+    border: 1px solid #dee2e6;
+    color: #6c757d;
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.mark-read-btn:hover {
+    background: #f8f9fa;
+    color: #495057;
+}
+
+.notification-time {
+    font-size: 12px;
+    color: #6c757d;
+}
+
+.notification-title {
+    margin: 0 0 8px 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: #212529;
+}
+
+.notification-message {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    color: #495057;
+    line-height: 1.5;
+}
+
+.notification-job-reference {
+    display: inline-block;
+    background: #e9ecef;
+    color: #495057;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    margin-bottom: 12px;
+}
+
+.notification-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: #007bff;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: color 0.2s;
+}
+
+.notification-link:hover {
+    color: #0056b3;
+    text-decoration: underline;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .corporate-notifications-page {
+        padding: 16px;
+    }
+
+    .corporate-notifications-header {
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .corporate-notifications-header-right {
+        width: 100%;
+        justify-content: flex-start;
+    }
+
+    .corporate-notifications-stats {
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .corporate-notifications-controls {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 16px;
+    }
+
+    .filter-controls {
+        width: 100%;
+        flex-direction: column;
+    }
+}

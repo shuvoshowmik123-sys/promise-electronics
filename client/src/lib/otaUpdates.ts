@@ -21,7 +21,7 @@ export interface UpdateProgress {
 }
 
 type UpdateCallback = (progress: UpdateProgress) => void;
-type UpdateAvailableCallback = (info: BundleInfo) => void;
+type UpdateAvailableCallback = (info: any) => void;
 
 let updateCallback: UpdateCallback | null = null;
 let updateAvailableCallback: UpdateAvailableCallback | null = null;
@@ -100,7 +100,7 @@ export async function initOTAUpdates(): Promise<void> {
 /**
  * Check for available updates
  */
-export async function checkForUpdates(): Promise<BundleInfo | null> {
+export async function checkForUpdates(): Promise<any | null> {
     if (!Capacitor.isNativePlatform()) {
         return null;
     }
@@ -153,7 +153,7 @@ export async function checkForUpdates(): Promise<BundleInfo | null> {
 /**
  * Download and prepare an update
  */
-export async function downloadUpdate(bundle: BundleInfo): Promise<BundleInfo | null> {
+export async function downloadUpdate(bundle: any): Promise<any | null> {
     if (!Capacitor.isNativePlatform()) {
         return null;
     }
@@ -200,7 +200,7 @@ export async function downloadUpdate(bundle: BundleInfo): Promise<BundleInfo | n
 /**
  * Apply a downloaded update (requires app restart)
  */
-export async function applyUpdate(bundle: BundleInfo): Promise<void> {
+export async function applyUpdate(bundle: any): Promise<void> {
     if (!Capacitor.isNativePlatform()) {
         return;
     }
@@ -252,7 +252,7 @@ export async function reloadApp(): Promise<void> {
 /**
  * Get current bundle info
  */
-export async function getCurrentBundle(): Promise<BundleInfo | null> {
+export async function getCurrentBundle(): Promise<any | null> {
     if (!Capacitor.isNativePlatform()) {
         return null;
     }

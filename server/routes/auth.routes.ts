@@ -6,17 +6,41 @@
 
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { storage } from '../storage.js';
+import { userRepo } from '../repositories/index.js';
 import { adminLoginSchema, requireAdminAuth } from './middleware/auth.js';
 import { authLimiter } from './middleware/rate-limit.js';
-import { validateRequest } from './middleware/validation.js';
-import { z } from 'zod';
+import { validate } from './middleware/validate.js';
+import { authService } from '../services/auth.service.js';
 
 const router = Router();
 
 // ============================================
 // Admin Authentication
 // ============================================
+
+/**
+ * @openapi
+ * /api/admin/csrf-token:
+ *   get:
+ *     tags:
+ *       - Auth
+ *     summary: Get CSRF token for authenticated mobile/web writes
+ *     description: Returns the current session CSRF token and ensures the XSRF-TOKEN cookie is available
+ *     responses:
+ *       200:
+ *         description: CSRF token
+ */
+router.get('/api/admin/csrf-token', async (req: Request, res: Response) => {
+    if (!req.session) {
+        return res.status(500).json({ error: 'Session is not available' });
+    }
+
+    if (!req.session.csrfToken) {
+        return res.status(500).json({ error: 'CSRF token is not available' });
+    }
+
+    res.json({ csrfToken: req.session.csrfToken });
+});
 
 /**
  * @openapi
@@ -48,7 +72,7 @@ router.get('/api/admin/me', async (req: Request, res: Response) => {
     }
 
     try {
-        const user = await storage.getUser(req.session.adminUserId);
+        const user = await userRepo.getUser(req.session.adminUserId);
         if (!user) {
             req.session.adminUserId = undefined;
             return res.status(401).json({ error: 'User not found' });
@@ -105,39 +129,21 @@ router.get('/api/admin/me', async (req: Request, res: Response) => {
  *       429:
  *         description: Too many login attempts
  */
-router.post('/api/admin/login', authLimiter, validateRequest(adminLoginSchema), async (req: Request, res: Response) => {
+router.post('/api/admin/login', authLimiter, validate(adminLoginSchema), async (req: Request, res: Response) => {
     try {
         console.log('Admin login attempt for:', req.body.username);
         const { username, password } = req.body;
-        const user = await storage.getUserByUsername(username);
 
-        if (!user) {
-            console.log('Admin login failed: User not found');
-            return res.status(401).json({ error: 'Invalid username or password' });
+        const result = await authService.authenticateAdmin(username, password);
+
+        if ('error' in result) {
+            console.log(`Admin login failed: ${result.error}`);
+            return res.status(result.status || 401).json({ error: result.error });
         }
-
-        if (!user.password) {
-            console.log('Admin login failed: User has no password set');
-            return res.status(401).json({ error: 'Invalid username or password' });
-        }
-
-        const isMatch = await bcrypt.compare(password, user.password);
-        if (!isMatch) {
-            console.log('Admin login failed: Password mismatch');
-            return res.status(401).json({ error: 'Invalid username or password' });
-        }
-
-        if (user.status !== 'Active') {
-            console.log('Admin login failed: User inactive');
-            return res.status(403).json({ error: 'Account is inactive' });
-        }
-
-        // Update last login
-        await storage.updateUserLastLogin(user.id);
 
         console.log('Admin login successful for:', username);
-        req.session.adminUserId = user.id;
-        const { password: _, ...safeUser } = user;
+        req.session.adminUserId = result.user.id;
+        const { password: _, ...safeUser } = result.user;
         res.json(safeUser);
     } catch (error: any) {
         console.error('Admin login error:', error);
@@ -177,6 +183,61 @@ router.post('/api/admin/logout', (req: Request, res: Response) => {
         res.clearCookie('connect.sid');
         res.json({ message: 'Logged out successfully' });
     });
+});
+
+// ── Phase G: Manager PIN endpoints ───────────────────────────────────────────
+
+/**
+ * POST /api/admin/pin/set
+ * Set a 4-digit Manager PIN for the current user (Super Admin only).
+ * Body: { pin: "1234" }
+ */
+router.post('/api/admin/pin/set', requireAdminAuth, async (req: Request, res: Response) => {
+    try {
+        const userId = req.session!.adminUserId!;
+        const actor = await userRepo.getUser(userId);
+        if (!actor || actor.role !== 'Super Admin') {
+            return res.status(403).json({ error: 'Only Super Admin can set Manager PINs' });
+        }
+
+        const { pin, targetUserId } = req.body;
+        const targetId = targetUserId || userId;
+
+        const result = await authService.setManagerPin(userId, targetId, pin);
+
+        if (result.error) {
+            return res.status(result.status || 400).json({ error: result.error });
+        }
+
+        res.json({ success: true, message: 'Manager PIN set successfully' });
+    } catch (error: any) {
+        console.error('[PIN] Error setting PIN:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+/**
+ * POST /api/admin/pin/verify
+ * Verify the current user's Manager PIN.
+ * Body: { pin: "1234" }
+ * Returns: { valid: true | false }
+ */
+router.post('/api/admin/pin/verify', requireAdminAuth, authLimiter, async (req: Request, res: Response) => {
+    try {
+        const userId = req.session!.adminUserId!;
+        const { pin } = req.body;
+
+        const result = await authService.verifyManagerPin(userId, pin);
+
+        if (result.error) {
+            return res.status(result.status || 401).json({ error: result.error });
+        }
+
+        res.json(result);
+    } catch (error: any) {
+        console.error('[PIN] Error verifying PIN:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 export default router;

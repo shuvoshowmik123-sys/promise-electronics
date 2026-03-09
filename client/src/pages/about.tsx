@@ -1,4 +1,3 @@
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Card, CardContent } from "@/components/ui/card";
 import { useQuery } from "@tanstack/react-query";
 import { settingsApi } from "@/lib/api";
@@ -52,7 +51,7 @@ export default function AboutPage() {
   const workingHours = getSetting("about_working_hours", "Saturday - Thursday: 9:00 AM - 8:00 PM");
 
   return (
-    <PublicLayout>
+    <>
       <div className="min-h-screen bg-gradient-to-b from-slate-100 via-slate-50 to-slate-100">
         {/* Neumorphic Hero Section */}
         <section className="relative py-24 overflow-hidden bg-gradient-to-br from-slate-100 via-slate-200 to-slate-100">
@@ -271,6 +270,6 @@ export default function AboutPage() {
           </div>
         </motion.section>
       </div>
-    </PublicLayout>
+    </>
   );
 }

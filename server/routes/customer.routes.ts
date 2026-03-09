@@ -7,12 +7,14 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { storage } from '../storage.js';
+import { userRepo, customerRepo, orderRepo, corporateRepo, notificationRepo } from '../repositories/index.js';
 import {
     customerLoginSchema,
     customerRegisterSchema,
     requireCustomerAuth,
     getCustomerId
 } from './middleware/auth.js';
+import { User } from '../../shared/schema.js';
 import {
     addCustomerSSEClient,
     removeCustomerSSEClient,
@@ -22,6 +24,7 @@ import {
 import { firebaseAdmin } from '../services/firebase.js';
 import { authLimiter, registrationLimiter } from './middleware/rate-limit.js';
 import { z } from 'zod';
+import { customerService } from '../services/customer.service.js';
 
 const router = Router();
 
@@ -36,14 +39,14 @@ router.post('/api/customer/register', registrationLimiter, async (req: Request, 
     try {
         const validated = customerRegisterSchema.parse(req.body);
 
-        const existingUser = await storage.getUserByPhoneNormalized(validated.phone);
+        const existingUser = await userRepo.getUserByPhoneNormalized(validated.phone);
         if (existingUser) {
             return res.status(400).json({ error: 'Phone number already registered. Please login instead.' });
         }
 
         const hashedPassword = await bcrypt.hash(validated.password, 12);
 
-        const user = await storage.createUser({
+        const user = await userRepo.createUser({
             username: validated.phone,
             name: validated.name,
             phone: validated.phone,
@@ -55,7 +58,7 @@ router.post('/api/customer/register', registrationLimiter, async (req: Request, 
             permissions: '{}',
         });
 
-        await storage.linkServiceRequestsByPhone(validated.phone, user.id);
+        await customerService.linkServiceRequestsByPhone(validated.phone, user.id);
 
         req.session.customerId = user.id;
         req.session.authMethod = 'phone';
@@ -85,9 +88,9 @@ router.post('/api/customer/login', authLimiter, async (req: Request, res: Respon
     try {
         const validated = customerLoginSchema.parse(req.body);
 
-        const user = await storage.getUserByPhoneNormalized(validated.phone);
+        const user = await userRepo.getUserByPhoneNormalized(validated.phone);
         if (!user) {
-            return res.status(401).json({ error: 'Invalid phone number or password' });
+            return res.status(401).json({ error: 'Number is not registered' });
         }
 
         if (!user.password) {
@@ -99,13 +102,13 @@ router.post('/api/customer/login', authLimiter, async (req: Request, res: Respon
             return res.status(401).json({ error: 'Invalid phone number or password' });
         }
 
-        await storage.updateUserLastLogin(user.id);
+        await userRepo.updateUserLastLogin(user.id);
 
         req.session.customerId = user.id;
         req.session.authMethod = 'phone';
 
         if (user.phone) {
-            await storage.linkServiceRequestsByPhone(user.phone, user.id);
+            await customerService.linkServiceRequestsByPhone(user.phone, user.id);
         }
 
         const { password: _, ...safeUser } = user;
@@ -147,14 +150,14 @@ router.post('/api/customer/google-auth', authLimiter, async (req: Request, res: 
         });
 
         // Update last login
-        await storage.updateUserLastLogin(user.id);
+        await userRepo.updateUserLastLogin(user.id);
 
         req.session.customerId = user.id;
         req.session.authMethod = 'google';
 
         // If the user has a phone number, link any service requests
         if (user.phone) {
-            await storage.linkServiceRequestsByPhone(user.phone, user.id);
+            await customerService.linkServiceRequestsByPhone(user.phone, user.id);
         }
 
         const { password: _, ...safeUser } = user;
@@ -196,7 +199,7 @@ router.post('/api/customer/link-google', requireCustomerAuth, async (req: Reques
 
         // Update current user
         // We will update googleSub, and optionally email/profileImage if they are missing
-        const currentUser = await storage.getUser(currentUserId!);
+        const currentUser = await userRepo.getUser(currentUserId!);
 
         if (!currentUser) {
             return res.status(404).json({ error: 'User not found' });
@@ -214,7 +217,11 @@ router.post('/api/customer/link-google', requireCustomerAuth, async (req: Reques
             updates.profileImageUrl = picture;
         }
 
-        const updatedUser = await storage.updateUser(currentUser.id, updates);
+        const updatedUser = await userRepo.updateUser(currentUser.id, updates);
+
+        if (!updatedUser) {
+            return res.status(500).json({ error: 'Failed to update user' });
+        }
 
         const { password: _, ...safeUser } = updatedUser;
         res.json(safeUser);
@@ -301,7 +308,7 @@ router.put('/api/customer/profile', requireCustomerAuth, async (req: Request, re
         console.log(`[Profile Update] Updated customer. profileImageUrl length: ${customer.profileImageUrl?.length}`);
 
         if (isAddingPhone && customer.phone) {
-            const linkedCount = await storage.linkServiceRequestsByPhone(customer.phone, customer.id);
+            const linkedCount = await customerService.linkServiceRequestsByPhone(customer.phone, customer.id);
             if (linkedCount > 0) {
                 console.log(`Linked ${linkedCount} service request(s) to customer ${customer.id} by phone ${customer.phone}`);
             }
@@ -407,7 +414,7 @@ router.get('/api/customer/track/:ticketNumber', async (req: Request, res: Respon
         if (req.session?.customerId && order.phone) {
             const customer = await storage.getCustomer(req.session.customerId);
             if (customer && customer.phone === order.phone && !order.customerId) {
-                await storage.linkServiceRequestToCustomer(order.id, customer.id);
+                await customerService.linkServiceRequestToCustomer(order.id, customer.id);
             }
         }
 
@@ -442,12 +449,12 @@ router.post('/api/customer/service-requests/link', requireCustomerAuth, async (r
             return res.status(404).json({ error: 'Service request not found' });
         }
 
-        const user = await storage.getUser(req.session.customerId!);
+        const user = await userRepo.getUser(req.session.customerId!);
         if (!user || user.phone !== order.phone) {
             return res.status(403).json({ error: 'Phone number does not match order' });
         }
 
-        const linked = await storage.linkServiceRequestToCustomer(order.id, user.id);
+        const linked = await customerService.linkServiceRequestToCustomer(order.id, user.id);
         res.json(linked);
     } catch (error) {
         res.status(500).json({ error: 'Failed to link service request' });
@@ -463,7 +470,7 @@ router.post('/api/customer/service-requests/link', requireCustomerAuth, async (r
  */
 router.get('/api/customer/warranties', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
-        const user = await storage.getUser(req.session.customerId!);
+        const user = await userRepo.getUser(req.session.customerId!);
         if (!user || !user.phone) {
             return res.json([]);
         }
@@ -472,16 +479,11 @@ router.get('/api/customer/warranties', requireCustomerAuth, async (req: Request,
 
         const now = new Date();
         const warranties = jobs
-            .filter(job => job.status === 'Completed' && ((job.serviceWarrantyDays || 0) > 0 || (job.partsWarrantyDays || 0) > 0))
+            .filter(job => job.status === 'Completed' && (job.warrantyDays || 0) > 0)
             .map(job => {
-                const serviceActive = job.serviceExpiryDate ? new Date(job.serviceExpiryDate) > now : false;
-                const partsActive = job.partsExpiryDate ? new Date(job.partsExpiryDate) > now : false;
-
-                const serviceRemainingDays = job.serviceExpiryDate
-                    ? Math.max(0, Math.ceil((new Date(job.serviceExpiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
-                    : 0;
-                const partsRemainingDays = job.partsExpiryDate
-                    ? Math.max(0, Math.ceil((new Date(job.partsExpiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
+                const isActive = job.warrantyExpiryDate ? new Date(job.warrantyExpiryDate) > now : false;
+                const remainingDays = job.warrantyExpiryDate
+                    ? Math.max(0, Math.ceil((new Date(job.warrantyExpiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
                     : 0;
 
                 return {
@@ -490,17 +492,17 @@ router.get('/api/customer/warranties', requireCustomerAuth, async (req: Request,
                     issue: job.issue,
                     completedAt: job.completedAt,
                     serviceWarranty: {
-                        days: job.serviceWarrantyDays,
-                        expiryDate: job.serviceExpiryDate,
-                        isActive: serviceActive,
-                        remainingDays: serviceRemainingDays,
+                        days: job.warrantyDays || 0,
+                        expiryDate: job.warrantyExpiryDate,
+                        isActive: isActive,
+                        remainingDays: remainingDays,
                     },
                     partsWarranty: {
-                        days: job.partsWarrantyDays,
-                        expiryDate: job.partsExpiryDate,
-                        isActive: partsActive,
-                        remainingDays: partsRemainingDays,
-                    },
+                        days: job.warrantyDays || 0,
+                        expiryDate: job.warrantyExpiryDate,
+                        isActive: isActive,
+                        remainingDays: remainingDays,
+                    }
                 };
             });
 
@@ -514,8 +516,6 @@ router.get('/api/customer/warranties', requireCustomerAuth, async (req: Request,
 // ============================================
 // Customer Addresses
 // ============================================
-
-import * as customerRepo from '../repositories/customer.repository.js';
 
 /**
  * GET /api/customer/addresses - Get customer's saved addresses

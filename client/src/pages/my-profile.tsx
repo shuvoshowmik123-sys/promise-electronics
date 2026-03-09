@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { AvatarSelector } from "@/components/profile/AvatarSelector";
 import { CustomerAuthModal } from "@/components/auth/CustomerAuthModal";
+import { QueryErrorState } from "@/components/customer/QueryErrorState";
 import { useLocation } from "wouter";
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -155,7 +155,7 @@ function ProductOrderCard({ order, onClick }: { order: Order; onClick: () => voi
 }
 
 function InquiriesList() {
-  const { data: inquiries = [], isLoading } = useQuery({
+  const { data: inquiries = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["/customer/inquiries"],
     queryFn: async () => {
       const res = await fetch("/api/customer/inquiries");
@@ -163,6 +163,10 @@ function InquiriesList() {
       return res.json();
     },
   });
+
+  if (isError) {
+    return <div className="py-4"><QueryErrorState compact message="Failed to load inquiries" onRetry={() => refetch()} /></div>;
+  }
 
   if (isLoading) {
     return (
@@ -276,19 +280,19 @@ export default function MyProfilePage() {
     }
   };
 
-  const { data: serviceRequests = [], isLoading: serviceLoading } = useQuery({
+  const { data: serviceRequests = [], isLoading: serviceLoading, isError: serviceError, refetch: refetchServices } = useQuery({
     queryKey: ["/customer/service-requests"],
     queryFn: () => customerServiceRequestsApi.getAll(),
     enabled: isAuthenticated,
   });
 
-  const { data: productOrders = [], isLoading: ordersLoading } = useQuery({
+  const { data: productOrders = [], isLoading: ordersLoading, isError: ordersError, refetch: refetchOrders } = useQuery({
     queryKey: ["/customer/orders"],
     queryFn: () => shopOrdersApi.getAll(),
     enabled: isAuthenticated,
   });
 
-  const { data: warranties = [], isLoading: warrantiesLoading } = useQuery({
+  const { data: warranties = [], isLoading: warrantiesLoading, isError: warrantiesError, refetch: refetchWarranties } = useQuery({
     queryKey: ["/customer/warranties"],
     queryFn: () => customerWarrantiesApi.getAll(),
     enabled: isAuthenticated,
@@ -302,17 +306,17 @@ export default function MyProfilePage() {
 
   if (authLoading) {
     return (
-      <PublicLayout>
+      <>
         <div className="container mx-auto px-4 py-20 flex items-center justify-center">
           <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
-      </PublicLayout>
+      </>
     );
   }
 
   if (!isAuthenticated || !customer) {
     return (
-      <PublicLayout>
+      <>
         <div className="min-h-[60vh] flex flex-col items-center justify-center p-4">
           <div className="text-center space-y-4">
             <h2 className="text-2xl font-bold text-slate-800">Login Required</h2>
@@ -327,7 +331,7 @@ export default function MyProfilePage() {
             }}
           />
         </div>
-      </PublicLayout>
+      </>
     );
   }
 
@@ -343,7 +347,7 @@ export default function MyProfilePage() {
   const isLoading = serviceLoading || ordersLoading;
 
   return (
-    <PublicLayout>
+    <>
       {/* Neumorphic Profile Header */}
       <motion.div
         className="bg-gradient-to-r from-primary to-primary/80 text-white py-12"
@@ -498,7 +502,11 @@ export default function MyProfilePage() {
                     </TabsList>
 
                     <TabsContent value="active" className="space-y-4">
-                      {isLoading ? (
+                      {ordersError ? (
+                        <div className="py-4">
+                          <QueryErrorState compact message="Failed to load active orders" onRetry={() => refetchOrders()} />
+                        </div>
+                      ) : isLoading ? (
                         <div className="flex items-center justify-center py-8">
                           <Loader2 className="w-6 h-6 animate-spin text-primary" />
                         </div>
@@ -506,7 +514,7 @@ export default function MyProfilePage() {
                         activeProductOrders.map((order) => (
                           <ProductOrderCard
                             key={order.id}
-                            order={order}
+                            order={order as unknown as Order}
                             onClick={() => setLocation(`/track-order?order=${order.id}&type=product`)}
                           />
                         ))
@@ -525,7 +533,11 @@ export default function MyProfilePage() {
                     </TabsContent>
 
                     <TabsContent value="completed" className="space-y-4">
-                      {isLoading ? (
+                      {ordersError ? (
+                        <div className="py-4">
+                          <QueryErrorState compact message="Failed to load completed orders" onRetry={() => refetchOrders()} />
+                        </div>
+                      ) : isLoading ? (
                         <div className="flex items-center justify-center py-8">
                           <Loader2 className="w-6 h-6 animate-spin text-primary" />
                         </div>
@@ -533,7 +545,7 @@ export default function MyProfilePage() {
                         completedProductOrders.map((order) => (
                           <ProductOrderCard
                             key={order.id}
-                            order={order}
+                            order={order as unknown as Order}
                             onClick={() => setLocation(`/track-order?order=${order.id}&type=product`)}
                           />
                         ))
@@ -575,7 +587,11 @@ export default function MyProfilePage() {
                     </TabsList>
 
                     <TabsContent value="active" className="space-y-4">
-                      {isLoading ? (
+                      {serviceError ? (
+                        <div className="py-4">
+                          <QueryErrorState compact message="Failed to load active repair requests" onRetry={() => refetchServices()} />
+                        </div>
+                      ) : isLoading ? (
                         <div className="flex items-center justify-center py-8">
                           <Loader2 className="w-6 h-6 animate-spin text-primary" />
                         </div>
@@ -602,7 +618,11 @@ export default function MyProfilePage() {
                     </TabsContent>
 
                     <TabsContent value="completed" className="space-y-4">
-                      {isLoading ? (
+                      {serviceError ? (
+                        <div className="py-4">
+                          <QueryErrorState compact message="Failed to load completed repair requests" onRetry={() => refetchServices()} />
+                        </div>
+                      ) : isLoading ? (
                         <div className="flex items-center justify-center py-8">
                           <Loader2 className="w-6 h-6 animate-spin text-primary" />
                         </div>
@@ -641,7 +661,11 @@ export default function MyProfilePage() {
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  {warrantiesLoading ? (
+                  {warrantiesError ? (
+                    <div className="py-4">
+                      <QueryErrorState compact message="Failed to load warranties" onRetry={() => refetchWarranties()} />
+                    </div>
+                  ) : warrantiesLoading ? (
                     <div className="flex items-center justify-center py-8">
                       <Loader2 className="w-6 h-6 animate-spin text-primary" />
                     </div>
@@ -880,6 +904,6 @@ export default function MyProfilePage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </PublicLayout >
+    </>
   );
 }

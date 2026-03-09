@@ -34,6 +34,9 @@ export * as serviceRequestRepo from './service-request.repository.js';
 // Attendance Repository (staff check-in/out)
 export * as attendanceRepo from './attendance.repository.js';
 
+// Work Location Repository (branch/geofence zones)
+export * as workLocationRepo from './work-location.repository.js';
+
 // Finance Repository (petty cash, dues, challans)
 export * as financeRepo from './finance.repository.js';
 
@@ -55,3 +58,19 @@ export * as posRepo from './pos.repository.js';
 // Analytics Repository (dashboard, reports)
 export * as analyticsRepo from './analytics.repository.js';
 
+// Corporate Repository (B2B clients, bills, messages)
+export { corporateRepo } from './corporate.repository.js';
+
+// HR Repository (salary, leave, payroll, holiday)
+export { hrRepo } from './hr.repository.js';
+
+// Warranty Repository (warranties, refunds)
+export { warrantyRepo } from './warranty.repository.js';
+
+// System Repository (audit, modules, approvals)
+export { systemRepo } from './system.repository.js';
+
+// HR Advisory & Onboarding Repositories
+export { employmentRepo } from './employment.repository.js';
+export { salaryStructureRepo } from './salary-structure.repository.js';
+export { offboardingRepo } from './offboarding.repository.js';

@@ -1,7 +1,7 @@
-import { PublicLayout } from "@/components/layout/PublicLayout";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -13,8 +13,8 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { format } from "date-fns";
 import { Link } from "wouter";
-import { useQuery, useMutation } from "@tanstack/react-query";
-import { settingsApi, serviceRequestsApi } from "@/lib/api";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { publicSettingsApi, serviceRequestsApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthModal } from "@/components/auth/CustomerAuthModal";
@@ -39,6 +39,7 @@ interface UploadedFile {
 export default function RepairRequestPage() {
   usePageTitle("Request TV Repair Service");
   const [step, setStep] = useState(1);
+  const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ticketNumber, setTicketNumber] = useState("");
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -74,17 +75,26 @@ export default function RepairRequestPage() {
   useEffect(() => {
     if (isAuthenticated && customer) {
       setCustomerName(customer.name || "");
-      setPhone(customer.phone || "");
+      // Strip existing +880 or leading 0 for the input state
+      let initialPhone = customer.phone || "";
+      initialPhone = initialPhone.replace(/^(\+880|880|0)/, '');
+      setPhone(initialPhone);
       setAddress(customer.address || "");
     }
   }, [isAuthenticated, customer]);
 
-  const { data: settings = [], isLoading: settingsLoading } = useQuery({
-    queryKey: ["settings"],
-    queryFn: settingsApi.getAll,
+  const { data: settings = [], isLoading: settingsLoading, isError: settingsError } = useQuery({
+    queryKey: ["public-settings"],
+    queryFn: publicSettingsApi.getAll,
     staleTime: 0,
     refetchOnMount: "always",
   });
+
+  useEffect(() => {
+    if (settingsError) {
+      toast.error("Some form options couldn't be loaded. Default values will be used.");
+    }
+  }, [settingsError]);
 
   const createRequestMutation = useMutation({
     mutationFn: serviceRequestsApi.create,
@@ -403,16 +413,21 @@ export default function RepairRequestPage() {
         description: description || undefined,
         mediaUrls: mediaData.length > 0 ? JSON.stringify(mediaData) : undefined,
         customerName,
-        phone,
+        phone: "+880" + phone,
         address: address || undefined,
         servicePreference,
-        scheduledPickupDate: scheduledVisitDate ? scheduledVisitDate.toISOString() : undefined,
+        scheduledPickupDate: scheduledVisitDate || undefined,
         status: "Pending",
         requestIntent: "repair",
         serviceMode: servicePreference === "home_pickup" ? "pickup" : "service_center",
       });
 
       setTicketNumber(result.ticketNumber || "");
+
+      // Invalidate queries so the new order shows up immediately in Track Orders / My Orders
+      queryClient.invalidateQueries({ queryKey: ["/customer/service-requests"] });
+      queryClient.invalidateQueries({ queryKey: ["/customer/orders"] });
+
       setStep(5);
       setIsSubmitting(false);
     } catch (error: any) {
@@ -438,7 +453,7 @@ export default function RepairRequestPage() {
   const isVideo = (type: string) => type.startsWith("video/");
 
   return (
-    <PublicLayout>
+    <>
       <div className="bg-slate-900 text-white py-12">
         <div className="container mx-auto px-4 text-center">
           <h1 className="text-3xl md:text-4xl font-heading font-bold mb-4">TV Repair Request</h1>
@@ -728,8 +743,8 @@ export default function RepairRequestPage() {
                       </div>
                       <div className="space-y-2">
                         <Label>Phone Number *</Label>
-                        <Input
-                          placeholder="+880 1..."
+                        <PhoneInput
+                          placeholder="1XXXXXXXXX"
                           value={phone}
                           onChange={(e) => { setPhone(e.target.value); clearError('phone'); }}
                           className={validationErrors.phone ? 'border-red-500' : ''}
@@ -961,7 +976,7 @@ export default function RepairRequestPage() {
                     </div>
                     <div className="flex justify-between border-b pb-2">
                       <span className="text-muted-foreground">Device</span>
-                      <span className="font-medium">{brand} {screenSize ? `${screenSize}"` : ""} TV</span>
+                      <span className="font-medium">{brand} {screenSize ? `${screenSize.replace(/"/g, '')}"` : ""} TV</span>
                     </div>
                     {servicePreference === "service_center" && scheduledVisitDate && (
                       <div className="flex justify-between border-b pb-2">
@@ -997,14 +1012,9 @@ export default function RepairRequestPage() {
                     <div className="bg-green-50 border border-green-200 p-6 rounded-lg max-w-md mx-auto">
                       <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-3" />
                       <h3 className="font-bold text-lg mb-2">Order Linked to Your Account</h3>
-                      <p className="text-muted-foreground text-sm mb-4">
+                      <p className="text-muted-foreground text-sm mb-0">
                         Hi {customer.name}! This order has been linked to your account. You can track it anytime.
                       </p>
-                      <Link href="/track-order">
-                        <Button className="w-full" data-testid="button-view-orders">
-                          View My Orders
-                        </Button>
-                      </Link>
                     </div>
                   )}
 
@@ -1012,7 +1022,7 @@ export default function RepairRequestPage() {
                     <Link href="/">
                       <Button variant="outline" size="lg" data-testid="button-home">Return Home</Button>
                     </Link>
-                    <Link href="/track-order">
+                    <Link href={`/track-order?order=${ticketNumber}&type=service`}>
                       <Button size="lg" data-testid="button-track">Track Status</Button>
                     </Link>
                   </div>
@@ -1036,6 +1046,6 @@ export default function RepairRequestPage() {
           toast.success("Account created! Your order has been linked.");
         }}
       />
-    </PublicLayout>
+    </>
   );
 }

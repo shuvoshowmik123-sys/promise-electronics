@@ -5,8 +5,8 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { storage } from '../storage.js';
-import { requireAdminAuth } from './middleware/auth.js';
+import { attendanceRepo, userRepo } from '../repositories/index.js';
+import { requireAdminAuth, requireAnyPermission } from './middleware/auth.js';
 
 const router = Router();
 
@@ -17,9 +17,9 @@ const router = Router();
 /**
  * GET /api/admin/attendance - Get all attendance records
  */
-router.get('/api/admin/attendance', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/admin/attendance', requireAdminAuth, requireAnyPermission(['attendance', 'reports']), async (req: Request, res: Response) => {
     try {
-        const records = await storage.getAllAttendanceRecords();
+        const records = await attendanceRepo.getAllAttendanceRecords();
         res.json(records);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch attendance records' });
@@ -29,9 +29,9 @@ router.get('/api/admin/attendance', requireAdminAuth, async (req: Request, res: 
 /**
  * GET /api/admin/attendance/date/:date - Get attendance by date
  */
-router.get('/api/admin/attendance/date/:date', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/admin/attendance/date/:date', requireAdminAuth, requireAnyPermission(['attendance', 'reports']), async (req: Request, res: Response) => {
     try {
-        const records = await storage.getAttendanceByDate(req.params.date);
+        const records = await attendanceRepo.getAttendanceByDate(req.params.date);
         res.json(records);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch attendance records' });
@@ -41,9 +41,9 @@ router.get('/api/admin/attendance/date/:date', requireAdminAuth, async (req: Req
 /**
  * GET /api/admin/attendance/user/:userId - Get attendance by user
  */
-router.get('/api/admin/attendance/user/:userId', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/admin/attendance/user/:userId', requireAdminAuth, requireAnyPermission(['attendance', 'reports']), async (req: Request, res: Response) => {
     try {
-        const records = await storage.getAttendanceByUserId(req.params.userId);
+        const records = await attendanceRepo.getAttendanceByUserId(req.params.userId);
         res.json(records);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch attendance records' });
@@ -56,7 +56,7 @@ router.get('/api/admin/attendance/user/:userId', requireAdminAuth, async (req: R
 router.get('/api/admin/attendance/today', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const today = new Date().toISOString().split('T')[0];
-        const record = await storage.getTodayAttendanceForUser(req.session.adminUserId!, today);
+        const record = await attendanceRepo.getTodayAttendanceForUser(req.session.adminUserId!, today);
         res.json(record || null);
     } catch (error) {
         res.status(500).json({ error: "Failed to fetch today's attendance" });
@@ -68,19 +68,19 @@ router.get('/api/admin/attendance/today', requireAdminAuth, async (req: Request,
  */
 router.post('/api/admin/attendance/check-in', requireAdminAuth, async (req: Request, res: Response) => {
     try {
-        const user = await storage.getUser(req.session.adminUserId!);
+        const user = await userRepo.getUser(req.session.adminUserId!);
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
 
         const today = new Date().toISOString().split('T')[0];
 
-        const existing = await storage.getTodayAttendanceForUser(user.id, today);
+        const existing = await attendanceRepo.getTodayAttendanceForUser(user.id, today);
         if (existing) {
             return res.status(400).json({ error: 'Already checked in today', record: existing });
         }
 
-        const record = await storage.createAttendanceRecord({
+        const record = await attendanceRepo.createAttendanceRecord({
             userId: user.id,
             userName: user.name,
             userRole: user.role,
@@ -100,7 +100,7 @@ router.post('/api/admin/attendance/check-in', requireAdminAuth, async (req: Requ
 router.post('/api/admin/attendance/check-out', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const today = new Date().toISOString().split('T')[0];
-        const existing = await storage.getTodayAttendanceForUser(req.session.adminUserId!, today);
+        const existing = await attendanceRepo.getTodayAttendanceForUser(req.session.adminUserId!, today);
 
         if (!existing) {
             return res.status(400).json({ error: 'No check-in record found for today' });
@@ -110,7 +110,7 @@ router.post('/api/admin/attendance/check-out', requireAdminAuth, async (req: Req
             return res.status(400).json({ error: 'Already checked out today' });
         }
 
-        const updated = await storage.updateAttendanceRecord(existing.id, {
+        const updated = await attendanceRepo.updateAttendanceRecord(existing.id, {
             checkOutTime: new Date(),
         });
 

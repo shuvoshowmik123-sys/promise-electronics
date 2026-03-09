@@ -37,6 +37,17 @@ export {
 // Re-export schema definitions
 export * as schema from '../../shared/schema.js';
 
+export interface PaginationResult<T> {
+    items: T[];
+    pagination: {
+        total: number;
+        page: number;
+        limit: number;
+        pages: number;
+    };
+}
+
+
 // Re-export types for convenience
 export type {
     User,
@@ -63,6 +74,8 @@ export type {
     InsertServiceRequestEvent,
     AttendanceRecord,
     InsertAttendanceRecord,
+    WorkLocation,
+    InsertWorkLocation,
     ServiceCatalog,
     InsertServiceCatalog,
     PickupSchedule,
@@ -86,4 +99,42 @@ export type {
     Policy,
     InsertPolicy,
     UpsertCustomerFromGoogle,
+    PurchaseOrder,
+    InsertPurchaseOrder,
+    PurchaseOrderItem,
+    InsertPurchaseOrderItem,
+    DrawerSession,
+    InsertDrawerSession,
+    InventorySerial,
+    InsertInventorySerial,
+    LocalPurchase,
+    InsertLocalPurchase,
+    WastageLog,
+    InsertWastageLog,
+    CorporateClient,
+    InsertCorporateClient,
+    CorporateBill,
+    InsertCorporateBill,
+    CorporateMessageThread,
+    InsertCorporateMessageThread,
+    CorporateMessage,
+    InsertCorporateMessage,
+    StaffSalaryConfig,
+    InsertStaffSalaryConfig,
+    LeaveApplication,
+    InsertLeaveApplication,
+    PayrollRecord,
+    InsertPayrollRecord,
+    BonusRecord,
+    InsertBonusRecord,
+    HolidayCalendar,
+    InsertHolidayCalendar,
+    WarrantyClaim,
+    InsertWarrantyClaim,
+    Refund,
+    InsertRefund,
+    RollbackRequest,
+    InsertRollbackRequest,
+    AuditLog,
+    InsertAuditLog,
 } from '../../shared/schema.js';

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { navItems, images } from "@/lib/mock-data";
-import { Search, ShoppingCart, User, Menu, LogOut, UserCircle, Globe, Shield } from "lucide-react";
+import { Search, ShoppingCart, User, Menu, LogOut, UserCircle, Globe, Shield, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -19,12 +19,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useQuery } from "@tanstack/react-query";
-import { settingsApi } from "@/lib/api";
+import { publicSettingsApi } from "@/lib/api";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCart } from "@/contexts/CartContext";
 import { CustomerAuthModal } from "@/components/auth/CustomerAuthModal";
 import { ProfileCompletionModal } from "@/components/auth/ProfileCompletionModal";
 import { MobileBottomNav } from "./MobileBottomNav";
+import { NetworkOfflineBanner } from "@/components/customer/NetworkOfflineBanner";
+import { ScrollProgressBar } from "@/components/customer/ScrollProgressBar";
 
 export function PublicLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
@@ -59,8 +61,8 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
   };
 
   const { data: settings = [] } = useQuery({
-    queryKey: ["settings"],
-    queryFn: settingsApi.getAll,
+    queryKey: ["public-settings"],
+    queryFn: publicSettingsApi.getAll,
     staleTime: 5 * 60 * 1000,
   });
 
@@ -81,12 +83,14 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50">
+      <ScrollProgressBar />
+      <NetworkOfflineBanner />
       {/* Top Bar */}
       <div className="bg-gradient-to-r from-primary to-primary/90 text-primary-foreground py-2 px-4 text-sm hidden sm:block">
         <div className="container mx-auto flex justify-between items-center">
           <p>📞 Hotline: {supportPhone} | 🕒 {businessHours}</p>
-          <div className="flex items-center gap-2">
-            <Globe className="h-4 w-4" />
+          <div className="flex items-center gap-2" title="Language Translation">
+            <Globe className="h-4 w-4" aria-label="Language Switcher" role="img" />
             <div id="google_translate_element"></div>
           </div>
         </div>
@@ -138,7 +142,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" className="gap-2 rounded-full shadow-neumorph hover:shadow-neumorph-inset transition-shadow border-none bg-slate-100" data-testid="button-user-menu">
                       <UserCircle className="h-5 w-5" />
-                      <span className="max-w-[100px] truncate">{customer.name}</span>
+                      <span className="max-w-[150px] truncate" title={customer.name}>{customer.name}</span>
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
@@ -197,7 +201,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
 
                     {isAuthenticated && customer && (
                       <div className="mb-4 p-4 bg-primary/5 rounded-lg">
-                        <p className="font-medium">{customer.name}</p>
+                        <p className="font-medium truncate" title={customer.name}>{customer.name}</p>
                         <p className="text-sm text-muted-foreground">{customer.phone}</p>
                       </div>
                     )}
@@ -275,29 +279,43 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
       <MobileBottomNav />
 
       {/* Neumorphic Footer */}
-      <footer className="hidden md:block bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 text-slate-300 py-12 relative overflow-hidden">
+      <footer className="bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 text-slate-300 py-12 pb-24 md:pb-12 relative overflow-hidden">
         <div className="container mx-auto px-4 grid md:grid-cols-4 gap-8">
           <div>
             <h3 className="text-white text-xl font-heading font-bold mb-4">PROMISE ELECTRONICS</h3>
-            <p className="text-sm leading-relaxed">
+            <p className="text-sm leading-relaxed mb-6">
               Your trusted partner for electronics sales and professional repair services in Bangladesh.
             </p>
+            <div className="flex gap-4">
+              <a href="#" className="h-10 w-10 flex items-center justify-center rounded-full bg-slate-800 hover:bg-primary hover:text-white transition-colors">
+                <Facebook className="h-5 w-5" />
+              </a>
+              <a href="#" className="h-10 w-10 flex items-center justify-center rounded-full bg-slate-800 hover:bg-primary hover:text-white transition-colors">
+                <Twitter className="h-5 w-5" />
+              </a>
+              <a href="#" className="h-10 w-10 flex items-center justify-center rounded-full bg-slate-800 hover:bg-primary hover:text-white transition-colors">
+                <Instagram className="h-5 w-5" />
+              </a>
+              <a href="#" className="h-10 w-10 flex items-center justify-center rounded-full bg-slate-800 hover:bg-primary hover:text-white transition-colors">
+                <Linkedin className="h-5 w-5" />
+              </a>
+            </div>
           </div>
           <div>
             <h4 className="text-white font-bold mb-4">Quick Links</h4>
             <ul className="space-y-2 text-sm">
-              <li><a href="/about" className="hover:text-white">About Us</a></li>
-              <li><a href="/terms-and-conditions" className="hover:text-white">Terms & Conditions</a></li>
-              <li><a href="/privacy-policy" className="hover:text-white">Privacy Policy</a></li>
-              <li><a href="/warranty-policy" className="hover:text-white">Service Warranty Policy</a></li>
+              <li><Link href="/about"><span className="hover:text-white cursor-pointer transition-colors text-slate-300">About Us</span></Link></li>
+              <li><Link href="/terms-and-conditions"><span className="hover:text-white cursor-pointer transition-colors text-slate-300">Terms & Conditions</span></Link></li>
+              <li><Link href="/privacy-policy"><span className="hover:text-white cursor-pointer transition-colors text-slate-300">Privacy Policy</span></Link></li>
+              <li><Link href="/warranty-policy"><span className="hover:text-white cursor-pointer transition-colors text-slate-300">Service Warranty Policy</span></Link></li>
             </ul>
           </div>
           <div>
             <h4 className="text-white font-bold mb-4">Services</h4>
             <ul className="space-y-2 text-sm">
-              <li><a href="#" className="hover:text-white">TV Repair</a></li>
-              <li><a href="#" className="hover:text-white">Corporate Maintenance</a></li>
-              <li><a href="/shop" className="hover:text-white">Parts Replacement</a></li>
+              <li><Link href="/services"><span className="hover:text-white cursor-pointer transition-colors text-slate-300">TV Repair</span></Link></li>
+              <li><Link href="/support"><span className="hover:text-white cursor-pointer transition-colors text-slate-300">Corporate Maintenance</span></Link></li>
+              <li><Link href="/shop"><span className="hover:text-white cursor-pointer transition-colors text-slate-300">Parts Replacement</span></Link></li>
             </ul>
           </div>
           <div>
@@ -310,7 +328,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
           </div>
         </div>
         <div className="container mx-auto px-4 mt-12 pt-8 border-t border-slate-800 text-center text-xs">
-          © 2025 Promise Electronics. All rights reserved.
+          &copy; {new Date().getFullYear()} Promise Electronics. All rights reserved.
         </div>
       </footer>
 

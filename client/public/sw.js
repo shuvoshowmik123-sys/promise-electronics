@@ -1,8 +1,10 @@
-const CACHE_NAME = 'promise-electronics-v1';
-const OFFLINE_URL = '/';
+const CACHE_NAME = 'promise-electronics-v2';
+const OFFLINE_URL = '/offline.html';
 
 const urlsToCache = [
   '/',
+  '/offline.html',
+  '/logo.png',
   '/favicon.png',
   '/manifest.json'
 ];
@@ -45,13 +47,7 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() => {
-          return caches.match(OFFLINE_URL)
-            .then((cachedResponse) => {
-              if (cachedResponse) {
-                return cachedResponse;
-              }
-              return caches.match('/');
-            });
+          return caches.match(OFFLINE_URL);
         })
     );
     return;

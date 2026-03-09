@@ -1,12 +1,16 @@
 import { useState } from "react";
+import { motion } from "framer-motion";
+import { variants } from "@/lib/motion";
 import { Link, useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Mail, Lock, User, Phone, ArrowLeft, Loader2, MapPin } from "lucide-react";
+
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 
 export default function LoginPage() {
@@ -114,8 +118,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-primary/10 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
+    <motion.div variants={variants.pageEnter} initial="initial" animate="animate" exit="exit" className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-primary/10 flex items-center justify-center p-4">
+      <motion.div variants={variants.sectionEnter} className="w-full max-w-md">
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 text-2xl font-heading font-bold text-primary mb-2">
             PROMISE<span className="text-foreground">ELECTRONICS</span>
@@ -139,22 +143,13 @@ export default function LoginPage() {
                 <CardContent className="space-y-4">
                   <div className="space-y-2">
                     <Label htmlFor="login-phone">Phone Number</Label>
-                    <div className="relative flex items-center">
-                      <div className="absolute left-3 flex items-center gap-1 text-muted-foreground">
-                        <Phone className="h-4 w-4" />
-                        <span className="text-sm font-semibold select-none text-foreground">+880</span>
-                      </div>
-                      <Input
+                    <div className="space-y-2">
+                      <Label htmlFor="login-phone">Phone Number</Label>
+                      <PhoneInput
                         id="login-phone"
                         name="phone"
-                        type="tel"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
                         placeholder="1XXXXXXXXX"
-                        className="pl-[4.25rem]"
                         data-testid="input-login-phone"
-                        maxLength={10}
-                        onChange={(e) => e.target.value = e.target.value.replace(/\D/g, '')}
                         required
                       />
                     </div>
@@ -179,7 +174,7 @@ export default function LoginPage() {
                       <input type="checkbox" className="rounded border-gray-300" data-testid="checkbox-remember" />
                       <span>Remember me</span>
                     </label>
-                    <a href="#" className="text-primary hover:underline" data-testid="link-forgot-password">Forgot password?</a>
+                    {/* <a href="#" className="text-primary hover:underline" data-testid="link-forgot-password">Forgot password?</a> */}
                   </div>
                 </CardContent>
                 <CardFooter className="flex flex-col gap-4">
@@ -187,7 +182,7 @@ export default function LoginPage() {
                     {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Signing in...
+                        Authenticating...
                       </>
                     ) : (
                       "Sign In"
@@ -244,22 +239,13 @@ export default function LoginPage() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="register-phone">Phone Number *</Label>
-                    <div className="relative flex items-center">
-                      <div className="absolute left-3 flex items-center gap-1 text-muted-foreground">
-                        <Phone className="h-4 w-4" />
-                        <span className="text-sm font-semibold select-none text-foreground">+880</span>
-                      </div>
-                      <Input
+                    <div className="space-y-2">
+                      <Label htmlFor="register-phone">Phone Number *</Label>
+                      <PhoneInput
                         id="register-phone"
                         name="phone"
-                        type="tel"
-                        inputMode="numeric"
-                        pattern="[0-9]*"
                         placeholder="1XXXXXXXXX"
-                        className="pl-[4.25rem]"
                         data-testid="input-register-phone"
-                        maxLength={10}
-                        onChange={(e) => e.target.value = e.target.value.replace(/\D/g, '')}
                         required
                       />
                     </div>
@@ -354,7 +340,7 @@ export default function LoginPage() {
             </Button>
           </Link>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

@@ -5,6 +5,7 @@
  */
 
 import { db, nanoid, eq, desc, schema, type AttendanceRecord, type InsertAttendanceRecord } from './base.js';
+import { and } from 'drizzle-orm';
 
 // ============================================
 // Attendance Queries
@@ -28,8 +29,10 @@ export async function getAttendanceByDate(date: string): Promise<AttendanceRecor
 
 export async function getTodayAttendanceForUser(userId: string, date: string): Promise<AttendanceRecord | undefined> {
     const [record] = await db.select().from(schema.attendanceRecords)
-        .where(eq(schema.attendanceRecords.userId, userId))
-        .where(eq(schema.attendanceRecords.date, date));
+        .where(and(
+            eq(schema.attendanceRecords.userId, userId),
+            eq(schema.attendanceRecords.date, date)
+        ));
     return record;
 }
 

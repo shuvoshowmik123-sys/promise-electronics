@@ -30,11 +30,11 @@ export const apiLimiter = rateLimit({
 /**
  * Strict rate limiter for authentication endpoints
  * Prevents brute-force login attacks
- * Allows 5 attempts per 15 minutes per IP
+ * Allows 7 attempts per 15 minutes per IP
  */
 export const authLimiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
-    max: 50, // 50 attempts (increased for development)
+    max: 7, // 7 failed attempts per 15 minutes per IP
     message: {
         error: 'Too many login attempts',
         message: 'Please try again after 15 minutes',
@@ -109,6 +109,23 @@ export const registrationLimiter = rateLimit({
         error: 'Registration limit reached',
         message: 'Too many registration attempts. Please try again later.',
         retryAfter: 3600,
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+/**
+ * Rate limiter for ImageKit auth endpoint
+ * Allows guest uploads but prevents token farming
+ * Allows 5 auth requests per 10 minutes per IP
+ */
+export const uploadAuthLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000, // 10 minutes
+    max: 5, // 5 requests
+    message: {
+        error: 'Too many upload requests',
+        message: 'Please wait before trying to upload again.',
+        retryAfter: 600,
     },
     standardHeaders: true,
     legacyHeaders: false,

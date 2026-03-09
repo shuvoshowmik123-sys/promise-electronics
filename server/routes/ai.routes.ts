@@ -328,6 +328,19 @@ router.post("/chat", aiLimiter, async (req, res) => {
     }
 });
 
+// POST /api/ai/transliterate (Fast 8B Model for Banglish dictation)
+router.post("/transliterate", aiLimiter, async (req, res) => {
+    try {
+        const { text } = req.body;
+        if (!text) return res.status(400).json({ message: "Text is required" });
+
+        const banglish = await aiService.transliterateToBanglish(text);
+        res.json({ text: banglish });
+    } catch (error) {
+        console.error("Transliterate error:", error);
+        res.status(500).json({ message: "Failed to transliterate text" });
+    }
+});
 
 // GET /api/ai/morning-brief (Cron only)
 router.get("/morning-brief", async (req, res) => {
@@ -418,6 +431,50 @@ router.patch("/debug-suggestions/:id", requireStaff, async (req, res) => {
     } catch (error) {
         console.error("Update debug suggestion error:", error);
         res.status(500).json({ error: "Failed to update suggestion" });
+    }
+});
+
+
+// POST /api/ai/apply-settings (Safe settings update with allowlist)
+router.post("/apply-settings", requireStaff, async (req, res) => {
+    try {
+        const { changes } = req.body;
+
+        if (!changes || !Array.isArray(changes)) {
+            return res.status(400).json({ message: "Invalid changes format" });
+        }
+
+        // TEXT-BASED ONLY SAFE ALLOWLIST (Zero Cost / High Safety)
+        const SAFE_SETTINGS_KEYS = [
+            // Shop Details
+            'shop_name', 'shop_address', 'shop_phone', 'shop_email',
+            // Content
+            'hero_title', 'hero_subtitle', 'about_us_text',
+            'warranty_policy', 'terms_conditions', 'privacy_policy',
+            // Business Logic
+            'operating_hours', 'holiday_schedule', 'service_areas', 'vat_rate', 'delivery_fee'
+        ];
+
+        // Filter out any unsafe keys
+        const safeChanges = changes.filter((c: any) => SAFE_SETTINGS_KEYS.includes(c.key));
+
+        if (safeChanges.length === 0) {
+            return res.status(400).json({ message: "No valid settings to update" });
+        }
+
+        // Apply changes one by one using upsert
+        for (const change of safeChanges) {
+            await storage.upsertSetting({ key: change.key, value: change.newValue });
+        }
+
+        // Log the action (Audit Trail)
+        console.log(`[AI Settings] User ${(req.user as any)?.username || req.user?.id} updated settings: ${safeChanges.map((c: any) => c.key).join(', ')}`);
+
+        res.json({ success: true, updatedCount: safeChanges.length });
+
+    } catch (error) {
+        console.error("Apply settings error:", error);
+        res.status(500).json({ message: "Failed to apply settings" });
     }
 });
 

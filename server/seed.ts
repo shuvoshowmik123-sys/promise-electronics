@@ -23,10 +23,12 @@ const DEFAULT_SUPER_ADMIN = {
     serviceRequests: true,
     users: true,
     settings: true,
+    corporate: true,
     canCreate: true,
     canEdit: true,
     canDelete: true,
     canExport: true,
+    process_payment: true,
   }),
 };
 

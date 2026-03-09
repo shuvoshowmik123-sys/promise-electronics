@@ -15,6 +15,7 @@ type LinkedJobCharge = {
   customerName?: string | null;
   customerPhone?: string | null;
   customerAddress?: string | null;
+  assistedByNames?: string | null;
 };
 
 type InvoiceData = {
@@ -78,7 +79,7 @@ export const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ data, company
   };
 
   return (
-    <div 
+    <div
       ref={ref}
       className="bg-white p-8 max-w-[210mm] mx-auto font-sans print:p-6"
       data-testid="print-invoice"
@@ -86,9 +87,9 @@ export const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ data, company
       <div className="flex justify-between items-start mb-8 border-b pb-6">
         <div className="flex items-center gap-4">
           {companyInfo.logo && (
-            <img 
-              src={companyInfo.logo} 
-              alt={companyInfo.name} 
+            <img
+              src={companyInfo.logo}
+              alt={companyInfo.name}
               className="h-16 w-16 object-contain"
               data-testid="invoice-logo"
             />
@@ -186,6 +187,9 @@ export const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ data, company
               <td className="py-3 px-4">
                 <p className="font-medium">{job.serviceItemName || "Repair Service"}</p>
                 <p className="text-xs text-gray-500">Job: {job.jobId}</p>
+                {job.assistedByNames && (
+                  <p className="text-xs text-gray-500 italic">Assisted by: {job.assistedByNames}</p>
+                )}
               </td>
               <td className="py-3 px-4 text-center">1 pcs</td>
               <td className="py-3 px-4 text-right">৳{job.billedAmount.toFixed(2)}</td>

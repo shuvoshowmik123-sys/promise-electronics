@@ -2,13 +2,14 @@ import { Router, Request, Response } from "express";
 import { aiService } from "../services/ai.service.js";
 import { storage } from "../storage.js";
 import ImageKit from "imagekit";
-import { JobTicket, ServiceRequest } from "../../shared/schema.js";
+import { brainService } from "../brain/brain.service.js";
 
 const router = Router();
 
 // Configuration
 const VERIFY_TOKEN = process.env.MESSENGER_VERIFY_TOKEN;
 const PAGE_ACCESS_TOKEN = process.env.MESSENGER_PAGE_ACCESS_TOKEN;
+const PAGE_ID = process.env.FACEBOOK_PAGE_ID;
 
 // Initialize ImageKit
 const imagekit = new ImageKit({
@@ -16,10 +17,6 @@ const imagekit = new ImageKit({
     privateKey: process.env.IMAGEKIT_PRIVATE_KEY || "",
     urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT || "",
 });
-
-// In-memory session store for Messenger users (Simple Map for history)
-// Key: PSID (Page Scoped ID), Value: Chat History Array
-const userSessions = new Map<string, any[]>();
 
 /**
  * Webhook Verification
@@ -37,7 +34,6 @@ router.get("/webhook", (req: Request, res: Response) => {
             res.sendStatus(403);
         }
     } else {
-        // Just a health check if accessed directly
         res.json({ status: "Messenger Webhook Active" });
     }
 });
@@ -45,25 +41,39 @@ router.get("/webhook", (req: Request, res: Response) => {
 /**
  * Handle Incoming Messages
  */
-router.post("/webhook", async (req: Request, res: Response) => {
+router.post("/webhook", (req: Request, res: Response) => {
     const body = req.body;
 
     if (body.object === "page") {
-        // Iterate over each entry - there may be multiple if batched
-        for (const entry of body.entry) {
-            const webhook_event = entry.messaging[0];
-            // console.log("Webhook Event:", webhook_event);
+        res.status(200).send("EVENT_RECEIVED");
 
+        Promise.all(body.entry.map(async (entry: any) => {
+            const webhook_event = entry.messaging[0];
             const sender_psid = webhook_event.sender.id;
+            const recipient_psid = webhook_event.recipient?.id;
+
+            if (webhook_event.message?.is_echo) {
+                if (PAGE_ID && sender_psid === PAGE_ID && webhook_event.message.text && recipient_psid) {
+                    const session = await brainService.getSession(recipient_psid);
+                    const history = (session.history as any[]) || [];
+                    const lastUserMsg = [...history].reverse().find(m => m.role === 'user')?.content || "[Unknown Context]";
+                    const humanReplyText = webhook_event.message.text;
+
+                    await brainService.logConversation(recipient_psid, lastUserMsg, humanReplyText, 'human');
+                    await brainService.updateSession(recipient_psid, null, humanReplyText);
+                    console.log(`[Brain] Logged human reply for customer ${recipient_psid}`);
+                }
+                return;
+            }
 
             if (webhook_event.message) {
                 await handleMessage(sender_psid, webhook_event.message);
             } else if (webhook_event.postback) {
                 await handlePostback(sender_psid, webhook_event.postback);
             }
-        }
-
-        res.status(200).send("EVENT_RECEIVED");
+        })).catch(err => {
+            console.error('[Messenger Webhook Background Error]', err);
+        });
     } else {
         res.sendStatus(404);
     }
@@ -71,147 +81,180 @@ router.post("/webhook", async (req: Request, res: Response) => {
 
 /**
  * Handle Message Logic
+ *
+ * Observe Mode: Log everything but send NO reply.
+ * Shadow/Autopilot: Generate AI response and send it.
  */
 async function handleMessage(sender_psid: string, message: any) {
-    let replyText = "";
-    let imageAnalysis: any = null;
+    // Get persistent history from Brain DB
+    const session = await brainService.getSession(sender_psid);
+    const history = (session.history as any[]) || [];
 
-    // Get or initialize history
-    const history = userSessions.get(sender_psid) || [];
-
-    // Update history with user's message (placeholder)
-    // Real history update happens after we process the content
+    // Check current Brain Mode
+    const mode = await brainService.getBrainMode();
+    const isObserveMode = mode === 'observe';
 
     try {
-        // 1. Handle Audio (Voice Note)
-        if (message.attachments && message.attachments[0].type === "audio") {
+        // ─── 1. Handle Audio (Voice Note) ────────────────────────────────────
+        if (message.attachments && message.attachments[0]?.type === "audio") {
             const audioUrl = message.attachments[0].payload.url;
             console.log(`[Messenger] Received audio from ${sender_psid}`);
 
             const audioBuffer = await downloadFile(audioUrl);
             const transcribedText = await aiService.transcribeAudio(audioBuffer);
 
-            if (transcribedText) {
-                console.log(`[Messenger] Transcribed: "${transcribedText}"`);
-                // Treat as text message now
-                const response = await aiService.chatWithDaktarVai(
-                    transcribedText,
-                    history,
-                    undefined, // no image
-                    { name: "Messenger User", role: "customer" } // Context
-                );
-
-                await processAIResponse(sender_psid, response, history);
-                return;
-            } else {
-                await callSendAPI(sender_psid, { text: "দুঃখিত, আমি আপনার ভয়েস বুঝতে পারিনি। দয়া করে লিখে জানান।" });
+            if (!transcribedText) {
+                if (!isObserveMode) {
+                    await callSendAPI(sender_psid, { text: "দুঃখিত, আমি আপনার ভয়েস বুঝতে পারিনি। দয়া করে লিখে জানান।" });
+                }
                 return;
             }
+
+            console.log(`[Messenger] Transcribed audio: "${transcribedText}"`);
+
+            // In observe mode: just log the voice note content, don't reply
+            if (isObserveMode) {
+                await brainService.updateSession(sender_psid, transcribedText, null);
+                console.log(`[Brain] [OBSERVE] Logged audio message (transcribed) from ${sender_psid}`);
+                return;
+            }
+
+            // Active or shadow mode: respond
+            const response = await aiService.chatWithDaktarVai(transcribedText, history, undefined, { name: "Messenger User", role: "customer" });
+
+            if (mode === 'shadow') {
+                await brainService.saveShadowDraft(sender_psid, transcribedText, response.text);
+                await brainService.updateSession(sender_psid, transcribedText, null);
+                console.log(`[Brain] [SHADOW] Saved draft response for audio from ${sender_psid}`);
+                return;
+            }
+
+            await brainService.logConversation(sender_psid, transcribedText, response.text, 'ai');
+            await processAIResponse(sender_psid, transcribedText, response, history);
+            return;
         }
 
-        // 2. Handle Image
-        if (message.attachments && message.attachments[0].type === "image") {
+        // ─── 2. Handle Image ──────────────────────────────────────────────────
+        if (message.attachments && message.attachments[0]?.type === "image") {
             const imageUrl = message.attachments[0].payload.url;
             console.log(`[Messenger] Received image from ${sender_psid}`);
 
-            // Upload to ImageKit to get a permanent URL (Messenger URLs expire)
-            // Also we need the file for AI analysis.
-            // aiService can handle URL or base64. Let's download to buffer first.
             const imageBuffer = await downloadFile(imageUrl);
             const base64Image = imageBuffer.toString("base64");
 
-            // Upload to ImageKit
+            // Upload to ImageKit for a permanent URL
             const uploadResult = await imagekit.upload({
                 file: base64Image,
                 fileName: `messenger-${sender_psid}-${Date.now()}.jpg`,
                 folder: 'messenger_uploads'
             });
-
             const permanentUrl = uploadResult.url;
 
-            // Verify/Analyze with AI
-            const response = await aiService.chatWithDaktarVai(
-                "Here is an image of my problem.", // Implicit prompt
-                history,
-                base64Image,
-                { name: "Messenger User", role: "customer" }
-            );
+            // In observe mode: just log the image event, don't reply
+            if (isObserveMode) {
+                await brainService.updateSession(sender_psid, `[Image sent: ${permanentUrl}]`, null);
+                console.log(`[Brain] [OBSERVE] Logged image message from ${sender_psid}`);
+                return;
+            }
 
-            // Attach the permanent URL to the booking if it exists
+            // Active or shadow mode: analyze and respond
+            const response = await aiService.chatWithDaktarVai("Here is an image of my problem.", history, base64Image, { name: "Messenger User", role: "customer" });
+
+            if (mode === 'shadow') {
+                await brainService.saveShadowDraft(sender_psid, `[Image sent: ${permanentUrl}]`, response.text);
+                await brainService.updateSession(sender_psid, `[Image sent: ${permanentUrl}]`, null);
+                console.log(`[Brain] [SHADOW] Saved draft response for image from ${sender_psid}`);
+                return;
+            }
+
             if (response.booking) {
                 (response.booking as any).imageUrl = permanentUrl;
             }
-
-            await processAIResponse(sender_psid, response, history);
+            await brainService.logConversation(sender_psid, "Here is an image of my problem.", response.text, 'ai');
+            await processAIResponse(sender_psid, "Here is an image of my problem.", response, history);
             return;
         }
 
-        // 3. Handle Text
+        // ─── 3. Handle Text ───────────────────────────────────────────────────
         if (message.text) {
-            console.log(`[Messenger] Received text: "${message.text}"`);
-            const response = await aiService.chatWithDaktarVai(
-                message.text,
-                history,
-                undefined,
-                { name: "Messenger User", role: "customer" }
-            );
+            const userText = message.text;
+            console.log(`[Messenger] Received text: "${userText}"`);
 
-            await processAIResponse(sender_psid, response, history);
+            // In observe mode: log the message but send NO reply.
+            // logConversation is NOT called here because we don't have a reply yet.
+            // The reply will be logged when a human agent responds (echo event above).
+            if (isObserveMode) {
+                await brainService.updateSession(sender_psid, userText, null);
+                console.log(`[Brain] [OBSERVE] Logged incoming text from ${sender_psid}. Awaiting human reply.`);
+                return;
+            }
+
+            // Active or shadow mode: generate AI response
+            const response = await aiService.chatWithDaktarVai(userText, history, undefined, { name: "Messenger User", role: "customer" });
+
+            if (mode === 'shadow') {
+                await brainService.saveShadowDraft(sender_psid, userText, response.text);
+                await brainService.updateSession(sender_psid, userText, null);
+                console.log(`[Brain] [SHADOW] Saved draft response for text from ${sender_psid}`);
+                return;
+            }
+
+            await brainService.logConversation(sender_psid, userText, response.text, 'ai');
+            await processAIResponse(sender_psid, userText, response, history);
         }
 
     } catch (error) {
         console.error("[Messenger] Error handling message:", error);
-        await callSendAPI(sender_psid, { text: " দুঃখিত, একটি সমস্যা হয়েছে। দয়া করে পরে আবার চেষ্টা করুন।" });
+        if (!isObserveMode) {
+            await callSendAPI(sender_psid, { text: "দুঃখিত, একটি সমস্যা হয়েছে। দয়া করে পরে আবার চেষ্টা করুন।" });
+        }
     }
 }
 
 async function handlePostback(sender_psid: string, received_postback: any) {
-    // Handle 'Get Started' or other buttons if implemented
     const payload = received_postback.payload;
     if (payload === 'GET_STARTED') {
-        const response = await aiService.chatWithDaktarVai(
-            "Hello",
-            [],
-            undefined,
-            { name: "New User", role: "customer" }
-        );
-        await processAIResponse(sender_psid, response, []);
+        const mode = await brainService.getBrainMode();
+        if (mode === 'observe') {
+            await brainService.updateSession(sender_psid, "Hello", null);
+            return;
+        }
+        const response = await aiService.chatWithDaktarVai("Hello", [], undefined, { name: "New User", role: "customer" });
+        await brainService.logConversation(sender_psid, "Hello", response.text, 'ai');
+        await processAIResponse(sender_psid, "Hello", response, []);
     }
 }
 
 /**
  * Process AI Response & Handle Bookings
  */
-async function processAIResponse(sender_psid: string, response: any, history: any[]) {
-    // Add to history
-    // history.push({ role: "user", content: ... }); // logic omitted for brevity, keeping simple
-    // history.push({ role: "model", content: response.text });
-
+async function processAIResponse(sender_psid: string, userMessageText: string | null, response: any, _history: any[]) {
     // Send the text response
     await callSendAPI(sender_psid, { text: response.text });
 
+    // Update session in DB
+    await brainService.updateSession(sender_psid, userMessageText, response.text);
+
     // Handle Booking Action
-    if (response.booking && response.booking.action === "BOOK_TICKET") {
+    if (response.booking?.action === "BOOK_TICKET") {
         try {
             const booking = response.booking;
             console.log("[Messenger] Creating Service Request:", booking);
 
-            // Create Service Request in DB
             const newRequest = await storage.createServiceRequest({
                 brand: booking.brand,
                 primaryIssue: booking.issue,
                 description: booking.description || "Via Messenger",
                 customerName: booking.customer_name || "Messenger User",
-                phone: booking.phone || "N/A", // AI should have collected this
+                phone: booking.phone || "N/A",
                 address: booking.address,
-                mediaUrls: (booking as any).imageUrl ? JSON.stringify([(booking as any).imageUrl]) : null,
+                mediaUrls: booking.imageUrl ? JSON.stringify([booking.imageUrl]) : null,
                 status: "Pending",
                 trackingStatus: "Request Received",
-                source: "Facebook Messenger" // Custom field if schema allows, otherwise put in description
+                source: "Facebook Messenger"
             } as any);
 
-            // Send Confirmation
-            const ticketMsg = `✅ আপনার টিকিট কনফার্ম হয়েছে!\nTicket ID: ${newRequest.ticketNumber}\nআমরা শীঘ্রই আপনার সাথে যোগাযোগ করব।`;
+            const ticketMsg = `✅ আপনার টিকিট কনফার্ম হয়েছে!\nTicket ID: ${newRequest.ticketNumber}\nআমরা শীঘ্রই আপনার সাথে যোগাযোগ করব।`;
             await callSendAPI(sender_psid, { text: ticketMsg });
 
         } catch (err) {
@@ -219,9 +262,6 @@ async function processAIResponse(sender_psid: string, response: any, history: an
             await callSendAPI(sender_psid, { text: "⚠️ দুঃখিত, টিকিট জেনারেট করতে সমস্যা হচ্ছে। আমাদের হটলাইনে কল করুন।" });
         }
     }
-
-    // Update session store
-    userSessions.set(sender_psid, history);
 }
 
 /**
@@ -234,16 +274,11 @@ async function callSendAPI(sender_psid: string, response: any) {
     }
 
     const requestBody = {
-        recipient: {
-            id: sender_psid
-        },
+        recipient: { id: sender_psid },
         message: response
     };
 
     try {
-        const fetch = (await import("node-fetch")).default; // Dynamic import for node-fetch if in CommonJS, or standard fetch in Node 18+
-        // In newer Node, fetch is global. Let's try global fetch first.
-
         const res = await global.fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },

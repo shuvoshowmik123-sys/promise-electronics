@@ -10,7 +10,8 @@
     "node_modules",
     "build",
     "dist",
-    "**/*.test.ts"
+    "**/*.test.ts",
+    "script/**/*"
   ],
   "compilerOptions": {
     "incremental": true,
