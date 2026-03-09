@@ -38,7 +38,6 @@ export default defineConfig({
           if (id.includes('node_modules')) {
             if (id.includes('react') || id.includes('react-dom')) return 'vendor-react';
             if (id.includes('framer-motion')) return 'vendor-motion';
-            if (id.includes('recharts') || id.includes('d3-')) return 'vendor-charts';
             if (id.includes('@tanstack/react-query')) return 'vendor-query';
             if (id.includes('@radix-ui')) return 'vendor-radix';
           }
@@ -47,6 +46,7 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
+    include: ['recharts'],
     exclude: ['@capgo/capacitor-updater']
   },
   server: {
