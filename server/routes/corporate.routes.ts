@@ -3,13 +3,13 @@ import { Router } from "express";
 import { storage } from "../storage.js";
 import { z } from "zod";
 import { Readable } from 'stream';
-import { insertCorporateClientSchema } from "@shared/schema";
+import { insertCorporateClientSchema } from "../../shared/schema.js";
 import bcrypt from "bcryptjs";
 import { getDefaultPermissions, requireAdminAuth, requirePermission } from "./middleware/auth.js";
 import { db } from "../db.js";
 import { corporateService } from "../services/corporate.service.js";
 import { inArray } from "drizzle-orm";
-import { jobTickets } from "@shared/schema.js";
+import { jobTickets } from "../../shared/schema.js";
 
 const router = Router();
 

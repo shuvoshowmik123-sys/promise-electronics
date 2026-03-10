@@ -1,7 +1,7 @@
 
 import { Router } from "express";
 import { db } from "../db.js";
-import { corporateMessageThreads, corporateMessages, corporateClients, users, InsertCorporateMessage } from "@shared/schema";
+import { corporateMessageThreads, corporateMessages, corporateClients, users, InsertCorporateMessage } from "../../shared/schema.js";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { requireAdminAuth } from "./middleware/auth.js";
 import { nanoid } from "nanoid";

@@ -1,11 +1,11 @@
-import { ServiceRequest } from "@shared/schema";
+import { ServiceRequest } from "../../shared/schema.js";
 import {
     ADMIN_PIPELINE_FLOW,
     PICKUP_STATUS_FLOW,
     SERVICE_CENTER_STATUS_FLOW,
     TRACKING_STEP_MESSAGES,
     PROGRESS_ADJUSTMENT_MESSAGES
-} from "@shared/constants";
+} from "../../shared/constants.js";
 
 /**
  * Derives the exact tracking status a customer should see based on the admin and job states.

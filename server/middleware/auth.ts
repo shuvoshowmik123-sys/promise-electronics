@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { UserRole, Permission, canPerform } from "@shared/PermissionsMatrix";
+import { UserRole, Permission, canPerform } from "../../shared/PermissionsMatrix.js";
 import { storage } from "../storage.js";
 
 declare global {

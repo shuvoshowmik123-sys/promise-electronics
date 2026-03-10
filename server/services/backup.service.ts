@@ -3,8 +3,8 @@ import { sql } from 'drizzle-orm';
 import { encryptionService } from './encryption.service.js';
 import { compressionService } from './compression.service.js';
 import { googleDriveService } from './google-drive.service.js';
-import { backupMetadata, backupAuditLogs } from '@shared/schema';
-import * as schema from '@shared/schema';
+import { backupMetadata, backupAuditLogs } from '../../shared/schema.js';
+import * as schema from '../../shared/schema.js';
 import { nanoid } from 'nanoid';
 import { log } from '../app.js';
 
