@@ -132,7 +132,11 @@ Complete API documentation for Promise Electronics - TV Repair & Electronics Ret
             },
         },
     },
-    apis: ['./server/routes/*.ts', './server/routes/**/*.ts'],
+    // In production/serverless, source files are bundled and not on the filesystem.
+    // Only scan for JSDoc comments in development to avoid crashes on Vercel.
+    apis: process.env.NODE_ENV !== 'production'
+        ? ['./server/routes/*.ts', './server/routes/**/*.ts']
+        : [],
 };
 
 const swaggerSpec = swaggerJsdoc(options);

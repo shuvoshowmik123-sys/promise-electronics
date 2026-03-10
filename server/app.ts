@@ -1,22 +1,28 @@
 import dotenv from "dotenv";
 import path from "path";
 import crypto from "crypto";
+import express from "express";
+import session from "express-session";
+import { createServer } from "http";
+import pgSession from "connect-pg-simple";
+import cookieParser from "cookie-parser";
+import cors from "cors";
+import compression from "compression";
+import helmet from "helmet";
 import { validateEnv } from "./utils/validateEnv.js";
+import { setCsrfToken } from "./routes/middleware/csrf.js";
+import { redactLogData } from "./utils/redact.js";
+import { registerRoutes } from "./routes/index.js";
+import { aiErrorHandler } from "./routes/middleware/ai-logger.js";
+import { setupSwagger } from "./swagger.js";
+import { errorHandler } from "./routes/middleware/error-handler.js";
 
 // Load environment variables based on NODE_ENV
 const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
 dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
-// Immediately validate environment after loading
+// Validate environment (non-fatal for optional vars)
 validateEnv();
-import express from "express";
-import session from "express-session";
-import { registerRoutes } from "./routes/index.js";
-import { createServer } from "http";
-import pgSession from "connect-pg-simple";
-import cookieParser from "cookie-parser";
-
-import cors from "cors";
 
 // Augment express-session with user data
 declare module "express-session" {
@@ -26,9 +32,6 @@ declare module "express-session" {
         passport?: { user: any };
     }
 }
-
-import compression from "compression";
-import helmet from "helmet";
 
 export const app = express();
 app.use(compression({
@@ -138,8 +141,6 @@ if (process.env.DATABASE_URL) {
 app.use(session(sessionConfig));
 app.use(cookieParser());
 
-import { setCsrfToken } from "./routes/middleware/csrf.js";
-import { redactLogData } from "./utils/redact.js";
 app.use(setCsrfToken);
 
 export function log(message: string, source = "express") {
@@ -196,10 +197,6 @@ app.use((req, res, next) => {
 
     next();
 });
-
-import { aiErrorHandler } from "./routes/middleware/ai-logger.js";
-import { setupSwagger } from "./swagger.js";
-import { errorHandler } from "./routes/middleware/error-handler.js";
 
 export async function createApp() {
     // Setup Swagger API documentation
