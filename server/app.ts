@@ -1,9 +1,9 @@
 import dotenv from "dotenv";
 import path from "path";
 import crypto from "crypto";
-import express from "express";
+import express, { type Express } from "express";
 import session from "express-session";
-import { createServer } from "http";
+import { createServer, type Server } from "http";
 import pgSession from "connect-pg-simple";
 import cookieParser from "cookie-parser";
 import cors from "cors";
@@ -17,13 +17,6 @@ import { aiErrorHandler } from "./routes/middleware/ai-logger.js";
 import { setupSwagger } from "./swagger.js";
 import { errorHandler } from "./routes/middleware/error-handler.js";
 
-// Load environment variables based on NODE_ENV
-const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
-
-// Validate environment (non-fatal for optional vars)
-validateEnv();
-
 // Augment express-session with user data
 declare module "express-session" {
     interface SessionData {
@@ -33,116 +26,6 @@ declare module "express-session" {
     }
 }
 
-export const app = express();
-app.use(compression({
-    filter: (req, res) => {
-        if (req.headers['accept'] === 'text/event-stream') {
-            return false; // Disable compression for SSE
-        }
-        return compression.filter(req, res);
-    }
-})); // Enable GZIP compression
-
-// HTTP Security Headers
-app.use(helmet({
-    contentSecurityPolicy: false, // Disable CSP for now — SPA injects scripts dynamically
-    crossOriginEmbedderPolicy: false, // Allow loading third-party images/fonts
-}));
-
-export const httpServer = createServer(app);
-
-// Configure CORS
-app.use(cors({
-    origin: (origin, callback) => {
-        // Allow requests with no origin (mobile apps, curl, etc.)
-        if (!origin) {
-            return callback(null, true);
-        }
-
-        // Allow localhost on any port
-        if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
-            return callback(null, true);
-        }
-
-        // Production and capacitor origins
-        const allowedOrigins = [
-            "https://promiseelectronics.com",
-            "https://www.promiseelectronics.com",
-            "capacitor://localhost",
-        ];
-
-        if (allowedOrigins.includes(origin)) {
-            return callback(null, true);
-        }
-
-        // Log rejected origins for debugging
-        console.log(`[CORS] Rejected origin: ${origin}`);
-        callback(new Error('Not allowed by CORS'));
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: [
-        "Content-Type",
-        "Authorization",
-        "Cookie",
-        "X-Correlation-ID",
-        "X-XSRF-TOKEN",
-        "X-CSRF-TOKEN",
-    ]
-}));
-
-// Trust proxy for production (HTTPS behind proxy)
-app.set("trust proxy", 1);
-
-app.use(
-    express.json({
-        limit: "2mb",
-        verify: (req, _res, buf) => {
-            (req as any).rawBody = buf;
-        },
-    }),
-);
-
-app.use(express.urlencoded({ extended: false }));
-
-// Session configuration
-const isProduction = process.env.NODE_ENV === "production";
-
-// Use PostgreSQL session store for production (persistent)
-// Falls back to memory store for development (no DB required)
-const PgStore = pgSession(session);
-
-const sessionConfig: session.SessionOptions = {
-    secret: process.env.SESSION_SECRET!,
-    resave: false,
-    saveUninitialized: false,
-    cookie: {
-        secure: isProduction,
-        httpOnly: true,
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-        // sameSite: "lax" is standard, but "none" is required if cross-origin credentials are used
-        sameSite: isProduction ? "lax" : "lax", // Change to lax by default unless specific cross-origin demands it
-    },
-};
-
-// Use PostgreSQL session store if DATABASE_URL is available
-if (process.env.DATABASE_URL) {
-    sessionConfig.store = new PgStore({
-        conString: process.env.DATABASE_URL,
-        tableName: 'user_sessions', // Custom table name to avoid conflicts
-        createTableIfMissing: true, // Auto-create session table
-        pruneSessionInterval: 60 * 15, // Prune expired sessions every 15 min
-    });
-    console.log('[Session] Using PostgreSQL session store (persistent)');
-} else {
-    console.log('[Session] DATABASE_URL not set - using memory store');
-}
-
-app.use(session(sessionConfig));
-app.use(cookieParser());
-
-app.use(setCsrfToken);
-
 export function log(message: string, source = "express") {
     const formattedTime = new Date().toLocaleTimeString("en-US", {
         hour: "numeric",
@@ -150,63 +33,192 @@ export function log(message: string, source = "express") {
         second: "2-digit",
         hour12: true,
     });
-
     console.log(`${formattedTime} [${source}] ${message}`);
 }
 
-app.use((req, res, next) => {
-    const start = Date.now();
-    const path = req.path;
+// Singleton app/server references (initialized once per process lifetime)
+let _app: Express | null = null;
+let _httpServer: Server | null = null;
 
-    // Attach Correlation ID for distributed tracing
-    const correlationId = (req.headers['x-correlation-id'] as string) || crypto.randomUUID();
-    (req as any).correlationId = correlationId;
-    res.setHeader('X-Correlation-ID', correlationId);
+export async function createApp(): Promise<Express> {
+    // If already initialized (e.g. warm Vercel invocation), return cached instance
+    if (_app) return _app;
 
-    let capturedJsonResponse: Record<string, any> | undefined = undefined;
+    // ─── 1. Load env vars ────────────────────────────────────────────────────
+    // Must happen BEFORE any process.env access or DB connections.
+    // On Vercel production, env vars are already injected by the runtime,
+    // so dotenv.config() is a no-op — that's fine.
+    const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
+    dotenv.config({ path: path.resolve(process.cwd(), envFile) });
 
-    const originalResJson = res.json;
-    res.json = function (bodyJson, ...args) {
-        capturedJsonResponse = bodyJson;
-        return originalResJson.apply(res, [bodyJson, ...args]);
-    };
+    // ─── 2. Validate required environment variables ───────────────────────────
+    validateEnv();
 
-    const originalResSend = res.send;
-    res.send = function (body) {
-        if (typeof body === 'string' && (body.startsWith('A server error') || body.startsWith('A server e'))) {
-            console.log("[Middleware] Intercepted plain text error, converting to JSON:", body);
-            res.setHeader('Content-Type', 'application/json');
-            return originalResSend.call(this, JSON.stringify({ error: body }));
-        }
-        return originalResSend.call(this, body);
-    };
+    // ─── 3. Create Express app ────────────────────────────────────────────────
+    const app = express();
+    const httpServer = createServer(app);
+    _httpServer = httpServer;
 
-    res.on("finish", () => {
-        const duration = Date.now() - start;
-        if (path.startsWith("/api")) {
-            const correlationId = (req as any).correlationId;
-            let logLine = `[${correlationId}] ${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-            if (capturedJsonResponse) {
-                const redactedResponse = redactLogData(capturedJsonResponse);
-                logLine += ` :: ${JSON.stringify(redactedResponse)}`;
+    // ─── 4. Core middleware ───────────────────────────────────────────────────
+    app.use(compression({
+        filter: (req, res) => {
+            if (req.headers['accept'] === 'text/event-stream') {
+                return false; // Disable compression for SSE
             }
-
-            log(logLine);
+            return compression.filter(req, res);
         }
+    }));
+
+    app.use(helmet({
+        contentSecurityPolicy: false,
+        crossOriginEmbedderPolicy: false,
+    }));
+
+    // Trust proxy for production (HTTPS behind Vercel's edge)
+    app.set("trust proxy", 1);
+
+    app.use(cors({
+        origin: (origin, callback) => {
+            if (!origin) return callback(null, true);
+            if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
+                return callback(null, true);
+            }
+            const allowedOrigins = [
+                "https://promiseelectronics.com",
+                "https://www.promiseelectronics.com",
+                "capacitor://localhost",
+            ];
+            if (allowedOrigins.includes(origin)) return callback(null, true);
+            console.log(`[CORS] Rejected origin: ${origin}`);
+            callback(new Error('Not allowed by CORS'));
+        },
+        credentials: true,
+        methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+        allowedHeaders: [
+            "Content-Type",
+            "Authorization",
+            "Cookie",
+            "X-Correlation-ID",
+            "X-XSRF-TOKEN",
+            "X-CSRF-TOKEN",
+        ]
+    }));
+
+    app.use(express.json({
+        limit: "2mb",
+        verify: (req, _res, buf) => {
+            (req as any).rawBody = buf;
+        },
+    }));
+
+    app.use(express.urlencoded({ extended: false }));
+
+    // ─── 5. Session store ─────────────────────────────────────────────────────
+    // All process.env access happens HERE — after dotenv.config() above.
+    const isProduction = process.env.NODE_ENV === "production";
+    const PgStore = pgSession(session);
+
+    const sessionConfig: session.SessionOptions = {
+        secret: process.env.SESSION_SECRET!,
+        resave: false,
+        saveUninitialized: false,
+        cookie: {
+            secure: isProduction,
+            httpOnly: true,
+            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+            sameSite: "lax",
+        },
+    };
+
+    if (process.env.DATABASE_URL) {
+        sessionConfig.store = new PgStore({
+            conString: process.env.DATABASE_URL,
+            tableName: 'user_sessions',
+            createTableIfMissing: true,
+            // pruneSessionInterval MUST be false in serverless — setInterval will
+            // prevent the Lambda/Vercel function from shutting down cleanly.
+            pruneSessionInterval: false as any,
+        });
+        console.log('[Session] Using PostgreSQL session store (persistent)');
+    } else {
+        console.log('[Session] DATABASE_URL not set — using memory store (dev only)');
+    }
+
+    app.use(session(sessionConfig));
+    app.use(cookieParser());
+    app.use(setCsrfToken);
+
+    // ─── 6. Request logging middleware ────────────────────────────────────────
+    app.use((req, res, next) => {
+        const start = Date.now();
+        const reqPath = req.path;
+
+        const correlationId = (req.headers['x-correlation-id'] as string) || crypto.randomUUID();
+        (req as any).correlationId = correlationId;
+        res.setHeader('X-Correlation-ID', correlationId);
+
+        let capturedJsonResponse: Record<string, any> | undefined = undefined;
+
+        const originalResJson = res.json;
+        res.json = function (bodyJson, ...args) {
+            capturedJsonResponse = bodyJson;
+            return originalResJson.apply(res, [bodyJson, ...args]);
+        };
+
+        const originalResSend = res.send;
+        res.send = function (body) {
+            if (typeof body === 'string' && (body.startsWith('A server error') || body.startsWith('A server e'))) {
+                console.log("[Middleware] Intercepted plain text error, converting to JSON:", body);
+                res.setHeader('Content-Type', 'application/json');
+                return originalResSend.call(this, JSON.stringify({ error: body }));
+            }
+            return originalResSend.call(this, body);
+        };
+
+        res.on("finish", () => {
+            const duration = Date.now() - start;
+            if (reqPath.startsWith("/api")) {
+                let logLine = `[${correlationId}] ${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`;
+                if (capturedJsonResponse) {
+                    const redactedResponse = redactLogData(capturedJsonResponse);
+                    logLine += ` :: ${JSON.stringify(redactedResponse)}`;
+                }
+                log(logLine);
+            }
+        });
+
+        next();
     });
 
-    next();
-});
-
-export async function createApp() {
-    // Setup Swagger API documentation
+    // ─── 7. Routes & error handlers ───────────────────────────────────────────
     setupSwagger(app);
-
     await registerRoutes(httpServer, app);
-
-    // Register AI Error Handler last
     app.use(aiErrorHandler);
     app.use(errorHandler);
 
+    // Cache the initialized app for subsequent warm invocations
+    _app = app;
+    console.log('[App] Express application initialized successfully');
     return app;
 }
+
+// For local dev server (server/index.ts) that directly uses these exports
+export function getHttpServer(): Server {
+    if (!_httpServer) throw new Error('App not initialized yet. Call createApp() first.');
+    return _httpServer;
+}
+
+// Legacy export compatibility (used by some route files)
+export const app = new Proxy({} as Express, {
+    get(_target, prop) {
+        if (!_app) throw new Error(`[app] Accessed before createApp() was called. Property: ${String(prop)}`);
+        return (_app as any)[prop];
+    }
+});
+
+export const httpServer = new Proxy({} as Server, {
+    get(_target, prop) {
+        if (!_httpServer) throw new Error(`[httpServer] Accessed before createApp() was called. Property: ${String(prop)}`);
+        return (_httpServer as any)[prop];
+    }
+});

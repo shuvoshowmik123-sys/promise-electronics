@@ -1,36 +1,52 @@
-import dotenv from "dotenv";
-import path from "path";
-
-// Load environment variables
-const envFile = process.env.NODE_ENV === "test" ? ".env.test" : ".env";
-dotenv.config({ path: path.resolve(process.cwd(), envFile) });
-
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool, neonConfig } from '@neondatabase/serverless';
 import ws from 'ws';
 import * as schema from "../shared/schema.js";
 
-if (process.env.DATABASE_URL?.includes('neon.tech')) {
-  neonConfig.webSocketConstructor = ws;
+// Lazily initialized so Vercel serverless can load env vars before the Pool connects
+let _pool: Pool | null = null;
+let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
+
+function getPool(): Pool {
+  if (!_pool) {
+    const dbUrl = process.env.DATABASE_URL;
+    if (!dbUrl) {
+      throw new Error('FATAL: DATABASE_URL is not set. Cannot initialize database pool.');
+    }
+    if (dbUrl.includes('neon.tech')) {
+      neonConfig.webSocketConstructor = ws;
+    }
+    _pool = new Pool({
+      connectionString: dbUrl,
+      max: parseInt(process.env.DB_POOL_MAX || '10', 10),
+      idleTimeoutMillis: 30_000,
+      connectionTimeoutMillis: 5_000,
+      keepAlive: true,
+    });
+    _pool.on('error', (err: Error) => {
+      console.error('[DB] Unexpected error on idle client (reconnecting automatically)', err.message);
+    });
+    console.log('[DB] Connection pool initialized');
+  }
+  return _pool;
 }
 
-if (!process.env.DATABASE_URL) {
-  console.error("FATAL: DATABASE_URL is not set. Database connection will fail.");
+export const pool = new Proxy({} as Pool, {
+  get(_target, prop) {
+    return (getPool() as any)[prop];
+  }
+});
+
+export function getDb() {
+  if (!_db) {
+    _db = drizzle(getPool(), { schema });
+  }
+  return _db;
 }
 
-export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: parseInt(process.env.DB_POOL_MAX || '50', 10),
-  idleTimeoutMillis: 30_000,
-  connectionTimeoutMillis: 5_000,
-  // Ensure we keep idle clients alive as long as possible on Neon
-  keepAlive: true,
+// Backwards-compatible export: proxy that initializes lazily
+export const db = new Proxy({} as ReturnType<typeof drizzle<typeof schema>>, {
+  get(_target, prop) {
+    return (getDb() as any)[prop];
+  }
 });
-
-// A robust error handler for idle clients that are terminated by the server (e.g. Neon scale-to-zero)
-pool.on('error', (err: Error, client: any) => {
-  console.error('[DB] Unexpected error on idle client (reconnecting automatically)', err.message);
-  // pg-pool automatically removes the client from the pool when this event fires
-});
-
-export const db = drizzle(pool, { schema });

@@ -1,4 +1,4 @@
-import { app, httpServer, createApp, log } from "./app";
+import { createApp, getHttpServer, log } from "./app";
 // Trigger restart v3 - inlined module auth
 import { serveStatic } from "./static";
 import { seedSuperAdmin } from "./seed";
@@ -10,7 +10,8 @@ import { startDrawerDayCloseScheduler, stopDrawerDayCloseScheduler } from "./ser
   // Seed super admin if not exists
   await seedSuperAdmin();
 
-  await createApp();
+  const app = await createApp();
+  const httpServer = getHttpServer();
   startDrawerDayCloseScheduler();
 
   // AI Error Handler (Module C)
