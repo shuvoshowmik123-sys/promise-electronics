@@ -19,18 +19,29 @@ const router = Router();
 // ImageKit Configuration
 // ============================================
 
-const imagekit = new ImageKit({
-    publicKey: process.env.IMAGEKIT_PUBLIC_KEY || "",
-    privateKey: process.env.IMAGEKIT_PRIVATE_KEY || "",
-    urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT || "",
-});
+function getImageKit() {
+    const publicKey = process.env.IMAGEKIT_PUBLIC_KEY;
+    const privateKey = process.env.IMAGEKIT_PRIVATE_KEY;
+    const urlEndpoint = process.env.IMAGEKIT_URL_ENDPOINT;
+
+    if (!publicKey || !privateKey || !urlEndpoint) {
+        return null;
+    }
+
+    return new ImageKit({
+        publicKey,
+        privateKey,
+        urlEndpoint,
+    });
+}
 
 /**
  * GET /api/upload/imagekit-auth - Returns auth params for client-side uploads
  */
 router.get('/api/upload/imagekit-auth', uploadAuthLimiter, (req: Request, res: Response) => {
     try {
-        if (!process.env.IMAGEKIT_PRIVATE_KEY) {
+        const imagekit = getImageKit();
+        if (!imagekit) {
             return res.status(503).json({
                 error: 'ImageKit not configured',
                 message: 'Please configure IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, and IMAGEKIT_URL_ENDPOINT'
@@ -49,7 +60,8 @@ router.get('/api/upload/imagekit-auth', uploadAuthLimiter, (req: Request, res: R
  */
 router.post('/api/imagekit/upload', uploadLimiter, async (req: Request, res: Response) => {
     try {
-        if (!process.env.IMAGEKIT_PRIVATE_KEY) {
+        const imagekit = getImageKit();
+        if (!imagekit) {
             return res.status(503).json({
                 error: 'ImageKit not configured',
                 message: 'Please configure IMAGEKIT_PUBLIC_KEY, IMAGEKIT_PRIVATE_KEY, and IMAGEKIT_URL_ENDPOINT'

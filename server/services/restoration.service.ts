@@ -1,10 +1,10 @@
-import { db } from '../db';
+import { db } from '../db.js';
 import { sql } from 'drizzle-orm';
-import { encryptionService } from './encryption.service';
-import { compressionService } from './compression.service';
+import { encryptionService } from './encryption.service.js';
+import { compressionService } from './compression.service.js';
 import * as schema from '@shared/schema';
-import { log } from '../app';
-import { BackupService } from './backup.service';
+import { log } from '../app.js';
+import { BackupService } from './backup.service.js';
 
 interface RestoreResult {
     success: boolean;

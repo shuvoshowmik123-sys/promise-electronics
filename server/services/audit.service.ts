@@ -1,5 +1,5 @@
-import { db } from "../db";
-import { auditLogs } from "../../shared/schema";
+import { db } from "../db.js";
+import { auditLogs } from "../../shared/schema.js";
 import { randomUUID } from "crypto";
 
 export type AuditParams = {

@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from "../db.js";
 import {
     offboardingCases,
     finalSettlementRecords,
@@ -7,7 +7,7 @@ import {
     FinalSettlementRecord,
     employeeSalaryAssignments,
     employmentProfiles
-} from "../../shared/schema";
+} from "../../shared/schema.js";
 import { eq, desc } from "drizzle-orm";
 
 export class OffboardingRepository {

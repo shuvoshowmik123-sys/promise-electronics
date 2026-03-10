@@ -12,11 +12,21 @@ const PAGE_ACCESS_TOKEN = process.env.MESSENGER_PAGE_ACCESS_TOKEN;
 const PAGE_ID = process.env.FACEBOOK_PAGE_ID;
 
 // Initialize ImageKit
-const imagekit = new ImageKit({
-    publicKey: process.env.IMAGEKIT_PUBLIC_KEY || "",
-    privateKey: process.env.IMAGEKIT_PRIVATE_KEY || "",
-    urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT || "",
-});
+function getImageKit() {
+    const publicKey = process.env.IMAGEKIT_PUBLIC_KEY;
+    const privateKey = process.env.IMAGEKIT_PRIVATE_KEY;
+    const urlEndpoint = process.env.IMAGEKIT_URL_ENDPOINT;
+
+    if (!publicKey || !privateKey || !urlEndpoint) {
+        return null;
+    }
+
+    return new ImageKit({
+        publicKey,
+        privateKey,
+        urlEndpoint,
+    });
+}
 
 /**
  * Webhook Verification
@@ -142,13 +152,19 @@ async function handleMessage(sender_psid: string, message: any) {
             const imageBuffer = await downloadFile(imageUrl);
             const base64Image = imageBuffer.toString("base64");
 
-            // Upload to ImageKit for a permanent URL
-            const uploadResult = await imagekit.upload({
-                file: base64Image,
-                fileName: `messenger-${sender_psid}-${Date.now()}.jpg`,
-                folder: 'messenger_uploads'
-            });
-            const permanentUrl = uploadResult.url;
+            let permanentUrl = imageUrl;
+            const imagekit = getImageKit();
+
+            if (imagekit) {
+                const uploadResult = await imagekit.upload({
+                    file: base64Image,
+                    fileName: `messenger-${sender_psid}-${Date.now()}.jpg`,
+                    folder: 'messenger_uploads'
+                });
+                permanentUrl = uploadResult.url;
+            } else {
+                console.warn("[Messenger] ImageKit not configured. Using source attachment URL.");
+            }
 
             // In observe mode: just log the image event, don't reply
             if (isObserveMode) {

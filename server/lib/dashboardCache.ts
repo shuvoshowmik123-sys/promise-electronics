@@ -1,4 +1,4 @@
-import { getComprehensiveDashboard } from "../repositories/analytics.repository";
+import { getComprehensiveDashboard } from "../repositories/analytics.repository.js";
 
 interface DashboardCacheEntry {
     data: any | null;

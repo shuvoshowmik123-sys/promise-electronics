@@ -1,9 +1,9 @@
 
 import { Router } from "express";
-import { storage } from "../storage";
+import { storage } from "../storage.js";
 import { z } from "zod";
 import ExcelJS from "exceljs";
-import { simpleCache } from "../utils/cache";
+import { simpleCache } from "../utils/cache.js";
 import { getJobOverview } from "../repositories/analytics.repository.js";
 
 const router = Router();

@@ -1,9 +1,9 @@
-import { createApp, getHttpServer, log } from "./app";
+import { createApp, getHttpServer, log } from "./app.js";
 // Trigger restart v3 - inlined module auth
-import { serveStatic } from "./static";
-import { seedSuperAdmin } from "./seed";
+import { serveStatic } from "./static.js";
+import { seedSuperAdmin } from "./seed.js";
 import { Request, Response, NextFunction } from "express";
-import { aiErrorHandler } from "./middleware/ai-error-handler";
+import { aiErrorHandler } from "./middleware/ai-error-handler.js";
 import { startDrawerDayCloseScheduler, stopDrawerDayCloseScheduler } from "./services/drawer-day-close.service.js";
 
 (async () => {

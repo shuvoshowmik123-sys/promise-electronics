@@ -1,7 +1,7 @@
 import { Router, Request, Response, NextFunction } from "express";
-import { storage } from "../storage";
+import { storage } from "../storage.js";
 import { z } from "zod";
-import { requireCorporateAuth } from "./middleware/auth";
+import { requireCorporateAuth } from "./middleware/auth.js";
 import multer from 'multer';
 import XLSX from 'xlsx';
 import csvParser from 'csv-parser';

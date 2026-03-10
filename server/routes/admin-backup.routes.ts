@@ -1,8 +1,8 @@
 import { Router } from 'express';
-import { backupService } from '../services/backup.service';
-import { requireSuperAdmin } from './middleware/auth';
-import { restorationService } from '../services/restoration.service';
-import { storageService } from '../services/storage.service';
+import { backupService } from '../services/backup.service.js';
+import { requireSuperAdmin } from './middleware/auth.js';
+import { restorationService } from '../services/restoration.service.js';
+import { storageService } from '../services/storage.service.js';
 import multer from 'multer';
 
 // Configure Multer (Memory Storage)

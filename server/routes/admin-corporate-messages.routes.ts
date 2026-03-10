@@ -1,6 +1,6 @@
 
 import { Router } from "express";
-import { db } from "../db";
+import { db } from "../db.js";
 import { corporateMessageThreads, corporateMessages, corporateClients, users, InsertCorporateMessage } from "@shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { requireAdminAuth } from "./middleware/auth.js";

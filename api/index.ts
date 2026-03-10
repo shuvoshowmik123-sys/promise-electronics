@@ -1,10 +1,9 @@
-import { createApp } from "../server/app.js";
-
 let app: any;
 
 export default async function handler(req: any, res: any) {
     try {
         if (!app) {
+            const { createApp } = await import("../server/app.js");
             app = await createApp();
         }
         app(req, res);

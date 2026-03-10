@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from "../db.js";
 import {
     employmentProfiles,
     employeeSalaryAssignments,
@@ -13,7 +13,7 @@ import {
     IncrementSuggestion,
     DeductionProposal,
     users
-} from "../../shared/schema";
+} from "../../shared/schema.js";
 import { eq, desc, and, isNull, isNotNull } from "drizzle-orm";
 
 export class EmploymentRepository {

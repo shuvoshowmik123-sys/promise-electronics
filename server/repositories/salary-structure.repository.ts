@@ -1,4 +1,4 @@
-import { db } from "../db";
+import { db } from "../db.js";
 import {
     salaryComponents,
     salaryStructures,
@@ -8,7 +8,7 @@ import {
     SalaryComponent,
     SalaryStructure,
     SalaryStructureLine
-} from "../../shared/schema";
+} from "../../shared/schema.js";
 import { eq, desc } from "drizzle-orm";
 
 export class SalaryStructureRepository {

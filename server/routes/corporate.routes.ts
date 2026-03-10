@@ -1,6 +1,6 @@
 
 import { Router } from "express";
-import { storage } from "../storage";
+import { storage } from "../storage.js";
 import { z } from "zod";
 import { Readable } from 'stream';
 import { insertCorporateClientSchema } from "@shared/schema";
