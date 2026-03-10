@@ -12,6 +12,20 @@
     }
   ],
   "paths": {
+    "/api/admin/csrf-token": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Get CSRF token for authenticated mobile/web writes",
+        "description": "Returns the current session CSRF token and ensures the XSRF-TOKEN cookie is available",
+        "responses": {
+          "200": {
+            "description": "CSRF token"
+          }
+        }
+      }
+    },
     "/api/admin/me": {
       "get": {
         "tags": [

@@ -5,6 +5,7 @@ WORKDIR /app
 
 # Install dependencies first for better caching
 COPY package*.json ./
+COPY .npmrc ./
 RUN npm ci
 
 # Copy source code
@@ -20,6 +21,7 @@ WORKDIR /app
 
 # Install production dependencies only
 COPY package*.json ./
+COPY .npmrc ./
 RUN npm ci --omit=dev
 
 # Copy built assets from builder stage
