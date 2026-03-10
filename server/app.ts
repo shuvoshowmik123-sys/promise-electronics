@@ -17,6 +17,10 @@ import { aiErrorHandler } from "./routes/middleware/ai-logger.js";
 import { setupSwagger } from "./swagger.js";
 import { errorHandler } from "./routes/middleware/error-handler.js";
 
+// Load environment variables early - required for local dev and module-level repository evaluation
+const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
+dotenv.config({ path: path.resolve(process.cwd(), envFile) });
+
 // Augment express-session with user data
 declare module "express-session" {
     interface SessionData {
@@ -44,19 +48,17 @@ export async function createApp(): Promise<Express> {
     // If already initialized (e.g. warm Vercel invocation), return cached instance
     if (_app) return _app;
 
-    // ─── 1. Load env vars ────────────────────────────────────────────────────
-    // Must happen BEFORE any process.env access or DB connections.
-    // On Vercel production, env vars are already injected by the runtime,
-    // so dotenv.config() is a no-op — that's fine.
-    const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
-    dotenv.config({ path: path.resolve(process.cwd(), envFile) });
-
-    // ─── 2. Validate required environment variables ───────────────────────────
+    // ─── 1. Validate required environment variables ───────────────────────────
     validateEnv();
 
-    // ─── 3. Create Express app ────────────────────────────────────────────────
+    // ─── 2. Create Express app ────────────────────────────────────────────────
     const app = express();
     const httpServer = createServer(app);
+
+    // EXTREMELY IMPORTANT: Set these references BEFORE calling registerRoutes.
+    // Many route modules import 'app' or 'httpServer' from this file via the proxies,
+    // and if _app is still null when they are evaluated, the proxies will throw.
+    _app = app;
     _httpServer = httpServer;
 
     // ─── 4. Core middleware ───────────────────────────────────────────────────
@@ -196,8 +198,6 @@ export async function createApp(): Promise<Express> {
     app.use(aiErrorHandler);
     app.use(errorHandler);
 
-    // Cache the initialized app for subsequent warm invocations
-    _app = app;
     console.log('[App] Express application initialized successfully');
     return app;
 }
