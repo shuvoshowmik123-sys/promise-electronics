@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import type { User, UserPermissions } from "@shared/schema";
+import { getDefaultPermissionsForRole } from "@shared/admin-permissions";
 import { adminAuthApi } from "@/lib/api";
 
 type SafeUser = Omit<User, "password">;
@@ -23,15 +24,18 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<"pending" | "authenticated" | "unauthenticated">("pending");
 
   const permissions: UserPermissions = (() => {
-    if (!user?.permissions) return {};
+    if (!user) return {};
     try {
-      return typeof user.permissions === "string"
+      const parsed = typeof user.permissions === "string"
         ? JSON.parse(user.permissions)
-        : user.permissions;
+        : (user.permissions || {});
+      if (parsed && typeof parsed === "object" && Object.keys(parsed).length > 0) {
+        return parsed;
+      }
     } catch (e) {
       console.error("Failed to parse permissions:", e);
-      return {};
     }
+    return getDefaultPermissionsForRole(user.role);
   })();
 
   const fetchUser = async () => {

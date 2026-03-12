@@ -50,11 +50,9 @@ router.get('/api/admin/dashboard', requireAdminAuth, requirePermission('dashboar
         if (req.session.adminUserId) {
             const user = await userRepo.getUser(req.session.adminUserId);
             if (user) {
-                const permissions = user.permissions ? JSON.parse(user.permissions) : {};
-                const defaultPermissions = getDefaultPermissions(user.role);
-                const effectivePermissions = Object.keys(permissions).length > 0 ? permissions : defaultPermissions;
+                const effectivePermissions = getEffectivePermissionsForUser(user);
 
-                if (!effectivePermissions.finance) {
+                if (!effectivePermissions['*'] && !effectivePermissions.finance) {
                     // Mask financial data for non-finance users (e.g. Technicians)
                     stats.totalRevenue = 0;
                     stats.posRevenueThisMonth = 0;

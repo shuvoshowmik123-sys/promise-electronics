@@ -12,6 +12,7 @@ import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { storage } from '../../storage.js';
 import { requireCsrf } from './csrf.js';
+import { getDefaultPermissionsForRole } from '../../../shared/admin-permissions.js';
 
 // ============================================
 // Session Type Extensions
@@ -265,129 +266,5 @@ export function getCustomerId(req: any): string | undefined {
  * Get default permissions based on role.
  */
 export function getDefaultPermissions(role: string): Record<string, boolean> {
-    switch (role) {
-        case 'Super Admin':
-            return {
-                dashboard: true,
-                jobs: true,
-                inventory: true,
-                pos: true,
-                challans: true,
-                finance: true,
-                attendance: true,
-                reports: true,
-                serviceRequests: true,
-                orders: true,
-                technician: true,
-                inquiries: true,
-                systemHealth: true,
-                users: true,
-                settings: true,
-                corporate: true,
-                canCreate: true,
-                canEdit: true,
-                canDelete: true,
-                canExport: true,
-                process_payment: true, // Super Admin can process payments
-                view_financials: true, // Super Admin can view financials
-            };
-        case 'Manager':
-            return {
-                dashboard: true,
-                jobs: true,
-                inventory: true,
-                pos: true,
-                challans: true,
-                finance: true,
-                attendance: true,
-                reports: true,
-                serviceRequests: true,
-                orders: true,
-                technician: false,
-                inquiries: true,
-                systemHealth: false,
-                users: false,
-                settings: false,
-                corporate: true,
-                canCreate: true,
-                canEdit: true,
-                canDelete: false,
-                canExport: true,
-                process_payment: true, // Manager can process payments
-                view_financials: true, // Manager can view financials
-            };
-        case 'Cashier':
-            return {
-                dashboard: true,
-                jobs: false,
-                inventory: true,
-                pos: true,
-                challans: false,
-                finance: false,
-                attendance: true,
-                reports: false,
-                serviceRequests: false,
-                orders: true,
-                technician: false,
-                inquiries: false,
-                systemHealth: false,
-                users: false,
-                settings: false,
-                canCreate: true,
-                canEdit: false,
-                canDelete: false,
-                canExport: false,
-                process_payment: true, // Cashier can process payments
-                view_financials: true, // Cashier can view financials
-            };
-        case 'Technician':
-            return {
-                dashboard: false,  // Technicians see Technician View, not Admin Dashboard
-                jobs: true,
-                inventory: false,
-                pos: false,
-                challans: true,
-                finance: false,
-                attendance: true,
-                reports: false,
-                serviceRequests: true,
-                orders: false,
-                technician: true,  // Technician View enabled by default
-                inquiries: false,
-                systemHealth: false,
-                users: false,
-                settings: false,
-                canCreate: false,
-                canEdit: true,
-                canDelete: false,
-                canExport: false,
-            };
-        case 'Corporate':
-            return {
-                dashboard: true, // Specific corporate dashboard
-                jobs: true,      // See their jobs
-                finance: true,   // See their bills
-                serviceRequests: true, // Request services
-                reports: true,
-                users: false,
-                settings: true,  // Profile settings
-                // ... others false
-                inventory: false,
-                pos: false,
-                challans: true,
-                attendance: false,
-                orders: false,
-                technician: false,
-                inquiries: true,
-                systemHealth: false,
-                canCreate: true, // Can create service requests
-                canEdit: true,   // Can edit profile
-                canDelete: false,
-                canExport: true, // Can export reports
-                process_payment: false,
-                view_financials: true,
-            };
-        default:
-            return {};
-    }
+    return getDefaultPermissionsForRole(role);
 }

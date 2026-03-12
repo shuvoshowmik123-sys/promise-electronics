@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { storage } from "../storage.js";
 import { z } from "zod";
 import { requireAdminAuth } from "./middleware/auth.js";
+import { DEFAULT_MODULES } from "../seed-modules.js";
 
 const router = Router();
 
@@ -29,7 +30,12 @@ async function checkSuperAdmin(req: Request, res: Response): Promise<string | nu
 // GET all modules - Public read (used by customer/corporate portals via ModuleContext)
 router.get("/api/modules", async (req, res) => {
     try {
-        const modules = await storage.getAllModules();
+        let modules = await storage.getAllModules();
+        if (!modules.length) {
+            console.warn("[Modules] system_modules is empty. Seeding defaults before responding.");
+            await storage.seedDefaultModules(DEFAULT_MODULES);
+            modules = await storage.getAllModules();
+        }
         res.json(modules);
     } catch (error: any) {
         res.status(500).json({ error: error.message });

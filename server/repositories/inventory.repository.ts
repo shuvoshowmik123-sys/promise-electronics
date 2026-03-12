@@ -4,7 +4,7 @@
  * Handles all database operations for inventory items and products.
  */
 
-import { db, nanoid, eq, desc, and, schema, type InventoryItem, type InsertInventoryItem, type Product, type InsertProduct, type PurchaseOrder, type InsertPurchaseOrder, type PurchaseOrderItem, type InsertPurchaseOrderItem } from './base.js';
+import { db, nanoid, eq, desc, and, gte, lte, schema, type InventoryItem, type InsertInventoryItem, type Product, type InsertProduct, type PurchaseOrder, type InsertPurchaseOrder, type PurchaseOrderItem, type InsertPurchaseOrderItem, type WastageLog } from './base.js';
 
 // ============================================
 // Inventory Queries
@@ -53,6 +53,22 @@ export async function getLowStockItems(): Promise<InventoryItem[]> {
     return db.select().from(schema.inventoryItems)
         .where(eq(schema.inventoryItems.status, 'Low Stock'))
         .orderBy(schema.inventoryItems.stock);
+}
+
+export async function getWastageLogs(startDate?: Date, endDate?: Date): Promise<WastageLog[]> {
+    const conditions = [];
+
+    if (startDate) {
+        conditions.push(gte(schema.wastageLogs.createdAt, startDate));
+    }
+
+    if (endDate) {
+        conditions.push(lte(schema.wastageLogs.createdAt, endDate));
+    }
+
+    return db.select().from(schema.wastageLogs)
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(desc(schema.wastageLogs.createdAt));
 }
 
 /**

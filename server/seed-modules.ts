@@ -1,7 +1,7 @@
 import { storage } from "./storage.js";
 import type { InsertSystemModule } from "../shared/schema.js";
 
-const DEFAULT_MODULES: InsertSystemModule[] = [
+export const DEFAULT_MODULES: InsertSystemModule[] = [
     // --- CORE MODULES (Phase 1) ---
     {
         id: "jobs",
@@ -471,7 +471,7 @@ const DEFAULT_MODULES: InsertSystemModule[] = [
     },
 ];
 
-async function seed() {
+export async function seedModules() {
     console.log("Seeding system modules...");
     try {
         await storage.seedDefaultModules(DEFAULT_MODULES);
@@ -481,4 +481,11 @@ async function seed() {
     }
 }
 
-seed().catch(console.error);
+function isDirectSeedInvocation() {
+    const entry = process.argv[1]?.replace(/\\/g, "/");
+    return typeof entry === "string" && /(?:^|\/)seed-modules\.(?:ts|js|cjs|mjs)$/.test(entry);
+}
+
+if (isDirectSeedInvocation()) {
+    seedModules().catch(console.error);
+}

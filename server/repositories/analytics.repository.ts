@@ -38,6 +38,26 @@ function toDashboardJobSummary(job: JobTicket): DashboardJobSummary {
     };
 }
 
+function isDateWithinRange(value: Date | null | undefined, startDate: Date, endDate: Date) {
+    if (!value) return false;
+    const date = value instanceof Date ? value : new Date(value);
+    return date >= startDate && date <= endDate;
+}
+
+function toDateKey(value: Date) {
+    return value.toISOString().slice(0, 10);
+}
+
+function safelyParseJsonArray(raw: string | null | undefined) {
+    if (!raw) return [];
+    try {
+        const parsed = JSON.parse(raw);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
 // ============================================
 // Dashboard Statistics
 // ============================================
@@ -474,4 +494,225 @@ export async function getReportData(startDate: Date, endDate: Date): Promise<{
             totalStaff,
         },
     };
+}
+
+export async function getRevenueStats(startDate: Date, endDate: Date): Promise<{
+    date: string;
+    service: number;
+    retail: number;
+    corporate: number;
+}[]> {
+    const transactions = await db.select().from(schema.posTransactions).where(and(
+        gte(schema.posTransactions.createdAt, startDate),
+        lte(schema.posTransactions.createdAt, endDate)
+    ));
+
+    const revenueMap = new Map<string, { date: string; service: number; retail: number; corporate: number }>();
+
+    for (const transaction of transactions) {
+        const date = toDateKey(new Date(transaction.createdAt));
+        const current = revenueMap.get(date) || { date, service: 0, retail: 0, corporate: 0 };
+        const linkedJobs = safelyParseJsonArray(transaction.linkedJobs);
+        const amount = Number(transaction.total || 0);
+
+        if (linkedJobs.length > 0) {
+            current.service += amount;
+        } else if (transaction.paymentMethod === 'Corporate') {
+            current.corporate += amount;
+        } else {
+            current.retail += amount;
+        }
+
+        revenueMap.set(date, current);
+    }
+
+    return Array.from(revenueMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+export async function getJobStats(startDate: Date, endDate: Date): Promise<{
+    totalJobs: number;
+    completedJobs: number;
+    statusDistribution: { name: string; value: number }[];
+}> {
+    const jobs = await db.select().from(schema.jobTickets).where(
+        or(
+            and(
+                gte(schema.jobTickets.createdAt, startDate),
+                lte(schema.jobTickets.createdAt, endDate)
+            ),
+            and(
+                gte(schema.jobTickets.completedAt, startDate),
+                lte(schema.jobTickets.completedAt, endDate)
+            )
+        )
+    );
+
+    const statusCounts = new Map<string, number>();
+    let completedJobs = 0;
+
+    for (const job of jobs) {
+        const status = job.status || 'Unknown';
+        statusCounts.set(status, (statusCounts.get(status) || 0) + 1);
+        if (status === 'Completed' || isDateWithinRange(job.completedAt, startDate, endDate)) {
+            completedJobs += 1;
+        }
+    }
+
+    return {
+        totalJobs: jobs.length,
+        completedJobs,
+        statusDistribution: Array.from(statusCounts.entries()).map(([name, value]) => ({ name, value })),
+    };
+}
+
+export async function getTechnicianStats(startDate: Date, endDate: Date): Promise<{
+    name: string;
+    completedJobs: number;
+    efficiency: number;
+}[]> {
+    const jobs = await db.select().from(schema.jobTickets);
+    const technicianMap = new Map<string, { assignedJobs: number; completedJobs: number }>();
+
+    for (const job of jobs) {
+        const technician = job.technician?.trim();
+        if (!technician) continue;
+
+        const isRelevant = isDateWithinRange(job.createdAt, startDate, endDate)
+            || isDateWithinRange(job.completedAt, startDate, endDate);
+        if (!isRelevant) continue;
+
+        const current = technicianMap.get(technician) || { assignedJobs: 0, completedJobs: 0 };
+        current.assignedJobs += 1;
+        if (job.status === 'Completed' || isDateWithinRange(job.completedAt, startDate, endDate)) {
+            current.completedJobs += 1;
+        }
+        technicianMap.set(technician, current);
+    }
+
+    return Array.from(technicianMap.entries())
+        .map(([name, data]) => ({
+            name,
+            completedJobs: data.completedJobs,
+            efficiency: data.assignedJobs > 0
+                ? Math.round((data.completedJobs / data.assignedJobs) * 100)
+                : 0,
+        }))
+        .sort((a, b) => b.completedJobs - a.completedJobs);
+}
+
+export async function getCustomerStats(startDate: Date, endDate: Date): Promise<{
+    newCustomers: number;
+}> {
+    const result = await db.execute(sql`
+        SELECT COUNT(*)::int AS count
+        FROM users
+        WHERE role = 'Customer'
+          AND joined_at >= ${startDate}
+          AND joined_at <= ${endDate}
+    `);
+
+    const countValue = Number((result as any)?.rows?.[0]?.count || 0);
+
+    return {
+        newCustomers: countValue,
+    };
+}
+
+export async function getDefectStats(startDate: Date, endDate: Date): Promise<{
+    name: string;
+    value: number;
+}[]> {
+    const logs = await db.select().from(schema.wastageLogs).where(and(
+        gte(schema.wastageLogs.createdAt, startDate),
+        lte(schema.wastageLogs.createdAt, endDate)
+    ));
+
+    const defectMap = new Map<string, number>();
+
+    for (const log of logs) {
+        const reason = log.reason || 'Other';
+        defectMap.set(reason, (defectMap.get(reason) || 0) + Number(log.quantity || 1));
+    }
+
+    return Array.from(defectMap.entries())
+        .map(([name, value]) => ({ name, value }))
+        .sort((a, b) => b.value - a.value);
+}
+
+export async function getSupplierDefectStats(startDate: Date, endDate: Date): Promise<{
+    supplier: string;
+    defectCount: number;
+    financialLoss: number;
+}[]> {
+    const [logs, inventoryItems] = await Promise.all([
+        db.select().from(schema.wastageLogs).where(and(
+            gte(schema.wastageLogs.createdAt, startDate),
+            lte(schema.wastageLogs.createdAt, endDate)
+        )),
+        db.select({
+            id: schema.inventoryItems.id,
+            preferredSupplier: schema.inventoryItems.preferredSupplier,
+        }).from(schema.inventoryItems),
+    ]);
+
+    const supplierByInventoryItem = new Map(inventoryItems.map((item) => [
+        item.id,
+        item.preferredSupplier || 'Unknown Supplier'
+    ]));
+    const supplierMap = new Map<string, { supplier: string; defectCount: number; financialLoss: number }>();
+
+    for (const log of logs) {
+        if (!/factory defect|doa/i.test(log.reason || '')) continue;
+
+        const supplier = supplierByInventoryItem.get(log.inventoryItemId) || 'Unknown Supplier';
+        const current = supplierMap.get(supplier) || {
+            supplier,
+            defectCount: 0,
+            financialLoss: 0,
+        };
+
+        current.defectCount += Number(log.quantity || 1);
+        current.financialLoss += Number(log.financialLoss || 0);
+        supplierMap.set(supplier, current);
+    }
+
+    return Array.from(supplierMap.values()).sort((a, b) => b.defectCount - a.defectCount);
+}
+
+export async function getTechnicianPerformanceStats(startDate: Date, endDate: Date): Promise<{
+    technician: string;
+    jobs: number;
+    avgTimeHours: number;
+}[]> {
+    const jobs = await db.select().from(schema.jobTickets);
+    const technicianMap = new Map<string, { jobs: number; totalHours: number }>();
+
+    for (const job of jobs) {
+        const technician = job.technician?.trim();
+        if (!technician) continue;
+
+        const isCompletedInRange = isDateWithinRange(job.completedAt, startDate, endDate)
+            || (job.status === 'Completed' && isDateWithinRange(job.createdAt, startDate, endDate));
+        if (!isCompletedInRange) continue;
+
+        const current = technicianMap.get(technician) || { jobs: 0, totalHours: 0 };
+        current.jobs += 1;
+
+        if (job.createdAt && job.completedAt) {
+            const hours = Math.max(0, (job.completedAt.getTime() - job.createdAt.getTime()) / (1000 * 60 * 60));
+            current.totalHours += hours;
+        }
+
+        technicianMap.set(technician, current);
+    }
+
+    return Array.from(technicianMap.entries())
+        .map(([technician, data]) => ({
+            technician,
+            jobs: data.jobs,
+            avgTimeHours: data.jobs > 0
+                ? Math.round((data.totalHours / data.jobs) * 10) / 10
+                : 0,
+        }))
+        .sort((a, b) => b.jobs - a.jobs);
 }
