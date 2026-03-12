@@ -5,12 +5,12 @@
  */
 
 import admin from 'firebase-admin';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { join, resolve } from 'path';
 import { readFileSync, existsSync } from 'fs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+// Resolve server directory in a way that works for both ESM and CJS bundles.
+// process.cwd() on Render is /app, and the service account sits at /app/server/
+const SERVER_DIR = resolve(process.cwd(), 'server');
 
 // In-memory storage for device tokens
 // In production, you might want to use Redis or persist to database
@@ -18,7 +18,7 @@ const adminDeviceTokens: Map<string, { token: string; platform: string; userId: 
 
 // Check if Firebase Admin is already initialized
 if (!admin.apps.length) {
-    const serviceAccountPath = join(__dirname, '..', 'firebase-service-account.json');
+    const serviceAccountPath = join(SERVER_DIR, 'firebase-service-account.json');
 
     if (existsSync(serviceAccountPath)) {
         try {
