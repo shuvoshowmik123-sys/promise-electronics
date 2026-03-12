@@ -5,10 +5,12 @@
  */
 
 import { Router, Request, Response } from 'express';
-import { requireAdminAuth, requireAnyPermission, requirePermission } from './middleware/auth.js';
+import { requireAdminAuth, requirePermission } from './middleware/auth.js';
 import { storage } from '../storage.js';
-import { settingsRepo, notificationRepo, systemRepo, userRepo, jobRepo, serviceRequestRepo, warrantyRepo, hrRepo } from '../repositories/index.js';
+import { notificationRepo, userRepo, jobRepo } from '../repositories/index.js';
 import { handleAdminEventStream } from './admin-stream.js';
+import { buildAdminNotificationFeed, getAdminNotificationUnreadCount } from '../services/admin-notification-feed.service.js';
+import { logRouteError } from '../utils/route-error.js';
 
 const router = Router();
 
@@ -37,46 +39,10 @@ router.get('/api/admin/sse', requireAdminAuth, (req: Request, res: Response) => 
 router.get('/api/admin/notifications', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const limit = parseInt(req.query.limit as string) || 50;
-        const [serviceRequests, jobs] = await Promise.all([
-            storage.getAllServiceRequests(),
-            jobRepo.getAllJobTickets(),
-        ]);
-
-        const serviceRequestNotifications = serviceRequests.map((sr: any) => ({
-            id: `sr-${sr.id}`,
-            type: 'service_request',
-            title: 'Service Request',
-            message: `${sr.brand} ${sr.modelNumber || ''} - ${sr.status}`,
-            createdAt: sr.createdAt,
-            read: Boolean(sr.adminInteracted),
-            link: 'service-requests',
-            linkId: sr.id,
-        }));
-
-        const jobNotifications = jobs
-            .filter((job: any) =>
-                job.status !== 'Completed'
-                && job.status !== 'Delivered'
-                && (job.priority === 'High' || job.priority === 'Critical')
-            )
-            .map((job: any) => ({
-                id: `job-${job.id}`,
-                type: 'job',
-                title: `Urgent Job: ${job.ticketNumber || job.id}`,
-                message: `${job.device || 'Device'} - ${job.issue || 'Needs attention'}`,
-                createdAt: job.createdAt,
-                read: false,
-                link: 'jobs',
-                linkId: job.ticketNumber || job.id,
-            }));
-
-        const notifications = [...serviceRequestNotifications, ...jobNotifications]
-            .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-            .slice(0, limit);
-
-        res.json(notifications);
+        const notifications = await buildAdminNotificationFeed(req.session.adminUserId);
+        res.json(notifications.slice(0, limit));
     } catch (error) {
-        console.error('Failed to fetch admin notifications:', error);
+        logRouteError('AdminNotifications.List', req, error);
         res.status(500).json({ error: 'Failed to fetch notifications' });
     }
 });
@@ -86,21 +52,10 @@ router.get('/api/admin/notifications', requireAdminAuth, async (req: Request, re
  */
 router.get('/api/admin/notifications/unread-count', requireAdminAuth, async (req: Request, res: Response) => {
     try {
-        const currentUserId = req.session.adminUserId;
-
-        const [serviceRequestUnreadCount, personalNotes, broadcastNotes] = await Promise.all([
-            serviceRequestRepo.getUnreadServiceRequestsCount(),
-            currentUserId ? notificationRepo.getUnreadNotifications(currentUserId) : Promise.resolve([]),
-            notificationRepo.getUnreadNotifications('broadcast')
-        ]);
-
-        // Filter out notifications older than 7 days per the plan
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-        const validUnread = [...personalNotes, ...broadcastNotes].filter(n => new Date(n.createdAt || 0).getTime() > sevenDaysAgo.getTime());
-
-        res.json({ count: serviceRequestUnreadCount + validUnread.length });
+        const count = await getAdminNotificationUnreadCount(req.session.adminUserId);
+        res.json({ count });
     } catch (error) {
-        console.error('Failed to get unread count:', error);
+        logRouteError('AdminNotifications.UnreadCount', req, error);
         res.status(500).json({ error: 'Failed to get unread count' });
     }
 });
@@ -149,7 +104,7 @@ router.post('/api/admin/notifications/override', requireAdminAuth, requirePermis
 
         res.json({ success: true, notification });
     } catch (error) {
-        console.error('Failed to create override request:', error);
+        logRouteError('AdminNotifications.OverrideCreate', req, error);
         res.status(500).json({ error: 'Failed to create override request' });
     }
 });
@@ -165,7 +120,7 @@ router.get('/api/admin/notifications/overrides', requireAdminAuth, requirePermis
 
         res.json(pendingOverrides);
     } catch (error) {
-        console.error('Failed to fetch overrides:', error);
+        logRouteError('AdminNotifications.OverrideList', req, error);
         res.status(500).json({ error: 'Failed to fetch overrides' });
     }
 });
@@ -218,7 +173,7 @@ router.post('/api/admin/notifications/override/:id/approve', requireAdminAuth, r
 
         res.json({ success: true });
     } catch (error) {
-        console.error('Failed to approve override:', error);
+        logRouteError('AdminNotifications.OverrideApprove', req, error);
         res.status(500).json({ error: 'Failed to approve override flow' });
     }
 });
@@ -247,7 +202,7 @@ router.post('/api/admin/push/register', requireAdminAuth, async (req: Request, r
         console.log(`[FCM] Admin ${adminId} registered push token`);
         res.json({ success: true });
     } catch (error) {
-        console.error('Failed to register push token:', error);
+        logRouteError('AdminNotifications.PushRegister', req, error);
         res.status(500).json({ error: 'Failed to register token' });
     }
 });
@@ -265,7 +220,7 @@ router.post('/api/admin/push/unregister', requireAdminAuth, async (req: Request,
 
         res.json({ success: true });
     } catch (error) {
-        console.error('Failed to unregister push token:', error);
+        logRouteError('AdminNotifications.PushUnregister', req, error);
         res.status(500).json({ error: 'Failed to unregister token' });
     }
 });

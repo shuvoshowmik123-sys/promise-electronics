@@ -22,14 +22,20 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
     const [activeTab, setActiveTab] = React.useState("notifications");
     const queryClient = useQueryClient();
 
-    const { data: adminNotifications = [] } = useQuery({
+    const {
+        data: adminNotifications,
+        isLoading: isNotificationsLoading,
+        isError: isNotificationsError,
+    } = useQuery({
         queryKey: ['adminNotifications'],
         queryFn: adminNotificationsApi.getAll,
         enabled: open,
         staleTime: 30_000,
     });
 
-    const { data: unreadCountData } = useQuery({
+    const {
+        data: unreadCountData,
+    } = useQuery({
         queryKey: ['adminNotificationCount'],
         queryFn: adminNotificationsApi.getUnreadCount,
         enabled: open,
@@ -45,21 +51,22 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
 
     const pendingRollbacks = getPendingRollbacks();
     const totalApprovals = pendingRollbacks.length + pendingOverrides.length;
-    const unreadNotificationCount = unreadCountData?.count ?? adminNotifications.length;
+    const notificationItems = adminNotifications ?? [];
+    const unreadNotificationCount = unreadCountData?.count ?? (!isNotificationsError ? notificationItems.length : 0);
 
     const notifications = React.useMemo(() => {
-        return adminNotifications.map((notification: any) => ({
+        return notificationItems.map((notification) => ({
             id: notification.id,
             type: notification.type || 'service_request',
             title: notification.title,
             message: notification.message,
             time: new Date(notification.createdAt || new Date()),
-            priority: 'info',
+            priority: notification.type === 'critical' ? 'critical' : 'info',
             read: Boolean(notification.read),
-            link: notification.link || (notification.type === 'job' ? 'jobs' : 'service-requests'),
-            linkId: notification.linkId || (notification.id?.startsWith('sr-') ? notification.id.slice(3) : notification.jobId || notification.id),
+            link: notification.link || 'dashboard',
+            linkId: notification.linkId || notification.jobId || undefined,
         }));
-    }, [adminNotifications]);
+    }, [notificationItems]);
 
     const handleNavigate = async (n: any) => {
         if (n.type === 'service_request' && n.linkId) {
@@ -92,9 +99,9 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
                     <SheetTitle className="flex items-center gap-2">
                         <Bell className="h-5 w-5 text-slate-500" />
                         Notifications
-                        {unreadNotificationCount + totalApprovals > 0 && (
+                        {unreadNotificationCount > 0 && (
                             <span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] text-white">
-                                {unreadNotificationCount + totalApprovals}
+                                {unreadNotificationCount}
                             </span>
                         )}
                     </SheetTitle>
@@ -125,7 +132,27 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
                     <ScrollArea className="flex-1">
                         <TabsContent value="notifications" className="m-0">
                             <div className="flex flex-col">
-                                {notifications.length === 0 ? (
+                                {isNotificationsLoading ? (
+                                    <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                                        <div className="h-12 w-12 rounded-full bg-slate-50 flex items-center justify-center mb-4">
+                                            <Bell className="h-6 w-6 text-slate-400" />
+                                        </div>
+                                        <h3 className="text-sm font-semibold text-slate-900">Loading notifications</h3>
+                                        <p className="text-sm text-slate-500 max-w-xs mt-1">
+                                            Fetching the latest unread items from the server.
+                                        </p>
+                                    </div>
+                                ) : isNotificationsError ? (
+                                    <div className="flex flex-col items-center justify-center py-12 text-center px-4">
+                                        <div className="h-12 w-12 rounded-full bg-rose-50 flex items-center justify-center mb-4">
+                                            <AlertCircle className="h-6 w-6 text-rose-500" />
+                                        </div>
+                                        <h3 className="text-sm font-semibold text-slate-900">Could not load notifications</h3>
+                                        <p className="text-sm text-slate-500 max-w-xs mt-1">
+                                            The notification feed request failed. Check the server response and try again.
+                                        </p>
+                                    </div>
+                                ) : notifications.length === 0 ? (
                                     <div className="flex flex-col items-center justify-center py-12 text-center px-4">
                                         <div className="h-12 w-12 rounded-full bg-slate-50 flex items-center justify-center mb-4">
                                             <CheckCircle2 className="h-6 w-6 text-emerald-500" />
@@ -151,11 +178,13 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
                                                 n.type === 'inventory' && "bg-orange-50 border-orange-100 text-orange-600",
                                                 n.type === 'job' && "bg-blue-50 border-blue-100 text-blue-600",
                                                 n.type === 'message' && "bg-indigo-50 border-indigo-100 text-indigo-600",
+                                                (!['service_request', 'inventory', 'job', 'message'].includes(n.type)) && "bg-slate-50 border-slate-100 text-slate-600",
                                             )}>
                                                 {n.type === 'service_request' && <MessageSquare size={16} />}
                                                 {n.type === 'inventory' && <Package size={16} />}
                                                 {n.type === 'job' && <AlertCircle size={16} />}
                                                 {n.type === 'message' && <MessageSquare size={16} />}
+                                                {!['service_request', 'inventory', 'job', 'message'].includes(n.type) && <Bell size={16} />}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center justify-between gap-2 mb-0.5">
@@ -191,7 +220,7 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
 
                         <TabsContent value="approvals" className="m-0">
                             <div className="flex flex-col">
-                                {pendingRollbacks.length === 0 ? (
+                                {totalApprovals === 0 ? (
                                     <div className="flex flex-col items-center justify-center py-12 text-center px-4">
                                         <div className="h-12 w-12 rounded-full bg-slate-50 flex items-center justify-center mb-4">
                                             <CheckCircle2 className="h-6 w-6 text-emerald-500" />
@@ -311,7 +340,10 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
                 </Tabs>
 
                 <div className="p-4 border-t border-slate-100 bg-slate-50/50">
-                    <button className="w-full py-2 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors">
+                    <button
+                        className="w-full py-2 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors disabled:cursor-not-allowed disabled:text-slate-400"
+                        disabled
+                    >
                         Mark all as read
                     </button>
                 </div>

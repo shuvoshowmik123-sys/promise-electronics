@@ -6,27 +6,63 @@
  * - Device tokens for push notifications
  */
 
-import { db, nanoid, eq, desc, and, schema, type Notification, type InsertNotification } from './base.js';
+import { db, nanoid, eq, desc, and, schema, sql, type Notification, type InsertNotification } from './base.js';
 import type { DeviceToken, InsertDeviceToken } from '../../shared/schema.js';
 import { publishAdminNotificationEvent } from '../services/admin-realtime.service.js';
+import { executeLegacyQuery, isMissingColumnError, mapLegacyNotificationRow } from './legacy-schema.js';
+
+const NOTIFICATIONS_LEGACY_COLUMNS = [
+    'corporate_client_id',
+    'job_id',
+    'context_type',
+];
+
+function isMissingNotificationColumn(error: unknown): boolean {
+    return isMissingColumnError(error, NOTIFICATIONS_LEGACY_COLUMNS);
+}
+
+async function loadNotificationsByUser(userId: string, unreadOnly = false): Promise<Notification[]> {
+    try {
+        const query = db.select().from(schema.notifications)
+            .where(unreadOnly
+                ? and(
+                    eq(schema.notifications.userId, userId),
+                    eq(schema.notifications.read, false),
+                )
+                : eq(schema.notifications.userId, userId),
+            )
+            .orderBy(desc(schema.notifications.createdAt));
+        return await query;
+    } catch (error) {
+        if (!isMissingNotificationColumn(error)) {
+            throw error;
+        }
+
+        console.warn('[LegacySchema][notifications] Falling back to raw SELECT * for legacy production schema.', error);
+        const unreadFilter = unreadOnly ? sql`AND read = false` : sql``;
+        return executeLegacyQuery(
+            sql`
+                SELECT *
+                FROM notifications
+                WHERE user_id = ${userId}
+                ${unreadFilter}
+                ORDER BY created_at DESC
+            `,
+            mapLegacyNotificationRow,
+        );
+    }
+}
 
 // ============================================
 // Notification Queries
 // ============================================
 
 export async function getNotifications(userId: string): Promise<Notification[]> {
-    return db.select().from(schema.notifications)
-        .where(eq(schema.notifications.userId, userId))
-        .orderBy(desc(schema.notifications.createdAt));
+    return loadNotificationsByUser(userId, false);
 }
 
 export async function getUnreadNotifications(userId: string): Promise<Notification[]> {
-    return db.select().from(schema.notifications)
-        .where(and(
-            eq(schema.notifications.userId, userId),
-            eq(schema.notifications.read, false)
-        ))
-        .orderBy(desc(schema.notifications.createdAt));
+    return loadNotificationsByUser(userId, true);
 }
 
 export async function getNotification(id: string): Promise<Notification | undefined> {
@@ -46,7 +82,7 @@ export async function createNotification(notification: InsertNotification): Prom
 
     publishAdminNotificationEvent({
         action: 'created',
-        invalidate: ["notifications", "notificationCount", "dashboardStats"],
+        invalidate: ["adminNotifications", "adminNotificationCount", "notifications", "notificationCount", "dashboardStats"],
         payload: {
             notificationId: newNotification.id,
             status: 'unread',
@@ -66,7 +102,7 @@ export async function markNotificationAsRead(id: string): Promise<Notification |
     if (updated) {
         publishAdminNotificationEvent({
             action: 'updated',
-            invalidate: ["notifications", "notificationCount"],
+            invalidate: ["adminNotifications", "adminNotificationCount", "notifications", "notificationCount"],
             payload: {
                 notificationId: updated.id,
                 status: 'read',

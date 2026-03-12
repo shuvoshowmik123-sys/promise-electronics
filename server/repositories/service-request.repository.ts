@@ -6,60 +6,110 @@
  */
 
 import { db, nanoid, eq, desc, like, isNull, and, lt, sql, schema, type ServiceRequest, type InsertServiceRequest, type ServiceRequestEvent, type InsertServiceRequestEvent } from './base.js';
+import { executeLegacyQuery, isMissingColumnError, mapLegacyServiceRequestRow } from './legacy-schema.js';
+
+const SERVICE_REQUESTS_LEGACY_COLUMNS = [
+    'tracking_status',
+    'request_intent',
+    'service_mode',
+    'stage',
+    'is_quote',
+    'service_id',
+    'quote_status',
+    'quote_amount',
+    'quote_notes',
+    'quoted_at',
+    'quote_expires_at',
+    'accepted_at',
+    'pickup_tier',
+    'pickup_cost',
+    'total_amount',
+    'scheduled_pickup_date',
+    'expected_pickup_date',
+    'expected_return_date',
+    'expected_ready_date',
+    'intake_location',
+    'physical_condition',
+    'customer_signature_url',
+    'proof_of_purchase',
+    'warranty_status',
+    'agreed_to_pickup',
+    'pickup_agreed_at',
+    'admin_interacted',
+    'admin_interacted_at',
+    'admin_interacted_by',
+    'store_id',
+    'corporate_client_id',
+    'corporate_challan_id',
+];
+
+function isMissingServiceRequestColumn(error: unknown): boolean {
+    return isMissingColumnError(error, SERVICE_REQUESTS_LEGACY_COLUMNS);
+}
+
+async function loadAllServiceRequests(): Promise<ServiceRequest[]> {
+    try {
+        return await db.select().from(schema.serviceRequests).orderBy(desc(schema.serviceRequests.createdAt));
+    } catch (error) {
+        if (!isMissingServiceRequestColumn(error)) {
+            throw error;
+        }
+
+        console.warn('[LegacySchema][service_requests] Falling back to raw SELECT * for legacy production schema.', error);
+        return executeLegacyQuery(
+            sql`SELECT * FROM service_requests ORDER BY created_at DESC`,
+            mapLegacyServiceRequestRow,
+        );
+    }
+}
 
 // ============================================
 // Service Request Queries
 // ============================================
 
 export async function getAllServiceRequests(): Promise<ServiceRequest[]> {
-    return db.select().from(schema.serviceRequests).orderBy(desc(schema.serviceRequests.createdAt));
+    return loadAllServiceRequests();
 }
 
 export async function getServiceRequest(id: string): Promise<ServiceRequest | undefined> {
-    const [request] = await db.select().from(schema.serviceRequests).where(eq(schema.serviceRequests.id, id));
-    return request;
+    const requests = await loadAllServiceRequests();
+    return requests.find((request) => request.id === id);
 }
 
 export async function getServiceRequestByTicketNumber(ticketNumber: string): Promise<ServiceRequest | undefined> {
-    const [request] = await db.select().from(schema.serviceRequests)
-        .where(eq(schema.serviceRequests.ticketNumber, ticketNumber));
-    return request;
+    const requests = await loadAllServiceRequests();
+    return requests.find((request) => request.ticketNumber === ticketNumber);
 }
 
 export async function getServiceRequestsByCustomerId(customerId: string): Promise<ServiceRequest[]> {
-    return db.select().from(schema.serviceRequests)
-        .where(eq(schema.serviceRequests.customerId, customerId))
-        .orderBy(desc(schema.serviceRequests.createdAt));
+    const requests = await loadAllServiceRequests();
+    return requests.filter((request) => request.customerId === customerId);
 }
 
 export async function getServiceRequestsByStatus(status: string): Promise<ServiceRequest[]> {
-    return db.select().from(schema.serviceRequests)
-        .where(eq(schema.serviceRequests.status, status))
-        .orderBy(desc(schema.serviceRequests.createdAt));
+    const requests = await loadAllServiceRequests();
+    return requests.filter((request) => request.status === status);
 }
 
 export async function getQuoteRequests(): Promise<ServiceRequest[]> {
-    return db.select().from(schema.serviceRequests)
-        .where(eq(schema.serviceRequests.isQuote, true))
-        .orderBy(desc(schema.serviceRequests.createdAt));
+    const requests = await loadAllServiceRequests();
+    return requests.filter((request) => request.isQuote === true);
 }
 
 export async function getExpiredServiceRequests(): Promise<ServiceRequest[]> {
     const now = new Date();
-    return db.select().from(schema.serviceRequests).where(lt(schema.serviceRequests.expiresAt, now));
+    const requests = await loadAllServiceRequests();
+    return requests.filter((request) => request.expiresAt !== null && request.expiresAt < now);
 }
 
 export async function getPendingServiceRequestsCount(): Promise<number> {
-    const requests = await db.select().from(schema.serviceRequests)
-        .where(eq(schema.serviceRequests.status, 'Pending'));
-    return requests.length;
+    const requests = await loadAllServiceRequests();
+    return requests.filter((request) => request.status === 'Pending').length;
 }
 
 export async function getUnreadServiceRequestsCount(): Promise<number> {
-    const [result] = await db.select({ count: sql<number>`count(*)` })
-        .from(schema.serviceRequests)
-        .where(eq(schema.serviceRequests.adminInteracted, false));
-    return Number(result?.count || 0);
+    const requests = await loadAllServiceRequests();
+    return requests.filter((request) => !request.adminInteracted).length;
 }
 
 // ============================================
@@ -278,8 +328,8 @@ export async function declineQuote(id: string): Promise<ServiceRequest | undefin
 }
 
 export async function getServiceRequestByConvertedJobId(jobId: string): Promise<ServiceRequest | undefined> {
-    const [request] = await db.select().from(schema.serviceRequests).where(eq(schema.serviceRequests.convertedJobId, jobId));
-    return request;
+    const requests = await loadAllServiceRequests();
+    return requests.find((request) => request.convertedJobId === jobId);
 }
 
 export async function getNextValidStages(id: string): Promise<string[]> {

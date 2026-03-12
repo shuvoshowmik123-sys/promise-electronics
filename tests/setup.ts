@@ -1,6 +1,4 @@
 import { beforeAll, afterAll } from 'vitest';
-import { db } from '@shared/db';
-import { sql } from 'drizzle-orm';
 
 beforeAll(async () => {
     // Start transactions or prep test db before any tests

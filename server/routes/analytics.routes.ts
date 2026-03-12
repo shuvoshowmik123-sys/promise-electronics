@@ -5,6 +5,7 @@ import { z } from "zod";
 import ExcelJS from "exceljs";
 import { simpleCache } from "../utils/cache.js";
 import { getJobOverview } from "../repositories/analytics.repository.js";
+import { logRouteError } from "../utils/route-error.js";
 
 const router = Router();
 
@@ -19,7 +20,7 @@ router.get("/workload", async (req, res) => {
             .sort((a, b) => b.jobs - a.jobs);
         res.json(workload);
     } catch (error) {
-        console.error("[Analytics] Workload fetch error:", error);
+        logRouteError("Analytics.Workload", req, error);
         res.status(500).json({ message: "Failed to fetch technician workload" });
     }
 });
@@ -52,7 +53,7 @@ router.get("/metrics", async (req, res) => {
             jobDistribution: jobStats.statusDistribution
         });
     } catch (error) {
-        console.error("Analytics Error:", error);
+        logRouteError("Analytics.Metrics", req, error);
         res.status(500).json({ message: "Failed to fetch metrics" });
     }
 });
@@ -66,6 +67,7 @@ router.get("/revenue", async (req, res) => {
         const revenueStats = await storage.getRevenueStats(startDate, endDate);
         res.json(revenueStats);
     } catch (error) {
+        logRouteError("Analytics.Revenue", req, error);
         res.status(500).json({ message: "Failed to fetch revenue stats" });
     }
 });
@@ -79,6 +81,7 @@ router.get("/technicians", async (req, res) => {
         const techStats = await storage.getTechnicianStats(startDate, endDate);
         res.json(techStats);
     } catch (error) {
+        logRouteError("Analytics.Technicians", req, error);
         res.status(500).json({ message: "Failed to fetch technician stats" });
     }
 });
@@ -150,7 +153,7 @@ router.get("/dashboard", async (req, res) => {
 
         res.json(dashboardData);
     } catch (error) {
-        console.error("Dashboard Analytics Error:", error);
+        logRouteError("Analytics.Dashboard", req, error);
         res.status(500).json({ message: "Failed to fetch dashboard data" });
     }
 });
@@ -189,7 +192,7 @@ router.get("/export/excel", async (req, res) => {
         await workbook.xlsx.write(res);
         res.end();
     } catch (error) {
-        console.error("Export Error:", error);
+        logRouteError("Analytics.ExportExcel", req, error);
         res.status(500).send("Failed to export report");
     }
 });
@@ -204,7 +207,7 @@ router.get("/defects", async (req, res) => {
         const defectStats = await storage.getDefectStats(startDate, endDate);
         res.json(defectStats);
     } catch (error) {
-        console.error("Defect Stats Error:", error);
+        logRouteError("Analytics.Defects", req, error);
         res.status(500).json({ message: "Failed to fetch defect stats" });
     }
 });
@@ -218,7 +221,7 @@ router.get("/supplier-defects", async (req, res) => {
         const defectStats = await storage.getSupplierDefectStats(startDate, endDate);
         res.json(defectStats);
     } catch (error) {
-        console.error("Supplier Defect Stats Error:", error);
+        logRouteError("Analytics.SupplierDefects", req, error);
         res.status(500).json({ message: "Failed to fetch supplier defect stats" });
     }
 });
@@ -232,7 +235,7 @@ router.get("/performance", async (req, res) => {
         const performanceStats = await storage.getTechnicianPerformanceStats(startDate, endDate);
         res.json(performanceStats);
     } catch (error) {
-        console.error("Performance Stats Error:", error);
+        logRouteError("Analytics.Performance", req, error);
         res.status(500).json({ message: "Failed to fetch performance stats" });
     }
 });

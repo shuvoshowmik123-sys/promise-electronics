@@ -10,6 +10,7 @@ import type {
     DrawerSession, InsertDrawerSession, SystemModule, CorporateClient, InsertCorporateClient,
     CorporateMessageThread, CorporateMessage, Quotation, InsertQuotation, QuotationItem, InsertQuotationItem
 } from "@shared/schema";
+import type { AdminNotificationItem } from "@shared/types/admin-notifications";
 import { fetchApi } from "./httpClient";
 import { PaginationResult, Order, ProductVariant, AdminCustomer, CustomerDetails, SafeUser } from "./types";
 
@@ -762,7 +763,7 @@ export const adminReviewsApi = {
 };
 
 export const adminNotificationsApi = {
-    getAll: () => fetchApi<Notification[]>('/admin/notifications'),
+    getAll: () => fetchApi<AdminNotificationItem[]>('/admin/notifications'),
     getUnreadCount: () => fetchApi<{ count: number }>('/admin/notifications/unread-count'),
     getOverrides: () => fetchApi<Notification[]>('/admin/notifications/overrides'),
     approveOverrideRequest: (id: string) => fetchApi<{ success: boolean }>(`/admin/notifications/override/${id}/approve`, {

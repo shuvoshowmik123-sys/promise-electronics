@@ -4,37 +4,94 @@
  * Handles all database operations for job tickets (repair jobs).
  */
 
-import { db, nanoid, eq, desc, like, or, schema, type JobTicket, type InsertJobTicket } from './base.js';
+import { db, nanoid, eq, desc, like, or, schema, sql, type JobTicket, type InsertJobTicket } from './base.js';
+import { executeLegacyQuery, isMissingColumnError, mapLegacyJobTicketRow } from './legacy-schema.js';
+
+const JOB_TICKETS_LEGACY_COLUMNS = [
+    'assigned_technician_id',
+    'corporate_challan_id',
+    'corporate_job_number',
+    'corporate_client_id',
+    'job_type',
+    'charges',
+    'warranty_notes',
+    'payment_status',
+    'payment_id',
+    'paid_amount',
+    'remaining_amount',
+    'paid_at',
+    'last_payment_at',
+    'billing_status',
+    'invoice_printed_at',
+    'initial_status',
+    'reported_defect',
+    'problem_found',
+    'corporate_bill_id',
+    'invoice_printed_by',
+    'invoice_print_count',
+    'write_off_reason',
+    'write_off_by',
+    'write_off_at',
+    'assisted_by_ids',
+    'assisted_by_names',
+    'service_lines',
+    'product_lines',
+    'warranty_days',
+    'grace_period_days',
+    'warranty_expiry_date',
+    'warranty_terms_accepted',
+    'mobile_media',
+    'last_mobile_update_at',
+    'store_id',
+];
+
+function isMissingJobTicketColumn(error: unknown): boolean {
+    return isMissingColumnError(error, JOB_TICKETS_LEGACY_COLUMNS);
+}
+
+async function loadAllJobTickets(): Promise<JobTicket[]> {
+    try {
+        return await db.select().from(schema.jobTickets).orderBy(desc(schema.jobTickets.createdAt));
+    } catch (error) {
+        if (!isMissingJobTicketColumn(error)) {
+            throw error;
+        }
+
+        console.warn('[LegacySchema][job_tickets] Falling back to raw SELECT * for legacy production schema.', error);
+        return executeLegacyQuery(
+            sql`SELECT * FROM job_tickets ORDER BY created_at DESC`,
+            mapLegacyJobTicketRow,
+        );
+    }
+}
 
 // ============================================
 // Job Queries
 // ============================================
 
 export async function getAllJobTickets(): Promise<JobTicket[]> {
-    return db.select().from(schema.jobTickets).orderBy(desc(schema.jobTickets.createdAt));
+    return loadAllJobTickets();
 }
 
 export async function getJobTicket(id: string): Promise<JobTicket | undefined> {
-    const [job] = await db.select().from(schema.jobTickets).where(eq(schema.jobTickets.id, id));
-    return job;
+    const jobs = await loadAllJobTickets();
+    return jobs.find((job) => job.id === id);
 }
 
 export async function getJobTicketsByTechnician(technicianName: string): Promise<JobTicket[]> {
-    return db.select().from(schema.jobTickets)
-        .where(eq(schema.jobTickets.technician, technicianName))
-        .orderBy(desc(schema.jobTickets.createdAt));
+    const jobs = await loadAllJobTickets();
+    return jobs.filter((job) => job.technician === technicianName);
 }
 
 export async function getJobTicketsByStatus(status: string): Promise<JobTicket[]> {
-    return db.select().from(schema.jobTickets)
-        .where(eq(schema.jobTickets.status, status))
-        .orderBy(desc(schema.jobTickets.createdAt));
+    const jobs = await loadAllJobTickets();
+    return jobs.filter((job) => job.status === status);
 }
 
 export async function getJobTicketsByCustomerPhone(phone: string): Promise<JobTicket[]> {
     // Normalize phone number for matching (last 10 digits)
     const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
-    const allJobs = await db.select().from(schema.jobTickets).orderBy(desc(schema.jobTickets.createdAt));
+    const allJobs = await loadAllJobTickets();
     return allJobs.filter(job => {
         if (!job.customerPhone) return false;
         const jobPhone = job.customerPhone.replace(/\D/g, '').slice(-10);
@@ -73,7 +130,7 @@ export async function getNextJobNumber(): Promise<string> {
  * Get active jobs count (not completed or cancelled)
  */
 export async function getActiveJobsCount(): Promise<number> {
-    const jobs = await db.select().from(schema.jobTickets);
+    const jobs = await loadAllJobTickets();
     return jobs.filter(j => j.status !== 'Completed' && j.status !== 'Cancelled').length;
 }
 
@@ -127,24 +184,18 @@ export async function assignTechnician(id: string, technicianName: string): Prom
 
 export async function getJobTicketsList(page: number = 1, limit: number = 50) {
     const offset = (page - 1) * limit;
-    const items = await db.select().from(schema.jobTickets)
-        .orderBy(desc(schema.jobTickets.createdAt))
-        .limit(limit).offset(offset);
+    const items = (await loadAllJobTickets()).slice(offset, offset + limit);
     
     return { items, pagination: { total: items.length, page, limit, pages: 1 } };
 }
 
 export async function searchJobTickets(query: string): Promise<JobTicket[]> {
-    const searchPattern = `%${query}%`;
-    return db.select()
-        .from(schema.jobTickets)
-        .where(
-            or(
-                like(schema.jobTickets.id, searchPattern),
-                like(schema.jobTickets.customer, searchPattern),
-                like(schema.jobTickets.device, searchPattern)
-            )
-        )
-        .orderBy(desc(schema.jobTickets.createdAt))
-        .limit(20);
+    const searchPattern = query.toLowerCase();
+    const jobs = await loadAllJobTickets();
+    return jobs.filter((job) => {
+        const haystacks = [job.id, job.customer, job.device]
+            .filter((value): value is string => typeof value === 'string' && value.length > 0)
+            .map((value) => value.toLowerCase());
+        return haystacks.some((value) => value.includes(searchPattern));
+    }).slice(0, 20);
 }

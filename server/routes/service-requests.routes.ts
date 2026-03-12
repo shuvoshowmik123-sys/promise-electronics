@@ -16,6 +16,7 @@ import { auditLogger } from '../utils/auditLogger.js';
 import { jobService } from '../services/job.service.js';
 import { publishJobTicketEvent, publishServiceRequestEvent } from '../services/admin-realtime.service.js';
 import { deriveTrackingStatus } from '../lib/workflowAutomation.js';
+import { logRouteError } from '../utils/route-error.js';
 
 const router = Router();
 const SERVICE_REQUEST_REALTIME_TAGS = ["serviceRequests", "dashboardStats"] as const;
@@ -74,6 +75,7 @@ router.get('/api/service-requests', requireAdminAuth, requirePermission('service
         };
         res.json(result);
     } catch (error) {
+        logRouteError('ServiceRequests.List', req, error);
         res.status(500).json({ error: 'Failed to fetch service requests' });
     }
 });
@@ -112,6 +114,7 @@ router.get('/api/service-requests/:id', requireAdminAuth, requirePermission('ser
 
         res.json(enrichedRequest);
     } catch (error: any) {
+        logRouteError('ServiceRequests.Detail', req, error);
         res.status(500).json({ error: 'Failed to fetch service request', details: error.message });
     }
 });
@@ -151,7 +154,7 @@ router.post('/api/admin/service-requests/:id/mark-interacted', requireAdminAuth,
 
         res.json(updatedRequest);
     } catch (error: any) {
-        console.error('Failed to mark service request as interacted:', error);
+        logRouteError('ServiceRequests.MarkInteracted', req, error);
         res.status(500).json({ error: 'Failed to mark request as interacted' });
     }
 });
@@ -187,6 +190,7 @@ router.post('/api/admin/service-requests/sync-job/:jobId', requireAdminAuth, asy
 
         res.json(updatedRequest);
     } catch (error: any) {
+        logRouteError('ServiceRequests.SyncJob', req, error);
         res.status(500).json({ error: 'Failed to sync service request', details: error.message });
     }
 });

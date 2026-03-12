@@ -28,6 +28,7 @@ import crypto from 'crypto';
 import { AuditLogger } from '../services/audit.service.js';
 import { handleAdminEventStream } from './admin-stream.js';
 import { getCachedDashboard } from '../lib/dashboardCache.js';
+import { logRouteError } from '../utils/route-error.js';
 
 const router = Router();
 
@@ -65,7 +66,7 @@ router.get('/api/admin/dashboard', requireAdminAuth, requirePermission('dashboar
 
         res.json(stats);
     } catch (error) {
-        console.error('Dashboard stats error:', error);
+        logRouteError('AdminDashboard.Stats', req, error);
         res.status(500).json({ error: 'Failed to load dashboard data' });
     }
 });
@@ -78,7 +79,7 @@ router.get('/api/admin/job-overview', requireAdminAuth, requirePermission('dashb
         const overview = await analyticsRepo.getJobOverview();
         res.json(overview);
     } catch (error) {
-        console.error('Job overview error:', error);
+        logRouteError('AdminDashboard.JobOverview', req, error);
         res.status(500).json({ error: 'Failed to load job overview data' });
     }
 });
@@ -92,7 +93,7 @@ router.get('/api/admin/workflow-kpis', requireAdminAuth, requirePermission('dash
         const kpis = await storage.getWorkflowKPIs();
         res.json(kpis);
     } catch (error) {
-        console.error('Workflow KPIs error:', error);
+        logRouteError('AdminDashboard.WorkflowKPIs', req, error);
         res.status(500).json({ error: 'Failed to load workflow KPIs' });
     }
 });

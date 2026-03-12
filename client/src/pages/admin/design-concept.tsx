@@ -149,7 +149,10 @@ export default function DesignConcept() {
     const { isEnabled } = useModules();
     const { logout, user, hasPermission, status } = useAdminAuth();
     const { isOnline, getTabTier } = useOffline();
-    const { data: unreadNotificationCountData } = useQuery({
+    const {
+        data: unreadNotificationCountData,
+        isError: isNotificationCountError,
+    } = useQuery({
         queryKey: ["adminNotificationCount"],
         queryFn: adminNotificationsApi.getUnreadCount,
         enabled: status === "authenticated",
@@ -157,6 +160,7 @@ export default function DesignConcept() {
     });
 
     const unreadNotificationCount = unreadNotificationCountData?.count ?? 0;
+    const showNotificationBadge = !isNotificationCountError && unreadNotificationCount > 0;
     const notificationBadgeText = unreadNotificationCount > 99 ? "99+" : String(unreadNotificationCount);
 
     // Map sidebar item IDs to module IDs
@@ -434,7 +438,7 @@ export default function DesignConcept() {
                                         </div>
                                         <button onClick={() => setNotificationOpen(true)} className="relative text-slate-400 hover:text-white transition-colors">
                                             <Bell size={20} />
-                                            {unreadNotificationCount > 0 && (
+                                            {showNotificationBadge && (
                                                 <span className="absolute -top-2 -right-2 min-w-[1.1rem] rounded-full border border-slate-900 bg-rose-500 px-1 py-0.5 text-center text-[10px] font-bold leading-none text-white">
                                                     {notificationBadgeText}
                                                 </span>
@@ -490,7 +494,7 @@ export default function DesignConcept() {
                             className="h-11 w-11 bg-white/70 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-full flex items-center justify-center text-slate-700 active:scale-95 transition-all relative"
                         >
                             <Bell size={20} strokeWidth={2.5} />
-                            {unreadNotificationCount > 0 && (
+                            {showNotificationBadge && (
                                 <span className="absolute -top-1.5 -right-1.5 min-w-[1.2rem] rounded-full border-2 border-white bg-rose-500 px-1 py-0.5 text-center text-[10px] font-bold leading-none text-white shadow-sm">
                                     {notificationBadgeText}
                                 </span>
@@ -524,7 +528,7 @@ export default function DesignConcept() {
                                 className="h-9 w-9 md:h-10 md:w-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all cursor-pointer relative"
                             >
                                 <Bell size={18} />
-                                {unreadNotificationCount > 0 && (
+                                {showNotificationBadge && (
                                     <span className="absolute -top-1.5 -right-1.5 min-w-[1.2rem] rounded-full border-2 border-white bg-rose-500 px-1 py-0.5 text-center text-[10px] font-bold leading-none text-white">
                                         {notificationBadgeText}
                                     </span>

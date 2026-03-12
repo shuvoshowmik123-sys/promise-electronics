@@ -6,6 +6,7 @@
  */
 
 import { db, eq, or, and, gte, lte, lt, count, sum, desc, sql, schema, notInArray, type JobTicket } from './base.js';
+import * as jobRepo from './job.repository.js';
 
 const ACTIVE_JOB_STATUSES = ['In Progress', 'Diagnosing', 'Repairing'] as const;
 const PENDING_JOB_STATUSES = ['Pending', 'Waiting for Parts', 'Approval Requested'] as const;
@@ -77,18 +78,13 @@ export async function getDashboardStats(): Promise<{
     const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
 
     const [
-        activeJobsResult,
+        allJobs,
         pendingRequestsResult,
         lowStockResult,
         thisMonthRevenueResult,
-        lastMonthRevenueResult,
-        jobStatusResult
+        lastMonthRevenueResult
     ] = await Promise.all([
-        // Active Jobs
-        db.select({ count: count() })
-            .from(schema.jobTickets)
-            .where(or(eq(schema.jobTickets.status, "Pending"), eq(schema.jobTickets.status, "In Progress"))),
-
+        jobRepo.getAllJobTickets(),
         // Pending Service Requests
         db.select({ count: count() })
             .from(schema.serviceRequests)
@@ -111,14 +107,9 @@ export async function getDashboardStats(): Promise<{
                 gte(schema.posTransactions.createdAt, lastMonthStart),
                 lte(schema.posTransactions.createdAt, lastMonthEnd)
             )),
-
-        // Job Status Distribution
-        db.select({ status: schema.jobTickets.status, count: count() })
-            .from(schema.jobTickets)
-            .groupBy(schema.jobTickets.status),
     ]);
 
-    const activeJobs = Number(activeJobsResult[0]?.count || 0);
+    const activeJobs = allJobs.filter((job) => job.status === "Pending" || job.status === "In Progress").length;
     const pendingServiceRequests = Number(pendingRequestsResult[0]?.count || 0);
     const lowStockItems = Number(lowStockResult[0]?.count || 0);
     const thisMonthRevenue = Number(thisMonthRevenueResult[0]?.revenue || 0);
@@ -128,9 +119,15 @@ export async function getDashboardStats(): Promise<{
         ? ((thisMonthRevenue - lastMonthRevenue) / lastMonthRevenue) * 100
         : 0;
 
-    const jobStatusDistribution = jobStatusResult.map(r => ({
-        name: r.status || "Unknown",
-        value: Number(r.count)
+    const jobStatusCounts = new Map<string, number>();
+    allJobs.forEach((job) => {
+        const status = job.status || "Unknown";
+        jobStatusCounts.set(status, (jobStatusCounts.get(status) || 0) + 1);
+    });
+
+    const jobStatusDistribution = Array.from(jobStatusCounts.entries()).map(([name, value]) => ({
+        name,
+        value,
     }));
 
     // Weekly Revenue (last 7 days)
@@ -186,23 +183,16 @@ export async function getComprehensiveDashboard() {
             name: date.toLocaleString('default', { month: 'short' }),
         };
     });
-    const activeStatusFilter = or(...ACTIVE_JOB_STATUSES.map((status) => eq(schema.jobTickets.status, status)));
 
     const [
-        activeJobs,
-        recentJobs,
-        pendingRequests,
+        allJobs,
         lowStockItemsList,
         monthlyRevenueRows,
         currentMonthRevenueResult,
         currentMonthCorporateRevenueResult,
         currentMonthWastageSummary,
-        techWorkloadRows,
-        jobsCount,
     ] = await Promise.all([
-        db.select().from(schema.jobTickets).where(or(...ACTIVE_JOB_STATUSES.map(status => eq(schema.jobTickets.status, status)))).orderBy(desc(schema.jobTickets.createdAt)).limit(5),
-        db.select().from(schema.jobTickets).orderBy(desc(schema.jobTickets.createdAt)).limit(6),
-        db.select().from(schema.jobTickets).where(or(...PENDING_JOB_STATUSES.map(status => eq(schema.jobTickets.status, status)))).orderBy(desc(schema.jobTickets.createdAt)).limit(5),
+        jobRepo.getAllJobTickets(),
         db.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.status, "Low Stock")),
         db.select({
             month: sql<string>`to_char(date_trunc('month', ${schema.posTransactions.createdAt}), 'YYYY-MM')`,
@@ -231,27 +221,31 @@ export async function getComprehensiveDashboard() {
         })
             .from(schema.wastageLogs)
             .where(gte(schema.wastageLogs.createdAt, thisMonthStart)),
-        db.select({
-            technician: sql<string>`coalesce(${schema.jobTickets.technician}, 'Unassigned')`,
-            jobs: count(),
-        })
-            .from(schema.jobTickets)
-            .where(activeStatusFilter)
-            .groupBy(sql`coalesce(${schema.jobTickets.technician}, 'Unassigned')`),
-        db.select({ status: schema.jobTickets.status, count: count() })
-            .from(schema.jobTickets)
-            .groupBy(schema.jobTickets.status),
     ]);
-    const activeCount = jobsCount.reduce((total, row) => (
-        ACTIVE_JOB_STATUSES.includes(row.status as (typeof ACTIVE_JOB_STATUSES)[number])
-            ? total + Number(row.count || 0)
-            : total
-    ), 0);
-    const pendingCount = jobsCount.reduce((total, row) => (
-        PENDING_JOB_STATUSES.includes(row.status as (typeof PENDING_JOB_STATUSES)[number])
-            ? total + Number(row.count || 0)
-            : total
-    ), 0);
+    const activeJobs = allJobs
+        .filter((job) => ACTIVE_JOB_STATUSES.includes(job.status as (typeof ACTIVE_JOB_STATUSES)[number]))
+        .slice(0, 5);
+    const recentJobs = allJobs.slice(0, 6);
+    const pendingRequests = allJobs
+        .filter((job) => PENDING_JOB_STATUSES.includes(job.status as (typeof PENDING_JOB_STATUSES)[number]))
+        .slice(0, 5);
+
+    const activeJobsAll = allJobs.filter((job) => ACTIVE_JOB_STATUSES.includes(job.status as (typeof ACTIVE_JOB_STATUSES)[number]));
+    const activeCount = activeJobsAll.length;
+    const pendingCount = allJobs.filter((job) => PENDING_JOB_STATUSES.includes(job.status as (typeof PENDING_JOB_STATUSES)[number])).length;
+
+    const jobStatusCounts = new Map<string, number>();
+    const technicianWorkloadCounts = new Map<string, number>();
+
+    allJobs.forEach((job) => {
+        const status = job.status || "Unknown";
+        jobStatusCounts.set(status, (jobStatusCounts.get(status) || 0) + 1);
+
+        if (ACTIVE_JOB_STATUSES.includes(status as (typeof ACTIVE_JOB_STATUSES)[number])) {
+            const technician = job.technician || "Unassigned";
+            technicianWorkloadCounts.set(technician, (technicianWorkloadCounts.get(technician) || 0) + 1);
+        }
+    });
 
     const revenueByMonth = new Map(monthlyRevenueRows.map((row) => [row.month, Number(row.total || 0)]));
     const revenueData = monthLabels.map(({ key, name }) => ({
@@ -263,12 +257,12 @@ export async function getComprehensiveDashboard() {
     const posRevenueThisMonth = totalRevenue - corporateRevenueThisMonth;
     const totalWastageLoss = Number(currentMonthWastageSummary[0]?.totalLoss || 0);
     const wastageCount = Number(currentMonthWastageSummary[0]?.count || 0);
-    const jobStatusData = jobsCount.map((row) => ({
-        name: row.status || "Unknown",
-        value: Number(row.count || 0),
+    const jobStatusData = Array.from(jobStatusCounts.entries()).map(([name, value]) => ({
+        name,
+        value,
     }));
-    const techData = techWorkloadRows
-        .map((row) => ({ name: row.technician, jobs: Number(row.jobs || 0) }))
+    const techData = Array.from(technicianWorkloadCounts.entries())
+        .map(([name, jobs]) => ({ name, jobs }))
         .sort((a, b) => b.jobs - a.jobs)
         .slice(0, 8);
 
@@ -318,9 +312,8 @@ export async function getJobOverview(): Promise<{
     const endOfWeek = new Date(today);
     endOfWeek.setDate(endOfWeek.getDate() + 7);
 
-    const activeJobs = await db.select().from(schema.jobTickets).where(
-        notInArray(schema.jobTickets.status, ['Completed', 'Cancelled'])
-    );
+    const allJobs = await jobRepo.getAllJobTickets();
+    const activeJobs = allJobs.filter((job) => !['Completed', 'Cancelled'].includes(job.status));
 
     // Filter jobs by deadline
     const dueToday = activeJobs.filter(j => {
@@ -341,14 +334,8 @@ export async function getJobOverview(): Promise<{
         return deadline >= today && deadline < endOfWeek;
     });
 
-    const readyForDelivery = await db.select().from(schema.jobTickets).where(
-        eq(schema.jobTickets.status, 'Completed')
-    ).limit(25);
-
-    const readyForDeliveryCountRes = await db.select({ count: sql<number>`count(*)` }).from(schema.jobTickets).where(
-        eq(schema.jobTickets.status, 'Completed')
-    );
-    const totalReadyForDelivery = readyForDeliveryCountRes[0]?.count || 0;
+    const readyForDelivery = allJobs.filter((job) => job.status === 'Completed').slice(0, 25);
+    const totalReadyForDelivery = allJobs.filter((job) => job.status === 'Completed').length;
 
     const inProgress = activeJobs.filter(j => j.status === 'In Progress');
 
@@ -411,13 +398,9 @@ export async function getReportData(startDate: Date, endDate: Date): Promise<{
         ));
 
     // Get jobs for repairs
-    const jobs = await db
-        .select()
-        .from(schema.jobTickets)
-        .where(and(
-            gte(schema.jobTickets.createdAt, startDate),
-            lte(schema.jobTickets.createdAt, endDate)
-        ));
+    const jobs = (await jobRepo.getAllJobTickets()).filter((job) => (
+        isDateWithinRange(job.createdAt, startDate, endDate)
+    ));
 
     // Get all users
     const users = await db.select().from(schema.users);
@@ -534,18 +517,10 @@ export async function getJobStats(startDate: Date, endDate: Date): Promise<{
     completedJobs: number;
     statusDistribution: { name: string; value: number }[];
 }> {
-    const jobs = await db.select().from(schema.jobTickets).where(
-        or(
-            and(
-                gte(schema.jobTickets.createdAt, startDate),
-                lte(schema.jobTickets.createdAt, endDate)
-            ),
-            and(
-                gte(schema.jobTickets.completedAt, startDate),
-                lte(schema.jobTickets.completedAt, endDate)
-            )
-        )
-    );
+    const jobs = (await jobRepo.getAllJobTickets()).filter((job) => (
+        isDateWithinRange(job.createdAt, startDate, endDate)
+        || isDateWithinRange(job.completedAt, startDate, endDate)
+    ));
 
     const statusCounts = new Map<string, number>();
     let completedJobs = 0;
@@ -570,7 +545,7 @@ export async function getTechnicianStats(startDate: Date, endDate: Date): Promis
     completedJobs: number;
     efficiency: number;
 }[]> {
-    const jobs = await db.select().from(schema.jobTickets);
+    const jobs = await jobRepo.getAllJobTickets();
     const technicianMap = new Map<string, { assignedJobs: number; completedJobs: number }>();
 
     for (const job of jobs) {
@@ -684,7 +659,7 @@ export async function getTechnicianPerformanceStats(startDate: Date, endDate: Da
     jobs: number;
     avgTimeHours: number;
 }[]> {
-    const jobs = await db.select().from(schema.jobTickets);
+    const jobs = await jobRepo.getAllJobTickets();
     const technicianMap = new Map<string, { jobs: number; totalHours: number }>();
 
     for (const job of jobs) {
