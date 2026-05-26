@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense, useEffect, useRef } from "react";
+import { useState, lazy, Suspense, useEffect, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -22,7 +22,9 @@ import { useOffline } from "@/contexts/OfflineContext";
 
 // Shared Components & Utilities
 import { OfflineBanner } from "@/components/admin/OfflineBanner";
+import { QRScanButton } from "@/components/admin/QRScanButton";
 import { SyncConflictReview } from "@/components/admin/SyncConflictReview";
+import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { DashboardSkeleton } from "./bento/shared/DashboardSkeleton";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -90,6 +92,14 @@ export default function DesignConcept() {
 
     const activeTabRef = useRef(activeTab);
     useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+
+    // Pull-to-refresh for mobile scrollable tabs
+    const handlePullRefresh = useCallback(async () => {
+        window.dispatchEvent(new CustomEvent("admin:pull-refresh", { detail: { tab: activeTabRef.current } }));
+    }, []);
+    const { containerRef: pullContainerRef, pullDistance, isRefreshing, triggered } = usePullToRefresh({
+        onRefresh: handlePullRefresh,
+    });
 
     const [globalSearchQuery, setGlobalSearchQuery] = useState(() => {
         const hash = window.location.hash.replace("#", "");
@@ -349,10 +359,10 @@ export default function DesignConcept() {
     })).filter(g => g.items.length > 0);
 
     const mobileNavItems = [
-        { label: "Dash", id: "dashboard", icon: BarChart3 },
         { label: "Jobs", id: "jobs", icon: ClipboardList },
         { label: "POS", id: "pos", icon: ShoppingCart },
-        { label: "B2B", id: "b2b", icon: Building2 },
+        { label: "Stock", id: "inventory", icon: Package },
+        { label: "Finance", id: "finance", icon: Banknote },
         { label: "More", id: "menu", icon: Menu },
     ];
 
@@ -483,6 +493,11 @@ export default function DesignConcept() {
 
                     {/* Floating Mobile Tools (Glass Island) */}
                     <div className="md:hidden absolute top-4 right-4 z-[60] flex items-center gap-3">
+                        <QRScanButton onJobFound={(jobId) => {
+                            setActiveTab("jobs");
+                            setGlobalSearchQuery(jobId);
+                            window.location.hash = `#jobs?search=${encodeURIComponent(jobId)}`;
+                        }} />
                         <button
                             onClick={() => setSearchOpen(true)}
                             className="h-11 w-11 bg-white/70 backdrop-blur-2xl border border-white/60 shadow-[0_8px_30px_rgb(0,0,0,0.12)] rounded-full flex items-center justify-center text-slate-700 active:scale-95 transition-all"
@@ -574,7 +589,27 @@ export default function DesignConcept() {
                         </div>
                     </header>
 
-                    <main className={cn("flex-1 bg-slate-50/50 flex flex-col min-h-0", isFixed ? "overflow-hidden" : "overflow-y-auto scroll-smooth")}>
+                    <main
+                        ref={pullContainerRef}
+                        className={cn("flex-1 bg-slate-50/50 flex flex-col min-h-0", isFixed ? "overflow-hidden" : "overflow-y-auto scroll-smooth")}
+                    >
+                        {/* Pull-to-refresh indicator (mobile only) */}
+                        {pullDistance > 0 && !isFixed && (
+                            <div
+                                className="md:hidden flex items-center justify-center shrink-0 transition-all"
+                                style={{ height: Math.min(pullDistance * 0.5, 48) }}
+                            >
+                                <div
+                                    className={cn(
+                                        "h-7 w-7 rounded-full border-2 border-blue-500 flex items-center justify-center transition-all",
+                                        isRefreshing ? "animate-spin" : ""
+                                    )}
+                                    style={{ opacity: triggered ? 1 : pullDistance / 70 }}
+                                >
+                                    <div className={cn("h-3 w-3 rounded-full", triggered ? "bg-blue-500" : "bg-blue-300")} />
+                                </div>
+                            </div>
+                        )}
                         <OfflineBanner />
                         <MainContentWrapper isFixed={isFixed}>
                             <AnimatePresence mode="popLayout">

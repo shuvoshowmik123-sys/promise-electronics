@@ -86,7 +86,32 @@ Each entry: what was built, what's missing for a real human to use it comfortabl
 
 ## Phase 4 — Android-First UI
 
-*(to be filled)*
+### Mobile Bottom Nav (design-concept.tsx)
+- [x] Built: Updated nav items to TV-repair-shop priorities: Jobs, POS, Stock, Finance, More
+- [x] Built: "More" opens full sidebar sheet with all modules
+- [ ] **Audit**: Nav labels are tiny (10px) — hard to read on Android
+- [ ] **Audit**: No active tab highlight on the "More" button when a menu-opened tab is active
+- [ ] **Audit**: Bottom nav sits at h-20 but has no haptic feedback on tap (native feel missing)
+- [ ] **Audit**: Dashboard removed from quick nav — if staff checks stats often, reconsider
+
+### QR Scan Button (QRScanButton.tsx)
+- [x] Built: Floating scan button in mobile tools bar (top-right)
+- [x] Built: BarcodeDetector API (Chrome/Android native), falls back to camera file input
+- [x] Built: Extracts job UUID from QR URL pattern, navigates to jobs tab with search
+- [ ] **Audit**: If BarcodeDetector not available AND user denies camera, silent failure
+- [ ] **Audit**: Scan result navigates via search query — user must tap the job in the list (not direct open)
+- [ ] **Audit**: No torch/flashlight button in scan overlay (needed in low-light workshops)
+
+### Pull-to-Refresh (usePullToRefresh.ts hook)
+- [x] Built: Touch-event based, 70px threshold, fires `admin:pull-refresh` custom event
+- [x] Built: Visual indicator (spinning dot) appears during pull
+- [ ] **Audit**: Tab components don't yet listen to `admin:pull-refresh` event — needs wiring per-tab
+- [ ] **Audit**: Indicator is minimal (small dot) — not clearly a "pull to refresh" affordance
+- [ ] **Audit**: No haptic feedback (window.navigator.vibrate) on trigger
+
+### Voice Notes
+- [ ] **Audit**: NOT IMPLEMENTED — needs MediaRecorder API + ImageKit upload + `voice_note_url` DB column
+- [ ] **Audit**: Most impactful for technicians dictating repair notes hands-free
 
 ---
 
