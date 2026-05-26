@@ -7,15 +7,15 @@
     "dev:client": "vite dev --port 5082",
     "predev": "kill-port 5083 || true",
     "dev": "cross-env NODE_ENV=development tsx server/index.ts",
-    "api-docs:generate": "tsx script/generate-api-contract.ts",
-    "build": "npm run api-docs:generate && tsx script/build.ts",
+    "api-docs:generate": "tsx scripts/generate-api-contract.ts",
+    "build": "npm run api-docs:generate && tsx build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "lint": "eslint .",
     "test": "vitest",
     "test:coverage": "vitest run --coverage",
     "db:push": "drizzle-kit push",
-    "schema:check:prod": "tsx script/check-production-schema.ts"
+    "schema:check:prod": "tsx scripts/check-production-schema.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.988.0",
