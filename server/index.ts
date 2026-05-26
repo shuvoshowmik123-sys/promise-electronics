@@ -5,6 +5,8 @@ import { seedSuperAdmin } from "./seed.js";
 import { Request, Response, NextFunction } from "express";
 import { aiErrorHandler } from "./middleware/ai-error-handler.js";
 import { startDrawerDayCloseScheduler, stopDrawerDayCloseScheduler } from "./services/drawer-day-close.service.js";
+import { startAbandonmentScheduler, stopAbandonmentScheduler } from "./services/abandonment.service.js";
+import { seedDefaultCommissionRules } from "./services/commission.service.js";
 
 (async () => {
   // Seed super admin if not exists
@@ -13,6 +15,8 @@ import { startDrawerDayCloseScheduler, stopDrawerDayCloseScheduler } from "./ser
   const app = await createApp();
   const httpServer = getHttpServer();
   startDrawerDayCloseScheduler();
+  startAbandonmentScheduler();
+  await seedDefaultCommissionRules();
 
   // AI Error Handler (Module C)
   app.use(aiErrorHandler);
@@ -64,6 +68,7 @@ import { startDrawerDayCloseScheduler, stopDrawerDayCloseScheduler } from "./ser
   const shutdown = (signal: string) => {
     log(`Received ${signal}. Closing HTTP server gracefully...`);
     stopDrawerDayCloseScheduler();
+    stopAbandonmentScheduler();
     httpServer.close((err) => {
       if (err) {
         console.error("[Shutdown] Error closing server:", err);

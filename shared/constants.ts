@@ -1,7 +1,9 @@
 
 // Enums and Constants - Browser Safe
 
-export const JOB_STATUSES = ["Pending", "Diagnosing", "Pending Parts", "In Progress", "On Workbench", "Ready", "Not OK", "Delivered", "Cancelled"] as const;
+export const JOB_STATUSES = ["Pending", "Diagnosing", "Pending Parts", "In Progress", "On Workbench", "Ready", "Not OK", "Delivered", "Cancelled", "Abandoned", "Forfeited"] as const;
+export const TICKET_TYPES = ["full_device", "panel_only", "motherboard_only", "parts_only"] as const;
+export const PANEL_TYPES = ["LED", "OLED", "QLED", "AMOLED", "VA", "IPS", "Other"] as const;
 export const JOB_TYPES = ["standard", "warranty_claim", "repeat_repair"] as const;
 export const JOB_PRIORITIES = ["Low", "Medium", "High"] as const;
 export const CHALLAN_STATUSES = ["Pending", "Delivered", "Received"] as const;

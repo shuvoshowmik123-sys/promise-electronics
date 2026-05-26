@@ -2,31 +2,55 @@ import React, { useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Check, Plus } from 'lucide-react';
 
+// Skill tag → ticket type mapping
+const SKILL_REQUIRED_FOR: Record<string, string[]> = {
+    "panel_only": ["panel", "all_rounder"],
+    "motherboard_only": ["machine", "all_rounder"],
+    "full_device": ["tv", "all_rounder"],
+    "parts_only": [], // any tech
+};
+
 interface TechUser {
     id: string;
     name: string;
     role: string;
+    skills?: string | null; // comma-separated skill tags
 }
 
 interface TechnicianPickerProps {
     users: TechUser[];
+    ticketType?: string;
     assignedTechnicianId?: string | null;
     assistedByIds?: string[];
     onAssignedChange: (id: string | null, name: string) => void;
     onAssistedChange: (ids: string[]) => void;
 }
 
+function hasSkill(tech: TechUser, requiredSkills: string[]): boolean {
+    if (!requiredSkills.length) return true;
+    if (!tech.skills) return false;
+    const techSkills = tech.skills.toLowerCase().split(/[,\s]+/).map(s => s.trim());
+    return requiredSkills.some(req => techSkills.includes(req.toLowerCase()));
+}
+
 export function TechnicianPicker({
     users,
+    ticketType = "full_device",
     assignedTechnicianId,
     assistedByIds = [],
     onAssignedChange,
     onAssistedChange
 }: TechnicianPickerProps) {
-    // Filter eligible technical staff
+    // Filter eligible technical staff, then filter by skill
     const eligibleTechs = useMemo(() => {
-        return users.filter(u => ['Technician', 'Super Admin'].includes(u.role));
-    }, [users]);
+        const allTechs = users.filter(u => ['Technician', 'Super Admin'].includes(u.role));
+        const requiredSkills = SKILL_REQUIRED_FOR[ticketType] ?? [];
+        if (!requiredSkills.length) return allTechs;
+        // Show matching techs first, then all others greyed out
+        const matched = allTechs.filter(t => hasSkill(t, requiredSkills));
+        const others = allTechs.filter(t => !hasSkill(t, requiredSkills));
+        return [...matched, ...others.map(t => ({ ...t, _dimmed: true } as TechUser & { _dimmed?: boolean }))];
+    }, [users, ticketType]);
 
     // Assigned tech info
     const assignedTech = eligibleTechs.find(t => t.id === assignedTechnicianId);
@@ -87,15 +111,17 @@ export function TechnicianPicker({
 
                     {eligibleTechs.map(tech => {
                         const isSelected = assignedTechnicianId === tech.id;
+                        const isDimmed = (tech as any)._dimmed === true;
                         return (
                             <motion.button
                                 type="button"
                                 key={tech.id}
                                 onClick={() => handleAssignedClick(tech.id, tech.name)}
+                                title={isDimmed ? "Skill mismatch for this ticket type" : undefined}
                                 className={`
                                     relative flex flex-col items-center gap-2 min-w-[72px] shrink-0
                                     rounded-xl p-2 transition-all duration-200 snap-center outline-none
-                                    ${isSelected ? 'bg-blue-50/50' : 'hover:bg-slate-50'}
+                                    ${isSelected ? 'bg-blue-50/50' : isDimmed ? 'opacity-40' : 'hover:bg-slate-50'}
                                 `}
                             >
                                 {/* Avatar Ring */}

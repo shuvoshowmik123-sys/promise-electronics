@@ -237,6 +237,18 @@ export const jobTickets = pgTable("job_tickets", {
   mobileMedia: text("mobile_media").default("[]"),
   lastMobileUpdateAt: timestamp("last_mobile_update_at"),
   storeId: text("store_id"), // Franchise-Ready column
+
+  // Ticket Type (Phase 2)
+  ticketType: text("ticket_type").notNull().default("full_device"), // 'full_device' | 'panel_only' | 'motherboard_only' | 'parts_only'
+  panelModel: text("panel_model"),    // Raw panel model number (e.g. "BOE HV430FHB-N10")
+  panelInches: text("panel_inches"),  // Parsed or confirmed inch (e.g. "43")
+  panelType: text("panel_type"),      // e.g. "LED", "OLED", "QLED"
+  quantity: integer("quantity").default(1),
+
+  // Abandonment tracking (Phase 2.5)
+  abandonedAt: timestamp("abandoned_at"),
+  forfeitedAt: timestamp("forfeited_at"),
+  lastSmsSentAt: timestamp("last_sms_sent_at"),
 }, (table) => {
   return {
     statusIdx: index("idx_job_tickets_status").on(table.status),
@@ -2209,3 +2221,51 @@ export const insertQuotationItemSchema = createInsertSchema(quotationItems).omit
 });
 export type InsertQuotationItem = z.infer<typeof insertQuotationItemSchema>;
 export type QuotationItem = typeof quotationItems.$inferSelect;
+
+// ============================================================================
+// COMMISSION ENGINE (Phase 2.4)
+// ============================================================================
+
+export const commissionRules = pgTable("commission_rules", {
+  id: text("id").primaryKey(),
+  role: text("role").notNull(),        // 'Technician' | 'Manager' | 'Cashier' | etc.
+  pool: text("pool").notNull(),         // 'operational' | 'corporate'
+  percentage: real("percentage").notNull().default(0),
+  active: boolean("active").notNull().default(true),
+  description: text("description"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type CommissionRule = typeof commissionRules.$inferSelect;
+
+export const commissionAssignments = pgTable("commission_assignments", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull().references(() => jobTickets.id),
+  userId: text("user_id").notNull(),   // FK to users.id
+  role: text("role").notNull(),         // Role in this job (e.g. 'Technician', 'ChatHandler')
+  pool: text("pool").notNull(),         // 'operational' | 'corporate'
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  jobIdx: index("idx_commission_assignments_job_id").on(table.jobId),
+  userIdx: index("idx_commission_assignments_user_id").on(table.userId),
+}));
+export type CommissionAssignment = typeof commissionAssignments.$inferSelect;
+
+export const commissionPayouts = pgTable("commission_payouts", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull().references(() => jobTickets.id),
+  userId: text("user_id").notNull(),   // FK to users.id
+  role: text("role").notNull(),
+  pool: text("pool").notNull(),
+  amount: real("amount").notNull().default(0),
+  percentage: real("percentage").notNull().default(0),
+  jobTotal: real("job_total").notNull().default(0),
+  status: text("status").notNull().default("pending"), // 'pending' | 'paid' | 'cancelled'
+  paidAt: timestamp("paid_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  jobIdx: index("idx_commission_payouts_job_id").on(table.jobId),
+  userIdx: index("idx_commission_payouts_user_id").on(table.userId),
+  statusIdx: index("idx_commission_payouts_status").on(table.status),
+}));
+export type CommissionPayout = typeof commissionPayouts.$inferSelect;
