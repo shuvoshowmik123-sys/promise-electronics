@@ -11,18 +11,18 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
-import { Wrench, User, Monitor, ShieldCheck, Loader2, Sparkles, ArrowRight, Layers, Cpu, Package } from "lucide-react";
+import { Wrench, User, Monitor, ShieldCheck, Loader2, Sparkles, ArrowRight, Layers, Cpu, Package, Plus, Trash2 } from "lucide-react";
 import { jobTicketsApi, aiApi } from "@/lib/api";
 import { toast } from "sonner";
 import { TechnicianPicker } from "@/components/admin/TechnicianPicker";
 import { InsertJobTicket } from "@shared/schema";
 import { PANEL_TYPES } from "@shared/constants";
 
-// Panel model parser: extracts inch from common panel model numbers
+// ─── Panel model parser ───────────────────────────────────────────────────────
+// Extracts inch size from common panel model numbers
 // e.g. "BOE HV430FHB-N10" → "43", "SDC LA550FHB" → "55"
 function parsePanelModel(model: string): { inches: string; type: string } {
     const clean = model.toUpperCase();
-    // Look for 3-digit inch codes: 320=32, 390=39, 400=40, 430=43, 490=49, 500=50, 550=55, 580=58, 650=65, 750=75, 850=85
     const inchMap: Record<string, string> = {
         "850": "85", "750": "75", "650": "65", "580": "58", "550": "55",
         "500": "50", "490": "49", "430": "43", "400": "40", "390": "39",
@@ -34,13 +34,28 @@ function parsePanelModel(model: string): { inches: string; type: string } {
     return { inches: "", type: "LED" };
 }
 
+// ─── Panel batch row type ─────────────────────────────────────────────────────
+export interface PanelItem {
+    panelModel: string;
+    panelInches: string;
+    panelType: string;
+    quantity: number;
+    fault: string;
+}
+
+function emptyPanelItem(): PanelItem {
+    return { panelModel: "", panelInches: "", panelType: "LED", quantity: 1, fault: "" };
+}
+
+// ─── Ticket type options ──────────────────────────────────────────────────────
 const TICKET_TYPE_OPTIONS = [
-    { value: "full_device", label: "Full Device", icon: Monitor, desc: "Complete TV repair" },
-    { value: "panel_only", label: "Panel Only", icon: Layers, desc: "Panel repair/replacement" },
-    { value: "motherboard_only", label: "Motherboard", icon: Cpu, desc: "Main board repair" },
-    { value: "parts_only", label: "Parts/Other", icon: Package, desc: "Generic parts job" },
+    { value: "full_device",     label: "Full Device",  icon: Monitor, desc: "Complete TV repair" },
+    { value: "panel_only",      label: "Panel Batch",  icon: Layers,  desc: "Multiple panel models" },
+    { value: "motherboard_only",label: "Motherboard",  icon: Cpu,     desc: "Main board repair" },
+    { value: "parts_only",      label: "Parts/Other",  icon: Package, desc: "Generic parts job" },
 ] as const;
 
+// ─── Component ────────────────────────────────────────────────────────────────
 interface CreateJobDrawerProps {
     isOpen: boolean;
     onClose: () => void;
@@ -48,39 +63,27 @@ interface CreateJobDrawerProps {
     tvInches: string[];
 }
 
-export function CreateJobDrawer({
-    isOpen,
-    onClose,
-    technicianUsers,
-    tvInches
-}: CreateJobDrawerProps) {
+export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: CreateJobDrawerProps) {
     const queryClient = useQueryClient();
-    const [formData, setFormData] = useState<Partial<InsertJobTicket> & { ticketType?: string; panelModel?: string; panelInches?: string; panelType?: string; quantity?: number }>({
+
+    const [formData, setFormData] = useState<Partial<InsertJobTicket> & { ticketType?: string; quantity?: number }>({
         status: "Pending",
         priority: "Medium",
         technician: "Unassigned",
         assignedTechnicianId: undefined,
         ticketType: "full_device",
-        quantity: 1,
     });
+    const [panelItems, setPanelItems] = useState<PanelItem[]>([emptyPanelItem()]);
     const [nextJobNumber, setNextJobNumber] = useState<string>("");
     const [selectedAssistedBy, setSelectedAssistedBy] = useState<string[]>([]);
     const [isSuggesting, setIsSuggesting] = useState(false);
 
     useEffect(() => {
         if (isOpen) {
-            jobTicketsApi.getNextNumber().then(({ nextNumber }) => {
-                setNextJobNumber(nextNumber);
-            }).catch(() => { setNextJobNumber(""); });
+            jobTicketsApi.getNextNumber().then(({ nextNumber }) => setNextJobNumber(nextNumber)).catch(() => setNextJobNumber(""));
         } else {
-            setFormData({
-                status: "Pending",
-                priority: "Medium",
-                technician: "Unassigned",
-                assignedTechnicianId: undefined,
-                ticketType: "full_device",
-                quantity: 1,
-            });
+            setFormData({ status: "Pending", priority: "Medium", technician: "Unassigned", assignedTechnicianId: undefined, ticketType: "full_device" });
+            setPanelItems([emptyPanelItem()]);
             setSelectedAssistedBy([]);
         }
     }, [isOpen]);
@@ -95,43 +98,69 @@ export function CreateJobDrawer({
         onError: () => toast.error("Failed to create job ticket"),
     });
 
-    const handleCreate = () => {
-        const ticketType = formData.ticketType || "full_device";
+    const ticketType = formData.ticketType || "full_device";
+    const isPanelBatch = ticketType === "panel_only";
 
-        // Validation rules per ticket type
-        if (ticketType === "full_device" && (!formData.customer || !formData.device || !formData.issue)) {
-            toast.error("Customer, Device, and Issue are required");
-            return;
-        }
-        if (ticketType === "panel_only" && (!formData.customer || !formData.panelModel)) {
-            toast.error("Customer and Panel Model are required");
-            return;
-        }
-        if ((ticketType === "motherboard_only" || ticketType === "parts_only") && !formData.customer) {
-            toast.error("Customer is required");
+    // ── Panel item helpers ────────────────────────────────────────────────────
+    const updatePanelItem = (index: number, field: keyof PanelItem, value: string | number) => {
+        setPanelItems(prev => {
+            const next = [...prev];
+            if (field === "panelModel" && typeof value === "string") {
+                const parsed = parsePanelModel(value);
+                next[index] = {
+                    ...next[index],
+                    panelModel: value,
+                    panelInches: next[index].panelInches || parsed.inches,
+                    panelType: next[index].panelType || parsed.type,
+                };
+            } else {
+                next[index] = { ...next[index], [field]: value };
+            }
+            return next;
+        });
+    };
+
+    const addPanelRow = () => setPanelItems(prev => [...prev, emptyPanelItem()]);
+
+    const removePanelRow = (index: number) => {
+        if (panelItems.length === 1) return; // keep at least one row
+        setPanelItems(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const totalPanelPieces = panelItems.reduce((s, p) => s + (p.quantity || 0), 0);
+
+    // ── Submission ────────────────────────────────────────────────────────────
+    const handleCreate = () => {
+        if (!formData.customer) { toast.error("Customer name is required"); return; }
+
+        if (isPanelBatch) {
+            const valid = panelItems.filter(p => p.panelModel.trim());
+            if (!valid.length) { toast.error("Add at least one panel model"); return; }
+        } else if (ticketType === "full_device" && (!formData.device || !formData.issue)) {
+            toast.error("Device and Issue are required for full device tickets");
             return;
         }
 
         const jobData: any = { ...formData };
+
         if (jobData.customerPhone) {
-            jobData.customerPhone = "+880" + jobData.customerPhone.replace(/^(\+880|880)/, '');
+            jobData.customerPhone = "+880" + jobData.customerPhone.replace(/^(\+880|880)/, "");
         }
 
-        // Auto-fill device/issue for panel tickets
-        if (ticketType === "panel_only" && formData.panelModel) {
-            if (!jobData.device) jobData.device = `Panel: ${formData.panelModel}`;
-            if (!jobData.issue) jobData.issue = `Panel repair/replacement - ${formData.panelModel}`;
-        }
-        if (ticketType === "motherboard_only") {
-            if (!jobData.issue) jobData.issue = "Motherboard repair";
+        if (isPanelBatch) {
+            const validItems = panelItems.filter(p => p.panelModel.trim());
+            jobData.panelItems = JSON.stringify(validItems);
+            // Auto-generate device/issue summary for display
+            const summary = validItems.map(p => `${p.panelInches || "?"}″ ${p.panelType} ×${p.quantity}`).join(", ");
+            jobData.device = `Panel Batch (${totalPanelPieces} pcs)`;
+            jobData.issue = `Panel repair/replacement: ${summary}`;
         }
 
         if (selectedAssistedBy.length > 0) {
             jobData.assistedByIds = JSON.stringify(selectedAssistedBy);
-            const assistantNames = selectedAssistedBy
+            jobData.assistedByNames = selectedAssistedBy
                 .map(id => technicianUsers.find(t => t.id === id)?.name)
-                .filter(Boolean).join(", ");
-            jobData.assistedByNames = assistantNames || null;
+                .filter(Boolean).join(", ") || null;
         }
 
         createMutation.mutate(jobData);
@@ -153,10 +182,6 @@ export function CreateJobDrawer({
         finally { setIsSuggesting(false); }
     };
 
-    const ticketType = formData.ticketType || "full_device";
-    const isPanelJob = ticketType === "panel_only";
-    const isFullDevice = ticketType === "full_device";
-
     return (
         <Sheet open={isOpen} onOpenChange={onClose}>
             <SheetContent className="w-full sm:max-w-2xl bg-white/95 backdrop-blur-xl border-l border-white/20 shadow-2xl overflow-y-auto z-[250]">
@@ -164,10 +189,11 @@ export function CreateJobDrawer({
                     <SheetTitle className="text-2xl font-bold font-heading flex items-center gap-2 text-slate-800">
                         <Wrench className="w-6 h-6 text-blue-600" /> Create Job Ticket
                     </SheetTitle>
-                    <SheetDescription>Register a new repair item and assign a technician.</SheetDescription>
+                    <SheetDescription>Register a new repair job.</SheetDescription>
                 </SheetHeader>
 
                 <div className="space-y-8 pb-24">
+
                     {/* Job Number */}
                     <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
@@ -180,7 +206,7 @@ export function CreateJobDrawer({
                         </div>
                     </div>
 
-                    {/* Ticket Type Selector */}
+                    {/* Ticket Type */}
                     <div className="space-y-3">
                         <h4 className="font-bold text-sm text-slate-700 uppercase tracking-wider">Ticket Type</h4>
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -203,7 +229,7 @@ export function CreateJobDrawer({
                         </div>
                     </div>
 
-                    {/* Customer Details */}
+                    {/* Customer */}
                     <div className="space-y-4">
                         <h4 className="font-bold text-sm text-blue-600 flex items-center gap-2 bg-blue-50 p-2 rounded-lg border border-blue-100 uppercase tracking-wider">
                             <User className="w-4 h-4" /> Customer Details
@@ -224,117 +250,142 @@ export function CreateJobDrawer({
                         </div>
                     </div>
 
-                    {/* Device / Panel Details */}
+                    {/* Device / Panel Section */}
                     <div className="space-y-4">
                         <h4 className="font-bold text-sm text-purple-600 flex items-center gap-2 bg-purple-50 p-2 rounded-lg border border-purple-100 uppercase tracking-wider">
                             <Monitor className="w-4 h-4" />
-                            {isPanelJob ? "Panel Details" : "Device Registration"}
+                            {isPanelBatch ? `Panel Batch (${totalPanelPieces} pcs total)` : "Device Details"}
                         </h4>
 
-                        {isPanelJob ? (
-                            /* Panel-specific fields */
-                            <div className="space-y-4">
-                                <div className="space-y-2">
-                                    <Label>Panel Model Number *</Label>
-                                    <Input
-                                        placeholder="e.g. BOE HV430FHB-N10"
-                                        value={formData.panelModel || ""}
-                                        onChange={(e) => {
-                                            const model = e.target.value;
-                                            const parsed = parsePanelModel(model);
-                                            setFormData(prev => ({
-                                                ...prev,
-                                                panelModel: model,
-                                                panelInches: prev.panelInches || parsed.inches,
-                                                panelType: prev.panelType || parsed.type,
-                                            }));
-                                        }}
-                                        className="bg-slate-50 font-mono"
-                                    />
+                        {isPanelBatch ? (
+                            /* ── Panel batch table ── */
+                            <div className="space-y-2">
+                                <p className="text-xs text-slate-500">Add one row per panel model. Each row = one model type from this customer's batch.</p>
+
+                                {/* Column headers */}
+                                <div className="grid gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr auto" }}>
+                                    <span>Model No.</span>
+                                    <span>Inch</span>
+                                    <span>Type</span>
+                                    <span>Qty</span>
+                                    <span>Fault</span>
+                                    <span></span>
                                 </div>
-                                <div className="grid grid-cols-3 gap-3">
-                                    <div className="space-y-2">
-                                        <Label>Size (inches)</Label>
+
+                                {panelItems.map((item, idx) => (
+                                    <div
+                                        key={idx}
+                                        className="grid gap-1 items-center"
+                                        style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr auto" }}
+                                    >
+                                        {/* Model */}
+                                        <Input
+                                            placeholder="BOE HV430FHB"
+                                            value={item.panelModel}
+                                            onChange={e => updatePanelItem(idx, "panelModel", e.target.value)}
+                                            className="bg-slate-50 font-mono text-xs h-9"
+                                        />
+                                        {/* Inch */}
                                         <Input
                                             placeholder="43"
-                                            value={formData.panelInches || ""}
-                                            onChange={(e) => setFormData({ ...formData, panelInches: e.target.value })}
-                                            className="bg-slate-50"
+                                            value={item.panelInches}
+                                            onChange={e => updatePanelItem(idx, "panelInches", e.target.value)}
+                                            className="bg-slate-50 text-xs h-9"
                                         />
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Panel Type</Label>
-                                        <Select value={formData.panelType || "LED"} onValueChange={(v) => setFormData({ ...formData, panelType: v })}>
-                                            <SelectTrigger className="bg-slate-50"><SelectValue /></SelectTrigger>
+                                        {/* Type */}
+                                        <Select value={item.panelType} onValueChange={v => updatePanelItem(idx, "panelType", v)}>
+                                            <SelectTrigger className="bg-slate-50 h-9 text-xs"><SelectValue /></SelectTrigger>
                                             <SelectContent>
                                                 {PANEL_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                                             </SelectContent>
                                         </Select>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>Quantity</Label>
+                                        {/* Qty */}
                                         <Input
                                             type="number"
                                             min={1}
-                                            value={formData.quantity ?? 1}
-                                            onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })}
-                                            className="bg-slate-50"
+                                            value={item.quantity}
+                                            onChange={e => updatePanelItem(idx, "quantity", parseInt(e.target.value) || 1)}
+                                            className="bg-slate-50 text-xs h-9"
                                         />
+                                        {/* Fault */}
+                                        <Input
+                                            placeholder="Cracked, lines..."
+                                            value={item.fault}
+                                            onChange={e => updatePanelItem(idx, "fault", e.target.value)}
+                                            className="bg-slate-50 text-xs h-9"
+                                        />
+                                        {/* Remove */}
+                                        <button
+                                            type="button"
+                                            onClick={() => removePanelRow(idx)}
+                                            disabled={panelItems.length === 1}
+                                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-30 transition-colors"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
                                     </div>
-                                </div>
+                                ))}
+
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={addPanelRow}
+                                    className="mt-1 border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 w-full"
+                                >
+                                    <Plus size={14} className="mr-1" /> Add Panel Model
+                                </Button>
+
+                                {/* Summary */}
+                                {totalPanelPieces > 0 && (
+                                    <div className="mt-2 p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600">
+                                        <strong>Batch summary:</strong>{" "}
+                                        {panelItems.filter(p => p.panelModel).map(p =>
+                                            `${p.panelInches || "?"}″ ${p.panelType} ×${p.quantity}`
+                                        ).join(" · ")}
+                                        {" "}= <strong>{totalPanelPieces} pcs total</strong>
+                                    </div>
+                                )}
                             </div>
                         ) : (
-                            /* Full device / motherboard / parts fields */
+                            /* ── Standard device fields ── */
                             <div className="space-y-4">
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <Label>{ticketType === "motherboard_only" ? "Board Model / Device" : "Device / Model"} {isFullDevice && "*"}</Label>
+                                        <Label>{ticketType === "motherboard_only" ? "Board Model / Device" : "Device / Model"}</Label>
                                         <Input
-                                            placeholder={ticketType === "motherboard_only" ? "Samsung main board T-CON..." : "Samsung 55' UHD"}
+                                            placeholder={ticketType === "motherboard_only" ? "Samsung T-CON board..." : "Samsung 55' UHD"}
                                             value={formData.device || ""}
-                                            onChange={(e) => setFormData({ ...formData, device: e.target.value })}
+                                            onChange={e => setFormData({ ...formData, device: e.target.value })}
                                             className="bg-slate-50"
                                         />
                                     </div>
-                                    {isFullDevice && (
+                                    {ticketType === "full_device" && (
                                         <div className="space-y-2">
                                             <Label>Screen Size</Label>
-                                            <Select value={formData.screenSize || ""} onValueChange={(value) => setFormData({ ...formData, screenSize: value })}>
+                                            <Select value={formData.screenSize || ""} onValueChange={v => setFormData({ ...formData, screenSize: v })}>
                                                 <SelectTrigger className="bg-slate-50"><SelectValue placeholder="Select size" /></SelectTrigger>
-                                                <SelectContent>{tvInches.map((inch) => <SelectItem key={inch} value={inch}>{inch}</SelectItem>)}</SelectContent>
+                                                <SelectContent>{tvInches.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}</SelectContent>
                                             </Select>
                                         </div>
                                     )}
                                     {ticketType === "parts_only" && (
                                         <div className="space-y-2">
                                             <Label>Quantity</Label>
-                                            <Input type="number" min={1} value={formData.quantity ?? 1} onChange={(e) => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })} className="bg-slate-50" />
+                                            <Input type="number" min={1} value={formData.quantity ?? 1} onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })} className="bg-slate-50" />
                                         </div>
                                     )}
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Issue Description {isFullDevice && "*"}</Label>
+                                    <Label>Issue Description</Label>
                                     <Textarea
-                                        placeholder="Describe the problem in detail..."
+                                        placeholder="Describe the problem..."
                                         value={formData.issue || ""}
-                                        onChange={(e) => setFormData({ ...formData, issue: e.target.value })}
+                                        onChange={e => setFormData({ ...formData, issue: e.target.value })}
                                         rows={3}
                                         className="bg-slate-50 resize-none"
                                     />
                                 </div>
-                            </div>
-                        )}
-
-                        {isPanelJob && (
-                            <div className="space-y-2">
-                                <Label>Fault Description</Label>
-                                <Textarea
-                                    placeholder="Describe the fault (cracked, lines, backlight out...)"
-                                    value={formData.issue || ""}
-                                    onChange={(e) => setFormData({ ...formData, issue: e.target.value })}
-                                    rows={2}
-                                    className="bg-slate-50 resize-none"
-                                />
                             </div>
                         )}
                     </div>
@@ -347,23 +398,20 @@ export function CreateJobDrawer({
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Priority Level</Label>
-                                <Select value={formData.priority || "Medium"} onValueChange={(value) => setFormData({ ...formData, priority: value as any })}>
+                                <Select value={formData.priority || "Medium"} onValueChange={v => setFormData({ ...formData, priority: v as any })}>
                                     <SelectTrigger className="bg-slate-50"><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="Low">Low - Standard</SelectItem>
-                                        <SelectItem value="Medium">Medium - Regular</SelectItem>
-                                        <SelectItem value="High">High - Urgent</SelectItem>
-                                        <SelectItem value="Critical">Critical - Immediate</SelectItem>
+                                        <SelectItem value="Low">Low</SelectItem>
+                                        <SelectItem value="Medium">Medium</SelectItem>
+                                        <SelectItem value="High">High</SelectItem>
+                                        <SelectItem value="Critical">Critical</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between">
-                                    <Label>Assign Technician</Label>
-                                    <Button variant="ghost" size="sm" type="button" className="h-5 px-2 text-[10px] bg-purple-100 text-purple-700 hover:bg-purple-200 uppercase tracking-wider font-bold rounded" onClick={() => handleSuggestTechnician(formData.issue || "")} disabled={isSuggesting}>
-                                        {isSuggesting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Sparkles className="w-3 h-3 mr-1" />} AI Assign
-                                    </Button>
-                                </div>
+                            <div className="flex items-end">
+                                <Button variant="ghost" size="sm" type="button" className="h-9 px-3 text-[11px] bg-purple-100 text-purple-700 hover:bg-purple-200 uppercase tracking-wider font-bold rounded w-full" onClick={() => handleSuggestTechnician(formData.issue || "")} disabled={isSuggesting}>
+                                    {isSuggesting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Sparkles className="w-3 h-3 mr-1" />} AI Assign
+                                </Button>
                             </div>
 
                             <TechnicianPicker
@@ -382,7 +430,8 @@ export function CreateJobDrawer({
                 <SheetFooter className="absolute bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur border-t border-slate-100 flex flex-row justify-end space-x-3 shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-10">
                     <Button variant="outline" onClick={onClose} className="rounded-xl border-slate-200 bg-white">Cancel</Button>
                     <Button onClick={handleCreate} disabled={createMutation.isPending} className="rounded-xl px-8 shadow-md bg-blue-600 hover:bg-blue-700 font-bold tracking-wide">
-                        {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRight className="w-4 h-4 mr-2" />} Submit Ticket
+                        {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <ArrowRight className="w-4 h-4 mr-2" />}
+                        {isPanelBatch ? `Submit Batch (${totalPanelPieces} pcs)` : "Submit Ticket"}
                     </Button>
                 </SheetFooter>
             </SheetContent>

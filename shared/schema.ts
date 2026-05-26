@@ -240,10 +240,10 @@ export const jobTickets = pgTable("job_tickets", {
 
   // Ticket Type (Phase 2)
   ticketType: text("ticket_type").notNull().default("full_device"), // 'full_device' | 'panel_only' | 'motherboard_only' | 'parts_only'
-  panelModel: text("panel_model"),    // Raw panel model number (e.g. "BOE HV430FHB-N10")
-  panelInches: text("panel_inches"),  // Parsed or confirmed inch (e.g. "43")
-  panelType: text("panel_type"),      // e.g. "LED", "OLED", "QLED"
-  quantity: integer("quantity").default(1),
+  // Panel batch items — array of { panelModel, panelInches, panelType, quantity, fault }
+  // One ticket can carry multiple panel models from the same customer (e.g. 43"×10, 32"×6, 40"×2)
+  panelItems: jsonb("panel_items").default([]),
+  quantity: integer("quantity").default(1), // total piece count for non-panel parts tickets
 
   // Abandonment tracking (Phase 2.5)
   abandonedAt: timestamp("abandoned_at"),

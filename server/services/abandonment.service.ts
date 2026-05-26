@@ -10,7 +10,7 @@
 import { db } from "../db.js";
 import { eq, and, lt, isNull, inArray } from "drizzle-orm";
 import { jobTickets } from "../../shared/schema.js";
-import { sendSms } from "./sms.service.js";
+import { smsService } from "./sms.service.js";
 
 const SCHEDULER_INTERVAL_MS = 60 * 60 * 1000; // run every hour
 const ABANDON_AFTER_DAYS = 90;
@@ -76,7 +76,7 @@ export async function runAbandonmentCheck(): Promise<{ abandoned: number; forfei
         // Send final SMS
         if (job.customerPhone) {
             const message = `Dear ${job.customer || "Customer"}, your repair job at Promise Electronics has been marked as Abandoned after 90 days. Please collect your device or contact us within 14 days, or ownership may be transferred. Call: 01XXXXXXXXX`;
-            sendSms(job.customerPhone, message).catch(() => {});
+            smsService.sendSms({ to: job.customerPhone, message }).catch(() => {});
         }
 
         abandoned++;
