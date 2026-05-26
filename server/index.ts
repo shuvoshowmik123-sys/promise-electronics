@@ -9,6 +9,7 @@ import { startAbandonmentScheduler, stopAbandonmentScheduler } from "./services/
 import { startReminderScheduler, stopReminderScheduler } from "./services/reminder.service.js";
 import { startBackupScheduler, stopBackupScheduler } from "./services/backup-scheduler.service.js";
 import { seedDefaultCommissionRules } from "./services/commission.service.js";
+import { brainService } from "./brain/brain.service.js";
 
 (async () => {
   // Seed super admin if not exists
@@ -21,6 +22,7 @@ import { seedDefaultCommissionRules } from "./services/commission.service.js";
   startReminderScheduler();
   startBackupScheduler();
   await seedDefaultCommissionRules();
+  await brainService.migratePhase6Columns().catch(() => {}); // no-op if Brain DB not configured
 
   // AI Error Handler (Module C)
   app.use(aiErrorHandler);

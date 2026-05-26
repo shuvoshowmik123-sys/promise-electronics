@@ -71,6 +71,7 @@ router.post("/webhook", (req: Request, res: Response) => {
 
                     await brainService.logConversation(recipient_psid, lastUserMsg, humanReplyText, 'human');
                     await brainService.updateSession(recipient_psid, null, humanReplyText);
+                    await brainService.markNeedsClaim(recipient_psid); // Phase 6: prompt staff to claim
                     console.log(`[Brain] Logged human reply for customer ${recipient_psid}`);
                 }
                 return;

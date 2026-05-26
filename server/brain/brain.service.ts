@@ -1,6 +1,6 @@
 import { brainDb } from './brain.db.js';
 import { conversations, sessions, brainConfig, shadowDrafts } from './schema.js';
-import { eq, desc, count } from 'drizzle-orm';
+import { eq, desc, count, sql as drizzleSql } from 'drizzle-orm';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
 // Initialize Gemini for embeddings
@@ -148,5 +148,72 @@ export const brainService = {
             console.error("[Brain] Error updating shadow draft status:", error);
             return null;
         }
-    }
+    },
+
+    // -------------------------------------------------------------
+    // Phase 6: Commission Tracking — Staff Claim on Messenger Sessions
+    // -------------------------------------------------------------
+
+    /** Run once on startup to add Phase 6 columns if missing */
+    async migratePhase6Columns() {
+        try {
+            await brainDb.execute(drizzleSql`
+                ALTER TABLE sessions
+                    ADD COLUMN IF NOT EXISTS claimed_by_user_id TEXT,
+                    ADD COLUMN IF NOT EXISTS claimed_by_name TEXT,
+                    ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP,
+                    ADD COLUMN IF NOT EXISTS needs_claim BOOLEAN DEFAULT FALSE
+            `);
+            console.log('[Brain] Phase 6 columns ensured');
+        } catch (e: any) {
+            console.warn('[Brain] Phase 6 migration skipped:', e.message?.slice(0, 80));
+        }
+    },
+
+    /** Mark session as needing staff claim (called on human echo) */
+    async markNeedsClaim(senderPsid: string) {
+        try {
+            await brainDb.update(sessions)
+                .set({ needsClaim: true })
+                .where(eq(sessions.senderPsid, senderPsid));
+        } catch {}
+    },
+
+    /** Staff claims a Messenger session — they handled this conversation */
+    async claimSession(senderPsid: string, userId: string, userName: string) {
+        const result = await brainDb.update(sessions)
+            .set({
+                claimedByUserId: userId,
+                claimedByName: userName,
+                claimedAt: new Date(),
+                needsClaim: false,
+            })
+            .where(eq(sessions.senderPsid, senderPsid))
+            .returning();
+        return result[0] ?? null;
+    },
+
+    /** Look up a session by customer phone — used by job creation to suggest ChatHandler */
+    async getSessionByPhone(phone: string) {
+        // Normalize: strip non-digits, match last 10 digits
+        const normalized = phone.replace(/\D/g, '').slice(-10);
+        try {
+            const all = await brainDb.query.sessions.findMany({
+                orderBy: [desc(sessions.lastMessageAt)],
+                limit: 100,
+            });
+            return all.find(s => s.customerPhone?.replace(/\D/g, '').slice(-10) === normalized) ?? null;
+        } catch {
+            return null;
+        }
+    },
+
+    /** Sessions that have human replies but no claim yet */
+    async getUnclaimedSessions() {
+        return brainDb.query.sessions.findMany({
+            where: eq(sessions.needsClaim, true),
+            orderBy: [desc(sessions.lastMessageAt)],
+            limit: 20,
+        });
+    },
 };

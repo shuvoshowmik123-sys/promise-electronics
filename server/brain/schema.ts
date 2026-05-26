@@ -41,6 +41,12 @@ export const sessions = pgTable('sessions', {
     detectedLanguage: text('detected_language'),
     customerPhone: text('customer_phone'),
     customerIssues: jsonb('customer_issues').default([]),
+
+    // Phase 6: commission tracking — which staff handled this Messenger conversation
+    claimedByUserId: text('claimed_by_user_id'),
+    claimedByName: text('claimed_by_name'),
+    claimedAt: timestamp('claimed_at'),
+    needsClaim: boolean('needs_claim').default(false), // set true when human replies
 });
 
 export const knowledge = pgTable('knowledge', {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 import {
     Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter,
 } from "@/components/ui/sheet";
@@ -11,7 +11,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
-import { Wrench, User, Monitor, ShieldCheck, Loader2, Sparkles, ArrowRight, Layers, Cpu, Package, Plus, Trash2 } from "lucide-react";
+import { Wrench, User, Monitor, ShieldCheck, Loader2, Sparkles, ArrowRight, Layers, Cpu, Package, Plus, Trash2, MessageSquare, UserCheck } from "lucide-react";
 import { jobTicketsApi, aiApi } from "@/lib/api";
 import { toast } from "sonner";
 import { TechnicianPicker } from "@/components/admin/TechnicianPicker";
@@ -77,6 +77,20 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
     const [nextJobNumber, setNextJobNumber] = useState<string>("");
     const [selectedAssistedBy, setSelectedAssistedBy] = useState<string[]>([]);
     const [isSuggesting, setIsSuggesting] = useState(false);
+    const [chatHandlerAccepted, setChatHandlerAccepted] = useState(false);
+
+    // Brain session lookup — finds which staff handled this customer on Messenger
+    const phoneDigits = (formData.customerPhone || "").replace(/\D/g, "").slice(-10);
+    const { data: messengerSession } = useQuery({
+        queryKey: ["brain-session-phone", phoneDigits],
+        queryFn: async () => {
+            const res = await fetch(`/api/brain/sessions/by-phone/${phoneDigits}`);
+            if (!res.ok) return null;
+            return res.json();
+        },
+        enabled: phoneDigits.length >= 10 && isOpen,
+        staleTime: 60_000,
+    });
 
     useEffect(() => {
         if (isOpen) {
@@ -85,6 +99,7 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
             setFormData({ status: "Pending", priority: "Medium", technician: "Unassigned", assignedTechnicianId: undefined, ticketType: "full_device" });
             setPanelItems([emptyPanelItem()]);
             setSelectedAssistedBy([]);
+            setChatHandlerAccepted(false);
         }
     }, [isOpen]);
 
@@ -156,10 +171,15 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
             jobData.issue = `Panel repair/replacement: ${summary}`;
         }
 
-        if (selectedAssistedBy.length > 0) {
-            jobData.assistedByIds = JSON.stringify(selectedAssistedBy);
-            jobData.assistedByNames = selectedAssistedBy
-                .map(id => technicianUsers.find(t => t.id === id)?.name)
+        const finalAssisted = [...selectedAssistedBy];
+        // Phase 6: auto-include Messenger ChatHandler in assistedBy
+        if (chatHandlerAccepted && messengerSession?.claimedByUserId && !finalAssisted.includes(messengerSession.claimedByUserId)) {
+            finalAssisted.push(messengerSession.claimedByUserId);
+        }
+        if (finalAssisted.length > 0) {
+            jobData.assistedByIds = JSON.stringify(finalAssisted);
+            jobData.assistedByNames = finalAssisted
+                .map(id => technicianUsers.find(t => t.id === id)?.name ?? messengerSession?.claimedByName ?? id)
                 .filter(Boolean).join(", ") || null;
         }
 
@@ -244,6 +264,49 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
                                 <PhoneInput value={formData.customerPhone || ""} onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })} />
                             </div>
                         </div>
+                        {/* Messenger ChatHandler suggestion (Phase 6) */}
+                        {messengerSession?.found && (
+                            <div className={`flex items-start gap-3 rounded-xl border p-3 transition-all ${
+                                chatHandlerAccepted
+                                    ? "bg-green-50 border-green-200"
+                                    : "bg-blue-50 border-blue-200"
+                            }`}>
+                                <MessageSquare className={`h-4 w-4 mt-0.5 shrink-0 ${chatHandlerAccepted ? "text-green-600" : "text-blue-500"}`} />
+                                <div className="flex-1 min-w-0">
+                                    {messengerSession.claimedByName ? (
+                                        <>
+                                            <p className="text-xs font-semibold text-slate-700">
+                                                Messenger match — handled by <span className="text-blue-700">{messengerSession.claimedByName}</span>
+                                            </p>
+                                            <p className="text-[11px] text-slate-500 mt-0.5">
+                                                {chatHandlerAccepted
+                                                    ? "ChatHandler added to commission assignments"
+                                                    : "Add as ChatHandler for commission tracking?"}
+                                            </p>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <p className="text-xs font-semibold text-slate-700">
+                                                Messenger session found — no staff claimed yet
+                                            </p>
+                                            <p className="text-[11px] text-slate-500 mt-0.5">
+                                                Go to AI Brain → claim this session to track commission
+                                            </p>
+                                        </>
+                                    )}
+                                </div>
+                                {messengerSession.claimedByName && !chatHandlerAccepted && (
+                                    <button
+                                        type="button"
+                                        onClick={() => setChatHandlerAccepted(true)}
+                                        className="h-7 px-2 rounded-lg bg-blue-600 text-white text-[11px] font-bold shrink-0 hover:bg-blue-700 transition-colors flex items-center gap-1"
+                                    >
+                                        <UserCheck className="h-3 w-3" /> Add
+                                    </button>
+                                )}
+                            </div>
+                        )}
+
                         <div className="space-y-2">
                             <Label>Address</Label>
                             <Textarea placeholder="Delivery/Pickup address..." value={formData.customerAddress || ""} onChange={(e) => setFormData({ ...formData, customerAddress: e.target.value })} rows={2} className="bg-slate-50 resize-none" />

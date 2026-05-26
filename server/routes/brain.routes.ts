@@ -221,4 +221,60 @@ router.patch("/shadow-drafts/:id/reject", async (req: Request, res: Response) =>
     }
 });
 
+// ==========================================
+// Phase 6: Commission — Staff Claim on Messenger Sessions
+// ==========================================
+
+/**
+ * GET /unclaimed — sessions where a human replied but no staff claimed it yet
+ */
+router.get("/unclaimed", async (req: Request, res: Response) => {
+    try {
+        const sessions = await brainService.getUnclaimedSessions();
+        res.json({ success: true, data: sessions });
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Failed to fetch unclaimed sessions" });
+    }
+});
+
+/**
+ * POST /sessions/:psid/claim — staff claims a session (they handled this customer)
+ */
+router.post("/sessions/:psid/claim", async (req: Request, res: Response) => {
+    try {
+        const { psid } = req.params;
+        const { userId, userName } = req.body;
+        if (!userId || !userName) {
+            return res.status(400).json({ error: "userId and userName required" });
+        }
+        const session = await brainService.claimSession(psid, userId, userName);
+        if (!session) return res.status(404).json({ error: "Session not found" });
+        res.json({ success: true, session });
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Failed to claim session" });
+    }
+});
+
+/**
+ * GET /sessions/by-phone/:phone — look up session by customer phone
+ * Used by CreateJobDrawer to suggest ChatHandler
+ */
+router.get("/sessions/by-phone/:phone", async (req: Request, res: Response) => {
+    try {
+        const session = await brainService.getSessionByPhone(req.params.phone);
+        if (!session) return res.json({ found: false });
+        res.json({
+            found: true,
+            claimedByUserId: session.claimedByUserId,
+            claimedByName: session.claimedByName,
+            claimedAt: session.claimedAt,
+            needsClaim: session.needsClaim,
+            senderName: session.senderName,
+            lastMessageAt: session.lastMessageAt,
+        });
+    } catch (error) {
+        res.status(500).json({ found: false, error: "Lookup failed" });
+    }
+});
+
 export default router;

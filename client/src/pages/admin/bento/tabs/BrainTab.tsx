@@ -10,12 +10,14 @@ import { useToast } from '@/hooks/use-toast';
 import {
     Brain, Eye, Ghost, Rocket,
     MessageCircle, Users, Activity, RefreshCw, PenSquare, CheckCircle, XCircle,
-    AlertCircle, ShieldAlert, X, Check, Trash2
+    AlertCircle, ShieldAlert, X, Check, Trash2, UserCheck
 } from 'lucide-react';
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
 
 export function BrainTab() {
     const { toast } = useToast();
     const queryClient = useQueryClient();
+    const { user } = useAdminAuth();
     const [page, setPage] = useState(1);
     const limit = 10;
 
@@ -59,6 +61,18 @@ export function BrainTab() {
         },
         refetchInterval: 10000 // Poll frequently for new incoming drafts
     });
+
+    // Phase 6: unclaimed Messenger sessions
+    const { data: unclaimedData } = useQuery({
+        queryKey: ['brain-unclaimed'],
+        queryFn: async () => {
+            const res = await fetch('/api/brain/unclaimed', { credentials: 'include' });
+            if (!res.ok) return { data: [] };
+            return res.json();
+        },
+        refetchInterval: 30000,
+    });
+    const unclaimedSessions: any[] = unclaimedData?.data ?? [];
 
     // Mutations
     const updateModeMutation = useMutation({
@@ -191,6 +205,45 @@ export function BrainTab() {
                     })}
                 </div>
             </div>
+
+            {/* Phase 6: Unclaimed Messenger Sessions */}
+            {unclaimedSessions.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 relative z-10">
+                    <div className="flex items-center gap-2 mb-3">
+                        <UserCheck className="h-4 w-4 text-amber-600" />
+                        <span className="text-sm font-bold text-amber-800">
+                            {unclaimedSessions.length} Messenger session{unclaimedSessions.length > 1 ? "s" : ""} need claiming
+                        </span>
+                        <span className="text-xs text-amber-600 ml-1">— who handled these customers?</span>
+                    </div>
+                    <div className="space-y-2">
+                        {unclaimedSessions.map((s: any) => (
+                            <div key={s.id} className="flex items-center gap-3 bg-white rounded-lg px-3 py-2 border border-amber-100">
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-medium text-slate-700 truncate">{s.senderName || s.senderPsid}</p>
+                                    <p className="text-xs text-slate-400">{s.customerPhone || "No phone"} · {s.messageCount} messages</p>
+                                </div>
+                                <button
+                                    onClick={async () => {
+                                        if (!user?.id || !user?.name) return;
+                                        await fetch(`/api/brain/sessions/${s.senderPsid}/claim`, {
+                                            method: "POST",
+                                            headers: { "Content-Type": "application/json" },
+                                            body: JSON.stringify({ userId: user.id, userName: user.name }),
+                                            credentials: "include",
+                                        });
+                                        queryClient.invalidateQueries({ queryKey: ["brain-unclaimed"] });
+                                        toast({ title: "Session claimed", description: `You've claimed ${s.senderName || s.senderPsid}` });
+                                    }}
+                                    className="h-7 px-3 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-lg transition-colors shrink-0"
+                                >
+                                    I handled this
+                                </button>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">

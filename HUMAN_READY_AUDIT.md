@@ -140,4 +140,27 @@ Each entry: what was built, what's missing for a real human to use it comfortabl
 
 ## Phase 6 — Brain Commission Integration
 
-*(to be filled)*
+### Brain Session Claim System
+- [x] Built: `claimed_by_user_id`, `claimed_by_name`, `claimed_at`, `needs_claim` columns added to brain sessions (startup migration)
+- [x] Built: `markNeedsClaim()` called on every human echo from Messenger
+- [x] Built: `POST /api/brain/sessions/:psid/claim` — staff self-assigns to a session
+- [x] Built: `GET /api/brain/sessions/by-phone/:phone` — phone-based session lookup
+- [x] Built: `GET /api/brain/unclaimed` — lists sessions with human replies but no claim
+- [ ] **Audit**: Claim is self-service ("I handled this") — no way to assign another staff member
+- [ ] **Audit**: If multiple staff replied to same customer, only last claim counts
+
+### Brain Tab — Unclaimed Sessions Banner
+- [x] Built: Amber banner appears in Brain tab when unclaimed sessions exist
+- [x] Built: "I handled this" button claims the session as the logged-in user
+- [ ] **Audit**: Banner is in Brain tab only — staff who never open Brain tab will miss it
+- [ ] **Audit**: No notification/push when a new unclaimed session appears
+- [ ] **Audit**: Sessions list shows senderPsid (UUID) when senderName is null — unreadable
+
+### CreateJobDrawer — Messenger ChatHandler Auto-Suggest
+- [x] Built: On phone input (10+ digits), queries brain session by phone match
+- [x] Built: Shows blue banner "handled by [name] on Messenger — add as ChatHandler?"
+- [x] Built: "Add" button includes the ChatHandler in `assistedByIds` for commission
+- [x] Built: If session found but unclaimed, shows "go to Brain tab to claim" guidance
+- [ ] **Audit**: Phone match is last-10-digits — may get false positives for shared/business phones
+- [ ] **Audit**: Commission assignment isn't created until job submits — no immediate feedback
+- [ ] **Audit**: ChatHandler name shown from `claimedByName` but may differ from user's display name in users table
