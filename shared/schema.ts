@@ -2269,3 +2269,58 @@ export const commissionPayouts = pgTable("commission_payouts", {
   statusIdx: index("idx_commission_payouts_status").on(table.status),
 }));
 export type CommissionPayout = typeof commissionPayouts.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// PHASE 3 — Internal Team Chat + Reminders
+// ----------------------------------------------------------------------------
+
+export const teamChannels = pgTable("team_channels", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  isGeneral: boolean("is_general").notNull().default(false),
+  createdBy: text("created_by").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type TeamChannel = typeof teamChannels.$inferSelect;
+export type InsertTeamChannel = typeof teamChannels.$inferInsert;
+
+export const teamMessages = pgTable("team_messages", {
+  id: text("id").primaryKey(),
+  channelId: text("channel_id").notNull().references(() => teamChannels.id, { onDelete: "cascade" }),
+  senderId: text("sender_id").notNull(),
+  senderName: text("sender_name").notNull(),
+  senderRole: text("sender_role").notNull(),
+  content: text("content").notNull(),
+  attachmentUrl: text("attachment_url"),
+  isEdited: boolean("is_edited").notNull().default(false),
+  editedAt: timestamp("edited_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  channelIdx: index("idx_team_messages_channel_id").on(table.channelId),
+  createdAtIdx: index("idx_team_messages_created_at").on(table.createdAt),
+}));
+export type TeamMessage = typeof teamMessages.$inferSelect;
+export type InsertTeamMessage = typeof teamMessages.$inferInsert;
+
+export const reminders = pgTable("reminders", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),       // who receives the reminder
+  createdBy: text("created_by").notNull(), // who set it (may differ for manager→staff)
+  title: text("title").notNull(),
+  body: text("body"),
+  remindAt: timestamp("remind_at").notNull(),
+  repeat: text("repeat"),                  // null | 'daily' | 'weekly'
+  jobId: text("job_id").references(() => jobTickets.id, { onDelete: "set null" }),
+  isSent: boolean("is_sent").notNull().default(false),
+  sentAt: timestamp("sent_at"),
+  isDismissed: boolean("is_dismissed").notNull().default(false),
+  dismissedAt: timestamp("dismissed_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdx: index("idx_reminders_user_id").on(table.userId),
+  remindAtIdx: index("idx_reminders_remind_at").on(table.remindAt),
+  isSentIdx: index("idx_reminders_is_sent").on(table.isSent),
+}));
+export type Reminder = typeof reminders.$inferSelect;
+export type InsertReminder = typeof reminders.$inferInsert;

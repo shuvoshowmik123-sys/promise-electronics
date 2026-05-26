@@ -6,6 +6,7 @@ import { Request, Response, NextFunction } from "express";
 import { aiErrorHandler } from "./middleware/ai-error-handler.js";
 import { startDrawerDayCloseScheduler, stopDrawerDayCloseScheduler } from "./services/drawer-day-close.service.js";
 import { startAbandonmentScheduler, stopAbandonmentScheduler } from "./services/abandonment.service.js";
+import { startReminderScheduler, stopReminderScheduler } from "./services/reminder.service.js";
 import { seedDefaultCommissionRules } from "./services/commission.service.js";
 
 (async () => {
@@ -16,6 +17,7 @@ import { seedDefaultCommissionRules } from "./services/commission.service.js";
   const httpServer = getHttpServer();
   startDrawerDayCloseScheduler();
   startAbandonmentScheduler();
+  startReminderScheduler();
   await seedDefaultCommissionRules();
 
   // AI Error Handler (Module C)
@@ -69,6 +71,7 @@ import { seedDefaultCommissionRules } from "./services/commission.service.js";
     log(`Received ${signal}. Closing HTTP server gracefully...`);
     stopDrawerDayCloseScheduler();
     stopAbandonmentScheduler();
+    stopReminderScheduler();
     httpServer.close((err) => {
       if (err) {
         console.error("[Shutdown] Error closing server:", err);

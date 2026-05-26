@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
 import { adminNavGroups } from "@/lib/mock-data";
-import { LogOut, Bell, Settings, Menu, Loader2 } from "lucide-react";
+import { LogOut, Settings, Menu, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -19,6 +19,8 @@ import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { useEffect } from "react";
 import { toast } from "sonner";
 import { CommandPalette } from "@/components/admin/shared/CommandPalette";
+import { ReminderBell } from "@/components/admin/ReminderBell";
+import { TeamChatPanel } from "@/components/admin/TeamChatPanel";
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
@@ -155,10 +157,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                 {location.split("/").pop() || "Dashboard"}
               </h1>
             </div>
-            <div className="flex items-center gap-4">
-              <Button variant="ghost" size="icon">
-                <Bell className="h-5 w-5" />
-              </Button>
+            <div className="flex items-center gap-2">
+              <ReminderBell />
               <Button variant="ghost" size="icon">
                 <Settings className="h-5 w-5" />
               </Button>
@@ -169,6 +169,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
           </main>
         </div>
         <CommandPalette />
+        <TeamChatPanel />
       </div>
     </SidebarProvider>
   );

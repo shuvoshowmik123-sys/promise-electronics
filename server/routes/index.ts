@@ -61,6 +61,8 @@ import leaveRoutes from './leave.routes.js';
 import payrollRoutes from './payroll.routes.js';
 import { drawerRouter } from './drawer.routes.js'; // Phase 7: Financial Engine
 import offlineSyncRoutes from './offline-sync.routes.js'; // Phase 3: Offline Data Sync
+import teamChatRoutes from './team-chat.routes.js'; // Phase 3: Internal Team Chat
+import remindersRoutes from './reminders.routes.js'; // Phase 3: Reminders
 
 /**
  * Register all routes with the Express application.
@@ -272,6 +274,12 @@ export async function registerRoutes(
 
     app.use('/api/messenger', messengerRoutes);
     console.log('[Routes] ✓ Messenger webhook registered');
+
+    // Phase 3: Internal Team Chat + Reminders
+    app.use(teamChatRoutes);
+    console.log('[Routes] ✓ Team chat routes registered');
+    app.use(remindersRoutes);
+    console.log('[Routes] ✓ Reminders routes registered');
 
     console.log('[Routes] All route modules registered successfully!');
 
