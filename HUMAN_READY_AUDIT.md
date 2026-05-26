@@ -117,7 +117,24 @@ Each entry: what was built, what's missing for a real human to use it comfortabl
 
 ## Phase 5 — Google Drive Backup + promiseelectronics.com
 
-*(to be filled)*
+### Backup Scheduler (`backup-scheduler.service.ts`)
+- [x] Built: Daily automated backup at 02:00 server time, checks every 10 min
+- [x] Built: Requires `BACKUP_ENCRYPTION_PASSWORD` env var (min 16 chars) — silent skip if missing
+- [x] Built: FCM push to all admins on backup failure
+- [x] Built: Phase 2 + Phase 3 tables added to backup snapshot
+- [x] Built: `.env.example` updated with all required Google Drive + backup env vars
+- [ ] **Audit**: No UI to see backup history or trigger manual backup from admin panel (BackupDialog exists but route not in nav)
+- [ ] **Audit**: No Render env var setup docs — user must manually add 5 env vars
+- [ ] **Audit**: `lastBackupDate` is in-memory only — server restart before 2 AM + after backup = double backup risk (low probability)
+
+### promiseelectronics.com — Public Site
+- [x] Built: All customer pages exist (Home, Shop, Services, Repair, Track, Profile, etc.)
+- [x] Fixed: `/track/:id` route added — QR codes from job receipts now deep-link correctly
+- [x] Fixed: `TrackJobPage` reads path param first (`/track/uuid`), falls back to `?id=` query param
+- [ ] **Audit**: Home page uses `mock-data.ts` images — needs real Promise Electronics photos
+- [ ] **Audit**: No `promiseelectronics.com` domain configured in Render custom domain settings
+- [ ] **Audit**: `/about` page content is generic placeholder — needs real shop address/hours/contact
+- [ ] **Audit**: SMS abandonment message has hardcoded `01XXXXXXXXX` phone number
 
 ---
 

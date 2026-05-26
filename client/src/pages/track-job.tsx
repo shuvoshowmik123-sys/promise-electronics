@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, useParams } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -82,15 +82,20 @@ const statusConfig: Record<string, { icon: React.ReactNode; color: string; bgCol
 export default function TrackJobPage() {
   usePageTitle("Job Status");
   const [, navigate] = useLocation();
+  const params = useParams<{ id?: string }>();
   const [jobId, setJobId] = useState<string | null>(null);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const id = params.get("id");
-    if (id) {
-      setJobId(id);
+    // Path param takes priority (QR deep-link: /track/:id)
+    if (params?.id) {
+      setJobId(params.id);
+      return;
     }
-  }, []);
+    // Fallback: query param (?id=...)
+    const qp = new URLSearchParams(window.location.search);
+    const id = qp.get("id");
+    if (id) setJobId(id);
+  }, [params?.id]);
 
   const { data: job, isLoading, error } = useQuery<JobTrackingInfo>({
     queryKey: ["job-tracking", jobId],

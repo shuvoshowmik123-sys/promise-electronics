@@ -83,6 +83,16 @@ export class BackupService {
                 const attendanceRecords = await tx.query.attendanceRecords.findMany();
                 const notifications = await tx.query.notifications.findMany();
 
+                // Phase 3 tables
+                const teamChannels = await tx.query.teamChannels.findMany();
+                const teamMessages = await tx.query.teamMessages.findMany();
+                const reminders = await tx.query.reminders.findMany();
+
+                // Phase 2 tables
+                const commissionRules = await tx.query.commissionRules.findMany();
+                const commissionAssignments = await tx.query.commissionAssignments.findMany();
+                const commissionPayouts = await tx.query.commissionPayouts.findMany();
+
                 return {
                     metadata: {
                         version: '1.0',
@@ -128,7 +138,13 @@ export class BackupService {
                         fraudAlerts,
                         pickupSchedules,
                         attendanceRecords,
-                        notifications
+                        notifications,
+                        teamChannels,
+                        teamMessages,
+                        reminders,
+                        commissionRules,
+                        commissionAssignments,
+                        commissionPayouts,
                     }
                 };
             });

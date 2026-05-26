@@ -7,6 +7,7 @@ import { aiErrorHandler } from "./middleware/ai-error-handler.js";
 import { startDrawerDayCloseScheduler, stopDrawerDayCloseScheduler } from "./services/drawer-day-close.service.js";
 import { startAbandonmentScheduler, stopAbandonmentScheduler } from "./services/abandonment.service.js";
 import { startReminderScheduler, stopReminderScheduler } from "./services/reminder.service.js";
+import { startBackupScheduler, stopBackupScheduler } from "./services/backup-scheduler.service.js";
 import { seedDefaultCommissionRules } from "./services/commission.service.js";
 
 (async () => {
@@ -18,6 +19,7 @@ import { seedDefaultCommissionRules } from "./services/commission.service.js";
   startDrawerDayCloseScheduler();
   startAbandonmentScheduler();
   startReminderScheduler();
+  startBackupScheduler();
   await seedDefaultCommissionRules();
 
   // AI Error Handler (Module C)
@@ -72,6 +74,7 @@ import { seedDefaultCommissionRules } from "./services/commission.service.js";
     stopDrawerDayCloseScheduler();
     stopAbandonmentScheduler();
     stopReminderScheduler();
+    stopBackupScheduler();
     httpServer.close((err) => {
       if (err) {
         console.error("[Shutdown] Error closing server:", err);
