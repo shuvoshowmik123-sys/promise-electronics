@@ -29,7 +29,13 @@ type InboxItem = {
     claimedByUserId: string | null;
 };
 
-type HistoryMsg = { role: "user" | "model"; content: string };
+type HistoryMsg = {
+    role: "user" | "model";
+    content: string;
+    type?: string;
+    imageId?: string;
+    mimeType?: string;
+};
 
 function formatTime(ts: string | null) {
     if (!ts) return "";
@@ -316,19 +322,37 @@ export function CrmInboxPanel() {
 
                                 {history.map((msg, idx) => {
                                     const isCustomer = msg.role === "user";
+                                    const isImage = msg.type === "image" && msg.imageId;
                                     return (
                                         <div
                                             key={idx}
                                             className={`flex ${isCustomer ? "justify-start" : "justify-end"}`}
                                         >
                                             <div
-                                                className={`max-w-[75%] px-3 py-2 rounded-2xl text-sm whitespace-pre-wrap break-words ${
-                                                    isCustomer
-                                                        ? "bg-white border border-slate-200 text-slate-800"
-                                                        : "bg-blue-500 text-white"
+                                                className={`max-w-[75%] rounded-2xl overflow-hidden text-sm ${
+                                                    isImage
+                                                        ? "p-0.5 bg-white border border-slate-200"
+                                                        : isCustomer
+                                                            ? "px-3 py-2 bg-white border border-slate-200 text-slate-800 whitespace-pre-wrap break-words"
+                                                            : "px-3 py-2 bg-blue-500 text-white whitespace-pre-wrap break-words"
                                                 }`}
                                             >
-                                                {String(msg.content ?? "")}
+                                                {isImage ? (
+                                                    <img
+                                                        src={`/api/brain/media/${msg.imageId}`}
+                                                        alt="Customer image"
+                                                        className="max-w-full rounded-xl object-contain max-h-64"
+                                                        onError={(e) => {
+                                                            (e.target as HTMLImageElement).style.display = "none";
+                                                            (e.target as HTMLImageElement).insertAdjacentHTML(
+                                                                "afterend",
+                                                                `<span class="text-xs text-slate-400 px-3 py-2 block">[Image expired]</span>`
+                                                            );
+                                                        }}
+                                                    />
+                                                ) : (
+                                                    String(msg.content ?? "")
+                                                )}
                                             </div>
                                         </div>
                                     );

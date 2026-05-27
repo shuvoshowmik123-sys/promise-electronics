@@ -3,6 +3,9 @@ import { conversations, sessions, brainConfig, shadowDrafts } from './schema.js'
 import { eq, desc, count, sql as drizzleSql } from 'drizzle-orm';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { neon } from '@neondatabase/serverless';
+import { writeFile, readFile } from 'fs/promises';
+import { join } from 'path';
+import { tmpdir } from 'os';
 
 // Initialize Gemini for embeddings
 const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
@@ -200,7 +203,17 @@ export const brainService = {
             )`;
             await sql`CREATE INDEX IF NOT EXISTS brain_messages_session_idx ON brain_messages (session_id, created_at DESC)`;
 
-            console.log('[Brain] KG tables ensured (kg_facts, brain_messages)');
+            await sql`CREATE TABLE IF NOT EXISTS brain_media (
+                id TEXT PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                mime_type TEXT NOT NULL DEFAULT 'image/jpeg',
+                data_b64 TEXT NOT NULL,
+                expires_at BIGINT NOT NULL
+            )`;
+            await sql`CREATE INDEX IF NOT EXISTS brain_media_session_idx ON brain_media (session_id)`;
+            await sql`CREATE INDEX IF NOT EXISTS brain_media_expires_idx ON brain_media (expires_at)`;
+
+            console.log('[Brain] KG tables ensured (kg_facts, brain_messages, brain_media)');
         } catch (e: any) {
             console.warn('[Brain] KG migration failed:', e.message?.slice(0, 120));
         }
@@ -273,5 +286,82 @@ export const brainService = {
             .where(eq(sessions.needsClaim, true))
             .orderBy(desc(sessions.lastMessageAt))
             .limit(20);
+    },
+
+    // -------------------------------------------------------------
+    // Media Storage (images from WhatsApp / Messenger)
+    // TTL: 24h. Stored in brain_media table + /tmp fast cache.
+    // -------------------------------------------------------------
+
+    /** Push a structured message (e.g. image ref) directly into session history */
+    async appendToHistory(senderPsid: string, message: Record<string, unknown>) {
+        const session = await this.getSession(senderPsid);
+        const history = [...(session.history as any[] || []), message];
+        await brainDb.update(sessions)
+            .set({ history, messageCount: (session.messageCount || 0) + 1, lastMessageAt: new Date() })
+            .where(eq(sessions.senderPsid, senderPsid));
+    },
+
+    /** Store image buffer in brain_media (24h TTL) and /tmp cache */
+    async storeMedia(imageId: string, sessionId: string, mimeType: string, buffer: Buffer): Promise<void> {
+        const url = process.env.BRAIN_DATABASE_URL;
+        if (!url) return;
+        const expiresAt = Date.now() + 86_400_000; // 24h
+        const data_b64 = buffer.toString('base64');
+        try {
+            const sql = neon(url);
+            await sql`
+                INSERT INTO brain_media (id, session_id, mime_type, data_b64, expires_at)
+                VALUES (${imageId}, ${sessionId}, ${mimeType}, ${data_b64}, ${expiresAt})
+                ON CONFLICT (id) DO NOTHING
+            `;
+        } catch (e: any) {
+            console.error('[Brain] storeMedia DB error:', e.message?.slice(0, 80));
+        }
+        // /tmp fast cache — best effort
+        try {
+            await writeFile(join(tmpdir(), `brain-img-${imageId}`), buffer);
+        } catch {}
+    },
+
+    /** Retrieve image buffer: /tmp → DB → null */
+    async getMedia(imageId: string): Promise<{ buffer: Buffer; mimeType: string } | null> {
+        // 1. /tmp fast path
+        try {
+            const buf = await readFile(join(tmpdir(), `brain-img-${imageId}`));
+            return { buffer: buf, mimeType: 'image/jpeg' };
+        } catch {}
+
+        // 2. DB fallback
+        const url = process.env.BRAIN_DATABASE_URL;
+        if (!url) return null;
+        try {
+            const sql = neon(url);
+            const rows = await sql`
+                SELECT data_b64, mime_type, expires_at FROM brain_media WHERE id = ${imageId} LIMIT 1
+            `;
+            if (!rows[0]) return null;
+            if (Number(rows[0].expires_at) < Date.now()) return null; // expired
+            const buffer = Buffer.from(rows[0].data_b64 as string, 'base64');
+            // Repopulate /tmp for next hit
+            try { await writeFile(join(tmpdir(), `brain-img-${imageId}`), buffer); } catch {}
+            return { buffer, mimeType: rows[0].mime_type as string };
+        } catch (e: any) {
+            console.error('[Brain] getMedia DB error:', e.message?.slice(0, 80));
+            return null;
+        }
+    },
+
+    /** Delete expired rows from brain_media */
+    async cleanupExpiredMedia(): Promise<number> {
+        const url = process.env.BRAIN_DATABASE_URL;
+        if (!url) return 0;
+        try {
+            const sql = neon(url);
+            const result = await sql`DELETE FROM brain_media WHERE expires_at < ${Date.now()}`;
+            return (result as any).count ?? 0;
+        } catch {
+            return 0;
+        }
     },
 };

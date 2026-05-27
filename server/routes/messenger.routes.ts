@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { randomUUID } from "crypto";
 import { aiService } from "../services/ai.service.js";
 import { storage } from "../storage.js";
 import ImageKit from "imagekit";
@@ -148,45 +149,46 @@ async function handleMessage(sender_psid: string, message: any) {
         // ─── 2. Handle Image ──────────────────────────────────────────────────
         if (message.attachments && message.attachments[0]?.type === "image") {
             const imageUrl = message.attachments[0].payload.url;
-            console.log(`[Messenger] Received image from ${sender_psid}`);
+            const imageId = randomUUID();
+            const mimeType = "image/jpeg";
+            console.log(`[Messenger] Image from ${sender_psid}, imageId=${imageId}`);
 
             const imageBuffer = await downloadFile(imageUrl);
-            const base64Image = imageBuffer.toString("base64");
 
-            let permanentUrl = imageUrl;
+            // Store in brain_media (24h TTL) + /tmp cache
+            await brainService.storeMedia(imageId, sender_psid, mimeType, imageBuffer);
+            await brainService.appendToHistory(sender_psid, {
+                role: "user", type: "image", content: "[Image]", imageId, mimeType
+            });
+
+            // Optional: also upload to ImageKit if configured (for permanent archive)
             const imagekit = getImageKit();
-
             if (imagekit) {
-                const uploadResult = await imagekit.upload({
-                    file: base64Image,
-                    fileName: `messenger-${sender_psid}-${Date.now()}.jpg`,
-                    folder: 'messenger_uploads'
-                });
-                permanentUrl = uploadResult.url;
-            } else {
-                console.warn("[Messenger] ImageKit not configured. Using source attachment URL.");
+                try {
+                    await imagekit.upload({
+                        file: imageBuffer.toString("base64"),
+                        fileName: `messenger-${sender_psid}-${imageId}.jpg`,
+                        folder: 'messenger_uploads'
+                    });
+                } catch (e: any) {
+                    console.warn("[Messenger] ImageKit upload failed:", e.message?.slice(0, 60));
+                }
             }
 
-            // In observe mode: just log the image event, don't reply
             if (isObserveMode) {
-                await brainService.updateSession(sender_psid, `[Image sent: ${permanentUrl}]`, null);
-                console.log(`[Brain] [OBSERVE] Logged image message from ${sender_psid}`);
+                console.log(`[Brain] [OBSERVE] Messenger image stored, imageId=${imageId}`);
                 return;
             }
 
-            // Active or shadow mode: analyze and respond
+            const base64Image = imageBuffer.toString("base64");
             const response = await aiService.chatWithDaktarVai("Here is an image of my problem.", history, base64Image, { name: "Messenger User", role: "customer" });
 
             if (mode === 'shadow') {
-                await brainService.saveShadowDraft(sender_psid, `[Image sent: ${permanentUrl}]`, response.text);
-                await brainService.updateSession(sender_psid, `[Image sent: ${permanentUrl}]`, null);
-                console.log(`[Brain] [SHADOW] Saved draft response for image from ${sender_psid}`);
+                await brainService.saveShadowDraft(sender_psid, "[Image]", response.text);
+                console.log(`[Brain] [SHADOW] Saved draft for image from ${sender_psid}`);
                 return;
             }
 
-            if (response.booking) {
-                (response.booking as any).imageUrl = permanentUrl;
-            }
             await brainService.logConversation(sender_psid, "Here is an image of my problem.", response.text, 'ai');
             await processAIResponse(sender_psid, "Here is an image of my problem.", response, history);
             return;

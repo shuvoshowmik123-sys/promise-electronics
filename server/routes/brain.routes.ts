@@ -459,4 +459,59 @@ router.post("/sessions/:psid/send", async (req: Request, res: Response) => {
     }
 });
 
+// ==========================================
+// Media: Ephemeral Image Cache (24h TTL)
+// AI models call GET /api/brain/media/:imageId to inspect images autonomously.
+// ==========================================
+
+/**
+ * GET /media/:imageId — serve stored image (from /tmp or brain_media table)
+ * Used by CRM inbox and AI agents for autonomous image inspection.
+ */
+router.get("/media/:imageId", async (req: Request, res: Response) => {
+    const { imageId } = req.params;
+    if (!imageId || imageId.length > 64) return res.status(400).json({ error: "Invalid imageId" });
+
+    const result = await brainService.getMedia(imageId);
+    if (!result) return res.status(404).json({ error: "Image not found or expired" });
+
+    res.set("Content-Type", result.mimeType);
+    res.set("Cache-Control", "private, max-age=3600"); // browser caches for 1h
+    res.send(result.buffer);
+});
+
+/**
+ * POST /media/cleanup — delete expired entries from brain_media
+ * Call periodically (e.g. from admin or cron).
+ */
+router.post("/media/cleanup", async (req: Request, res: Response) => {
+    const deleted = await brainService.cleanupExpiredMedia();
+    res.json({ success: true, deleted });
+});
+
+/**
+ * GET /sessions/:psid/images — list image refs in a session (for AI enumeration)
+ * Returns imageId + mimeType + expiry. AI can then fetch each via /media/:imageId.
+ */
+router.get("/sessions/:psid/images", async (req: Request, res: Response) => {
+    try {
+        const { psid } = req.params;
+        const sessionRows = await brainDb.select()
+            .from(sessions)
+            .where(eq(sessions.senderPsid, psid))
+            .limit(1);
+        const session = sessionRows[0];
+        if (!session) return res.status(404).json({ success: false, error: "Session not found" });
+
+        const hist = (session.history as any[]) || [];
+        const images = hist
+            .filter((m: any) => m.type === "image" && m.imageId)
+            .map((m: any) => ({ imageId: m.imageId, mimeType: m.mimeType || "image/jpeg" }));
+
+        res.json({ success: true, images });
+    } catch (error) {
+        res.status(500).json({ success: false, error: "Failed to list images" });
+    }
+});
+
 export default router;

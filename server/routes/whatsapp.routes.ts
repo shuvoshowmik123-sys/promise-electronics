@@ -1,4 +1,5 @@
 import { Router, Request, Response } from "express";
+import { randomUUID } from "crypto";
 import { aiService } from "../services/ai.service.js";
 import { storage } from "../storage.js";
 import { brainService } from "../brain/brain.service.js";
@@ -104,23 +105,31 @@ async function handleWhatsAppMessage(
         // ── Image ─────────────────────────────────────────────────────────────
         if (message.type === "image") {
             const mediaId = message.image?.id;
-            console.log(`[WhatsApp] Image from ${senderPhone}, media_id=${mediaId}`);
+            const mimeType: string = message.image?.mime_type || "image/jpeg";
+            const imageId = randomUUID();
+            console.log(`[WhatsApp] Image from ${senderPhone}, media_id=${mediaId}, imageId=${imageId}`);
 
             const imageBuffer = await downloadWhatsAppMedia(mediaId);
-            const base64Image = imageBuffer.toString("base64");
+
+            // Store in brain_media (24h TTL) + /tmp cache — AI can fetch via /api/brain/media/:imageId
+            await brainService.storeMedia(imageId, sessionKey, mimeType, imageBuffer);
+            // Push structured image ref into session history (no blob in JSONB)
+            await brainService.appendToHistory(sessionKey, {
+                role: "user", type: "image", content: "[Image]", imageId, mimeType
+            });
 
             if (isObserveMode) {
-                await brainService.updateSession(sessionKey, "[Image sent]", null);
+                console.log(`[Brain] [OBSERVE] WhatsApp image stored, imageId=${imageId}`);
                 return;
             }
 
+            const base64Image = imageBuffer.toString("base64");
             const response = await aiService.chatWithDaktarVai(
                 "Here is an image of my problem.", history, base64Image, { name: senderName, role: "customer" }
             );
 
             if (mode === "shadow") {
-                await brainService.saveShadowDraft(sessionKey, "[Image sent]", response.text);
-                await brainService.updateSession(sessionKey, "[Image sent]", null);
+                await brainService.saveShadowDraft(sessionKey, "[Image]", response.text);
                 return;
             }
 
