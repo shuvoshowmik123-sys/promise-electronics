@@ -298,37 +298,53 @@ const COMBINED_ADMIN_PROMPT = ADMIN_PROMPT + ADMIN_SETTINGS_PROMPT;
 
 export const aiService = {
     /**
-     * Transcribe audio file using Groq Whisper
+     * Transcribe audio file using Groq Whisper.
+     *
+     * Uses direct multipart fetch instead of Groq SDK — the SDK's
+     * file-stream upload hits a "Connection error" intermittently when
+     * given Node fs streams (confirmed via smoke test).
      */
-    async transcribeAudio(fileBuffer: Buffer, fileName: string = 'audio.mp3'): Promise<string | null> {
-        const fs = await import("fs");
-        const path = await import("path");
-        const os = await import("os");
-        const { promisify } = await import("util");
-        const writeFile = promisify(fs.writeFile);
-        const unlink = promisify(fs.unlink);
+    async transcribeAudio(fileBuffer: Buffer, fileName: string = 'audio.wav'): Promise<string | null> {
+        const apiKey = process.env.GROQ_API_KEY;
+        if (!apiKey) {
+            console.error("[AI] GROQ_API_KEY missing — cannot transcribe.");
+            return null;
+        }
 
-        const tempFilePath = path.join(os.tmpdir(), `audio-${Date.now()}-${fileName}`);
+        // Infer mime type from filename extension
+        const ext = (fileName.split(".").pop() ?? "wav").toLowerCase();
+        const mimeByExt: Record<string, string> = {
+            wav: "audio/wav", mp3: "audio/mpeg", mp4: "audio/mp4",
+            m4a: "audio/mp4", ogg: "audio/ogg", webm: "audio/webm",
+            flac: "audio/flac", mpga: "audio/mpeg",
+        };
+        const mime = mimeByExt[ext] ?? "audio/wav";
 
         try {
-            await writeFile(tempFilePath, fileBuffer);
+            const form = new FormData();
+            const blob = new Blob([new Uint8Array(fileBuffer)], { type: mime });
+            form.append("file", blob, fileName);
+            form.append("model", MODELS.groq.audio);
+            form.append("response_format", "json");
+            form.append("language", "bn");
+            form.append("temperature", "0");
 
-            const completion = await groq.audio.transcriptions.create({
-                file: fs.createReadStream(tempFilePath),
-                model: MODELS.groq.audio,
-                response_format: "json",
-                language: "bn", // Bias towards Bengali
-                temperature: 0.0,
+            const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+                method: "POST",
+                headers: { Authorization: `Bearer ${apiKey}` },
+                body: form,
             });
 
-            // Cleanup
-            await unlink(tempFilePath).catch(console.error);
+            if (!res.ok) {
+                const errText = await res.text();
+                console.error(`[AI] Transcription HTTP ${res.status}: ${errText.slice(0, 200)}`);
+                return null;
+            }
 
-            return completion.text;
+            const data = await res.json() as { text?: string };
+            return data.text ?? null;
         } catch (err) {
             console.error("[AI] Transcription failed:", err);
-            // Try cleanup if it failed during API call
-            await unlink(tempFilePath).catch(() => { });
             return null;
         }
     },
