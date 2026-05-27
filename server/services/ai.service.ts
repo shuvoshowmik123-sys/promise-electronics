@@ -36,16 +36,14 @@ function getNextGeminiClient(): GoogleGenerativeAI {
 const MODELS = {
     // Groq models (FAST & Primary)
     groq: {
-        chat: "llama-3.3-70b-versatile",     // Best for chat
-        fast: "llama-3.1-8b-instant",         // Quick responses
-        vision: "llama-3.2-90b-vision-preview", // Primary Vision (High Quality)
-        visionFast: "llama-3.2-11b-vision-preview", // Secondary Vision (Fast)
-        audio: "whisper-large-v3",             // Speech to Text
+        chat: "llama-3.3-70b-versatile",                       // Best Bangla/Banglish/English match (4/4 perfect, 629ms)
+        fast: "llama-3.1-8b-instant",                          // Quick responses
+        vision: "meta-llama/llama-4-scout-17b-16e-instruct",   // Only working vision on Groq (293ms, llama-3.2 vision decommissioned)
+        audio: "whisper-large-v3",                             // Speech to Text
     },
     // Gemini models (BACKUP for vision - ACCURATE)
     gemini: {
-        vision: "gemini-2.5-flash",           // Latest stable model (Jan 2026)
-        visionFallback: "gemini-2.0-flash",   // Fallback option
+        vision: "gemini-2.5-flash",   // Primary Bangla-capable vision fallback when Groq fails
     }
 };
 
