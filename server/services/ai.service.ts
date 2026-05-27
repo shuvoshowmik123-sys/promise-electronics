@@ -81,10 +81,26 @@ const DAKTAR_VAI_PROMPT = `
   - Common issues: No power, no display, lines on screen, dark spots, flickering, half screen, no sound, HDMI not working, remote not working.
   - You can diagnose issues from descriptions or images.
 
+  SHOP DETAILS (Always use these exact values):
+  - Address: লিফট-০৮, হোসেন টাওয়ার, ১১৬ নয়া পল্টন, বক্স কালভার্ট রোড, ঢাকা-১০০০
+  - Phone: 01673999995
+  - Hours: Saturday–Thursday, 10:00 AM – 8:00 PM (শনিবার–বৃহস্পতিবার, সকাল ১০টা – রাত ৮টা)
+  - Closed: Every Friday (প্রতি শুক্রবার বন্ধ)
+  - Payment: Cash only. No card. Dutch Bangla ATM is right in front of the office.
+
+  REAL PRICING (from our actual repair history — use these):
+  - 32" display replacement: ~14,000–16,000 BDT
+  - 43" display replacement: 16,000 BDT (service charge included)
+  - 55" display replacement: 22,000–27,000 BDT (model-dependent)
+  - 65" panel replacement: 48,000 BDT
+  - General repair (backlight, power board, T-Con): 2,000–3,500 BDT
+  - If repair fails: zero charge
+  - Warranty: 6 months on display replacement, 2 months on general repair
+  - Prices are FIXED — cannot negotiate further
+
   RESTRICTIONS:
   - DO NOT talk about politics, religion, or general news.
   - If asked about non-TV topics, say: "Sorry Sir, ami shudhu LCD, LED, OLED TV repair niye kotha boli."
-  - DO NOT give fake price estimates. Say: "Price ta inspect korar por bolte parbo" (I can tell the price after inspection).
   - If asked about Plasma or CRT TV, say: "Sorry Sir, amra Plasma ba CRT TV repair kori na. Shudhu LCD, LED, OLED."
 
   PRICING LOGIC (Use this to explain costs):
@@ -913,6 +929,27 @@ Rules:
             console.warn('[AI] KG retrieval failed (non-fatal):', e.message?.slice(0, 80));
         }
 
+        // ── FEW-SHOT EXAMPLES — real past conversations ────────────
+        // Find top 3 similar customer messages + our real replies via vector search.
+        // This teaches tone, pricing, and policies from actual Shadman Shuvo replies.
+        let fewShotBlock = '';
+        if (modelType === 'customer') {
+            try {
+                const { brainService } = await import('../brain/brain.service.js');
+                const examples = await brainService.getSimilarExamples(message, 3);
+                if (examples.length > 0) {
+                    fewShotBlock = '\n\nREAL EXAMPLES FROM OUR PAST CONVERSATIONS (follow this tone and style):\n';
+                    examples.forEach((ex, i) => {
+                        fewShotBlock += `\nExample ${i + 1}:\nCustomer: ${ex.customerMessage}\nOur reply: ${ex.ourReply}\n`;
+                    });
+                    fewShotBlock += '\nUse the above as tone/style/pricing reference. Adapt to current customer message.\n';
+                    console.log(`[AI] Injected ${examples.length} few-shot examples`);
+                }
+            } catch (e: any) {
+                console.warn('[AI] Few-shot retrieval failed (non-fatal):', e.message?.slice(0, 80));
+            }
+        }
+
         // Cap history to last 6 turns to save tokens (KG covers long-term memory)
         const cappedHistory = Array.isArray(history) ? history.slice(-6) : [];
 
@@ -923,6 +960,11 @@ Rules:
             // Inject KG facts at top of system prompt — highest priority context
             if (kgContextBlock) {
                 basePrompt = `${kgContextBlock}\nUse the KNOWN FACTS above when relevant — they are authoritative shop knowledge.\n\n${basePrompt}`;
+            }
+
+            // Inject few-shot examples after KG but before persona rules
+            if (fewShotBlock) {
+                basePrompt = basePrompt + fewShotBlock;
             }
 
             if (userContext) {

@@ -480,6 +480,35 @@ router.get("/media/:imageId", async (req: Request, res: Response) => {
     res.send(result.buffer);
 });
 
+// ==========================================
+// Conversation Import
+// ==========================================
+
+/**
+ * POST /import-conversations — bulk insert conversation pairs as good examples
+ * Body: { pairs: [{customerMessage, ourReply, source?}] }
+ */
+router.post("/import-conversations", async (req: Request, res: Response) => {
+    try {
+        const { pairs } = req.body;
+        if (!Array.isArray(pairs) || pairs.length === 0) {
+            return res.status(400).json({ success: false, error: "pairs array required" });
+        }
+        const valid = pairs.filter((p: any) =>
+            typeof p.customerMessage === "string" && p.customerMessage.trim() &&
+            typeof p.ourReply === "string" && p.ourReply.trim()
+        );
+        if (valid.length === 0) {
+            return res.status(400).json({ success: false, error: "No valid pairs found" });
+        }
+        const inserted = await brainService.bulkImportConversations(valid);
+        res.json({ success: true, inserted, received: valid.length });
+    } catch (error) {
+        console.error("[Brain API] Import error:", error);
+        res.status(500).json({ success: false, error: "Import failed" });
+    }
+});
+
 /**
  * POST /media/cleanup — delete expired entries from brain_media
  * Call periodically (e.g. from admin or cron).

@@ -24,6 +24,7 @@ import { brainService } from "./brain/brain.service.js";
   await seedDefaultCommissionRules();
   await brainService.migratePhase6Columns().catch(() => {}); // no-op if Brain DB not configured
   await brainService.migrateKGTables().catch(() => {});      // Knowledge Graph tables
+  await brainService.seedConversationsIfEmpty().catch(() => {}); // seed real chat examples once
 
   // Firebase UID column — idempotent, safe to run on every start
   try {
