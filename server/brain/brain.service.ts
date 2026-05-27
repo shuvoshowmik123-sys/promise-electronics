@@ -2,6 +2,7 @@ import { brainDb } from './brain.db.js';
 import { conversations, sessions, brainConfig, shadowDrafts } from './schema.js';
 import { eq, desc, count, sql as drizzleSql } from 'drizzle-orm';
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { neon } from '@neondatabase/serverless';
 
 // Initialize Gemini for embeddings
 const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
@@ -153,6 +154,48 @@ export const brainService = {
     // -------------------------------------------------------------
     // Phase 6: Commission Tracking — Staff Claim on Messenger Sessions
     // -------------------------------------------------------------
+
+    /** Run once on startup to create Knowledge Graph tables if missing.
+     *  Uses raw neon client because Drizzle neon-http has DDL issues. */
+    async migrateKGTables() {
+        const url = process.env.BRAIN_DATABASE_URL;
+        if (!url) {
+            console.warn('[Brain] BRAIN_DATABASE_URL not set — skipping KG migration');
+            return;
+        }
+        try {
+            const sql = neon(url);
+            await sql`CREATE TABLE IF NOT EXISTS kg_facts (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                subject TEXT NOT NULL,
+                predicate TEXT NOT NULL,
+                value TEXT NOT NULL,
+                tags TEXT[] NOT NULL DEFAULT '{}',
+                confidence REAL DEFAULT 1.0,
+                source TEXT DEFAULT 'admin',
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT NOW(),
+                expires_at TIMESTAMP
+            )`;
+            await sql`CREATE INDEX IF NOT EXISTS kg_facts_tags_gin ON kg_facts USING GIN (tags)`;
+            await sql`CREATE INDEX IF NOT EXISTS kg_facts_subject_idx ON kg_facts (subject)`;
+
+            await sql`CREATE TABLE IF NOT EXISTS brain_messages (
+                id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                has_image BOOLEAN DEFAULT FALSE,
+                image_url TEXT,
+                created_at TIMESTAMP DEFAULT NOW()
+            )`;
+            await sql`CREATE INDEX IF NOT EXISTS brain_messages_session_idx ON brain_messages (session_id, created_at DESC)`;
+
+            console.log('[Brain] KG tables ensured (kg_facts, brain_messages)');
+        } catch (e: any) {
+            console.warn('[Brain] KG migration failed:', e.message?.slice(0, 120));
+        }
+    },
 
     /** Run once on startup to add Phase 6 columns if missing */
     async migratePhase6Columns() {

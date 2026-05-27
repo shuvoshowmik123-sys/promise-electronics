@@ -83,3 +83,37 @@ export const shadowDrafts = pgTable('shadow_drafts', {
     reviewedAt: timestamp('reviewed_at'),
     createdAt: timestamp('created_at').defaultNow(),
 });
+
+// -------------------------------------------------------------
+// Knowledge Graph — atomic facts (admin-curated shop knowledge)
+// -------------------------------------------------------------
+export const kgFacts = pgTable('kg_facts', {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    subject: text('subject').notNull(),        // "Samsung Q70 2018"
+    predicate: text('predicate').notNull(),    // "STATUS" | "VERDICT" | "PRICE" | "ISSUE"
+    value: text('value').notNull(),            // "BLACKLISTED" | "8000-12000 BDT"
+
+    tags: text('tags').array().notNull().default([]),
+    confidence: real('confidence').default(1.0),
+    source: text('source').default('admin'),   // 'admin' | 'csv' | 'inferred'
+    createdBy: text('created_by'),
+
+    createdAt: timestamp('created_at').defaultNow(),
+    expiresAt: timestamp('expires_at'),
+});
+
+// -------------------------------------------------------------
+// Brain Messages — per-session conversation history (full, isolated)
+// -------------------------------------------------------------
+export const brainMessages = pgTable('brain_messages', {
+    id: uuid('id').primaryKey().defaultRandom(),
+
+    sessionId: text('session_id').notNull(),
+    role: text('role').notNull(),              // 'user' | 'ai'
+    content: text('content').notNull(),
+    hasImage: boolean('has_image').default(false),
+    imageUrl: text('image_url'),
+
+    createdAt: timestamp('created_at').defaultNow(),
+});

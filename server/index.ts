@@ -23,6 +23,7 @@ import { brainService } from "./brain/brain.service.js";
   startBackupScheduler();
   await seedDefaultCommissionRules();
   await brainService.migratePhase6Columns().catch(() => {}); // no-op if Brain DB not configured
+  await brainService.migrateKGTables().catch(() => {});      // Knowledge Graph tables
 
   // AI Error Handler (Module C)
   app.use(aiErrorHandler);

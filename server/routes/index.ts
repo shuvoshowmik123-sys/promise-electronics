@@ -63,6 +63,7 @@ import { drawerRouter } from './drawer.routes.js'; // Phase 7: Financial Engine
 import offlineSyncRoutes from './offline-sync.routes.js'; // Phase 3: Offline Data Sync
 import teamChatRoutes from './team-chat.routes.js'; // Phase 3: Internal Team Chat
 import remindersRoutes from './reminders.routes.js'; // Phase 3: Reminders
+import kgRoutes from './kg.routes.js'; // KG: Knowledge Graph admin
 
 /**
  * Register all routes with the Express application.
@@ -280,6 +281,9 @@ export async function registerRoutes(
     console.log('[Routes] ✓ Team chat routes registered');
     app.use(remindersRoutes);
     console.log('[Routes] ✓ Reminders routes registered');
+
+    app.use(kgRoutes);
+    console.log('[Routes] ✓ Knowledge Graph routes registered');
 
     console.log('[Routes] All route modules registered successfully!');
 
