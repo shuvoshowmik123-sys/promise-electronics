@@ -242,3 +242,51 @@ Each entry: what was built, what's missing for a real human to use it comfortabl
 - [ ] **Audit**: CSV import gives total count but no per-line preview — bad rows reported in toast only
 - [ ] **Audit**: Confidence slider missing — UI hardcodes 1.0, can't surface low-confidence inferred facts
 - [ ] **Audit**: No "expires at" date input — admin can't set fact decay timeline from UI
+
+---
+
+## Phase 10 — Groq model audit + audio/vision hardening (2026-05-27)
+
+### Model selection — final config
+
+```
+groq.chat   = llama-3.3-70b-versatile     # Best Bangla/Banglish fluency, 4/4 lang match
+groq.fast   = llama-3.1-8b-instant        # Sub-500ms for simple turns
+groq.vision = meta-llama/llama-4-scout-17b-16e-instruct  # Only working Groq vision model
+groq.audio  = whisper-large-v3            # Bengali auto-detected, 1,666ms for 13.5s clip
+gemini.vision = gemini-2.5-flash          # Fallback for high-quality image analysis
+```
+
+### Models tested + rejected
+- `llama-3.2-90b-vision-preview` — HTTP 400, decommissioned
+- `llama-3.2-11b-vision-preview` — HTTP 400, decommissioned
+- `qwen/qwen3-32b` — reasoning model, outputs `<think>` tags, replies English even on Bangla input
+- `openai/gpt-oss-120b`, `openai/gpt-oss-20b` — access errors on current key tier
+- `groq/compound`, `groq/compound-mini` — not available on current plan
+
+### Audio transcription fix
+- **Bug**: `groq.audio.transcriptions.create({ file: fs.createReadStream(...) })` → "Connection error"
+- **Root cause**: Groq SDK can't handle Node ReadStream in this environment
+- **Fix**: Direct `fetch` to `https://api.groq.com/openai/v1/audio/transcriptions` with `FormData` + `Blob`
+- **Verified**: 422KB .wav, 13.5s, Bengali (`bn`), transcribed in 1,666ms
+- **Code**: `server/services/ai.service.ts` → `transcribeAudio()` — no temp file, mime inferred from extension
+
+### Vision model fix
+- **Removed**: `visionFast` and `visionFallback` references to decommissioned models
+- **MODELS.groq.vision** → `meta-llama/llama-4-scout-17b-16e-instruct`
+- [x] Tested live with Eid poster + Play Console + CHALLAN + Bangla calligraphy images
+- [x] All 4 images described correctly in English
+
+### Bangla/Banglish language matching (llama-3.3-70b-versatile)
+- Bangla script input → Bangla reply: ✅
+- Banglish input → Banglish reply: ✅
+- English input → English reply: ✅
+- Technical Banglish → Banglish reply: ✅
+- Score: 4/4 across test prompts
+
+### Remaining audit items
+- [ ] **Audit**: Groq audio `language: "bn"` hardcoded — if customer sends voice in English, transcription still works (Whisper handles multilingual) but hint is always Bengali
+- [ ] **Audit**: Vision fallback is Groq only — if Groq vision errors (rate limit), no automatic Gemini fallback for chat-triggered image analysis. Manual escalation path only.
+- [ ] **Audit**: No audio length limit on upload — large recordings (>25MB) will fail at Groq API level with no user-facing message
+- [ ] **Audit**: Messenger webhook still uses `session.history` JSONB — audio messages from Messenger not wired to `transcribeAudio` yet
+
