@@ -231,6 +231,37 @@ html.native-app-mode #root {
   body {
     @apply font-sans antialiased bg-background text-foreground;
     padding-top: env(safe-area-inset-top);
+    cursor: default;
+  }
+
+  button,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="option"],
+  [role="checkbox"],
+  [role="radio"],
+  a,
+  label[for],
+  select,
+  summary,
+  [type="button"],
+  [type="submit"],
+  [type="reset"],
+  button *,
+  [role="button"] *,
+  [role="tab"] *,
+  [role="menuitem"] *,
+  [role="option"] *,
+  a * {
+    cursor: pointer;
+    user-select: none;
+  }
+
+  input,
+  textarea,
+  [contenteditable="true"] {
+    cursor: text;
   }
 
   h1,

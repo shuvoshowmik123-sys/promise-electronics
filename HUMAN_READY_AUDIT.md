@@ -84,6 +84,49 @@ Each entry: what was built, what's missing for a real human to use it comfortabl
 
 ---
 
+## Phase 3.5 — Quiet Watch (admin-only silent fraud monitoring)
+
+> **Design rules (non-negotiable):**
+> - Zero employee-facing UI. Nothing tells staff they are being watched.
+> - No automatic blocking, freezing, or notifications.
+> - Admin-only screen, `super_admin` role gate, hidden module (not in nav by default).
+> - All flags are review-only. Admin decides what to do offline/privately.
+
+### What needs to be built
+
+#### Backend — trigger rules (connect to existing `fraud_alerts` table)
+- [ ] Staff replies customer on Messenger → customer never converts → repeated pattern (3+ times same staff) → flag
+- [ ] Staff phone number regex detected in outgoing Messenger message → flag (`PERSONAL_CONTACT_SHARE`)
+- [ ] Same customer routed to same staff member 3+ times with zero job creation → flag
+- [ ] Job marked "completed" in under N minutes (configurable threshold) → flag (`FAST_COMPLETION`)
+- [ ] Cash drawer close discrepancy above threshold (already partially tracked in `drawer_sessions.discrepancy`) → flag
+- [ ] Refund rate for one staff member exceeds X% of their handled jobs in 30-day window → flag
+- [ ] Staff edits customer phone number on existing job ticket → flag (`PHONE_EDIT`)
+- [ ] Local part purchase price markup > Y% above average for same part → flag (`MARKUP_ANOMALY`)
+
+#### Frontend — "Quiet Watch" screen
+- [ ] Route: `/admin/quiet-watch` — not in main nav, accessible via direct URL or hidden link in Settings
+- [ ] Role gate: `super_admin` only
+- [ ] Module: `quiet_watch` system module, `enabledAdmin: false` by default (opt-in)
+- [ ] Display: list of `fraud_alerts` with alertType, severity, entityType, entityId, description, ruleTriggered, createdAt
+- [ ] Status actions: mark as `investigating`, `resolved`, `false_positive` (admin-only, no staff notification)
+- [ ] Filter by: severity, alertType, date range, staff member
+- [ ] No "share" or "notify staff" button anywhere on this screen
+
+### Already built (foundation)
+- [x] `fraud_alerts` table — all columns exist (alertType, severity, entityType, entityId, description, ruleTriggered, status, metadata jsonb)
+- [x] `drawer_sessions.discrepancy` — cash variance already tracked
+- [x] `job_tickets.assistedByIds` — who touched each job
+- [x] Brain claim system — who handled each Messenger session
+- [x] Commission engine — ChatHandler attribution exists
+
+### Remaining audit items (after build)
+- [ ] **Audit**: Threshold values (fast_job minutes, refund %, markup %) are hardcoded — needs admin-configurable settings
+- [ ] **Audit**: Phone regex for BD numbers only — international numbers not caught
+- [ ] **Audit**: No "export to PDF" on Quiet Watch — if admin wants offline record, must screenshot
+
+---
+
 ## Phase 4 — Android-First UI
 
 ### Mobile Bottom Nav (design-concept.tsx)
@@ -289,4 +332,52 @@ gemini.vision = gemini-2.5-flash          # Fallback for high-quality image anal
 - [ ] **Audit**: Vision fallback is Groq only — if Groq vision errors (rate limit), no automatic Gemini fallback for chat-triggered image analysis. Manual escalation path only.
 - [ ] **Audit**: No audio length limit on upload — large recordings (>25MB) will fail at Groq API level with no user-facing message
 - [ ] **Audit**: Messenger webhook still uses `session.history` JSONB — audio messages from Messenger not wired to `transcribeAudio` yet
+
+---
+
+## Phase 11 — UI Cursor Fix + DashboardTab Crash Fix (2026-05-27)
+
+### Text I-beam cursor on all interactive elements
+- **Bug**: Clicking buttons, tabs, nav items showed text I-beam cursor (`cursor: text`) instead of pointer — Tailwind v4 preflight does not set `cursor: pointer` on buttons by default
+- **Root cause**: Radix UI TabsTrigger uses `role="tab"` not `role="button"` — not covered by default browser styles
+- **Fix 1**: `client/src/index.css` — added global rules in `@layer base`:
+  ```css
+  body { cursor: default; }
+  button, [role="button"], [role="tab"], [role="menuitem"], [role="option"],
+  [role="checkbox"], [role="radio"], a, label[for], select, summary,
+  [type="button"], [type="submit"], [type="reset"] {
+      cursor: pointer;
+      user-select: none;
+  }
+  input, textarea, [contenteditable="true"] { cursor: text; }
+  ```
+- **Fix 2**: `client/src/components/ui/tabs.tsx` — added `cursor-pointer select-none` to `TabsTrigger` className
+- [x] Local fix applied. Pending localhost:5083 verification before deploy.
+- [ ] **Audit**: Other Radix primitives (DropdownMenu, Select, ContextMenu, Popover triggers) may need same treatment if cursor regresses on specific components
+
+### DashboardTab crash — `Cannot read properties of undefined (reading 'toLocaleString')`
+- **Bug**: Admin Dashboard crashed on load — `data.totalRevenue` and other stats fields were `undefined` while async fetch was in-flight
+- **Root cause**: Component rendered before API response, accessed `.toLocaleString()` directly on `undefined`
+- **Fix**: `client/src/pages/admin/bento/tabs/DashboardTab.tsx` — all `data.*` numeric accesses guarded with `?? 0`, all array accesses guarded with `?? []`
+  - Lines guarded: 76, 81, 86, 147, 148, 207, 209, 251, 284, 292, 301, 307, 327, 328, 363, 378, 380, 393, 408, 423, 425 + popup list arrays
+- [x] Local fix applied. Pending localhost:5083 verification before deploy.
+- [ ] **Audit**: No loading skeleton on Dashboard — blank/empty stats shown during fetch. Should show skeleton cards instead of zeros.
+
+---
+
+## Phase N — Kilo Session Fixes (2026-05-27)
+
+### Vercel API routing — all `/api/*` routes returning 404 in production
+- **Bug**: Frontend served from `promiseelectronics.com`, but all API calls (`/api/modules`, `/api/admin/me`, `/api/admin/login`) returned 404 "The page could not be found"
+- **Root cause**: `vercel.json` had no rewrite rule to route `/api/*` requests to the serverless function at `api/index.ts`. All API requests fell through to Vite's static file handler.
+- **Fix**: `vercel.json` — added `"source": "/api/(.*)", "destination": "/api/index"` rewrite before the SPA fallback rule. Redeploy required.
+- [x] Applied. Pending deploy verification.
+- [ ] **Audit**: `api/index.ts` calls Express app directly (`app(req, res)`) without `serverless-http` wrapper — may cause issues with Vercel's serverless lifecycle (cold starts, connection handling)
+
+### Admin panel text-selection cursor on interactive elements
+- **Bug**: Sidebar nav items, switches, cards, and other interactive `<div>` elements in the admin panel showed text-selection I-beam cursor on hover/click instead of pointer cursor. Text was selectable on elements that should behave as application UI.
+- **Root cause**: Base CSS `user-select: none` only targets `button`, `[role="button"]`, `[role="tab"]`, etc. — sidebar nav items are plain `<div>` elements with `cursor-pointer` but without `select-none`.
+- **Fix**: `client/src/pages/admin/design-concept.tsx` — added `select-none` to the root admin wrapper `<div>` (line 386). This cascades to all child divs while inputs/textarea retain native text selection.
+- [x] Applied. Verified on localhost:5083.
+- [ ] **Audit**: Legacy `AdminLayout.tsx` (shadcn sidebar) may need same `select-none` treatment if text-selection cursor appears on old admin routes (`/admin/pos`, `/admin/inventory`, etc.)
 

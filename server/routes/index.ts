@@ -39,6 +39,7 @@ import lensRoutes from './lens.routes.js';
 import brainRoutes from './brain.routes.js';
 import sparePartsRoutes from './spare-parts.routes.js';
 import messengerRoutes from './messenger.routes.js';
+import whatsappRoutes from './whatsapp.routes.js';
 import technicianRoutes from './technician.routes.js';
 import auditRoutes from './audit.routes.js';
 import adminNotificationsRoutes from './admin-notifications.routes.js';
@@ -280,6 +281,9 @@ export async function registerRoutes(
 
     app.use('/api/messenger', messengerRoutes);
     console.log('[Routes] ✓ Messenger webhook registered');
+
+    app.use('/api/whatsapp', whatsappRoutes);
+    console.log('[Routes] ✓ WhatsApp webhook registered');
 
     // Phase 3: Internal Team Chat + Reminders
     app.use(teamChatRoutes);

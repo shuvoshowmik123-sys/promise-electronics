@@ -73,17 +73,17 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                         <div className="grid grid-cols-3 gap-4">
                             <div onClick={() => navigateTo('finance')} className="p-4 bg-blue-50 rounded-xl border border-blue-100 cursor-pointer hover:bg-blue-100 hover:border-blue-200 transition-all group/rev">
                                 <div className="text-sm text-blue-600 font-medium">Total Revenue</div>
-                                <div className="text-2xl font-bold text-blue-900">৳ {data.totalRevenue.toLocaleString()}</div>
+                                <div className="text-2xl font-bold text-blue-900">৳ {(data.totalRevenue ?? 0).toLocaleString()}</div>
                                 <div className="text-[10px] text-blue-400 mt-1 group-hover/rev:text-blue-600 transition-colors">View in Finance →</div>
                             </div>
                             <div onClick={() => navigateTo('pos')} className="p-4 bg-green-50 rounded-xl border border-green-100 cursor-pointer hover:bg-green-100 hover:border-green-200 transition-all group/rev flex flex-col justify-between">
                                 <div className="text-sm text-green-600 font-medium">POS Sales</div>
-                                <div className="text-xl font-bold text-green-900 my-1">৳ {data.posRevenueThisMonth?.toLocaleString() || '0'}</div>
+                                <div className="text-xl font-bold text-green-900 my-1">৳ {(data.posRevenueThisMonth ?? 0).toLocaleString()}</div>
                                 <div className="text-[10px] text-green-500 group-hover/rev:text-green-700 transition-colors">Analyze POS Register →</div>
                             </div>
                             <div onClick={() => navigateTo('b2b')} className="p-4 bg-purple-50 rounded-xl border border-purple-100 cursor-pointer hover:bg-purple-100 hover:border-purple-200 transition-all group/rev flex flex-col justify-between">
                                 <div className="text-sm text-purple-600 font-medium">Corporate Revenue</div>
-                                <div className="text-xl font-bold text-purple-900 my-1">৳ {data.corporateRevenueThisMonth?.toLocaleString() || '0'}</div>
+                                <div className="text-xl font-bold text-purple-900 my-1">৳ {(data.corporateRevenueThisMonth ?? 0).toLocaleString()}</div>
                                 <div className="text-[10px] text-purple-500 group-hover/rev:text-purple-700 transition-colors">Analyze Statements →</div>
                             </div>
                         </div>
@@ -95,8 +95,8 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
             case 'active':
                 return (
                     <div className="space-y-2">
-                        {data.activeJobsList.length === 0 ? <div className="text-slate-500 text-center py-4">No active jobs</div> :
-                            data.activeJobsList.map((job: any) => (
+                        {(data.activeJobsList ?? []).length === 0 ? <div className="text-slate-500 text-center py-4">No active jobs</div> :
+                            (data.activeJobsList ?? []).map((job: any) => (
                                 <div
                                     key={job.id}
                                     onClick={() => navigateTo('jobs', job.ticketNumber)}
@@ -120,8 +120,8 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
             case 'pending':
                 return (
                     <div className="space-y-2">
-                        {data.pendingJobsList.length === 0 ? <div className="text-slate-500 text-center py-4">No pending actions</div> :
-                            data.pendingJobsList.map((job: any) => (
+                        {(data.pendingJobsList ?? []).length === 0 ? <div className="text-slate-500 text-center py-4">No pending actions</div> :
+                            (data.pendingJobsList ?? []).map((job: any) => (
                                 <div key={job.id} className="flex items-start gap-3 p-3 bg-amber-50 rounded-lg border border-amber-100 cursor-pointer hover:bg-amber-100 hover:border-amber-200 transition-all group/pend"
                                     onClick={() => navigateTo('jobs', job.ticketNumber)}
                                 >
@@ -144,8 +144,8 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                     <div className="space-y-4">
                         <div className="p-4 bg-red-50 rounded-xl border border-red-100 flex flex-col items-center justify-center text-center">
                             <div className="text-sm text-red-600 font-medium mb-1">Total Financial Impact</div>
-                            <div className="text-3xl font-black text-red-900">৳ {data.totalWastageLoss.toLocaleString()}</div>
-                            <div className="text-xs text-red-500 mt-2 bg-red-100/50 px-3 py-1 rounded-full border border-red-200">Across {data.wastageCount} reported incidents</div>
+                            <div className="text-3xl font-black text-red-900">৳ {(data.totalWastageLoss ?? 0).toLocaleString()}</div>
+                            <div className="text-xs text-red-500 mt-2 bg-red-100/50 px-3 py-1 rounded-full border border-red-200">Across {data.wastageCount ?? 0} reported incidents</div>
                         </div>
                         <div className="p-3 bg-slate-50 flex items-center justify-between rounded-xl border border-slate-200 cursor-pointer hover:bg-red-50 hover:border-red-200 hover:text-red-700 transition-all group/waste" onClick={() => navigateTo('inventory')}>
                             <div className="flex items-center gap-2 text-sm font-medium text-slate-700 group-hover/waste:text-red-700"><ShoppingCart size={16} /> Check Inventory Hub</div>
@@ -204,9 +204,9 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-100">
-                                    {data.lowStockItems.length === 0 ? (
+                                    {(data.lowStockItems ?? []).length === 0 ? (
                                         <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">All stock levels are optimal.</td></tr>
-                                    ) : data.lowStockItems.map((item: any) => (
+                                    ) : (data.lowStockItems ?? []).map((item: any) => (
                                         <tr key={item.id} className="hover:bg-slate-50 transition-colors cursor-pointer" onClick={() => navigateTo('inventory', item.name)}>
                                             <td className="px-4 py-3 font-medium text-slate-900">{item.name}</td>
                                             <td className="px-4 py-3">
@@ -248,7 +248,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                         onClick={() => setSelectedCard('revenue')}
                     >
                         <ResponsiveContainer width="100%" height="100%">
-                            <AreaChart data={data.revenueData}>
+                            <AreaChart data={data.revenueData ?? []}>
                                 <defs>
                                     <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="5%" stopColor="#fff" stopOpacity={0.5} />
@@ -281,7 +281,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                             <ResponsiveContainer width="100%" height="100%">
                                 <PieChart margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
                                     <Pie
-                                        data={data.jobStatusData}
+                                        data={data.jobStatusData ?? []}
                                         cx="50%"
                                         cy="50%"
                                         innerRadius={42}
@@ -289,7 +289,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                                         paddingAngle={5}
                                         dataKey="value"
                                     >
-                                        {data.jobStatusData.map((_entry: any, index: number) => (
+                                        {(data.jobStatusData ?? []).map((_entry: any, index: number) => (
                                             <Cell key={`cell-${index}`} fill={['#fff', 'rgba(255,255,255,0.5)', 'rgba(255,255,255,0.2)'][index % 3]} />
                                         ))}
                                     </Pie>
@@ -298,13 +298,13 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                             </ResponsiveContainer>
                             <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                 <div className="text-center">
-                                    <div className="text-2xl font-bold text-white">{data.jobStatusData.reduce((a: any, b: any) => a + b.value, 0)}</div>
+                                    <div className="text-2xl font-bold text-white">{(data.jobStatusData ?? []).reduce((a: any, b: any) => a + b.value, 0)}</div>
                                     <div className="text-[10px] text-white/70 uppercase font-semibold">Total</div>
                                 </div>
                             </div>
                         </div>
                         <div className="mt-4 flex flex-wrap justify-center gap-3">
-                            {data.jobStatusData.map((item: any, index: number) => (
+                            {(data.jobStatusData ?? []).map((item: any, index: number) => (
                                 <div key={index} className="flex items-center gap-1.5">
                                     <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ['#fff', 'rgba(255,255,255,0.5)', 'rgba(255,255,255,0.2)'][index % 3] }} />
                                     <span className="text-xs font-medium text-white/80">{item.name}</span>
@@ -324,8 +324,8 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                         icon={<Users size={18} className="text-white" />}
                     >
                         <div className="h-full w-full flex flex-col gap-1.5 overflow-y-auto" style={{ scrollbarWidth: 'none' }}>
-                            {data.techData.slice(0, 8).map((entry: any, i: number) => {
-                                const maxJobs = data.techData[0]?.jobs || 1;
+                            {(data.techData ?? []).slice(0, 8).map((entry: any, i: number) => {
+                                const maxJobs = (data.techData ?? [])[0]?.jobs || 1;
                                 const pct = Math.max(4, Math.round((entry.jobs / maxJobs) * 100));
                                 return (
                                     <div key={entry.name} className="flex flex-col gap-0.5">
@@ -360,7 +360,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                         onClick={() => setSelectedCard('revenue')}
                         spotlightColor="rgba(255, 255, 255, 0.2)"
                     >
-                        <div className="text-3xl font-bold text-white mt-2">৳ {data.totalRevenue.toLocaleString()}</div>
+                        <div className="text-3xl font-bold text-white mt-2">৳ {(data.totalRevenue ?? 0).toLocaleString()}</div>
                         <div className="text-xs font-medium text-white/80 mt-1 flex items-center gap-1">
                             Total Revenue Generated
                         </div>
@@ -375,9 +375,9 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                         onClick={() => setSelectedCard('active')}
                         spotlightColor="rgba(255, 255, 255, 0.2)"
                     >
-                        <div className="text-3xl font-bold text-white mt-2">{data.activeCount}</div>
+                        <div className="text-3xl font-bold text-white mt-2">{data.activeCount ?? 0}</div>
                         <div className="text-xs font-medium text-white/80 mt-1">
-                            {data.activeJobsList.length} requiring update
+                            {(data.activeJobsList ?? []).length} requiring update
                         </div>
                     </BentoCard>
                 </motion.div>
@@ -390,7 +390,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                         onClick={() => setSelectedCard('pending')}
                         spotlightColor="rgba(255, 255, 255, 0.2)"
                     >
-                        <div className="text-3xl font-bold text-white mt-2">{data.pendingCount}</div>
+                        <div className="text-3xl font-bold text-white mt-2">{data.pendingCount ?? 0}</div>
                         <div className="text-xs font-medium text-white/80 mt-1">
                             Requires attention
                         </div>
@@ -405,7 +405,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                         onClick={() => setSelectedCard('parts')}
                         spotlightColor="rgba(255, 255, 255, 0.2)"
                     >
-                        <div className="text-3xl font-bold text-white mt-2">{data.lowStockCount}</div>
+                        <div className="text-3xl font-bold text-white mt-2">{data.lowStockCount ?? 0}</div>
                         <div className="text-xs font-medium text-white/80 mt-1">
                             Restock <Package size={12} className="inline ml-1" />
                         </div>
@@ -420,9 +420,9 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                         onClick={() => setSelectedCard('wastage')}
                         spotlightColor="rgba(255, 255, 255, 0.2)"
                     >
-                        <div className="text-3xl font-bold text-white mt-2">৳{(data.totalWastageLoss / 1000).toFixed(1)}k</div>
+                        <div className="text-3xl font-bold text-white mt-2">৳{((data.totalWastageLoss ?? 0) / 1000).toFixed(1)}k</div>
                         <div className="text-xs font-medium text-white/80 mt-1">
-                            {data.wastageCount} Items Defaulted
+                            {data.wastageCount ?? 0} Items Defaulted
                         </div>
                     </BentoCard>
                 </motion.div>
