@@ -164,3 +164,81 @@ Each entry: what was built, what's missing for a real human to use it comfortabl
 - [ ] **Audit**: Phone match is last-10-digits — may get false positives for shared/business phones
 - [ ] **Audit**: Commission assignment isn't created until job submits — no immediate feedback
 - [ ] **Audit**: ChatHandler name shown from `claimedByName` but may differ from user's display name in users table
+
+---
+
+## Phase 7 — Deployment Split (Vercel frontend + Render backend)
+
+### Vercel proxy + CORS config
+- [x] Built: `vercel.json` proxies `/api/*` to `promiseelectronics.com` (Render backend)
+- [x] Built: SPA fallback routing for non-API paths
+- [x] Built: `server/app.ts` CORS allows `*.vercel.app` and `EXTRA_ALLOWED_ORIGINS` env var
+- [x] Built: `server/static.ts` non-fatal when `dist/public` missing (backend-only Render deploy)
+- [x] Built: `client/src/lib/config.ts` `PROD_API_URL` reads `VITE_API_URL` env var (for Capacitor native app)
+- [x] Built: `package.json` `build:frontend` script (vite-only build for Vercel)
+- [ ] **Audit**: Vercel proxy destination is hardcoded to `promiseelectronics.com` — if Render URL changes, must edit `vercel.json` (no env var support in rewrite destinations)
+- [ ] **Audit**: Session cookie behavior across Vercel proxy not load-tested with real users — possible auth edge cases if cookie `domain` is set by infra
+- [ ] **Audit**: No deployment guide / README for the split — `.env.render` and `.env.vercel` exist but no step-by-step doc
+
+### Env file restructure
+- [x] Built: `.env.render` template (9 vars, copy-paste into Render dashboard)
+- [x] Built: `.env.vercel` template (3-9 vars depending on Firebase usage)
+- [x] Built: Both gitignored
+- [ ] **Audit**: User must manually replace `REPLACE_WITH_*` placeholders — no validation script to confirm all are filled
+
+---
+
+## Phase 8 — AI Stack Hardening (Gemini key audit + model selection)
+
+### Gemini API capability discovery
+- [x] Built: Live test scripts (`scripts/test-gemini.ts`, `test-all-models.ts`, `quota-discovery.ts`, `load-test-gemini.ts`) — all gitignored
+- [x] Confirmed: User key has access to 7 working models; 9+ blocked by region (BD free tier `limit: 0`)
+- [x] Confirmed: `gemini-3.5-flash` (latest), `gemini-3.1-flash-lite` (fastest, 906ms), `gemini-2.5-flash-lite` all live
+- [x] Confirmed: RPM limits per model — 3.5-flash=5, 3.1-flash-lite=15, 2.5-flash-lite=10
+- [ ] **Audit**: `ai.service.ts` `MODELS.gemini.vision` still set to `gemini-2.5-flash` (older, 5 RPM, 500/day). Latest = `gemini-3.5-flash`; fastest = `gemini-3.1-flash-lite`. Not yet swapped in code.
+- [ ] **Audit**: No retry-on-quota logic in AI service — if Gemini key hits daily limit, customer gets a 500 instead of fallback to Groq
+- [ ] **Audit**: `GROQ_API_KEY` currently expired/invalid (401 on smoke test) — user must refresh from console.groq.com
+
+---
+
+## Phase 9 — Knowledge Graph (KG-RAG memory replacement)
+
+### Brain DB — KG schema + migration
+- [x] Built: `kg_facts` table (subject, predicate, value, tags[], confidence, source, expires_at)
+- [x] Built: `brain_messages` table (per-session full history, never compressed)
+- [x] Built: GIN index on `kg_facts.tags` for ~10ms array-overlap retrieval
+- [x] Built: `migrateKGTables()` in `brain.service.ts` — uses raw neon client (Drizzle 0.39 + neon-http 1.0+ DDL incompat)
+- [x] Built: Migration runs on server startup
+- [ ] **Audit**: pgvector v0.8.0 installed but not yet used — KG uses tag-matching only. Semantic search upgrade path documented but not built.
+- [ ] **Audit**: No "auto-expire stale facts" job — admin must manually set `expires_at`
+
+### KG service — entity extraction + retrieval
+- [x] Built: `extractEntities()` — deterministic regex for TV brands, issue keywords (Bangla + English), screen sizes, model codes
+- [x] Built: `getRelevantFacts(tags, 5)` — tag overlap query, confidence-sorted
+- [x] Built: `formatFactsForPrompt()` — token-efficient prompt block (~50-200 tok)
+- [x] Built: `logBrainMessage()` + `getRecentMessages()` — per-session isolation
+- [x] Built: `addFact()`, `listFacts()`, `deleteFact()`, `countFacts()`, `bulkImportFacts()` (CSV)
+- [ ] **Audit**: Entity extractor is regex-only — won't catch typos ("samsng" instead of "samsung") or fuzzy matches. Upgrade path: pgvector embeddings.
+- [ ] **Audit**: Bengali keyword list is small (~12 issue types) — needs admin-driven expansion as real customer messages come in
+- [ ] **Audit**: No fact-conflict detection — if admin adds two contradictory facts about same subject, both get injected
+
+### AI service — KG injection
+- [x] Built: `chatWithDaktarVai` extracts entities → fetches facts → prepends `KNOWN FACTS` block to system prompt
+- [x] Built: History capped at last 6 turns (KG covers long-term memory)
+- [x] Built: Verified live: `[AI] KG injected 1 facts for tags: [samsung]`
+- [ ] **Audit**: KG block injected even when facts not relevant to current turn — wastes tokens on small-talk turns. No "is this turn worth KG lookup?" gate.
+- [ ] **Audit**: Messenger webhook (`messenger.routes.ts`) still uses old `session.history` JSONB blob — not migrated to `brain_messages` yet. Both work in parallel currently.
+
+### KG admin UI (Brain tab → top section)
+- [x] Built: `KGPanel.tsx` component — add fact form, facts list, search, paginate, delete
+- [x] Built: CSV bulk import textarea
+- [x] Built: Test-extract debugger (admin types message, sees tags + matched facts)
+- [x] Built: Total facts counter, auto-refreshes every 30s
+- [x] Built: Embedded into BrainTab above stats cards
+- [ ] **Audit**: Predicate field is free-text — no dropdown/autocomplete, admin can typo (e.g. "STATU" vs "STATUS")
+- [ ] **Audit**: No fact edit — to fix a typo, admin must delete + re-add
+- [ ] **Audit**: Tags display is truncated at 8 — long tag lists hidden, no expand
+- [ ] **Audit**: No "view recent admin activity" log — can't audit who added which fact
+- [ ] **Audit**: CSV import gives total count but no per-line preview — bad rows reported in toast only
+- [ ] **Audit**: Confidence slider missing — UI hardcodes 1.0, can't surface low-confidence inferred facts
+- [ ] **Audit**: No "expires at" date input — admin can't set fact decay timeline from UI
