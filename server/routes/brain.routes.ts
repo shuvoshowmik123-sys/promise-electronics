@@ -1,28 +1,83 @@
 import { Router, Request, Response } from "express";
 import { brainDb } from "../brain/brain.db.js";
 import { conversations, sessions, brainConfig } from "../brain/schema.js";
-import { desc, eq, sql, count } from "drizzle-orm";
+import { desc, eq, sql, count, ilike, or } from "drizzle-orm";
 import { brainService } from "../brain/brain.service.js";
 
 const router = Router();
+
+// Detect channel from session key (wa_ prefix = WhatsApp, otherwise Messenger)
+function detectChannel(senderPsid: string): "whatsapp" | "messenger" {
+    return senderPsid.startsWith("wa_") ? "whatsapp" : "messenger";
+}
 
 // Helper to send messenger replies when approving a draft
 async function sendMessengerReply(senderPsid: string, text: string) {
     const PAGE_ACCESS_TOKEN = process.env.MESSENGER_PAGE_ACCESS_TOKEN;
     if (!PAGE_ACCESS_TOKEN) {
         console.warn("[Brain API] No PAGE_ACCESS_TOKEN, cannot send approved draft.");
-        return;
+        return false;
     }
     try {
-        await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
+        const res = await fetch(`https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_ACCESS_TOKEN}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ recipient: { id: senderPsid }, message: { text } })
         });
-        console.log(`[Brain API] Sent approved draft to ${senderPsid}`);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            console.error("[Brain API] Messenger send error:", err);
+            return false;
+        }
+        console.log(`[Brain API] Sent to Messenger ${senderPsid}`);
+        return true;
     } catch (e) {
         console.error("[Brain API] Failed to send messenger reply", e);
+        return false;
     }
+}
+
+// Helper to send WhatsApp replies — phone extracted from sessionKey wa_<phone>
+async function sendWhatsAppReply(sessionKey: string, text: string) {
+    const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
+    const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
+    if (!ACCESS_TOKEN || !PHONE_NUMBER_ID) {
+        console.warn("[Brain API] WhatsApp env vars missing, cannot send.");
+        return false;
+    }
+    const phone = sessionKey.replace(/^wa_/, "");
+    try {
+        const res = await fetch(`https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${ACCESS_TOKEN}`,
+            },
+            body: JSON.stringify({
+                messaging_product: "whatsapp",
+                to: phone,
+                type: "text",
+                text: { body: text },
+            }),
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            console.error("[Brain API] WhatsApp send error:", err);
+            return false;
+        }
+        console.log(`[Brain API] Sent to WhatsApp ${phone}`);
+        return true;
+    } catch (e) {
+        console.error("[Brain API] Failed to send WhatsApp reply", e);
+        return false;
+    }
+}
+
+// Unified send — auto-detects channel
+async function sendReply(senderPsid: string, text: string): Promise<boolean> {
+    return detectChannel(senderPsid) === "whatsapp"
+        ? sendWhatsAppReply(senderPsid, text)
+        : sendMessengerReply(senderPsid, text);
 }
 
 // ==========================================
@@ -186,8 +241,8 @@ router.patch("/shadow-drafts/:id/approve", async (req: Request, res: Response) =
         // 1. Mark as approved
         await brainService.updateShadowDraftStatus(id, 'approved', editedReply);
 
-        // 2. Send to Messenger
-        await sendMessengerReply(draft.senderPsid, finalReplyText);
+        // 2. Send via correct channel (Messenger or WhatsApp)
+        await sendReply(draft.senderPsid, finalReplyText);
 
         // 3. Log as a successful conversation pair for future learning
         // We log "repliedBy" as 'ai_edited' if they changed it, or 'ai' if approved as-is
@@ -274,6 +329,130 @@ router.get("/sessions/by-phone/:phone", async (req: Request, res: Response) => {
         });
     } catch (error) {
         res.status(500).json({ found: false, error: "Lookup failed" });
+    }
+});
+
+// ==========================================
+// Unified CRM Inbox — WhatsApp + Messenger
+// ==========================================
+
+/**
+ * GET /inbox — list all sessions ordered by most recent activity
+ * Returns sessions with last message preview + channel detection
+ */
+router.get("/inbox", async (req: Request, res: Response) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+        const search = (req.query.search as string)?.trim();
+
+        let query: any = brainDb.query.sessions.findMany({
+            orderBy: [desc(sessions.lastMessageAt)],
+            limit,
+        });
+
+        if (search) {
+            query = brainDb.query.sessions.findMany({
+                where: or(
+                    ilike(sessions.senderName, `%${search}%`),
+                    ilike(sessions.senderPsid, `%${search}%`),
+                    ilike(sessions.customerPhone as any, `%${search}%`),
+                ),
+                orderBy: [desc(sessions.lastMessageAt)],
+                limit,
+            });
+        }
+
+        const rows = await query;
+
+        const items = rows.map((s: any) => {
+            const history = (s.history as any[]) || [];
+            const lastMsg = history.length > 0 ? history[history.length - 1] : null;
+            return {
+                senderPsid: s.senderPsid,
+                senderName: s.senderName,
+                customerPhone: s.customerPhone,
+                channel: detectChannel(s.senderPsid),
+                messageCount: s.messageCount,
+                lastMessageAt: s.lastMessageAt,
+                lastMessagePreview: lastMsg ? String(lastMsg.content ?? "").slice(0, 100) : "",
+                lastMessageRole: lastMsg?.role ?? null,
+                needsClaim: s.needsClaim,
+                claimedByName: s.claimedByName,
+                claimedByUserId: s.claimedByUserId,
+            };
+        });
+
+        res.json({ success: true, data: items });
+    } catch (error) {
+        console.error("[Brain API] Inbox error:", error);
+        res.status(500).json({ success: false, error: "Failed to load inbox" });
+    }
+});
+
+/**
+ * GET /sessions/:psid/messages — full conversation history for one session
+ */
+router.get("/sessions/:psid/messages", async (req: Request, res: Response) => {
+    try {
+        const { psid } = req.params;
+        const session = await brainDb.query.sessions.findFirst({
+            where: eq(sessions.senderPsid, psid),
+        });
+        if (!session) return res.status(404).json({ success: false, error: "Session not found" });
+
+        res.json({
+            success: true,
+            data: {
+                senderPsid: session.senderPsid,
+                senderName: session.senderName,
+                customerPhone: session.customerPhone,
+                channel: detectChannel(session.senderPsid),
+                messageCount: session.messageCount,
+                lastMessageAt: session.lastMessageAt,
+                history: (session.history as any[]) || [],
+                needsClaim: session.needsClaim,
+                claimedByName: session.claimedByName,
+                claimedByUserId: session.claimedByUserId,
+            },
+        });
+    } catch (error) {
+        console.error("[Brain API] Get messages error:", error);
+        res.status(500).json({ success: false, error: "Failed to load messages" });
+    }
+});
+
+/**
+ * POST /sessions/:psid/send — staff sends custom reply
+ * Auto-detects channel, logs to history, optionally claims session
+ */
+router.post("/sessions/:psid/send", async (req: Request, res: Response) => {
+    try {
+        const { psid } = req.params;
+        const { text, userId, userName } = req.body as { text?: string; userId?: string; userName?: string };
+
+        if (!text?.trim()) return res.status(400).json({ success: false, error: "text required" });
+
+        const session = await brainDb.query.sessions.findFirst({
+            where: eq(sessions.senderPsid, psid),
+        });
+        if (!session) return res.status(404).json({ success: false, error: "Session not found" });
+
+        // Send via correct channel
+        const ok = await sendReply(psid, text.trim());
+        if (!ok) return res.status(502).json({ success: false, error: "Send to channel failed" });
+
+        // Log to history (as model/staff reply)
+        await brainService.updateSession(psid, null, text.trim());
+
+        // Auto-claim if not already claimed and userId provided
+        if (userId && userName && !session.claimedByUserId) {
+            await brainService.claimSession(psid, userId, userName).catch(() => null);
+        }
+
+        res.json({ success: true, message: "Sent" });
+    } catch (error) {
+        console.error("[Brain API] Send error:", error);
+        res.status(500).json({ success: false, error: "Failed to send" });
     }
 });
 

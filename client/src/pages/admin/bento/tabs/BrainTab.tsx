@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { KGPanel } from "@/components/admin/KGPanel";
+import { CrmInboxPanel } from "@/components/admin/CrmInboxPanel";
 
 export function BrainTab() {
     const { toast } = useToast();
@@ -245,6 +246,11 @@ export function BrainTab() {
                     </div>
                 </div>
             )}
+
+            {/* CRM Inbox — unified WhatsApp + Messenger */}
+            <div className="relative z-10">
+                <CrmInboxPanel />
+            </div>
 
             {/* Knowledge Graph Panel */}
             <div className="relative z-10">
