@@ -1,6 +1,7 @@
 import Groq from "groq-sdk";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { TV_BRANDS, ISSUE_TYPES } from "../../shared/schema.js";
+import { extractEntities, getRelevantFacts, formatFactsForPrompt } from "../brain/kg.service.js";
 
 // ============================================
 // HYBRID AI CONFIGURATION
@@ -881,9 +882,34 @@ Rules:
         const MAX_RETRIES = 3;
         const RETRY_DELAYS = [1000, 2000, 4000];
 
+        // ── KG RETRIEVAL — zero extra AI cost ──────────────────────
+        // Extract entities from message via regex, fetch matching facts from Brain DB.
+        // Inject as compact prompt block (~50-200 tokens vs ~2000 for full history).
+        let kgContextBlock = '';
+        try {
+            const tags = extractEntities(message);
+            if (tags.length > 0) {
+                const facts = await getRelevantFacts(tags, 5);
+                kgContextBlock = formatFactsForPrompt(facts);
+                if (facts.length > 0) {
+                    console.log(`[AI] KG injected ${facts.length} facts for tags: [${tags.join(', ')}]`);
+                }
+            }
+        } catch (e: any) {
+            console.warn('[AI] KG retrieval failed (non-fatal):', e.message?.slice(0, 80));
+        }
+
+        // Cap history to last 6 turns to save tokens (KG covers long-term memory)
+        const cappedHistory = Array.isArray(history) ? history.slice(-6) : [];
+
         // Build context-aware system prompt
         function buildContextPrompt() {
             let basePrompt = modelType === 'admin' ? COMBINED_ADMIN_PROMPT : DAKTAR_VAI_PROMPT;
+
+            // Inject KG facts at top of system prompt — highest priority context
+            if (kgContextBlock) {
+                basePrompt = `${kgContextBlock}\nUse the KNOWN FACTS above when relevant — they are authoritative shop knowledge.\n\n${basePrompt}`;
+            }
 
             if (userContext) {
                 const contextAddition = `
@@ -1111,7 +1137,7 @@ Use this analysis to respond to the user's message naturally as Daktar Vai.
 
                 const groqMessages: any[] = [
                     { role: "system", content: buildContextPrompt() + "\n\n" + imageContextPrompt },
-                    ...history.map((h: any) => ({
+                    ...cappedHistory.map((h: any) => ({
                         role: h.role === "model" ? "assistant" : h.role,
                         content: h.parts?.[0]?.text || h.content || ""
                     })),
@@ -1194,7 +1220,7 @@ Use this analysis to respond to the user's message naturally as Daktar Vai.
             try {
                 const messages: any[] = [
                     { role: "system", content: buildContextPrompt() },
-                    ...history.map((h: any) => ({
+                    ...cappedHistory.map((h: any) => ({
                         role: h.role === "model" ? "assistant" : h.role,
                         content: h.parts?.[0]?.text || h.content || ""
                     })),
