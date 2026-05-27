@@ -100,10 +100,12 @@ router.get("/stats", async (req: Request, res: Response) => {
         } catch (e) { }
 
         try {
-            const modeRow = await brainDb.query.brainConfig.findFirst({
-                where: eq(brainConfig.key, 'brain_mode')
-            });
-            if (modeRow?.value) activeMode = modeRow.value;
+            // Drizzle 0.39 + neon-http: relational queries break — use direct select
+            const modeRows = await brainDb.select()
+                .from(brainConfig)
+                .where(eq(brainConfig.key, 'brain_mode'))
+                .limit(1);
+            if (modeRows[0]?.value) activeMode = modeRows[0].value;
         } catch (e) { }
 
         res.json({
@@ -129,11 +131,11 @@ router.get("/conversations", async (req: Request, res: Response) => {
         const limit = parseInt(req.query.limit as string) || 10;
         const offset = (page - 1) * limit;
 
-        const results = await brainDb.query.conversations.findMany({
-            orderBy: [desc(conversations.createdAt)],
-            limit,
-            offset
-        });
+        const results = await brainDb.select()
+            .from(conversations)
+            .orderBy(desc(conversations.createdAt))
+            .limit(limit)
+            .offset(offset);
 
         const [{ total }] = await brainDb.select({ total: count() }).from(conversations);
 
@@ -345,24 +347,21 @@ router.get("/inbox", async (req: Request, res: Response) => {
         const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
         const search = (req.query.search as string)?.trim();
 
-        let query: any = brainDb.query.sessions.findMany({
-            orderBy: [desc(sessions.lastMessageAt)],
-            limit,
-        });
-
-        if (search) {
-            query = brainDb.query.sessions.findMany({
-                where: or(
+        // Drizzle 0.39 + neon-http: relational queries break — use direct select
+        const rows = search
+            ? await brainDb.select()
+                .from(sessions)
+                .where(or(
                     ilike(sessions.senderName, `%${search}%`),
                     ilike(sessions.senderPsid, `%${search}%`),
                     ilike(sessions.customerPhone as any, `%${search}%`),
-                ),
-                orderBy: [desc(sessions.lastMessageAt)],
-                limit,
-            });
-        }
-
-        const rows = await query;
+                ))
+                .orderBy(desc(sessions.lastMessageAt))
+                .limit(limit)
+            : await brainDb.select()
+                .from(sessions)
+                .orderBy(desc(sessions.lastMessageAt))
+                .limit(limit);
 
         const items = rows.map((s: any) => {
             const history = (s.history as any[]) || [];
@@ -395,9 +394,11 @@ router.get("/inbox", async (req: Request, res: Response) => {
 router.get("/sessions/:psid/messages", async (req: Request, res: Response) => {
     try {
         const { psid } = req.params;
-        const session = await brainDb.query.sessions.findFirst({
-            where: eq(sessions.senderPsid, psid),
-        });
+        const sessionRows = await brainDb.select()
+            .from(sessions)
+            .where(eq(sessions.senderPsid, psid))
+            .limit(1);
+        const session = sessionRows[0];
         if (!session) return res.status(404).json({ success: false, error: "Session not found" });
 
         res.json({
@@ -432,9 +433,11 @@ router.post("/sessions/:psid/send", async (req: Request, res: Response) => {
 
         if (!text?.trim()) return res.status(400).json({ success: false, error: "text required" });
 
-        const session = await brainDb.query.sessions.findFirst({
-            where: eq(sessions.senderPsid, psid),
-        });
+        const sessionRows2 = await brainDb.select()
+            .from(sessions)
+            .where(eq(sessions.senderPsid, psid))
+            .limit(1);
+        const session = sessionRows2[0];
         if (!session) return res.status(404).json({ success: false, error: "Session not found" });
 
         // Send via correct channel

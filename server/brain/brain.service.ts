@@ -13,9 +13,12 @@ export const brainService = {
     // Session Management (replaces in-memory Map)
     // -------------------------------------------------------------
     async getSession(senderPsid: string) {
-        let session = await brainDb.query.sessions.findFirst({
-            where: eq(sessions.senderPsid, senderPsid)
-        });
+        // Drizzle 0.39 + neon-http: relational queries break — use direct select
+        const rows = await brainDb.select()
+            .from(sessions)
+            .where(eq(sessions.senderPsid, senderPsid))
+            .limit(1);
+        let session = rows[0];
 
         if (!session) {
             const newSession = await brainDb.insert(sessions).values({
@@ -78,9 +81,12 @@ export const brainService = {
     // Mode Management
     // -------------------------------------------------------------
     async getBrainMode(): Promise<'observe' | 'shadow' | 'autopilot'> {
-        const modeSetting = await brainDb.query.brainConfig.findFirst({
-            where: eq(brainConfig.key, 'brain_mode')
-        });
+        // Drizzle 0.39 + neon-http: relational queries break — use direct select
+        const rows = await brainDb.select()
+            .from(brainConfig)
+            .where(eq(brainConfig.key, 'brain_mode'))
+            .limit(1);
+        const modeSetting = rows[0];
 
         return (modeSetting?.value as 'observe' | 'shadow' | 'autopilot') ||
             process.env.BRAIN_MODE as 'observe' | 'shadow' | 'autopilot' ||
@@ -107,20 +113,23 @@ export const brainService = {
     },
 
     async getShadowDraft(id: string) {
-        return brainDb.query.shadowDrafts.findFirst({
-            where: eq(shadowDrafts.id, id)
-        });
+        // Drizzle 0.39 + neon-http: relational queries break — use direct select
+        const rows = await brainDb.select()
+            .from(shadowDrafts)
+            .where(eq(shadowDrafts.id, id))
+            .limit(1);
+        return rows[0];
     },
 
     async getShadowDrafts(page: number, limit: number) {
         const offset = (page - 1) * limit;
 
-        const results = await brainDb.query.shadowDrafts.findMany({
-            where: eq(shadowDrafts.status, 'pending'),
-            orderBy: [desc(shadowDrafts.createdAt)],
-            limit,
-            offset
-        });
+        const results = await brainDb.select()
+            .from(shadowDrafts)
+            .where(eq(shadowDrafts.status, 'pending'))
+            .orderBy(desc(shadowDrafts.createdAt))
+            .limit(limit)
+            .offset(offset);
 
         const [{ total }] = await brainDb.select({ total: count() })
             .from(shadowDrafts)
@@ -197,19 +206,23 @@ export const brainService = {
         }
     },
 
-    /** Run once on startup to add Phase 6 columns if missing */
+    /** Run once on startup to add Phase 6 columns if missing.
+     *  Uses raw neon client because Drizzle neon-http has DDL issues. */
     async migratePhase6Columns() {
+        const url = process.env.BRAIN_DATABASE_URL;
+        if (!url) {
+            console.warn('[Brain] BRAIN_DATABASE_URL not set — skipping Phase 6 migration');
+            return;
+        }
         try {
-            await brainDb.execute(drizzleSql`
-                ALTER TABLE sessions
-                    ADD COLUMN IF NOT EXISTS claimed_by_user_id TEXT,
-                    ADD COLUMN IF NOT EXISTS claimed_by_name TEXT,
-                    ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP,
-                    ADD COLUMN IF NOT EXISTS needs_claim BOOLEAN DEFAULT FALSE
-            `);
+            const sql = neon(url);
+            await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS claimed_by_user_id TEXT`;
+            await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS claimed_by_name TEXT`;
+            await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMP`;
+            await sql`ALTER TABLE sessions ADD COLUMN IF NOT EXISTS needs_claim BOOLEAN DEFAULT FALSE`;
             console.log('[Brain] Phase 6 columns ensured');
         } catch (e: any) {
-            console.warn('[Brain] Phase 6 migration skipped:', e.message?.slice(0, 80));
+            console.warn('[Brain] Phase 6 migration skipped:', e.message?.slice(0, 120));
         }
     },
 
@@ -241,10 +254,11 @@ export const brainService = {
         // Normalize: strip non-digits, match last 10 digits
         const normalized = phone.replace(/\D/g, '').slice(-10);
         try {
-            const all = await brainDb.query.sessions.findMany({
-                orderBy: [desc(sessions.lastMessageAt)],
-                limit: 100,
-            });
+            // Drizzle 0.39 + neon-http: relational queries break — use direct select
+            const all = await brainDb.select()
+                .from(sessions)
+                .orderBy(desc(sessions.lastMessageAt))
+                .limit(100);
             return all.find(s => s.customerPhone?.replace(/\D/g, '').slice(-10) === normalized) ?? null;
         } catch {
             return null;
@@ -253,10 +267,11 @@ export const brainService = {
 
     /** Sessions that have human replies but no claim yet */
     async getUnclaimedSessions() {
-        return brainDb.query.sessions.findMany({
-            where: eq(sessions.needsClaim, true),
-            orderBy: [desc(sessions.lastMessageAt)],
-            limit: 20,
-        });
+        // Drizzle 0.39 + neon-http: relational queries break — use direct select
+        return brainDb.select()
+            .from(sessions)
+            .where(eq(sessions.needsClaim, true))
+            .orderBy(desc(sessions.lastMessageAt))
+            .limit(20);
     },
 };
