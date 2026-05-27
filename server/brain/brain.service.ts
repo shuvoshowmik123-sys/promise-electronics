@@ -474,4 +474,75 @@ export const brainService = {
             console.warn('[Brain] seedConversationsIfEmpty failed:', e.message?.slice(0, 80));
         }
     },
+
+    /** Import second batch of real Facebook conversations if not yet done (count < 75). */
+    async seedPhase2ConversationsIfNeeded(): Promise<void> {
+        try {
+            const [row] = await brainDb.select({ count: count() }).from(conversations);
+            if (Number(row?.count) >= 75) return;
+
+            const PHASE2_PAIRS = [
+                // ── Rokeya Forid ─────────────────────────────────────────────
+                { customerMessage: "আমার টেলিভিশনের ছবিগুলো দিলাম আমার টিভিটা কি ঠিক করা যাবে", ourReply: "ম্যাম,আাপনার টিভি রিপেয়ার সম্ভবানা আছে,আমাদের সার্ভিস অফিসে নিয়ে আসেন।" },
+                { customerMessage: "এত বড় টিভি নিয়ে যাওয়া কি খাবে আপনাদের কোন এসি ঠিক করতে পারবে", ourReply: "স্যার আপনার ঠিকানা কোথায়\nSir amader home delivery hoba na..\nAmader nijosso gari ace pickup & delivary hoba apner tv nia asbe & dia asbe.." },
+                { customerMessage: "আমার নম্বর দিতে চাচ্ছি না তাহলে কি করবো", ourReply: "ম্যাম, যোগাযোগ করার জন্য আপনার ফোন নাম্বার দিন আমরা কল করবো।" },
+                { customerMessage: "স্লামালাইকুম ভাইয়া আপনি যে ছবিটা দেখাচ্ছেন এইরকমই আমার টিভির অবস্থা ঠিক করা যাবে কিনা বলেন দোকান কোথায়", ourReply: "আপনার সাথে মনে হয় আগেও আমাদের কথা হয়েছিল।\nআমাদের সার্ভিস অফিস,\nলিফট ০৮,হোসেন টাওয়ার, বক্স কালভার্ট রোড,১১৬ নয়া পল্টন\nঢাকা-১০০০\nফোন নাম্বার :০১৮৮৬৬৬২৮১১\nস্যার/ম্যাম, আগে কি টিভি রিপেয়ার করা হয়েছিল বা কোথাও দেখাইছিলেন রিপেয়ার জন্য।" },
+                { customerMessage: "হ্যাঁ একটা হয়েছিল কয়েকদিন দেখার পরে আবারো ঝামেলা হচ্ছে", ourReply: "ম্যাম, তাহলে এটা ফিফটি ফিফটি চান্স আছে রিপিয়ারের, রিপেয়ার হতে পারে আবার নাও হতে পারে" },
+                { customerMessage: "ভাইয়া আপনাদের লোক পাঠিয়ে দেন ভিক্ষুক আগে ঠিক হয় কিনা", ourReply: "স্যার/ম্যাম,আমরা টিভি যেসব সমস্যা রিপেয়ার করে থাকি,সেই সমস্যা গুলো হোম সার্ভিস বা বাসায় গিয়ে রিপেয়ার করা সম্ভব না।সমস্যা গুলো ডিজিটাল মেসিন এর মাধ্যমে রিপেয়ার করানো হয়।" },
+                { customerMessage: "না ভাইয়া সেটা বলছি না একজন যদি দেখে যেতো আর ঠিক করাতে কত লাগবে সেটা যদি জানতাম তাহলে আপনাদের ওখানে দিয়ে আসতাম", ourReply: "স্যার/ম্যাম,টিভি রিপেয়ার দেওয়া পর বুঝা যাবে কত টাকা লাগতে পারে। আর যদি রিপেয়ার না হয় সেক্ষেত্রে আমাদের কোন টাকা দিতে হবে না।" },
+                { customerMessage: "ঠিক আছে ভাইয়া কি করবো সেটা বলেন", ourReply: "ম্যাম আমাদের অফিসে নিয়ে আসতে হবে রিপেয়ারের জন্য\nআর যদি আপনি নিয়ে আসতে না পারেন আমাদের ট্রান্সপোর্ট গাড়ি আছে নিয়ে আসবে এবং দিয়ে আসবে সেজন্য একটা ট্রান্সপোর্ট বিল আপনাকে দিতে হবে" },
+                { customerMessage: "আপনারা নিয়ে গেলে কত ভাড়া নিবেন", ourReply: "ম্যাম,নিয়ে যাওয়া আসা মিলে ট্রান্সপোর্ট বিল নিয়ে আসবে এবং দিয়ে আসবে" },
+                // ── Emon Rahman ──────────────────────────────────────────────
+                { customerMessage: "Picture asa na\nসাউন্ড এর কোন সমস্যা নাই\nটিভি অন করার সনি লেখা আসে আবার চলে যায়", ourReply: "স্যার,টিভি অন্য জায়গায় একবার দেখাইছেন তো ৫০/৫০ রিপেয়ার হযওয়ার সম্ভবনা আচে।\nম্যাম,আাপনার টিভি রিপেয়ার সম্ভবানা আছে,রিপেয়ার জন্য আমাদের সার্ভিস অফিসে নিয়ে আসতে হবে।" },
+                { customerMessage: "বাসায় এসে করা যাবে না", ourReply: "স্যার/ম্যাম,আমরা টিভি যেসব সমস্যা রিপেয়ার করে থাকি,সেই সমস্যা গুলো হোম সার্ভিস বা বাসায় গিয়ে রিপেয়ার করা সম্ভব না।সমস্যা গুলো ডিজিটাল মেসিন এর মাধ্যমে রিপেয়ার করানো হয়।" },
+                { customerMessage: "টিভি আপনার বাসায় এসে নিয়ে যাবেন খরচ কি রকম পড়বে গ্যারান্টি আছে", ourReply: "স্যার আপনার লোকেশন কোথায়" },
+                { customerMessage: "নিকুঞ্জ টু\nরিপেয়ার করতে কত টাকা লাগবে", ourReply: "স্যার আমাদের গাড়ি গিয়ে আপনার টিভিটা রিসিভ করে নিয়ে আসবে এবং দিয়ে আসবে। আর যদি রিপিয়ার না হয় এক্ষেত্রে কোন আমাদের টাকা পেমেন্ট দিতে হবে না শুধু ট্রান্সপোর্ট বিল দিলেই হবে।" },
+                { customerMessage: "Noted", ourReply: "জি স্যার জানাইয়েন যদি আবার রিপেয়ার করেন। ফোন নাম্বার দেওয়া আছে একটা কল দিবেন।" },
+                // ── SH Chowdhury Sumon ────────────────────────────────────────
+                { customerMessage: "Is anyone available to chat?", ourReply: "Assalamualaikum sir apnake amra ki help korte pari ?" },
+                { customerMessage: "Phone number please", ourReply: "আমাদের সার্ভিস অফিস,\nলিফট ০৮,হোসেন টাওয়ার, বক্স কালভার্ট রোড,১১৬ নয়া পল্টন\nঢাকা-১০০০\nফোন নাম্বার :০১৮৮৬৬৬২৮১১" },
+                // ── Md Bulbul Ahmed ───────────────────────────────────────────
+                { customerMessage: "Amr tv sob kichu thik ache just blk dag ai recent dekha jcche\nkoto inch tv sir model number er pic den", ourReply: "ADDRESS: 116, HOSSAIN TOWER (8th FLOOR), NAYA PALTAN BOX CULVERT ROAD, DHAKA-1000\nkoto inch tv sir\nmodel number er pic den ekta" },
+                { customerMessage: "Customer sent video showing thin black lines (chikon kalo dag) on TV screen, basai ashe repair koren", ourReply: "Sir er ageo kotha hoise amra bolci.....home service possible hobe nah amader shop e niye ashte hobe" },
+                // ── Chandana Jahan ────────────────────────────────────────────
+                { customerMessage: "hi\nApnara bashay eshe tv service koren?", ourReply: "Apni caile niye ashte paren amader shop e" },
+                { customerMessage: "Ei dhoroner problem e khoroch ki rokom porte parte?\nApnara ki bashay eshe tv niye Jan?", ourReply: "Mam,apner tv kto incci & kon brand er, model number dite parben tahola bistarito bolte subudha hto" },
+                { customerMessage: "LG tv 43 inch\nSmart tv kintu android nai", ourReply: "স্যার/ম্যাম, আগে কি টিভি রিপেয়ার করা হয়েছিল বা কোথাও দেখাইছিলেন রিপেয়ার জন্য।" },
+                { customerMessage: "Naa", ourReply: "স্যার/ম্যাম,যদি আপনার টিভি রিপেয়ার হয় তাহলে চার্জ হবে, আর যদি রিপেয়ার না হয় সেক্ষেত্রে আমাদের কোন টাকা দিতে হবে না।" },
+                { customerMessage: "Thik achhe bhai\nFriday te shop khola thake?", ourReply: "ম্যাম,বন্ধ থাকে তাছাড়া সব দিন খোলা থাকে।" },
+                { customerMessage: "Achha\nTahole Saturday dike ashbo", ourReply: "ঠিক আচে ম্যাম, আসার আগে একটা কল করে করবেন।\nআপনার লোকেশন কোথায়?" },
+                { customerMessage: "Kemon time lagte pare?\nBadda", ourReply: "ম্যাম,একটু সময় লাগে আসা করি আপনি আসলে সাথে থেকে নিয়ে যেতে পারবেন।\nআমাদের সার্ভিস অফিস, লিফট ০৮,হোসেন টাওয়ার,বক্স কালভার্ট রোড,১১৬ নয়া পল্টন ঢাকা-১০০০ ফোন নাম্বার :০১৮৮৬৬৬২৮১১" },
+                // ── Radia Textile ─────────────────────────────────────────────
+                { customerMessage: "আমার সনি টেলিভিশন ৪৩ ইঞ্চি মাঝখানে একটা দাগ পড়েছে চিকন ঠিক করা যাবে", ourReply: "ji mam apner tv repair somvob...repair hoyar somvabona besi" },
+                { customerMessage: "আপনি কি করতে পারবেন?\nকি রকম খরচ আসতে পারে?", ourReply: "স্যার/ম্যাম,টিভি রিপেয়ার করতে পারবো। আর যদি রিপেয়ার না হয় সেক্ষেত্রে আমাদের কোন টাকা দিতে হবে না।" },
+                { customerMessage: "বাসায় এসে কি ঠিক করে দিবেন?", ourReply: "স্যার/ম্যাম,আমরা টিভি যেসব সমস্যা রিপেয়ার করে থাকি,সেই সমস্যা গুলো হোম সার্ভিস বা বাসায় গিয়ে রিপেয়ার করা সম্ভব না।সমস্যা গুলো ডিজিটাল মেসিন এর মাধ্যমে রিপেয়ার করানো হয়।\nমেসিনগুলো অনেক বড়ো কোথাও নিয়ে যাওয়া মতো না।তাই টিভি আমাদের অফিস নিয়ে আসতে হবে" },
+                { customerMessage: "ভাইজান আপনাদের অফিসটা কোথায়\nআপনাদের সাথে কথা বললে ভালই লাগলো", ourReply: "আমাদের সার্ভিস অফিস, লিফট ০৮,হোসেন টাওয়ার, বক্স কালভার্ট রোড,১১৬ নয়া পল্টন ঢাকা-১০০০ ফোন নাম্বার :০১৮৮৬৬৬২৮১১" },
+                { customerMessage: "কিভাবে বহন করে নিয়ে যাওয়া যায় টিভি\nবড় অনেক", ourReply: "ম্যাম আপনার ঠিকানা কোথায়?" },
+                { customerMessage: "বক্স নাই\nআমার বাসা খিলগাঁও আনসার হেডকোয়ার্টারের পাশে", ourReply: "ম্যাম,আপনি চাইলে আমাদের নিজস্ব গাড়ি আছে নিয়ে আসবে এবং দিয়ে আসবে সেজন্যে একটা ট্রান্সপোর্ট বিল দিতে হবে।" },
+                { customerMessage: "ভালো তাহলে ট্রান্সপোর্ট বিল দিব", ourReply: "জি ম্যাম তাহলে কালকে গাড়ি পাঠাই দিবো।" },
+                { customerMessage: "কালকে না আমি আপনাকে নাম্বার রাখলাম আমি মেসেজ দিব আপনাকে", ourReply: "জি ম্যাম সেটাই ভালো হবে।চাইলে আপনারা আমদের অফিস নিজে এসে কাজ করে নিতে পারবেন।" },
+                // ── Facebook user (display damage) ───────────────────────────
+                { customerMessage: "Price kemon pore ? Display venge gese", ourReply: "Sir, display damage hole office e niye asun amra check kore bolbo ki kora jabe." },
+                { customerMessage: "20k ar modde kisu kora possible?", ourReply: "Sir, tv muloto display dam besi hy, exact bolte hole tv ta dekha lagbe." },
+                { customerMessage: "Repair ar Kono option ni?", ourReply: "Sir,apner tv display venggy liquid sera dice ata repair hoy na..." },
+                // ── Sayeef Alamin ─────────────────────────────────────────────
+                { customerMessage: "LG smart 43\" green line issu", ourReply: "Sir tahola repair kora felen" },
+                { customerMessage: "cost kmn? green line problem", ourReply: "স্যার/ম্যাম,টিভি রিপেয়ার দেওয়া পর বুঝা যাবে কত টাকা লাগতে পারে। আর যদি রিপেয়ার না হয় সেক্ষেত্রে আমাদের কোন টাকা দিতে হবে না।" },
+                // ── Nahid Eqbal ────────────────────────────────────────────────
+                { customerMessage: "Customer sent photo/video of TV — screen completely black, no display, asking about repair", ourReply: "Sir.tv model number ti dia sahajjo korben" },
+                { customerMessage: "মডেল নম্বর দিয়েছি।\nদেখেন কি রকম খরচ হইতে পারে", ourReply: "স্যার, যোগাযোগ করার জন্য আপনার ফোন নাম্বার দিন আমরা কল করবো।" },
+                { customerMessage: "আগামীকাল কল দিয়েন\n01722158812", ourReply: "ওকে স্যার,,,,," },
+                { customerMessage: "কত লাগবে? TV panel change", ourReply: "Sir new panel change e warranty ache. Office e niye asun, check kore exact charge bolbo." },
+                { customerMessage: "01722158812.\nCall diyen. Kotha ache", ourReply: "আমাদের সার্ভিস অফিস,\nলিফট ০৮,হোসেন টাওয়ার, বক্স কালভার্ট রোড,১১৬ নয়া পল্টন\nঢাকা-১০০০\nফোন নাম্বার :০১৮৮৬৬৬২৮১১" },
+                // ── Enayet Kabir ───────────────────────────────────────────────
+                { customerMessage: "আমার টেলিভিশনটা এরকম হইছে কি সমস্যা মনে হয় ঠিক করতে পারবেন কিনা পারলে কত টাকা লাগবে", ourReply: "স্যার/ম্যাম, টিভি মডেল নাম্বার দিয়ে সহায়তা করবেন। তাহলে আমারা বিস্তারিত বলতে পারবো।\nস্যার, টিভির মডেল সহ সমস্যার একটি ভিডিও দিয়ে সহায়তা করবেন।" },
+                { customerMessage: "Customer sent video of TV with distorted/wavy pattern on screen along with Xiaomi Mi TV model box", ourReply: "স্যার, যোগাযোগ করার জন্য আপনার ফোন নাম্বার দিন আমরা কল করবো।" },
+            ];
+
+            await this.bulkImportConversations(PHASE2_PAIRS.map(p => ({ ...p, source: 'facebook_page_export_batch2' })));
+            console.log('[Brain] Phase 2 conversation seed complete');
+        } catch (e: any) {
+            console.warn('[Brain] seedPhase2ConversationsIfNeeded failed:', e.message?.slice(0, 80));
+        }
+    },
 };
