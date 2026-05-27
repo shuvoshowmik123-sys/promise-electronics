@@ -89,8 +89,10 @@ export async function createApp(): Promise<Express> {
                 "https://promiseelectronics.com",
                 "https://www.promiseelectronics.com",
                 "capacitor://localhost",
+                ...(process.env.EXTRA_ALLOWED_ORIGINS ?? "").split(",").map(s => s.trim()).filter(Boolean),
             ];
             if (allowedOrigins.includes(origin)) return callback(null, true);
+            if (origin.endsWith(".vercel.app")) return callback(null, true);
             console.log(`[CORS] Rejected origin: ${origin}`);
             callback(new Error('Not allowed by CORS'));
         },

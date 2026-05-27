@@ -1,22 +1,16 @@
 {
     "version": 2,
-    "crons": [
-        {
-            "path": "/api/ai/morning-brief",
-            "schedule": "0 3 * * *"
-        }
-    ],
     "rewrites": [
         {
-            "source": "/api/(.*)",
-            "destination": "/api/index"
+            "source": "/api/:path*",
+            "destination": "https://promiseelectronics.com/api/:path*"
         },
         {
             "source": "/(.*)",
             "destination": "/index.html"
         }
     ],
-    "buildCommand": "npm run build",
+    "buildCommand": "npx vite build",
     "outputDirectory": "dist/public",
     "framework": "vite"
 }

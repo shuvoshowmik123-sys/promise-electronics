@@ -27,8 +27,8 @@ const isProduction = import.meta.env.PROD;
 const DEV_API_URL_EMULATOR = 'http://10.0.2.2:5083'; // Android Emulator
 const DEV_API_URL_WEB = ''; // Web uses Vite proxy
 
-// Production URL
-const PROD_API_URL = 'https://promiseelectronics.com';
+// Production URL — override with VITE_API_URL env var for separate backend deployments
+const PROD_API_URL = import.meta.env.VITE_API_URL || 'https://promiseelectronics.com';
 
 // Determine the correct API URL
 const getApiBaseUrl = (): string => {
