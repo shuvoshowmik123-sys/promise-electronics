@@ -335,6 +335,44 @@ gemini.vision = gemini-2.5-flash          # Fallback for high-quality image anal
 
 ---
 
+## Phase 12 — WhatsApp Cloud API + Unified CRM Inbox (2026-05-27)
+
+### WhatsApp Cloud API integration
+- [x] Built: `server/routes/whatsapp.routes.ts` — webhook at `/api/whatsapp/webhook`
+- [x] Built: Handles text, image, audio messages via same Brain AI (observe/shadow/autopilot)
+- [x] Built: Session key prefixed `wa_<phone>` to avoid collision with Messenger PSIDs
+- [x] Built: `sendWhatsApp()` helper using Meta Cloud API v19
+- [x] Built: Media download via Cloud API (Bearer token + 2-step fetch)
+- [x] Verified: Meta webhook verification successful with `WHATSAPP_VERIFY_TOKEN=PROMISE_WA_2026`
+- [x] Verified: WhatsApp Business number registered, Phone Number ID `1227589117093768`
+- [ ] **Audit**: Business verification still in progress on Meta side — production messaging limited until verified
+
+### New Facebook page setup (Promise Electronics 2026 — Page ID `1088626434331160`)
+- [x] Built: Domain ownership verified via `<meta name="facebook-domain-verification">` in client/index.html
+- [x] Built: New Meta Developer app created with Messenger use case
+- [x] Built: Webhook subscribed (messages, messaging_postbacks, message_echoes)
+- [x] Built: `MESSENGER_VERIFY_TOKEN` env var lookup with fallback `PROMISE_MSGR_2026`
+- [x] Verified: Webhook callback live + verified at `https://promiseelectronics.com/api/messenger/webhook`
+- [ ] **Audit**: Multi-page support NOT built — currently single `MESSENGER_PAGE_ACCESS_TOKEN` env var means only one Messenger page can send replies. Old page tokens need management.
+- [ ] **Audit**: New page customer migration plan (pin posts, auto-reply on old page) — not yet executed
+
+### Unified CRM Inbox (`client/src/components/admin/CrmInboxPanel.tsx`)
+- [x] Built: Two-column layout (session list | chat panel | reply box)
+- [x] Built: Channel auto-detection from senderPsid prefix (WA/Msgr badges)
+- [x] Built: Search by name/phone
+- [x] Built: Custom reply textbox per session (Enter=send, Shift+Enter=newline)
+- [x] Built: Auto-claim session when staff sends first reply
+- [x] Built: 8s inbox poll, 5s active conversation poll
+- [x] Built: Embedded into BrainTab above Knowledge Graph panel
+- [x] Backend endpoints: GET /api/brain/inbox, GET /api/brain/sessions/:psid/messages, POST /api/brain/sessions/:psid/send
+- [ ] **Audit**: No file/image attachments yet (can only send text)
+- [ ] **Audit**: No "create job from chat" button (Phase 6 gap)
+- [ ] **Audit**: No conversation archive/close feature
+- [ ] **Audit**: No unread message counter on Brain tab nav
+- [ ] **Audit**: Mobile layout collapses to one column — chat hidden until selected (not ideal UX)
+
+---
+
 ## Phase 11 — UI Cursor Fix + DashboardTab Crash Fix (2026-05-27)
 
 ### Text I-beam cursor on all interactive elements
