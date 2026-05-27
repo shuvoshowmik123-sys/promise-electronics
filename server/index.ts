@@ -25,6 +25,16 @@ import { brainService } from "./brain/brain.service.js";
   await brainService.migratePhase6Columns().catch(() => {}); // no-op if Brain DB not configured
   await brainService.migrateKGTables().catch(() => {});      // Knowledge Graph tables
 
+  // Firebase UID column — idempotent, safe to run on every start
+  try {
+    const { db } = await import("./db.js");
+    const { sql } = await import("drizzle-orm");
+    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid TEXT UNIQUE`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users (firebase_uid)`);
+  } catch (e: any) {
+    console.warn("[Startup] firebase_uid migration skipped:", e.message?.slice(0, 80));
+  }
+
   // AI Error Handler (Module C)
   app.use(aiErrorHandler);
 

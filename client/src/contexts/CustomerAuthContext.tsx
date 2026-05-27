@@ -2,6 +2,8 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
 import { customerAuthApi, type CustomerSession } from "@/lib/api";
 import { storeAuthSession, clearAuthSession, getStoredAuthSession } from "@/lib/authStorage";
 import { Capacitor } from "@capacitor/core";
+import { GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut } from "firebase/auth";
+import { auth } from "@/lib/firebase";
 
 interface CustomerAuthContextType {
   customer: CustomerSession | null;
@@ -9,7 +11,7 @@ interface CustomerAuthContextType {
   isAuthenticated: boolean;
   needsProfileCompletion: boolean;
   login: (phone: string, password: string) => Promise<void>;
-  loginWithGoogle: () => void;
+  loginWithGoogle: () => Promise<void>;
   register: (data: { name: string; phone: string; email?: string; address?: string; password: string }) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
@@ -24,16 +26,6 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const checkAuth = async () => {
-    try {
-      // Try Google auth first
-      const googleSession = await customerAuthApi.googleMe();
-      setCustomer(googleSession);
-      setIsLoading(false);
-      return;
-    } catch {
-      // Not logged in with Google, try session-based auth
-    }
-
     try {
       const session = await customerAuthApi.me();
       setCustomer(session);
@@ -87,8 +79,20 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const loginWithGoogle = () => {
-    window.location.href = "/api/customer/google/login";
+  const loginWithGoogle = async () => {
+    const provider = new GoogleAuthProvider();
+    const cred = await signInWithPopup(auth, provider);
+    const idToken = await cred.user.getIdToken();
+
+    const res = await fetch("/api/auth/firebase", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+    });
+    if (!res.ok) throw new Error("Firebase token exchange failed");
+
+    const { user } = await res.json();
+    setCustomer(user as CustomerSession);
   };
 
   const register = async (data: { name: string; phone: string; email?: string; address?: string; password: string }) => {
@@ -107,16 +111,12 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore logout errors
     }
-    // Also try Google logout via fetch to avoid redirect
+    // Firebase sign-out (no-op if not signed in via Firebase)
+    try { await firebaseSignOut(auth); } catch { /* ignore */ }
+
     try {
-      await fetch("/api/customer/google/logout", {
-        headers: {
-          "Accept": "application/json"
-        }
-      });
-    } catch {
-      // Ignore
-    }
+      await fetch("/api/auth/firebase/logout", { method: "POST" });
+    } catch { /* ignore */ }
 
     // Clear stored auth on native
     if (Capacitor.isNativePlatform()) {

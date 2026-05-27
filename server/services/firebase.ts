@@ -3,8 +3,10 @@ import admin from 'firebase-admin';
 import { readFileSync, existsSync } from 'fs';
 import { join } from 'path';
 
-// Initialize Firebase Admin SDK
-const serviceAccountPath = join(process.cwd(), 'server', 'firebase-service-account.json');
+// Render Secret File path takes priority over local dev path
+const RENDER_SECRET_PATH = '/etc/secrets/firebase-service-account.json';
+const LOCAL_PATH = join(process.cwd(), 'server', 'firebase-service-account.json');
+const serviceAccountPath = existsSync(RENDER_SECRET_PATH) ? RENDER_SECRET_PATH : LOCAL_PATH;
 
 if (!admin.apps.length) {
     try {
@@ -15,7 +17,7 @@ if (!admin.apps.length) {
             });
             console.log('[Firebase] Admin SDK initialized successfully');
         } else {
-            console.warn('[Firebase] Service account file not found at:', serviceAccountPath);
+            console.warn('[Firebase] Service account file not found — Firebase auth disabled');
         }
     } catch (error) {
         console.error('[Firebase] Failed to initialize Admin SDK:', error);
@@ -23,3 +25,13 @@ if (!admin.apps.length) {
 }
 
 export const firebaseAdmin = admin;
+
+export async function verifyFirebaseToken(idToken: string) {
+    const decoded = await admin.auth().verifyIdToken(idToken);
+    return {
+        uid: decoded.uid,
+        email: decoded.email ?? null,
+        name: decoded.name ?? null,
+        picture: decoded.picture ?? null,
+    };
+}

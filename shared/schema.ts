@@ -59,6 +59,7 @@ export const users = pgTable("users", {
   lastLogin: timestamp("last_login"),
   // Customer specific fields
   googleSub: text("google_sub").unique(),
+  firebaseUid: text("firebase_uid").unique(),
   storeId: text("store_id"), // Franchise-Ready column
   address: text("address"),
   profileImageUrl: text("profile_image_url"),
@@ -74,6 +75,7 @@ export const users = pgTable("users", {
     phoneIdx: index("idx_users_phone").on(table.phone),
     phoneNormalizedIdx: index("idx_users_phone_normalized").on(table.phoneNormalized),
     googleSubIdx: index("idx_users_google_sub").on(table.googleSub),
+    firebaseUidIdx: index("idx_users_firebase_uid").on(table.firebaseUid),
   };
 });
 

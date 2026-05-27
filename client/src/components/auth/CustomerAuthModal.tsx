@@ -35,6 +35,19 @@ export function CustomerAuthModal({
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [isLoading, setIsLoading] = useState(false);
 
+  const handleGoogleSignIn = async () => {
+    setIsLoading(true);
+    try {
+      await loginWithGoogle();
+      onOpenChange(false);
+      onSuccess?.();
+    } catch (e: any) {
+      toast.error(e.message ?? "Google sign-in failed");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const [loginPhone, setLoginPhone] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
 
@@ -134,7 +147,8 @@ export function CustomerAuthModal({
             type="button"
             variant="outline"
             className="w-full flex items-center justify-center gap-2"
-            onClick={loginWithGoogle}
+            onClick={handleGoogleSignIn}
+            disabled={isLoading}
             data-testid="button-google-signin"
           >
             <svg className="h-5 w-5" viewBox="0 0 24 24">

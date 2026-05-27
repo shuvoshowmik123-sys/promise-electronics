@@ -64,6 +64,7 @@ import offlineSyncRoutes from './offline-sync.routes.js'; // Phase 3: Offline Da
 import teamChatRoutes from './team-chat.routes.js'; // Phase 3: Internal Team Chat
 import remindersRoutes from './reminders.routes.js'; // Phase 3: Reminders
 import kgRoutes from './kg.routes.js'; // KG: Knowledge Graph admin
+import firebaseAuthRoutes from './firebase-auth.routes.js'; // Firebase Auth
 
 /**
  * Register all routes with the Express application.
@@ -81,6 +82,10 @@ export async function registerRoutes(
     // ============================================
     // Register Routes
     // ============================================
+
+    // Firebase Auth — must be registered before session-dependent routes
+    app.use(firebaseAuthRoutes);
+    console.log('[Routes] ✓ Firebase auth routes registered');
 
     // Audit routes - PRIORITY CHECK
     app.use(auditRoutes);
