@@ -13,6 +13,7 @@ import {
     AlertCircle, ShieldAlert, X, Check, Trash2, UserCheck
 } from 'lucide-react';
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { KGPanel } from "@/components/admin/KGPanel";
 
 export function BrainTab() {
     const { toast } = useToast();
@@ -244,6 +245,11 @@ export function BrainTab() {
                     </div>
                 </div>
             )}
+
+            {/* Knowledge Graph Panel */}
+            <div className="relative z-10">
+                <KGPanel />
+            </div>
 
             {/* Stats Cards */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 relative z-10">
