@@ -3,7 +3,7 @@ import { verifyFirebaseToken } from "../services/firebase.js";
 import { db } from "../db.js";
 import { users } from "../../shared/schema.js";
 import { eq } from "drizzle-orm";
-import { v4 as uuidv4 } from "uuid";
+import { randomUUID } from "crypto";
 
 const router = Router();
 
@@ -39,7 +39,7 @@ router.post("/api/auth/firebase", async (req, res) => {
 
         if (!user) {
             // New user — create with Customer role
-            const newId = uuidv4();
+            const newId = randomUUID();
             [user] = await db.insert(users).values({
                 id: newId,
                 name: firebaseUser.name ?? firebaseUser.email ?? "Customer",
