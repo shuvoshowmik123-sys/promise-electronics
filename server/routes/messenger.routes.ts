@@ -7,7 +7,7 @@ import { brainService } from "../brain/brain.service.js";
 const router = Router();
 
 // Configuration
-const VERIFY_TOKEN = process.env.MESSENGER_VERIFY_TOKEN || "PROMISE_MSGR_2026";
+const VERIFY_TOKEN = "PROMISE_MSGR_2026";
 const PAGE_ACCESS_TOKEN = process.env.MESSENGER_PAGE_ACCESS_TOKEN;
 const PAGE_ID = process.env.FACEBOOK_PAGE_ID;
 
