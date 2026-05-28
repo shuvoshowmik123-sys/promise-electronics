@@ -121,6 +121,20 @@ const DAKTAR_VAI_PROMPT = `
   - REPAIR OR REPLACE: If repair is not possible (e.g. heavily damaged screen or board), suggest Replacement. Say: "Repair na holeo somossa nai, amader kache original parts achhe, amra Replace kore dite parbo. We are a One-Stop Solution for any TV issue."
   - TERMS & CONDITIONS: When confirming possibility or booking, ALWAYS add: "*Terms and Conditions Applied". (This covers vintage models or parts unavailability).
 
+  TRUTHFULNESS [CRITICAL]:
+  - NEVER state device type, brand, diagnosis, or part name as a certain fact based on chat description alone.
+  - Frame all inferences as possibilities: "chobi theke mone hocche...", "eta ki TV naki monitor, ektu confirm korun?", "most likely..."
+  - If TV vs monitor is ambiguous from image or description: mention both possibilities, ask for model number.
+  - NEVER invent part numbers, specifications, repair timelines, or warranty durations you are not certain about.
+  - If grounded or verified facts are provided in context, use them — do not contradict them.
+
+  DEVICE DISAMBIGUATION [CRITICAL]:
+  - Customers use "monitor", "screen", "display", "TV" interchangeably — DO NOT trust these words alone.
+  - NEVER refuse to help solely because customer said "monitor" or "display".
+  - ALWAYS ask for model number before concluding it is a non-TV device: "Sir, model number ta ki? TV-r pichone sticker-e thake."
+  - Only refuse service after the model number confirms it is definitively NOT a TV (e.g., a PC monitor brand like Dell U series, HP display, etc.).
+  - If model number is unknown or image shows a flat panel, assume it could be a TV and proceed to diagnose.
+
   LIMITATIONS (Internal Logic for T&C):
   - We cannot support "Vintage" models (Old CRT/Tube TVs) or "Exclusive/Rare" brands if spare parts are not available.
   - If a user has a very old or unknown brand, politely warn: "Parts availability er upor depend korbe, Sir. Tobe amra chesta korbo."
@@ -984,8 +998,31 @@ Rules:
             }
         }
 
+        // ── DOSE 2 Part D: Model Number Auto-Lookup ───────────────────────────────
+        // If customer mentions a TV model number, fetch grounded specs via Google Search.
+        let groundingBlock = '';
+        if (modelType === 'customer') {
+            try {
+                const modelPattern = /\b([A-Z]{1,4}[-]?\d{2,5}[A-Z0-9]{2,})\b/i;
+                const modelMatch = message.match(modelPattern);
+                if (modelMatch && modelMatch[0].length >= 5) {
+                    const { lookupModelViaGrounding } = await import('./visual-search.service.js');
+                    const facts = await lookupModelViaGrounding(modelMatch[0]);
+                    if (facts && facts.length > 0) {
+                        groundingBlock = `\nMODEL FACTS [${modelMatch[0]}] — verified via Google Search:\n${facts.map(f => `- ${f}`).join('\n')}\n`;
+                        console.log(`[AI] Model grounding: ${facts.length} facts for "${modelMatch[0]}"`);
+                    }
+                }
+            } catch (e: any) {
+                console.warn('[AI] Model grounding failed (non-fatal):', e.message?.slice(0, 60));
+            }
+        }
+
         // Cap history to last 6 turns to save tokens (KG covers long-term memory)
         const cappedHistory = Array.isArray(history) ? history.slice(-6) : [];
+
+        // Dose 2 Part C: populated in image path before buildContextPrompt() first call
+        let imageGroundingBlock = '';
 
         // Build context-aware system prompt
         function buildContextPrompt() {
@@ -994,6 +1031,16 @@ Rules:
             // Inject KG facts at top of system prompt — highest priority context
             if (kgContextBlock) {
                 basePrompt = `${kgContextBlock}\nUse the KNOWN FACTS above when relevant — they are authoritative shop knowledge.\n\n${basePrompt}`;
+            }
+
+            // Inject Google Search grounded model facts (Dose 2 Part D)
+            if (groundingBlock) {
+                basePrompt = `${groundingBlock}\n${basePrompt}`;
+            }
+
+            // Inject visual search grounding for image messages (Dose 2 Part C)
+            if (imageGroundingBlock) {
+                basePrompt = `${imageGroundingBlock}\n${basePrompt}`;
             }
 
             // Inject few-shot examples after KG but before persona rules
@@ -1097,6 +1144,30 @@ INSTRUCTIONS FOR EXISTING TICKET:
                     booking: null,
                     error: true
                 };
+            }
+
+            // ── Dose 2 Part C: Visual Search Grounding ────────────────────────────
+            // Identify device + fetch Google-grounded facts BEFORE building context.
+            // Non-fatal — if it fails, Groq/Gemini vision still runs normally.
+            if (modelType === 'customer') {
+                try {
+                    const { visualSearchDevice } = await import('./visual-search.service.js');
+                    const vsr = await visualSearchDevice(base64Data, mimeType);
+                    if (vsr) {
+                        const dmg = vsr.visibleDamage.length ? vsr.visibleDamage.join(', ') : 'none detected';
+                        const gf  = vsr.groundedFacts.length ? `\n- Grounded web facts: ${vsr.groundedFacts.join('; ')}` : '';
+                        imageGroundingBlock = `\nVISUAL SEARCH [AUTHORITATIVE — use this to inform diagnosis]:
+- Device type: ${vsr.deviceTypeGuess} (${vsr.confidence} confidence)
+- Brand: ${vsr.brand || 'not identified'}
+- Model number: ${vsr.modelNumber || 'not visible in image'}
+- Screen size: ${vsr.screenSize || 'unknown'}
+- Visible damage: ${dmg}${gf}
+`;
+                        console.log(`[AI] Image grounding: ${vsr.deviceTypeGuess} | brand=${vsr.brand} | model=${vsr.modelNumber}`);
+                    }
+                } catch (e: any) {
+                    console.warn('[AI] Visual search grounding failed (non-fatal):', e.message?.slice(0, 60));
+                }
             }
 
             try {
