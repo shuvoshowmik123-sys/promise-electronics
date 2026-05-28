@@ -73,9 +73,14 @@ async function handleWhatsAppMessage(
     senderName: string,
     message: any
 ) {
-    const session = await brainService.getSession(sessionKey);
+    const [session, mode] = await Promise.all([
+        brainService.getSession(sessionKey),
+        brainService.getBrainMode(),
+    ]);
     const history = (session.history as any[]) ?? [];
-    const mode = await brainService.getBrainMode();
+
+    // Persist name + phone so inbox shows real identity (not just raw psid)
+    brainService.updateSessionMeta(sessionKey, senderName, senderPhone).catch(() => {});
     const isObserveMode = mode === "observe";
 
     try {

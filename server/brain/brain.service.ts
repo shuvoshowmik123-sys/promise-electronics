@@ -51,6 +51,18 @@ export const brainService = {
             .where(eq(sessions.senderPsid, senderPsid));
     },
 
+    /** Persist name + phone on session — called on every incoming message so inbox shows real identity */
+    async updateSessionMeta(senderPsid: string, name?: string | null, phone?: string | null) {
+        if (!name && !phone) return;
+        await brainDb.update(sessions)
+            .set({
+                ...(name  ? { senderName: name }      : {}),
+                ...(phone ? { customerPhone: phone }   : {}),
+            })
+            .where(eq(sessions.senderPsid, senderPsid))
+            .catch(() => {});
+    },
+
     // -------------------------------------------------------------
     // Conversation Logging
     // -------------------------------------------------------------
