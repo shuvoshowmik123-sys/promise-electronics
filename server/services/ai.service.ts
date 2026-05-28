@@ -69,12 +69,13 @@ const DAKTAR_VAI_PROMPT = `
   - You use standard Dhaka slang for TV repairs (e.g., "Set dead", "Display gese", "Sound nai", "Panel e line", "Backlight gese").
   
   LANGUAGE RULES:
+  - Default language: Banglish (Bengali words written in Roman/English letters, mixed with English). This is how Dhaka people actually text.
   - Keep technical terms in English (Panel, COF, Circuit, Power Supply, T-Con, Backlight).
   - Keep sentences short and chatty.
-  - If the user speaks English, reply in English.
-  - If the user speaks Bangla (Bengali script), reply in Bangla (Bengali script).
-  - If the user speaks Banglish, reply in Banglish.
-  - You can mix them naturally as people in Dhaka do.
+  - If the user speaks English only, reply in English.
+  - If the user speaks Banglish or Bengali script, ALWAYS reply in Banglish — do NOT write in Bengali Unicode script. Bengali script in chat looks formal and unnatural to Dhaka customers.
+  - Good Banglish example: "Sir, apnar TV-r backlight gese mone hocche. Office e niye asun, dekhe bolbo."
+  - Bad example (avoid): "স্যার, আপনার টেলিভিশনের ব্যাকলাইট নষ্ট হয়েছে মনে হচ্ছে।" — too formal, use Banglish instead.
 
   EXPERTISE:
   - You know about LCD/LED/OLED panel types, backlight systems, power supply issues, mainboard/motherboard issues, T-Con board problems.
@@ -407,14 +408,26 @@ export const aiService = {
         };
         const mime = mimeByExt[ext] ?? "audio/wav";
 
+        // Reject clips under 1 second — Whisper hallucinates on silence/noise
+        if (fileBuffer.length < 4000) {
+            console.warn("[AI] Audio clip too short — skipping transcription");
+            return null;
+        }
+
         try {
             const form = new FormData();
             const blob = new Blob([new Uint8Array(fileBuffer)], { type: mime });
             form.append("file", blob, fileName);
             form.append("model", MODELS.groq.audio);
-            form.append("response_format", "json");
-            form.append("language", "bn");
+            form.append("response_format", "verbose_json"); // includes detected language
+            // No language: "bn" — auto-detect handles Banglish (Bengali+English mix) better
             form.append("temperature", "0");
+            // Domain prompt: primes Whisper for TV repair vocabulary and Banglish
+            form.append("prompt",
+                "TV repair shop in Dhaka, Bangladesh. Customer speaking Banglish (Bengali mixed with English). " +
+                "Common words: display, backlight, panel, HDMI, screen, Sony, Samsung, LG, Walton, MI, Hisense, " +
+                "repair, warranty, টিভি, ডিসপ্লে, প্যানেল, রিপেয়ার, ব্যাকলাইট, দাম, খরচ, বাসায়, অফিস"
+            );
 
             const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
                 method: "POST",
@@ -428,8 +441,22 @@ export const aiService = {
                 return null;
             }
 
-            const data = await res.json() as { text?: string };
-            return data.text ?? null;
+            const data = await res.json() as { text?: string; language?: string };
+            const rawText = data.text?.trim() ?? null;
+            if (!rawText) return null;
+
+            console.log(`[AI] Transcribed (lang: ${data.language ?? 'auto'}): "${rawText.slice(0, 100)}"`);
+
+            // If Whisper returned Bengali Unicode script, transliterate to Banglish
+            // so the AI always receives its stronger domain format for Dhaka TV repair chat
+            const hasBengaliScript = /[ঀ-৿]/.test(rawText);
+            if (hasBengaliScript) {
+                const banglish = await this.transliterateToBanglish(rawText).catch(() => rawText);
+                console.log(`[AI] Transliterated to Banglish: "${banglish.slice(0, 100)}"`);
+                return banglish;
+            }
+
+            return rawText;
         } catch (err) {
             console.error("[AI] Transcription failed:", err);
             return null;
