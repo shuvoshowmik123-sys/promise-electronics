@@ -64,7 +64,7 @@ const DAKTAR_VAI_PROMPT = `
 
   PERSONA:
   - You are helpful, expert, and professional.
-  - ALWAYS address the customer as 'Sir'. DO NOT use 'Vai', 'Bhai', 'Bro', or 'Brother'.
+  - ADDRESS BY GENDER: Use 'Sir' for male customers and 'Mam' for female customers. Infer gender from the customer's name or context. If gender is unknown, default to 'Sir'. DO NOT use 'Vai', 'Bhai', 'Bro', or 'Brother'.
   - You speak in "Banglish" (Bengali words written in English) mixed with English.
   - You use standard Dhaka slang for TV repairs (e.g., "Set dead", "Display gese", "Sound nai", "Panel e line", "Backlight gese").
   
@@ -83,7 +83,7 @@ const DAKTAR_VAI_PROMPT = `
 
   SHOP DETAILS (Always use these exact values):
   - Address: লিফট-০৮, হোসেন টাওয়ার, ১১৬ নয়া পল্টন, বক্স কালভার্ট রোড, ঢাকা-১০০০
-  - Phone: 01673999995
+  - Phone: 01886662811
   - Hours: Saturday–Thursday, 10:00 AM – 8:00 PM (শনিবার–বৃহস্পতিবার, সকাল ১০টা – রাত ৮টা)
   - Closed: Every Friday (প্রতি শুক্রবার বন্ধ)
   - Payment: Cash only. No card. Dutch Bangla ATM is right in front of the office.
@@ -163,9 +163,15 @@ const DAKTAR_VAI_PROMPT = `
 
   Collect these 4 items (Check CURRENT USER CONTEXT first):
   1. Name (Use context if available)
-  2. Phone Number (Use context if available, DO NOT ASK if known)
+  2. Phone or WhatsApp Number (Use context if available, DO NOT ASK if known)
+     - Ask naturally like our staff: "Sir/Mam, WhatsApp ba phone number ta din, amra call kore details bole dibo."
+     - A WhatsApp number is just as valid as a phone number for callback.
   3. TV Brand (MUST be valid)
   4. Issue Description (Infer strict type)
+
+  CONTACT & CALLBACK (how our shop actually works):
+  - Our real goal on chat is to get the customer's phone/WhatsApp number and move the detailed discussion to a CALL.
+  - Once you have the number, reassure: "Thik ache Sir/Mam, amra call kore bistarito bolbo." Getting the number is a successful outcome — you do NOT have to force a chat booking.
 
   VALIDATION RULES:
   
@@ -242,6 +248,25 @@ const DAKTAR_VAI_PROMPT = `
        "description": "The user's original detailed description of the problem"
      }
 `;
+
+// ── Price redaction for few-shot examples ────────────────────────────────────
+// Real staff replies contain taka amounts, but the AI must NEVER quote prices.
+// Redact money from retrieved examples so the model keeps tone/flow but cannot
+// copy a number. Preserves model numbers (e.g. AU7000), sizes (43), phones (11 digit).
+const REDACT_TOKEN = '[office e check kore bolbo]';
+function redactPrices(text: string): string {
+    if (!text) return text;
+    let out = text;
+    // 1) Any number immediately tied to a currency word (English or Bengali digits)
+    out = out.replace(/[\d০-৯][\d০-৯,\.\+\s–-]*\s*(taka|tk|৳|টাকা)/gi, REDACT_TOKEN);
+    // 2) Comma-grouped thousands: 16,000 / ১৬,০০০ / 22,000–27,000
+    out = out.replace(/[\d০-৯]{1,3}(?:,[\d০-৯]{3})+(?:\s*[–-]\s*[\d০-৯]{1,3}(?:,[\d০-৯]{3})+)?/g, REDACT_TOKEN);
+    // 3) Bare 4–6 digit amounts NOT glued to letters/digits (skips model numbers & phones)
+    out = out.replace(/(?<![A-Za-z\d০-৯])[\d০-৯]{4,6}(?:\s*\+\s*[\d০-৯]{2,4})?(?![A-Za-z\d০-৯])/g, REDACT_TOKEN);
+    // Collapse repeated redaction tokens
+    out = out.replace(/(\[office e check kore bolbo\]\s*){2,}/g, REDACT_TOKEN + ' ');
+    return out;
+}
 
 // ── DOSE 1: Query Rewriter ────────────────────────────────────────────────────
 // Converts raw Banglish/Bangla customer message into a HyDE (Hypothetical
@@ -988,9 +1013,11 @@ Rules:
                 if (examples.length > 0) {
                     fewShotBlock = '\n\nREAL EXAMPLES FROM OUR PAST CONVERSATIONS (follow this tone and style):\n';
                     examples.forEach((ex, i) => {
-                        fewShotBlock += `\nExample ${i + 1}:\nCustomer: ${ex.customerMessage}\nOur reply: ${ex.ourReply}\n`;
+                        // Strip taka amounts so the model cannot copy a price into its reply.
+                        // Examples teach tone/flow only — the no-price policy stays intact.
+                        fewShotBlock += `\nExample ${i + 1}:\nCustomer: ${redactPrices(ex.customerMessage)}\nOur reply: ${redactPrices(ex.ourReply)}\n`;
                     });
-                    fewShotBlock += '\nUse the above as tone and style reference ONLY. NEVER copy specific prices or taka amounts from examples — your PRICING POLICY overrides everything.\n';
+                    fewShotBlock += '\nUse the above as tone and style reference ONLY. Prices in examples are redacted as [office e check kore bolbo] — NEVER quote any taka amount; your PRICING POLICY overrides everything.\n';
                     console.log(`[AI] Injected ${examples.length} few-shot examples (hyde: ${!!hyde})`);
                 }
             } catch (e: any) {
