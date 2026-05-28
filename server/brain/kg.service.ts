@@ -190,6 +190,79 @@ export async function addFact(input: AddFactInput) {
     return rows[0];
 }
 
+// -------------------------------------------------------------
+// Model Case System — auto-learn from completed job tickets
+// Each completed job → one kg_fact so AI knows common issues
+// for that specific TV model from our real repair history.
+// -------------------------------------------------------------
+export interface JobCaseInput {
+    device?: string | null;       // e.g. "Samsung UA43CU7700"
+    issue?: string | null;        // e.g. "Display Issue"
+    problemFound?: string | null; // technician's diagnosis
+    notes?: string | null;
+    screenSize?: string | null;
+    charges?: any;                // jsonb array [{description, amount}]
+    status?: string | null;
+    jobId?: string | null;        // used for deduplication
+}
+
+export async function logModelCase(job: JobCaseInput): Promise<boolean> {
+    const sql = getSql();
+    if (!sql) return false;
+
+    const device = job.device?.trim();
+    if (!device || device.length < 3) return false; // no model info — skip
+
+    // Skip if this job was already logged (idempotent)
+    if (job.jobId) {
+        try {
+            const existing = await sql`
+                SELECT id FROM kg_facts
+                WHERE source = 'job_ticket' AND created_by = ${job.jobId}
+                LIMIT 1
+            ` as any[];
+            if (existing.length > 0) return false;
+        } catch {}
+    }
+
+    // Build a concise case summary
+    const parts: string[] = [];
+    if (job.issue)        parts.push(`Issue: ${job.issue}`);
+    if (job.problemFound) parts.push(`Diagnosis: ${job.problemFound}`);
+    if (job.notes)        parts.push(`Notes: ${job.notes.slice(0, 120)}`);
+    const outcome = (job.status === 'Completed') ? 'Repaired successfully.' : `Outcome: ${job.status}`;
+    parts.push(outcome);
+    const value = parts.join('. ');
+
+    // Derive tags from device name + issue
+    const tagSource = `${device} ${job.issue ?? ''} ${job.problemFound ?? ''}`;
+    const tags = extractEntities(tagSource);
+    // Also tokenize device name: "Samsung UA43CU7700" → ["samsung", "ua43cu7700", "43in"]
+    device.toLowerCase().split(/\s+/).forEach(t => { if (t.length > 1) tags.push(t); });
+    if (job.screenSize) tags.push(`${job.screenSize.replace(/\D/g, '')}in`);
+    const uniqueTags = [...new Set(tags)].filter(t => t.length > 0);
+
+    try {
+        await sql`
+            INSERT INTO kg_facts (subject, predicate, value, tags, confidence, source, created_by)
+            VALUES (
+                ${device},
+                'REPAIR_CASE',
+                ${value},
+                ${uniqueTags}::text[],
+                0.9,
+                'job_ticket',
+                ${job.jobId ?? null}
+            )
+        `;
+        console.log(`[KG] Model case logged: "${device}" — ${job.issue ?? 'unknown issue'}`);
+        return true;
+    } catch (e: any) {
+        console.warn('[KG] logModelCase failed:', e.message?.slice(0, 80));
+        return false;
+    }
+}
+
 export async function listFacts(opts: { limit?: number; offset?: number; search?: string } = {}) {
     const sql = getSql();
     if (!sql) return [];

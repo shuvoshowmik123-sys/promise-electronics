@@ -14,6 +14,7 @@ import { requireAdminAuth, requirePermission } from './middleware/auth.js';
 import { pushService } from '../pushService.js';
 import { jobService } from '../services/job.service.js';
 import { publishAdminNotificationEvent, publishJobTicketEvent } from '../services/admin-realtime.service.js';
+import { logModelCase } from '../brain/kg.service.js';
 
 const router = Router();
 const JOB_REALTIME_TAGS = ["jobTickets", "jobOverview", "dashboardStats"] as const;
@@ -275,6 +276,20 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requirePerm
             newStatus: nextStatus,
             customerId: (updatedJob as any)?.customerId,
         });
+
+        // Auto-log model case to AI brain when repair is completed
+        if (nextStatus === 'Completed' && updatedJob) {
+            logModelCase({
+                device:       (updatedJob as any).device,
+                issue:        (updatedJob as any).issue,
+                problemFound: (updatedJob as any).problemFound,
+                notes:        (updatedJob as any).notes,
+                screenSize:   (updatedJob as any).screenSize,
+                charges:      (updatedJob as any).charges,
+                status:       nextStatus,
+                jobId:        updatedJob.id,
+            }).catch(() => {});
+        }
 
         // Phase O — Auto-trigger: notify customer when job becomes Ready (checks setting)
         if (nextStatus === 'Ready') {

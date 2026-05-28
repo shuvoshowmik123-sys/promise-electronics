@@ -3,6 +3,7 @@ import { brainDb } from "../brain/brain.db.js";
 import { conversations, sessions, brainConfig } from "../brain/schema.js";
 import { desc, eq, sql, count, ilike, or } from "drizzle-orm";
 import { brainService } from "../brain/brain.service.js";
+import { logModelCase } from "../brain/kg.service.js";
 
 const router = Router();
 
@@ -540,6 +541,57 @@ router.get("/sessions/:psid/images", async (req: Request, res: Response) => {
         res.json({ success: true, images });
     } catch (error) {
         res.status(500).json({ success: false, error: "Failed to list images" });
+    }
+});
+
+// ==========================================
+// Model Case System — Backfill from job history
+// POST /api/brain/cases/backfill
+// Reads all Completed job tickets from main DB → creates kg_facts
+// ==========================================
+router.post("/cases/backfill", async (req: Request, res: Response) => {
+    try {
+        const { db } = await import("../db.js");
+        const { jobTickets } = await import("../../shared/schema.js");
+        const { eq: eqMain, isNotNull } = await import("drizzle-orm");
+
+        // Fetch all completed jobs that have a device name
+        const jobs = await db.select({
+            id: jobTickets.id,
+            device: jobTickets.device,
+            issue: jobTickets.issue,
+            problemFound: jobTickets.problemFound,
+            notes: jobTickets.notes,
+            screenSize: jobTickets.screenSize,
+            charges: jobTickets.charges,
+            status: jobTickets.status,
+        })
+        .from(jobTickets)
+        .where(eqMain(jobTickets.status, 'Completed'));
+
+        let logged = 0;
+        let skipped = 0;
+
+        for (const job of jobs) {
+            if (!job.device) { skipped++; continue; }
+            const ok = await logModelCase({
+                device:       job.device,
+                issue:        job.issue,
+                problemFound: job.problemFound,
+                notes:        job.notes,
+                screenSize:   job.screenSize,
+                charges:      job.charges,
+                status:       job.status,
+                jobId:        job.id,
+            });
+            ok ? logged++ : skipped++;
+        }
+
+        console.log(`[Brain] Backfill complete: ${logged} cases logged, ${skipped} skipped (no device or duplicate)`);
+        res.json({ success: true, logged, skipped, total: jobs.length });
+    } catch (error: any) {
+        console.error("[Brain] Backfill failed:", error);
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 
