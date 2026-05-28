@@ -56,6 +56,9 @@ router.post("/webhook", (req: Request, res: Response) => {
                 // Use phone as session key, prefixed to avoid collision with Messenger PSIDs
                 const sessionKey = `wa_${senderPhone}`;
 
+                // Mark message as read immediately — turns grey ticks → blue ticks
+                markAsRead(message.id).catch(() => {});
+
                 await handleWhatsAppMessage(sessionKey, senderPhone, senderName, message);
             }
         }
@@ -220,6 +223,28 @@ async function processResponse(
             await sendWhatsApp(senderPhone, "⚠️ দুঃখিত, টিকিট জেনারেট করতে সমস্যা হচ্ছে। আমাদের হটলাইনে কল করুন।");
         }
     }
+}
+
+/**
+ * Mark an incoming message as read — turns grey ticks blue on sender's phone
+ */
+async function markAsRead(messageId: string) {
+    if (!ACCESS_TOKEN || !PHONE_NUMBER_ID) return;
+    await global.fetch(
+        `https://graph.facebook.com/v19.0/${PHONE_NUMBER_ID}/messages`,
+        {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${ACCESS_TOKEN}`,
+            },
+            body: JSON.stringify({
+                messaging_product: "whatsapp",
+                status: "read",
+                message_id: messageId,
+            }),
+        }
+    ).catch(() => {});
 }
 
 /**

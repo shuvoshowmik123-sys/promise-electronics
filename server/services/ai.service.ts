@@ -983,65 +983,86 @@ Rules:
         const MAX_RETRIES = 3;
         const RETRY_DELAYS = [1000, 2000, 4000];
 
-        // ── KG RETRIEVAL — zero extra AI cost ──────────────────────
-        // Extract entities from message via regex, fetch matching facts from Brain DB.
-        // Inject as compact prompt block (~50-200 tokens vs ~2000 for full history).
+        // ── PARALLEL RETRIEVAL — KG + HyDE run simultaneously ─────
+        // Sequential was: KG(~200ms) → HyDE(~400ms) → embed+search(~300ms) → grounding(~500ms)
+        // Parallel round 1: KG + HyDE at the same time
+        // Parallel round 2: vector search + grounding at the same time
+        // Saves ~600-900ms per request.
         let kgContextBlock = '';
-        try {
-            const tags = extractEntities(message);
-            if (tags.length > 0) {
-                const facts = await getRelevantFacts(tags, 5);
-                kgContextBlock = formatFactsForPrompt(facts);
-                if (facts.length > 0) {
-                    console.log(`[AI] KG injected ${facts.length} facts for tags: [${tags.join(', ')}]`);
-                }
-            }
-        } catch (e: any) {
-            console.warn('[AI] KG retrieval failed (non-fatal):', e.message?.slice(0, 80));
-        }
-
-        // ── FEW-SHOT EXAMPLES — real past conversations ────────────
-        // Find top 3 similar customer messages + our real replies via vector search.
-        // This teaches tone, pricing, and policies from actual Shadman Shuvo replies.
         let fewShotBlock = '';
-        if (modelType === 'customer') {
-            try {
-                const { brainService } = await import('../brain/brain.service.js');
-                // Dose 1: generate HyDE first, use it for retrieval instead of raw message
-                const hyde = await rewriteQueryForRAG(message).catch(() => null);
-                const examples = await brainService.getSimilarExamples(message, 3, hyde || undefined);
-                if (examples.length > 0) {
-                    fewShotBlock = '\n\nREAL EXAMPLES FROM OUR PAST CONVERSATIONS (follow this tone and style):\n';
-                    examples.forEach((ex, i) => {
-                        // Strip taka amounts so the model cannot copy a price into its reply.
-                        // Examples teach tone/flow only — the no-price policy stays intact.
-                        fewShotBlock += `\nExample ${i + 1}:\nCustomer: ${redactPrices(ex.customerMessage)}\nOur reply: ${redactPrices(ex.ourReply)}\n`;
-                    });
-                    fewShotBlock += '\nUse the above as tone and style reference ONLY. Prices in examples are redacted as [office e check kore bolbo] — NEVER quote any taka amount; your PRICING POLICY overrides everything.\n';
-                    console.log(`[AI] Injected ${examples.length} few-shot examples (hyde: ${!!hyde})`);
-                }
-            } catch (e: any) {
-                console.warn('[AI] Few-shot retrieval failed (non-fatal):', e.message?.slice(0, 80));
-            }
-        }
-
-        // ── DOSE 2 Part D: Model Number Auto-Lookup ───────────────────────────────
-        // If customer mentions a TV model number, fetch grounded specs via Google Search.
         let groundingBlock = '';
+
         if (modelType === 'customer') {
-            try {
-                const modelPattern = /\b([A-Z]{1,4}[-]?\d{2,5}[A-Z0-9]{2,})\b/i;
-                const modelMatch = message.match(modelPattern);
-                if (modelMatch && modelMatch[0].length >= 5) {
+            // Round 1: KG lookup + HyDE generation — independent, run in parallel
+            const kgPromise = (async () => {
+                try {
+                    const tags = extractEntities(message);
+                    if (tags.length > 0) {
+                        const facts = await getRelevantFacts(tags, 5);
+                        const block = formatFactsForPrompt(facts);
+                        if (facts.length > 0) console.log(`[AI] KG injected ${facts.length} facts for tags: [${tags.join(', ')}]`);
+                        return block;
+                    }
+                } catch (e: any) {
+                    console.warn('[AI] KG retrieval failed (non-fatal):', e.message?.slice(0, 80));
+                }
+                return '';
+            })();
+
+            const hydePromise = rewriteQueryForRAG(message).catch(() => null);
+
+            // Detect model number for grounding — pure regex, no await needed
+            const modelPattern = /\b([A-Z]{1,4}[-]?\d{2,5}[A-Z0-9]{2,})\b/i;
+            const modelMatch = message.match(modelPattern);
+
+            const [kgResult, hydeResult] = await Promise.all([kgPromise, hydePromise]);
+            kgContextBlock = kgResult;
+
+            // Round 2: vector search + model grounding — independent, run in parallel
+            const { brainService } = await import('../brain/brain.service.js');
+
+            const fewShotPromise = brainService.getSimilarExamples(message, 3, hydeResult || undefined)
+                .then(examples => {
+                    if (examples.length === 0) return '';
+                    let block = '\n\nREAL EXAMPLES FROM OUR PAST CONVERSATIONS (follow this tone and style):\n';
+                    examples.forEach((ex, i) => {
+                        block += `\nExample ${i + 1}:\nCustomer: ${redactPrices(ex.customerMessage)}\nOur reply: ${redactPrices(ex.ourReply)}\n`;
+                    });
+                    block += '\nUse the above as tone and style reference ONLY. Prices in examples are redacted as [office e check kore bolbo] — NEVER quote any taka amount; your PRICING POLICY overrides everything.\n';
+                    console.log(`[AI] Injected ${examples.length} few-shot examples (hyde: ${!!hydeResult})`);
+                    return block;
+                })
+                .catch((e: any) => {
+                    console.warn('[AI] Few-shot retrieval failed (non-fatal):', e.message?.slice(0, 80));
+                    return '';
+                });
+
+            const groundingPromise = (async () => {
+                if (!modelMatch || modelMatch[0].length < 5) return '';
+                try {
                     const { lookupModelViaGrounding } = await import('./visual-search.service.js');
                     const facts = await lookupModelViaGrounding(modelMatch[0]);
                     if (facts && facts.length > 0) {
-                        groundingBlock = `\nMODEL FACTS [${modelMatch[0]}] — verified via Google Search:\n${facts.map(f => `- ${f}`).join('\n')}\n`;
                         console.log(`[AI] Model grounding: ${facts.length} facts for "${modelMatch[0]}"`);
+                        return `\nMODEL FACTS [${modelMatch[0]}] — verified via Google Search:\n${facts.map(f => `- ${f}`).join('\n')}\n`;
                     }
+                } catch (e: any) {
+                    console.warn('[AI] Model grounding failed (non-fatal):', e.message?.slice(0, 60));
+                }
+                return '';
+            })();
+
+            [fewShotBlock, groundingBlock] = await Promise.all([fewShotPromise, groundingPromise]);
+        } else {
+            // Admin mode — only KG, no few-shot or grounding
+            try {
+                const tags = extractEntities(message);
+                if (tags.length > 0) {
+                    const facts = await getRelevantFacts(tags, 5);
+                    kgContextBlock = formatFactsForPrompt(facts);
                 }
             } catch (e: any) {
-                console.warn('[AI] Model grounding failed (non-fatal):', e.message?.slice(0, 60));
+                console.warn('[AI] KG retrieval failed (non-fatal):', e.message?.slice(0, 80));
             }
         }
 
