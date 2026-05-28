@@ -380,11 +380,13 @@ export const brainService = {
     },
 
     /** Find top-N most similar past conversations by cosine distance (pgvector) */
-    async getSimilarExamples(message: string, limit = 3): Promise<Array<{ customerMessage: string; ourReply: string }>> {
+    async getSimilarExamples(message: string, limit = 3, hydeOverride?: string): Promise<Array<{ customerMessage: string; ourReply: string }>> {
         const url = process.env.BRAIN_DATABASE_URL;
         if (!url) return [];
         try {
-            const embedding = await this.embedText(message);
+            // Dose 1: embed HyDE (hypothetical reply) instead of raw question — better semantic match
+            const textToEmbed = (hydeOverride || message).slice(0, 2000);
+            const embedding = await this.embedText(textToEmbed);
             if (!embedding) return [];
             const vecStr = `[${embedding.join(',')}]`;
             const sql = neon(url);

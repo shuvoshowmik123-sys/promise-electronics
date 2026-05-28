@@ -229,6 +229,40 @@ const DAKTAR_VAI_PROMPT = `
      }
 `;
 
+// ── DOSE 1: Query Rewriter ────────────────────────────────────────────────────
+// Converts raw Banglish/Bangla customer message into a HyDE (Hypothetical
+// Document Embedding) — the ideal shop reply — before embedding for RAG search.
+// Using HyDE closes the semantic gap between question and answer vectors.
+async function rewriteQueryForRAG(message: string): Promise<string | null> {
+    try {
+        const completion = await groq.chat.completions.create({
+            model: 'llama-3.1-8b-instant',
+            messages: [{
+                role: 'user',
+                content: `You are a query rewriter for a TV repair shop in Dhaka, Bangladesh.
+
+Customer message: "${message.slice(0, 300)}"
+
+Write a 1-2 sentence hypothetical shop reply in Banglish (Bengali words in English letters).
+This reply will be used for semantic search — make it specific to the TV problem described.
+
+Output JSON only: {"hyde":"..."}`,
+            }],
+            temperature: 0.2,
+            max_tokens: 120,
+            response_format: { type: 'json_object' },
+        });
+        const text = completion.choices[0]?.message?.content || '';
+        const parsed = JSON.parse(text);
+        const hyde = parsed.hyde?.trim() || null;
+        if (hyde) console.log(`[AI] HyDE generated: "${hyde.slice(0, 80)}..."`);
+        return hyde;
+    } catch (e: any) {
+        console.warn('[AI] rewriteQueryForRAG failed (non-fatal):', e.message?.slice(0, 60));
+        return null;
+    }
+}
+
 const ADMIN_PROMPT = `
   IDENTITY:
   You are 'Ops Co-Pilot', the AI Operations Assistant for Promise Electronics.
@@ -934,14 +968,16 @@ Rules:
         if (modelType === 'customer') {
             try {
                 const { brainService } = await import('../brain/brain.service.js');
-                const examples = await brainService.getSimilarExamples(message, 3);
+                // Dose 1: generate HyDE first, use it for retrieval instead of raw message
+                const hyde = await rewriteQueryForRAG(message).catch(() => null);
+                const examples = await brainService.getSimilarExamples(message, 3, hyde || undefined);
                 if (examples.length > 0) {
                     fewShotBlock = '\n\nREAL EXAMPLES FROM OUR PAST CONVERSATIONS (follow this tone and style):\n';
                     examples.forEach((ex, i) => {
                         fewShotBlock += `\nExample ${i + 1}:\nCustomer: ${ex.customerMessage}\nOur reply: ${ex.ourReply}\n`;
                     });
                     fewShotBlock += '\nUse the above as tone and style reference ONLY. NEVER copy specific prices or taka amounts from examples — your PRICING POLICY overrides everything.\n';
-                    console.log(`[AI] Injected ${examples.length} few-shot examples`);
+                    console.log(`[AI] Injected ${examples.length} few-shot examples (hyde: ${!!hyde})`);
                 }
             } catch (e: any) {
                 console.warn('[AI] Few-shot retrieval failed (non-fatal):', e.message?.slice(0, 80));
