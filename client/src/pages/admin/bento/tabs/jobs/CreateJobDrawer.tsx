@@ -220,7 +220,7 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
                     <SheetDescription>Register a new repair job.</SheetDescription>
                 </SheetHeader>
 
-                <div className="space-y-8 pb-24">
+                <div className="space-y-6 pb-28">
 
                     {/* Job Number */}
                     <div className="grid grid-cols-2 gap-4">
@@ -333,8 +333,8 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
                             <div className="space-y-2">
                                 <p className="text-xs text-slate-500">Add one row per panel model. Each row = one model type from this customer's batch.</p>
 
-                                <div className="overflow-x-auto -mx-4 px-4 pb-1" role="region" aria-label="Panel batch table" tabIndex={0}>
-                                    <div className="min-w-[600px]">
+                                <div className="overflow-x-auto -mx-1 px-1 pb-1" role="region" aria-label="Panel batch table" tabIndex={0}>
+                                    <div className="min-w-[520px]">
 
                                         {/* Column headers */}
                                         <div className="grid gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr auto" }}>

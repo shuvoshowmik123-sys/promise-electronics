@@ -1,5 +1,4 @@
 import { createPortal } from "react-dom";
-import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import {
@@ -9,7 +8,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { LocalPurchaseModal } from "@/components/inventory/LocalPurchaseModal";
 
 interface JobDetailsSheetProps {
     job: any | null;
@@ -21,6 +19,7 @@ interface JobDetailsSheetProps {
     currencySymbol: string;
     onEditJob: (job: any) => void;
     onPrintTicket: (job: any) => void;
+    onOutsidePurchase?: () => void;
 }
 
 export function JobDetailsSheet({
@@ -32,9 +31,9 @@ export function JobDetailsSheet({
     canEdit,
     currencySymbol,
     onEditJob,
-    onPrintTicket
+    onPrintTicket,
+    onOutsidePurchase,
 }: JobDetailsSheetProps) {
-    const [isLocalPurchaseOpen, setIsLocalPurchaseOpen] = useState(false);
 
     if (typeof document === 'undefined') return null;
 
@@ -166,26 +165,45 @@ export function JobDetailsSheet({
                             </div>
                         </div>
 
-                        <div className="p-4 sm:p-5 bg-white border-t border-slate-100 shrink-0 flex flex-col-reverse sm:flex-row justify-between items-center rounded-b-2xl gap-3">
-                            <Button variant="ghost" onClick={onClose} className="rounded-xl text-slate-500 w-full sm:w-auto hover:bg-slate-100">Dismiss</Button>
-                            <div className="flex gap-2 w-full sm:w-auto">
+                        <div className="p-4 sm:p-5 bg-white border-t border-slate-100 shrink-0 flex flex-row justify-between items-center rounded-b-2xl gap-2">
+                            {/* Left: dismiss — always visible, understated */}
+                            <Button
+                                variant="outline"
+                                onClick={onClose}
+                                className="rounded-xl h-10 px-4 border-slate-200 text-slate-500 hover:text-slate-700 hover:bg-slate-50 font-medium text-sm"
+                            >
+                                Close
+                            </Button>
+
+                            {/* Right: actions — consistent height/radius/weight */}
+                            <div className="flex items-center gap-2">
+                                {canEdit && onOutsidePurchase && (
+                                    <Button
+                                        onClick={() => { onClose(); onOutsidePurchase(); }}
+                                        variant="outline"
+                                        className="rounded-xl h-10 border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5 text-sm font-medium"
+                                        title="Log outside/petty-cash part purchase for this job"
+                                    >
+                                        <ShoppingCart className="w-4 h-4 shrink-0" />
+                                        <span className="hidden sm:inline">Purchase</span>
+                                    </Button>
+                                )}
                                 {canEdit && (
                                     <Button
-                                        onClick={() => setIsLocalPurchaseOpen(true)}
+                                        onClick={() => { onClose(); onEditJob(job); }}
                                         variant="outline"
-                                        className="rounded-xl flex-1 sm:flex-none border-orange-200 text-orange-700 hover:bg-orange-50 bg-white shadow-sm"
-                                        title="Log an outside/petty-cash part purchase for this job"
+                                        className="rounded-xl h-10 border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5 text-sm font-medium"
                                     >
-                                        <ShoppingCart className="w-4 h-4 sm:mr-2" /> <span className="hidden sm:inline">Outside Purchase</span>
+                                        <Edit className="w-4 h-4 shrink-0" />
+                                        <span className="hidden sm:inline">Edit</span>
                                     </Button>
                                 )}
-                                {canEdit && (
-                                    <Button onClick={() => { onClose(); onEditJob(job); }} variant="outline" className="rounded-xl flex-1 sm:flex-none border-slate-200 bg-white shadow-sm hover:bg-slate-50">
-                                        <Edit className="w-4 h-4 sm:mr-2" /> <span className="hidden sm:inline">Quick Edit</span>
-                                    </Button>
-                                )}
-                                <Button onClick={() => onPrintTicket(job)} className="rounded-xl px-6 flex-1 sm:flex-none bg-slate-900 hover:bg-slate-800 text-white font-bold shadow-md transition-all bc-hover bc-rise">
-                                    <Printer className="w-4 h-4 sm:mr-2" /> <span>Print Ticket</span>
+                                <Button
+                                    onClick={() => onPrintTicket(job)}
+                                    className="rounded-xl h-10 px-5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm gap-1.5 shadow-sm transition-all"
+                                >
+                                    <Printer className="w-4 h-4 shrink-0" />
+                                    <span>Print</span>
                                 </Button>
                             </div>
                         </div>
@@ -196,16 +214,5 @@ export function JobDetailsSheet({
         document.body
     );
 
-    return (
-        <>
-            {portal}
-            {job && (
-                <LocalPurchaseModal
-                    jobTicketId={job.id}
-                    open={isLocalPurchaseOpen}
-                    onOpenChange={setIsLocalPurchaseOpen}
-                />
-            )}
-        </>
-    );
+    return portal;
 }

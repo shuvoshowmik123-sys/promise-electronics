@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
     Search, Filter, Download, Zap, Plus,
-    ChevronRight, CheckCircle2, QrCode, X, LayoutGrid, List, KanbanSquare
+    ChevronRight, CheckCircle2, QrCode, LayoutGrid, List, KanbanSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,6 +28,7 @@ import { CreateJobDrawer } from "./jobs/CreateJobDrawer";
 import { EditJobDrawer } from "./jobs/EditJobDrawer";
 import { JobFilters } from "./jobs/JobFilters";
 import { generatePrintHtml } from "./jobs/JobPrintTemplate";
+import { LocalPurchaseModal } from "@/components/inventory/LocalPurchaseModal";
 
 interface JobTicketsTabProps {
     initialSearchQuery?: string;
@@ -69,6 +70,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
     const [viewDialogOpen, setViewDialogOpen] = useState(false);
     const [qrDialogOpen, setQrDialogOpen] = useState(false);
     const [isAdvanceDialogOpen, setIsAdvanceDialogOpen] = useState(false);
+    const [isLocalPurchaseOpen, setIsLocalPurchaseOpen] = useState(false);
 
     // Selection States
     const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -150,7 +152,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
             if (autoOpenedQueryRef.current === jobSearchQuery) return; // Prevent loops
 
             const query = jobSearchQuery.toLowerCase();
-            const matches = jobTickets.filter((j: any) =>
+            const matches = jobTickets.filter((j) =>
                 (j.ticketNumber || j.id).toLowerCase() === query ||
                 j.id.toLowerCase() === query
             );
@@ -159,12 +161,13 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                 autoOpenedQueryRef.current = jobSearchQuery;
                 const match = matches[0];
                 setSelectedJob(match);
+                setViewDialogOpen(true);
             }
         }
     }, [jobSearchQuery, jobTickets, selectedJob]);
 
     // Filtering & Pagination
-    const filteredJobs = jobTickets.filter((j: any) => {
+    const filteredJobs = jobTickets.filter((j) => {
         const matchesSearch = smartMatch(jobSearchQuery,
             j.ticketNumber || j.id,
             j.customer,
@@ -173,8 +176,8 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
             j.issue,
             j.technician,
             j.screenSize,
-            j.serialNumber, // added bonus: we can throw more fields in easily
-            j.brand
+            (j as any).tvSerialNumber,
+            (j as any).corporateJobNumber,
         );
         const matchesStatus = jobStatusFilter === "all" || j.status === jobStatusFilter;
         const matchesPriority = jobPriorityFilter === "all" || j.priority === jobPriorityFilter;
@@ -481,7 +484,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                 currencySymbol={getCurrencySymbol()}
             />
 
-            {/* VIEW DETAILS OVERLAY — isolated into a separate component that also handles the portal */}
+            {/* VIEW DETAILS OVERLAY */}
             <JobDetailsSheet
                 job={selectedJob}
                 isOpen={viewDialogOpen}
@@ -492,7 +495,17 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                 currencySymbol={getCurrencySymbol()}
                 onEditJob={(job) => { setViewDialogOpen(false); handleEditJob(job); }}
                 onPrintTicket={handlePrintTicket}
+                onOutsidePurchase={() => setIsLocalPurchaseOpen(true)}
             />
+
+            {/* OUTSIDE PURCHASE — lives at parent z-level, above the details sheet */}
+            {selectedJob && (
+                <LocalPurchaseModal
+                    jobTicketId={selectedJob.id}
+                    open={isLocalPurchaseOpen}
+                    onOpenChange={setIsLocalPurchaseOpen}
+                />
+            )}
 
             {/* QR CODE DIALOG */}
             <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>
@@ -527,43 +540,6 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
             />
 
             <BulkActionToolbar selectedJobIds={selectedJobIds} onClearSelection={() => { setSelectedJobIds([]); setIsSelectionMode(false); }} />
-
-            {/* CREATE JOB SHEET */}
-            <CreateJobDrawer
-                isOpen={isCreateDrawerOpen}
-                onClose={() => setIsCreateDrawerOpen(false)}
-                technicianUsers={technicianUsers}
-                tvInches={tvInches}
-            />
-
-            {/* EDIT JOB SHEET */}
-            <EditJobDrawer
-                isOpen={isEditDrawerOpen}
-                onClose={() => setIsEditDrawerOpen(false)}
-                job={selectedJob}
-                technicianUsers={technicianUsers}
-                userRole={user?.role}
-                canEdit={hasPermission("canEdit")}
-                currencySymbol={getCurrencySymbol()}
-            />
-
-            {/* VIEW JOB DETAILS SHEET */}
-            <JobDetailsSheet
-                isOpen={viewDialogOpen}
-                onClose={() => setViewDialogOpen(false)}
-                job={selectedJob}
-                viewMode={viewMode}
-                userRole={user?.role}
-                canEdit={hasPermission("canEdit")}
-                currencySymbol={getCurrencySymbol()}
-                onEditJob={handleEditJob}
-                onPrintTicket={handlePrintTicket}
-            />
         </div >
     );
-}
-
-// Placeholder for a micro icon used in the button
-function SendIcon(props: any) {
-    return <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></svg>
 }

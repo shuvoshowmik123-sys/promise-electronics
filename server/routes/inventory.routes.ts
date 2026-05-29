@@ -376,17 +376,32 @@ router.get('/api/inventory/local-purchases', requireAdminAuth, requirePermission
  */
 router.post('/api/inventory/local-purchases', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
     try {
+        // Admin auth uses session (not Passport req.user) — look up actual name
+        const adminUserId = req.session?.adminUserId;
+        let purchaserName = 'System';
+        let purchaserStoreId: string | null = null;
+        if (adminUserId) {
+            try {
+                const { getUser } = await import('../repositories/user.repository.js');
+                const admin = await getUser(adminUserId);
+                if (admin) {
+                    purchaserName = admin.name;
+                    purchaserStoreId = admin.storeId ?? null;
+                }
+            } catch { /* fallback to System */ }
+        }
+
         const payload = {
             ...req.body,
-            purchasedBy: (req.user as any)?.name || 'System',
-            storeId: (req.user as any)?.storeId || null,
+            purchasedBy: purchaserName,
+            storeId: purchaserStoreId,
         };
 
         const validated = insertLocalPurchaseSchema.parse(payload);
         const purchase = await inventoryService.createLocalPurchase(validated);
 
         await auditLogger.log({
-            userId: req.user?.id || 'system',
+            userId: adminUserId || 'system',
             action: 'CREATE',
             entity: 'LOCAL_PURCHASE',
             entityId: purchase.id,
