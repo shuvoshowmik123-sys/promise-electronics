@@ -830,7 +830,9 @@ router.get('/api/admin/reports', requireAdminAuth, requirePermission('reports'),
 });
 
 // ─── Staff presence list (for inbox UI) ──────────────────────────────────────
-router.get('/api/users/staff-presence', requireAdminAuth, async (req: Request, res: Response) => {
+// NOTE: path is /api/staff-presence (NOT /api/users/...) to avoid collision
+// with the GET /api/users/:id route which would capture "staff-presence" as :id.
+router.get('/api/staff-presence', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const rows = await db.select({
             staffId: staffPresenceTable.staffId,

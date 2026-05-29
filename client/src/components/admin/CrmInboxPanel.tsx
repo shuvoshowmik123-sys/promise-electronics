@@ -95,7 +95,7 @@ export function CrmInboxPanel() {
     const { data: presenceData } = useQuery({
         queryKey: ["staff-presence"],
         queryFn: async () => {
-            const res = await fetch("/api/users/staff-presence", { credentials: "include" });
+            const res = await fetch("/api/staff-presence", { credentials: "include" });
             if (!res.ok) return { data: [] };
             return res.json() as Promise<{ data: StaffPresenceRow[] }>;
         },
