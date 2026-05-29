@@ -7,6 +7,8 @@ import { users, corporateClients } from '../../shared/schema.js';
 import { storage } from '../storage.js';
 import { userRepo, customerRepo, orderRepo, corporateRepo, notificationRepo } from '../repositories/index.js';
 import { authService } from '../services/auth.service.js';
+import { auditLogger } from '../utils/auditLogger.js';
+import { AUDIT_ACTIONS } from '../../shared/constants.js';
 
 const router = Router();
 
@@ -37,10 +39,29 @@ router.post('/login', authLimiter, validate(corporateLoginSchema), async (req: R
         const result = await authService.authenticateCorporate(username, password);
 
         if ('error' in result) {
+            auditLogger.log({
+                userId: 'anonymous',
+                action: AUDIT_ACTIONS.CORP_LOGIN_FAILED,
+                entity: 'CorporateSession',
+                entityId: username,
+                details: `Corporate login failed for "${username}"`,
+                req,
+                severity: 'warning',
+            }).catch(() => {});
             return res.status(result.status || 401).json({ error: result.error });
         }
 
         const { user, corporateClient } = result;
+
+        auditLogger.log({
+            userId: user.id,
+            action: AUDIT_ACTIONS.CORP_LOGIN_SUCCESS,
+            entity: 'CorporateSession',
+            entityId: user.id,
+            details: `Corporate user ${user.name} (${corporateClient?.companyName ?? 'unknown'}) logged in`,
+            req,
+            severity: 'info',
+        }).catch(() => {});
 
         // Separate session for corporate
         req.session.corporateUserId = user.id;
@@ -218,6 +239,17 @@ async function fetchAndReturnUserFromSession(req: Request, res: Response) {
 
 // POST /api/corporate/auth/logout
 router.post('/logout', async (req: Request, res: Response) => {
+    const userId = req.session?.corporateUserId || 'unknown';
+    auditLogger.log({
+        userId,
+        action: AUDIT_ACTIONS.CORP_LOGOUT,
+        entity: 'CorporateSession',
+        entityId: req.sessionID || 'unknown',
+        details: 'Corporate user logged out',
+        req,
+        severity: 'info',
+    }).catch(() => {});
+
     // Revoke trusted device if present
     if (req.cookies?.corp_device_token) {
         await authService.revokeCorporateTrustedDeviceToken(req.cookies.corp_device_token, 'logout_requested').catch(console.error);

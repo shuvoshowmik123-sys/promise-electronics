@@ -11,6 +11,8 @@ import { adminLoginSchema, requireAdminAuth } from './middleware/auth.js';
 import { authLimiter } from './middleware/rate-limit.js';
 import { validate } from './middleware/validate.js';
 import { authService } from '../services/auth.service.js';
+import { auditLogger } from '../utils/auditLogger.js';
+import { AUDIT_ACTIONS } from '../../shared/constants.js';
 
 const router = Router();
 
@@ -138,11 +140,32 @@ router.post('/api/admin/login', authLimiter, validate(adminLoginSchema), async (
 
         if ('error' in result) {
             console.log(`Admin login failed: ${result.error}`);
+            // Log failed attempt — severity warning, userId unknown → use username as entityId
+            auditLogger.log({
+                userId: 'anonymous',
+                action: AUDIT_ACTIONS.LOGIN_FAILED,
+                entity: 'Session',
+                entityId: username,
+                details: `Failed login attempt for "${username}": ${result.error}`,
+                req,
+                severity: 'warning',
+            }).catch(() => {});
             return res.status(result.status || 401).json({ error: result.error });
         }
 
         console.log('Admin login successful for:', username);
         req.session.adminUserId = result.user.id;
+
+        auditLogger.log({
+            userId: result.user.id,
+            action: AUDIT_ACTIONS.LOGIN_SUCCESS,
+            entity: 'Session',
+            entityId: req.sessionID || 'unknown',
+            details: `${result.user.name} (${result.user.role}) logged in`,
+            req,
+            severity: 'info',
+        }).catch(() => {});
+
         const { password: _, ...safeUser } = result.user;
         res.json(safeUser);
     } catch (error: any) {
@@ -176,6 +199,18 @@ router.post('/api/admin/login', authLimiter, validate(adminLoginSchema), async (
  *         description: Logout failed
  */
 router.post('/api/admin/logout', (req: Request, res: Response) => {
+    const userId = req.session?.adminUserId || 'unknown';
+    // Log before destroy so session context is still available
+    auditLogger.log({
+        userId,
+        action: AUDIT_ACTIONS.LOGOUT,
+        entity: 'Session',
+        entityId: req.sessionID || 'unknown',
+        details: 'Admin logged out',
+        req,
+        severity: 'info',
+    }).catch(() => {});
+
     req.session.destroy((err) => {
         if (err) {
             return res.status(500).json({ error: 'Logout failed' });
@@ -230,6 +265,15 @@ router.post('/api/admin/pin/verify', requireAdminAuth, authLimiter, async (req: 
         const result = await authService.verifyManagerPin(userId, pin);
 
         if (result.error) {
+            auditLogger.log({
+                userId,
+                action: AUDIT_ACTIONS.PIN_FAILED,
+                entity: 'Session',
+                entityId: userId,
+                details: 'Manager PIN verification failed',
+                req,
+                severity: 'warning',
+            }).catch(() => {});
             return res.status(result.status || 401).json({ error: result.error });
         }
 

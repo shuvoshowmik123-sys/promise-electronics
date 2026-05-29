@@ -3,6 +3,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Clock, Eye, MoreVertical, PenTool, Printer, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -89,7 +90,10 @@ export function JobTicketList({
                                 )}
                                 <TableCell>
                                     <div className="flex flex-col gap-1">
-                                        <span className="font-mono text-sm font-bold text-blue-700 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100/50 w-fit">#{job.ticketNumber || job.id.slice(-6).toUpperCase()}</span>
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                            <span className="font-mono text-sm font-bold text-blue-700 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100/50 w-fit">#{job.ticketNumber || job.id.slice(-6).toUpperCase()}</span>
+                                            <ClientClassBadge clientClass={(job as any).clientClass} size="xs" />
+                                        </div>
                                         <span className="text-[11px] text-slate-400 flex items-center gap-1.5"><Clock className="w-3 h-3" /> {job.createdAt ? format(new Date(job.createdAt), 'MMM dd, yyyy') : 'N/A'}</span>
                                     </div>
                                 </TableCell>

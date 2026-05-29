@@ -9,6 +9,7 @@
     "dev": "cross-env NODE_ENV=development tsx server/index.ts",
     "api-docs:generate": "tsx scripts/generate-api-contract.ts",
     "build": "npm run api-docs:generate && tsx build.ts",
+    "build:server": "tsx build-server.ts",
     "build:frontend": "npx vite build",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",

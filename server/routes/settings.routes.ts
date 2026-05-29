@@ -13,6 +13,8 @@ import {
     insertProductVariantSchema
 } from '../../shared/schema.js';
 import { requireAdminAuth, requirePermission } from './middleware/auth.js';
+import { auditLogger } from '../utils/auditLogger.js';
+import { AUDIT_ACTIONS } from '../../shared/constants.js';
 
 const router = Router();
 
@@ -202,6 +204,15 @@ router.get('/api/public/track/:ticketNumber', async (req: Request, res: Response
  * GET /api/settings - Get all settings (Admin Only)
  */
 router.get('/api/settings', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
+    auditLogger.log({
+        userId: (req as any).session?.adminUserId || 'unknown',
+        action: AUDIT_ACTIONS.VIEW_SETTINGS,
+        entity: 'Settings',
+        entityId: 'all',
+        details: 'Admin accessed system settings',
+        req,
+        severity: 'info',
+    }).catch(() => {});
     try {
         const settings = await settingsRepo.getAllSettings();
         res.json(settings);

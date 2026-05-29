@@ -8,6 +8,7 @@ import { BentoCard } from "../../shared";
 import { Clock, Eye, MoreVertical, PenTool, Phone, Printer, QrCode, User, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { JobTicket } from "@shared/schema";
+import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
 
 // We need a local or imported HighlightMatch. Let's assume it exists in JobTicketsTab or we can recreate it.
 // Assuming HighlightMatch from JobTicketsTab can be imported if it was exported, or we'll recreate a simple one.
@@ -103,6 +104,7 @@ export function JobTicketGrid({
                                         <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100/50 tracking-wide truncate">
                                             #<HighlightMatch text={(job as any).ticketNumber || job.id.slice(-6).toUpperCase()} query={searchQuery} />
                                         </span>
+                                        <ClientClassBadge clientClass={(job as any).clientClass} size="xs" />
                                         <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 h-4 font-bold uppercase tracking-wider border-0 shadow-sm",
                                             job.priority === 'High' ? "text-red-700 bg-red-100" :
                                                 job.priority === 'Critical' ? "text-rose-700 bg-rose-100" : "text-slate-600 bg-slate-100")}>

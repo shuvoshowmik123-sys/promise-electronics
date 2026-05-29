@@ -3,6 +3,8 @@ import { randomUUID } from "crypto";
 import { aiService } from "../services/ai.service.js";
 import { storage } from "../storage.js";
 import { brainService } from "../brain/brain.service.js";
+import { assignSession } from "../services/assignment.service.js";
+import { findCustomerByPhone } from "../services/canonical-customer.service.js";
 
 const router = Router();
 
@@ -81,6 +83,9 @@ async function handleWhatsAppMessage(
 
     // Persist name + phone so inbox shows real identity (not just raw psid)
     brainService.updateSessionMeta(sessionKey, senderName, senderPhone).catch(() => {});
+
+    // Auto-assign if no owner or owner offline (Phase B). Fire-and-forget — don't block response.
+    assignSession(sessionKey).catch(() => {});
     const isObserveMode = mode === "observe";
 
     try {
@@ -95,8 +100,10 @@ async function handleWhatsAppMessage(
                 return;
             }
 
+            const customerRecord = await findCustomerByPhone(senderPhone).catch(() => null);
             const response = await aiService.chatWithDaktarVai(
-                userText, history, undefined, { name: senderName, role: "customer" }
+                userText, history, undefined,
+                { name: senderName, phone: senderPhone, role: "customer", customerRecord }
             );
 
             if (mode === "shadow") {

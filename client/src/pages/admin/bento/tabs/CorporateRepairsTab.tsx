@@ -65,11 +65,11 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
     // If no client is passed, we allow selecting one
     const [selectedClientId, setSelectedClientId] = useState<string | null>(initialClientId || null);
 
-    // Fetch all corporate clients for the selector
+    // Fetch all corporate clients for the selector — always kept fresh so re-selection works
     const { data: clients = [] } = useQuery({
         queryKey: ["corporate-clients"],
         queryFn: corporateApi.getAll,
-        enabled: !selectedClientId
+        staleTime: 5 * 60 * 1000,
     });
 
     const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
@@ -199,6 +199,7 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
             setIsChallanOutOpen(false);
             setSelectedJobs([]);
             queryClient.invalidateQueries({ queryKey: ["corporateJobs"] });
+            queryClient.invalidateQueries({ queryKey: ["corporateClient", selectedClientId] });
         },
         onError: (err) => toast({ variant: "destructive", title: "Failed", description: err.message })
     });

@@ -16,6 +16,7 @@ import { registerRoutes } from "./routes/index.js";
 import { aiErrorHandler } from "./routes/middleware/ai-logger.js";
 import { setupSwagger } from "./swagger.js";
 import { errorHandler } from "./routes/middleware/error-handler.js";
+import { apiLimiter } from "./routes/middleware/rate-limit.js";
 
 // Load environment variables early - required for local dev and module-level repository evaluation
 const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
@@ -72,8 +73,18 @@ export async function createApp(): Promise<Express> {
     }));
 
     app.use(helmet({
-        contentSecurityPolicy: false,
-        crossOriginEmbedderPolicy: false,
+        contentSecurityPolicy: false,          // React SPA needs inline scripts — CSP via meta tags
+        crossOriginEmbedderPolicy: false,       // Allow ImageKit + Google embeds
+        hsts: {
+            maxAge: 31536000,                   // 1 year HTTPS enforcement
+            includeSubDomains: true,
+            preload: true,
+        },
+        referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+        permittedCrossDomainPolicies: { permittedPolicies: "none" },
+        noSniff: true,                          // X-Content-Type-Options: nosniff
+        frameguard: { action: "sameorigin" },   // X-Frame-Options: SAMEORIGIN (prevents clickjacking)
+        xssFilter: false,                       // Deprecated — modern browsers ignore it
     }));
 
     // Trust proxy for production (HTTPS behind Vercel's edge)
@@ -89,6 +100,8 @@ export async function createApp(): Promise<Express> {
                 "https://promiseelectronics.com",
                 "https://www.promiseelectronics.com",
                 "capacitor://localhost",
+                // Render backend + Vercel/Netlify frontend (set FRONTEND_URL in env when separated)
+                ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
                 ...(process.env.EXTRA_ALLOWED_ORIGINS ?? "").split(",").map(s => s.trim()).filter(Boolean),
             ];
             if (allowedOrigins.includes(origin)) return callback(null, true);
@@ -122,15 +135,19 @@ export async function createApp(): Promise<Express> {
     const isProduction = process.env.NODE_ENV === "production";
     const PgStore = pgSession(session);
 
+    // When FRONTEND_URL is set, frontend is on a different domain → need sameSite:"none" + secure
+    // When not set, frontend is same-origin → "lax" is correct and more secure
+    const isSeparated = !!process.env.FRONTEND_URL;
+
     const sessionConfig: session.SessionOptions = {
         secret: process.env.SESSION_SECRET!,
         resave: false,
         saveUninitialized: false,
         cookie: {
-            secure: isProduction,
+            secure: isProduction,                              // HTTPS in prod
             httpOnly: true,
-            maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-            sameSite: "lax",
+            maxAge: 7 * 24 * 60 * 60 * 1000,                 // 7 days
+            sameSite: isSeparated ? "none" : "lax",           // "none" for cross-origin, "lax" for same-origin
         },
     };
 
@@ -194,7 +211,21 @@ export async function createApp(): Promise<Express> {
         next();
     });
 
-    // ─── 7. Routes & error handlers ───────────────────────────────────────────
+    // ─── 7. Health check (Render keep-alive + load balancer probe) ───────────
+    app.get('/health', (_req, res) => {
+        res.json({
+            status: 'ok',
+            ts: new Date().toISOString(),
+            uptime: Math.floor(process.uptime()),
+            env: process.env.NODE_ENV,
+        });
+    });
+
+    // ─── 8. Global API rate limiter (non-admin IPs: 100 req/min) ────────────
+    // Skips authenticated admin sessions (see rate-limit.ts skip logic)
+    app.use('/api/', apiLimiter);
+
+    // ─── 9. Routes & error handlers ───────────────────────────────────────────
     setupSwagger(app);
     await registerRoutes(httpServer, app);
     app.use(aiErrorHandler);

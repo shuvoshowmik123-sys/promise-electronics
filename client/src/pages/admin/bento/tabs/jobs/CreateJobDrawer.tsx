@@ -11,12 +11,12 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import {
     Select, SelectContent, SelectItem, SelectTrigger, SelectValue
 } from "@/components/ui/select";
-import { Wrench, User, Monitor, ShieldCheck, Loader2, Sparkles, ArrowRight, Layers, Cpu, Package, Plus, Trash2, MessageSquare, UserCheck } from "lucide-react";
+import { Wrench, User, Monitor, ShieldCheck, Loader2, Sparkles, ArrowRight, Layers, Cpu, Package, Plus, Trash2, MessageSquare, UserCheck, AlertTriangle, ChevronDown, ChevronUp } from "lucide-react";
 import { jobTicketsApi, aiApi } from "@/lib/api";
 import { toast } from "sonner";
 import { TechnicianPicker } from "@/components/admin/TechnicianPicker";
 import { InsertJobTicket } from "@shared/schema";
-import { PANEL_TYPES } from "@shared/constants";
+import { PANEL_TYPES, MISSING_PARTS_LIST } from "@shared/constants";
 
 // ─── Panel model parser ───────────────────────────────────────────────────────
 // Extracts inch size from common panel model numbers
@@ -59,7 +59,7 @@ const TICKET_TYPE_OPTIONS = [
 interface CreateJobDrawerProps {
     isOpen: boolean;
     onClose: () => void;
-    technicianUsers: any[];
+    technicianUsers: { id: string; name: string; role: string; skills?: string | null }[];
     tvInches: string[];
 }
 
@@ -78,6 +78,8 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
     const [selectedAssistedBy, setSelectedAssistedBy] = useState<string[]>([]);
     const [isSuggesting, setIsSuggesting] = useState(false);
     const [chatHandlerAccepted, setChatHandlerAccepted] = useState(false);
+    const [missingParts, setMissingParts] = useState<string[]>([]);
+    const [showMissingParts, setShowMissingParts] = useState(false);
 
     // Brain session lookup — finds which staff handled this customer on Messenger
     const phoneDigits = (formData.customerPhone || "").replace(/\D/g, "").slice(-10);
@@ -100,11 +102,13 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
             setPanelItems([emptyPanelItem()]);
             setSelectedAssistedBy([]);
             setChatHandlerAccepted(false);
+            setMissingParts([]);
+            setShowMissingParts(false);
         }
     }, [isOpen]);
 
     const createMutation = useMutation({
-        mutationFn: (data: any) => jobTicketsApi.create(data),
+        mutationFn: (data: Record<string, unknown>) => jobTicketsApi.create(data as InsertJobTicket & Record<string, unknown>),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
             onClose();
@@ -156,10 +160,10 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
             return;
         }
 
-        const jobData: any = { ...formData };
+        const jobData: Record<string, unknown> = { ...formData };
 
         if (jobData.customerPhone) {
-            jobData.customerPhone = "+880" + jobData.customerPhone.replace(/^(\+880|880)/, "");
+            jobData.customerPhone = "+880" + (jobData.customerPhone as string).replace(/^(\+880|880)/, "");
         }
 
         if (isPanelBatch) {
@@ -169,6 +173,10 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
             const summary = validItems.map(p => `${p.panelInches || "?"}″ ${p.panelType} ×${p.quantity}`).join(", ");
             jobData.device = `Panel Batch (${totalPanelPieces} pcs)`;
             jobData.issue = `Panel repair/replacement: ${summary}`;
+        }
+
+        if (missingParts.length > 0) {
+            jobData.missingParts = JSON.stringify(missingParts);
         }
 
         const finalAssisted = [...selectedAssistedBy];
@@ -325,79 +333,85 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
                             <div className="space-y-2">
                                 <p className="text-xs text-slate-500">Add one row per panel model. Each row = one model type from this customer's batch.</p>
 
-                                {/* Column headers */}
-                                <div className="grid gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr auto" }}>
-                                    <span>Model No.</span>
-                                    <span>Inch</span>
-                                    <span>Type</span>
-                                    <span>Qty</span>
-                                    <span>Fault</span>
-                                    <span></span>
-                                </div>
+                                <div className="overflow-x-auto -mx-4 px-4 pb-1" role="region" aria-label="Panel batch table" tabIndex={0}>
+                                    <div className="min-w-[600px]">
 
-                                {panelItems.map((item, idx) => (
-                                    <div
-                                        key={idx}
-                                        className="grid gap-1 items-center"
-                                        style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr auto" }}
-                                    >
-                                        {/* Model */}
-                                        <Input
-                                            placeholder="BOE HV430FHB"
-                                            value={item.panelModel}
-                                            onChange={e => updatePanelItem(idx, "panelModel", e.target.value)}
-                                            className="bg-slate-50 font-mono text-xs h-9"
-                                        />
-                                        {/* Inch */}
-                                        <Input
-                                            placeholder="43"
-                                            value={item.panelInches}
-                                            onChange={e => updatePanelItem(idx, "panelInches", e.target.value)}
-                                            className="bg-slate-50 text-xs h-9"
-                                        />
-                                        {/* Type */}
-                                        <Select value={item.panelType} onValueChange={v => updatePanelItem(idx, "panelType", v)}>
-                                            <SelectTrigger className="bg-slate-50 h-9 text-xs"><SelectValue /></SelectTrigger>
-                                            <SelectContent>
-                                                {PANEL_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                                            </SelectContent>
-                                        </Select>
-                                        {/* Qty */}
-                                        <Input
-                                            type="number"
-                                            min={1}
-                                            value={item.quantity}
-                                            onChange={e => updatePanelItem(idx, "quantity", parseInt(e.target.value) || 1)}
-                                            className="bg-slate-50 text-xs h-9"
-                                        />
-                                        {/* Fault */}
-                                        <Input
-                                            placeholder="Cracked, lines..."
-                                            value={item.fault}
-                                            onChange={e => updatePanelItem(idx, "fault", e.target.value)}
-                                            className="bg-slate-50 text-xs h-9"
-                                        />
-                                        {/* Remove */}
-                                        <button
+                                        {/* Column headers */}
+                                        <div className="grid gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1" style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr auto" }}>
+                                            <span>Model No.</span>
+                                            <span>Inch</span>
+                                            <span>Type</span>
+                                            <span>Qty</span>
+                                            <span>Fault</span>
+                                            <span></span>
+                                        </div>
+
+                                        {panelItems.map((item, idx) => (
+                                            <div
+                                                key={idx}
+                                                className="grid gap-1 items-center"
+                                                style={{ gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr auto" }}
+                                            >
+                                                {/* Model */}
+                                                <Input
+                                                    placeholder="BOE HV430FHB"
+                                                    value={item.panelModel}
+                                                    onChange={e => updatePanelItem(idx, "panelModel", e.target.value)}
+                                                    className="bg-slate-50 font-mono text-xs h-9"
+                                                />
+                                                {/* Inch */}
+                                                <Input
+                                                    placeholder="43"
+                                                    value={item.panelInches}
+                                                    onChange={e => updatePanelItem(idx, "panelInches", e.target.value)}
+                                                    className="bg-slate-50 text-xs h-9"
+                                                />
+                                                {/* Type */}
+                                                <Select value={item.panelType} onValueChange={v => updatePanelItem(idx, "panelType", v)}>
+                                                    <SelectTrigger className="bg-slate-50 h-9 text-xs"><SelectValue /></SelectTrigger>
+                                                    <SelectContent>
+                                                        {PANEL_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                                                    </SelectContent>
+                                                </Select>
+                                                {/* Qty */}
+                                                <Input
+                                                    type="number"
+                                                    min={1}
+                                                    value={item.quantity}
+                                                    onChange={e => updatePanelItem(idx, "quantity", parseInt(e.target.value) || 1)}
+                                                    className="bg-slate-50 text-xs h-9"
+                                                />
+                                                {/* Fault */}
+                                                <Input
+                                                    placeholder="Cracked, lines..."
+                                                    value={item.fault}
+                                                    onChange={e => updatePanelItem(idx, "fault", e.target.value)}
+                                                    className="bg-slate-50 text-xs h-9"
+                                                />
+                                                {/* Remove */}
+                                                <button
+                                                    type="button"
+                                                    onClick={() => removePanelRow(idx)}
+                                                    disabled={panelItems.length === 1}
+                                                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-30 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
+                                        ))}
+
+                                        <Button
                                             type="button"
-                                            onClick={() => removePanelRow(idx)}
-                                            disabled={panelItems.length === 1}
-                                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-30 transition-colors"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={addPanelRow}
+                                            className="mt-1 border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 w-full h-9"
                                         >
-                                            <Trash2 size={14} />
-                                        </button>
-                                    </div>
-                                ))}
+                                            <Plus size={14} className="mr-1" /> Add Panel Model
+                                        </Button>
 
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="sm"
-                                    onClick={addPanelRow}
-                                    className="mt-1 border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 w-full"
-                                >
-                                    <Plus size={14} className="mr-1" /> Add Panel Model
-                                </Button>
+                                    </div>
+                                </div>
 
                                 {/* Summary */}
                                 {totalPanelPieces > 0 && (
@@ -453,6 +467,57 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
                         )}
                     </div>
 
+                    {/* Missing Parts at Intake */}
+                    <div className="space-y-2">
+                        <button
+                            type="button"
+                            onClick={() => setShowMissingParts(v => !v)}
+                            className={`w-full flex items-center justify-between p-2 rounded-lg border text-sm font-bold uppercase tracking-wider transition-colors ${
+                                missingParts.length > 0
+                                    ? "bg-orange-50 border-orange-200 text-orange-700"
+                                    : "bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300"
+                            }`}
+                        >
+                            <span className="flex items-center gap-2">
+                                <AlertTriangle className="w-4 h-4" />
+                                Missing Parts at Intake
+                                {missingParts.length > 0 && (
+                                    <span className="bg-orange-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5">
+                                        {missingParts.length}
+                                    </span>
+                                )}
+                            </span>
+                            {showMissingParts ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                        </button>
+
+                        {showMissingParts && (
+                            <div className="border border-orange-100 rounded-xl p-3 bg-orange-50/50">
+                                <p className="text-[11px] text-slate-500 mb-3">
+                                    Check all parts that are NOT present with the device at intake. Goes on receipt.
+                                </p>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    {MISSING_PARTS_LIST.map(part => (
+                                        <label key={part} className="flex items-center gap-2 cursor-pointer group">
+                                            <input
+                                                type="checkbox"
+                                                checked={missingParts.includes(part)}
+                                                onChange={e => {
+                                                    setMissingParts(prev =>
+                                                        e.target.checked
+                                                            ? [...prev, part]
+                                                            : prev.filter(p => p !== part)
+                                                    );
+                                                }}
+                                                className="w-3.5 h-3.5 accent-orange-500 shrink-0"
+                                            />
+                                            <span className="text-xs text-slate-700 group-hover:text-orange-700 transition-colors leading-tight">{part}</span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     {/* Assignment & Priority */}
                     <div className="space-y-4">
                         <h4 className="font-bold text-sm text-emerald-600 flex items-center gap-2 bg-emerald-50 p-2 rounded-lg border border-emerald-100 uppercase tracking-wider">
@@ -461,7 +526,7 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <Label>Priority Level</Label>
-                                <Select value={formData.priority || "Medium"} onValueChange={v => setFormData({ ...formData, priority: v as any })}>
+                                <Select value={formData.priority || "Medium"} onValueChange={v => setFormData({ ...formData, priority: v as InsertJobTicket['priority'] })}>
                                     <SelectTrigger className="bg-slate-50"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="Low">Low</SelectItem>

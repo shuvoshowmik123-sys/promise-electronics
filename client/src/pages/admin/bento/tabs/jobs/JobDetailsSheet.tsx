@@ -1,13 +1,15 @@
 import { createPortal } from "react-dom";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import {
     QrCode, FileText, Clock, User, Monitor, AlertCircle,
-    PenTool, Users, Edit, Printer
+    PenTool, Users, Edit, Printer, ShoppingCart
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { LocalPurchaseModal } from "@/components/inventory/LocalPurchaseModal";
 
 interface JobDetailsSheetProps {
     job: any | null;
@@ -32,9 +34,11 @@ export function JobDetailsSheet({
     onEditJob,
     onPrintTicket
 }: JobDetailsSheetProps) {
+    const [isLocalPurchaseOpen, setIsLocalPurchaseOpen] = useState(false);
+
     if (typeof document === 'undefined') return null;
 
-    return createPortal(
+    const portal = createPortal(
         <AnimatePresence>
             {isOpen && job && (
                 <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 sm:p-6 pointer-events-auto">
@@ -166,6 +170,16 @@ export function JobDetailsSheet({
                             <Button variant="ghost" onClick={onClose} className="rounded-xl text-slate-500 w-full sm:w-auto hover:bg-slate-100">Dismiss</Button>
                             <div className="flex gap-2 w-full sm:w-auto">
                                 {canEdit && (
+                                    <Button
+                                        onClick={() => setIsLocalPurchaseOpen(true)}
+                                        variant="outline"
+                                        className="rounded-xl flex-1 sm:flex-none border-orange-200 text-orange-700 hover:bg-orange-50 bg-white shadow-sm"
+                                        title="Log an outside/petty-cash part purchase for this job"
+                                    >
+                                        <ShoppingCart className="w-4 h-4 sm:mr-2" /> <span className="hidden sm:inline">Outside Purchase</span>
+                                    </Button>
+                                )}
+                                {canEdit && (
                                     <Button onClick={() => { onClose(); onEditJob(job); }} variant="outline" className="rounded-xl flex-1 sm:flex-none border-slate-200 bg-white shadow-sm hover:bg-slate-50">
                                         <Edit className="w-4 h-4 sm:mr-2" /> <span className="hidden sm:inline">Quick Edit</span>
                                     </Button>
@@ -180,5 +194,18 @@ export function JobDetailsSheet({
             )}
         </AnimatePresence>,
         document.body
+    );
+
+    return (
+        <>
+            {portal}
+            {job && (
+                <LocalPurchaseModal
+                    jobTicketId={job.id}
+                    open={isLocalPurchaseOpen}
+                    onOpenChange={setIsLocalPurchaseOpen}
+                />
+            )}
+        </>
     );
 }

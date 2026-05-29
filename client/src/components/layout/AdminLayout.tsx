@@ -32,6 +32,46 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
     }
   }, [isLoading, isAuthenticated, setLocation]);
 
+  // Staff presence heartbeat (Phase B) — ping every 30s while tab focused
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const ping = () => {
+      if (document.visibilityState === 'visible') {
+        fetch('/api/users/presence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ channels: ['messenger', 'whatsapp'] }),
+        }).catch(() => {});
+      }
+    };
+
+    ping(); // immediate ping on mount
+    const interval = setInterval(ping, 30_000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') ping();
+      else {
+        // Tab hidden → mark away
+        fetch('/api/users/presence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ channels: [], status: 'away' }),
+        }).catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      // Mark offline on unmount (logout / navigation away from admin)
+      fetch('/api/users/presence', { method: 'DELETE', credentials: 'include' }).catch(() => {});
+    };
+  }, [isAuthenticated]);
+
   const handleLogout = async () => {
     await logout();
     toast.success("Logged out successfully");

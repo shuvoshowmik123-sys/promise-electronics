@@ -7,10 +7,12 @@
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { inventoryRepo, financeRepo } from '../repositories/index.js';
-import { insertInventoryItemSchema, insertProductSchema, insertLocalPurchaseSchema, insertWastageLogSchema } from '../../shared/schema.js';
+import { insertInventoryItemSchema, insertProductSchema, insertLocalPurchaseSchema, insertWastageLogSchema, localPurchases } from '../../shared/schema.js';
 import { requireAdminAuth, requirePermission } from './middleware/auth.js';
 import { auditLogger } from '../utils/auditLogger.js';
 import { inventoryService } from '../services/inventory.service.js';
+import { db } from '../db.js';
+import { gte, lte, and, eq, isNull } from 'drizzle-orm';
 
 const router = Router();
 
@@ -395,6 +397,69 @@ router.post('/api/inventory/local-purchases', requireAdminAuth, requirePermissio
     } catch (error: any) {
         console.error('Local purchase error:', error);
         res.status(400).json({ error: 'Invalid local purchase data', details: error.message });
+    }
+});
+
+/**
+ * GET /api/inventory/local-purchases/report - Daily outside-purchase audit report
+ * Query params: date=YYYY-MM-DD (defaults to today)
+ * Returns: rows grouped by purchasedBy + supplier, with receipt thumbs
+ */
+router.get('/api/inventory/local-purchases/report', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+    try {
+        const date = req.query.date ? new Date(req.query.date as string) : new Date();
+        const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0);
+        const dayEnd   = new Date(date); dayEnd.setHours(23, 59, 59, 999);
+
+        const rows = await db.select().from(localPurchases)
+            .where(and(
+                gte(localPurchases.createdAt, dayStart),
+                lte(localPurchases.createdAt, dayEnd),
+            ))
+            .orderBy(localPurchases.createdAt);
+
+        const totalCost    = rows.reduce((s, r) => s + (r.costPrice    ?? 0) * (r.quantity ?? 1), 0);
+        const totalSelling = rows.reduce((s, r) => s + (r.sellingPrice ?? 0) * (r.quantity ?? 1), 0);
+
+        // Group by purchaser for the summary
+        const byStaff: Record<string, { items: typeof rows; cost: number; selling: number }> = {};
+        for (const row of rows) {
+            const key = row.purchasedBy || 'Unknown';
+            if (!byStaff[key]) byStaff[key] = { items: [], cost: 0, selling: 0 };
+            byStaff[key].items.push(row);
+            byStaff[key].cost    += (row.costPrice    ?? 0) * (row.quantity ?? 1);
+            byStaff[key].selling += (row.sellingPrice ?? 0) * (row.quantity ?? 1);
+        }
+
+        res.json({
+            date: dayStart.toISOString().split('T')[0],
+            totalItems: rows.length,
+            totalCost: Math.round(totalCost),
+            totalSelling: Math.round(totalSelling),
+            margin: Math.round(totalSelling - totalCost),
+            missingReceipts: rows.filter(r => !r.receiptImageUrl).length,
+            byStaff,
+            rows,
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to generate purchase report' });
+    }
+});
+
+/**
+ * GET /api/inventory/local-purchases/check/:jobId
+ * Returns whether a job has any unresolved outside purchases (blocks job close).
+ * Used by advance-status handler to enforce clean books.
+ */
+router.get('/api/inventory/local-purchases/check/:jobId', requireAdminAuth, async (req: Request, res: Response) => {
+    try {
+        const rows = await db.select().from(localPurchases)
+            .where(eq(localPurchases.jobTicketId, req.params.jobId));
+
+        const missing = rows.filter(r => !r.receiptImageUrl || r.status !== 'Consumed');
+        res.json({ clean: missing.length === 0, issues: missing.map(r => ({ id: r.id, part: r.partName, problem: !r.receiptImageUrl ? 'No receipt' : `Status: ${r.status}` })) });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to check purchases' });
     }
 });
 

@@ -251,6 +251,13 @@ export const jobTickets = pgTable("job_tickets", {
   abandonedAt: timestamp("abandoned_at"),
   forfeitedAt: timestamp("forfeited_at"),
   lastSmsSentAt: timestamp("last_sms_sent_at"),
+
+  // Client class system (Phase A)
+  clientClass: text("client_class"),           // CLIENT_CLASSES value; null = 'online' default
+  batchId: text("batch_id"),                   // FK to job_batches.id for bulk intake
+  missingParts: jsonb("missing_parts").default([]),       // incomplete-TV capture: string[]
+  partsLineitems: jsonb("parts_lineitems").default([]),   // Mode-3 multi-part: [{name,qty,charge,source,notes}]
+  source: text("source"),                       // 'corporate_portal' | 'whatsapp' | 'messenger' | 'walk_in' | null
 }, (table) => {
   return {
     statusIdx: index("idx_job_tickets_status").on(table.status),
@@ -646,6 +653,9 @@ export const corporateClients = pgTable("corporate_clients", {
   portalPasswordHash: text("portal_password_hash"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at"),
+
+  // Client class tier (Phase A) — 'b2b_normal' or 'b2b_corporate'
+  clientClass: text("client_class").notNull().default("b2b_normal"),
 });
 
 
@@ -748,10 +758,21 @@ export const corporateBills = pgTable("corporate_bills", {
   paidDate: timestamp("paid_date"),
   dueRecordId: text("due_record_id"), // Link to Finance
   createdAt: timestamp("created_at").notNull().defaultNow(),
+
+  // Phase G scatter-billing additions
+  billStatus: text("bill_status").default("active"),        // 'active'|'superseded'|'draft'
+  issuedAt: timestamp("issued_at"),
+  supersededByBillIds: jsonb("superseded_by_bill_ids").default([]),
+  supersededAt: timestamp("superseded_at"),
+  supersededByUserId: text("superseded_by_user_id"),
+  supersededReason: text("superseded_reason"),
+  createdBy: text("created_by"),
+  updatedAt: timestamp("updated_at"),
 }, (table) => {
   return {
     corporateClientIdx: index("idx_corporate_bills_client_id").on(table.corporateClientId),
     paymentStatusIdx: index("idx_corporate_bills_payment_status").on(table.paymentStatus),
+    billStatusIdx: index("idx_corporate_bills_bill_status").on(table.billStatus),
   };
 });
 
@@ -2326,3 +2347,192 @@ export const reminders = pgTable("reminders", {
 }));
 export type Reminder = typeof reminders.$inferSelect;
 export type InsertReminder = typeof reminders.$inferInsert;
+
+// ============================================================================
+// PHASE A — Client Class System
+// ============================================================================
+
+// Per-class defaults: SLA, priority, payment, credit, AI tone, billing layers.
+// Tunable via admin UI without redeploy.
+export const clientClassPolicies = pgTable("client_class_policies", {
+  id: text("id").primaryKey(),
+  clientClass: text("client_class").notNull().unique(),  // CLIENT_CLASSES value
+  slaDays: integer("sla_days").notNull().default(1),
+  priority: text("priority").notNull().default("normal"),       // 'low'|'normal'|'high'
+  paymentMode: text("payment_mode").notNull().default("mixed"), // 'mixed'|'cash_only'|'invoice'
+  creditAllowed: boolean("credit_allowed").notNull().default(false),
+  aiTone: text("ai_tone").notNull().default("warm"),            // 'warm'|'curt'|'formal'
+  billLayers: integer("bill_layers").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at"),
+});
+export type ClientClassPolicy = typeof clientClassPolicies.$inferSelect;
+export type InsertClientClassPolicy = typeof clientClassPolicies.$inferInsert;
+
+// Bulk job intake batch — parent of N job_tickets in bulk mode
+export const jobBatches = pgTable("job_batches", {
+  id: text("id").primaryKey(),
+  batchNumber: text("batch_number").unique(),           // e.g. "BATCH-20260528-001"
+  clientClass: text("client_class").default("online"),
+  corporateClientId: text("corporate_client_id").references(() => corporateClients.id),
+  customerId: text("customer_id"),                      // FK to users.id for non-corporate
+  intakeDate: timestamp("intake_date").notNull().defaultNow(),
+  receiver: text("receiver"),                           // staff who received the batch
+  notes: text("notes"),
+  totalItems: integer("total_items").default(0),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  corporateIdx: index("idx_job_batches_corporate").on(table.corporateClientId),
+  createdAtIdx: index("idx_job_batches_created_at").on(table.createdAt),
+  classIdx: index("idx_job_batches_client_class").on(table.clientClass),
+}));
+export type JobBatch = typeof jobBatches.$inferSelect;
+export type InsertJobBatch = typeof jobBatches.$inferInsert;
+
+// Staff presence — heartbeat from admin frontend every 30s while tab is focused
+export const staffPresence = pgTable("staff_presence", {
+  staffId: text("staff_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("offline"), // 'online' | 'away' | 'offline'
+  channels: jsonb("channels").default([]),             // ['messenger', 'whatsapp']
+  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  // Phase I: acceptance ratio (updated nightly)
+  acceptanceRatio: real("acceptance_ratio"),           // converted_jobs / claimed_sessions, 30d rolling
+  openSessionCount: integer("open_session_count").default(0),
+  ratioUpdatedAt: timestamp("ratio_updated_at"),
+});
+export type StaffPresence = typeof staffPresence.$inferSelect;
+
+// Canonical customer record — phone is primary identifier.
+// Online walk-ins become customers on first job creation.
+// Repeat/reference: all past sessions/jobs link back here.
+export const customers = pgTable("customers", {
+  id: text("id").primaryKey(),
+  primaryPhone: text("primary_phone").unique(),        // canonical identifier
+  altPhones: jsonb("alt_phones").default([]),           // additional numbers
+  name: text("name"),
+  address: text("address"),
+  area: text("area"),
+  gmail: text("gmail"),                                 // future credential
+  clientClass: text("client_class").notNull().default("online"), // CLIENT_CLASSES
+  referrerId: text("referrer_id"),                      // FK to customers.id for 'reference'
+  isShopName: boolean("is_shop_name").default(false),   // true if name is the shop (technician)
+
+  // Derived stats (updated on job close)
+  totalJobs: integer("total_jobs").notNull().default(0),
+  totalSpend: real("total_spend").notNull().default(0),
+  firstSeenAt: timestamp("first_seen_at").notNull().defaultNow(),
+  lastJobAt: timestamp("last_job_at"),
+
+  notes: text("notes"),                                 // internal flags
+  storeId: text("store_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at"),
+}, (table) => ({
+  phoneIdx: index("idx_customers_primary_phone").on(table.primaryPhone),
+  classIdx: index("idx_customers_client_class").on(table.clientClass),
+  lastJobIdx: index("idx_customers_last_job_at").on(table.lastJobAt),
+}));
+export type CanonicalCustomer = typeof customers.$inferSelect;
+export type InsertCustomer = typeof customers.$inferInsert;
+export const insertCustomerSchema = createInsertSchema(customers).omit({ id: true, createdAt: true });
+
+// ============================================================================
+// PHASE G — B2B Billing Engine
+// ============================================================================
+
+// Per-corporate-customer billing configuration (admin-editable)
+export const billingProfiles = pgTable("billing_profiles", {
+  id: text("id").primaryKey(),
+  corporateClientId: text("corporate_client_id").notNull().references(() => corporateClients.id, { onDelete: "cascade" }),
+  tier: text("tier").notNull().default("normal"),              // 'normal' | 'corporate'
+
+  // Scatter billing (b2b_corporate only)
+  scatterBillingEnabled: boolean("scatter_billing_enabled").default(false),
+  scatterBillingMode: text("scatter_billing_mode").default("reactive"), // 'reactive' | 'proactive'
+
+  // Per-TV matching requirements
+  requiresSerialMatch: boolean("requires_serial_match").default(false),
+  requiresModelMatch: boolean("requires_model_match").default(false),
+
+  // Customer-owned spares
+  suppliesSparePartsToUs: boolean("supplies_spare_parts_to_us").default(false),
+  sparePartHandling: text("spare_part_handling").default("use_if_needed"), // 'use_if_needed'|'return_unused'|'consume_all'
+
+  // QA acceptance criteria
+  acceptanceCriteria: text("acceptance_criteria").default("per_unit_decision"), // 'perfect_only'|'partial_ok'|'per_unit_decision'
+  invoiceCriteriaJson: jsonb("invoice_criteria_json").default({}), // editable per admin
+
+  // SLA
+  slaDays: integer("sla_days").notNull().default(7),
+  slaBreachAction: text("sla_breach_action").default("notify_and_extend"), // 'auto_return'|'notify_and_extend'|'auto_escalate'
+
+  // Billing format
+  invoiceTemplateId: text("invoice_template_id"),
+  quoteChannel: text("quote_channel").default("phone_verbal"),    // 'phone_verbal' | 'written_required'
+  defaultAmountRangeMin: integer("default_amount_range_min"),      // b2b_normal range
+  defaultAmountRangeMax: integer("default_amount_range_max"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at"),
+}, (table) => ({
+  clientIdx: index("idx_billing_profiles_client").on(table.corporateClientId),
+}));
+export type BillingProfile = typeof billingProfiles.$inferSelect;
+export type InsertBillingProfile = typeof billingProfiles.$inferInsert;
+
+// Phone quote log — verbal quotes from corporate clients (audit trail)
+export const quoteLogs = pgTable("quote_logs", {
+  id: text("id").primaryKey(),
+  corporateClientId: text("corporate_client_id").references(() => corporateClients.id),
+  jobId: text("job_id"),                          // FK to job_tickets.id
+  callerName: text("caller_name"),
+  callerPhone: text("caller_phone"),
+  approvedByName: text("approved_by_name"),       // who approved on their end
+  verbalAmount: real("verbal_amount"),            // amount discussed (internal record only)
+  currency: text("currency").default("BDT"),
+  notes: text("notes"),
+  loggedBy: text("logged_by").notNull(),          // admin user who logged this
+  calledAt: timestamp("called_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  clientIdx: index("idx_quote_logs_client").on(table.corporateClientId),
+  jobIdx:    index("idx_quote_logs_job").on(table.jobId),
+}));
+export type QuoteLog = typeof quoteLogs.$inferSelect;
+
+// Bill line items — one per job ticket on the bill
+export const billLineItems = pgTable("bill_line_items", {
+  id: text("id").primaryKey(),
+  billId: text("bill_id").notNull().references(() => corporateBills.id, { onDelete: "cascade" }),
+  jobTicketId: text("job_ticket_id"),
+  deviceSerial: text("device_serial"),
+  deviceModel: text("device_model"),
+  chargeDescription: text("charge_description"),
+  amount: real("amount").notNull().default(0),
+  // Scatter audit: if this line was moved from another bill
+  movedFromBillId: text("moved_from_bill_id"),
+  movedAt: timestamp("moved_at"),
+  movedByUserId: text("moved_by_user_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  billIdx: index("idx_bill_line_items_bill").on(table.billId),
+  jobIdx:  index("idx_bill_line_items_job").on(table.jobTicketId),
+}));
+export type BillLineItem = typeof billLineItems.$inferSelect;
+
+// Immutable audit log — every bill change recorded for dispute protection
+export const billEditLog = pgTable("bill_edit_log", {
+  id: text("id").primaryKey(),
+  billId: text("bill_id").notNull(),
+  action: text("action").notNull(),  // 'create'|'edit'|'delete'|'scatter'|'merge'|'supersede'
+  beforeJson: jsonb("before_json"),
+  afterJson: jsonb("after_json"),
+  performedBy: text("performed_by").notNull(),
+  performedAt: timestamp("performed_at").notNull().defaultNow(),
+  reason: text("reason"),
+}, (table) => ({
+  billIdx: index("idx_bill_edit_log_bill").on(table.billId),
+  timeIdx: index("idx_bill_edit_log_time").on(table.performedAt),
+}));

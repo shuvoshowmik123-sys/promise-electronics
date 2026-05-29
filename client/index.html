@@ -233,27 +233,21 @@
   </div>
 
   <script>
-    // Debug: Log when script starts executing
-    console.log('[DEBUG] HTML script executing');
+    // Suppress debug loader UI once app boots
     var debugEl = document.getElementById('debug-status');
-    if (debugEl) debugEl.textContent = 'Scripts loading...';
 
-    // Handle uncaught errors
-    window.onerror = function (msg, url, line, col, error) {
-      console.error('[DEBUG] Uncaught error:', msg, url, line);
+    window.onerror = function (msg, url, line) {
       if (debugEl) {
         debugEl.style.color = '#ef4444';
-        debugEl.textContent = 'Error: ' + msg;
+        debugEl.textContent = 'Error loading app';
       }
       return false;
     };
 
-    // Handle unhandled promise rejections
     window.onunhandledrejection = function (event) {
-      console.error('[DEBUG] Unhandled rejection:', event.reason);
       if (debugEl) {
         debugEl.style.color = '#ef4444';
-        debugEl.textContent = 'Promise Error: ' + (event.reason?.message || event.reason);
+        debugEl.textContent = 'App failed to start';
       }
     };
   </script>

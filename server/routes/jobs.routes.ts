@@ -15,6 +15,10 @@ import { pushService } from '../pushService.js';
 import { jobService } from '../services/job.service.js';
 import { publishAdminNotificationEvent, publishJobTicketEvent } from '../services/admin-realtime.service.js';
 import { logModelCase } from '../brain/kg.service.js';
+import { bindCustomerToJob, recordJobClosed } from '../services/canonical-customer.service.js';
+import { db } from '../db.js';
+import { localPurchases } from '../../shared/schema.js';
+import { eq } from 'drizzle-orm';
 
 const router = Router();
 const JOB_REALTIME_TAGS = ["jobTickets", "jobOverview", "dashboardStats"] as const;
@@ -174,6 +178,13 @@ router.post('/api/job-tickets', requireAdminAuth, requirePermission('jobs'), asy
         const validated = insertJobTicketSchema.parse(jobData);
         const job = await jobRepo.createJobTicket(validated);
 
+        // Phase C: bind canonical customer record (fire-and-forget — don't block response)
+        bindCustomerToJob(
+            (job as any).customerPhone ?? null,
+            (job as any).customer ?? null,
+            (job as any).customerAddress ?? null
+        ).catch(() => {});
+
         publishJobTicketEvent({
             action: 'created',
             entityId: job.id,
@@ -238,6 +249,18 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requirePerm
             return res.status(400).json({ error: `Cannot mathematically advance from terminal status: ${currentStatus}` });
         }
 
+        // Phase E: block Completed if any outside purchase has no receipt or is not Consumed
+        if (nextStatus === 'Completed') {
+            const purchases = await db.select().from(localPurchases).where(eq(localPurchases.jobTicketId, jobId));
+            const dirty = purchases.filter(p => !p.receiptImageUrl || p.status !== 'Consumed');
+            if (dirty.length > 0) {
+                return res.status(400).json({
+                    error: 'Cannot complete job: outside purchases need receipt/status fix',
+                    purchases: dirty.map(p => ({ id: p.id, part: p.partName, issue: !p.receiptImageUrl ? 'Missing receipt' : `Status is "${p.status}"` })),
+                });
+            }
+        }
+
         const updatedJob = await jobRepo.updateJobTicket(jobId, { status: nextStatus });
         if (!updatedJob) {
             return res.status(500).json({ error: 'Failed to update job status' });
@@ -289,6 +312,11 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requirePerm
                 status:       nextStatus,
                 jobId:        updatedJob.id,
             }).catch(() => {});
+
+            // Phase C: update canonical customer lifetime stats
+            const totalCharge = ((updatedJob as any).charges as any[] ?? [])
+                .reduce((s: number, c: any) => s + (parseFloat(c.amount) || 0), 0);
+            recordJobClosed((updatedJob as any).customerPhone ?? null, totalCharge).catch(() => {});
         }
 
         // Phase O — Auto-trigger: notify customer when job becomes Ready (checks setting)

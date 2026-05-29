@@ -27,25 +27,28 @@ const isProduction = import.meta.env.PROD;
 const DEV_API_URL_EMULATOR = 'http://10.0.2.2:5083'; // Android Emulator
 const DEV_API_URL_WEB = ''; // Web uses Vite proxy
 
-// Production URL — override with VITE_API_URL env var for separate backend deployments
-const PROD_API_URL = import.meta.env.VITE_API_URL || 'https://promiseelectronics.com';
+// Production URL:
+//   - If VITE_API_URL is set (e.g. https://promise-api.onrender.com) → use it (separated deploy)
+//   - If not set → '' (same-origin, frontend + backend on same domain)
+const PROD_API_URL = import.meta.env.VITE_API_URL || '';
 
 // Determine the correct API URL
 const getApiBaseUrl = (): string => {
     if (isProduction) {
-        // Production build - always use production URL
-        return isNative ? PROD_API_URL : '';
+        if (isNative) {
+            // Native app always needs absolute URL
+            return import.meta.env.VITE_API_URL || 'https://promiseelectronics.com';
+        }
+        // Web: use VITE_API_URL if set (separated deploy), otherwise same-origin
+        return PROD_API_URL;
     }
 
     // Development build
     if (isNative) {
-        // Native app in dev mode - use emulator URL
-        // For physical device testing, change this to your computer's IP
-        // e.g., 'http://192.168.0.103:5083'
         return DEV_API_URL_EMULATOR;
     }
 
-    // Web in dev mode - use Vite proxy (empty string)
+    // Web dev — Vite proxy handles /api/* → backend
     return DEV_API_URL_WEB;
 };
 

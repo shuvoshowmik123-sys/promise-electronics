@@ -4,13 +4,18 @@ import { aiService } from "../services/ai.service.js";
 import { storage } from "../storage.js";
 import ImageKit from "imagekit";
 import { brainService } from "../brain/brain.service.js";
+import { assignSession } from "../services/assignment.service.js";
 
 const router = Router();
 
-// Configuration
-const VERIFY_TOKEN = process.env.MESSENGER_VERIFY_TOKEN || "PROMISE_MSGR_2026";
+// Configuration — all from env, no hardcoded fallbacks
+const VERIFY_TOKEN = process.env.MESSENGER_VERIFY_TOKEN;
 const PAGE_ACCESS_TOKEN = process.env.MESSENGER_PAGE_ACCESS_TOKEN;
 const PAGE_ID = process.env.FACEBOOK_PAGE_ID;
+
+if (!VERIFY_TOKEN) {
+    console.warn('[Messenger] MESSENGER_VERIFY_TOKEN not set — webhook verification will fail');
+}
 
 // Initialize ImageKit
 function getImageKit() {
@@ -38,7 +43,7 @@ router.get("/webhook", (req: Request, res: Response) => {
     const challenge = req.query["hub.challenge"];
 
     if (mode && token) {
-        if (mode === "subscribe" && token === VERIFY_TOKEN) {
+        if (mode === "subscribe" && VERIFY_TOKEN && token === VERIFY_TOKEN) {
             console.log("WEBHOOK_VERIFIED");
             res.status(200).send(challenge);
         } else {
@@ -101,6 +106,9 @@ async function handleMessage(sender_psid: string, message: any) {
     // Get persistent history from Brain DB
     const session = await brainService.getSession(sender_psid);
     const history = (session.history as any[]) || [];
+
+    // Auto-assign if no owner or owner offline (Phase B). Fire-and-forget — don't block response.
+    assignSession(sender_psid).catch(() => {});
 
     // Check current Brain Mode
     const mode = await brainService.getBrainMode();

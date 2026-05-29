@@ -290,6 +290,27 @@ export const brainService = {
         }
     },
 
+    /** Count open sessions per staff (for capacity-aware round-robin) */
+    async countOpenSessionsByStaff(staffIds: string[]): Promise<{ staffId: string; count: number }[]> {
+        if (staffIds.length === 0) return [];
+        try {
+            const all = await brainDb.select({ claimedByUserId: sessions.claimedByUserId })
+                .from(sessions)
+                .orderBy(desc(sessions.lastMessageAt))
+                .limit(500);
+            const counts = new Map<string, number>();
+            for (const id of staffIds) counts.set(id, 0);
+            for (const s of all) {
+                if (s.claimedByUserId && counts.has(s.claimedByUserId)) {
+                    counts.set(s.claimedByUserId, (counts.get(s.claimedByUserId) ?? 0) + 1);
+                }
+            }
+            return staffIds.map(id => ({ staffId: id, count: counts.get(id) ?? 0 }));
+        } catch {
+            return staffIds.map(id => ({ staffId: id, count: 0 }));
+        }
+    },
+
     /** Sessions that have human replies but no claim yet */
     async getUnclaimedSessions() {
         // Drizzle 0.39 + neon-http: relational queries break — use direct select

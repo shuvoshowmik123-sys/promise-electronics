@@ -1,7 +1,76 @@
 
 // Enums and Constants - Browser Safe
 
-export const JOB_STATUSES = ["Pending", "Diagnosing", "Pending Parts", "In Progress", "On Workbench", "Ready", "Not OK", "Delivered", "Cancelled", "Abandoned", "Forfeited"] as const;
+// ── Audit action constants ─────────────────────────────────────────────────────
+// All audit_logs.action values must use one of these. Standardized for reliable filtering.
+export const AUDIT_ACTIONS = {
+    // Auth — admin
+    LOGIN_SUCCESS:      'LOGIN_SUCCESS',
+    LOGIN_FAILED:       'LOGIN_FAILED',
+    LOGIN_LOCKED:       'LOGIN_LOCKED',       // rate limiter tripped
+    LOGOUT:             'LOGOUT',
+    SESSION_EXPIRED:    'SESSION_EXPIRED',
+    PIN_FAILED:         'PIN_FAILED',
+    PIN_SET:            'PIN_SET',
+    PASSWORD_CHANGED:   'PASSWORD_CHANGED',
+    // Auth — corporate portal
+    CORP_LOGIN_SUCCESS: 'CORP_LOGIN_SUCCESS',
+    CORP_LOGIN_FAILED:  'CORP_LOGIN_FAILED',
+    CORP_LOGOUT:        'CORP_LOGOUT',
+    // Jobs
+    CREATE_JOB:         'CREATE_JOB',
+    UPDATE_JOB:         'UPDATE_JOB',
+    DELETE_JOB:         'DELETE_JOB',
+    STATUS_CHANGE:      'STATUS_CHANGE',
+    ASSIGN_TECHNICIAN:  'ASSIGN_TECHNICIAN',
+    // Inventory
+    CREATE_INVENTORY:   'CREATE_INVENTORY',
+    UPDATE_INVENTORY:   'UPDATE_INVENTORY',
+    UPDATE_STOCK:       'UPDATE_STOCK',
+    // Finance
+    PAYMENT_RECORDED:   'PAYMENT_RECORDED',
+    REFUND_ISSUED:      'REFUND_ISSUED',
+    LOCAL_PURCHASE:     'LOCAL_PURCHASE',
+    OPEN_REGISTER:      'OPEN_REGISTER',
+    CLOSE_REGISTER:     'CLOSE_REGISTER',
+    // Corporate B2B
+    GENERATE_BILL:      'GENERATE_BILL',
+    SCATTER_BILL:       'SCATTER_BILL',
+    CREATE_CHALLAN:     'CREATE_CHALLAN',
+    // Security / Access
+    PERMISSION_DENIED:  'PERMISSION_DENIED',
+    VIEW_USERS:         'VIEW_USERS',
+    VIEW_SETTINGS:      'VIEW_SETTINGS',
+    VIEW_AUDIT:         'VIEW_AUDIT',
+    VIEW_CUSTOMER_PII:  'VIEW_CUSTOMER_PII',
+    VIEW_CORPORATE_BILL:'VIEW_CORPORATE_BILL',
+    // System
+    BACKUP_CREATED:     'BACKUP_CREATED',
+    BACKUP_FAILED:      'BACKUP_FAILED',
+} as const;
+
+export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];
+
+// Client classification — every module reads this to apply correct SLA, billing, AI tone, priority
+export const CLIENT_CLASSES = [
+  'online',         // anonymous WA/Messenger walk-in
+  'repeat',         // credential-bound, history-aware
+  'reference',      // friends-of-friends (repeat + referrer)
+  'technician',     // notorious, low priority, cash only, address mandatory
+  'b2b_normal',     // normal company, simple invoice, ৳500-1500 typical
+  'b2b_corporate',  // zero-tolerance docs, scatter-billing, serial match (e.g. MME)
+] as const;
+export type ClientClass = typeof CLIENT_CLASSES[number];
+
+// Parts that can be missing on an incomplete TV at intake (technician + corporate)
+export const MISSING_PARTS_LIST = [
+  'Motherboard', 'Panel', 'T-Con Board', 'Power Board', 'Remote',
+  'Base/Stand', 'Screws', 'Back Cover', 'Speakers', 'IR Sensor Board',
+  'WiFi Module', 'HDMI Board', 'LED Strip',
+] as const;
+export type MissingPart = typeof MISSING_PARTS_LIST[number];
+
+export const JOB_STATUSES =["Pending", "Diagnosing", "Pending Parts", "In Progress", "On Workbench", "Ready", "Not OK", "Delivered", "Cancelled", "Abandoned", "Forfeited"] as const;
 export const TICKET_TYPES = ["full_device", "panel_only", "motherboard_only", "parts_only"] as const;
 export const PANEL_TYPES = ["LED", "OLED", "QLED", "AMOLED", "VA", "IPS", "Other"] as const;
 export const JOB_TYPES = ["standard", "warranty_claim", "repeat_repair"] as const;

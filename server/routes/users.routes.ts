@@ -29,6 +29,12 @@ import { AuditLogger } from '../services/audit.service.js';
 import { handleAdminEventStream } from './admin-stream.js';
 import { getCachedDashboard } from '../lib/dashboardCache.js';
 import { logRouteError } from '../utils/route-error.js';
+import { upsertPresence, sweepOfflineStaff } from '../services/assignment.service.js';
+import { auditLogger } from '../utils/auditLogger.js';
+import { AUDIT_ACTIONS } from '../../shared/constants.js';
+import { db } from '../db.js';
+import { staffPresence as staffPresenceTable, users } from '../../shared/schema.js';
+import { eq as drizzleEq, desc as drizzleDesc } from 'drizzle-orm';
 
 const router = Router();
 
@@ -694,6 +700,17 @@ router.post('/api/admin/customers', requireAdminAuth, requirePermission('users')
  * GET /api/admin/customers/:id - Get customer details
  */
 router.get('/api/admin/customers/:id', requireAdminAuth, requirePermission('users'), async (req: Request, res: Response) => {
+    // PII access log — phone/address visible in response
+    auditLogger.log({
+        userId: (req as any).session?.adminUserId || 'unknown',
+        action: AUDIT_ACTIONS.VIEW_CUSTOMER_PII,
+        entity: 'Customer',
+        entityId: req.params.id,
+        details: `Admin viewed customer PII for ID ${req.params.id}`,
+        req,
+        severity: 'info',
+    }).catch(() => {});
+
     try {
         const user = await storage.getUser(req.params.id);
         if (!user) {
@@ -809,6 +826,54 @@ router.get('/api/admin/reports', requireAdminAuth, requirePermission('reports'),
     } catch (error) {
         console.error('Failed to fetch report data:', error);
         res.status(500).json({ error: 'Failed to fetch report data' });
+    }
+});
+
+// ─── Staff presence list (for inbox UI) ──────────────────────────────────────
+router.get('/api/users/staff-presence', requireAdminAuth, async (req: Request, res: Response) => {
+    try {
+        const rows = await db.select({
+            staffId: staffPresenceTable.staffId,
+            name: users.name,
+            status: staffPresenceTable.status,
+            lastSeenAt: staffPresenceTable.lastSeenAt,
+        })
+        .from(staffPresenceTable)
+        .leftJoin(users, drizzleEq(staffPresenceTable.staffId, users.id))
+        .orderBy(drizzleDesc(staffPresenceTable.lastSeenAt));
+
+        res.json({ data: rows });
+    } catch (err) {
+        res.status(500).json({ data: [] });
+    }
+});
+
+// ─── Staff presence heartbeat (Phase B) ────────────────────────────────────────
+// Frontend pings every 30s while admin tab focused. Sets status to 'online'.
+// Sweeps stale presences (staff with heartbeat >5min ago → mark offline).
+router.post('/api/users/presence', requireAdminAuth, async (req: Request, res: Response) => {
+    try {
+        const staffId = (req as any).admin?.id;
+        if (!staffId) return res.status(401).json({ message: 'Unauthorized' });
+        const channels: string[] = req.body?.channels ?? ['messenger', 'whatsapp'];
+        const status: 'online' | 'away' = req.body?.status === 'away' ? 'away' : 'online';
+        await upsertPresence(staffId, status, channels);
+        await sweepOfflineStaff(); // sweep on each heartbeat (cheap, ~1-2ms)
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to update presence' });
+    }
+});
+
+// Mark self offline (tab close / logout)
+router.delete('/api/users/presence', requireAdminAuth, async (req: Request, res: Response) => {
+    try {
+        const staffId = (req as any).admin?.id;
+        if (!staffId) return res.status(401).json({ message: 'Unauthorized' });
+        await upsertPresence(staffId, 'offline', []);
+        res.json({ ok: true });
+    } catch (err) {
+        res.status(500).json({ message: 'Failed to update presence' });
     }
 });
 
