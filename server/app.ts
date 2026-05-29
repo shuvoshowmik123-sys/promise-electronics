@@ -135,19 +135,17 @@ export async function createApp(): Promise<Express> {
     const isProduction = process.env.NODE_ENV === "production";
     const PgStore = pgSession(session);
 
-    // When FRONTEND_URL is set, frontend is on a different domain → need sameSite:"none" + secure
-    // When not set, frontend is same-origin → "lax" is correct and more secure
-    const isSeparated = !!process.env.FRONTEND_URL;
-
     const sessionConfig: session.SessionOptions = {
         secret: process.env.SESSION_SECRET!,
         resave: false,
         saveUninitialized: false,
         cookie: {
-            secure: isProduction,                              // HTTPS in prod
+            secure: isProduction,          // HTTPS in prod (required for sameSite:none)
             httpOnly: true,
-            maxAge: 7 * 24 * 60 * 60 * 1000,                 // 7 days
-            sameSite: isSeparated ? "none" : "lax",           // "none" for cross-origin, "lax" for same-origin
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+            // none = cross-origin cookies work (Vercel ↔ Render). Requires secure:true (HTTPS).
+            // lax in dev (no HTTPS locally).
+            sameSite: isProduction ? "none" : "lax",
         },
     };
 
