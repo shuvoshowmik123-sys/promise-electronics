@@ -65,6 +65,24 @@ process.on("uncaughtException", (err: any) => {
     console.warn("[Startup] firebase_uid migration skipped:", e.message?.slice(0, 80));
   }
 
+  // Payment-submission blacklist table — idempotent create on every boot.
+  try {
+    const { db } = await import("./db.js");
+    const { sql } = await import("drizzle-orm");
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS payment_blacklist (
+      id TEXT PRIMARY KEY,
+      phone TEXT NOT NULL,
+      reason TEXT,
+      added_by TEXT,
+      added_by_name TEXT,
+      service_request_id TEXT,
+      created_at TIMESTAMP NOT NULL DEFAULT now()
+    )`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_payment_blacklist_phone ON payment_blacklist (phone)`);
+  } catch (e: any) {
+    console.warn("[Startup] payment_blacklist migration skipped:", e.message?.slice(0, 80));
+  }
+
   // AI Error Handler (Module C)
   app.use(aiErrorHandler);
 

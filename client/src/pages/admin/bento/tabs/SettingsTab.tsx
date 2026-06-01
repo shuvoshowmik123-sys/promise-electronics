@@ -53,6 +53,9 @@ export default function SettingsTab() {
     const [vatPercentage, setVatPercentage] = useState("0");
     const [timezone, setTimezone] = useState("asia-dhaka");
     const [logoUrl, setLogoUrl] = useState("");
+    // Customer Send Money (bKash/Nagad) numbers shown on the track page
+    const [bkashSendMoney, setBkashSendMoney] = useState("");
+    const [nagadSendMoney, setNagadSendMoney] = useState("");
     const [maintenanceMode, setMaintenanceMode] = useState(false);
     const [allowRegistrations, setAllowRegistrations] = useState(true);
     const [developerMode, setDeveloperMode] = useState(false);
@@ -131,6 +134,8 @@ export default function SettingsTab() {
                         case "vat_percentage": setVatPercentage(val); break;
                         case "timezone": setTimezone(val); break;
                         case "logo_url": setLogoUrl(val); break;
+                        case "bkash_send_money_number": setBkashSendMoney(typeof val === "string" ? val : ""); break;
+                        case "nagad_send_money_number": setNagadSendMoney(typeof val === "string" ? val : ""); break;
                         case "maintenance_mode": setMaintenanceMode(val === "true" || val === true); break;
                         case "allow_registrations": setAllowRegistrations(val === "true" || val === true); break;
                         case "developer_mode": setDeveloperMode(val === "true" || val === true); break;
@@ -203,6 +208,8 @@ export default function SettingsTab() {
                 vat_percentage: vatPercentage,
                 timezone: timezone,
                 logo_url: logoUrl,
+                bkash_send_money_number: bkashSendMoney,
+                nagad_send_money_number: nagadSendMoney,
                 // These are saved independently now, but included here for completeness
                 maintenance_mode: maintenanceMode,
                 allow_registrations: allowRegistrations,
@@ -699,6 +706,23 @@ export default function SettingsTab() {
                                     <label className="text-sm font-semibold text-slate-700">Timezone</label>
                                     <Input placeholder="Asia/Riyadh" value={timezone} onChange={(e) => setTimezone(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
                                     <p className="text-xs text-slate-500 mt-1">Accepts standard IANA timezone formats.</p>
+                                </div>
+
+                                {/* Customer Send Money numbers — shown on the customer track page */}
+                                <div className="pt-2 border-t border-slate-100 space-y-4">
+                                    <div>
+                                        <h3 className="text-sm font-bold text-slate-800">Customer Send Money Numbers</h3>
+                                        <p className="text-xs text-slate-500 mt-0.5">Customers send money to these and submit the transaction for verification. Leave blank to hide that option.</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">bKash Send Money Number</label>
+                                        <Input placeholder="01XXXXXXXXX" value={bkashSendMoney} onChange={(e) => setBkashSendMoney(e.target.value)} className="bg-slate-50 focus:bg-white font-mono transition-colors" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">Nagad Send Money Number</label>
+                                        <Input placeholder="01XXXXXXXXX" value={nagadSendMoney} onChange={(e) => setNagadSendMoney(e.target.value)} className="bg-slate-50 focus:bg-white font-mono transition-colors" />
+                                    </div>
+                                    <p className="text-xs text-amber-600">⚠ Double-check these — customers will send real money to these numbers.</p>
                                 </div>
                             </div>
 

@@ -694,6 +694,144 @@ function WarrantyInfoCard({ warranty }: { warranty: WarrantyInfo }) {
   );
 }
 
+function PaymentSubmissionCard({ order }: { order: ServiceRequest }) {
+  const queryClient = useQueryClient();
+  const [method, setMethod] = useState<"bkash_send_money" | "nagad_send_money">("bkash_send_money");
+  const [senderNumber, setSenderNumber] = useState(order.phone || "");
+  const [transactionId, setTransactionId] = useState("");
+  const [amount, setAmount] = useState(String(order.totalAmount || order.quoteAmount || ""));
+  const { data: settings = [] } = useQuery({
+    queryKey: ["public-settings"],
+    queryFn: publicSettingsApi.getAll,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const paymentSubmissions = ((order as any).paymentSubmissions || []) as any[];
+  const latestPayment = paymentSubmissions[0];
+  const hasPendingPayment = paymentSubmissions.some((payment) => payment.status === "pending" || payment.status === "staff_verified");
+  const verifiedPayment = paymentSubmissions.find((payment) => payment.status === "applied_to_invoice");
+  const rejectedPayment = paymentSubmissions.find((payment) => payment.status === "rejected");
+  // NEVER fall back to a fake number — a customer would send real money to it
+  // and lose it. If unset, show a "contact shop" notice and block submission.
+  const rawSendMoneyNumber = method === "bkash_send_money"
+    ? settings.find((setting) => setting.key === "bkash_send_money_number")?.value
+    : settings.find((setting) => setting.key === "nagad_send_money_number")?.value;
+  const sendMoneyNumber = (rawSendMoneyNumber || "").trim();
+  const sendMoneyConfigured = sendMoneyNumber.length > 0;
+
+  const submitPaymentMutation = useMutation({
+    mutationFn: () => customerServiceRequestsApi.submitPayment(order.id, {
+      method,
+      senderNumber,
+      transactionId,
+      amount: Number(amount),
+    }),
+    onSuccess: () => {
+      toast.success("Payment verification submitted");
+      setTransactionId("");
+      queryClient.invalidateQueries({ queryKey: ["/customer/service-requests", order.id] });
+      queryClient.invalidateQueries({ queryKey: ["/customer/service-requests"] });
+    },
+    onError: (error: Error) => toast.error(error.message || "Failed to submit payment verification"),
+  });
+
+  if (verifiedPayment || order.paymentStatus === "Paid") {
+    return (
+      <div className="mt-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+        <div className="flex items-center gap-3">
+          <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+          <div>
+            <h4 className="font-semibold text-emerald-900">Payment Verified</h4>
+            <p className="text-sm text-emerald-700">
+              {verifiedPayment?.transactionId ? `Transaction ${verifiedPayment.transactionId} has been accepted.` : "Payment has been accepted."}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <div>
+          <h4 className="font-semibold text-slate-900">Submit Send Money Payment</h4>
+          <p className="text-sm text-slate-500">Send money first, then submit the sender number, transaction ID, and amount.</p>
+        </div>
+        {latestPayment && (
+          <Badge variant="outline" className={
+            latestPayment.status === "rejected"
+              ? "border-red-200 bg-red-50 text-red-700"
+              : "border-amber-200 bg-amber-50 text-amber-700"
+          }>
+            {latestPayment.status === "rejected" ? "Rejected" : "Pending"}
+          </Badge>
+        )}
+      </div>
+
+      {sendMoneyConfigured ? (
+        <div className="rounded-xl border border-blue-100 bg-blue-50 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Send Money to this number</p>
+          <p className="mt-1 font-mono text-lg font-bold text-blue-950">{sendMoneyNumber}</p>
+          <p className="mt-1 text-xs text-blue-700">{method === "bkash_send_money" ? "bKash Send Money" : "Nagad Send Money"}</p>
+        </div>
+      ) : (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+          <p className="text-sm font-semibold text-amber-800">Online payment not available right now</p>
+          <p className="mt-1 text-xs text-amber-700">Please contact the shop to pay. (No {method === "bkash_send_money" ? "bKash" : "Nagad"} number is configured yet.)</p>
+        </div>
+      )}
+
+      {rejectedPayment?.rejectionReason && (
+        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          Previous submission rejected: {rejectedPayment.rejectionReason}
+        </div>
+      )}
+
+      {hasPendingPayment ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+          Your payment details are waiting for staff statement verification.
+        </div>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <RadioGroup value={method} onValueChange={(value) => setMethod(value as typeof method)} className="grid grid-cols-2 gap-3">
+            <div className="flex items-center space-x-2 rounded-xl border p-3">
+              <RadioGroupItem value="bkash_send_money" id="payment-bkash" />
+              <Label htmlFor="payment-bkash">bKash</Label>
+            </div>
+            <div className="flex items-center space-x-2 rounded-xl border p-3">
+              <RadioGroupItem value="nagad_send_money" id="payment-nagad" />
+              <Label htmlFor="payment-nagad">Nagad</Label>
+            </div>
+          </RadioGroup>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+            <div>
+              <Label>Sender Number</Label>
+              <Input value={senderNumber} onChange={(event) => setSenderNumber(event.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>Transaction ID</Label>
+              <Input value={transactionId} onChange={(event) => setTransactionId(event.target.value)} className="mt-1" />
+            </div>
+            <div>
+              <Label>Amount</Label>
+              <Input type="number" value={amount} onChange={(event) => setAmount(event.target.value)} className="mt-1" />
+            </div>
+          </div>
+          <Button
+            onClick={() => submitPaymentMutation.mutate()}
+            disabled={submitPaymentMutation.isPending || !sendMoneyConfigured || !senderNumber.trim() || !transactionId.trim() || !Number(amount)}
+            className="w-full"
+          >
+            {submitPaymentMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+            Submit for Verification
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ServiceRequestTimeline({ order, events, warranty }: { order: ServiceRequest; events: ServiceRequestEvent[]; warranty?: WarrantyInfo }) {
   const isCancelled = order.trackingStatus === "Cancelled" || order.stage === "closed";
   const isClosed = order.stage === "closed";
@@ -1088,6 +1226,7 @@ function ServiceRequestTimeline({ order, events, warranty }: { order: ServiceReq
             {warranty && (order.trackingStatus === "Delivered" || order.stage === "completed") && (
               <WarrantyInfoCard warranty={warranty} />
             )}
+            <PaymentSubmissionCard order={order} />
           </>
         )}
       </CardContent>

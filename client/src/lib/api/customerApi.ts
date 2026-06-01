@@ -51,6 +51,17 @@ export const customerServiceRequestsApi = {
         fetchApi<ServiceRequest>(`/quotes/${id}/decline`, {
             method: "POST",
         }),
+    submitPayment: (id: string, data: {
+        method: "bkash_send_money" | "nagad_send_money";
+        amount: number;
+        senderNumber: string;
+        transactionId: string;
+        notes?: string;
+    }) =>
+        fetchApi<any>(`/customer/service-requests/${id}/payment-submissions`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
 };
 
 // Customer Order Tracking API (for backwards compatibility)

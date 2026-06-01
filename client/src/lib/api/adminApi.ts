@@ -245,9 +245,10 @@ export const dueRecordsApi = {
 };
 
 export const manualPaymentsApi = {
-    getAll: (filters?: { status?: string }) => {
+    getAll: (filters?: { status?: string; source?: "customer_submission" | "admin_manual" }) => {
         const params = new URLSearchParams();
         if (filters?.status) params.append('status', filters.status);
+        if (filters?.source) params.append('source', filters.source);
         const query = params.toString();
         return fetchApi<{ items: any[] }>(`/manual-payments${query ? `?${query}` : ''}`);
     },
@@ -277,6 +278,16 @@ export const manualPaymentsApi = {
             method: "POST",
             body: JSON.stringify({ reason }),
         }),
+};
+
+// Payment blacklist (manual, human-managed) + register-close review
+export const paymentBlacklistApi = {
+    getAll: () => fetchApi<any[]>("/admin/payment-blacklist"),
+    getReview: () => fetchApi<{ windowHours: number; flagged: any[]; blacklisted: any[] }>("/admin/payment-blacklist/review"),
+    add: (data: { phone: string; reason?: string; serviceRequestId?: string }) =>
+        fetchApi<any>("/admin/payment-blacklist", { method: "POST", body: JSON.stringify(data) }),
+    remove: (id: string) =>
+        fetchApi<{ success: boolean }>(`/admin/payment-blacklist/${id}`, { method: "DELETE" }),
 };
 
 // Drawer API

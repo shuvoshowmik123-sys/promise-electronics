@@ -197,4 +197,113 @@ describe("Phase 3 manual payment verification", () => {
         });
         expect(res.body.payment.status).toBe("applied_to_invoice");
     });
+
+    it("creates customer-submitted payment verification requests", async () => {
+        const insertedValues: any[] = [];
+
+        vi.doMock("../server/routes/middleware/auth.js", () => ({
+            requireCustomerAuth: (req: any, _res: any, next: () => void) => {
+                req.session = req.session || {};
+                req.session.customerId = "cust-1";
+                next();
+            },
+            getCustomerId: (req: any) => req.session?.customerId,
+            customerLoginSchema: { parse: (value: unknown) => value },
+            customerRegisterSchema: { parse: (value: unknown) => value },
+            requireAdminAuth: allowAdminRequest(),
+            requirePermission: () => allowAdminRequest(),
+        }));
+        vi.doMock("../server/storage.js", () => ({
+            storage: {
+                getServiceRequest: vi.fn(async () => ({
+                    id: "srv-1",
+                    ticketNumber: "SR-1",
+                    customerId: "cust-1",
+                    convertedJobId: "job-1",
+                    customerName: "Customer One",
+                    phone: "01710000000",
+                })),
+                getServiceRequestEvents: vi.fn(async () => []),
+                getCustomer: vi.fn(async () => ({ id: "cust-1", phone: "01710000000" })),
+            },
+        }));
+        vi.doMock("../server/repositories/index.js", () => ({
+            userRepo: {
+                getUser: vi.fn(async () => ({ id: "cust-1", phone: "01710000000" })),
+                getUserByPhoneNormalized: vi.fn(),
+                createUser: vi.fn(),
+                updateUserLastLogin: vi.fn(),
+            },
+            customerRepo: {},
+            orderRepo: {},
+            corporateRepo: {},
+            notificationRepo: {},
+        }));
+        vi.doMock("../server/db.js", () => ({
+            db: {
+                select: vi.fn(() => ({
+                    from: vi.fn(() => ({
+                        where: vi.fn(() => ({
+                            limit: vi.fn(async () => []),
+                            orderBy: vi.fn(() => ({ limit: vi.fn(async () => []) })),
+                        })),
+                        orderBy: vi.fn(() => ({ limit: vi.fn(async () => []) })),
+                    })),
+                })),
+                insert: vi.fn(() => ({
+                    values: vi.fn((values: any) => {
+                        insertedValues.push(values);
+                        return {
+                            returning: vi.fn(async () => [values]),
+                        };
+                    }),
+                })),
+            },
+        }));
+        vi.doMock("../server/services/firebase.js", () => ({
+            firebaseAdmin: { auth: () => ({ verifyIdToken: vi.fn() }) },
+        }));
+        vi.doMock("../server/services/customer.service.js", () => ({
+            customerService: {
+                linkServiceRequestsByPhone: vi.fn(),
+                linkServiceRequestToCustomer: vi.fn(),
+            },
+        }));
+        vi.doMock("../server/routes/middleware/rate-limit.js", () => ({
+            authLimiter: (_req: any, _res: any, next: () => void) => next(),
+            registrationLimiter: (_req: any, _res: any, next: () => void) => next(),
+        }));
+        vi.doMock("../server/routes/middleware/sse-broker.js", () => ({
+            addCustomerSSEClient: vi.fn(),
+            removeCustomerSSEClient: vi.fn(),
+            notifyAdminUpdate: vi.fn(),
+            notifyCustomerUpdate: vi.fn(),
+        }));
+
+        const { default: router } = await import("../server/routes/customer.routes.js");
+        const app = createApp(router);
+
+        const res = await request(app)
+            .post("/api/customer/service-requests/srv-1/payment-submissions")
+            .send({
+                method: "bkash_send_money",
+                senderNumber: "01810000000",
+                transactionId: "BK12345",
+                amount: 1000,
+            });
+
+        expect(res.status).toBe(201);
+        expect(insertedValues[0]).toMatchObject({
+            serviceRequestId: "srv-1",
+            jobTicketId: "job-1",
+            customerName: "Customer One",
+            customerPhone: "01710000000",
+            source: "customer_submission",
+            status: "pending",
+            method: "bkash_send_money",
+            senderNumber: "01810000000",
+            transactionId: "BK12345",
+            amount: 1000,
+        });
+    });
 });

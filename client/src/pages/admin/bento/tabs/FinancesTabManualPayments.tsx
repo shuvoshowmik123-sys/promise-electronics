@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, Loader2, XCircle } from "lucide-react";
+import { CheckCircle, Link2, Loader2, Search, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
-import { manualPaymentsApi } from "@/lib/api";
+import { dueRecordsApi, manualPaymentsApi, searchApi } from "@/lib/api";
 import { toast } from "sonner";
 
 const methodLabels: Record<string, string> = {
@@ -26,9 +26,24 @@ const statusColors: Record<string, string> = {
     rejected: "bg-red-50 text-red-700 border-red-200",
 };
 
+type LinkOption = {
+    type: "job" | "due" | "service-request";
+    id: string;
+    label: string;
+    customerName?: string;
+    customerPhone?: string;
+    amount?: number;
+    meta?: string;
+};
+
 export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: () => string }) {
     const queryClient = useQueryClient();
     const [status, setStatus] = useState("pending");
+    const [source, setSource] = useState<"customer_submission" | "admin_manual">("customer_submission");
+    const [linkSearch, setLinkSearch] = useState("");
+    const [debouncedLinkSearch, setDebouncedLinkSearch] = useState("");
+    const [isLinkSearchOpen, setIsLinkSearchOpen] = useState(false);
+    const [selectedLinkLabel, setSelectedLinkLabel] = useState("");
     const [rejectTarget, setRejectTarget] = useState<any>(null);
     const [rejectReason, setRejectReason] = useState("");
     const [form, setForm] = useState({
@@ -44,15 +59,59 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
         notes: "",
     });
 
+    useEffect(() => {
+        const timer = window.setTimeout(() => setDebouncedLinkSearch(linkSearch.trim()), 350);
+        return () => window.clearTimeout(timer);
+    }, [linkSearch]);
+
     const { data, isLoading } = useQuery({
-        queryKey: ["manual-payments", status],
-        queryFn: () => manualPaymentsApi.getAll({ status }),
+        queryKey: ["manual-payments", status, source],
+        queryFn: () => manualPaymentsApi.getAll({ status, source }),
+    });
+
+    const { data: linkOptions = [], isLoading: isSearchingLinks } = useQuery({
+        queryKey: ["manual-payment-link-search", debouncedLinkSearch],
+        enabled: debouncedLinkSearch.length >= 2,
+        queryFn: async () => {
+            const [globalResults, dueResults] = await Promise.all([
+                searchApi.global(debouncedLinkSearch),
+                dueRecordsApi.getAll({ search: debouncedLinkSearch, status: "Pending", limit: 8 }),
+            ]);
+
+            const jobLinks: LinkOption[] = (globalResults.jobs || []).map((job: any) => ({
+                type: "job",
+                id: job.id,
+                label: job.corporateJobNumber || job.id,
+                customerName: job.resolvedCustomerName || job.customer,
+                customerPhone: job.customerPhone,
+                meta: [job.device, job.status].filter(Boolean).join(" | "),
+            }));
+            const serviceRequestLinks: LinkOption[] = (globalResults.serviceRequests || []).map((request: any) => ({
+                type: "service-request",
+                id: request.id,
+                label: request.ticketNumber || request.id,
+                customerName: request.customerName,
+                customerPhone: request.phone,
+                meta: [request.brand, request.modelNumber, request.status].filter(Boolean).join(" | "),
+            }));
+            const dueLinks: LinkOption[] = (dueResults.items || []).map((due: any) => ({
+                type: "due",
+                id: due.id,
+                label: due.invoice || due.id,
+                customerName: due.customer,
+                amount: Math.max(0, Number(due.amount || 0) - Number(due.paidAmount || 0)),
+                meta: due.status,
+            }));
+
+            return [...jobLinks, ...dueLinks, ...serviceRequestLinks].slice(0, 12);
+        },
     });
 
     const invalidate = () => {
         queryClient.invalidateQueries({ queryKey: ["manual-payments"] });
         queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
         queryClient.invalidateQueries({ queryKey: ["dueRecords"] });
+        queryClient.invalidateQueries({ queryKey: ["dueRecords-paginated"] });
         queryClient.invalidateQueries({ queryKey: ["due-summary-global"] });
     };
 
@@ -73,6 +132,9 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
                 transactionId: "",
                 notes: "",
             });
+            setLinkSearch("");
+            setSelectedLinkLabel("");
+            setIsLinkSearchOpen(false);
         },
         onError: (error: Error) => toast.error(error.message || "Failed to record payment"),
     });
@@ -99,6 +161,35 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
 
     const records = data?.items || [];
 
+    const applyLink = (link: LinkOption) => {
+        setForm((current) => ({
+            ...current,
+            jobTicketId: link.type === "job" ? link.id : "",
+            dueRecordId: link.type === "due" ? link.id : "",
+            serviceRequestId: link.type === "service-request" ? link.id : "",
+            customerName: link.customerName || current.customerName,
+            customerPhone: link.customerPhone || current.customerPhone,
+            amount: link.amount ? String(link.amount) : current.amount,
+        }));
+        setLinkSearch(link.label);
+        setSelectedLinkLabel(`${link.type.replace("-", " ")} ${link.label}`);
+        setIsLinkSearchOpen(false);
+    };
+
+    const clearLink = () => {
+        setForm((current) => ({
+            ...current,
+            jobTicketId: "",
+            dueRecordId: "",
+            serviceRequestId: "",
+        }));
+        setLinkSearch("");
+        setSelectedLinkLabel("");
+        setIsLinkSearchOpen(false);
+    };
+
+    const linkedReference = form.jobTicketId || form.dueRecordId || form.serviceRequestId;
+
     const submitPayment = () => {
         createMutation.mutate({
             jobTicketId: form.jobTicketId || undefined,
@@ -118,8 +209,72 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
         <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-4">
             <div className="rounded-xl border bg-white p-4 space-y-3">
                 <div>
-                    <h3 className="font-bold text-slate-900">Record Manual Payment</h3>
-                    <p className="text-xs text-muted-foreground">For bKash/Nagad send-money, cash, or credit booking records.</p>
+                    <h3 className="font-bold text-slate-900">Walk-in Manual Record</h3>
+                    <p className="text-xs text-muted-foreground">Use only when staff collected payment outside the customer portal.</p>
+                </div>
+                <div className="grid gap-2">
+                    <Label>Link job, due, or request</Label>
+                    <div className="relative">
+                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input
+                            value={linkSearch}
+                            onChange={(e) => {
+                                setLinkSearch(e.target.value);
+                                setSelectedLinkLabel("");
+                                setIsLinkSearchOpen(true);
+                            }}
+                            placeholder="Search phone, ticket, invoice, name..."
+                            className="pl-9 pr-9 rounded-xl"
+                        />
+                        {linkedReference && (
+                            <button
+                                type="button"
+                                onClick={clearLink}
+                                className="absolute right-3 top-2.5 text-muted-foreground hover:text-slate-900"
+                            >
+                                <XCircle className="h-4 w-4" />
+                            </button>
+                        )}
+                    </div>
+                    {linkedReference && (
+                        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                            <Link2 className="h-4 w-4" />
+                            <span className="font-mono">{selectedLinkLabel || linkedReference}</span>
+                        </div>
+                    )}
+                    {isLinkSearchOpen && debouncedLinkSearch.length >= 2 && (
+                        <div className="rounded-xl border bg-slate-50 max-h-56 overflow-y-auto">
+                            {isSearchingLinks ? (
+                                <div className="flex items-center justify-center py-5 text-sm text-muted-foreground">
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />Searching
+                                </div>
+                            ) : linkOptions.length === 0 ? (
+                                <div className="py-5 text-center text-sm text-muted-foreground">No matching job, due, or request</div>
+                            ) : linkOptions.map((link) => (
+                                <button
+                                    key={`${link.type}-${link.id}`}
+                                    type="button"
+                                    onClick={() => applyLink(link)}
+                                    className="w-full border-b last:border-b-0 px-3 py-2 text-left hover:bg-white"
+                                >
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <Badge variant="outline" className="capitalize">{link.type.replace("-", " ")}</Badge>
+                                                <span className="font-mono text-xs font-semibold truncate">{link.label}</span>
+                                            </div>
+                                            <div className="mt-1 text-xs text-muted-foreground truncate">
+                                                {[link.customerName, link.customerPhone, link.meta].filter(Boolean).join(" | ")}
+                                            </div>
+                                        </div>
+                                        {link.amount != null && (
+                                            <div className="shrink-0 text-sm font-semibold">{getCurrencySymbol()}{link.amount.toLocaleString()}</div>
+                                        )}
+                                    </div>
+                                </button>
+                            ))}
+                        </div>
+                    )}
                 </div>
                 <div className="grid gap-2">
                     <Label>Method</Label>
@@ -138,10 +293,10 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
                     <div className="grid gap-2"><Label>Sender</Label><Input value={form.senderNumber} onChange={(e) => setForm({ ...form, senderNumber: e.target.value })} className="rounded-xl" /></div>
                 </div>
                 <div className="grid gap-2"><Label>Transaction ID</Label><Input value={form.transactionId} onChange={(e) => setForm({ ...form, transactionId: e.target.value })} className="rounded-xl" /></div>
-                <div className="grid gap-2"><Label>Job Ticket ID</Label><Input value={form.jobTicketId} onChange={(e) => setForm({ ...form, jobTicketId: e.target.value })} className="rounded-xl" /></div>
+                <div className="grid gap-2"><Label>Job Ticket ID</Label><Input value={form.jobTicketId} onChange={(e) => { setSelectedLinkLabel(""); setForm({ ...form, jobTicketId: e.target.value, dueRecordId: "", serviceRequestId: "" }); }} className="rounded-xl" /></div>
                 <div className="grid grid-cols-2 gap-2">
-                    <div className="grid gap-2"><Label>Due ID</Label><Input value={form.dueRecordId} onChange={(e) => setForm({ ...form, dueRecordId: e.target.value })} className="rounded-xl" /></div>
-                    <div className="grid gap-2"><Label>Request ID</Label><Input value={form.serviceRequestId} onChange={(e) => setForm({ ...form, serviceRequestId: e.target.value })} className="rounded-xl" /></div>
+                    <div className="grid gap-2"><Label>Due ID</Label><Input value={form.dueRecordId} onChange={(e) => { setSelectedLinkLabel(""); setForm({ ...form, dueRecordId: e.target.value, jobTicketId: "", serviceRequestId: "" }); }} className="rounded-xl" /></div>
+                    <div className="grid gap-2"><Label>Request ID</Label><Input value={form.serviceRequestId} onChange={(e) => { setSelectedLinkLabel(""); setForm({ ...form, serviceRequestId: e.target.value, jobTicketId: "", dueRecordId: "" }); }} className="rounded-xl" /></div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                     <div className="grid gap-2"><Label>Customer</Label><Input value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} className="rounded-xl" /></div>
@@ -156,18 +311,33 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
             <div className="rounded-xl border bg-white overflow-hidden">
                 <div className="flex items-center justify-between p-4 border-b">
                     <div>
-                        <h3 className="font-bold text-slate-900">Manual Payment Verification</h3>
-                        <p className="text-xs text-muted-foreground">Staff approval applies linked job/due payments.</p>
+                        <h3 className="font-bold text-slate-900">
+                            {source === "customer_submission" ? "Customer Payment Verification" : "Manual Payment Records"}
+                        </h3>
+                        <p className="text-xs text-muted-foreground">
+                            {source === "customer_submission"
+                                ? "Customer-submitted bKash/Nagad send-money details awaiting staff statement check."
+                                : "Staff-entered walk-in or internal payment records."}
+                        </p>
                     </div>
-                    <Select value={status} onValueChange={setStatus}>
-                        <SelectTrigger className="w-44 rounded-xl"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="staff_verified">Verified</SelectItem>
-                            <SelectItem value="applied_to_invoice">Applied</SelectItem>
-                            <SelectItem value="rejected">Rejected</SelectItem>
-                        </SelectContent>
-                    </Select>
+                    <div className="flex items-center gap-2">
+                        <Select value={source} onValueChange={(value) => setSource(value as typeof source)}>
+                            <SelectTrigger className="w-52 rounded-xl"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="customer_submission">Customer Submissions</SelectItem>
+                                <SelectItem value="admin_manual">Walk-in Manual</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Select value={status} onValueChange={setStatus}>
+                            <SelectTrigger className="w-44 rounded-xl"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="staff_verified">Verified</SelectItem>
+                                <SelectItem value="applied_to_invoice">Applied</SelectItem>
+                                <SelectItem value="rejected">Rejected</SelectItem>
+                            </SelectContent>
+                        </Select>
+                    </div>
                 </div>
                 <Table>
                     <TableHeader>
@@ -190,6 +360,7 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
                                 <TableCell>{methodLabels[record.method] || record.method}</TableCell>
                                 <TableCell>
                                     <div className="font-mono text-xs">{record.transactionId || record.id}</div>
+                                    <div className="text-xs text-muted-foreground">{record.senderNumber || "-"}</div>
                                     <div className="text-xs text-muted-foreground">{record.jobTicketId || record.dueRecordId || record.serviceRequestId}</div>
                                 </TableCell>
                                 <TableCell>

@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="1480" viewBox="0 0 1040 1480" font-family="Segoe UI, Arial, sans-serif">
+  <rect width="1040" height="1480" fill="#f1f5f9"/>
+
+  <!-- Title -->
+  <text x="40" y="50" font-size="30" font-weight="800" fill="#0f172a">Finance — Proposed Re-layout</text>
+  <text x="40" y="78" font-size="15" fill="#64748b">6 flat tabs → 4 meaningful groups, in a flow. Land on Overview, then drill into In / Out / Drawer.</text>
+
+  <!-- ===== OLD vs NEW mapping ===== -->
+  <text x="40" y="120" font-size="16" font-weight="700" fill="#334155">How today's 6 tabs map into 4 groups</text>
+
+  <!-- old tabs -->
+  <g font-size="12" font-weight="600">
+    <rect x="40"  y="135" width="120" height="34" rx="8" fill="#e2e8f0" stroke="#cbd5e1"/><text x="100" y="157" text-anchor="middle" fill="#475569">Sales</text>
+    <rect x="170" y="135" width="120" height="34" rx="8" fill="#e2e8f0" stroke="#cbd5e1"/><text x="230" y="157" text-anchor="middle" fill="#475569">Manual Pay</text>
+    <rect x="300" y="135" width="120" height="34" rx="8" fill="#e2e8f0" stroke="#cbd5e1"/><text x="360" y="157" text-anchor="middle" fill="#475569">Dues</text>
+    <rect x="430" y="135" width="120" height="34" rx="8" fill="#e2e8f0" stroke="#cbd5e1"/><text x="490" y="157" text-anchor="middle" fill="#475569">Petty Cash</text>
+    <rect x="560" y="135" width="120" height="34" rx="8" fill="#e2e8f0" stroke="#cbd5e1"/><text x="620" y="157" text-anchor="middle" fill="#475569">Refunds</text>
+    <rect x="690" y="135" width="120" height="34" rx="8" fill="#e2e8f0" stroke="#cbd5e1"/><text x="750" y="157" text-anchor="middle" fill="#475569">Drawer</text>
+  </g>
+  <!-- arrows -->
+  <g stroke="#94a3b8" stroke-width="1.5" fill="none">
+    <path d="M100 169 L150 210"/><path d="M230 169 L165 210"/><path d="M360 169 L180 210"/>
+    <path d="M490 169 L470 210"/><path d="M620 169 L500 210"/>
+    <path d="M750 169 L800 210"/>
+  </g>
+  <!-- new groups -->
+  <g font-size="13" font-weight="700">
+    <rect x="60"  y="212" width="240" height="40" rx="10" fill="#dcfce7" stroke="#16a34a"/><text x="180" y="237" text-anchor="middle" fill="#15803d">💰 Money In  (Sales · Payments · Dues)</text>
+    <rect x="380" y="212" width="230" height="40" rx="10" fill="#fee2e2" stroke="#dc2626"/><text x="495" y="237" text-anchor="middle" fill="#b91c1c">💸 Money Out  (Expenses · Refunds)</text>
+    <rect x="690" y="212" width="190" height="40" rx="10" fill="#e0f2fe" stroke="#0284c7"/><text x="785" y="237" text-anchor="middle" fill="#0369a1">🧮 Cash Drawer</text>
+  </g>
+
+  <!-- ===== PROPOSED SCREEN ===== -->
+  <rect x="40" y="290" width="960" height="1150" rx="18" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
+
+  <text x="64" y="332" font-size="22" font-weight="800" fill="#0f172a">Finance</text>
+
+  <!-- KPI summary strip -->
+  <g>
+    <rect x="64"  y="352" width="216" height="92" rx="14" fill="#f0fdf4" stroke="#bbf7d0"/>
+    <text x="84" y="382" font-size="12" font-weight="700" fill="#16a34a">TODAY — MONEY IN</text>
+    <text x="84" y="420" font-size="28" font-weight="800" fill="#15803d">৳ 24,500</text>
+
+    <rect x="296" y="352" width="216" height="92" rx="14" fill="#fef2f2" stroke="#fecaca"/>
+    <text x="316" y="382" font-size="12" font-weight="700" fill="#dc2626">TODAY — MONEY OUT</text>
+    <text x="316" y="420" font-size="28" font-weight="800" fill="#b91c1c">৳ 3,200</text>
+
+    <rect x="528" y="352" width="216" height="92" rx="14" fill="#eff6ff" stroke="#bfdbfe"/>
+    <text x="548" y="382" font-size="12" font-weight="700" fill="#2563eb">NET TODAY</text>
+    <text x="548" y="420" font-size="28" font-weight="800" fill="#1d4ed8">৳ 21,300</text>
+
+    <rect x="760" y="352" width="216" height="92" rx="14" fill="#fffbeb" stroke="#fde68a"/>
+    <text x="780" y="382" font-size="12" font-weight="700" fill="#d97706">NEEDS ACTION</text>
+    <text x="780" y="420" font-size="28" font-weight="800" fill="#b45309">5 items</text>
+    <circle cx="952" cy="372" r="11" fill="#ef4444"/><text x="952" y="377" text-anchor="middle" font-size="12" font-weight="800" fill="#fff">5</text>
+  </g>
+
+  <!-- Tab bar: 4 groups -->
+  <g font-size="15" font-weight="700">
+    <rect x="64"  y="466" width="150" height="44" rx="10" fill="#0f172a"/><text x="139" y="494" text-anchor="middle" fill="#ffffff">Overview</text>
+    <rect x="222" y="466" width="170" height="44" rx="10" fill="#f1f5f9" stroke="#e2e8f0"/><text x="307" y="494" text-anchor="middle" fill="#16a34a">💰 Money In</text>
+    <rect x="400" y="466" width="180" height="44" rx="10" fill="#f1f5f9" stroke="#e2e8f0"/><text x="490" y="494" text-anchor="middle" fill="#dc2626">💸 Money Out</text>
+    <rect x="588" y="466" width="170" height="44" rx="10" fill="#f1f5f9" stroke="#e2e8f0"/><text x="673" y="494" text-anchor="middle" fill="#0284c7">🧮 Cash Drawer</text>
+  </g>
+
+  <!-- ===== Overview content: two columns ===== -->
+  <!-- LEFT: Needs your attention -->
+  <rect x="64" y="532" width="448" height="540" rx="14" fill="#fffdf7" stroke="#fde68a"/>
+  <text x="86" y="566" font-size="16" font-weight="800" fill="#b45309">⚠ Needs Your Attention</text>
+  <text x="86" y="588" font-size="12" fill="#a16207">One place for everything waiting on you.</text>
+
+  <g font-size="13">
+    <!-- item 1 -->
+    <rect x="86" y="606" width="404" height="74" rx="10" fill="#ffffff" stroke="#fde68a"/>
+    <text x="104" y="632" font-weight="700" fill="#0f172a">Customer payment to verify</text>
+    <text x="104" y="654" fill="#64748b">Rahim · bKash TXN A1B2C3 · ৳ 4,500</text>
+    <rect x="104" y="660" width="86" height="14" rx="4" fill="#fef3c7"/><text x="147" y="671" text-anchor="middle" font-size="10" font-weight="700" fill="#b45309">PENDING ×3</text>
+    <rect x="392" y="622" width="80" height="40" rx="9" fill="#16a34a"/><text x="432" y="647" text-anchor="middle" font-weight="700" fill="#fff" font-size="13">Verify</text>
+
+    <!-- item 2 -->
+    <rect x="86" y="690" width="404" height="64" rx="10" fill="#ffffff" stroke="#fecaca"/>
+    <text x="104" y="716" font-weight="700" fill="#0f172a">Overdue dues</text>
+    <text x="104" y="738" fill="#64748b">2 customers · ৳ 9,200 total</text>
+    <rect x="392" y="704" width="80" height="36" rx="9" fill="#f1f5f9" stroke="#cbd5e1"/><text x="432" y="727" text-anchor="middle" font-weight="700" fill="#334155" font-size="13">View</text>
+
+    <!-- item 3 -->
+    <rect x="86" y="764" width="404" height="64" rx="10" fill="#ffffff" stroke="#bfdbfe"/>
+    <text x="104" y="790" font-weight="700" fill="#0f172a">Register still open</text>
+    <text x="104" y="812" fill="#64748b">Opened 10:05 AM by Karim · not closed</text>
+    <rect x="392" y="778" width="80" height="36" rx="9" fill="#0284c7"/><text x="432" y="801" text-anchor="middle" font-weight="700" fill="#fff" font-size="13">Close</text>
+  </g>
+
+  <text x="86" y="868" font-size="13" fill="#94a3b8">Empty state when nothing pending: “✓ All clear — nothing needs you.”</text>
+
+  <!-- RIGHT: Today at a glance + recent -->
+  <rect x="528" y="532" width="448" height="540" rx="14" fill="#f8fafc" stroke="#e2e8f0"/>
+  <text x="550" y="566" font-size="16" font-weight="800" fill="#0f172a">Today at a glance</text>
+
+  <g font-size="13">
+    <rect x="550" y="584" width="190" height="64" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="566" y="608" fill="#64748b" font-size="11">Sales (POS)</text><text x="566" y="634" font-weight="800" fill="#15803d" font-size="18">৳ 18,000</text>
+    <rect x="764" y="584" width="190" height="64" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="780" y="608" fill="#64748b" font-size="11">Customer payments</text><text x="780" y="634" font-weight="800" fill="#15803d" font-size="18">৳ 6,500</text>
+    <rect x="550" y="658" width="190" height="64" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="566" y="682" fill="#64748b" font-size="11">Expenses</text><text x="566" y="708" font-weight="800" fill="#b91c1c" font-size="18">৳ 3,200</text>
+    <rect x="764" y="658" width="190" height="64" rx="10" fill="#ffffff" stroke="#e2e8f0"/>
+    <text x="780" y="682" fill="#64748b" font-size="11">Refunds</text><text x="780" y="708" font-weight="800" fill="#b91c1c" font-size="18">৳ 0</text>
+  </g>
+
+  <text x="550" y="754" font-size="14" font-weight="700" fill="#334155">Recent activity</text>
+  <g font-size="12.5" fill="#475569">
+    <line x1="550" y1="766" x2="954" y2="766" stroke="#e2e8f0"/>
+    <text x="550" y="790">＋ POS sale · Invoice #INV-2043</text><text x="954" y="790" text-anchor="end" font-weight="700" fill="#15803d">+৳ 2,500</text>
+    <line x1="550" y1="804" x2="954" y2="804" stroke="#eef2f7"/>
+    <text x="550" y="828">＋ bKash verified · Rahim</text><text x="954" y="828" text-anchor="end" font-weight="700" fill="#15803d">+৳ 4,500</text>
+    <line x1="550" y1="842" x2="954" y2="842" stroke="#eef2f7"/>
+    <text x="550" y="866">－ Expense · Tea/snacks</text><text x="954" y="866" text-anchor="end" font-weight="700" fill="#b91c1c">−৳ 200</text>
+    <line x1="550" y1="880" x2="954" y2="880" stroke="#eef2f7"/>
+    <text x="550" y="904">－ Refund · Order #88</text><text x="954" y="904" text-anchor="end" font-weight="700" fill="#b91c1c">−৳ 1,200</text>
+  </g>
+
+  <!-- ===== Drill-down explanation ===== -->
+  <text x="64" y="1118" font-size="16" font-weight="800" fill="#0f172a">Inside each group (one screen, segmented — not separate tabs to hunt)</text>
+
+  <!-- Money In expanded -->
+  <rect x="64" y="1136" width="448" height="270" rx="14" fill="#f0fdf4" stroke="#bbf7d0"/>
+  <text x="86" y="1168" font-size="15" font-weight="800" fill="#15803d">💰 Money In</text>
+  <g font-size="13">
+    <rect x="86" y="1182" width="135" height="34" rx="8" fill="#16a34a"/><text x="153" y="1204" text-anchor="middle" fill="#fff" font-weight="700">Payments</text>
+    <rect x="231" y="1182" width="120" height="34" rx="8" fill="#dcfce7" stroke="#86efac"/><text x="291" y="1204" text-anchor="middle" fill="#15803d" font-weight="700">Sales</text>
+    <rect x="361" y="1182" width="120" height="34" rx="8" fill="#dcfce7" stroke="#86efac"/><text x="421" y="1204" text-anchor="middle" fill="#15803d" font-weight="700">Dues</text>
+  </g>
+  <text x="86" y="1244" font-size="12.5" fill="#166534">• Payments = the verify queue (bKash/Nagad submissions + walk-in).</text>
+  <text x="86" y="1266" font-size="12.5" fill="#166534">• Sales = POS transaction history.</text>
+  <text x="86" y="1288" font-size="12.5" fill="#166534">• Dues = who owes, collect / mark paid.</text>
+  <text x="86" y="1322" font-size="12" fill="#15803d" font-weight="700">One mental question: “money coming in.”</text>
+
+  <!-- Money Out + Drawer expanded -->
+  <rect x="528" y="1136" width="448" height="270" rx="14" fill="#fef2f2" stroke="#fecaca"/>
+  <text x="550" y="1168" font-size="15" font-weight="800" fill="#b91c1c">💸 Money Out  +  🧮 Cash Drawer</text>
+  <g font-size="13">
+    <rect x="550" y="1182" width="140" height="34" rx="8" fill="#dc2626"/><text x="620" y="1204" text-anchor="middle" fill="#fff" font-weight="700">Expenses</text>
+    <rect x="700" y="1182" width="120" height="34" rx="8" fill="#fee2e2" stroke="#fca5a5"/><text x="760" y="1204" text-anchor="middle" fill="#b91c1c" font-weight="700">Refunds</text>
+  </g>
+  <text x="550" y="1244" font-size="12.5" fill="#7f1d1d">• Expenses = petty-cash out (rent, tea, parts run).</text>
+  <text x="550" y="1266" font-size="12.5" fill="#7f1d1d">• Refunds = money returned to customers.</text>
+  <text x="550" y="1300" font-size="12.5" fill="#0369a1">🧮 Cash Drawer stays its own group: open float, blind</text>
+  <text x="550" y="1320" font-size="12.5" fill="#0369a1">drop, reconcile, close — the physical cash count.</text>
+  <text x="550" y="1356" font-size="12" fill="#b91c1c" font-weight="700">One mental question: “money going out / cash count.”</text>
+
+  <text x="64" y="1432" font-size="12" fill="#94a3b8">Wireframe — layout + grouping only. Colors/numbers illustrative. Promise Electronics.</text>
+</svg>

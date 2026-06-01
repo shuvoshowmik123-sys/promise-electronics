@@ -192,9 +192,13 @@ router.patch('/api/due-records/:id', requireAdminAuth, requirePermission('proces
 router.get('/api/manual-payments', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
     try {
         const status = typeof req.query.status === 'string' ? req.query.status : undefined;
+        const source = typeof req.query.source === 'string' ? req.query.source : undefined;
         const conditions = [];
         if (status && MANUAL_PAYMENT_STATUSES.includes(status as any)) {
             conditions.push(eq(manualPayments.status, status));
+        }
+        if (source === 'customer_submission' || source === 'admin_manual') {
+            conditions.push(eq(manualPayments.source, source));
         }
 
         const records = await db
@@ -224,6 +228,7 @@ router.post('/api/manual-payments', requireAdminAuth, requirePermission('process
         const [record] = await db.insert(manualPayments).values({
             ...validated,
             id: randomUUID(),
+            source: 'admin_manual',
             status: 'pending',
             updatedAt: new Date(),
         }).returning();

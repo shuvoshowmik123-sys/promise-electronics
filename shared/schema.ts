@@ -541,6 +541,7 @@ export const manualPayments = pgTable("manual_payments", {
   senderNumber: text("sender_number"),
   transactionId: text("transaction_id"),
   proofUrl: text("proof_url"),
+  source: text("source").notNull().default("admin_manual"),
   status: text("status").notNull().default("pending"),
   notes: text("notes"),
   verifiedBy: text("verified_by"),
@@ -563,6 +564,7 @@ export const manualPayments = pgTable("manual_payments", {
 
 export const insertManualPaymentSchema = createInsertSchema(manualPayments).omit({
   id: true,
+  source: true,
   status: true,
   verifiedBy: true,
   verifiedAt: true,
@@ -2654,3 +2656,26 @@ export const billEditLog = pgTable("bill_edit_log", {
   billIdx: index("idx_bill_edit_log_bill").on(table.billId),
   timeIdx: index("idx_bill_edit_log_time").on(table.performedAt),
 }));
+
+// ── Payment-submission blacklist (manual, human-managed) ─────────────────────
+// Numbers an admin has MANUALLY blocked from submitting Send Money payment
+// verifications (confirmed abuse). Never auto-populated — humans decide. Deleting
+// a row = whitelist ("as if nothing happened"). Reviewed before register close.
+export const paymentBlacklist = pgTable("payment_blacklist", {
+  id: text("id").primaryKey(),
+  phone: text("phone").notNull(),                 // normalized BD sender number
+  reason: text("reason"),
+  addedBy: text("added_by"),                      // admin user id
+  addedByName: text("added_by_name"),
+  serviceRequestId: text("service_request_id"),   // optional link to the dispute
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  phoneIdx: index("idx_payment_blacklist_phone").on(table.phone),
+}));
+
+export const insertPaymentBlacklistSchema = createInsertSchema(paymentBlacklist).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPaymentBlacklist = z.infer<typeof insertPaymentBlacklistSchema>;
+export type PaymentBlacklist = typeof paymentBlacklist.$inferSelect;

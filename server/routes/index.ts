@@ -23,6 +23,7 @@ import serviceRequestsRoutes from './service-requests.routes.js';
 import ordersRoutes from './orders.routes.js';
 import posRoutes from './pos.routes.js';
 import financeRoutes from './finance.routes.js';
+import blacklistRoutes from './blacklist.routes.js';
 import challansRoutes from './challans.routes.js';
 import usersRoutes from './users.routes.js';
 import modulesRoutes from './modules.routes.js';
@@ -167,6 +168,9 @@ export async function registerRoutes(
 
     app.use(financeRoutes);
     console.log('[Routes] ✓ Finance routes registered');
+
+    app.use(blacklistRoutes);
+    console.log('[Routes] ✓ Payment blacklist routes registered');
 
     app.use(challansRoutes);
     console.log('[Routes] ✓ Challans routes registered');

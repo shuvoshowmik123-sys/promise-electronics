@@ -6,6 +6,8 @@
 
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
+import { and, desc, eq, or, ne } from 'drizzle-orm';
 import { storage } from '../storage.js';
 import { userRepo, customerRepo, orderRepo, corporateRepo, notificationRepo } from '../repositories/index.js';
 import {
@@ -14,7 +16,8 @@ import {
     requireCustomerAuth,
     getCustomerId
 } from './middleware/auth.js';
-import { User } from '../../shared/schema.js';
+import { insertManualPaymentSchema, manualPayments, User } from '../../shared/schema.js';
+import { db } from '../db.js';
 import {
     addCustomerSSEClient,
     removeCustomerSSEClient,
@@ -22,11 +25,49 @@ import {
     notifyCustomerUpdate
 } from './middleware/sse-broker.js';
 import { firebaseAdmin } from '../services/firebase.js';
-import { authLimiter, registrationLimiter } from './middleware/rate-limit.js';
+import { authLimiter, registrationLimiter, serviceRequestLimiter } from './middleware/rate-limit.js';
+import { isPhoneBlacklisted } from './blacklist.routes.js';
 import { z } from 'zod';
 import { customerService } from '../services/customer.service.js';
 
 const router = Router();
+const customerPaymentSubmissionSchema = insertManualPaymentSchema.pick({
+    method: true,
+    amount: true,
+    senderNumber: true,
+    transactionId: true,
+    notes: true,
+}).extend({
+    method: z.enum(["bkash_send_money", "nagad_send_money"]),
+    senderNumber: z.string().min(8),
+    transactionId: z.string().min(3),
+});
+
+async function getCustomerOwnedServiceRequest(serviceRequestId: string, customerId: string) {
+    const request = await storage.getServiceRequest(serviceRequestId);
+    if (!request) return null;
+    if (request.customerId === customerId) return request;
+
+    const user = await userRepo.getUser(customerId);
+    if (user?.phone && request.phone === user.phone) {
+        return request;
+    }
+
+    return null;
+}
+
+async function getServiceRequestPayments(serviceRequestId: string, jobTicketId?: string | null) {
+    const linkCondition = jobTicketId
+        ? or(eq(manualPayments.serviceRequestId, serviceRequestId), eq(manualPayments.jobTicketId, jobTicketId))
+        : eq(manualPayments.serviceRequestId, serviceRequestId);
+
+    return db
+        .select()
+        .from(manualPayments)
+        .where(linkCondition)
+        .orderBy(desc(manualPayments.createdAt))
+        .limit(20);
+}
 
 // ============================================
 // Customer Authentication
@@ -395,9 +436,77 @@ router.get('/api/customer/service-requests/:id', requireCustomerAuth, async (req
         }
 
         const events = await storage.getServiceRequestEvents(order.id);
-        res.json({ ...order, timeline: events });
+        const payments = await getServiceRequestPayments(order.id, order.convertedJobId);
+        res.json({ ...order, timeline: events, paymentSubmissions: payments });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch service request details' });
+    }
+});
+
+router.post('/api/customer/service-requests/:id/payment-submissions', serviceRequestLimiter, requireCustomerAuth, async (req: Request, res: Response) => {
+    try {
+        const order = await getCustomerOwnedServiceRequest(req.params.id, req.session.customerId!);
+        if (!order) {
+            return res.status(404).json({ error: 'Service request not found' });
+        }
+
+        const validated = customerPaymentSubmissionSchema.parse(req.body);
+
+        // Manual blacklist (human-managed): refuse confirmed-abuse numbers with a
+        // support-contact message. Checks the typed sender number and the account phone.
+        if (await isPhoneBlacklisted(validated.senderNumber) || await isPhoneBlacklisted(order.phone)) {
+            return res.status(403).json({
+                error: 'We could not accept this payment submission. Please contact support.',
+                code: 'PAYMENT_SUBMISSION_BLOCKED',
+            });
+        }
+
+        // Block duplicate txn IDs that are still in play, but ALLOW resubmitting
+        // after a rejection (a wrongly-rejected real payment must be resubmittable).
+        const activePayments = await db
+            .select()
+            .from(manualPayments)
+            .where(and(
+                eq(manualPayments.serviceRequestId, order.id),
+                eq(manualPayments.transactionId, validated.transactionId),
+                ne(manualPayments.status, 'rejected'),
+            ))
+            .limit(1);
+
+        if (activePayments.length > 0) {
+            return res.status(409).json({ error: 'This transaction ID was already submitted and is pending or verified for this request' });
+        }
+
+        const [payment] = await db.insert(manualPayments).values({
+            ...validated,
+            id: randomUUID(),
+            serviceRequestId: order.id,
+            jobTicketId: order.convertedJobId || null,
+            customerName: order.customerName,
+            customerPhone: order.phone,
+            source: 'customer_submission',
+            status: 'pending',
+            updatedAt: new Date(),
+        }).returning();
+
+        notifyAdminUpdate({
+            type: 'customer_payment_submitted',
+            data: {
+                paymentId: payment.id,
+                serviceRequestId: order.id,
+                ticketNumber: order.ticketNumber,
+                amount: payment.amount,
+                method: payment.method,
+            },
+            createdAt: new Date().toISOString(),
+        });
+
+        res.status(201).json(payment);
+    } catch (error: any) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: 'Invalid payment submission', details: error.errors });
+        }
+        res.status(400).json({ error: error.message || 'Failed to submit payment verification' });
     }
 });
 
@@ -428,7 +537,8 @@ router.get('/api/customer/track/:ticketNumber', async (req: Request, res: Respon
         }
 
         const events = await storage.getServiceRequestEvents(order.id);
-        res.json({ ...order, timeline: events });
+        const payments = await getServiceRequestPayments(order.id, order.convertedJobId);
+        res.json({ ...order, timeline: events, paymentSubmissions: payments });
     } catch (error) {
         res.status(500).json({ error: 'Failed to track order' });
     }

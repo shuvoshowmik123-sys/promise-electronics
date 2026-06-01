@@ -955,3 +955,72 @@ ACTION: Firebase Console → Authentication → Settings → Authorized domains 
 - Backend CORS (app.ts) hardcodes promiseelectronics.com + www, credentials:true; session cookie sameSite:none + secure in prod. Correctly configured for cross-origin. Frontend is NOT acting as backend.
 
 Change: client/src/contexts/CustomerAuthContext.tsx. tsc clean.
+
+---
+
+## Phase ZS — Phase-3 Payment Flow review + UI hardening
+
+### Verified (read the real code)
+- Customer submit (customer.routes.ts): ownership-checked, zod-validated, admin-notified, pending+customer_submission.
+- Admin verify (finance.routes.ts): permission-gated; on accept APPLIES to job invoice / due record (recordJobPayment/recordDuePayment) → status applied_to_invoice. Money loop DOES close.
+- Reject requires reason; applied payments cannot be rejected.
+- Admin queue UI: source + status filters, txn/sender/amount columns, Verify + Reject (reason dialog) per pending row. Human-ready.
+
+### 🔴 Fixed — money-loss blocker
+Customer card fell back to fake number "01700-000000" when send-money numbers unset → customer would send real money to a non-number and lose it. AND the keys bkash_send_money_number / nagad_send_money_number were not in the settings allowlists (couldn't be saved OR served publicly).
+FIX:
+- settings.routes.ts: added both keys to ALLOWED_SETTING_KEYS + PUBLIC_SETTING_KEYS.
+- track-order.tsx: no fake fallback; if a number is unset, show "Online payment not available — contact the shop" and DISABLE submit.
+- SettingsTab.tsx: added admin fields (Finance & Locale sheet) to set bKash/Nagad Send Money numbers + a "customers send real money here" warning. State load + save wired.
+
+### 🟡 Fixed — resubmission after rejection
+customer.routes.ts dup-txn guard blocked ANY existing payment with that txn ID, incl. rejected → a wrongly-rejected real payment couldn't be resubmitted. Now excludes rejected (ne(status,'rejected')).
+
+### Flagged (polish, not blocking)
+- Admin verify applies the customer-claimed amount verbatim (no edit-at-verify). Admin can reject+ask resubmit.
+- Admin queue status filter has no "applied/verified" view; pending badge/count not yet shown.
+
+### 3-person operability
+Flow REDUCES staff load: customer self-serves submission (no staff entry); one role owns the verification queue (batchable). Manual statement cross-check is per-payment labor — fine at shop volume.
+
+Changes: server/routes/settings.routes.ts, server/routes/customer.routes.ts, client track-order.tsx, client SettingsTab.tsx. tsc clean + vite build OK.
+
+---
+
+## Phase ZT — Finance tab re-layout (simpler / friendlier)
+Problem: 6 flat equal sub-tabs (Sales, Petty Cash, Dues, Refunds, Drawer, Manual Pay) = "exam hall" — scan all 6 every time, mixed mental models.
+
+Reworked FinancesTab.tsx into 4 meaning-based groups + a landing:
+- Overview (landing): "Needs your attention" panel (pending customer payments / outstanding dues / open register → each a one-click jump to the right place; "All clear" empty state) + "Go to" quick-nav cards. KPI strip (Sales/Cash/Due/Refunded) stays pinned on top.
+- 💰 Money In (green): segmented Payments | Sales | Dues. Payments tab shows pending count badge.
+- 💸 Money Out (red): segmented Expenses | Refunds.
+- 🧮 Cash Drawer (blue): open/count/reconcile.
+Color = meaning everywhere (green in / red out / blue cash / amber attention).
+Legacy deep-links (defaultTab sales/petty-cash/dues/refunds/manual-payments/drawer) mapped onto the new groups so existing links still work.
+
+3-person fit: cashier lives on Overview + Money In; manager on Cash Drawer. Each owns a colored slice; nobody scans everything.
+
+Mockup: docs/mockups/finance-relayout.svg
+Changes: client/src/pages/admin/bento/tabs/FinancesTab.tsx (sub-components unchanged, just regrouped). tsc clean + vite build OK.
+
+---
+
+## Phase ZU — Manual payment blacklist + end-of-day review
+Per user design: fully MANUAL (humans decide every block/whitelist); automation only rate-limits + surfaces candidates. No auto-blacklist engine (avoids false-positive customer lockouts).
+
+Built:
+- Table payment_blacklist (shared/schema.ts) + idempotent CREATE TABLE on boot (server/index.ts).
+- server/routes/blacklist.routes.ts:
+  - GET /api/admin/payment-blacklist (current manual blocks)
+  - GET /api/admin/payment-blacklist/review (rolling 48h: numbers with >=2 rejected submissions, flagged for human review; marks alreadyBlacklisted)
+  - POST add (manual block; normalized BD number; dup guard) · DELETE :id (whitelist = remove "as if nothing happened")
+  - exported isPhoneBlacklisted() helper. All requirePermission('finance').
+- Refuse check: customer payment-submission now 403 (PAYMENT_SUBMISSION_BLOCKED, "contact support") if sender number OR account phone is blacklisted.
+- Light flood guard: serviceRequestLimiter (10/hr per IP) added to the submission endpoint. No escalation engine.
+- UI: FinancesTabBlacklist.tsx (BlacklistReview) — intro, "Needs review" flagged list (Block button), current blacklist (Whitelist button), manual Add. Wired into Finance > Cash Drawer (the register-close area).
+
+Honest limitation: no bKash/Nagad API → software surfaces candidates (rejected attempts, amount, time, customer); the human matches against their bKash app and decides. Software organizes + gives Block/Whitelist; matching is manual (correct at shop scale).
+
+Typo-safety: numbers are never auto-blocked; repeat rejections only FLAG for review. A genuine typo'ing customer is never locked out automatically.
+
+Changes: shared/schema.ts, server/index.ts, server/routes/blacklist.routes.ts (new), server/routes/index.ts, server/routes/customer.routes.ts, client/src/lib/api/adminApi.ts, client FinancesTabBlacklist.tsx (new) + FinancesTab.tsx. tsc clean + vite build OK.

@@ -123,7 +123,11 @@ const ALLOWED_SETTING_KEYS = [
     'drawer_day_close_enabled',
     'drawer_day_close_time',
     'drawer_day_close_timezone',
-    'drawer_day_close_last_run_date'
+    'drawer_day_close_last_run_date',
+
+    // Payment — customer Send Money verification (shown on the track page)
+    'bkash_send_money_number',
+    'nagad_send_money_number'
 ];
 
 /**
@@ -153,6 +157,8 @@ const PUBLIC_SETTING_KEYS = [
     'social_facebook', 'social_instagram', 'social_youtube',
     // Contact
     'contact_phone', 'contact_whatsapp', 'contact_address',
+    // Payment send-money numbers (rendered on the customer payment card)
+    'bkash_send_money_number', 'nagad_send_money_number',
 ];
 
 /**
