@@ -8,6 +8,9 @@ import csvParser from 'csv-parser';
 import * as streamModule from 'stream';
 import { InsertJobTicket } from '../../shared/schema.js';
 import { notifyAdminUpdate } from './middleware/sse-broker.js';
+import { db } from '../db.js';
+import { corporateClients, jobExtensionRequests, jobTickets } from '../../shared/schema.js';
+import { and, desc, eq } from 'drizzle-orm';
 
 const upload = multer({
     storage: multer.memoryStorage(),
@@ -41,6 +44,11 @@ const bulkRowSchema = z.object({
     accessories: z.string().optional(),
     notes: z.string().optional(),
     priority: z.enum(["Low", "Medium", "High", "Critical"]).optional().nullable(),
+});
+
+const extensionResponseSchema = z.object({
+    status: z.enum(["accepted", "rejected"]),
+    responseNote: z.string().optional(),
 });
 
 
@@ -98,6 +106,59 @@ router.get("/jobs/:id", async (req: Request, res: Response) => {
     }
 });
 
+router.get("/extension-requests", async (req: Request, res: Response) => {
+    try {
+        const user = req.user as any;
+        const requests = await db.select().from(jobExtensionRequests)
+            .where(eq(jobExtensionRequests.corporateClientId, user.corporateClientId))
+            .orderBy(desc(jobExtensionRequests.createdAt));
+        res.json(requests);
+    } catch (error) {
+        res.status(500).json({ message: "Failed to fetch extension requests" });
+    }
+});
+
+router.patch("/extension-requests/:id/respond", async (req: Request, res: Response) => {
+    try {
+        const user = req.user as any;
+        const data = extensionResponseSchema.parse(req.body);
+        const [existing] = await db.select().from(jobExtensionRequests)
+            .where(and(
+                eq(jobExtensionRequests.id, req.params.id),
+                eq(jobExtensionRequests.corporateClientId, user.corporateClientId)
+            ))
+            .limit(1);
+
+        if (!existing) return res.status(404).json({ message: "Extension request not found" });
+        if (existing.status !== "pending") return res.status(400).json({ message: "Extension request already answered" });
+
+        const [updated] = await db.update(jobExtensionRequests)
+            .set({
+                status: data.status,
+                responseNote: data.responseNote,
+                respondedBy: user.name || "Corporate Portal",
+                respondedAt: new Date(),
+                updatedAt: new Date(),
+            })
+            .where(eq(jobExtensionRequests.id, req.params.id))
+            .returning();
+
+        await db.update(jobTickets)
+            .set(data.status === "accepted"
+                ? { extensionStatus: "accepted", batchTargetClearDate: existing.requestedUntil, deadline: existing.requestedUntil, slaDeadline: existing.requestedUntil }
+                : { extensionStatus: "rejected", status: "Action Needed" })
+            .where(eq(jobTickets.id, existing.jobId));
+
+        res.json(updated);
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            res.status(400).json({ message: "Invalid extension response", details: error.errors });
+        } else {
+            res.status(500).json({ message: "Failed to respond to extension request" });
+        }
+    }
+});
+
 // ----------------------------------------------------------------------
 // Service Requests (Simple for now)
 // ----------------------------------------------------------------------
@@ -114,6 +175,14 @@ router.post("/service-requests", async (req: Request, res: Response) => {
         const user = req.user as any;
         const data = createServiceRequestSchema.parse(req.body);
 
+        // Resolve corporate client tier for clientClass tagging
+        let clientClass = 'b2b_normal';
+        if (user.corporateClientId) {
+            const [corpRow] = await db.select({ clientClass: corporateClients.clientClass })
+                .from(corporateClients).where(eq(corporateClients.id, user.corporateClientId)).limit(1);
+            if (corpRow?.clientClass) clientClass = corpRow.clientClass;
+        }
+
         const newJob = await storage.createJobTicket({
             customer: user.name,
             customerPhone: user.phone || "",
@@ -123,6 +192,8 @@ router.post("/service-requests", async (req: Request, res: Response) => {
             priority: data.priority,
             status: "Pending",
             corporateClientId: user.corporateClientId,
+            clientClass,
+            source: 'corporate_portal',
         } as any);
 
         res.status(201).json(newJob);

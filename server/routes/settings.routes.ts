@@ -466,12 +466,18 @@ router.post('/api/admin/services', requireAdminAuth, async (req: Request, res: R
  */
 router.patch('/api/admin/services/:id', requireAdminAuth, async (req: Request, res: Response) => {
     try {
-        const service = await storage.updateServiceCatalogItem(req.params.id, req.body);
+        // Validate + whitelist like the POST route does — raw req.body let callers
+        // set arbitrary columns (e.g. negative prices, unknown fields).
+        const updates = insertServiceCatalogSchema.partial().parse(req.body);
+        const service = await storage.updateServiceCatalogItem(req.params.id, updates);
         if (!service) {
             return res.status(404).json({ error: 'Service not found' });
         }
         res.json(service);
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.name === 'ZodError') {
+            return res.status(400).json({ error: 'Invalid service data', details: error.errors });
+        }
         res.status(500).json({ error: 'Failed to update service' });
     }
 });
@@ -598,12 +604,16 @@ router.post('/api/admin/products/:productId/variants', requireAdminAuth, async (
  */
 router.patch('/api/admin/products/:productId/variants/:variantId', requireAdminAuth, async (req: Request, res: Response) => {
     try {
-        const variant = await storage.updateProductVariant(req.params.variantId, req.body);
+        const updates = insertProductVariantSchema.partial().parse(req.body);
+        const variant = await storage.updateProductVariant(req.params.variantId, updates);
         if (!variant) {
             return res.status(404).json({ error: 'Variant not found' });
         }
         res.json(variant);
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.name === 'ZodError') {
+            return res.status(400).json({ error: 'Invalid variant data', details: error.errors });
+        }
         res.status(500).json({ error: 'Failed to update variant' });
     }
 });

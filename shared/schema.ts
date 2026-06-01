@@ -255,6 +255,9 @@ export const jobTickets = pgTable("job_tickets", {
   // Client class system (Phase A)
   clientClass: text("client_class"),           // CLIENT_CLASSES value; null = 'online' default
   batchId: text("batch_id"),                   // FK to job_batches.id for bulk intake
+  batchTargetClearDate: timestamp("batch_target_clear_date"),
+  extensionStatus: text("extension_status").default("none"),
+  extensionRequestedUntil: timestamp("extension_requested_until"),
   missingParts: jsonb("missing_parts").default([]),       // incomplete-TV capture: string[]
   partsLineitems: jsonb("parts_lineitems").default([]),   // Mode-3 multi-part: [{name,qty,charge,source,notes}]
   source: text("source"),                       // 'corporate_portal' | 'whatsapp' | 'messenger' | 'walk_in' | null
@@ -526,6 +529,56 @@ export const insertDueRecordSchema = createInsertSchema(dueRecords).omit({
 export type InsertDueRecord = z.infer<typeof insertDueRecordSchema>;
 export type DueRecord = typeof dueRecords.$inferSelect;
 
+export const manualPayments = pgTable("manual_payments", {
+  id: text("id").primaryKey(),
+  jobTicketId: text("job_ticket_id"),
+  serviceRequestId: text("service_request_id"),
+  dueRecordId: text("due_record_id"),
+  customerName: text("customer_name"),
+  customerPhone: text("customer_phone"),
+  method: text("method").notNull(),
+  amount: real("amount").notNull(),
+  senderNumber: text("sender_number"),
+  transactionId: text("transaction_id"),
+  proofUrl: text("proof_url"),
+  status: text("status").notNull().default("pending"),
+  notes: text("notes"),
+  verifiedBy: text("verified_by"),
+  verifiedAt: timestamp("verified_at"),
+  rejectedBy: text("rejected_by"),
+  rejectedAt: timestamp("rejected_at"),
+  rejectionReason: text("rejection_reason"),
+  appliedAt: timestamp("applied_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => {
+  return {
+    statusIdx: index("idx_manual_payments_status").on(table.status),
+    jobTicketIdx: index("idx_manual_payments_job_ticket").on(table.jobTicketId),
+    serviceRequestIdx: index("idx_manual_payments_service_request").on(table.serviceRequestId),
+    transactionIdx: index("idx_manual_payments_transaction").on(table.transactionId),
+    createdAtIdx: index("idx_manual_payments_created_at").on(table.createdAt),
+  };
+});
+
+export const insertManualPaymentSchema = createInsertSchema(manualPayments).omit({
+  id: true,
+  status: true,
+  verifiedBy: true,
+  verifiedAt: true,
+  rejectedBy: true,
+  rejectedAt: true,
+  rejectionReason: true,
+  appliedAt: true,
+  createdAt: true,
+  updatedAt: true,
+}).extend({
+  method: z.enum(["bkash_send_money", "nagad_send_money", "cash", "credit"]),
+  amount: z.number().positive(),
+});
+export type InsertManualPayment = z.infer<typeof insertManualPaymentSchema>;
+export type ManualPayment = typeof manualPayments.$inferSelect;
+
 // Approval Requests Table (For Super Admin verification of sensitive changes)
 export const APPROVAL_REQUEST_TYPES = ['company_claim_change', 'status_override', 'refund_request'] as const;
 export const APPROVAL_REQUEST_STATUSES = ['pending', 'approved', 'rejected'] as const;
@@ -656,6 +709,11 @@ export const corporateClients = pgTable("corporate_clients", {
 
   // Client class tier (Phase A) — 'b2b_normal' or 'b2b_corporate'
   clientClass: text("client_class").notNull().default("b2b_normal"),
+  clientType: text("client_type").notNull().default("corporate"),
+  ruleProfile: jsonb("rule_profile").default({}),
+  defaultBatchClearanceDays: integer("default_batch_clearance_days").notNull().default(7),
+  serviceWarrantyEnabled: boolean("service_warranty_enabled").notNull().default(true),
+  defaultServiceWarrantyDays: integer("default_service_warranty_days").notNull().default(30),
 });
 
 
@@ -702,6 +760,38 @@ export const insertTrustedCorporateDeviceSchema = createInsertSchema(trustedCorp
 });
 export type InsertTrustedCorporateDevice = z.infer<typeof insertTrustedCorporateDeviceSchema>;
 export type TrustedDevice = typeof trustedCorporateDevices.$inferSelect;
+
+export const corporatePasswordResetRequests = pgTable("corporate_password_reset_requests", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  corporateClientId: text("corporate_client_id").notNull().references(() => corporateClients.id, { onDelete: 'cascade' }),
+  codeHash: text("code_hash"),
+  status: text("status").notNull().default("requested"),
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(5),
+  requestedIp: text("requested_ip"),
+  issuedByAdminId: text("issued_by_admin_id"),
+  expiresAt: timestamp("expires_at"),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at"),
+}, (table) => {
+  return {
+    userIdx: index("idx_corporate_password_reset_user").on(table.userId),
+    clientIdx: index("idx_corporate_password_reset_client").on(table.corporateClientId),
+    statusIdx: index("idx_corporate_password_reset_status").on(table.status),
+    expiresAtIdx: index("idx_corporate_password_reset_expires_at").on(table.expiresAt),
+  };
+});
+
+export const insertCorporatePasswordResetRequestSchema = createInsertSchema(corporatePasswordResetRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  usedAt: true,
+});
+export type InsertCorporatePasswordResetRequest = z.infer<typeof insertCorporatePasswordResetRequestSchema>;
+export type CorporatePasswordResetRequest = typeof corporatePasswordResetRequests.$inferSelect;
 
 // Corporate Challans Table
 export const corporateChallans = pgTable("corporate_challans", {
@@ -2380,6 +2470,11 @@ export const jobBatches = pgTable("job_batches", {
   receiver: text("receiver"),                           // staff who received the batch
   notes: text("notes"),
   totalItems: integer("total_items").default(0),
+  targetClearDate: timestamp("target_clear_date"),
+  clearedAt: timestamp("cleared_at"),
+  batchStatus: text("batch_status").notNull().default("open"),
+  extensionCount: integer("extension_count").notNull().default(0),
+  corporateChallanId: text("corporate_challan_id"),
   createdBy: text("created_by"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
@@ -2389,6 +2484,29 @@ export const jobBatches = pgTable("job_batches", {
 }));
 export type JobBatch = typeof jobBatches.$inferSelect;
 export type InsertJobBatch = typeof jobBatches.$inferInsert;
+
+export const jobExtensionRequests = pgTable("job_extension_requests", {
+  id: text("id").primaryKey(),
+  corporateClientId: text("corporate_client_id").notNull().references(() => corporateClients.id, { onDelete: "cascade" }),
+  batchId: text("batch_id").references(() => jobBatches.id, { onDelete: "set null" }),
+  jobId: text("job_id").notNull().references(() => jobTickets.id, { onDelete: "cascade" }),
+  reason: text("reason").notNull(),
+  requestedUntil: timestamp("requested_until").notNull(),
+  status: text("status").notNull().default("pending"),
+  requestedBy: text("requested_by"),
+  responseNote: text("response_note"),
+  respondedBy: text("responded_by"),
+  respondedAt: timestamp("responded_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at"),
+}, (table) => ({
+  clientIdx: index("idx_job_extension_requests_client").on(table.corporateClientId),
+  batchIdx: index("idx_job_extension_requests_batch").on(table.batchId),
+  jobIdx: index("idx_job_extension_requests_job").on(table.jobId),
+  statusIdx: index("idx_job_extension_requests_status").on(table.status),
+}));
+export type JobExtensionRequest = typeof jobExtensionRequests.$inferSelect;
+export type InsertJobExtensionRequest = typeof jobExtensionRequests.$inferInsert;
 
 // Staff presence — heartbeat from admin frontend every 30s while tab is focused
 export const staffPresence = pgTable("staff_presence", {

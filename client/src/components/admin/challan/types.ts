@@ -9,9 +9,20 @@ export const challanDeviceSchema = z.object({
     serialNumber: z.string().min(1, "Serial Number is required"),
     reportedDefect: z.string().min(1, "Issue/Defect is required"),
     initialStatus: z.enum(["OK", "NG"]),
+    status: z.enum(["Received", "Pending", "Declared OK", "Declared NG"]).optional(),
     physicalCondition: z.string().optional(),
     accessories: z.array(z.string()).optional(),
     technicianNotes: z.string().optional(),
+    customerName: z.string().optional(),
+    externalJobRef: z.string().optional(),
+    challanNumber: z.string().optional(),
+    itemType: z.string().optional(),
+    batchNumber: z.string().optional(),
+    receivedDate: z.string().optional(),
+    duplicateHint: z.string().optional(),
+    duplicateMatchJobId: z.string().optional(),
+    reviewAction: z.enum(["new_job", "crr", "ignore", "super_admin_review"]).optional(),
+    crrReason: z.string().optional(),
 });
 
 export type ChallanDevice = z.infer<typeof challanDeviceSchema>;

@@ -28,6 +28,7 @@ interface FixMissingDataModalProps {
     onClose: () => void;
     incompleteRows: IncompleteRow[];
     onUpdateDevice: (index: number, updatedDevice: Device) => void;
+    onRemoveDevice: (index: number) => void;
 }
 
 export function FixMissingDataModal({
@@ -35,6 +36,7 @@ export function FixMissingDataModal({
     onClose,
     incompleteRows,
     onUpdateDevice,
+    onRemoveDevice,
 }: FixMissingDataModalProps) {
     // Current index within the incompleteRows array
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -99,6 +101,15 @@ export function FixMissingDataModal({
         if (currentIndex > 0) {
             setCurrentIndex(prev => prev - 1);
         }
+    };
+
+    const handleRemoveRow = () => {
+        onRemoveDevice(currentRow.index);
+        if (totalRows <= 1) {
+            onClose();
+            return;
+        }
+        setCurrentIndex((prev) => Math.max(0, Math.min(prev, totalRows - 2)));
     };
 
     const renderField = (fieldKey: keyof Device, label: string) => {
@@ -211,6 +222,9 @@ export function FixMissingDataModal({
                     <div className="flex gap-2">
                         <Button variant="ghost" onClick={onClose}>
                             Cancel
+                        </Button>
+                        <Button variant="destructive" onClick={handleRemoveRow}>
+                            Remove Row
                         </Button>
                         <Button
                             onClick={handleNext}

@@ -6,6 +6,10 @@ import { DEFAULT_MODULES } from "../seed-modules.js";
 
 const router = Router();
 
+function normalizeCoreAdminModules<T extends { isCore: boolean; enabledAdmin: boolean }>(modules: T[]): T[] {
+    return modules.map((mod) => mod.isCore && !mod.enabledAdmin ? { ...mod, enabledAdmin: true } : mod);
+}
+
 // Inline Super Admin auth check — bypasses any middleware caching issues
 async function checkSuperAdmin(req: Request, res: Response): Promise<string | null> {
     const adminUserId = req.session?.adminUserId;
@@ -36,7 +40,7 @@ router.get("/api/modules", async (req, res) => {
             await storage.seedDefaultModules(DEFAULT_MODULES);
             modules = await storage.getAllModules();
         }
-        res.json(modules);
+        res.json(normalizeCoreAdminModules(modules));
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }
@@ -49,7 +53,7 @@ router.get("/api/modules/:id", async (req, res) => {
         if (!mod) {
             return res.status(404).json({ error: "Module not found" });
         }
-        res.json(mod);
+        res.json(normalizeCoreAdminModules([mod])[0]);
     } catch (error: any) {
         res.status(500).json({ error: error.message });
     }

@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback } from "react";
 import { Link } from "wouter";
-import { ArrowLeft, ShieldAlert, Zap, Layers, AlertTriangle, ChevronDown, ChevronRight } from "lucide-react";
+import { ArrowLeft, ShieldAlert, Zap, Layers, AlertTriangle, ChevronDown, ChevronRight, Loader2 } from "lucide-react";
 import { useModules } from "@/contexts/ModuleContext";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { Switch } from "@/components/ui/switch";
@@ -28,6 +28,7 @@ export default function SuperAdminWorkbench() {
     const { user } = useAdminAuth();
     const { modules, isLoading, toggleModule } = useModules();
     const [pendingAction, setPendingAction] = useState<"lean" | "full" | null>(null);
+    const [isApplying, setIsApplying] = useState(false);
     const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
 
     const enabledCount = useMemo(() => modules.filter(m => m.enabledAdmin).length, [modules]);
@@ -53,26 +54,40 @@ export default function SuperAdminWorkbench() {
     const toggleCategory = useCallback((cat: string) => {
         setCollapsedCategories(prev => {
             const next = new Set(prev);
-            next.has(cat) ? next.delete(cat) : next.add(cat);
+            if (next.has(cat)) {
+                next.delete(cat);
+            } else {
+                next.add(cat);
+            }
             return next;
         });
     }, []);
 
-    const applyLeanMode = useCallback(() => {
-        for (const mod of modules) {
-            const shouldBeOn = LEAN_MODE_IDS.has(mod.id);
-            if (mod.enabledAdmin !== shouldBeOn) {
-                toggleModule(mod.id, "admin", shouldBeOn);
-            }
-        }
+    const applyLeanMode = useCallback(async () => {
+        setIsApplying(true);
         setPendingAction(null);
+        try {
+            for (const mod of modules) {
+                const shouldBeOn = LEAN_MODE_IDS.has(mod.id);
+                if (mod.enabledAdmin !== shouldBeOn) {
+                    await toggleModule(mod.id, "admin", shouldBeOn);
+                }
+            }
+        } finally {
+            setIsApplying(false);
+        }
     }, [modules, toggleModule]);
 
-    const applyFullPower = useCallback(() => {
-        for (const mod of modules) {
-            if (!mod.enabledAdmin) toggleModule(mod.id, "admin", true);
-        }
+    const applyFullPower = useCallback(async () => {
+        setIsApplying(true);
         setPendingAction(null);
+        try {
+            for (const mod of modules) {
+                if (!mod.enabledAdmin) await toggleModule(mod.id, "admin", true);
+            }
+        } finally {
+            setIsApplying(false);
+        }
     }, [modules, toggleModule]);
 
     if (user?.role !== "Super Admin") {
@@ -106,7 +121,7 @@ export default function SuperAdminWorkbench() {
                     </Link>
                     <div className="flex-1">
                         <h1 className="text-base font-bold text-slate-900">Module Manager</h1>
-                        <p className="text-xs text-slate-500">{enabledCount} of {modules.length} modules active</p>
+                        <p className="text-xs text-slate-500">{isApplying ? "Applying changes..." : `${enabledCount} of ${modules.length} modules active`}</p>
                     </div>
                 </div>
             </header>
@@ -116,9 +131,10 @@ export default function SuperAdminWorkbench() {
                 {/* Mode Buttons */}
                 <div className="grid grid-cols-2 gap-3">
                     <button
-                        onClick={() => isLeanActive ? null : setPendingAction("lean")}
+                        onClick={() => isLeanActive || isApplying ? null : setPendingAction("lean")}
+                        disabled={isApplying}
                         className={`relative flex flex-col items-start p-4 rounded-xl border-2 transition-all min-h-[100px] text-left ${
-                            isLeanActive
+                            isApplying ? "opacity-50 cursor-not-allowed" : isLeanActive
                                 ? "border-emerald-500 bg-emerald-50"
                                 : "border-slate-200 bg-white hover:border-emerald-400 active:scale-95"
                         }`}
@@ -130,13 +146,14 @@ export default function SuperAdminWorkbench() {
                             <Layers size={18} className={isLeanActive ? "text-emerald-600" : "text-slate-500"} />
                         </div>
                         <span className={`font-bold text-sm ${isLeanActive ? "text-emerald-700" : "text-slate-800"}`}>Lean Mode</span>
-                        <span className="text-xs text-slate-500 mt-0.5">7 core modules for daily ops</span>
+                        <span className="text-xs text-slate-500 mt-0.5">12 core modules for daily ops</span>
                     </button>
 
                     <button
-                        onClick={() => isFullActive ? null : setPendingAction("full")}
+                        onClick={() => isFullActive || isApplying ? null : setPendingAction("full")}
+                        disabled={isApplying}
                         className={`relative flex flex-col items-start p-4 rounded-xl border-2 transition-all min-h-[100px] text-left ${
-                            isFullActive
+                            isApplying ? "opacity-50 cursor-not-allowed" : isFullActive
                                 ? "border-amber-500 bg-amber-50"
                                 : "border-slate-200 bg-white hover:border-amber-400 active:scale-95"
                         }`}
@@ -222,7 +239,8 @@ export default function SuperAdminWorkbench() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={applyLeanMode} className="bg-emerald-600 hover:bg-emerald-700 text-white">
+                        <AlertDialogAction onClick={applyLeanMode} disabled={isApplying} className="bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-50 flex items-center gap-2">
+                            {isApplying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                             Apply Lean Mode
                         </AlertDialogAction>
                     </AlertDialogFooter>
@@ -243,7 +261,8 @@ export default function SuperAdminWorkbench() {
                     </AlertDialogHeader>
                     <AlertDialogFooter>
                         <AlertDialogCancel>Cancel</AlertDialogCancel>
-                        <AlertDialogAction onClick={applyFullPower} className="bg-amber-600 hover:bg-amber-700 text-white">
+                        <AlertDialogAction onClick={applyFullPower} disabled={isApplying} className="bg-amber-600 hover:bg-amber-700 text-white disabled:opacity-50 flex items-center gap-2">
+                            {isApplying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
                             Enable All Modules
                         </AlertDialogAction>
                     </AlertDialogFooter>

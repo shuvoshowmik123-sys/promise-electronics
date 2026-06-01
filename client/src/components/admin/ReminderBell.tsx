@@ -2,14 +2,13 @@
  * ReminderBell — header icon that shows pending reminder count + popover list.
  * Phase 3: Reminders UI
  */
-import { Bell, Plus, Check, Clock, Trash2 } from "lucide-react";
+import { BellRing, Plus, Check, Clock, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
     Popover,
     PopoverContent,
     PopoverTrigger,
 } from "@/components/ui/popover";
-import { Badge } from "@/components/ui/badge";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -77,14 +76,14 @@ export function ReminderBell() {
     return (
         <Popover open={open} onOpenChange={setOpen}>
             <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="relative">
-                    <Bell className="h-5 w-5" />
+                <button className="h-9 w-9 md:h-10 md:w-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all cursor-pointer relative" aria-label="Reminders" title="Reminders">
+                    <BellRing className="h-[18px] w-[18px]" />
                     {pending.length > 0 && (
-                        <Badge className="absolute -top-1 -right-1 h-5 w-5 p-0 flex items-center justify-center text-[10px] bg-red-500 text-white border-0">
+                        <span className="absolute -top-1.5 -right-1.5 min-w-[1.2rem] rounded-full border-2 border-white bg-rose-500 px-1 py-0.5 text-center text-[10px] font-bold leading-none text-white shadow-sm">
                             {pending.length > 9 ? "9+" : pending.length}
-                        </Badge>
+                        </span>
                     )}
-                </Button>
+                </button>
             </PopoverTrigger>
             <PopoverContent align="end" className="w-80 p-0">
                 <div className="flex items-center justify-between px-4 py-3 border-b">

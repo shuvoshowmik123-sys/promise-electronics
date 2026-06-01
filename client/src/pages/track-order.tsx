@@ -1345,6 +1345,7 @@ function ProductOrderCard({ order, onClick }: { order: Order; onClick: () => voi
 
 export default function TrackOrderPage() {
   const [isMobile, setIsMobile] = useState(false);
+  const [mobileTicketSearch, setMobileTicketSearch] = useState("");
 
   useEffect(() => {
     const checkMobile = () => setIsMobile(window.innerWidth < 768);
@@ -1639,6 +1640,18 @@ export default function TrackOrderPage() {
     window.history.replaceState({}, "", buildTrackingUrl(orderId, type));
   };
 
+  const handleMobileTicketSearch = () => {
+    const ticket = mobileTicketSearch.trim();
+    if (!ticket) {
+      toast({
+        title: "Ticket number required",
+        description: "Please enter your ticket number to track the repair.",
+      });
+      return;
+    }
+    setLocation(buildTrackingUrl(ticket, "service"));
+  };
+
   const isLoading = serviceLoading || ordersLoading;
   const allServiceRequests = serviceRequests || [];
   const allProductOrders = productOrders || [];
@@ -1655,22 +1668,106 @@ export default function TrackOrderPage() {
   }
 
   // Mobile View
+  if (isMobile && !selectedOrderId) {
+    return (
+      <>
+        <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white px-4 pb-28 pt-5">
+          <div className="mx-auto max-w-md space-y-5">
+            <div className="rounded-[28px] bg-emerald-600 p-5 text-white shadow-lg shadow-emerald-200">
+              <p className="text-sm font-bold text-emerald-50">Promise Electronics</p>
+              <h1 className="mt-2 text-2xl font-bold">আপনার repair track করুন</h1>
+              <p className="mt-2 text-sm leading-6 text-emerald-50">
+                Ticket number লিখে status দেখুন, অথবা account থাকলে sign in করুন।
+              </p>
+            </div>
+
+            <div className="rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
+              <Label className="text-sm font-bold text-slate-900">Ticket number</Label>
+              <div className="mt-3 flex gap-2">
+                <Input
+                  value={mobileTicketSearch}
+                  onChange={(event) => setMobileTicketSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") handleMobileTicketSearch();
+                  }}
+                  placeholder="Example: SR-000123"
+                  className="h-12 rounded-2xl border-emerald-100"
+                />
+                <Button
+                  type="button"
+                  onClick={handleMobileTicketSearch}
+                  className="h-12 rounded-2xl bg-emerald-600 px-4 hover:bg-emerald-700"
+                  aria-label="Track ticket"
+                >
+                  <Search className="h-5 w-5" />
+                </Button>
+              </div>
+            </div>
+
+            {isAuthenticated && totalOrders > 0 && (
+              <div>
+                <h2 className="mb-3 text-lg font-bold text-slate-950">Your recent repairs</h2>
+                <div className="space-y-3">
+                  {allServiceRequests.slice(0, 4).map((order) => (
+                    <button
+                      key={order.id}
+                      type="button"
+                      onClick={() => handleSelectOrder(order.id, "service")}
+                      className="flex w-full items-center justify-between rounded-3xl border border-emerald-100 bg-white p-4 text-left shadow-sm"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate font-bold text-slate-900">{order.brand} TV</p>
+                        <p className="mt-1 truncate text-sm text-slate-500">{order.primaryIssue}</p>
+                      </div>
+                      <Badge variant="outline" className="ml-3 border-emerald-200 bg-emerald-50 text-emerald-700">
+                        {order.trackingStatus}
+                      </Badge>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3">
+              <Button variant="outline" className="h-12 rounded-2xl border-emerald-200 bg-white text-emerald-700" onClick={() => setLocation("/repair")}>
+                <Wrench className="mr-2 h-4 w-4" />
+                Book Repair
+              </Button>
+              <Button className="h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700" onClick={() => setShowAuthModal(true)}>
+                <User className="mr-2 h-4 w-4" />
+                Sign In
+              </Button>
+            </div>
+          </div>
+        </div>
+        <CustomerAuthModal
+          open={showAuthModal}
+          onOpenChange={setShowAuthModal}
+          defaultTab="login"
+          onSuccess={() => setShowAuthModal(false)}
+          title="Track Your Order"
+          description="Sign in or create an account to track repair orders."
+        />
+      </>
+    );
+  }
+
   if (isMobile && selectedOrderId && selectedOrderType === "service" && serviceRequestDetails) {
     return (
       <>
-        <div className="min-h-screen bg-slate-50 pb-24 pt-4 px-4">
+        <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white pb-24 pt-4 px-4">
           <div className="flex items-center gap-2 mb-6">
-            <Button variant="ghost" size="icon" onClick={handleBackToList} className="rounded-full">
+            <Button variant="ghost" size="icon" onClick={handleBackToList} className="rounded-full text-emerald-700">
               <ChevronRight className="w-6 h-6 rotate-180" />
             </Button>
-            <h1 className="text-xl font-heading font-bold text-slate-800">Tracking Details</h1>
+            <h1 className="text-xl font-heading font-bold text-slate-950">Tracking Details</h1>
           </div>
 
           {/* Ticket Info Card */}
-          <div className="bg-white rounded-2xl p-5 shadow-neumorph mb-6">
+          <div className="mb-6 rounded-[28px] border border-emerald-100 bg-white p-5 shadow-sm">
             <div className="flex justify-between items-start mb-2">
               <h2 className="text-lg font-bold text-slate-800">{serviceRequestDetails.brand} TV</h2>
-              <Badge variant="outline" className="bg-primary/5 text-primary border-primary/20">
+              <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
                 #{serviceRequestDetails.ticketNumber}
               </Badge>
             </div>
@@ -1680,10 +1777,19 @@ export default function TrackOrderPage() {
                 {format(new Date(serviceRequestDetails.createdAt), "MMM d, yyyy")}
               </div>
             </div>
+            <div className="mt-4 grid grid-cols-2 gap-3">
+              <a href="tel:+8801700000000" className="flex min-h-11 items-center justify-center rounded-2xl bg-emerald-50 text-sm font-bold text-emerald-700">
+                <Phone className="mr-2 h-4 w-4" />
+                Call
+              </a>
+              <a href="/support" className="flex min-h-11 items-center justify-center rounded-2xl bg-emerald-600 text-sm font-bold text-white">
+                Support
+              </a>
+            </div>
           </div>
 
           {/* Timeline */}
-          <h3 className="text-lg font-bold text-slate-800 px-2 mb-2">Repair Progress</h3>
+          <h3 className="text-lg font-bold text-slate-950 px-2 mb-2">Repair Progress</h3>
           <TrackingTimeline order={serviceRequestDetails} />
         </div>
       </>

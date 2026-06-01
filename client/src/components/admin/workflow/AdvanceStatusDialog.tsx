@@ -49,9 +49,9 @@ export function AdvanceStatusDialog({ open, onOpenChange, currentStatus, onConfi
                     <div className="mx-auto bg-rose-50 w-12 h-12 rounded-full flex items-center justify-center mb-2">
                         <ShieldAlert className="w-6 h-6 text-rose-500" />
                     </div>
-                    <DialogTitle className="text-center text-xl text-slate-800 font-bold">Accountability Warning</DialogTitle>
+                    <DialogTitle className="text-center text-xl text-slate-800 font-bold">Confirm Next Step</DialogTitle>
                     <DialogDescription className="text-center text-slate-600 font-medium">
-                        You are about to irreversibly advance this job ticket.
+                        This will move the job forward and save the change in job history.
                     </DialogDescription>
                 </DialogHeader>
 
@@ -69,7 +69,7 @@ export function AdvanceStatusDialog({ open, onOpenChange, currentStatus, onConfi
                     <div className="bg-amber-50 border border-amber-200 p-4 rounded-xl flex items-start gap-3">
                         <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                         <div className="text-sm text-amber-800 leading-relaxed font-medium">
-                            <p>This action creates an immutable, permanent record in the system audit ledger linked directly to your identity:</p>
+                            <p>This record will show who moved the job to the next step:</p>
                             <p className="mt-2 font-mono text-xs bg-amber-100/50 px-2 py-1 rounded w-fit border border-amber-200/50 text-amber-900">
                                 {user?.name || "Unknown User"} ({user?.role || "Unknown Role"})
                             </p>
@@ -90,13 +90,13 @@ export function AdvanceStatusDialog({ open, onOpenChange, currentStatus, onConfi
                             }`}
                     >
                         {isPending ? (
-                            "Advancing..."
+                            "Saving..."
                         ) : countdown > 0 ? (
-                            `Acknowledge & Sign in ${countdown}s`
+                            `Confirm in ${countdown}s`
                         ) : (
                             <>
                                 <CheckCircle2 className="w-4 h-4 mr-2" />
-                                Electronically Sign & Advance
+                                Confirm Next Step
                             </>
                         )}
                     </Button>

@@ -8,7 +8,7 @@
 
 import { db } from '../db.js';
 import * as schema from '../../shared/schema.js';
-import { eq, like, desc, and, gte, lte, count, inArray } from 'drizzle-orm';
+import { eq, like, desc, and, gte, lte, count, inArray, sql } from 'drizzle-orm';
 import { corporateRepo } from '../repositories/index.js';
 import { nanoid } from 'nanoid';
 
@@ -27,12 +27,20 @@ export class CorporateService {
      */
     async createChallanIn(data: {
         corporateClientId: string;
+        workType?: "full_tv" | "panel" | "panel_batch" | "board" | "parts" | "parts_sale" | "crr";
         items: {
             corporateJobNumber: string;
             deviceModel: string;
             serialNumber: string;
             initialStatus: "OK" | "NG";
+            status?: "Received" | "Pending" | "Declared OK" | "Declared NG";
             reportedDefect: string;
+            workType?: "full_tv" | "panel" | "panel_batch" | "board" | "parts" | "parts_sale" | "crr";
+            ticketType?: "full_device" | "panel_only" | "motherboard_only" | "parts_only";
+            jobType?: "standard" | "warranty_claim";
+            parentJobId?: string;
+            crrReviewStatus?: "new_job" | "crr" | "ignore" | "super_admin_review";
+            crrReason?: string;
         }[];
         receivedBy: string;
         receivedAt?: Date;
@@ -48,9 +56,13 @@ export class CorporateService {
         const seq = (Number(countRes?.count) || 0) + 1;
         const challanNumber = `${client.shortCode}-C-IN-${seq.toString().padStart(4, '0')}`;
 
-        console.log(`Creating Challan IN: ${challanNumber} with ${data.items.length} items`);
+        console.log(`[CorporateService] Creating Challan IN: ${challanNumber} with ${data.items.length} items`);
 
         return await db.transaction(async (tx) => {
+            const clearanceDays = Number((client as any).defaultBatchClearanceDays || 7);
+            const targetClearDate = new Date(now.getTime() + clearanceDays * 24 * 60 * 60 * 1000);
+            const batchId = nanoid();
+
             await tx.insert(schema.corporateChallans).values({
                 id: challanId,
                 challanNumber,
@@ -60,6 +72,20 @@ export class CorporateService {
                 totalItems: data.items.length,
                 receivedDate: data.receivedAt || now,
                 status: 'received',
+            });
+
+            await tx.insert(schema.jobBatches).values({
+                id: batchId,
+                batchNumber: `BATCH-${challanNumber}`,
+                clientClass: (client as any).clientClass ?? 'b2b_normal',
+                corporateClientId: data.corporateClientId,
+                intakeDate: data.receivedAt || now,
+                receiver: data.receivedBy,
+                totalItems: data.items.length,
+                targetClearDate,
+                corporateChallanId: challanId,
+                createdBy: data.receivedBy,
+                notes: data.workType ? `Receive Work: ${data.workType}` : undefined,
             });
 
             const jobTicketsToInsert: any[] = [];
@@ -89,6 +115,7 @@ export class CorporateService {
 
                 const slaHours = client.defaultSlaHours ?? 72;
                 const slaDeadline = new Date(now.getTime() + slaHours * 60 * 60 * 1000);
+                const serviceWarrantyDays = (client as any).serviceWarrantyEnabled === false ? 0 : Number((client as any).defaultServiceWarrantyDays || 30);
 
                 jobTicketsToInsert.push({
                     id: jobId,
@@ -98,7 +125,7 @@ export class CorporateService {
                     device: item.deviceModel,
                     tvSerialNumber: item.serialNumber,
                     issue: item.reportedDefect,
-                    status: "Pending",
+                    status: item.status || "Received",
                     priority: "Medium",
                     technician: "Unassigned",
                     createdAt: now,
@@ -109,12 +136,56 @@ export class CorporateService {
                     corporateJobNumber: item.corporateJobNumber,
                     initialStatus: item.initialStatus,
                     reportedDefect: item.reportedDefect,
-                    billingStatus: 'pending'
+                    billingStatus: 'pending',
+                    ticketType: item.ticketType || 'full_device',
+                    jobType: item.jobType || 'standard',
+                    parentJobId: item.parentJobId,
+                    warrantyDays: item.jobType === 'warranty_claim' ? 0 : serviceWarrantyDays,
+                    paymentStatus: item.jobType === 'warranty_claim' ? 'paid' : 'unpaid',
+                    notes: [
+                        item.workType === 'crr' || item.jobType === 'warranty_claim' ? 'CRR / Re-service intake' : undefined,
+                        item.parentJobId ? `Linked original job: ${item.parentJobId}` : undefined,
+                        item.crrReviewStatus === 'super_admin_review' ? 'Super Admin review requested for CRR / Re-service' : undefined,
+                        item.crrReason ? `CRR reason: ${item.crrReason}` : undefined,
+                    ].filter(Boolean).join('\n') || undefined,
+                    // Phase A/F: propagate client tier + source
+                    clientClass: (client as any).clientClass ?? 'b2b_normal',
+                    batchId,
+                    batchTargetClearDate: targetClearDate,
+                    extensionStatus: 'none',
+                    source: 'challan_in',
                 });
             }
 
             if (jobTicketsToInsert.length > 0) {
                 await tx.insert(schema.jobTickets).values(jobTicketsToInsert);
+            }
+
+            const reviewItems = data.items
+                .map((item, index) => ({ item, jobId: jobIds[index] }))
+                .filter(({ item }) => item.jobType === 'warranty_claim' || item.crrReviewStatus === 'super_admin_review');
+
+            if (reviewItems.length > 0) {
+                const superAdmins = await tx
+                    .select({ id: schema.users.id })
+                    .from(schema.users)
+                    .where(eq(schema.users.role, 'Super Admin'));
+
+                if (superAdmins.length > 0) {
+                    const notifications = superAdmins.flatMap((admin) => reviewItems.map(({ item, jobId }) => ({
+                        id: nanoid(),
+                        userId: admin.id,
+                        title: 'CRR / Re-service Review',
+                        message: `${client.companyName} submitted ${item.corporateJobNumber || jobId} as CRR / Re-service.`,
+                        type: item.crrReviewStatus === 'super_admin_review' ? 'warning' : 'info',
+                        link: `/admin?tab=b2b&job=${jobId}`,
+                        corporateClientId: data.corporateClientId,
+                        jobId,
+                        contextType: 'crr_review',
+                    })));
+
+                    await tx.insert(schema.notifications).values(notifications);
+                }
             }
 
             return { challanId, jobIds };
@@ -173,6 +244,8 @@ export class CorporateService {
                     .set({
                         billingStatus: 'delivered',
                         status: 'Delivered', // Explicitly mark as Delivered
+                        completedAt: new Date(),
+                        warrantyExpiryDate: sql`CASE WHEN warranty_days > 0 THEN NOW() + (warranty_days || ' days')::interval ELSE NULL END`,
                         // Intentionally not overwriting corporateChallanId with OUT if it had an IN.
                         // Items structure contains the association.
                     })

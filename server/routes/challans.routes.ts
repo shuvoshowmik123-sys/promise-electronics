@@ -66,12 +66,17 @@ router.post('/api/challans', async (req: Request, res: Response) => {
  */
 router.patch('/api/challans/:id', async (req: Request, res: Response) => {
     try {
-        const challan = await financeRepo.updateChallan(req.params.id, req.body);
+        // Validate + whitelist fields (was raw req.body).
+        const updates = insertChallanSchema.partial().parse(req.body);
+        const challan = await financeRepo.updateChallan(req.params.id, updates);
         if (!challan) {
             return res.status(404).json({ error: 'Challan not found' });
         }
         res.json(challan);
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.name === 'ZodError') {
+            return res.status(400).json({ error: 'Invalid challan data', details: error.errors });
+        }
         res.status(500).json({ error: 'Failed to update challan' });
     }
 });

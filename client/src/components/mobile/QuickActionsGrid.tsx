@@ -1,27 +1,30 @@
 import { Link } from "wouter";
-import { Calendar, ShoppingCart, Search, MessageSquare } from "lucide-react";
+import { Calendar, MessageSquare, Search, ShoppingCart } from "lucide-react";
 import { motion } from "framer-motion";
 
 export function QuickActionsGrid() {
     const actions = [
-        { label: "Book Repair", icon: Calendar, href: "/repair", color: "text-blue-500" },
-        { label: "Shop Parts", icon: ShoppingCart, href: "/shop", color: "text-purple-500" },
-        { label: "Track Order", icon: Search, href: "/track-order", color: "text-orange-500" },
-        { label: "Support", icon: MessageSquare, href: "/support", color: "text-green-500" },
+        { label: "Book Repair", helper: "সার্ভিস বুক", icon: Calendar, href: "/repair" },
+        { label: "Track Job", helper: "জব ট্র্যাক", icon: Search, href: "/track-order" },
+        { label: "Support", helper: "সাহায্য নিন", icon: MessageSquare, href: "/support" },
+        { label: "Shop Parts", helper: "পার্টস কিনুন", icon: ShoppingCart, href: "/shop" },
     ];
 
     return (
-        <div className="grid grid-cols-2 gap-4 mb-8">
+        <div className="mb-8 grid grid-cols-2 gap-3">
             {actions.map((action, index) => (
                 <Link key={index} href={action.href}>
                     <motion.div
                         whileTap={{ scale: 0.95 }}
-                        className="bg-slate-100 rounded-xl p-4 shadow-neumorph flex flex-col items-center justify-center gap-3 aspect-[4/3] active:shadow-neumorph-inset transition-all"
+                        className="flex min-h-[116px] flex-col justify-between rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm transition-all active:bg-emerald-50"
                     >
-                        <div className={`p-3 rounded-full bg-slate-100 shadow-neumorph ${action.color}`}>
-                            <action.icon className="w-6 h-6" />
+                        <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                            <action.icon className="h-5 w-5" />
                         </div>
-                        <span className="text-sm font-bold text-slate-700">{action.label}</span>
+                        <div>
+                            <span className="block text-sm font-bold text-slate-900">{action.label}</span>
+                            <span className="mt-1 block text-xs font-medium text-slate-500">{action.helper}</span>
+                        </div>
                     </motion.div>
                 </Link>
             ))}

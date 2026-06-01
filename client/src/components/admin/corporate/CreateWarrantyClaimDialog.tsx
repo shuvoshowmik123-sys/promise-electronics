@@ -23,6 +23,7 @@ import { JobTicket } from "@shared/schema";
 import { toast } from "sonner";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
 
 interface CreateWarrantyClaimDialogProps {
     job: JobTicket | null;
@@ -32,25 +33,32 @@ interface CreateWarrantyClaimDialogProps {
 
 export function CreateWarrantyClaimDialog({ job, open, onOpenChange }: CreateWarrantyClaimDialogProps) {
     const queryClient = useQueryClient();
+    const { user } = useAdminAuth();
     const [claimType, setClaimType] = useState<"service" | "parts">("service");
     const [claimReason, setClaimReason] = useState("");
     const [notes, setNotes] = useState("");
 
     const createClaimMutation = useMutation({
         mutationFn: async (data: any) => {
-            const res = await warrantyClaimsApi.create(data);
-            return res;
+            const claim: any = await warrantyClaimsApi.create(data);
+            await warrantyClaimsApi.approve(claim.id, {
+                approvedBy: user?.id || "admin",
+                approvedByName: user?.name || "Admin",
+                approvedByRole: user?.role || "Admin",
+            });
+            return warrantyClaimsApi.createJob(claim.id, { createdBy: user?.id || "admin" });
         },
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["warranty-claims"] });
             queryClient.invalidateQueries({ queryKey: ["job-tickets"] });
-            toast.success("Warranty claim created successfully");
+            queryClient.invalidateQueries({ queryKey: ["corporateJobs"] });
+            toast.success("CRR / reservice created successfully");
             onOpenChange(false);
             setClaimReason("");
             setNotes("");
         },
         onError: (error: any) => {
-            toast.error(error.message || "Failed to create warranty claim");
+            toast.error(error.message || "Failed to create CRR / reservice");
         },
     });
 
@@ -75,10 +83,10 @@ export function CreateWarrantyClaimDialog({ job, open, onOpenChange }: CreateWar
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="sm:max-w-[500px]">
                 <DialogHeader>
-                    <DialogTitle>Create Warranty Claim</DialogTitle>
+                    <DialogTitle>Create CRR / Reservice</DialogTitle>
                     <DialogDescription>
-                        Initiate a warranty claim for Job #{job.id}.
-                        This will be submitted for approval.
+                        Initiate a service warranty return for Job #{job.id}.
+                        This keeps the new CRR / reservice linked to the original job.
                     </DialogDescription>
                 </DialogHeader>
 

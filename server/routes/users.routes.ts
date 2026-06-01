@@ -23,6 +23,7 @@ import {
 import { notifySpecificAdmin } from './middleware/sse-broker.js';
 import { MailerService } from '../services/mailer.js';
 import { authService } from '../services/auth.service.js';
+import { corporatePasswordResetService } from '../services/corporate-password-reset.service.js';
 import { z } from 'zod';
 import crypto from 'crypto';
 import { AuditLogger } from '../services/audit.service.js';
@@ -210,10 +211,33 @@ router.get('/api/users/:id', requireAdminAuth, requirePermission('users'), async
  */
 router.post('/api/users', requireAdminAuth, requirePermission('users'), async (req: Request, res: Response) => {
     try {
+        const currentUser = await userRepo.getUser(req.session.adminUserId!);
         const validated = insertUserSchema.parse(req.body);
-        const user = await userRepo.createUser(validated);
-        res.status(201).json(user);
-    } catch (error) {
+
+        // Privilege-escalation guard: only Super Admins may mint Super Admins or
+        // set custom permission sets via this route.
+        if (currentUser?.role !== 'Super Admin') {
+            if ((validated as any).role === 'Super Admin') {
+                return res.status(403).json({ error: 'Only Super Admins can create Super Admin users' });
+            }
+            if ((validated as any).permissions) {
+                return res.status(403).json({ error: 'Only Super Admins can set custom permissions' });
+            }
+        }
+
+        // Never persist a plaintext password (login compares against a bcrypt hash).
+        const toCreate: any = { ...validated };
+        if (toCreate.password) {
+            toCreate.password = await bcrypt.hash(toCreate.password, 12);
+        }
+
+        const user = await userRepo.createUser(toCreate);
+        const { password: _, ...safeUser } = user;
+        res.status(201).json(safeUser);
+    } catch (error: any) {
+        if (error?.name === 'ZodError') {
+            return res.status(400).json({ error: 'Invalid user data', details: error.errors });
+        }
         res.status(400).json({ error: 'Invalid user data' });
     }
 });
@@ -223,11 +247,39 @@ router.post('/api/users', requireAdminAuth, requirePermission('users'), async (r
  */
 router.patch('/api/users/:id', requireAdminAuth, requirePermission('users'), async (req: Request, res: Response) => {
     try {
-        const user = await userRepo.updateUser(req.params.id, req.body);
+        const currentUser = await userRepo.getUser(req.session.adminUserId!);
+        if (!currentUser) return res.status(401).json({ error: 'User not found' });
+
+        const targetUser = await userRepo.getUser(req.params.id);
+        if (!targetUser) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        const updates: any = { ...req.body };
+
+        // Privilege-escalation guard: only Super Admins may change role or
+        // permissions. Without this, any admin with 'users' permission could
+        // PATCH themselves to Super Admin / grant '*' permissions.
+        if (currentUser.role !== 'Super Admin') {
+            if (updates.role !== undefined && updates.role !== targetUser.role) {
+                return res.status(403).json({ error: 'Only Super Admins can change user roles' });
+            }
+            if (updates.permissions !== undefined) {
+                return res.status(403).json({ error: 'Only Super Admins can change user permissions' });
+            }
+        }
+
+        // Never persist a plaintext password.
+        if (updates.password) {
+            updates.password = await bcrypt.hash(updates.password, 12);
+        }
+
+        const user = await userRepo.updateUser(req.params.id, updates);
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
-        res.json(user);
+        const { password: _, ...safeUser } = user;
+        res.json(safeUser);
     } catch (error) {
         res.status(500).json({ error: 'Failed to update user' });
     }
@@ -558,6 +610,76 @@ router.post('/api/admin/corporate-users', requirePermission('canCreate'), async 
     }
 });
 
+router.post('/api/admin/corporate-users/:id/reset-password', requirePermission('canEdit'), async (req: Request, res: Response) => {
+    try {
+        const targetUser = await userRepo.getUser(req.params.id);
+        if (!targetUser || targetUser.role !== 'Corporate' || !targetUser.corporateClientId) {
+            return res.status(404).json({ error: 'Corporate user not found' });
+        }
+
+        const generatedPassword = crypto.randomBytes(8).toString('hex');
+        const hashedPassword = await bcrypt.hash(generatedPassword, 12);
+        const updatedUser = await userRepo.updateUser(targetUser.id, { password: hashedPassword } as any);
+
+        await authService.revokeAllCorporateTrustedDevicesForUser(targetUser.id, 'corporate_password_reset').catch(console.error);
+
+        AuditLogger.log({
+            userId: req.session.adminUserId!,
+            action: 'UPDATE',
+            entity: 'User',
+            entityId: targetUser.id,
+            details: `Reset corporate portal password for '${targetUser.name}' (${targetUser.username})`,
+            severity: 'warning',
+        }).catch(console.error);
+
+        res.json({
+            user: {
+                id: updatedUser?.id || targetUser.id,
+                username: updatedUser?.username || targetUser.username,
+                email: updatedUser?.email || targetUser.email,
+            },
+            temporaryPassword: generatedPassword,
+        });
+    } catch (error) {
+        console.error('[UsersRoutes] Corporate password reset error:', error);
+        res.status(500).json({ error: 'Failed to reset corporate user password' });
+    }
+});
+
+router.post('/api/admin/corporate-users/:id/reset-otp', requirePermission('canEdit'), async (req: Request, res: Response) => {
+    try {
+        const result = await corporatePasswordResetService.issueAdminCode(req.params.id, req.session.adminUserId!);
+
+        AuditLogger.log({
+            userId: req.session.adminUserId!,
+            action: 'CREATE',
+            entity: 'CorporatePasswordReset',
+            entityId: result.request.id,
+            details: `Issued corporate portal OTP reset code for '${result.request.name}' (${result.request.username})`,
+            severity: 'warning',
+        }).catch(console.error);
+
+        res.json(result);
+    } catch (error: any) {
+        res.status(error.message === 'Corporate user not found' ? 404 : 500).json({ error: error.message || 'Failed to generate reset code' });
+    }
+});
+
+router.get('/api/admin/corporate-users/reset-requests', requirePermission('canEdit'), async (req: Request, res: Response) => {
+    try {
+        const corporateClientId = String(req.query.corporateClientId || '');
+        if (!corporateClientId) {
+            return res.status(400).json({ error: 'Corporate client ID is required' });
+        }
+
+        const requests = await corporatePasswordResetService.getClientResetRequests(corporateClientId);
+        res.json(requests);
+    } catch (error) {
+        console.error('[UsersRoutes] Corporate reset requests error:', error);
+        res.status(500).json({ error: 'Failed to load reset requests' });
+    }
+});
+
 // ============================================
 // Admin Customers API
 // ============================================
@@ -760,7 +882,12 @@ router.patch('/api/admin/customers/:id', requireAdminAuth, requirePermission('us
         }
 
         res.json({ ...updated, password: undefined });
-    } catch (error) {
+    } catch (error: any) {
+        // Duplicate phone hits a DB unique violation — surface a friendly 409
+        // instead of a generic 500 (mirrors the customer profile route).
+        if (error?.code === '23505') {
+            return res.status(409).json({ error: 'This phone number is already in use by another user.', code: 'PHONE_EXISTS' });
+        }
         res.status(500).json({ error: 'Failed to update customer' });
     }
 });
@@ -770,6 +897,26 @@ router.patch('/api/admin/customers/:id', requireAdminAuth, requirePermission('us
  */
 router.delete('/api/admin/customers/:id', requireAdminAuth, requirePermission('users'), async (req: Request, res: Response) => {
     try {
+        const customer = await userRepo.getUser(req.params.id);
+        if (!customer || customer.role !== 'Customer') {
+            return res.status(404).json({ error: 'Customer not found' });
+        }
+
+        // Reference guard: deleting a customer with linked orders/service requests
+        // would orphan those rows (customerId points at a deleted user). Block and
+        // report the counts so staff can reassign/close history first.
+        const [orders, serviceRequests] = await Promise.all([
+            orderRepo.getOrdersByCustomerId(req.params.id),
+            serviceRequestRepo.getServiceRequestsByCustomerId(req.params.id),
+        ]);
+        if (orders.length > 0 || serviceRequests.length > 0) {
+            return res.status(409).json({
+                error: 'Cannot delete: customer has linked orders or service requests',
+                orders: orders.length,
+                serviceRequests: serviceRequests.length,
+            });
+        }
+
         const success = await userRepo.deleteUser(req.params.id);
         if (!success) {
             return res.status(404).json({ error: 'User not found' });

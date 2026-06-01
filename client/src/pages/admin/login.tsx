@@ -1,14 +1,12 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { Card, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { toast } from "sonner";
-import { Loader2, Lock, User, Zap, TrendingUp, Users, Activity, Clock } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { variants, transitions } from "@/lib/motion";
+import { Loader2, Lock, User, Zap } from "lucide-react";
+import { motion } from "framer-motion";
+import { variants } from "@/lib/motion";
 
 export default function AdminLoginPage() {
   const [, setLocation] = useLocation();
@@ -48,16 +46,14 @@ export default function AdminLoginPage() {
       } else {
         setLocation("/admin");
       }
-    } catch (error: any) {
+    } catch (error: unknown) {
       setHasError(true);
-      toast.error(error.message || "Login failed");
+      toast.error(error instanceof Error ? error.message : "Login failed");
       setTimeout(() => setHasError(false), 500);
     } finally {
       setIsLoading(false);
     }
   };
-
-
 
   if (authLoading) {
     return (
@@ -75,12 +71,12 @@ export default function AdminLoginPage() {
       exit="exit"
       className="min-h-screen flex flex-col lg:flex-row overflow-hidden"
     >
-      {/* Left Panel - Brand & Stats (Desktop) / Top Hero (Mobile) */}
-      <div className="relative lg:w-1/2 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex items-center justify-center p-8 lg:p-16 lg:min-h-screen">
+      {/* Left Panel - Brand */}
+      <div className="relative lg:w-1/2 bg-gradient-to-br from-slate-900 via-slate-800 to-slate-950 flex items-center justify-center p-8 lg:p-16 lg:min-h-screen">
         {/* Decorative Background Elements */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-0 right-0 w-96 h-96 bg-emerald-500/10 rounded-full blur-[120px]" />
-          <div className="absolute bottom-0 left-0 w-96 h-96 bg-emerald-600/5 rounded-full blur-[100px]" />
+          <div className="absolute top-0 right-0 w-96 h-96 bg-blue-500/10 rounded-full blur-[120px]" />
+          <div className="absolute bottom-0 left-0 w-96 h-96 bg-blue-600/5 rounded-full blur-[100px]" />
           <div
             className="absolute inset-0 opacity-[0.02]"
             style={{
@@ -98,75 +94,22 @@ export default function AdminLoginPage() {
             transition={{ duration: 0.6 }}
             className="space-y-4"
           >
-            <div className="inline-flex items-center justify-center w-20 h-20 bg-emerald-500/10 backdrop-blur-sm rounded-3xl border border-emerald-500/20 mb-6">
-              <Zap className="w-10 h-10 text-emerald-400" />
+            <div className="inline-flex items-center justify-center w-20 h-20 bg-blue-500/10 backdrop-blur-sm rounded-3xl border border-blue-500/20 mb-6">
+              <Zap className="w-10 h-10 text-blue-400" />
             </div>
 
             <div>
               <h1 className="text-4xl lg:text-5xl font-black text-white tracking-tight">
                 PROMISE
               </h1>
-              <h2 className="text-4xl lg:text-5xl font-black text-emerald-400 tracking-tight">
+              <h2 className="text-4xl lg:text-5xl font-black text-blue-400 tracking-tight">
                 ELECTRONICS
               </h2>
               <p className="text-slate-400 text-lg mt-2 font-medium">Admin Control Center</p>
+              <p className="text-slate-500 text-sm mt-4 max-w-xs">TV repair shop management — jobs, inventory, POS, and operations in one place.</p>
             </div>
           </motion.div>
 
-          {/* Bento Grid Stats - Hidden on mobile */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="hidden lg:grid grid-cols-2 gap-4"
-          >
-            <Card className="bg-slate-800/40 backdrop-blur-sm border-slate-700/50 hover:bg-slate-800/60 transition-all duration-300">
-              <CardContent className="p-6 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Activity className="w-4 h-4 text-emerald-400" />
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Active Jobs</p>
-                </div>
-                <p className="text-3xl font-black text-white">247</p>
-                <div className="flex items-center gap-1 text-xs text-emerald-400">
-                  <TrendingUp className="w-3 h-3" />
-                  <span>+12% today</span>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-slate-800/40 backdrop-blur-sm border-slate-700/50 hover:bg-slate-800/60 transition-all duration-300">
-              <CardContent className="p-6 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Users className="w-4 h-4 text-emerald-400" />
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Technicians</p>
-                </div>
-                <p className="text-3xl font-black text-white">12</p>
-                <p className="text-xs text-slate-500">8 active now</p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-slate-800/40 backdrop-blur-sm border-slate-700/50 hover:bg-slate-800/60 transition-all duration-300">
-              <CardContent className="p-6 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Clock className="w-4 h-4 text-emerald-400" />
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">System Uptime</p>
-                </div>
-                <p className="text-3xl font-black text-white">99.9%</p>
-                <p className="text-xs text-slate-500">Last 30 days</p>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-slate-800/40 backdrop-blur-sm border-slate-700/50 hover:bg-slate-800/60 transition-all duration-300">
-              <CardContent className="p-6 space-y-2">
-                <div className="flex items-center gap-2">
-                  <Zap className="w-4 h-4 text-emerald-400" />
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">24/7 Support</p>
-                </div>
-                <p className="text-3xl font-black text-white">Live</p>
-                <p className="text-xs text-emerald-400">Always available</p>
-              </CardContent>
-            </Card>
-          </motion.div>
         </div>
       </div>
 
@@ -207,7 +150,7 @@ export default function AdminLoginPage() {
                     placeholder="Enter your username"
                     value={username}
                     onChange={(e) => setUsername(e.target.value)}
-                    className="h-12 pl-12 rounded-xl border-slate-200 bg-white focus:border-emerald-500 focus:ring-emerald-500/20"
+                    className="h-12 pl-12 rounded-xl border-slate-200 bg-white focus:border-blue-500 focus:ring-blue-500/20"
                     disabled={isLoading}
                     data-testid="input-admin-username"
                   />
@@ -224,7 +167,7 @@ export default function AdminLoginPage() {
                     placeholder="Enter your password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    className="h-12 pl-12 rounded-xl border-slate-200 bg-white focus:border-emerald-500 focus:ring-emerald-500/20"
+                    className="h-12 pl-12 rounded-xl border-slate-200 bg-white focus:border-blue-500 focus:ring-blue-500/20"
                     disabled={isLoading}
                     data-testid="input-admin-password"
                   />
@@ -236,7 +179,7 @@ export default function AdminLoginPage() {
               <motion.button
                 {...variants.buttonTap}
                 type="submit"
-                className="w-full flex items-center justify-center h-12 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-bold text-base shadow-lg shadow-emerald-500/25 transition-all duration-300 hover:shadow-xl hover:shadow-emerald-500/40 disabled:opacity-70 disabled:cursor-not-allowed"
+                className="w-full flex items-center justify-center h-12 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-base shadow-lg shadow-blue-500/25 transition-all duration-300 hover:shadow-xl hover:shadow-blue-500/40 disabled:opacity-70 disabled:cursor-not-allowed"
                 disabled={isLoading}
                 data-testid="button-admin-login"
               >
@@ -251,8 +194,6 @@ export default function AdminLoginPage() {
               </motion.button>
             </motion.div>
           </motion.form>
-
-
 
           {/* Footer */}
           <div className="text-center pt-4 border-t border-slate-200">

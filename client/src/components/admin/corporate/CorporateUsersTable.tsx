@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
-import { Loader2, UserPlus, Trash2, Search, Users, ChevronLeft, ChevronRight, Copy, Check, AtSign, Clock, ShieldCheck, Mail, Building2, PanelRight, X } from "lucide-react";
+import { Loader2, UserPlus, Trash2, Search, Users, ChevronLeft, ChevronRight, Copy, Check, AtSign, Clock, ShieldCheck, Mail, Building2, PanelRight, X, KeyRound } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
@@ -37,12 +37,19 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
     // Modal State
     const [isAddUserOpen, setIsAddUserOpen] = useState(false);
     const [createdUserCreds, setCreatedUserCreds] = useState<{ username: string, password: string } | null>(null);
+    const [otpResetCode, setOtpResetCode] = useState<{ username: string; code: string; expiresAt: string } | null>(null);
     const [copied, setCopied] = useState(false);
 
     // Fetch Users
     const { data: users, isLoading } = useQuery({
         queryKey: ["corporateUsers", clientId],
         queryFn: () => corporateApi.getCorporateUsers(clientId),
+    });
+
+    const { data: resetRequests } = useQuery({
+        queryKey: ["corporateResetRequests", clientId],
+        queryFn: () => corporateApi.getCorporateResetRequests(clientId),
+        enabled: !!clientId,
     });
 
     // Create User Mutation
@@ -87,6 +94,42 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
         }
     });
 
+    const resetPasswordMutation = useMutation({
+        mutationFn: corporateApi.resetCorporateUserPassword,
+        onSuccess: (data) => {
+            setCreatedUserCreds({
+                username: data.user.username || "",
+                password: data.temporaryPassword,
+            });
+            toast({
+                title: "Password Reset",
+                description: "Copy the new temporary password now. It will not be shown again.",
+            });
+        },
+        onError: (error: Error) => {
+            toast({ title: "Failed to reset password", description: error.message, variant: "destructive" });
+        },
+    });
+
+    const resetOtpMutation = useMutation({
+        mutationFn: corporateApi.generateCorporateUserResetOtp,
+        onSuccess: (data) => {
+            queryClient.invalidateQueries({ queryKey: ["corporateResetRequests", clientId] });
+            setOtpResetCode({
+                username: data.request.username || "",
+                code: data.code,
+                expiresAt: data.request.expiresAt,
+            });
+            toast({
+                title: "Reset Code Ready",
+                description: "Share this 6-digit code with the verified corporate user.",
+            });
+        },
+        onError: (error: Error) => {
+            toast({ title: "Failed to generate reset code", description: error.message, variant: "destructive" });
+        },
+    });
+
     const [formData, setFormData] = useState({
         name: "",
         username: "",
@@ -115,6 +158,7 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
 
     const totalPages = Math.ceil(filteredUsers.length / limit);
     const paginatedUsers = filteredUsers.slice((page - 1) * limit, page * limit);
+    const activeResetRequests = (resetRequests || []).filter((request) => request.status === "requested" || request.status === "code_issued");
 
     return (
         <div className="flex flex-col h-full bg-white rounded-xl border border-slate-200/60 shadow-sm overflow-hidden min-h-0 relative">
@@ -149,6 +193,39 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
                     </Button>
                 </div>
             </div>
+
+            {activeResetRequests.length > 0 && (
+                <div className="border-b border-amber-100 bg-amber-50/80 px-4 py-3 shrink-0">
+                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                        <div>
+                            <div className="flex items-center gap-2 text-sm font-black text-amber-900">
+                                <KeyRound className="h-4 w-4" />
+                                Password reset help needed
+                            </div>
+                            <p className="mt-1 text-xs text-amber-800">
+                                {activeResetRequests.length} corporate reset request{activeResetRequests.length === 1 ? "" : "s"} waiting for admin-assisted OTP.
+                            </p>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                            {activeResetRequests.slice(0, 3).map((request) => {
+                                const user = (users || []).find((item) => item.id === request.userId);
+                                return (
+                                    <Button
+                                        key={request.id}
+                                        size="sm"
+                                        variant="outline"
+                                        className="h-8 rounded-lg border-amber-200 bg-white text-amber-900 hover:bg-amber-100"
+                                        disabled={!user || resetOtpMutation.isPending}
+                                        onClick={() => user && resetOtpMutation.mutate(user.id)}
+                                    >
+                                        Generate code for {request.user.username || request.user.name || "user"}
+                                    </Button>
+                                );
+                            })}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Table Area */}
             <div className="flex-1 overflow-auto custom-scrollbar relative bg-slate-50/30">
@@ -234,6 +311,34 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
                                         <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                                             <Button variant="ghost" size="icon" className="h-8 w-8 text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg">
                                                 <PanelRight className="w-4 h-4" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-amber-600 bg-amber-50 hover:bg-amber-100 rounded-lg"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    resetOtpMutation.mutate(user.id);
+                                                }}
+                                                disabled={resetOtpMutation.isPending}
+                                                title="Generate 6-digit reset code"
+                                            >
+                                                <KeyRound className="h-4 w-4" />
+                                            </Button>
+                                            <Button
+                                                variant="ghost"
+                                                size="icon"
+                                                className="h-8 w-8 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded-lg"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (confirm("Reset this portal user's password? The new password will be shown once.")) {
+                                                        resetPasswordMutation.mutate(user.id);
+                                                    }
+                                                }}
+                                                disabled={resetPasswordMutation.isPending}
+                                                title="Instant temporary password"
+                                            >
+                                                <ShieldCheck className="h-4 w-4" />
                                             </Button>
                                             <Button
                                                 variant="ghost"
@@ -345,9 +450,14 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
                                         <div className="flex items-center gap-2 text-sm text-slate-500">
                                             <AtSign className="w-4 h-4" /> Username
                                         </div>
-                                        <span className="text-sm font-mono font-medium text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
-                                            {selectedUser.username}
-                                        </span>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-mono font-medium text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
+                                                {selectedUser.username}
+                                            </span>
+                                            <Button variant="ghost" size="icon" className="h-7 w-7 rounded-lg" onClick={() => handleCopyToken(selectedUser.username || "")}>
+                                                {copied ? <Check className="h-3.5 w-3.5 text-emerald-500" /> : <Copy className="h-3.5 w-3.5 text-slate-500" />}
+                                            </Button>
+                                        </div>
                                     </div>
                                     <div className="flex items-center justify-between p-3">
                                         <div className="flex items-center gap-2 text-sm text-slate-500">
@@ -366,7 +476,28 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
                                 </div>
 
                                 <div className="space-y-3 pt-6 border-t border-slate-200/60 text-center">
-                                    <p className="text-xs text-slate-400">Need to revoke access?</p>
+                                    <Button
+                                        className="w-full rounded-xl bg-blue-600 text-white hover:bg-blue-700"
+                                        disabled={resetOtpMutation.isPending}
+                                        onClick={() => resetOtpMutation.mutate(selectedUser.id)}
+                                    >
+                                        {resetOtpMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        Generate 6-Digit Reset Code
+                                    </Button>
+                                    <p className="text-xs text-slate-500">Use this when the client calls for forgot-password help.</p>
+                                    <Button
+                                        variant="outline"
+                                        className="w-full rounded-xl border-slate-200 text-slate-700 hover:bg-slate-100"
+                                        disabled={resetPasswordMutation.isPending}
+                                        onClick={() => {
+                                            if (confirm("Reset this portal user's password? The new password will be shown once.")) {
+                                                resetPasswordMutation.mutate(selectedUser.id);
+                                            }
+                                        }}
+                                    >
+                                        {resetPasswordMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        Instant Temporary Password
+                                    </Button>
                                     <Button
                                         variant="outline"
                                         className="w-full rounded-xl text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
@@ -396,7 +527,7 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
                             Add Corporate User
                         </DialogTitle>
                         <DialogDescription className="mt-2 text-slate-500 text-sm">
-                            Create a login for this company's employees. A random password will be generated and emailed to them.
+                            Create a login for this company's employees. The temporary password will be shown once for admin handover.
                         </DialogDescription>
                     </div>
                     <form onSubmit={handleSubmit} className="p-6 space-y-4">
@@ -433,7 +564,7 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
                             </Button>
                             <Button type="submit" disabled={createUserMutation.isPending} className="rounded-xl bg-blue-600 hover:bg-blue-700 shadow-sm text-white">
                                 {createUserMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Create & Send Email
+                                Create User
                             </Button>
                         </div>
                     </form>
@@ -449,7 +580,7 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
                         </div>
                         <DialogTitle className="text-2xl font-bold text-slate-800 mb-2">User Created!</DialogTitle>
                         <DialogDescription className="text-slate-500">
-                            Attempts were made to email these credentials. Please copy them now as a backup.
+                            Copy these credentials now. The password is shown once and cannot be recovered later.
                         </DialogDescription>
 
                         <div className="mt-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3 text-left">
@@ -479,6 +610,58 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
 
                         <Button
                             onClick={() => setCreatedUserCreds(null)}
+                            className="w-full mt-6 rounded-xl bg-slate-800 hover:bg-slate-900 text-white h-11 shadow-sm"
+                        >
+                            Done
+                        </Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!otpResetCode} onOpenChange={(open) => !open && setOtpResetCode(null)}>
+                <DialogContent className="sm:max-w-md bg-white rounded-2xl border-0 shadow-2xl p-0 overflow-hidden text-center">
+                    <div className="px-6 py-8">
+                        <div className="w-16 h-16 rounded-2xl bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-4">
+                            <KeyRound className="w-8 h-8" />
+                        </div>
+                        <DialogTitle className="text-2xl font-bold text-slate-800 mb-2">Reset Code Ready</DialogTitle>
+                        <DialogDescription className="text-slate-500">
+                            Give this code only after verifying the corporate user. It expires in 10 minutes.
+                        </DialogDescription>
+
+                        <div className="mt-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3 text-left">
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm font-semibold text-slate-500">Username</span>
+                                <code className="bg-white border border-slate-200 px-3 py-1 rounded-lg text-slate-700 font-mono text-sm shadow-sm">
+                                    {otpResetCode?.username}
+                                </code>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm font-semibold text-slate-500">6-digit code</span>
+                                <div className="flex items-center gap-2">
+                                    <code className="bg-white border border-slate-200 px-4 py-1 rounded-lg text-blue-600 font-mono font-black text-lg tracking-[0.25em] shadow-sm select-all">
+                                        {otpResetCode?.code}
+                                    </code>
+                                    <Button
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-8 w-8 rounded-lg shrink-0 border-slate-200"
+                                        onClick={() => handleCopyToken(otpResetCode?.code || "")}
+                                    >
+                                        {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4 text-slate-500" />}
+                                    </Button>
+                                </div>
+                            </div>
+                            <div className="flex justify-between items-center">
+                                <span className="text-sm font-semibold text-slate-500">Expires</span>
+                                <span className="text-sm font-bold text-slate-700">
+                                    {otpResetCode?.expiresAt ? format(new Date(otpResetCode.expiresAt), "h:mm a") : "10 minutes"}
+                                </span>
+                            </div>
+                        </div>
+
+                        <Button
+                            onClick={() => setOtpResetCode(null)}
                             className="w-full mt-6 rounded-xl bg-slate-800 hover:bg-slate-900 text-white h-11 shadow-sm"
                         >
                             Done

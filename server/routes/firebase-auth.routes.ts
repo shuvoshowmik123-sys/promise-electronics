@@ -52,7 +52,11 @@ router.post("/api/auth/firebase", async (req, res) => {
             } as any).returning();
         }
 
-        // Set Express session
+        // Set Express session. The customer app authenticates off session.customerId
+        // (requireCustomerAuth / getCustomerId / /api/customer/me all read customerId).
+        // Setting only userId left Google logins unrecognized → instant 401 / "logged
+        // out" despite a successful token exchange.
+        (req.session as any).customerId = user!.id;
         (req.session as any).userId = user!.id;
         (req.session as any).role = user!.role;
         (req.session as any).authMethod = "firebase";

@@ -181,8 +181,6 @@ router.post('/api/warranty-claims', async (req: Request, res: Response) => {
 // Approve warranty claim
 router.patch('/api/warranty-claims/:id/approve', async (req: Request, res: Response) => {
     try {
-        const { approvedBy, approvedByName, approvedByRole } = req.body;
-
         const claim = await warrantyRepo.getWarrantyClaim(req.params.id);
         if (!claim) {
             return res.status(404).json({ error: 'Warranty claim not found' });
@@ -191,6 +189,14 @@ router.patch('/api/warranty-claims/:id/approve', async (req: Request, res: Respo
         if (claim.status !== 'pending') {
             return res.status(400).json({ error: `Cannot approve claim with status: ${claim.status}` });
         }
+
+        // Authorization MUST be based on the authenticated user's real role — never
+        // a client-supplied req.body.approvedByRole (that let any admin send
+        // approvedByRole:'Super Admin' to bypass the gate / expired-warranty override).
+        const actor = (req as any).user;
+        const approvedBy = actor?.id;
+        const approvedByName = actor?.name;
+        const approvedByRole = actor?.role;
 
         // Check role permission (Manager or Super Admin can approve)
         if (!['Manager', 'Super Admin', 'Admin'].includes(approvedByRole)) {
@@ -229,7 +235,7 @@ router.patch('/api/warranty-claims/:id/approve', async (req: Request, res: Respo
 // Reject warranty claim
 router.patch('/api/warranty-claims/:id/reject', async (req: Request, res: Response) => {
     try {
-        const { approvedBy, approvedByName, approvedByRole, rejectionReason } = req.body;
+        const { rejectionReason } = req.body;
 
         const claim = await warrantyRepo.getWarrantyClaim(req.params.id);
         if (!claim) {
@@ -239,6 +245,12 @@ router.patch('/api/warranty-claims/:id/reject', async (req: Request, res: Respon
         if (claim.status !== 'pending') {
             return res.status(400).json({ error: `Cannot reject claim with status: ${claim.status}` });
         }
+
+        // Authorization from the authenticated user's real role, not client body.
+        const actor = (req as any).user;
+        const approvedBy = actor?.id;
+        const approvedByName = actor?.name;
+        const approvedByRole = actor?.role;
 
         if (!['Manager', 'Super Admin', 'Admin'].includes(approvedByRole)) {
             return res.status(403).json({ error: 'Only Manager or Admin can reject warranty claims' });
@@ -294,9 +306,13 @@ router.post('/api/warranty-claims/:id/create-job', async (req: Request, res: Res
             parentJobId: claim.originalJobId, // Link to original job
             jobType: 'warranty_claim',
             status: 'Pending',
-            paymentStatus: 'Warranty', // No charge
-            problemStatement: `WARRANTY CLAIM: ${claim.claimReason}`,
-            notes: `Warranty claim #${claim.id}. Original job: ${claim.originalJobId}`,
+            paymentStatus: 'paid',
+            billingStatus: 'billed',
+            estimatedCost: 0,
+            paidAmount: 0,
+            remainingAmount: 0,
+            issue: `CRR / Reservice: ${claim.claimReason}`,
+            notes: `CRR / reservice #${claim.id}. Original job: ${claim.originalJobId}`,
             createdAt: undefined,
         } as any);
 

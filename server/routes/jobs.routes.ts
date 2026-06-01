@@ -341,43 +341,20 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requirePerm
             }
         }
 
-        // AUTO-SYNC: Propagate job status to linked service request
+        // Project customer-facing service request state from the linked job.
         try {
-            const linkedSR = await serviceRequestRepo.getServiceRequestByConvertedJobId(jobId);
-            if (linkedSR) {
-                const isPickup = linkedSR.servicePreference === 'pickup' || linkedSR.servicePreference === 'home_pickup';
-                const statusToTrackingMap: Record<string, string> = {
-                    'Diagnosing': 'Diagnosis Complete',
-                    'Pending Parts': 'Awaiting Parts',
-                    'In Progress': 'Repairing',
-                    'On Workbench': 'Repairing',
-                    'Ready': isPickup ? 'Ready for Return' : 'Ready for Collection',
-                    'Completed': isPickup ? 'Delivered' : 'Collected',
-                    'Cancelled': 'Cancelled',
-                };
-                const newTrackingStatus = statusToTrackingMap[nextStatus];
-
-                if (newTrackingStatus) {
-                    await serviceRequestRepo.updateServiceRequest(linkedSR.id, { trackingStatus: newTrackingStatus });
-                    await serviceRequestRepo.createServiceRequestEvent({
-                        serviceRequestId: linkedSR.id,
-                        status: newTrackingStatus,
-                        message: `Auto-synced from Job ${updatedJob?.id?.slice(-6)?.toUpperCase() || jobId}: status → ${nextStatus}`,
-                        actor: 'System Auto-Sync'
-                    });
-                    // Notify customer real-time
-                    if (linkedSR.customerId) {
-                        notifyCustomerUpdate(linkedSR.customerId, {
-                            type: 'order_update',
-                            orderId: linkedSR.id,
-                            trackingStatus: newTrackingStatus,
-                            updatedAt: new Date().toISOString()
-                        });
-                    }
-                }
+            const projection = await jobService.syncLinkedServiceRequestFromJob(jobId, "System Projection");
+            if (projection.serviceRequest?.customerId && projection.changed) {
+                notifyCustomerUpdate(projection.serviceRequest.customerId, {
+                    type: 'order_update',
+                    orderId: projection.serviceRequest.id,
+                    trackingStatus: projection.trackingStatus,
+                    status: projection.status,
+                    updatedAt: new Date().toISOString()
+                });
             }
         } catch (syncErr) {
-            console.error('[AutoSync] Failed to sync SR from advance-status:', syncErr);
+            console.error('[Projection] Failed to project SR from advance-status:', syncErr);
         }
 
         res.json(updatedJob);
@@ -412,28 +389,12 @@ router.post('/api/job-tickets/bulk-update', requireAdminAuth, requirePermission(
                 req: req
             });
 
-            // AUTO-SYNC for bulk updates with status change
+            // Project linked service request status from job status change.
             if (updates.status && updatedJob) {
                 try {
-                    const linkedSR = await serviceRequestRepo.getServiceRequestByConvertedJobId(id);
-                    if (linkedSR) {
-                        const isPickup = linkedSR.servicePreference === 'pickup' || linkedSR.servicePreference === 'home_pickup';
-                        const statusToTrackingMap: Record<string, string> = {
-                            'Diagnosing': 'Diagnosis Complete',
-                            'Pending Parts': 'Awaiting Parts',
-                            'In Progress': 'Repairing',
-                            'On Workbench': 'Repairing',
-                            'Ready': isPickup ? 'Ready for Return' : 'Ready for Collection',
-                            'Completed': isPickup ? 'Delivered' : 'Collected',
-                            'Cancelled': 'Cancelled',
-                        };
-                        const newTracking = statusToTrackingMap[updates.status];
-                        if (newTracking) {
-                            await serviceRequestRepo.updateServiceRequest(linkedSR.id, { trackingStatus: newTracking });
-                        }
-                    }
+                    await jobService.syncLinkedServiceRequestFromJob(id, "System Projection");
                 } catch (syncErr) {
-                    console.error('[AutoSync] Failed to sync SR from bulk-update:', syncErr);
+                    console.error('[Projection] Failed to project SR from bulk-update:', syncErr);
                 }
             }
 
@@ -696,6 +657,23 @@ router.patch('/api/job-tickets/:id', requireAdminAuth, requirePermission('jobs')
                 status: job.status,
             },
         });
+
+        if (updateData.technician !== undefined || updateData.assignedTechnicianId !== undefined) {
+            try {
+                const projection = await jobService.syncLinkedServiceRequestFromJob(job.id, "System Projection");
+                if (projection.serviceRequest?.customerId && projection.changed) {
+                    notifyCustomerUpdate(projection.serviceRequest.customerId, {
+                        type: 'order_update',
+                        orderId: projection.serviceRequest.id,
+                        trackingStatus: projection.trackingStatus,
+                        status: projection.status,
+                        updatedAt: new Date().toISOString()
+                    });
+                }
+            } catch (syncErr) {
+                console.error('[Projection] Failed to project SR from job update:', syncErr);
+            }
+        }
 
         // Send push notification to customer on status change
         if (updateData.status && updateData.status !== existingJob.status && job.customerPhone) {

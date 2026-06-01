@@ -549,9 +549,9 @@ export default function HomePage() {
   if (isMobile) {
     return (
       <>
-        <div className="min-h-screen bg-slate-50 pb-24 pt-4 px-4">
+        <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white pb-24 px-4">
           {/* Mobile Hero */}
-          <div className="mb-6 -mx-4">
+          <div className="-mx-4 mb-6">
             {activeHeroSlides.length > 0 ? (
               <MobileHero heroImage={activeHeroSlides[0]} />
             ) : (
@@ -570,12 +570,12 @@ export default function HomePage() {
           </div>
 
           {/* Mobile Header */}
-          <div className="flex justify-between items-center mb-6">
+          <div className="mb-6 flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-heading font-bold text-slate-800">
+              <h1 className="font-heading text-2xl font-bold text-slate-950">
                 Hello, {customer?.name ? customer.name.split(' ')[0] : 'Guest'}
               </h1>
-              <p className="text-sm text-slate-500">Welcome to Promise Electronics</p>
+              <p className="text-sm text-emerald-700">কীভাবে সাহায্য করতে পারি?</p>
             </div>
             <Link href="/my-profile">
               <div className="relative cursor-pointer">
@@ -588,8 +588,8 @@ export default function HomePage() {
                     />
                   </div>
                 ) : (
-                  <div className="p-2.5 bg-slate-100 rounded-full shadow-neumorph text-slate-600 relative">
-                    <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-slate-100"></div>
+                  <div className="relative rounded-full bg-white p-2.5 text-emerald-700 shadow-sm ring-1 ring-emerald-100">
+                    <div className="absolute right-0 top-0 h-3 w-3 rounded-full border-2 border-white bg-emerald-500"></div>
                     <Users className="w-6 h-6" />
                   </div>
                 )}
@@ -623,9 +623,9 @@ export default function HomePage() {
               <ScrollableList className="flex gap-4 pb-4 -mx-4 px-4">
                 {recentActivities.map((activity) => (
                   <Link key={`${activity.type}-${activity.id}`} href={activity.link}>
-                    <div className="min-w-[240px] bg-slate-100 rounded-xl p-4 shadow-neumorph shrink-0">
+                    <div className="min-w-[240px] shrink-0 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
                       <div className="flex items-center gap-3 mb-2">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${activity.type === 'repair' ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center ${activity.type === 'repair' ? 'bg-emerald-100 text-emerald-700' : 'bg-green-100 text-green-600'
                           }`}>
                           {activity.type === 'repair' ? <Wrench className="w-4 h-4" /> : <Package className="w-4 h-4" />}
                         </div>
@@ -642,7 +642,7 @@ export default function HomePage() {
                 ))}
               </ScrollableList>
             ) : (
-              <div className="text-center py-8 bg-slate-50 rounded-xl border border-dashed border-slate-300">
+              <div className="rounded-3xl border border-dashed border-emerald-200 bg-white py-8 text-center">
                 <p className="text-slate-500 text-sm">No recent activity</p>
               </div>
             )}
@@ -650,21 +650,21 @@ export default function HomePage() {
 
           {/* Problem-Based Navigation (Mobile) */}
           <div className="mb-8">
-            <h3 className="text-lg font-bold text-slate-800 mb-4">What's Wrong?</h3>
+            <h3 className="mb-4 text-lg font-bold text-slate-950">What's Wrong?</h3>
             <div className="grid grid-cols-3 gap-3">
               {problemNavItems.slice(0, 6).map((item: any) => {
                 const Icon = iconMap[item.icon] || HelpCircle;
                 return (
                   <Link key={item.id} href="/repair">
-                    <div className="p-3 rounded-xl bg-white shadow-sm border border-slate-100 flex flex-col items-center justify-center text-center gap-2 aspect-square">
-                      <div className="w-8 h-8 rounded-full bg-slate-50 flex items-center justify-center text-primary">
+                    <div className="flex aspect-square flex-col items-center justify-center gap-2 rounded-3xl border border-emerald-100 bg-white p-3 text-center shadow-sm active:bg-emerald-50">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
                         {item.iconUrl ? (
                           <img src={item.iconUrl} alt={item.title} className="w-5 h-5 object-contain" />
                         ) : (
                           <Icon className="w-5 h-5" />
                         )}
                       </div>
-                      <span className="text-[10px] font-medium text-slate-700 leading-tight">{item.title}</span>
+                      <span className="text-[10px] font-bold leading-tight text-slate-700">{item.title}</span>
                     </div>
                   </Link>
                 );
@@ -674,15 +674,15 @@ export default function HomePage() {
 
           {/* Why Choose Us (Mobile) */}
           <div className="mb-8">
-            <h3 className="text-lg font-bold text-slate-800 mb-4">Why Choose Us?</h3>
+            <h3 className="mb-4 text-lg font-bold text-slate-950">Why Choose Us?</h3>
             <div className="space-y-3">
               {[
                 { icon: ShieldCheck, title: "Certified Experts", desc: "Factory-trained technicians" },
                 { icon: Clock, title: "Fast Service", desc: "24-48 hour turnaround" },
                 { icon: CheckCircle2, title: "Genuine Parts", desc: "Authentic parts warranty" }
               ].map((feature, i) => (
-                <div key={i} className="flex items-center gap-4 p-4 bg-white rounded-xl shadow-sm border border-slate-100">
-                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                <div key={i} className="flex items-center gap-4 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
                     <feature.icon className="w-5 h-5" />
                   </div>
                   <div>

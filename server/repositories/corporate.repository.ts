@@ -335,8 +335,15 @@ export class CorporateRepository {
         const client = await this.getCorporateClient(data.corporateClientId);
         if (!client) throw new Error("Corporate Client not found");
 
-        const jobs = await db.select().from(schema.jobTickets)
+        const allJobs = await db.select().from(schema.jobTickets)
             .where(inArray(schema.jobTickets.id, data.jobIds));
+
+        // Double-billing guard: skip any job already attached to a bill, so a job
+        // cannot be billed to the client twice.
+        const jobs = allJobs.filter(j => j.billingStatus !== 'billed' && !j.corporateBillId);
+        if (jobs.length === 0) {
+            throw new Error("No unbilled jobs to bill — all selected jobs are already billed.");
+        }
 
         let subtotal = 0;
         const lineItems = [];
@@ -366,8 +373,22 @@ export class CorporateRepository {
         const vat = 0;
         const grandTotal = subtotal - discount + vat;
 
-        const [countRes] = await db.select({ count: count() }).from(schema.corporateBills);
-        const seq = (Number(countRes?.count) || 0) + 1;
+        // Per-client sequential bill number from the max existing for THIS client.
+        // The old `global count + 1` produced gaps/reuse when any bill was deleted
+        // and cross-client jumps — and a reused number collided with the
+        // bill_number unique constraint (500). (Mirrors the challan numbering above.)
+        const clientBills = await db.select({ billNumber: schema.corporateBills.billNumber })
+            .from(schema.corporateBills)
+            .where(eq(schema.corporateBills.corporateClientId, data.corporateClientId));
+        let maxSeq = 0;
+        for (const b of clientBills) {
+            const m = b.billNumber?.match(/-BILL-(\d+)$/);
+            if (m) {
+                const n = parseInt(m[1], 10);
+                if (!isNaN(n) && n > maxSeq) maxSeq = n;
+            }
+        }
+        const seq = maxSeq + 1;
         const billNumber = `${client.shortCode}-BILL-${seq.toString().padStart(4, '0')}`;
         const billId = nanoid();
 
@@ -395,12 +416,14 @@ export class CorporateRepository {
             dueDate: new Date(Date.now() + 30 * 86400000),
         });
 
+        // Stamp ONLY the jobs actually billed (the unbilled subset) — using
+        // data.jobIds here would re-attach already-billed jobs to this new bill.
         await db.update(schema.jobTickets)
             .set({
                 corporateBillId: billId,
                 billingStatus: 'billed'
             })
-            .where(inArray(schema.jobTickets.id, data.jobIds));
+            .where(inArray(schema.jobTickets.id, jobs.map(j => j.id)));
 
         return bill;
     }

@@ -7,6 +7,17 @@ export interface Device {
     serialNumber: string;
     reportedDefect: string;
     initialStatus: "OK" | "NG";
+    status?: "Received" | "Pending" | "Declared OK" | "Declared NG";
+    customerName?: string;
+    externalJobRef?: string;
+    challanNumber?: string;
+    itemType?: string;
+    batchNumber?: string;
+    receivedDate?: string;
+    duplicateHint?: string;
+    duplicateMatchJobId?: string;
+    reviewAction?: "new_job" | "crr" | "ignore" | "super_admin_review";
+    crrReason?: string;
 }
 
 export interface ValidationResult {

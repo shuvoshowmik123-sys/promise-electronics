@@ -48,6 +48,7 @@ export async function fetchApi<T>(url: string, options?: RequestInit): Promise<T
         credentials: 'include',
         headers: baseHeaders,
     });
+    const contentType = response.headers.get("content-type") || "";
 
     if (import.meta.env?.DEV) {
         console.log(`[API] Response status: ${response.status} ${response.statusText}`);
@@ -64,9 +65,8 @@ export async function fetchApi<T>(url: string, options?: RequestInit): Promise<T
         let errorData;
         try {
             errorData = JSON.parse(rawText);
-        } catch (parseError) {
-            console.error(`[API] Failed to parse error response:`, rawText.substring(0, 500));
-            throw new ApiError(`Request failed with status ${response.status}: ${rawText.substring(0, 100)}`, undefined, response.status);
+        } catch {
+            throw new ApiError(`Request failed with status ${response.status}`, "NON_JSON_ERROR_RESPONSE", response.status);
         }
 
         if (errorData) {
@@ -82,11 +82,14 @@ export async function fetchApi<T>(url: string, options?: RequestInit): Promise<T
         return null as T;
     }
 
+    if (!contentType.includes("application/json")) {
+        throw new ApiError("Invalid JSON response", "NON_JSON_RESPONSE", response.status);
+    }
+
     try {
         return JSON.parse(rawText);
-    } catch (parseError) {
-        console.error(`[API] Failed to parse JSON response:`, rawText.substring(0, 500));
-        throw new ApiError(`Invalid JSON response: ${rawText.substring(0, 100)}`);
+    } catch {
+        throw new ApiError("Invalid JSON response", "INVALID_JSON_RESPONSE", response.status);
     }
 }
 
@@ -130,9 +133,9 @@ async function nativeFetchApi<T>(fullUrl: string, options?: RequestInit): Promis
         } else {
             response = await CapacitorHttp.get(httpOptions);
         }
-    } catch (err: any) {
+    } catch (err: unknown) {
         console.error(`[Native API] Request failed:`, err);
-        throw new ApiError(err.message || 'Network request failed');
+        throw new ApiError(err instanceof Error ? err.message : 'Network request failed');
     }
 
     if (import.meta.env?.DEV) {

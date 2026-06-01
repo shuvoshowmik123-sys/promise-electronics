@@ -58,11 +58,14 @@ export default function CustomersTab() {
         },
     });
 
-    const filteredCustomers = customers.filter((c: any) =>
-        c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.phone.includes(searchTerm) ||
-        c.email?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const filteredCustomers = customers.filter((c: any) => {
+        const q = searchTerm.toLowerCase();
+        return (
+            (c.name?.toLowerCase().includes(q)) ||
+            (c.phone?.includes(searchTerm)) ||
+            (c.email?.toLowerCase().includes(q))
+        );
+    });
 
     return (
         <motion.div
@@ -104,7 +107,7 @@ export default function CustomersTab() {
                 >
                     <div className="flex flex-col justify-end h-full mt-2">
                         <div className="text-3xl font-black tracking-tighter text-slate-800 drop-shadow-sm font-mono">
-                            {customers.reduce((acc: number, c: any) => acc + (c.ordersCount || 0), 0)}
+                            {customers.reduce((acc: number, c: any) => acc + (c.totalOrders || 0), 0)}
                         </div>
                         <div className="text-slate-500 text-sm mt-0.5">Across all customers</div>
                     </div>

@@ -6,9 +6,10 @@
 
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
+import { createHash, randomUUID } from 'crypto';
 
 import { jobRepo, serviceRequestRepo, userRepo, systemRepo, settingsRepo, notificationRepo } from '../repositories/index.js';
-import { insertServiceRequestSchema } from '../../shared/schema.js';
+import { insertServiceRequestSchema, otpCodes, type ServiceRequest } from '../../shared/schema.js';
 import { requireAdminAuth, requirePermission } from './middleware/auth.js';
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { serviceRequestLimiter } from './middleware/rate-limit.js';
@@ -17,12 +18,41 @@ import { jobService } from '../services/job.service.js';
 import { publishJobTicketEvent, publishServiceRequestEvent } from '../services/admin-realtime.service.js';
 import { deriveTrackingStatus } from '../lib/workflowAutomation.js';
 import { logRouteError } from '../utils/route-error.js';
+import { smsService } from '../services/sms.service.js';
+import { db } from '../db.js';
+import { and, desc, eq, gt } from 'drizzle-orm';
 
 const router = Router();
 const SERVICE_REQUEST_REALTIME_TAGS = ["serviceRequests", "dashboardStats"] as const;
 const SERVICE_REQUEST_CREATE_REALTIME_TAGS = [...SERVICE_REQUEST_REALTIME_TAGS, "adminNotifications", "adminNotificationCount"] as const;
 const JOB_REALTIME_TAGS = ["jobTickets", "jobOverview", "dashboardStats"] as const;
 const JOB_CREATE_REALTIME_TAGS = [...JOB_REALTIME_TAGS, "adminNotifications", "adminNotificationCount"] as const;
+const CUSTODY_STAGES = ["picked_up", "device_received", "completed"];
+
+function hashOtpCode(code: string): string {
+    return createHash('sha256').update(code).digest('hex');
+}
+
+function isPickupRequest(request: ServiceRequest): boolean {
+    return request.servicePreference === "pickup"
+        || request.servicePreference === "home_pickup"
+        || request.serviceMode === "pickup";
+}
+
+function getCustodyPurpose(id: string, action: string): string {
+    return `custody_${action}:${id}`;
+}
+
+function getCustodyTargetStage(request: ServiceRequest, action: string): string {
+    if (action === "receive") return isPickupRequest(request) ? "picked_up" : "device_received";
+    if (action === "delivery") return "completed";
+    throw new Error("Invalid custody action");
+}
+
+function getCustodyLabel(request: ServiceRequest, action: string): string {
+    if (action === "receive") return isPickupRequest(request) ? "pickup receive" : "counter receive";
+    return "delivery handover";
+}
 
 // ============================================
 // Public Service Requests API
@@ -165,30 +195,10 @@ router.post('/api/admin/service-requests/:id/mark-interacted', requireAdminAuth,
 router.post('/api/admin/service-requests/sync-job/:jobId', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const { jobId } = req.params;
-        const jobTicket = await jobRepo.getJobTicket(jobId);
-        if (!jobTicket) return res.status(404).json({ error: 'Job ticket not found' });
+        const result = await jobService.syncLinkedServiceRequestFromJob(jobId, "System Manager Sync");
+        if (!result.serviceRequest) return res.status(404).json({ error: 'No Service Request is linked to this Job Ticket' });
 
-        const serviceRequest = await serviceRequestRepo.getServiceRequestByConvertedJobId(jobId);
-        if (!serviceRequest) return res.status(404).json({ error: 'No Service Request is linked to this Job Ticket' });
-
-        // Map Job Ticket Status to Service Request Tracking Status
-        let trackingStatus = 'Technician Assigned';
-        if (jobTicket.status === 'In Progress') trackingStatus = 'Repairing';
-        if (jobTicket.status === 'Ready') trackingStatus = 'Ready for Collection';
-        if (jobTicket.status === 'Completed') trackingStatus = 'Collected';
-
-        const updatedRequest = await serviceRequestRepo.updateServiceRequest(serviceRequest.id, {
-            trackingStatus
-        });
-
-        await serviceRequestRepo.createServiceRequestEvent({
-            serviceRequestId: serviceRequest.id,
-            status: trackingStatus,
-            message: `Automatic Sync: Internal Job progressed to ${jobTicket.status}.`,
-            actor: 'System Manager Sync'
-        });
-
-        res.json(updatedRequest);
+        res.json(result.serviceRequest);
     } catch (error: any) {
         logRouteError('ServiceRequests.SyncJob', req, error);
         res.status(500).json({ error: 'Failed to sync service request', details: error.message });
@@ -282,67 +292,26 @@ router.post('/api/service-requests', serviceRequestLimiter, async (req: Request,
  */
 router.patch('/api/service-requests/:id', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
     try {
-        // Check if status is being changed to "Work Order" - auto-create job ticket
-        if (req.body.status === 'Work Order' || req.body.status === 'Converted') {
-            const originalRequest = await serviceRequestRepo.getServiceRequest(req.params.id);
-            if (!originalRequest) {
+        const updateData = { ...req.body };
+        if (updateData.trackingStatus) delete updateData.trackingStatus;
+
+        if (updateData.status === 'Work Order' || updateData.status === 'Converted') {
+            const existingRequest = await serviceRequestRepo.getServiceRequest(req.params.id);
+            if (!existingRequest) {
                 return res.status(404).json({ error: 'Service request not found' });
             }
 
-            const originalStatus = originalRequest.status;
-            const hasExistingWorkOrder = originalStatus === 'Work Order' || originalStatus === 'Converted' || !!originalRequest.convertedJobId;
-
-            if (!hasExistingWorkOrder) {
-                const jobId = await jobRepo.getNextJobNumber();
-
-                const jobTicketData = {
-                    id: jobId,
-                    customer: originalRequest.customerName,
-                    customerPhone: originalRequest.phone || null,
-                    customerAddress: originalRequest.address || null,
-                    device: `${originalRequest.brand}${originalRequest.modelNumber ? ` ${originalRequest.modelNumber}` : ''}`,
-                    tvSerialNumber: null,
-                    issue: originalRequest.primaryIssue,
-                    status: 'Pending' as const,
-                    priority: 'Medium' as const,
-                    technician: 'Unassigned',
-                    screenSize: originalRequest.screenSize || null,
-                    notes: originalRequest.description || null,
-                };
-
-                const newJob = await jobRepo.createJobTicket(jobTicketData);
-                req.body.convertedJobId = newJob.id;
-
-                await serviceRequestRepo.createServiceRequestEvent({
-                    serviceRequestId: req.params.id,
-                    status: 'Work Order',
-                    message: `Work order ${newJob.id} created. A technician can now be assigned.`,
-                    actor: 'Admin',
-                });
-
-                publishJobTicketEvent({
-                    action: 'created',
-                    entityId: newJob.id,
-                    invalidate: [...JOB_CREATE_REALTIME_TAGS],
-                    permissions: ['jobs'],
-                    payload: {
-                        jobId: newJob.id,
-                        ticketNumber: newJob.id,
-                        status: newJob.status,
-                    },
-                    toast: {
-                        level: 'success',
-                        title: 'Job ticket created',
-                        message: `Job ${newJob.id} was created from a service request.`,
-                        sound: true,
-                    },
+            if (!existingRequest.convertedJobId) {
+                return res.status(409).json({
+                    error: 'Device custody must be confirmed before creating a job ticket',
+                    nextAction: 'Use Verify & Convert after pickup/drop-off is confirmed',
                 });
             }
+
+            updateData.status = 'Work Order';
         }
 
         // Convert date strings to Date objects
-        const updateData = { ...req.body };
-        if (updateData.trackingStatus) delete updateData.trackingStatus;
         if (updateData.scheduledPickupDate && typeof updateData.scheduledPickupDate === 'string') {
             updateData.scheduledPickupDate = new Date(updateData.scheduledPickupDate);
         }
@@ -415,6 +384,18 @@ router.patch('/api/service-requests/:id', requireAdminAuth, requirePermission('s
 router.delete('/api/service-requests/:id', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
     try {
         const requestId = req.params.id;
+
+        // Guard: a request already converted to a job ticket is the source record
+        // for that job (customer's original report, media, timeline). Deleting it
+        // orphans the job's history. Block — delete the job first if truly needed.
+        const existing = await serviceRequestRepo.getServiceRequest(requestId);
+        if (existing?.convertedJobId) {
+            return res.status(409).json({
+                error: 'Cannot delete: this request was converted to a job ticket',
+                convertedJobId: existing.convertedJobId,
+            });
+        }
+
         const success = await serviceRequestRepo.deleteServiceRequest(requestId);
         if (!success) {
             return res.status(404).json({ error: 'Service request not found' });
@@ -457,7 +438,7 @@ router.get('/api/admin/service-requests/:id/next-stages', requireAdminAuth, requ
             stageFlow: [...flow]
         });
     } catch (error: any) {
-        console.error('Failed to get next stages:', error);
+        logRouteError('ServiceRequests.NextStages', req, error);
         res.status(500).json({ error: error.message || 'Failed to get next stages' });
     }
 });
@@ -470,6 +451,13 @@ router.post('/api/admin/service-requests/:id/transition-stage', requireAdminAuth
         const { stage, actorName } = req.body;
         if (!stage) {
             return res.status(400).json({ error: 'Stage is required' });
+        }
+
+        if (CUSTODY_STAGES.includes(stage)) {
+            return res.status(409).json({
+                error: 'Customer OTP is required for custody handoff',
+                custodyAction: stage === 'completed' ? 'delivery' : 'receive',
+            });
         }
 
         const adminUser = await userRepo.getUser(req.session.adminUserId!);
@@ -520,10 +508,171 @@ router.post('/api/admin/service-requests/:id/transition-stage', requireAdminAuth
 
         res.json(result);
     } catch (error: any) {
-        console.error('Failed to transition stage:', error);
+        logRouteError('ServiceRequests.TransitionStage', req, error);
         res.status(400).json({ error: error.message || 'Failed to transition stage' });
     }
 
+});
+
+router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+    try {
+        const { action } = req.body;
+        if (action !== "receive" && action !== "delivery") {
+            return res.status(400).json({ error: 'Invalid custody action' });
+        }
+
+        const request = await serviceRequestRepo.getServiceRequest(req.params.id);
+        if (!request) return res.status(404).json({ error: 'Service request not found' });
+        if (!request.phone) return res.status(400).json({ error: 'Customer phone number is required' });
+        if (action === "delivery" && !request.convertedJobId) {
+            return res.status(409).json({ error: 'Delivery OTP requires a linked job ticket' });
+        }
+
+        const normalizedPhone = smsService.normalizePhoneNumber(request.phone);
+        if (!smsService.isValidBangladeshPhone(normalizedPhone)) {
+            return res.status(400).json({ error: 'Customer phone number is invalid' });
+        }
+
+        const targetStage = getCustodyTargetStage(request, action);
+        const purpose = getCustodyPurpose(request.id, action);
+        const code = smsService.generateOtpCode();
+        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+        await db.insert(otpCodes).values({
+            id: randomUUID(),
+            phone: normalizedPhone,
+            codeHash: hashOtpCode(code),
+            purpose,
+            attempts: 0,
+            maxAttempts: 3,
+            expiresAt,
+            ipAddress: req.ip || null,
+        });
+
+        const label = getCustodyLabel(request, action);
+        const sms = await smsService.sendSms({
+            to: normalizedPhone,
+            message: `Promise Electronics ${label} OTP for ${request.ticketNumber || request.id}: ${code}. Valid for 5 minutes.`,
+        });
+
+        if (!sms.success) {
+            return res.status(500).json({ error: 'Failed to send custody OTP' });
+        }
+
+        await serviceRequestRepo.createServiceRequestEvent({
+            serviceRequestId: request.id,
+            status: request.trackingStatus || request.status,
+            message: `Customer OTP sent for ${label}.`,
+            actor: 'System',
+        });
+
+        res.json({
+            success: true,
+            action,
+            targetStage,
+            expiresAt: expiresAt.toISOString(),
+            phone: `+${normalizedPhone.slice(0, 5)}*****${normalizedPhone.slice(-2)}`,
+        });
+    } catch (error: any) {
+        logRouteError('ServiceRequests.SendCustodyOtp', req, error);
+        res.status(500).json({ error: error.message || 'Failed to send custody OTP' });
+    }
+});
+
+router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+    try {
+        const { action, code } = req.body;
+        if (action !== "receive" && action !== "delivery") {
+            return res.status(400).json({ error: 'Invalid custody action' });
+        }
+        if (!code) {
+            return res.status(400).json({ error: 'OTP code is required' });
+        }
+
+        const request = await serviceRequestRepo.getServiceRequest(req.params.id);
+        if (!request) return res.status(404).json({ error: 'Service request not found' });
+        if (!request.phone) return res.status(400).json({ error: 'Customer phone number is required' });
+
+        const normalizedPhone = smsService.normalizePhoneNumber(request.phone);
+        const purpose = getCustodyPurpose(request.id, action);
+        const records = await db
+            .select()
+            .from(otpCodes)
+            .where(and(
+                eq(otpCodes.phone, normalizedPhone),
+                eq(otpCodes.purpose, purpose),
+                gt(otpCodes.expiresAt, new Date())
+            ))
+            .orderBy(desc(otpCodes.createdAt))
+            .limit(1);
+        const otpRecord = records[0];
+
+        if (!otpRecord || otpRecord.verifiedAt) {
+            return res.status(400).json({ error: 'OTP not found or expired. Please send a new OTP.' });
+        }
+        if (otpRecord.attempts >= otpRecord.maxAttempts) {
+            return res.status(400).json({ error: 'Maximum OTP attempts exceeded. Please send a new OTP.' });
+        }
+
+        const codeHash = hashOtpCode(code.toString().trim());
+        if (codeHash !== otpRecord.codeHash) {
+            await db.update(otpCodes)
+                .set({ attempts: otpRecord.attempts + 1 })
+                .where(eq(otpCodes.id, otpRecord.id));
+            return res.status(400).json({
+                error: 'Invalid OTP code',
+                remainingAttempts: otpRecord.maxAttempts - otpRecord.attempts - 1,
+            });
+        }
+
+        await db.update(otpCodes)
+            .set({ verifiedAt: new Date() })
+            .where(eq(otpCodes.id, otpRecord.id));
+
+        const adminUser = await userRepo.getUser(req.session.adminUserId!);
+        const actor = adminUser?.name || 'Admin';
+        const targetStage = getCustodyTargetStage(request, action);
+        const result = await jobService.transitionStage(request.id, targetStage, actor);
+
+        await auditLogger.log({
+            userId: req.session.adminUserId!,
+            action: 'CONFIRM_CUSTODY_OTP',
+            entity: 'ServiceRequest',
+            entityId: request.id,
+            details: `Customer OTP confirmed for ${getCustodyLabel(request, action)}. Stage moved to ${targetStage}.`,
+            oldValue: { stage: request.stage, trackingStatus: request.trackingStatus },
+            newValue: { stage: result.serviceRequest.stage, trackingStatus: result.serviceRequest.trackingStatus },
+            req,
+        });
+
+        if (result.serviceRequest.customerId) {
+            notifyCustomerUpdate(result.serviceRequest.customerId, {
+                type: 'order_update',
+                orderId: result.serviceRequest.id,
+                ticketNumber: result.serviceRequest.ticketNumber,
+                stage: result.serviceRequest.stage,
+                trackingStatus: result.serviceRequest.trackingStatus,
+                updatedAt: new Date().toISOString()
+            });
+        }
+
+        publishServiceRequestEvent({
+            action: 'status_changed',
+            entityId: result.serviceRequest.id,
+            invalidate: [...SERVICE_REQUEST_REALTIME_TAGS],
+            permissions: ['serviceRequests'],
+            payload: {
+                serviceRequestId: result.serviceRequest.id,
+                ticketNumber: result.serviceRequest.ticketNumber || result.serviceRequest.id,
+                status: result.serviceRequest.stage || result.serviceRequest.status || undefined,
+            },
+        });
+
+        res.json(result);
+    } catch (error: any) {
+        logRouteError('ServiceRequests.ConfirmCustodyOtp', req, error);
+        res.status(400).json({ error: error.message || 'Failed to confirm custody OTP' });
+    }
 });
 
 /**
@@ -819,8 +968,8 @@ router.post('/api/admin/service-requests/:id/send-quote', requireAdminAuth, requ
     try {
         const { quoteAmount, quoteNotes, quoteValidDays } = req.body;
 
-        if (!quoteAmount || isNaN(Number(quoteAmount))) {
-            return res.status(400).json({ error: 'Valid quote amount is required' });
+        if (quoteAmount === undefined || isNaN(Number(quoteAmount)) || Number(quoteAmount) <= 0) {
+            return res.status(400).json({ error: 'A valid positive quote amount is required' });
         }
 
         const request = await serviceRequestRepo.getServiceRequest(req.params.id);

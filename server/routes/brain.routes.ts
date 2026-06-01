@@ -4,8 +4,16 @@ import { conversations, sessions, brainConfig } from "../brain/schema.js";
 import { desc, eq, sql, count, ilike, or } from "drizzle-orm";
 import { brainService } from "../brain/brain.service.js";
 import { logModelCase } from "../brain/kg.service.js";
+import { requireAdminAuth } from "./middleware/auth.js";
 
 const router = Router();
+
+// These are admin-dashboard (AI inbox) endpoints — reading customer chat history
+// and SENDING messages through the business's Meta/WhatsApp account. They were
+// mounted with no auth, exposing customer PII + message-impersonation to anyone.
+// Automatic AI replies run via the webhook → brainService directly, not here, so
+// requiring an admin session does not affect the live chat pipeline.
+router.use(requireAdminAuth);
 
 // Detect channel from session key (wa_ prefix = WhatsApp, otherwise Messenger)
 function detectChannel(senderPsid: string): "whatsapp" | "messenger" {

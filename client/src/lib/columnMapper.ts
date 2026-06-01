@@ -11,8 +11,10 @@ export interface FieldDefinition {
 }
 
 export interface FieldMapping {
-    sourceColumn: string;      // column name from uploaded file
-    targetField: keyof BulkRow | null; // system field name or null if unmapped
+    sourceColumn: string;
+    targetField: keyof BulkRow | null;
+    sourceType?: 'column' | 'default' | 'auto' | 'review';
+    defaultValue?: string;
     confidence: 'exact' | 'alias' | 'fuzzy' | 'manual' | 'unmapped';
 }
 
@@ -64,6 +66,48 @@ export const REQUIRED_FIELDS: FieldDefinition[] = [
 ];
 
 export const OPTIONAL_FIELDS: FieldDefinition[] = [
+    {
+        key: 'status',
+        label: 'Work Status',
+        required: false,
+        aliases: ['work status', 'job status', 'stage', 'workflow status']
+    },
+    {
+        key: 'customerName',
+        label: 'Customer Name',
+        required: false,
+        aliases: ['customer', 'customer name', 'end customer', 'client customer', 'party', 'consumer']
+    },
+    {
+        key: 'externalJobRef',
+        label: 'External Job Ref',
+        required: false,
+        aliases: ['external ref', 'external job', 'ref no', 'reference no', 'client ref', 'client job', 'tracking no']
+    },
+    {
+        key: 'challanNumber',
+        label: 'Challan Number',
+        required: false,
+        aliases: ['challan', 'challan no', 'challan number', 'chalan', 'dc no', 'delivery challan']
+    },
+    {
+        key: 'itemType',
+        label: 'Item Type',
+        required: false,
+        aliases: ['item type', 'type', 'goods type', 'work type', 'product type', 'service type']
+    },
+    {
+        key: 'batchNumber',
+        label: 'Batch Number',
+        required: false,
+        aliases: ['batch', 'batch no', 'batch number', 'lot', 'lot no']
+    },
+    {
+        key: 'receivedDate',
+        label: 'Received Date',
+        required: false,
+        aliases: ['date', 'receive date', 'received date', 'intake date', 'entry date']
+    },
     {
         key: 'physicalCondition',
         label: 'Physical Condition',
@@ -237,6 +281,7 @@ export function autoMapColumns(uploadedHeaders: string[]): MappingResult {
         mappings.push({
             sourceColumn: header,
             targetField: assignedField,
+            sourceType: assignedField ? 'column' : undefined,
             confidence
         });
     });
@@ -262,42 +307,89 @@ export function applyMapping(rawRows: Record<string, string>[], mappings: FieldM
         const newRow: any = {};
 
         mappings.forEach(mapping => {
-            // Find the value in the row using the source column name
-            // Handle case sensitivity? row keys usually come from parsing, which matches header exactly
-            if (mapping.targetField && mapping.sourceColumn) {
+            if (!mapping.targetField) return;
+
+            const sourceType = mapping.sourceType || (mapping.sourceColumn ? 'column' : undefined);
+
+            if (sourceType === 'default' && mapping.defaultValue !== undefined) {
+                newRow[mapping.targetField] = normalizeMappedValue(mapping.targetField, mapping.defaultValue);
+                return;
+            }
+
+            if (sourceType === 'auto') {
+                const detectedValue = autoDetectMappedValue(mapping.targetField, newRow, row);
+                if (detectedValue) newRow[mapping.targetField] = normalizeMappedValue(mapping.targetField, detectedValue);
+                return;
+            }
+
+            if (sourceType === 'review') return;
+
+            if (mapping.sourceColumn) {
                 let value = row[mapping.sourceColumn];
                 if (value === undefined) {
-                    // Try case insensitive lookup if direct access fails?
                     const key = Object.keys(row).find(k => k.toLowerCase() === mapping.sourceColumn.toLowerCase());
                     if (key) value = row[key];
                 }
 
                 if (value !== undefined) {
-                    let strValue = String(value).trim();
-
-                    // Data Cleaning based on target field
-                    if (mapping.targetField === 'initialStatus') {
-                        const lower = strValue.toLowerCase();
-                        if (['ok', 'good', 'working', 'functional', 'pass', '1', 'true', 'yes'].includes(lower)) {
-                            strValue = 'OK';
-                        } else if (['ng', 'bad', 'broken', 'defect', 'fail', '0', 'false', 'no'].includes(lower)) {
-                            strValue = 'NG';
-                        } else {
-                            // Default to NG if ambiguous but present? Or keep as is? 
-                            // System Schema expects "OK" | "NG" so we should probably default to NG for safety or just pass through if we trust backend (backend says optional?)
-                            // But let's check validation in backend... schema validates enum? 
-                            // Actually api.ts says `initialStatus?: "OK" | "NG"`.
-                            // Let's normalize to uppercase. 
-                            if (strValue.toUpperCase() === 'OK') strValue = 'OK';
-                            else strValue = 'NG'; // strict?
-                        }
-                    }
-
-                    newRow[mapping.targetField] = strValue;
+                    newRow[mapping.targetField] = normalizeMappedValue(mapping.targetField, value);
                 }
             }
         });
 
         return newRow as BulkRow;
     });
+}
+
+function normalizeMappedValue(targetField: keyof BulkRow, value: unknown) {
+    let strValue = String(value ?? '').trim();
+
+    if (targetField === 'initialStatus') {
+        const lower = strValue.toLowerCase();
+        if (['ok', 'good', 'working', 'functional', 'pass', '1', 'true', 'yes'].includes(lower)) return 'OK';
+        if (['ng', 'bad', 'broken', 'defect', 'fail', '0', 'false', 'no'].includes(lower)) return 'NG';
+        return strValue.toUpperCase() === 'OK' ? 'OK' : 'NG';
+    }
+
+    if (targetField === 'status') {
+        const lower = strValue.toLowerCase();
+        if (['ok', 'okay', 'declared ok', 'done', 'ready'].includes(lower)) return 'Declared OK';
+        if (['ng', 'not good', 'not ok', 'declared ng', 'declared not ok', 'bad'].includes(lower)) return 'Declared NG';
+        if (['pending', 'hold', 'waiting'].includes(lower)) return 'Pending';
+        return 'Received';
+    }
+
+    return strValue;
+}
+
+function autoDetectMappedValue(targetField: keyof BulkRow, mappedRow: Partial<BulkRow>, rawRow: Record<string, string>) {
+    if (targetField !== 'deviceBrand') return "";
+
+    const text = [
+        mappedRow.model,
+        mappedRow.reportedDefect,
+        ...Object.values(rawRow),
+    ].filter(Boolean).join(" ").toLowerCase();
+
+    const brands = [
+        'Samsung',
+        'Sony',
+        'LG',
+        'Walton',
+        'Panasonic',
+        'Sharp',
+        'TCL',
+        'Hisense',
+        'Vision',
+        'Xiaomi',
+        'Mi',
+        'Singer',
+        'Minister',
+        'Konka',
+        'Haier',
+        'Philips',
+        'Toshiba',
+    ];
+
+    return brands.find(brand => text.includes(brand.toLowerCase())) || "";
 }

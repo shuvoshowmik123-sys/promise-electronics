@@ -1,4 +1,4 @@
-const CACHE_NAME = 'promise-electronics-v2';
+const CACHE_NAME = 'promise-electronics-v3';
 const OFFLINE_URL = '/offline.html';
 
 const urlsToCache = [
@@ -35,6 +35,9 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
+  const requestUrl = new URL(event.request.url);
+  if (requestUrl.pathname.startsWith('/api/')) return;
+
   if (event.request.mode === 'navigate') {
     event.respondWith(
       fetch(event.request)
@@ -47,7 +50,10 @@ self.addEventListener('fetch', (event) => {
           return response;
         })
         .catch(() => {
-          return caches.match(OFFLINE_URL);
+          return caches.match(OFFLINE_URL).then((response) => response || new Response('Offline', {
+            status: 503,
+            headers: { 'Content-Type': 'text/plain' }
+          }));
         })
     );
     return;
@@ -63,6 +69,9 @@ self.addEventListener('fetch', (event) => {
         }
         return response;
       })
-      .catch(() => caches.match(event.request))
+      .catch(() => caches.match(event.request).then((response) => response || new Response('', {
+        status: 504,
+        statusText: 'Gateway Timeout'
+      })))
   );
 });

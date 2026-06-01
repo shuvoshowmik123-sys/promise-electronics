@@ -22,7 +22,7 @@ import { Loader2, MoreVertical, CheckCircle, XCircle, ArrowRight } from "lucide-
 import { toast } from "sonner";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 
-export function WarrantyClaimsTable() {
+export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
     const queryClient = useQueryClient();
     const { user } = useAdminAuth();
 
@@ -30,7 +30,11 @@ export function WarrantyClaimsTable() {
         queryKey: ["warranty-claims"],
         queryFn: () => warrantyClaimsApi.getAll(),
     });
-    const claimsArray = Array.isArray(data) ? data : (data?.items || []);
+    const allClaims = Array.isArray(data) ? data : (data?.items || []);
+    const clientJobIds = new Set(jobIds || []);
+    const claimsArray = jobIds?.length
+        ? allClaims.filter((claim: any) => clientJobIds.has(claim.originalJobId) || clientJobIds.has(claim.newJobId))
+        : allClaims;
 
     const approveMutation = useMutation({
         mutationFn: async (id: string) => {
@@ -47,7 +51,7 @@ export function WarrantyClaimsTable() {
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["warranty-claims"] });
             queryClient.invalidateQueries({ queryKey: ["job-tickets"] });
-            toast.success("Claim approved and warranty job created");
+            toast.success("CRR / reservice approved and linked job created");
         },
         onError: (error: any) => {
             toast.error(error.message || "Failed to approve claim");
@@ -94,7 +98,7 @@ export function WarrantyClaimsTable() {
                     {claimsArray.length === 0 ? (
                         <TableRow>
                             <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                                No warranty claims found.
+                                No CRR / reservice records found.
                             </TableCell>
                         </TableRow>
                     ) : (
@@ -126,7 +130,7 @@ export function WarrantyClaimsTable() {
                                                 <>
                                                     <DropdownMenuItem onClick={() => approveMutation.mutate(claim.id)}>
                                                         <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
-                                                        Approve & Create Job
+                                                        Approve & Create Linked Job
                                                     </DropdownMenuItem>
                                                     <DropdownMenuItem onClick={() => rejectMutation.mutate(claim.id)}>
                                                         <XCircle className="mr-2 h-4 w-4 text-red-500" />

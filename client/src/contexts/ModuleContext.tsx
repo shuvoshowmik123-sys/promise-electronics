@@ -59,6 +59,7 @@ export function ModuleProvider({ children }: { children: React.ReactNode }) {
             return false;
         }
 
+        if (portal === "admin" && mod.isCore) return true;
         if (portal === "admin") return mod.enabledAdmin;
         if (portal === "customer") return mod.enabledCustomer;
         if (portal === "corporate") return mod.enabledCorporate;

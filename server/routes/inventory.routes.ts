@@ -7,12 +7,12 @@
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { inventoryRepo, financeRepo } from '../repositories/index.js';
-import { insertInventoryItemSchema, insertProductSchema, insertLocalPurchaseSchema, insertWastageLogSchema, localPurchases } from '../../shared/schema.js';
+import { insertInventoryItemSchema, insertProductSchema, insertLocalPurchaseSchema, insertWastageLogSchema, localPurchases, inventorySerials, purchaseOrderItems } from '../../shared/schema.js';
 import { requireAdminAuth, requirePermission } from './middleware/auth.js';
 import { auditLogger } from '../utils/auditLogger.js';
 import { inventoryService } from '../services/inventory.service.js';
 import { db } from '../db.js';
-import { gte, lte, and, eq, isNull } from 'drizzle-orm';
+import { gte, lte, and, eq, isNull, count } from 'drizzle-orm';
 
 const router = Router();
 
@@ -25,10 +25,24 @@ const router = Router();
  */
 router.get('/api/inventory', async (req: Request, res: Response) => {
     try {
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = parseInt(req.query.limit as string) || 50;
-        const result = await inventoryRepo.getAllInventoryItems();
-        res.json(result);
+        const all = await inventoryRepo.getAllInventoryItems();
+        // Opt-in pagination: only slice when caller passes page/limit, so the
+        // existing UI (expects the full array) keeps working. When paginated,
+        // return a wrapped envelope with total + page metadata.
+        const hasPaging = req.query.page !== undefined || req.query.limit !== undefined;
+        if (!hasPaging) {
+            return res.json(all);
+        }
+        const page = Math.max(1, parseInt(req.query.page as string) || 1);
+        const limit = Math.max(1, Math.min(500, parseInt(req.query.limit as string) || 50));
+        const start = (page - 1) * limit;
+        res.json({
+            items: all.slice(start, start + limit),
+            total: all.length,
+            page,
+            limit,
+            totalPages: Math.ceil(all.length / limit),
+        });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch inventory items' });
     }
@@ -114,7 +128,11 @@ router.post('/api/inventory', requireAdminAuth, requirePermission('inventory'), 
 router.patch('/api/inventory/:id', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
     try {
         const existingItem = await inventoryRepo.getInventoryItem(req.params.id);
-        const item = await inventoryRepo.updateInventoryItem(req.params.id, req.body);
+        // Validate + whitelist fields. Raw req.body let callers set arbitrary
+        // columns (negative price, inflated stock, overwrite id). partial() so
+        // only the supplied fields are checked.
+        const updates = insertInventoryItemSchema.partial().parse(req.body);
+        const item = await inventoryRepo.updateInventoryItem(req.params.id, updates);
         if (!item) {
             return res.status(404).json({ error: 'Inventory item not found' });
         }
@@ -134,7 +152,10 @@ router.patch('/api/inventory/:id', requireAdminAuth, requirePermission('inventor
         }
 
         res.json(item);
-    } catch (error) {
+    } catch (error: any) {
+        if (error?.name === 'ZodError') {
+            return res.status(400).json({ error: 'Invalid inventory update data', details: error.errors });
+        }
         res.status(500).json({ error: 'Failed to update inventory item' });
     }
 });
@@ -180,6 +201,27 @@ router.patch('/api/inventory/:id/stock', requireAdminAuth, requirePermission('in
 router.delete('/api/inventory/:id', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
     try {
         const existingItem = await inventoryRepo.getInventoryItem(req.params.id);
+        if (!existingItem) {
+            return res.status(404).json({ error: 'Inventory item not found' });
+        }
+
+        // Reference guard: serials and purchase-order lines point at this item
+        // with no DB-level FK cascade. Deleting would orphan those rows (lost
+        // traceability for consumed/in-stock serials). Block with a clear reason.
+        const [serialRef] = await db.select({ n: count() })
+            .from(inventorySerials)
+            .where(eq(inventorySerials.inventoryItemId, req.params.id));
+        const [poRef] = await db.select({ n: count() })
+            .from(purchaseOrderItems)
+            .where(eq(purchaseOrderItems.inventoryItemId, req.params.id));
+        if ((serialRef?.n ?? 0) > 0 || (poRef?.n ?? 0) > 0) {
+            return res.status(409).json({
+                error: 'Cannot delete: item has linked serial numbers or purchase orders',
+                serials: serialRef?.n ?? 0,
+                purchaseOrderLines: poRef?.n ?? 0,
+            });
+        }
+
         const success = await inventoryRepo.deleteInventoryItem(req.params.id);
         if (!success) {
             return res.status(404).json({ error: 'Inventory item not found' });
@@ -226,13 +268,30 @@ router.post('/api/inventory/:id/serials', requireAdminAuth, requirePermission('i
             return res.status(400).json({ error: 'Serials array is required and must not be empty' });
         }
 
+        // Trim + dedupe within the submitted batch, then reject any serial that
+        // already exists for this item — duplicate serials break per-unit tracking
+        // and inflate the stock count.
+        const cleaned = Array.from(new Set(serials.map((s: any) => String(s).trim()).filter(Boolean)));
+        if (cleaned.length === 0) {
+            return res.status(400).json({ error: 'No valid serial numbers provided' });
+        }
+        const existing = await storage.getInventorySerials(req.params.id);
+        const existingSet = new Set(existing.map((s: any) => s.serialNumber));
+        const duplicates = cleaned.filter(s => existingSet.has(s));
+        if (duplicates.length > 0) {
+            return res.status(409).json({ error: 'Some serial numbers already exist for this item', duplicates });
+        }
+
         const storeId = (req.user as any)?.storeId; // Will exist on multi-tenant
-        const addedSerials = await storage.createInventorySerials(req.params.id, serials, storeId);
+        const addedSerials = await storage.createInventorySerials(req.params.id, cleaned, storeId);
 
         // Auto-increment the parent inventory item's stock count
         const item = await inventoryRepo.getInventoryItem(req.params.id);
         if (item) {
-            await storage.updateInventoryStock(item.id, item.stock + addedSerials.length);
+            // updateInventoryStock takes a DELTA, not an absolute. Pass only the
+            // number of serials added — passing item.stock + addedSerials.length
+            // double-counted existing stock on every restock.
+            await storage.updateInventoryStock(item.id, addedSerials.length);
 
             // Audit Log
             await auditLogger.log({
@@ -612,10 +671,9 @@ router.post('/api/inventory/:id/consume', requireAdminAuth, requirePermission('i
             });
         }
 
-        // Deduct stock
-        const updatedItem = await storage.updateInventoryStock(req.params.id, -quantity);
-
-        // Log as wastage entry tagged as job consumption
+        // Log as wastage entry tagged as job consumption.
+        // NOTE: createWastageLog ALREADY decrements inventory stock. Do NOT also
+        // call updateInventoryStock here — that double-decremented (2× quantity).
         await inventoryService.createWastageLog({
             inventoryItemId: req.params.id,
             quantity,
@@ -624,6 +682,9 @@ router.post('/api/inventory/:id/consume', requireAdminAuth, requirePermission('i
             storeId: null,
             cost: Number(item.price) * quantity,
         } as any);
+
+        // Re-fetch for updated stock (used by low-stock alert + response below).
+        const updatedItem = await inventoryRepo.getInventoryItem(req.params.id);
 
         // Audit log
         await auditLogger.log({

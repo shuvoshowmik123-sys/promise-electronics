@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from "react";
 import type { User } from "@shared/schema";
 
 type SafeUser = Omit<User, "password"> & {
@@ -20,12 +20,14 @@ const CorporateAuthContext = createContext<CorporateAuthContextType | undefined>
 export function CorporateAuthProvider({ children }: { children: ReactNode }) {
     const [user, setUser] = useState<SafeUser | null>(null);
     const [isLoading, setIsLoading] = useState(true);
+    const authVersionRef = useRef(0);
 
-    const fetchUser = async () => {
+    const fetchUser = async (version = authVersionRef.current) => {
         try {
             const res = await fetch("/api/corporate/auth/me", {
                 credentials: "include",
             });
+            if (version !== authVersionRef.current) return;
             if (res.ok) {
                 const data = await res.json();
                 setUser(data);
@@ -33,10 +35,11 @@ export function CorporateAuthProvider({ children }: { children: ReactNode }) {
                 setUser(null);
             }
         } catch (error) {
+            if (version !== authVersionRef.current) return;
             console.error("Failed to fetch corporate user:", error);
             setUser(null);
         } finally {
-            setIsLoading(false);
+            if (version === authVersionRef.current) setIsLoading(false);
         }
     };
 
@@ -52,6 +55,8 @@ export function CorporateAuthProvider({ children }: { children: ReactNode }) {
     };
 
     const login = async (username: string, password: string, trustDevice: boolean = false) => {
+        authVersionRef.current += 1;
+        setIsLoading(true);
         console.log("[Auth] Starting login process...");
 
         // Ensure we have a CSRF token
@@ -85,6 +90,7 @@ export function CorporateAuthProvider({ children }: { children: ReactNode }) {
             throw new Error("Login response is invalid");
         }
         setUser(data.user);
+        setIsLoading(false);
     };
 
     const logout = async () => {
@@ -97,11 +103,14 @@ export function CorporateAuthProvider({ children }: { children: ReactNode }) {
             credentials: "include",
             body: JSON.stringify({}) // Send empty body for POST
         });
+        authVersionRef.current += 1;
         setUser(null);
+        setIsLoading(false);
     };
 
     const refreshUser = async () => {
-        await fetchUser();
+        authVersionRef.current += 1;
+        await fetchUser(authVersionRef.current);
     };
 
     return (

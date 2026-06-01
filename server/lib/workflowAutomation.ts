@@ -41,14 +41,16 @@ export function deriveTrackingStatus(
             }
             return "Awaiting Your Drop-off";
         case "Work Order":
-            if (!jobTechnician || jobTechnician === "Unassigned") return "Being Assessed";
+            if (jobStatus === "Completed" || jobStatus === "Delivered") return isPickup ? "Delivered" : "Collected";
+            if (jobStatus === "Ready") return isPickup ? "Ready for Return" : "Ready for Collection";
+            if (jobStatus === "Pending Parts") return "Awaiting Parts";
+            if (jobStatus === "In Progress" || jobStatus === "On Workbench") return "Repairing";
+            if (jobStatus === "Cancelled") return "Cancelled";
+            if (jobStatus === "Not OK") return "Unrepairable";
+            if (!jobTechnician || jobTechnician === "Unassigned") return "Device Received";
             if (jobStatus === "Pending") return "Technician Assigned";
             if (jobStatus === "Diagnosing") return "Technician Assigned";
-            if (jobStatus === "Pending Parts") return "Awaiting Parts";
-            if (jobStatus === "In Progress") return "Repairing";
-            if (jobStatus === "Ready") return isPickup ? "Ready for Return Delivery" : "Ready for Collection";
-            // Default fallback if we don't know the exact job status
-            return "Being Assessed";
+            return "Device Received";
         case "Resolved":
             return isPickup ? "Delivered" : "Collected";
         case "Closed": return "Completed";

@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { BentoCard, containerVariants, itemVariants } from "../shared";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
 
 interface RefundsTabProps {
     refundsData: any;
@@ -28,6 +29,7 @@ export function RefundsTab({
     refundsApi,
     queryClient
 }: RefundsTabProps) {
+    const { user } = useAdminAuth();
     const [search, setSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
     const [isProcessDialogOpen, setIsProcessDialogOpen] = useState(false);
@@ -35,15 +37,25 @@ export function RefundsTab({
     const [selectedRefund, setSelectedRefund] = useState<any>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [rejectionReason, setRejectionReason] = useState("");
+    const [refundMethod, setRefundMethod] = useState("cash");
 
     const refunds = refundsData?.items || [];
+
+    // After a refund is processed it writes a petty-cash Expense + adjusts the
+    // active drawer. Invalidate every dependent cache so balances refresh live.
+    const invalidateFinanceCaches = () => {
+        ['refunds', 'pettyCash', 'pettyCash-paginated', 'pettyCash-summary-today',
+         'petty-cash-summary-global', 'drawerHistory', 'drawer-active']
+            .forEach(key => queryClient.invalidateQueries({ queryKey: [key] }));
+    };
 
     // Stats
     const totalRefunded = refunds
         .filter((r: any) => r.status === 'processed')
-        .reduce((sum: number, r: any) => sum + Number(r.amount), 0);
+        .reduce((sum: number, r: any) => sum + Number(r.refundAmount), 0);
 
     const pendingCount = refunds.filter((r: any) => r.status === 'pending').length;
+    const approvedCount = refunds.filter((r: any) => r.status === 'approved').length;
     const rejectedCount = refunds.filter((r: any) => r.status === 'rejected').length;
 
     // Filtering
@@ -55,16 +67,41 @@ export function RefundsTab({
         return matchesSearch && matchesStatus;
     });
 
-    const handleProcessRefund = async () => {
-        if (!selectedRefund) return;
+    // Step 1 of the approval workflow: approve a pending refund.
+    const handleApproveRefund = async (refund: any) => {
+        if (!user) return;
         setIsProcessing(true);
         try {
-            await refundsApi.processRefund(selectedRefund.id);
+            await refundsApi.approve(refund.id, {
+                approvedBy: user.id,
+                approvedByName: user.name,
+                approvedByRole: user.role,
+            });
             queryClient.invalidateQueries({ queryKey: ['refunds'] });
-            queryClient.invalidateQueries({ queryKey: ['petty-cash'] });
+            toast.success('Refund approved — ready to process');
+        } catch (error: any) {
+            toast.error(error?.message || 'Failed to approve refund');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    // Step 2: process an approved refund (creates the petty-cash Expense).
+    const handleProcessRefund = async () => {
+        if (!selectedRefund || !user) return;
+        setIsProcessing(true);
+        try {
+            await refundsApi.process(selectedRefund.id, {
+                processedBy: user.id,
+                processedByName: user.name,
+                processedByRole: user.role,
+                refundMethod,
+            });
+            invalidateFinanceCaches();
             toast.success('Refund processed successfully');
             setIsProcessDialogOpen(false);
             setSelectedRefund(null);
+            setRefundMethod('cash');
         } catch (error: any) {
             toast.error(error?.message || 'Failed to process refund');
         } finally {
@@ -73,13 +110,19 @@ export function RefundsTab({
     };
 
     const handleRejectRefund = async () => {
-        if (!selectedRefund || !rejectionReason) {
+        if (!selectedRefund || !user) return;
+        if (!rejectionReason) {
             toast.error('Please provide a rejection reason');
             return;
         }
         setIsProcessing(true);
         try {
-            await refundsApi.rejectRefund(selectedRefund.id, rejectionReason);
+            await refundsApi.reject(selectedRefund.id, {
+                approvedBy: user.id,
+                approvedByName: user.name,
+                approvedByRole: user.role,
+                rejectionReason,
+            });
             queryClient.invalidateQueries({ queryKey: ['refunds'] });
             toast.success('Refund rejected');
             setIsRejectDialogOpen(false);
@@ -124,9 +167,9 @@ export function RefundsTab({
                                 <AlertTriangle className="h-6 w-6" />
                             </div>
                             <div>
-                                <span className="text-sm opacity-80 uppercase tracking-wider block">Pending Review</span>
+                                <span className="text-sm opacity-80 uppercase tracking-wider block">Pending / Approved</span>
                                 <div className="text-2xl font-bold mt-1">
-                                    {pendingCount} Requests
+                                    {pendingCount} / {approvedCount}
                                 </div>
                             </div>
                         </div>
@@ -169,6 +212,7 @@ export function RefundsTab({
                         <SelectContent>
                             <SelectItem value="all">All Status</SelectItem>
                             <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="approved">Approved</SelectItem>
                             <SelectItem value="processed">Processed</SelectItem>
                             <SelectItem value="rejected">Rejected</SelectItem>
                         </SelectContent>
@@ -184,7 +228,7 @@ export function RefundsTab({
                         onClick={() => {
                             const columns = [
                                 { key: 'invoiceNumber', label: 'Invoice' },
-                                { key: 'amount', label: 'Amount' },
+                                { key: 'refundAmount', label: 'Amount' },
                                 { key: 'reason', label: 'Reason' },
                                 { key: 'status', label: 'Status' },
                                 { key: 'createdAt', label: 'Date' },
@@ -256,7 +300,7 @@ export function RefundsTab({
                                         </TableCell>
                                         <TableCell className="py-4 px-4 text-right">
                                             <span className="font-bold text-red-600">
-                                                -{getCurrencySymbol()}{Number(refund.amount).toLocaleString()}
+                                                -{getCurrencySymbol()}{Number(refund.refundAmount).toLocaleString()}
                                             </span>
                                         </TableCell>
                                         <TableCell className="py-4 px-4">
@@ -275,13 +319,11 @@ export function RefundsTab({
                                                     <Button
                                                         variant="default"
                                                         size="sm"
-                                                        onClick={() => {
-                                                            setSelectedRefund(refund);
-                                                            setIsProcessDialogOpen(true);
-                                                        }}
+                                                        disabled={isProcessing}
+                                                        onClick={() => handleApproveRefund(refund)}
                                                     >
                                                         <CheckCircle className="h-4 w-4 mr-1" />
-                                                        Process
+                                                        Approve
                                                     </Button>
                                                     <Button
                                                         variant="destructive"
@@ -293,6 +335,23 @@ export function RefundsTab({
                                                     >
                                                         <XCircle className="h-4 w-4 mr-1" />
                                                         Reject
+                                                    </Button>
+                                                </div>
+                                            )}
+                                            {refund.status === 'approved' && (
+                                                <div className="flex gap-2 justify-end">
+                                                    <Button
+                                                        variant="default"
+                                                        size="sm"
+                                                        className="bg-emerald-600 hover:bg-emerald-700"
+                                                        onClick={() => {
+                                                            setSelectedRefund(refund);
+                                                            setRefundMethod('cash');
+                                                            setIsProcessDialogOpen(true);
+                                                        }}
+                                                    >
+                                                        <CheckCircle className="h-4 w-4 mr-1" />
+                                                        Process
                                                     </Button>
                                                 </div>
                                             )}
@@ -323,12 +382,29 @@ export function RefundsTab({
                             <div className="bg-slate-50 p-3 rounded-md space-y-1">
                                 <p className="text-xs text-muted-foreground">Refund Amount</p>
                                 <p className="text-2xl font-bold text-red-600">
-                                    {getCurrencySymbol()}{Number(selectedRefund.amount).toLocaleString()}
+                                    {getCurrencySymbol()}{Number(selectedRefund.refundAmount).toLocaleString()}
                                 </p>
                             </div>
                             <div className="bg-slate-50 p-3 rounded-md space-y-1">
                                 <p className="text-xs text-muted-foreground">Reason</p>
                                 <p className="text-sm">{selectedRefund.reason}</p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="refundMethod">Refund Method</Label>
+                                <Select value={refundMethod} onValueChange={setRefundMethod}>
+                                    <SelectTrigger id="refundMethod">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="cash">Cash (from drawer)</SelectItem>
+                                        <SelectItem value="bank">Bank</SelectItem>
+                                        <SelectItem value="bkash">bKash</SelectItem>
+                                        <SelectItem value="nagad">Nagad</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-xs text-muted-foreground">
+                                    Cash refunds require an open drawer with enough balance.
+                                </p>
                             </div>
                         </div>
                     )}
@@ -361,7 +437,7 @@ export function RefundsTab({
                             </div>
                             <div className="bg-slate-50 p-3 rounded-md space-y-1">
                                 <p className="text-xs text-muted-foreground">Amount</p>
-                                <p className="font-bold text-lg">{getCurrencySymbol()}{Number(selectedRefund.amount).toLocaleString()}</p>
+                                <p className="font-bold text-lg">{getCurrencySymbol()}{Number(selectedRefund.refundAmount).toLocaleString()}</p>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="rejectionReason">Rejection Reason</Label>

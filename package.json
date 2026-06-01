@@ -118,6 +118,7 @@
     "input-otp": "^1.4.2",
     "ioredis": "^5.10.0",
     "jspdf": "^4.2.0",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.545.0",
     "mammoth": "^1.11.0",
     "memoizee": "^0.4.17",

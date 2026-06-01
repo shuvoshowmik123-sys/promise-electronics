@@ -22,15 +22,23 @@ interface Props {
     onAddDevice: (device: Device) => void; // Changed ChallanDevice to Device
     onRemoveDevice: (index: number) => void;
     onUpdateDevice: (index: number, device: Device) => void; // Changed ChallanDevice to Device
+    searchQuery?: string;
 }
 
 const DEVICE_BRANDS = ["Samsung", "Sony", "LG", "Walton", "Philips", "Panasonic", "Sharp", "Dell", "HP", "Other"];
 const COMMON_MODELS = ["43\" Smart TV", "55\" LED TV", "32\" Basic", "OLED 65\"", "Monitor 24\""];
+const STATUS_OPTIONS = [
+    { value: "Received", label: "New" },
+    { value: "Pending", label: "Pending" },
+    { value: "Declared OK", label: "OK" },
+    { value: "Declared NG", label: "NG" },
+] as const;
 
-export function DeviceEntryTable({ devices, onAddDevice, onRemoveDevice, onUpdateDevice }: Props) {
+export function DeviceEntryTable({ devices, onAddDevice, onRemoveDevice, onUpdateDevice, searchQuery = "" }: Props) {
     // New Device Form State
     const [currentDevice, setCurrentDevice] = useState<Partial<ChallanDevice>>({
         initialStatus: "NG",
+        status: "Received",
         deviceBrand: "",
     });
 
@@ -50,6 +58,7 @@ export function DeviceEntryTable({ devices, onAddDevice, onRemoveDevice, onUpdat
         // Reset form but keep some sticky fields likely to be same
         setCurrentDevice({
             initialStatus: "NG",
+            status: "Received",
             deviceBrand: currentDevice.deviceBrand, // Keep brand sticky
             model: "",
             corporateJobNumber: "",
@@ -63,6 +72,31 @@ export function DeviceEntryTable({ devices, onAddDevice, onRemoveDevice, onUpdat
             handleAdd();
         }
     };
+
+    const normalizedSearch = searchQuery.trim().toLowerCase();
+    const visibleDevices = devices
+        .map((device, idx) => ({ device, idx }))
+        .filter(({ device, idx }) => {
+            if (!normalizedSearch) return true;
+            const haystack = [
+                idx + 1,
+                device.corporateJobNumber,
+                device.deviceBrand,
+                device.model,
+                device.serialNumber,
+                device.reportedDefect,
+                device.status,
+                device.initialStatus,
+                device.customerName,
+                device.externalJobRef,
+                device.challanNumber,
+                device.itemType,
+                device.batchNumber,
+                device.duplicateHint,
+                device.reviewAction,
+            ].filter(Boolean).join(" ").toLowerCase();
+            return haystack.includes(normalizedSearch);
+        });
 
     return (
         <div className="space-y-4">
@@ -87,7 +121,7 @@ export function DeviceEntryTable({ devices, onAddDevice, onRemoveDevice, onUpdat
                                 </TableCell>
                             </TableRow>
                         ) : (
-                            devices.map((device, idx) => {
+                            visibleDevices.map(({ device, idx }) => {
                                 const validation = validateDevice(device); // Added validation
                                 return (
                                     <TableRow key={device.id || idx} className={!validation.isComplete ? "bg-destructive/5" : ""}> {/* Added conditional styling */}
@@ -147,15 +181,53 @@ export function DeviceEntryTable({ devices, onAddDevice, onRemoveDevice, onUpdat
                                                 className="h-8 text-xs border-transparent hover:border-input focus:border-input bg-transparent px-2"
                                                 title={device.reportedDefect} // Added title
                                             />
+                                            {(device.duplicateHint || device.reviewAction) && (
+                                                <div className="mt-1 flex flex-wrap gap-1">
+                                                    {device.duplicateHint && <Badge variant="outline" className="border-amber-300 bg-amber-50 text-[10px] text-amber-700">{device.duplicateHint}</Badge>}
+                                                    {device.reviewAction === "crr" && <Badge className="bg-blue-600 text-[10px]">CRR / Re-service</Badge>}
+                                                    {device.reviewAction === "super_admin_review" && <Badge variant="destructive" className="text-[10px]">Super Admin Review</Badge>}
+                                                </div>
+                                            )}
                                         </TableCell>
                                         <TableCell>
-                                            <Badge // Changed div to Badge
-                                                variant={device.initialStatus === 'OK' ? 'default' : 'destructive'} // Added variant prop
-                                                className="text-xs cursor-pointer select-none" // Updated classNames
-                                                onClick={() => onUpdateDevice(idx, { ...device, initialStatus: device.initialStatus === 'OK' ? 'NG' : 'OK' })}
-                                            >
-                                                {device.initialStatus}
-                                            </Badge>
+                                            <div className="space-y-1">
+                                                <Select
+                                                    value={device.status || (device.initialStatus === "OK" ? "Declared OK" : "Declared NG")}
+                                                    onValueChange={(value) => {
+                                                        const nextStatus = value as Device["status"];
+                                                        onUpdateDevice(idx, {
+                                                            ...device,
+                                                            status: nextStatus,
+                                                            initialStatus: nextStatus === "Declared OK" ? "OK" : "NG",
+                                                        });
+                                                    }}
+                                                >
+                                                    <SelectTrigger className="h-8 w-[118px] bg-background text-xs">
+                                                        <SelectValue />
+                                                    </SelectTrigger>
+                                                    <SelectContent>
+                                                        {STATUS_OPTIONS.map((option) => (
+                                                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                                        ))}
+                                                    </SelectContent>
+                                                </Select>
+                                                {device.duplicateHint && (
+                                                    <Select
+                                                        value={device.reviewAction || "new_job"}
+                                                        onValueChange={(value) => onUpdateDevice(idx, { ...device, reviewAction: value as Device["reviewAction"] })}
+                                                    >
+                                                        <SelectTrigger className="h-8 w-[118px] bg-amber-50 text-xs">
+                                                            <SelectValue />
+                                                        </SelectTrigger>
+                                                        <SelectContent>
+                                                            <SelectItem value="new_job">New job</SelectItem>
+                                                            <SelectItem value="crr">CRR</SelectItem>
+                                                            <SelectItem value="ignore">Ignore row</SelectItem>
+                                                            <SelectItem value="super_admin_review">Admin review</SelectItem>
+                                                        </SelectContent>
+                                                    </Select>
+                                                )}
+                                            </div>
                                         </TableCell>
                                         <TableCell>
                                             <Button variant="ghost" size="icon" onClick={() => onRemoveDevice(idx)} className="h-8 w-8 text-destructive hover:bg-destructive/10">
@@ -168,6 +240,9 @@ export function DeviceEntryTable({ devices, onAddDevice, onRemoveDevice, onUpdat
                         )}
                     </TableBody>
                 </Table>
+                {devices.length > 0 && visibleDevices.length === 0 && (
+                    <div className="p-6 text-center text-sm text-muted-foreground">No rows match this search.</div>
+                )}
             </div>
 
             {/* Add Device Inline Form */}
@@ -213,7 +288,7 @@ export function DeviceEntryTable({ devices, onAddDevice, onRemoveDevice, onUpdat
                         className="h-9 bg-background"
                     />
                 </div>
-                <div className="col-span-3">
+                <div className="col-span-2">
                     <label className="text-xs font-medium mb-1 block">Reported Issue</label>
                     <Input
                         placeholder="Describe issue..."
@@ -221,6 +296,29 @@ export function DeviceEntryTable({ devices, onAddDevice, onRemoveDevice, onUpdat
                         onChange={e => setCurrentDevice({ ...currentDevice, reportedDefect: e.target.value })}
                         className="h-9 bg-background"
                     />
+                </div>
+                <div className="col-span-1">
+                    <label className="text-xs font-medium mb-1 block">Status</label>
+                    <Select
+                        value={currentDevice.status || "Received"}
+                        onValueChange={(value) => {
+                            const nextStatus = value as Device["status"];
+                            setCurrentDevice({
+                                ...currentDevice,
+                                status: nextStatus,
+                                initialStatus: nextStatus === "Declared OK" ? "OK" : "NG",
+                            });
+                        }}
+                    >
+                        <SelectTrigger className="h-9 bg-background">
+                            <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {STATUS_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
                 </div>
                 <div className="col-span-1">
                     <Button onClick={handleAdd} className="w-full h-9" size="sm">

@@ -12,6 +12,36 @@ import { jobRepo, serviceRequestRepo, inventoryRepo } from '../repositories/inde
 import { nanoid } from 'nanoid';
 import type { JobTicket, ServiceRequest } from '../../shared/schema.js';
 
+function isPickupRequest(request: ServiceRequest): boolean {
+    return request.servicePreference === "pickup"
+        || request.servicePreference === "home_pickup"
+        || request.serviceMode === "pickup";
+}
+
+function getProjectedTrackingStatus(request: ServiceRequest, job: JobTicket): string {
+    const isPickup = isPickupRequest(request);
+
+    if (job.status === "Cancelled") return "Cancelled";
+    if (job.status === "Not OK") return "Unrepairable";
+    if (job.status === "Pending") {
+        return job.technician && job.technician !== "Unassigned" ? "Technician Assigned" : "Device Received";
+    }
+    if (job.status === "Diagnosing") return "Technician Assigned";
+    if (job.status === "Pending Parts") return "Awaiting Parts";
+    if (job.status === "In Progress" || job.status === "On Workbench") return "Repairing";
+    if (job.status === "Ready") return isPickup ? "Ready for Return" : "Ready for Collection";
+    if (job.status === "Completed" || job.status === "Delivered") return isPickup ? "Delivered" : "Collected";
+
+    return request.trackingStatus || "Device Received";
+}
+
+function getProjectedRequestStatus(job: JobTicket): string {
+    if (job.status === "Cancelled") return "Cancelled";
+    if (job.status === "Not OK") return "Unrepairable";
+    if (job.status === "Completed" || job.status === "Delivered") return "Resolved";
+    return "Work Order";
+}
+
 export class JobService {
     /**
      * Synchronizes parts used in a job with inventory stock and serial numbers.
@@ -99,6 +129,48 @@ export class JobService {
             .returning();
 
         return updatedJob;
+    }
+
+    async syncLinkedServiceRequestFromJob(jobId: string, actorName: string = "System Projection"): Promise<{
+        serviceRequest: ServiceRequest | null;
+        trackingStatus?: string;
+        status?: string;
+        changed: boolean;
+    }> {
+        const job = await jobRepo.getJobTicket(jobId);
+        if (!job) {
+            throw new Error("Job ticket not found");
+        }
+
+        const request = await serviceRequestRepo.getServiceRequestByConvertedJobId(jobId);
+        if (!request) {
+            return { serviceRequest: null, changed: false };
+        }
+
+        const trackingStatus = getProjectedTrackingStatus(request, job);
+        const status = getProjectedRequestStatus(job);
+        const updates: any = {};
+
+        if (request.trackingStatus !== trackingStatus) updates.trackingStatus = trackingStatus;
+        if (request.status !== status && request.status !== "Closed") updates.status = status;
+
+        if (Object.keys(updates).length === 0) {
+            return { serviceRequest: request, trackingStatus, status, changed: false };
+        }
+
+        const updated = await serviceRequestRepo.updateServiceRequest(request.id, updates);
+        if (!updated) {
+            throw new Error("Failed to update linked service request");
+        }
+
+        await serviceRequestRepo.createServiceRequestEvent({
+            serviceRequestId: request.id,
+            status: trackingStatus,
+            message: `Customer status projected from Job ${job.id}: ${trackingStatus}.`,
+            actor: actorName,
+        });
+
+        return { serviceRequest: updated, trackingStatus, status, changed: true };
     }
 
     /**
@@ -200,6 +272,10 @@ export class JobService {
             throw new Error("Service request has already been converted to a job ticket");
         }
 
+        if (!schema.JOB_CREATION_STAGES.includes((request.stage || "") as any)) {
+            throw new Error("Device custody must be confirmed before creating a job ticket");
+        }
+
         const jobId = await jobRepo.getNextJobNumber();
 
         const [jobTicket] = await db.insert(schema.jobTickets).values({
@@ -223,13 +299,16 @@ export class JobService {
             corporateChallanId: request.corporateChallanId || undefined,
         } as any).returning();
 
+        const trackingStatus = getProjectedTrackingStatus(request, jobTicket);
+
         // Link and Update Service Request
         const [updated] = await db
             .update(schema.serviceRequests)
             .set({
                 convertedJobId: jobId,
                 status: "Work Order",
-                stage: "authorized" as any, // Move to authorized stage
+                stage: request.stage as any,
+                trackingStatus,
             })
             .where(eq(schema.serviceRequests.id, id))
             .returning();

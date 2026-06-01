@@ -346,6 +346,16 @@ export default function AuditLogsTab() {
                                                             )}
                                                         </div>
                                                     )}
+
+                                                    {/* Expanded metadata (when there are no before/after changes) */}
+                                                    {isExpanded && !hasChanges && log.metadata && (
+                                                        <div className="mt-3 ml-4 bg-white border border-slate-200 rounded-xl p-4 text-xs font-mono text-slate-600 overflow-x-auto">
+                                                            <p className="text-slate-500 font-sans font-bold text-[10px] uppercase tracking-widest mb-1">Metadata</p>
+                                                            <pre className="text-slate-600 text-[11px] overflow-y-auto max-h-32">
+                                                                {JSON.stringify(log.metadata, null, 2)}
+                                                            </pre>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             );
                                         })}

@@ -88,7 +88,10 @@ router.patch('/api/purchase-orders/:id/status', requireAdminAuth, requirePermiss
                     // Note: If item.isSerialized, the frontend MUST send the serial numbers and call
                     // POST /api/inventory/:id/serials instead. But for standard parts, we increase stock here.
                     if (!inventoryItem.isSerialized) {
-                        await storage.updateInventoryStock(inventoryItem.id, inventoryItem.stock + item.quantity);
+                        // updateInventoryStock takes a DELTA. Passing stock + quantity
+                        // double-counted existing stock on every PO receive — pass the
+                        // received quantity only.
+                        await storage.updateInventoryStock(inventoryItem.id, item.quantity);
                     }
                 }
             }

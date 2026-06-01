@@ -2,7 +2,7 @@
  * TeamChatPanel — floating FAB + slide-over chat drawer.
  * Phase 3: Internal Team Chat UI
  */
-import { MessageSquare, X, Send, Hash, Plus } from "lucide-react";
+import { MessageSquare, X, Send, Hash } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useState, useRef, useEffect } from "react";
@@ -107,10 +107,10 @@ export function TeamChatPanel() {
 
     return (
         <>
-            {/* FAB */}
+            {/* FAB — desktop only. No mobile chat access exists yet. Hidden to avoid collision with bottom nav (h-20, z-50). */}
             <button
                 onClick={() => setOpen(v => !v)}
-                className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:bg-primary/90 transition-colors"
+                className="hidden md:flex fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-primary text-primary-foreground shadow-lg items-center justify-center hover:bg-primary/90 transition-colors"
                 aria-label="Team Chat"
             >
                 {open ? <X className="h-6 w-6" /> : <MessageSquare className="h-6 w-6" />}

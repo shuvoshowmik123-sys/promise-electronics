@@ -18,19 +18,12 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 
 import { BentoCard } from "../shared/BentoCard";
 import { containerVariants, itemVariants } from "../shared/animations";
+import { fetchApi } from "@/lib/api/httpClient";
 
-const getCsrfToken = () => {
-    if (typeof document === 'undefined') return undefined;
-    const match = document.cookie.match(new RegExp('(^| )XSRF-TOKEN=([^;]+)'));
-    return match ? match[2] : undefined;
-};
-
-// Mock API function (replace with actual import if available)
-const fetchInquiries = async () => {
-    const res = await fetch("/api/inquiries");
-    if (!res.ok) throw new Error("Failed to fetch inquiries");
-    return res.json();
-};
+// Use the shared API client: handles the API base URL (split Vercel+Render
+// deploy), credentials, and CSRF. Raw fetch("/api/...") here sent no cookie
+// cross-origin and used a relative URL, breaking this tab in production.
+const fetchInquiries = () => fetchApi<any[]>("/inquiries");
 
 export default function InquiriesTab() {
     const queryClient = useQueryClient();
@@ -44,18 +37,12 @@ export default function InquiriesTab() {
     });
 
     const updateStatusMutation = useMutation({
-        mutationFn: async ({ id, status, reply }: { id: string, status?: string, reply?: string }) => {
-            const res = await fetch(`/api/inquiries/${id}`, {
+        mutationFn: ({ id, status, reply }: { id: string, status?: string, reply?: string }) =>
+            // Backend route is /inquiries/:id/status (was calling /inquiries/:id → 404).
+            fetchApi(`/inquiries/${id}/status`, {
                 method: "PATCH",
-                headers: {
-                    "Content-Type": "application/json",
-                    "X-XSRF-TOKEN": getCsrfToken() || ""
-                },
                 body: JSON.stringify({ status, reply }),
-            });
-            if (!res.ok) throw new Error("Failed to update inquiry");
-            return res.json();
-        },
+            }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["inquiries"] });
             toast.success("Inquiry updated successfully");

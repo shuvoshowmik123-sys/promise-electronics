@@ -17,9 +17,12 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { Tv, ArrowLeft, ArrowRight, CheckCircle2, Clock, FileText, Loader2, Phone, MapPin, Truck } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileServiceWizard } from "@/components/mobile/MobileServiceWizard";
 
 export default function GetQuotePage() {
   usePageTitle("Get a Free Quote - TV Repair");
+  const isMobile = useIsMobile();
   const [, setLocation] = useLocation();
   const searchString = useSearch();
   const searchParams = new URLSearchParams(searchString);
@@ -260,6 +263,10 @@ export default function GetQuotePage() {
       setErrors(prev => ({ ...prev, [field]: false }));
     }
   };
+
+  if (isMobile) {
+    return <MobileServiceWizard mode="quote" />;
+  }
 
   return (
     <>

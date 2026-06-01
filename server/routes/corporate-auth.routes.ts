@@ -7,6 +7,7 @@ import { users, corporateClients } from '../../shared/schema.js';
 import { storage } from '../storage.js';
 import { userRepo, customerRepo, orderRepo, corporateRepo, notificationRepo } from '../repositories/index.js';
 import { authService } from '../services/auth.service.js';
+import { corporatePasswordResetService } from '../services/corporate-password-reset.service.js';
 import { auditLogger } from '../utils/auditLogger.js';
 import { AUDIT_ACTIONS } from '../../shared/constants.js';
 
@@ -26,8 +27,50 @@ import { validate } from './middleware/validate.js';
 
 const corporateLoginSchema = z.object({
     username: z.string().min(1, 'Username is required'),
-    password: z.string().min(6, 'Password must be at least 6 characters').max(13, 'Password is too long'),
+    password: z.string().min(6, 'Password must be at least 6 characters').max(64, 'Password is too long'),
     trustDevice: z.boolean().optional(),
+});
+
+const passwordResetRequestSchema = z.object({
+    username: z.string().min(3, 'Username is required').max(100),
+});
+
+const passwordResetCompleteSchema = z.object({
+    username: z.string().min(3, 'Username is required').max(100),
+    code: z.string().regex(/^\d{6}$/, 'Code must be 6 digits'),
+    password: z.string().min(6, 'Password must be at least 6 characters').max(64, 'Password is too long'),
+    confirmPassword: z.string().min(6).max(64),
+}).refine((data) => data.password === data.confirmPassword, {
+    message: 'Passwords do not match',
+    path: ['confirmPassword'],
+});
+
+router.post('/password-reset/request', authLimiter, validate(passwordResetRequestSchema), async (req: Request, res: Response) => {
+    try {
+        await corporatePasswordResetService.requestReset(req.body.username, req.ip);
+        res.json({ message: 'If this corporate user exists, Promise admin can generate a reset code.' });
+    } catch (error) {
+        console.error('[CorporateAuth] Password reset request error:', error);
+        res.status(500).json({ error: 'Failed to request password reset' });
+    }
+});
+
+router.post('/password-reset/complete', authLimiter, validate(passwordResetCompleteSchema), async (req: Request, res: Response) => {
+    try {
+        const result = await corporatePasswordResetService.completeReset(req.body.username, req.body.code, req.body.password);
+        auditLogger.log({
+            userId: result.userId,
+            action: 'UPDATE',
+            entity: 'CorporatePasswordReset',
+            entityId: result.userId,
+            details: `Corporate user ${result.username || result.userId} reset password using admin-assisted OTP`,
+            req,
+            severity: 'warning',
+        }).catch(() => {});
+        res.json({ message: 'Password reset successfully' });
+    } catch (error: any) {
+        res.status(400).json({ error: error.message || 'Invalid or expired reset code' });
+    }
 });
 
 // POST /api/corporate/login

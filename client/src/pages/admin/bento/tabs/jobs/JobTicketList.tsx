@@ -1,11 +1,12 @@
 import { format } from "date-fns";
+import type { MouseEvent } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Clock, Eye, MoreVertical, PenTool, Printer, Zap } from "lucide-react";
+import { CheckCircle2, Clock, CreditCard, Eye, MoreVertical, PackageCheck, PenTool, Play, Printer, Truck, UserCheck, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { JobTicket } from "@shared/schema";
 
@@ -13,7 +14,8 @@ const HighlightMatch = ({ text, query }: { text: string | undefined | null; quer
     if (!text) return null;
     if (!query) return <>{text}</>;
     const textStr = String(text);
-    const regex = new RegExp(`(${query})`, "gi");
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(${escapedQuery})`, "gi");
     const parts = textStr.split(regex);
     return (
         <>
@@ -28,6 +30,22 @@ const HighlightMatch = ({ text, query }: { text: string | undefined | null; quer
             )}
         </>
     );
+};
+
+const getPrimaryAction = (job: JobTicket, canEdit: boolean) => {
+    const status = job.status || "";
+    const hasTechnician = Boolean(job.technician && job.technician !== "Unassigned");
+
+    if (!canEdit) return { label: "View Job", type: "view" as const, Icon: Eye };
+    if (!hasTechnician && !["Delivered", "Completed", "Cancelled", "Abandoned", "Forfeited"].includes(status)) {
+        return { label: "Assign Technician", type: "edit" as const, Icon: UserCheck };
+    }
+    if (["Pending", "Diagnosing"].includes(status)) return { label: "Start Repair", type: "advance" as const, Icon: Play };
+    if (["Pending Parts", "Waiting on Parts"].includes(status)) return { label: "Parts Arrived", type: "advance" as const, Icon: PackageCheck };
+    if (["In Progress", "On Workbench"].includes(status)) return { label: "Mark Ready", type: "advance" as const, Icon: CheckCircle2 };
+    if (status === "Ready") return { label: "Take Payment", type: "advance" as const, Icon: CreditCard };
+    if (status === "Completed") return { label: "Print & Deliver", type: "print" as const, Icon: Truck };
+    return { label: "View Job", type: "view" as const, Icon: Eye };
 };
 
 interface JobTicketListProps {
@@ -75,6 +93,15 @@ export function JobTicketList({
                     {jobs.map((job: any) => {
                         const isTechnician = userRole === "Technician";
                         const showCustomerDetails = !isTechnician || canEdit;
+                        const primaryAction = getPrimaryAction(job, canEdit);
+                        const PrimaryActionIcon = primaryAction.Icon;
+                        const handlePrimaryAction = (event: MouseEvent) => {
+                            event.stopPropagation();
+                            if (primaryAction.type === "edit") onEditJob(job);
+                            else if (primaryAction.type === "advance") onAdvanceStage(job);
+                            else if (primaryAction.type === "print") onPrintTicket(job);
+                            else onViewDetails(job);
+                        };
                         return (
                             <TableRow key={job.id} onClick={() => {
                                 if (isSelectionMode) onToggleSelection(job.id);
@@ -147,20 +174,34 @@ export function JobTicketList({
                                     </div>
                                 </TableCell>
                                 <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-800 rounded-full"><MoreVertical className="h-4 w-4" /></Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-xl">
-                                            <DropdownMenuItem onClick={() => onViewDetails(job)} className="cursor-pointer"><Eye className="w-4 h-4 mr-2" /> View Details</DropdownMenuItem>
-                                            {canEdit && <DropdownMenuItem onClick={() => onEditJob(job)} className="cursor-pointer"><PenTool className="w-4 h-4 mr-2" /> Edit Job</DropdownMenuItem>}
-                                            {canEdit && job.status !== 'Completed' && job.status !== 'Cancelled' && (
-                                                <DropdownMenuItem onClick={() => onAdvanceStage(job)} className="cursor-pointer text-blue-600"><Zap className="w-4 h-4 mr-2" /> Advance Stage</DropdownMenuItem>
+                                    <div className="flex items-center justify-end gap-2">
+                                        <Button
+                                            onClick={handlePrimaryAction}
+                                            size="sm"
+                                            className={cn(
+                                                "h-8 rounded-lg gap-1.5 font-bold shadow-sm whitespace-nowrap",
+                                                primaryAction.type === "view" ? "bg-slate-900 hover:bg-slate-800 text-white" : "bg-blue-600 hover:bg-blue-700 text-white"
                                             )}
-                                            <DropdownMenuSeparator />
-                                            <DropdownMenuItem onClick={() => onPrintTicket(job)} className="cursor-pointer"><Printer className="w-4 h-4 mr-2" /> Print Ticket</DropdownMenuItem>
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
+                                        >
+                                            <PrimaryActionIcon className="w-3.5 h-3.5" />
+                                            {primaryAction.label}
+                                        </Button>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-slate-800 rounded-full"><MoreVertical className="h-4 w-4" /></Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-xl">
+                                                <DropdownMenuLabel className="font-bold text-[10px] uppercase text-slate-500 tracking-wider">More</DropdownMenuLabel>
+                                                <DropdownMenuItem onClick={() => onViewDetails(job)} className="cursor-pointer"><Eye className="w-4 h-4 mr-2" /> View Details</DropdownMenuItem>
+                                                {canEdit && <DropdownMenuItem onClick={() => onEditJob(job)} className="cursor-pointer"><PenTool className="w-4 h-4 mr-2" /> Edit Job</DropdownMenuItem>}
+                                                {canEdit && job.status !== 'Completed' && job.status !== 'Cancelled' && (
+                                                    <DropdownMenuItem onClick={() => onAdvanceStage(job)} className="cursor-pointer text-blue-600"><Zap className="w-4 h-4 mr-2" /> Move to Next Step</DropdownMenuItem>
+                                                )}
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuItem onClick={() => onPrintTicket(job)} className="cursor-pointer"><Printer className="w-4 h-4 mr-2" /> Print Ticket</DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         );

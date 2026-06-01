@@ -309,6 +309,14 @@ router.post('/api/admin/payroll/bonus/calculate', requireAdminAuth, requirePermi
             return res.status(400).json({ error: 'bonusType, year, periodStartMonth, and periodEndMonth are required' });
         }
 
+        // Duplicate guard: unlike monthly payroll, bonus had no existence check.
+        // Running calculate twice for the same type+year created a second full set
+        // of bonus records — i.e. double bonus pay. Block if any already exist.
+        const existingBonuses = await storage.getBonusByYear(year);
+        if (existingBonuses.some((b: any) => b.bonusType === bonusType)) {
+            return res.status(400).json({ error: `${bonusType} bonus for ${year} already exists. Delete it first to recalculate.` });
+        }
+
         const records = await payrollService.calculateBonus(bonusType, year, periodStartMonth, periodEndMonth);
 
         // Save all bonus records

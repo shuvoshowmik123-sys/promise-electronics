@@ -289,9 +289,22 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                                         paddingAngle={5}
                                         dataKey="value"
                                     >
-                                        {(data.jobStatusData ?? []).map((_entry: any, index: number) => (
-                                            <Cell key={`cell-${index}`} fill={['#fff', 'rgba(255,255,255,0.5)', 'rgba(255,255,255,0.2)'][index % 3]} />
-                                        ))}
+                                        {(data.jobStatusData ?? []).map((entry: any, index: number) => {
+                                            const STATUS_COLORS: Record<string, string> = {
+                                                'Pending': '#fbbf24',
+                                                'In Progress': '#60a5fa',
+                                                'Diagnosing': '#a78bfa',
+                                                'Repairing': '#34d399',
+                                                'Waiting for Parts': '#fb923c',
+                                                'Ready': '#2dd4bf',
+                                                'Completed': '#ffffff',
+                                                'Delivered': '#d1fae5',
+                                                'Cancelled': 'rgba(255,255,255,0.2)',
+                                            };
+                                            const fallbacks = ['#fff', 'rgba(255,255,255,0.7)', 'rgba(255,255,255,0.4)', 'rgba(255,255,255,0.2)'];
+                                            const color = STATUS_COLORS[entry.name] ?? fallbacks[index % fallbacks.length];
+                                            return <Cell key={`cell-${index}`} fill={color} />;
+                                        })}
                                     </Pie>
                                     <Tooltip contentStyle={{ borderRadius: '12px', border: 'none', background: 'rgba(255, 255, 255, 0.9)', boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)', color: '#1e293b' }} />
                                 </PieChart>
@@ -304,12 +317,21 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                             </div>
                         </div>
                         <div className="mt-4 flex flex-wrap justify-center gap-3">
-                            {(data.jobStatusData ?? []).map((item: any, index: number) => (
-                                <div key={index} className="flex items-center gap-1.5">
-                                    <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: ['#fff', 'rgba(255,255,255,0.5)', 'rgba(255,255,255,0.2)'][index % 3] }} />
-                                    <span className="text-xs font-medium text-white/80">{item.name}</span>
-                                </div>
-                            ))}
+                            {(data.jobStatusData ?? []).map((item: any, index: number) => {
+                                const STATUS_COLORS: Record<string, string> = {
+                                    'Pending': '#fbbf24', 'In Progress': '#60a5fa', 'Diagnosing': '#a78bfa',
+                                    'Repairing': '#34d399', 'Waiting for Parts': '#fb923c', 'Ready': '#2dd4bf',
+                                    'Completed': '#ffffff', 'Delivered': '#d1fae5', 'Cancelled': 'rgba(255,255,255,0.2)',
+                                };
+                                const fallbacks = ['#fff', 'rgba(255,255,255,0.7)', 'rgba(255,255,255,0.4)', 'rgba(255,255,255,0.2)'];
+                                const color = STATUS_COLORS[item.name] ?? fallbacks[index % fallbacks.length];
+                                return (
+                                    <div key={index} className="flex items-center gap-1.5">
+                                        <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: color }} />
+                                        <span className="text-xs font-medium text-white/80">{item.name}</span>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </BentoCard>
                 </motion.div>
@@ -362,7 +384,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                     >
                         <div className="text-3xl font-bold text-white mt-2">৳ {(data.totalRevenue ?? 0).toLocaleString()}</div>
                         <div className="text-xs font-medium text-white/80 mt-1 flex items-center gap-1">
-                            Total Revenue Generated
+                            Revenue This Month
                         </div>
                     </BentoCard>
                 </motion.div>

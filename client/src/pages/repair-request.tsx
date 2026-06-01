@@ -20,6 +20,8 @@ import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthModal } from "@/components/auth/CustomerAuthModal";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { getApiUrl } from "@/lib/config";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { MobileServiceWizard } from "@/components/mobile/MobileServiceWizard";
 
 interface ImageKitMedia {
   url: string;
@@ -38,6 +40,7 @@ interface UploadedFile {
 
 export default function RepairRequestPage() {
   usePageTitle("Request TV Repair Service");
+  const isMobile = useIsMobile();
   const [step, setStep] = useState(1);
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -451,6 +454,10 @@ export default function RepairRequestPage() {
 
   const isImage = (type: string) => type.startsWith("image/");
   const isVideo = (type: string) => type.startsWith("video/");
+
+  if (isMobile) {
+    return <MobileServiceWizard mode="repair" />;
+  }
 
   return (
     <>

@@ -2,17 +2,25 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Building2, Loader2, ShieldCheck, Mail, Lock, ArrowRight, ChevronRight } from "lucide-react";
+import { Building2, Loader2, ShieldCheck, Mail, Lock, ArrowRight, KeyRound } from "lucide-react";
 import { useCorporateAuth } from "@/contexts/CorporateAuthContext";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { variants } from "@/lib/motion";
+import { corporatePasswordResetApi } from "@/lib/api/corporateApi";
 export default function CorporateLoginPage() {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [trustDevice, setTrustDevice] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
+    const [showReset, setShowReset] = useState(false);
+    const [resetUsername, setResetUsername] = useState("");
+    const [resetCode, setResetCode] = useState("");
+    const [resetPassword, setResetPassword] = useState("");
+    const [resetConfirmPassword, setResetConfirmPassword] = useState("");
+    const [resetRequestSent, setResetRequestSent] = useState(false);
+    const [isResetLoading, setIsResetLoading] = useState(false);
     const { login } = useCorporateAuth();
     const [, setLocation] = useLocation();
     const { toast } = useToast();
@@ -35,6 +43,59 @@ export default function CorporateLoginPage() {
             });
         } finally {
             setIsLoading(false);
+        }
+    };
+
+    const handleRequestReset = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsResetLoading(true);
+        try {
+            await corporatePasswordResetApi.request(resetUsername);
+            setResetRequestSent(true);
+            toast({
+                title: "Reset Request Sent",
+                description: "Call Promise admin and ask for your 6-digit reset code.",
+            });
+        } catch (error: any) {
+            toast({
+                title: "Reset Request Failed",
+                description: error.message || "Please try again.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsResetLoading(false);
+        }
+    };
+
+    const handleCompleteReset = async (e: React.FormEvent) => {
+        e.preventDefault();
+        setIsResetLoading(true);
+        try {
+            await corporatePasswordResetApi.complete({
+                username: resetUsername,
+                code: resetCode,
+                password: resetPassword,
+                confirmPassword: resetConfirmPassword,
+            });
+            toast({
+                title: "Password Updated",
+                description: "You can now log in with your new password.",
+            });
+            setPassword("");
+            setUsername(resetUsername);
+            setShowReset(false);
+            setResetCode("");
+            setResetPassword("");
+            setResetConfirmPassword("");
+            setResetRequestSent(false);
+        } catch (error: any) {
+            toast({
+                title: "Password Reset Failed",
+                description: error.message || "The code may be invalid or expired.",
+                variant: "destructive",
+            });
+        } finally {
+            setIsResetLoading(false);
         }
     };
 
@@ -89,10 +150,16 @@ export default function CorporateLoginPage() {
                     className="w-full max-w-md space-y-10"
                 >
                     <div className="space-y-2">
-                        <h2 className="text-3xl font-black text-slate-900 tracking-tight">Portal <span className="text-blue-600">Access</span></h2>
-                        <p className="text-slate-500 font-medium">Verify your credentials to enter the workspace.</p>
+                        <h2 className="text-3xl font-black text-slate-900 tracking-tight">
+                            {showReset ? "Reset " : "Portal "}
+                            <span className="text-blue-600">{showReset ? "Password" : "Access"}</span>
+                        </h2>
+                        <p className="text-slate-500 font-medium">
+                            {showReset ? "Request a code from Promise admin and set a new password." : "Verify your credentials to enter the workspace."}
+                        </p>
                     </div>
 
+                    {!showReset ? (
                     <form onSubmit={handleLogin} className="space-y-6">
                         <div className="space-y-4">
                             <div className="space-y-2">
@@ -114,7 +181,10 @@ export default function CorporateLoginPage() {
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
                                     <Label className="text-xs font-black uppercase tracking-widest text-slate-400">Security Key</Label>
-                                    <a href="mailto:support@promise-electronics.com" className="text-xs font-bold text-blue-600 hover:text-blue-700">Forgot?</a>
+                                    <button type="button" onClick={() => {
+                                        setResetUsername(username);
+                                        setShowReset(true);
+                                    }} className="text-xs font-bold text-blue-600 hover:text-blue-700">Forgot?</button>
                                 </div>
                                 <div className="relative group">
                                     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors">
@@ -160,6 +230,91 @@ export default function CorporateLoginPage() {
                             )}
                         </Button>
                     </form>
+                    ) : (
+                    <div className="space-y-6">
+                        <form onSubmit={handleRequestReset} className="space-y-4 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                            <div className="space-y-2">
+                                <Label className="text-xs font-black uppercase tracking-widest text-slate-400">Username or Email</Label>
+                                <div className="relative group">
+                                    <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors">
+                                        <Mail className="h-5 w-5" />
+                                    </div>
+                                    <Input
+                                        value={resetUsername}
+                                        onChange={(e) => setResetUsername(e.target.value)}
+                                        placeholder="Your corporate username"
+                                        className="h-14 pl-12 rounded-2xl bg-white border-slate-100 shadow-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all font-medium"
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            <Button
+                                type="submit"
+                                variant="outline"
+                                className="w-full h-12 rounded-2xl border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100 font-black"
+                                disabled={isResetLoading || !resetUsername}
+                            >
+                                {isResetLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Ask Admin For Code"}
+                            </Button>
+                            {resetRequestSent && (
+                                <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-700">
+                                    Request noted. Call Promise admin, verify yourself, and collect the 6-digit code.
+                                </div>
+                            )}
+                        </form>
+
+                        <form onSubmit={handleCompleteReset} className="space-y-4 rounded-3xl border border-slate-100 bg-white p-5 shadow-sm">
+                            <div className="grid grid-cols-1 gap-4">
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-black uppercase tracking-widest text-slate-400">6-Digit Code</Label>
+                                    <div className="relative group">
+                                        <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors">
+                                            <KeyRound className="h-5 w-5" />
+                                        </div>
+                                        <Input
+                                            value={resetCode}
+                                            onChange={(e) => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                            placeholder="123456"
+                                            inputMode="numeric"
+                                            className="h-14 pl-12 rounded-2xl bg-white border-slate-100 shadow-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all font-mono text-lg tracking-[0.25em]"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-black uppercase tracking-widest text-slate-400">New Password</Label>
+                                    <Input
+                                        type="password"
+                                        value={resetPassword}
+                                        onChange={(e) => setResetPassword(e.target.value)}
+                                        className="h-14 rounded-2xl bg-white border-slate-100 shadow-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all font-medium"
+                                        required
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-black uppercase tracking-widest text-slate-400">Confirm Password</Label>
+                                    <Input
+                                        type="password"
+                                        value={resetConfirmPassword}
+                                        onChange={(e) => setResetConfirmPassword(e.target.value)}
+                                        className="h-14 rounded-2xl bg-white border-slate-100 shadow-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all font-medium"
+                                        required
+                                    />
+                                </div>
+                            </div>
+                            <Button
+                                type="submit"
+                                className="w-full h-14 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black text-lg transition-all shadow-xl shadow-slate-200 flex items-center justify-center gap-3"
+                                disabled={isResetLoading || resetCode.length !== 6}
+                            >
+                                {isResetLoading ? <Loader2 className="h-6 w-6 animate-spin" /> : "Set New Password"}
+                            </Button>
+                            <Button type="button" variant="ghost" className="w-full rounded-2xl" onClick={() => setShowReset(false)}>
+                                Back to Login
+                            </Button>
+                        </form>
+                    </div>
+                    )}
 
                     <div className="pt-10 border-t border-slate-100 flex flex-col items-center gap-6">
                         <p className="text-xs font-bold text-slate-300 uppercase tracking-widest">Enterprise Support</p>

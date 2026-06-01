@@ -12,8 +12,26 @@ export const corporateApi = {
             body: JSON.stringify(data),
         }),
     getBranches: (id: string) => fetchApi<CorporateClient[]>(`/corporate/clients/${id}/branches`),
+    getRules: (id: string) => fetchApi<any>(`/corporate/clients/${id}/rules`),
+    updateRules: (id: string, data: any) =>
+        fetchApi<any>(`/corporate/clients/${id}/rules`, {
+            method: "PATCH",
+            body: JSON.stringify(data),
+        }),
+    getBatches: (id: string) => fetchApi<any[]>(`/corporate/clients/${id}/batches`),
+    getExtensionRequests: (id: string) => fetchApi<any[]>(`/corporate/clients/${id}/extension-requests`),
+    createExtensionRequest: (batchId: string, data: { jobId: string; reason: string; requestedUntil: Date | string }) =>
+        fetchApi<any>(`/corporate/batches/${batchId}/extension-requests`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    updateExtensionRequest: (id: string, data: { status: "accepted" | "rejected" | "cancelled"; responseNote?: string }) =>
+        fetchApi<any>(`/corporate/extension-requests/${id}`, {
+            method: "PATCH",
+            body: JSON.stringify(data),
+        }),
 
-    create: (data: InsertCorporateClient & { portalPassword?: string }) =>
+    create: (data: InsertCorporateClient & { portalPassword?: string; portalUsers?: Array<{ name?: string; username: string; password: string; email?: string; phone?: string }> }) =>
         fetchApi<CorporateClient>("/corporate/clients", {
             method: "POST",
             body: JSON.stringify(data),
@@ -42,14 +60,23 @@ export const corporateApi = {
 
     createChallanIn: (data: {
         corporateClientId: string;
+        workType?: "full_tv" | "panel" | "panel_batch" | "board" | "parts" | "parts_sale" | "crr";
         items: {
             corporateJobNumber: string;
             deviceModel: string;
             serialNumber: string;
             initialStatus: "OK" | "NG";
+            status?: "Received" | "Pending" | "Declared OK" | "Declared NG";
             reportedDefect: string;
+            workType?: "full_tv" | "panel" | "panel_batch" | "board" | "parts" | "parts_sale" | "crr";
+            ticketType?: "full_device" | "panel_only" | "motherboard_only" | "parts_only";
+            jobType?: "standard" | "warranty_claim";
+            parentJobId?: string;
+            crrReviewStatus?: "new_job" | "crr" | "ignore" | "super_admin_review";
+            crrReason?: string;
         }[];
         receivedBy: string;
+        receivedAt?: Date;
     }) => fetchApi<{ challanId: string; jobIds: string[] }>("/corporate/challans/in", {
         method: "POST",
         body: JSON.stringify(data)
@@ -112,13 +139,17 @@ export const corporateApi = {
             body: JSON.stringify(data)
         }),
 
-    parseExcel: async (file: File) => {
+    parseExcel: async (file: File, options?: { clientId?: string; mappings?: unknown }) => {
         const formData = new FormData();
         formData.append('file', file);
+        if (options?.clientId) formData.append('clientId', options.clientId);
+        if (options?.mappings) formData.append('mappings', JSON.stringify(options.mappings));
 
         const res = await fetch("/api/corporate/clients/challans/parse-excel", {
             method: "POST",
             body: formData,
+        }).catch(() => {
+            throw new Error("Backend is not reachable. Please check the server and try importing again.");
         });
 
         if (!res.ok) {
@@ -135,11 +166,31 @@ export const corporateApi = {
         const res = await fetch("/api/corporate/clients/challans/parse-docx", {
             method: "POST",
             body: formData,
+        }).catch(() => {
+            throw new Error("Backend is not reachable. Please check the server and try importing again.");
         });
 
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.message || "Failed to parse DOCX");
+        }
+        return res.json();
+    },
+
+    parsePptx: async (file: File) => {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch("/api/corporate/clients/challans/parse-pptx", {
+            method: "POST",
+            body: formData,
+        }).catch(() => {
+            throw new Error("Backend is not reachable. Please check the server and try importing again.");
+        });
+
+        if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.message || "Failed to parse PPTX");
         }
         return res.json();
     },
@@ -155,7 +206,58 @@ export const corporateApi = {
         body: JSON.stringify(data)
     }),
 
+    resetCorporateUserPassword: (id: string) =>
+        fetchApi<{ user: User; temporaryPassword: string }>(`/admin/corporate-users/${id}/reset-password`, {
+            method: "POST",
+        }),
+
+    generateCorporateUserResetOtp: (id: string) =>
+        fetchApi<{
+            request: {
+                id: string;
+                userId: string;
+                username?: string | null;
+                name?: string | null;
+                corporateClientId: string;
+                expiresAt: string;
+            };
+            code: string;
+        }>(`/admin/corporate-users/${id}/reset-otp`, {
+            method: "POST",
+        }),
+
+    getCorporateResetRequests: (clientId: string) =>
+        fetchApi<Array<{
+            id: string;
+            userId: string;
+            corporateClientId: string;
+            status: string;
+            attempts: number;
+            maxAttempts: number;
+            expiresAt?: string | null;
+            usedAt?: string | null;
+            createdAt: string;
+            user: {
+                name?: string | null;
+                username?: string | null;
+                email?: string | null;
+            };
+        }>>(`/admin/corporate-users/reset-requests?corporateClientId=${clientId}`),
+
     getCorporateUsers: (clientId: string) => fetchApi<SafeUser[]>(`/admin/users?corporateClientId=${clientId}`),
+};
+
+export const corporatePasswordResetApi = {
+    request: (username: string) =>
+        fetchApi<{ message: string }>("/corporate/auth/password-reset/request", {
+            method: "POST",
+            body: JSON.stringify({ username }),
+        }),
+    complete: (data: { username: string; code: string; password: string; confirmPassword: string }) =>
+        fetchApi<{ message: string }>("/corporate/auth/password-reset/complete", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
 };
 
 export interface BulkRow {
@@ -165,6 +267,13 @@ export interface BulkRow {
     serialNumber: string;
     reportedDefect: string;
     initialStatus?: "OK" | "NG";
+    status?: "Received" | "Pending" | "Declared OK" | "Declared NG";
+    customerName?: string;
+    externalJobRef?: string;
+    challanNumber?: string;
+    itemType?: string;
+    batchNumber?: string;
+    receivedDate?: string;
     physicalCondition?: string;
     accessories?: string;
     notes?: string;
@@ -194,6 +303,12 @@ export const corporatePortalApi = {
     },
 
     getJob: (id: string) => fetchApi<JobTicket>(`/corporate/jobs/${id}`),
+    getExtensionRequests: () => fetchApi<any[]>("/corporate/extension-requests"),
+    respondExtensionRequest: (id: string, data: { status: "accepted" | "rejected"; responseNote?: string }) =>
+        fetchApi<any>(`/corporate/extension-requests/${id}/respond`, {
+            method: "PATCH",
+            body: JSON.stringify(data),
+        }),
 
     createServiceRequest: (data: {
         deviceModel: string;

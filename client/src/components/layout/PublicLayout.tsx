@@ -75,6 +75,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
   const businessHours = getSettingValue("business_hours", "9:00 AM - 9:00 PM");
   const siteName = getSettingValue("site_name", "Promise Electronics");
   const logoUrl = getSettingValue("logo_url", "");
+  const isImmersiveMobileRoute = location === "/repair" || location === "/get-quote";
 
   const handleLogout = async () => {
     await logout();
@@ -271,15 +272,15 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <main className="flex-1 pb-20 md:pb-0">
+      <main className={`flex-1 ${isImmersiveMobileRoute ? "pb-0 md:pb-0" : "pb-20 md:pb-0"}`}>
         {children}
       </main>
 
       {/* Mobile Bottom Navigation */}
-      <MobileBottomNav />
+      {!isImmersiveMobileRoute && <MobileBottomNav />}
 
       {/* Neumorphic Footer */}
-      <footer className="bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 text-slate-300 py-12 pb-24 md:pb-12 relative overflow-hidden">
+      <footer className={`${isImmersiveMobileRoute ? "hidden md:block" : ""} bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 text-slate-300 py-12 pb-24 md:pb-12 relative overflow-hidden`}>
         <div className="container mx-auto px-4 grid md:grid-cols-4 gap-8">
           <div>
             <h3 className="text-white text-xl font-heading font-bold mb-4">PROMISE ELECTRONICS</h3>

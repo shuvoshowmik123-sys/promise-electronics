@@ -265,6 +265,11 @@ export default function TechnicianTab() {
                                                                 {job.corporateClientId && (
                                                                     <Badge variant="secondary" className="bg-[var(--corp-blue)] text-white text-[9px] font-black px-1.5 py-0 h-4 border-none">B2B</Badge>
                                                                 )}
+                                                                {(job as any).extensionStatus && (job as any).extensionStatus !== "none" && (
+                                                                    <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-[9px] font-black px-1.5 py-0 h-4">
+                                                                        Extension {(job as any).extensionStatus}
+                                                                    </Badge>
+                                                                )}
                                                                 <Badge variant="outline"
                                                                     className={cn("text-[9px] font-bold capitalize",
                                                                         STATUS_STYLES[job.status ?? ""] || "bg-slate-50 text-slate-500 border-slate-200"

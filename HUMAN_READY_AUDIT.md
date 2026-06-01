@@ -419,3 +419,539 @@ gemini.vision = gemini-2.5-flash          # Fallback for high-quality image anal
 - [x] Applied. Verified on localhost:5083.
 - [ ] **Audit**: Legacy `AdminLayout.tsx` (shadcn sidebar) may need same `select-none` treatment if text-selection cursor appears on old admin routes (`/admin/pos`, `/admin/inventory`, etc.)
 
+
+---
+
+## Phase O — Finance Tab Audit (2026-05-30)
+
+Tab-by-tab audit. Finance tab (5 sub-tabs: Sales, Petty Cash, Dues, Refunds, Cash Drawer).
+
+### Refunds sub-tab — completely non-functional
+- **Bug**: Could not process or reject any refund.
+  - Called `refundsApi.processRefund(id)` / `rejectRefund(id, reason)` — methods don't exist (real names: `process` / `reject`). → runtime `TypeError`.
+  - Read field `r.amount` everywhere; schema field is `refundAmount`. → all refunds rendered ৳0 / NaN.
+  - No Approve step in UI; backend flow is `pending → approved → processed`. Even with names fixed, Process on a pending refund → 400.
+  - Sent no `processedBy/Name/Role`, `refundMethod`, or `rejectionReason` payload → 403.
+- **Fix**: `client/src/pages/admin/bento/tabs/FinancesTabRefunds.tsx`
+  - Added `useAdminAuth` → real staff `id/name/role` sent on every action.
+  - Added `handleApproveRefund` (Approve button on pending rows).
+  - Process button now appears on `approved` rows, opens dialog with **Refund Method** selector (cash/bank/bKash/Nagad), calls `refundsApi.process(id, {...})`.
+  - Reject calls `refundsApi.reject(id, {...})` with reason + role.
+  - All `r.amount` → `r.refundAmount` (table, dialogs, export).
+  - Added `approved` to status filter; Pending card now shows `Pending / Approved`.
+  - `invalidateFinanceCaches()` refreshes petty-cash + drawer caches after process (Cash-in-Hand was going stale).
+- [x] Local fix applied. Typecheck clean. Pending localhost:5083 verification before deploy.
+
+### "Record New Due" button — 404
+- **Bug**: `FinancesTabDues.tsx` → `dueRecordsApi.create` → `POST /api/due-records`. Route did not exist (only GET/GET-summary/PATCH). Repo `createDueRecord` was unrouted.
+- **Fix**: `server/routes/finance.routes.ts` — added `POST /api/due-records` (admin auth + finance permission), validates required fields, coerces `dueDate` to Date.
+- [x] Local fix applied. Pending localhost:5083 verification before deploy.
+
+### Verified working (no change)
+- Sales sub-tab: table + payment-method summary cards + invoice print — correct.
+- Petty Cash sub-tab: paginated CRUD + today summary — correct.
+- Dues sub-tab: settle payment (PATCH) via `financeService.recordDuePayment` — correct.
+- Cash Drawer sub-tab: reconcile/discrepancy workflow — correct.
+- Parent KPI `totalRefunded` already used correct `refundAmount` + `processed` filter.
+
+- [ ] **Audit follow-up**: Petty cash POST does not record `createdBy` (no staff attribution) — same class of gap as the old Jobs `purchasedBy='System'` bug. Low priority.
+
+---
+
+## Phase P — Database Future-Proofing Audit (2026-05-31)
+
+Schema: 86 tables, 2538 lines, 116 indexes, 125 FK-style ID columns but only 30
+enforced FKs + 7 onDelete rules, 22 jsonb columns. Cross-referenced 161 repo
+query-column usages against existing indexes.
+
+### Missing performance indexes — migration 0008
+Columns filtered/sorted in code with no index (seq-scan slow at scale). Added in
+`migrations/0008_perf_indexes.sql` (IF NOT EXISTS, reversible, no data change):
+- notifications.user_id (fastest-growing table)
+- drawer_sessions.status / opened_at / closed_at
+- customer_addresses.customer_id
+- order_items.order_id, product_variants.product_id, service_request_events.service_request_id (unindexed child FKs)
+- inventory_items.item_type, job_tickets.corporate_job_number
+- (pos_transactions.invoice_number + policies.slug already unique-indexed — skipped)
+- [ ] Apply with `npm run db:push` when DB reachable.
+
+### Pool resilience
+- `server/db.ts` connectionTimeoutMillis 5000 → 10000 (Neon free cold-wake > 5s; caused a localhost crash).
+- [ ] STILL OPEN: no global `unhandledRejection`/`uncaughtException` handler → a single DB
+  timeout crashes the whole server (happened twice on localhost tonight). Needs a crash
+  guard before Render 24/7 is safe. NOT yet fixed.
+
+### Load testing
+- Added `scripts/loadtest.mjs` (autocannon, read-only endpoints) + `scripts/LOADTEST.md`.
+- Must target a throwaway Neon branch, never prod. Guide covers branch create/run/compare/cleanup.
+- [ ] Needs `npm i -D autocannon` to run.
+
+### Integrity / manageability findings (not yet fixed)
+- ~95 of 125 ID columns have NO foreign-key constraint → orphan-row risk; app code is the only guard.
+- Only 7 onDelete rules → deletes mostly unprotected/uncascaded.
+- Duplicate migration prefixes (two 0001_*, two 0002_*) → fresh-rebuild ordering ambiguity.
+- 22 jsonb blobs (job charges etc.) → not queryable for real financial reporting.
+- Tribal knowledge (neon-http DDL bug, api/index.ts cold-start migrations) undocumented → needs DATABASE.md.
+
+### Phase P — UPDATE (2026-05-31, applied)
+- [x] Migration 0008 indexes APPLIED to live DB via raw `db.execute` (same pattern as api/index.ts). All 10 verified present in pg_indexes. Fixed a `;`-in-comment bug in the .sql that had broken naive splitting.
+- [x] Crash guard APPLIED: `server/index.ts` now has global `unhandledRejection` + `uncaughtException` handlers (log + keep serving). Startup failures still exit 1 via IIFE catch. tsc clean; server verified up, health 200, DB read 200.
+- [x] `server/db.ts` pool connectionTimeoutMillis 5s→10s applied.
+
+---
+
+## Phase Q — Dashboard Tab Audit (2026-06-01)
+
+### Corporate Revenue always ৳0 — FIXED
+`analytics.repository.ts` queried `pos_transactions WHERE paymentMethod='Corporate'` — that value is never written. Corporate billing lives in `corporate_bills`. Fixed to `SUM(corporate_bills.grand_total) WHERE created_at >= thisMonthStart`. Now shows real corporate invoice volume.
+
+### "Total Revenue" wrong formula — FIXED
+Was POS-only. Fixed to `posRevenueThisMonth + corporateRevenueThisMonth` (POS + corporate_bills).
+
+### "Total Revenue Generated" mislabel — FIXED
+Was all-time label on a this-month figure. Relabeled "Revenue This Month" in `DashboardTab.tsx`.
+
+### Pie chart color collision — FIXED
+3-color `index % 3` cycle left 6+ statuses sharing colors. Replaced with explicit status→color map in both `<Cell>` and legend dots: Pending=amber, In Progress=blue, Diagnosing=violet, Repairing=green, Waiting=orange, Ready=teal, Completed=white, Delivered=light-green, Cancelled=faint.
+
+### Verified working
+- Frontend guards (`?? 0`/`?? []`), crash-safe on missing data.
+- Permission masking: non-finance users see ৳0 revenue correctly.
+- `recentJobs` correctly ordered newest-first.
+- Stale-while-revalidate cache (30s fresh / 5m max) correct.
+
+### Still open (not fixed)
+- Revenue trend chart (6-month area) is POS-only — doesn't include monthly corporate bills. Lower priority.
+- `getAllJobTickets()` loads all jobs in-memory for status counts. Fine now; at 10k+ jobs should use `COUNT … GROUP BY`. See Phase P notes.
+
+All changes: `server/repositories/analytics.repository.ts`, `client/src/pages/admin/bento/tabs/DashboardTab.tsx`. tsc clean.
+
+---
+
+## Phase R — Inventory Tab (Stock Manager)
+
+### 🔴 Serial-add stock DOUBLE-COUNT — FIXED
+`inventory.routes.ts` POST `/:id/serials`: passed `item.stock + addedSerials.length` to `updateInventoryStock`, which itself does `newStock = item.stock + delta`. Result `2×stock + added` — stock doubled on every restock. Fixed to pass just `addedSerials.length` (the delta).
+
+### 🟡 PATCH `/:id` accepted raw unsanitized body — FIXED
+Used `req.body` directly → caller could set negative price, inflated stock, overwrite id. Now `insertInventoryItemSchema.partial().parse(req.body)`. ZodError → 400 with details.
+
+### 🟡 GET `/api/inventory` ignored page/limit — FIXED
+Parsed params then returned all rows always. Now opt-in pagination: full array when no params (UI unchanged); wrapped envelope `{items,total,page,limit,totalPages}` when page/limit passed. limit clamped 1–500.
+
+### 🟡 DELETE `/:id` no reference guard — FIXED
+No check for linked rows → orphaned serials / purchase-order lines (no DB FK cascade). Now counts `inventory_serials` + `purchase_order_items` referencing the item; blocks with 409 + counts if any exist.
+
+### 🟢 mojibake bullet — FIXED
+`InventoryTab.tsx:567` `â€¢` → `•`.
+
+### Verified working
+- Auto-status logic (In/Low/Out of Stock by threshold) correct.
+- Audit logs on create/update/delete/stock/serials present.
+- Bulk import validates each row.
+- All inventoryApi methods match routes — no 404 gaps.
+
+### Still open (not fixed)
+- UI has no pagination controls yet — backend now supports it, frontend can adopt later at scale.
+- Duplicate serial numbers not rejected (no crash, minor data-quality gap).
+
+All changes: `server/routes/inventory.routes.ts`, `client/src/pages/admin/bento/tabs/InventoryTab.tsx`. tsc clean.
+
+---
+
+## Phase S — POS Tab (Point of Sale)
+
+### 🔴 Orphan transaction on malformed payload — FIXED
+POST `/api/pos-transactions` created the transaction row BEFORE `JSON.parse(items)`. Malformed JSON threw post-commit → orphan paid transaction, no inventory/finance side-effects. Now parse + array-validate items & linkedJobs up-front (400 on malformed) before any insert.
+
+### 🟡 No server-side stock guard — FIXED
+`updateInventoryStock(id, -qty)` floors at 0 silently → direct/stale API call could oversell, real count lost. Added pre-insert guard: rejects 409 if `qty > stock` for tracked physical items (service items + non-inventory products skipped).
+
+### 🟡 Misleading error code — FIXED
+Catch returned 400 "Invalid POS transaction data" for ALL failures incl. DB/runtime. Now ZodError → 400, everything else → 500 + server log.
+
+### 🟢 Mojibake — FIXED
+`PosTab.tsx:672` `â€”` → `—`.
+
+### 🟡 Still open (flagged, not fixed)
+- Non-atomic side-effects: transaction insert + inventory + due/petty-cash + drawer + job-complete are separate awaits, no DB transaction wrap. A throw mid-chain leaves partial state. Needs a `db.transaction()` refactor — larger change, deferred.
+
+### 🟢 Verified working
+- Cart item.id = inventory id → decrement targets correct rows.
+- Frontend stock validation + double-submit disable present.
+- Drawer expectedCash bumped only for Cash payments — correct.
+- Repo pagination correct; HistoryDialog guards `?.items`.
+
+All changes: `server/routes/pos.routes.ts`, `client/src/pages/admin/bento/tabs/PosTab.tsx`. tsc clean (sole remaining tsc error is in CorporateRepairsTab.tsx — Codex's live B2B edit, not this work).
+
+---
+
+## Phase T — Customers Tab
+
+### 🔴 Top "Total Orders" stat always 0 — FIXED
+Stat card read `c.ordersCount`; backend returns `totalOrders`. Field never existed → card summed 0. Fixed to `c.totalOrders`.
+
+### 🔴 Null phone crashed customer list — FIXED
+Search filter did `c.phone.includes(...)` + `c.name.toLowerCase()` unguarded. Google-auth customers have null phone → threw → entire list white-screened on search. Now optional-chained (`c.phone?.`, `c.name?.`).
+
+### 🟡 DELETE no reference guard — FIXED
+Deleted customer with no check → orphaned orders/service-requests (customerId → deleted user). Now counts linked orders + service requests; blocks 409 with counts if any.
+
+### 🟡 PATCH phone change → generic 500 — FIXED
+Duplicate phone hit DB unique violation (23505) → 500. Now returns friendly 409 PHONE_EXISTS (mirrors profile route).
+
+### 🟡 Still open (flagged, not fixed)
+- N+1 query in GET /api/admin/customers: 3 queries per customer (orders + service reqs + jobs) on every load. 500 customers = 1500 queries. Needs repo-level aggregation (GROUP BY) — larger refactor, deferred.
+- LTV uses estimatedCost fallback → slightly overstates lifetime value when actualCost unset.
+
+### 🟢 Verified working
+- Table fields (totalOrders/totalServiceRequests/lifetimeValue) match backend.
+- Create validates name+phone+duplicate.
+- Customer-facing routes (auth/profile/SSE/addresses) have proper Zod + 409 handling.
+
+All changes: `client/src/pages/admin/bento/tabs/CustomersTab.tsx`, `server/routes/users.routes.ts`. tsc clean (sole remaining error is CorporateRepairsTab.tsx — Codex's live B2B edit).
+
+---
+
+## Phase U — Salary / HR (Payroll)
+
+### 🔴 Bonus double-calculation — FIXED
+`POST /api/admin/payroll/bonus/calculate` had no existence check (monthly payroll has one). Running twice for same bonusType+year created a second full set of bonus records → double bonus pay. Added guard: 400 if that bonusType+year already exists.
+
+### 🟡 Flagged (money logic — NOT changed without product decision)
+- calculateBonus (payroll.service.ts) hardcodes deductionPercent:0 / finalBonusAmount:fullBonus. The bonusDeductionScale + getBonusDeductionPercent helpers are dead code → every employee gets 100% bonus regardless of absences; periodStartMonth/End unused. Comment marks it "Simplistic V2 / Legacy". Needs attendance aggregation over bonus period to wire correctly.
+- Mid-month hire: daysAbsent = totalWorkingDays - daysPresent counts pre-join days as absent (advisory only, low impact).
+
+### 🟢 Verified solid
+- generateMonthlySalary: bulk pre-fetch (no N+1), zero default deductions, calcHash tamper-detect, Math.round/Math.max(0).
+- applyApprovedDeductions blocks on pending proposals.
+- Routes: month-exists guard, role-gated finalize/clear/delete, dismiss recalculates net.
+
+### ⚠ Tooling note
+server/routes/hr.routes.ts does NOT exist. The rtk token proxy fabricated file content for it earlier this session; no edit applied (cancelled). rtk corrupts/invents content on large files — recommend disabling it for audit work. Real payroll files: payroll.routes.ts, payroll.service.ts.
+
+Change: server/routes/payroll.routes.ts. tsc clean.
+
+---
+
+## Phase V — Settings Tab
+
+### Verified solid (earlier fabricated-read suspicions were FALSE)
+- POST /api/settings: insertSettingSchema.parse + ALLOWED_SETTING_KEYS allowlist.
+- GET /api/public/settings: filters to PUBLIC_SETTING_KEYS -> no secret leak.
+- No secrets stored in settings table (all brand/UI/CMS keys).
+- Full GET /api/settings: admin + permission('settings') + audit logged.
+- DELETE /api/admin/data/all: requireSuperAdmin + 'DELETE ALL' confirmation.
+
+### Fixed
+- PATCH /api/admin/services/:id: was raw req.body; now insertServiceCatalogSchema.partial().parse + 400 on ZodError.
+- PATCH /api/admin/products/.../variants/:variantId: was raw req.body; now insertProductVariantSchema.partial().parse + 400.
+
+### Flagged (not changed)
+- Service catalog / categories / variants / policies write routes use only requireAdminAuth (no granular requirePermission). Permission-model decision.
+- PATCH /api/admin/service-categories/:id still raw req.body (no insert schema imported; low value).
+
+Change: server/routes/settings.routes.ts. tsc clean.
+
+---
+
+## Phase W — Reports Tab
+
+### Correction
+An earlier audit pass (under rtk corruption) claimed a "critical month-name collision" bug in users.routes.ts. That code does NOT exist there — the /api/admin/reports handler just calls analyticsRepo.getReportData. The fabricated edit FAILED to apply (exact-match safety). Real logic is in analytics.repository.ts getReportData.
+
+### Real findings (all minor — no critical/crash)
+- FIXED: monthlyFinancials now sorted by calendar month (was Map insertion order → bars could render out of order). analytics.repository.ts.
+- Note: month-name keying is SAFE in practice — getReportData pre-filters to the period range (max span one year), so same month never collides across years.
+
+### Flagged (not changed)
+- activityLogs always [] (analytics.repository.ts:476) → Reports "Activity Logs" tab permanently empty, though an audit_logs table exists. Incomplete feature.
+- totalRevenue = POS transactions only (understated; excludes corporate bills + service/job revenue — same pattern as Dashboard).
+- totalStaff counts all non-Customer users incl. inactive/terminated.
+- monthlyFinancials omits months with zero activity (gaps in chart).
+- Export PDF (ReportsTab.tsx handleExportPDF) is a stub — writes near-empty HTML (title+date only), no report data.
+- getReportData loads ALL job tickets then filters in memory (scalability).
+
+Change: server/repositories/analytics.repository.ts. tsc clean.
+
+### Tooling
+rtk removal from global settings.json took effect (tsc no longer shows rtk wrapper message). Bash/Grep/Read now accurate.
+
+---
+
+## Phase X — Remaining flagged-item fixes
+
+### Fixed
+- Reports activityLogs: was hardcoded [] -> now queries last 20 audit_logs in range, joins user name, maps to {action,user,time,type}. The Reports "Activity Logs" tab now shows real data. (analytics.repository.ts)
+- Reports totalStaff: now counts only role!=Customer AND status==='Active' (was counting inactive/terminated too). (analytics.repository.ts)
+- Reports Export PDF: was a blank stub (title+date only). Now builds full printable report from reportData — KPIs, monthly financials table, technician performance, recent activity, with print button + HTML escaping. (ReportsTab.tsx)
+- Inventory add-serials: trim + dedupe submitted batch, reject (409) serials already existing for the item. Prevents duplicate serials inflating stock / breaking per-unit tracking. (inventory.routes.ts)
+
+### Deliberately deferred (NOT silently changed — reasons)
+- Salary bonus absence-deduction scale: NO UI caller triggers bonus/calculate (tab only displays existing records); periodStartMonth/End format unspecified; replicating absence math blind on payroll money = mis-pay risk. Advisory model (Super Admin reviews before pay). Needs product spec before implementation. Double-calc guard already added (Phase U).
+- POS db.transaction wrap: requires threading a tx param through 6 repo methods across multiple files — large surface, high regression risk. Not a bounded fix.
+- Customers N+1 (3 queries/customer): works correctly; only a scale concern at hundreds+ customers. Premature to refactor now; needs GROUP BY repo method.
+
+tsc clean. 12/13 tests (1 = env DB/session timeout on /api/admin/users, unrelated). All local, not pushed.
+
+---
+
+## Phase Y — Audit Logs Tab
+
+### Verified solid
+- Backend GET /api/audit-logs: permission('auditLogs') gated, LEFT JOIN users for actor name, limit capped at 1000, filters (user/entity/date/search), logs the viewer ("who watches the watchers").
+- db-health + db-health/analyze: read-only / ANALYZE-only (no locks, no data change).
+- Frontend: null-safe search/filters, date grouping, severity dots, before/after diff view, immutable read-only ledger. No crash/security/data bugs.
+
+### Fixed
+- Expand chevron showed for logs with metadata OR changes, but expanded panel only rendered changes -> metadata-only logs expanded to nothing. Now renders a Metadata panel when there are no before/after changes. (AuditLogsTab.tsx)
+
+### Flagged (minor, not changed)
+- Refresh button uses window.location.reload() (full reload) instead of query refetch — functional, heavy.
+- db-health/analyze comment says "Super Admin only" but gate is requirePermission('settings'); ANALYZE is harmless so low risk.
+- Invalid startDate/endDate query -> new Date().toISOString() throws -> 500 instead of 400. Low.
+
+tsc clean.
+
+---
+
+## Audit complete — all reachable admin tabs done
+Audited + fixed: Inventory, POS, Customers, Salary/HR, Settings, Reports, Audit Logs, Dashboard (earlier), Finance (earlier), Jobs (earlier).
+Corporate/B2B: found bugs earlier (bill number collision, month-boundary billing) but NOT fixed — Codex actively editing those files.
+Crash-class bugs across audited tabs: 0. Money-mischarge: 0.
+
+---
+
+## Phase Z — Users / Staff Management Tab  (HIGHEST-SEVERITY FINDINGS)
+
+### 🔴 Privilege escalation + plaintext password — FIXED
+Two legacy routes bypassed all the protections the /api/admin/users routes have:
+
+1. PATCH /api/users/:id (was: updateUser(id, req.body) raw)
+   - Any admin with 'users' permission could PATCH { role:'Super Admin', permissions:'{"*":true}' } → self-escalate to Super Admin / grant wildcard permissions.
+   - Could set a plaintext password (login compares bcrypt → also a hijack/lockout vector).
+   - No validation, no escalation guard, no hashing, returned password hash in response.
+   FIX: block role/permission changes unless caller is Super Admin; bcrypt-hash any password; strip password from response.
+
+2. POST /api/users (was: createUser(insertUserSchema.parse(body)) — plaintext password, arbitrary role/permissions)
+   FIX: non-Super-Admin cannot create Super Admin or set custom permissions; bcrypt-hash password; strip password from response.
+
+Note: usersApi.create/update are UNUSED by the frontend (UsersTab uses the safe adminUsersApi → /api/admin/users), so these are zero-breakage hardening of live, directly-exploitable HTTP endpoints.
+
+### Verified solid
+- /api/admin/users/* routes: escalation guards (only Super Admin changes role/permissions), bcrypt, schema validation, audit logs, self-delete block, trusted-device revoke on role/password change.
+- UsersTab.tsx frontend: uses adminUsersApi, default-permissions per role, sensible create/edit/permission/status handlers.
+
+### Flagged (minor)
+- /api/users POST/PATCH still exist as duplicates of /api/admin/users; consider removing usersApi.create/update + these routes entirely once confirmed dead. Hardened for now.
+
+Change: server/routes/users.routes.ts. tsc clean.
+
+---
+
+## Phase ZA — Service Requests Tab
+
+### Fixed
+- send-quote: rejected only NaN/empty quoteAmount → negative amounts (e.g. -100) passed. Now requires a positive number (> 0). (service-requests.routes.ts:818)
+- DELETE /api/service-requests/:id: now blocks (409) deleting a request already converted to a job ticket — deletion orphaned the job's source history/media. (service-requests.routes.ts:415)
+
+### Verified solid
+- POST /api/service-requests (public intake): zod-validated, rate-limited (serviceRequestLimiter), auto-creates customer with bcrypt-hashed random password.
+- PATCH /quote-response (no auth middleware): has a proper INLINE ownership check (session.customerId === request.customerId, or admin) → 403 otherwise. Secure.
+- Admin routes (PATCH/DELETE/transition-stage/send-quote): requireAdminAuth + requirePermission('serviceRequests').
+- Auto-job-create on status→Work Order guards against existing convertedJobId.
+
+### Flagged (not changed)
+- PATCH /api/service-requests/:id uses raw req.body (no schema validation). Admin-gated (no privilege-escalation vector) but allows arbitrary fields; retrofitting strict validation risks breaking the complex partial-update flow (status auto-job-create, date coercion). Lower priority.
+- Auto-job-create has a theoretical race under concurrent PATCH status=Work Order (two jobs). Low — admin UI unlikely concurrent.
+- Frontend ServiceRequestsTab.tsx: lighter-touch (backend was the risk surface); calls the audited routes.
+
+Change: server/routes/service-requests.routes.ts. tsc clean (sole error is CorporateRepairsTab.tsx — Codex's live B2B edit).
+
+---
+
+## Phase ZB — Orders Tab
+### Verified solid (no code change)
+- POST /api/orders (customer): server-side pricing — fetches product/variant price; client price only accepted if it matches a stored price (hot-deal or regular) within 0.01. Cannot underpay.
+- Ownership via requireCustomerAuth; admin list/accept/decline gated by requirePermission('orders'); accept/decline guard status==='Pending'.
+### Flagged (behavioral — not changed)
+- Orders never decrement inventory stock (create or accept) — overselling possible. May be intentional (COD + manual fulfillment). Inconsistent with POS which decrements.
+- Hot-deal price honored from product.hotDealPrice even if showOnHotDeals ended (stale-deal price). Low.
+- PATCH /admin/orders/:id status accepted without whitelist. Low.
+
+## Phase ZC — Quotations Tab
+### Verified solid (no code change) — model implementation
+- POST/PATCH use db.transaction (header + items atomic), zod validation on header AND items, audit logs, 404 guards, DELETE cascades items in a transaction.
+### Flagged (minor)
+- quotationNumber = QTN-<year><month><random4> — random (not sequential) could rarely collide vs unique constraint; month not zero-padded. Low/cosmetic.
+- PATCH /:id/status accepts status without whitelist. Low.
+
+## Phase ZD — Warranty Claims Tab
+### 🔴 Authorization bypass — FIXED
+approve + reject derived the authorization role from CLIENT-SUPPLIED req.body.approvedByRole. Any admin (e.g. Cashier/Technician) could send approvedByRole:'Super Admin' to approve/reject claims — including the Super-Admin-only expired-warranty override. FIX: role + actor identity now read from the authenticated session user ((req as any).user set by requireAdminAuth), never from the body. Stored approvedBy/Name/Role + audit userId now reflect the real actor.
+### Verified solid
+- All /api/warranty-claims routes gated by requireAdminAuth (router.use).
+- approve/reject guard status==='pending'.
+- create-job is idempotent: requires status==='approved', sets status='in_repair' after → second call blocked (no duplicate warranty jobs).
+### Flagged (minor)
+- Warranty routes have no granular requirePermission (only requireAdminAuth) — any admin reaches them; approve/reject now role-gated server-side, create/view are not. Consider a 'warranty' permission.
+
+Changes: server/routes/warranty.routes.ts. tsc clean (excluding CorporateRepairsTab.tsx — Codex's live B2B edit).
+
+---
+
+## Phase ZE — Purchasing Tab
+### 🔴 Stock double-count on PO receive — FIXED
+PATCH /api/purchase-orders/:id/status, on status→Received: updateInventoryStock(item.id, inventoryItem.stock + item.quantity). updateInventoryStock takes a DELTA → newStock = stock + (stock + qty) = doubled. Receiving a PO doubled the item's stock. FIX: pass item.quantity (delta) only. (purchase-orders.routes.ts:91)
+### Verified solid
+- All routes requirePermission('purchasing'); POST validates order + items with zod; Received guard (po.status !== 'Received') prevents re-applying.
+### Flagged
+- PATCH status accepts arbitrary status string (no whitelist). Low.
+
+## Phase ZF — Cashier / Drawer Tab  (CRITICAL)
+### 🔴 Unauthenticated cash-handling endpoints — FIXED
+drawerRouter is mounted raw (app.use(drawerRouter), routes/index.ts:165) with NO guard. Only /day-close/run-now and /:id/close-day had inline requireAdminAuth. The rest were fully PUBLIC:
+  GET /api/drawer/active, /history, /:id/summary  (cash data exposure)
+  POST /api/drawer/open  (open register, arbitrary float)
+  POST /api/drawer/:id/drop  (blind drop)
+  PATCH /api/drawer/:id/reconcile  (close/reconcile; closedBy from body)
+  POST /api/drawer/:id/justify  (justify shortage → masks missing cash + creates petty-cash expense; justifiedBy from body)
+Anyone (no login) could open/close/reconcile registers, read cash sessions, and justify shortages to hide theft.
+FIX: added requireAdminAuth to all 7. /justify additionally now requires session role === 'Super Admin' (comment claimed Super-Admin-only but nothing enforced) and takes justifier identity from the session user, not the request body.
+NOTE: POS is an admin-only tab → adding auth does not break the legit POS flow (admin session present).
+
+## Phase ZG — Wastage Tab
+### 🔴 /consume double-decrements stock — FIXED
+inventoryService.createWastageLog ALREADY decrements inventory stock (service line 84-90). POST /api/inventory/:id/consume also called storage.updateInventoryStock(-quantity) BEFORE createWastageLog → stock dropped by 2× the consumed quantity per job-part consumption. FIX: removed the manual decrement; rely on createWastageLog; re-fetch item for low-stock alert + response. (inventory.routes.ts:~675)
+### Verified solid
+- POST /api/inventory/:id/wastage: zod-validated, audit-logged, decrements stock once (correct, via service). No double-count.
+- /consume retains its pre-consume stock-availability guard (400 if insufficient).
+
+Changes: purchase-orders.routes.ts, drawer.routes.ts, inventory.routes.ts. tsc clean (excl. CorporateRepairsTab.tsx — Codex's live B2B edit).
+
+---
+
+## Phase ZH — Challan Tab
+### Fixed
+- PATCH /api/challans/:id used raw req.body → now insertChallanSchema.partial().parse + 400 on ZodError. (challans.routes.ts)
+### Verified solid
+- router.use('/api/challans', requireAdminAuth) — all routes admin-gated. POST validates with zod. DELETE 404-guards.
+### Flagged
+- GET /api/challans parses page/limit but ignores them (getAllChallans() no args). Low.
+
+## Phase ZI — Technician Tab
+### Verified solid (no code change)
+- GET /api/technician/stats + /jobs: both requireAdminAuth, scoped to the logged-in technician's own jobs (technician===name OR assignedTechnicianId===userId).
+### Flagged
+- Name-based job matching could collide for two technicians sharing a name. Loads all jobs in memory (scalability). Low.
+
+## Phase ZJ — Pickup Tab
+### Verified solid (no code change)
+- Admin routes all requireAdminAuth: GET /api/admin/pickups, /pending, PATCH /:id, PATCH /:id/status.
+### Flagged
+- GET /api/pickups/by-request/:serviceRequestId has NO auth — exposes pickup schedule (incl. delivery address PII) to anyone with the serviceRequestId. Used by the customer app (pickupScheduleApi), so it cannot be made admin-only; should be ownership-checked. Mitigated by opaque nanoid ids. Low/medium.
+- PATCH /api/admin/pickups/:id uses raw req.body (admin-gated). Low.
+
+Changes: server/routes/challans.routes.ts. tsc clean (excl. CorporateRepairsTab.tsx — Codex's B2B edit).
+
+---
+
+## Phase ZK — Brain (AI Inbox) Tab  (CRITICAL)
+### 🔴 Unauthenticated AI/chat endpoints — FIXED
+brain.routes.ts had NO auth (no router-level, no inline) and was mounted app.use('/api/brain', brainRoutes) with no guard. Every /api/brain/* endpoint was public:
+  GET /conversations, /inbox, /sessions/:psid/messages, /sessions/by-phone/:phone → read ALL customer chat history (PII)
+  POST /sessions/:psid/send → send WhatsApp/Messenger messages AS THE BUSINESS via real Meta tokens (impersonation/spam)
+  PATCH /config/mode, POST /import-conversations, /media/cleanup, /cases/backfill → manipulate AI config/data
+FIX: added router.use(requireAdminAuth) to brain.routes.ts. Auto AI replies run via the Meta webhook → brainService directly (not these routes), so the live chat pipeline is unaffected.
+### Verified solid — standing security constraints ENFORCED
+- Pricing: ai.service.ts:92 "PRICING POLICY [CRITICAL — NEVER VIOLATE] — NEVER quote specific prices/taka". Reinforced at lines 294, 1098.
+- Phone: AI prompt uses ONLY the public 01886662811; the private 01673999995 does NOT appear anywhere in server code.
+
+## Phase ZL — Analytics routes  (CRITICAL, shared by Overview/Quality/Reports/Dashboard)
+### 🔴 Unauthenticated revenue/metrics exposure — FIXED
+analytics.routes.ts (mounted app.use('/api/analytics', ...)) had NO auth despite an inline comment claiming "admin session auth". Public endpoints exposed: /revenue, /dashboard, /metrics, /workload, /technicians, /export/excel, /defects, /supplier-defects, /performance. Anyone could read shop revenue + export data.
+FIX: added router.use(requireAdminAuth). All consumers are admin-panel tabs.
+
+## Phase ZM — Inquiries Tab
+### 🔴 Status update hit the wrong route (404) — FIXED
+Frontend PATCHed /api/inquiries/:id but the backend route is /api/inquiries/:id/status → every inquiry status/reply update 404'd. Also used raw fetch (relative URL, no credentials) → broke cross-origin in the Vercel+Render split. FIX: switched to fetchApi (base URL + cookie + CSRF) and corrected the path to /inquiries/:id/status. Backend handler accepts {status, reply}.
+### Flagged
+- POST /api/inquiries (public contact form) has no rate limiter → spam risk. Low/medium.
+
+## Phase ZN — Quality Analytics Tab
+### 🟡 Cross-origin raw fetch — FIXED
+3 raw fetch("/api/analytics/...") calls (relative URL, no credentials) → broken in split deploy. Switched to fetchApi. Backend routes (/defects, /performance, /supplier-defects) exist + now admin-gated (Phase ZL).
+
+## Phase ZO — Overview + System Health Tabs
+### Overview — 🟡 Cross-origin raw fetch — FIXED
+fetch('/api/admin/job-overview') → fetchApi('/admin/job-overview'). Other call already used analyticsApi.
+### System Health — Verified solid (no code change)
+Uses proper API clients (jobTicketsApi/serviceRequestsApi/inventoryApi). No raw fetch.
+
+Changes: brain.routes.ts, analytics.routes.ts, InquiriesTab.tsx, QualityAnalyticsTab.tsx, OverviewTab.tsx. tsc clean (excl. CorporateRepairsTab.tsx — Codex's B2B edit).
+
+---
+
+## Phase ZP — Corporate / B2B Tab  (Codex paused — now audited)
+
+### 🔴 Bill-number collision — FIXED
+generateCorporateBill used seq = global count(corporate_bills) + 1. Gaps/reuse on delete, cross-client jumps, concurrent dupes → reused number hit the bill_number unique constraint → 500 + failed billing. FIX: per-client sequential — parse max existing -BILL-<n> for THIS client, +1 (mirrors the challan numbering already in the file). (corporate.repository.ts)
+
+### 🔴 Double-billing — FIXED
+generateCorporateBill billed whatever jobIds were passed with no check, and stamped data.jobIds as billed. A job already on a bill could be billed again / re-attached to a new bill. FIX: filter out jobs with billingStatus='billed' or an existing corporateBillId (throw if none left); stamp only the actually-billed subset.
+
+### 🟡 Monthly auto-generate revenue leak — FIXED
+/bills/auto-generate filtered candidate jobs by createdAt within the month, but bills COMPLETED jobs. A job created in one month and completed the next was billed in neither run → permanent leak. FIX: filter by completion date (completedAt, fallback updatedAt/createdAt).
+
+### Verified solid
+- B2B portal (corporate-portal.routes.ts): router.use(requireCorporateAuth); every query scoped to session user.corporateClientId; /jobs/:id rejects cross-client access → tenant isolation enforced.
+- Corporate auth (corporate-auth.routes.ts): authLimiter rate limiting, bcrypt, CSRF token, zod validation, admin-assisted OTP reset, generic reset message (no user enumeration), failed-login audit.
+- All admin corporate routes requirePermission('corporate').
+
+### Flagged (feature gaps — not changed)
+- generateCorporateBill hardcodes discount=0, vat=0 (ignores any client billing terms).
+- Jobs with no charges and no estimatedCost are billed at ৳0 silently (no warning).
+
+Changes: corporate.repository.ts, corporate.routes.ts. tsc fully clean.
+
+---
+
+# ✅ AUDIT COMPLETE — ALL ADMIN TABS DONE (including B2B)
+Security 🔴 fixed across the whole effort:
+  - Users: privilege escalation + plaintext password (legacy /api/users)
+  - Warranty: authz bypass (client-supplied role)
+  - Cashier/Drawer: 7 unauthenticated cash routes (incl. justify-shortage)
+  - Brain (AI): all /api/brain/* unauthenticated (PII + message impersonation)
+  - Analytics: unauthenticated revenue/metrics/export
+  - Corporate: bill-number collision + double-billing
+Stock-integrity 🔴 fixed: Purchasing PO-receive double-count, Wastage /consume double-decrement, Inventory serial double-count.
+Prod-breakers fixed: Inquiries 404 route + cross-origin; Quality Analytics / Overview cross-origin fetches.
+Plus earlier Finance / Dashboard / Reports / POS / Customers / Service Requests fixes.
+AI guardrails verified enforced (no-taka pricing policy; private phone 01673999995 never in code).
+tsc clean. All changes LOCAL, not pushed.
+
+---
+
+## Phase ZQ — Inquiries public-endpoint rate limit
+### Fixed
+- POST /api/inquiries (public, unauthenticated contact form) had no rate limiter → spam-flood risk for the inquiries table. Applied the existing serviceRequestLimiter (10 submissions/hour per IP — generous, no real customer hits it). (notifications.routes.ts)
+### Note
+- Limit chosen to be customer-friendly: a genuine customer submits 1-3 inquiries; only bot floods (hundreds/min) are blocked. Adjustable in server/routes/middleware/rate-limit.ts (serviceRequestLimiter).
+
+tsc clean.
+
+---
+
+## Phase ZR — Customer Google Sign-In (split-deploy)
+### 🟡 Token exchange used raw cross-origin fetch — FIXED (code)
+CustomerAuthContext.loginWithGoogle posted the Firebase idToken via raw fetch("/api/auth/firebase") — relative URL, no credentials. In the split deploy (frontend Vercel @ promiseelectronics.com, backend Render) this hit the Vercel origin (no backend there) with no session cookie → token exchange failed. Switched to fetchApi("/auth/firebase") (+ logout call) → correct API base + credentials + CSRF. Route /api/auth/firebase exists (firebase-auth.routes.ts) and accepts { idToken }.
+
+### 🔴 PRIMARY cause is CONFIG, not code (USER action required)
+Console error: "current domain is not authorized for OAuth operations. Add promiseelectronics.com to authorized domains." signInWithPopup is blocked by Firebase before reaching the backend.
+ACTION: Firebase Console → Authentication → Settings → Authorized domains → add promiseelectronics.com (+ www). If still failing, add https://promiseelectronics.com to the Google Cloud OAuth client's Authorized JavaScript origins.
+
+### Cross-check: architecture is correctly SEPARATED
+- Frontend Vercel (promiseelectronics.com) → backend Render (onrender.com) via VITE_API_URL.
+- Backend CORS (app.ts) hardcodes promiseelectronics.com + www, credentials:true; session cookie sameSite:none + secure in prod. Correctly configured for cross-origin. Frontend is NOT acting as backend.
+
+Change: client/src/contexts/CustomerAuthContext.tsx. tsc clean.

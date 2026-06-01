@@ -2,7 +2,7 @@
 import { motion } from "framer-motion";
 import {
     TrendingUp, AlertCircle, Wallet, ShoppingCart, TrendingDown,
-    DollarSign, Clock, Loader2
+    DollarSign, Clock, Loader2, Smartphone
 } from "lucide-react";
 import { BentoCard, containerVariants, itemVariants } from "../shared";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -14,11 +14,12 @@ import { PettyCashTab } from "./FinancesTabPettyCash";
 import { DuesTab } from "./FinancesTabDues";
 import { RefundsTab } from "./FinancesTabRefunds";
 import { FinancesTabDrawer } from "./FinancesTabDrawer";
+import { ManualPaymentsTab } from "./FinancesTabManualPayments";
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { InsertPettyCashRecord, InsertDueRecord } from "@shared/schema";
 
-export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "petty-cash" | "dues" | "refunds" | "drawer" }) {
+export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "petty-cash" | "dues" | "refunds" | "drawer" | "manual-payments" }) {
     const queryClient = useQueryClient();
 
     const [activeFinanceTab, setActiveFinanceTab] = useState(defaultTab || "sales");
@@ -300,6 +301,13 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                             <Wallet className="h-4 w-4 mr-2" />
                             Cash Drawer
                         </TabsTrigger>
+                        <TabsTrigger
+                            value="manual-payments"
+                            className="rounded-full px-4 py-2 text-sm font-medium transition-all data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
+                        >
+                            <Smartphone className="h-4 w-4 mr-2" />
+                            Manual Pay
+                        </TabsTrigger>
                     </TabsList>
 
                     <TabsContent value="sales" className="mt-6">
@@ -343,6 +351,10 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                             getCurrencySymbol={getCurrencySymbol}
                             exportToCSV={exportToCSV}
                         />
+                    </TabsContent>
+
+                    <TabsContent value="manual-payments" className="mt-6">
+                        <ManualPaymentsTab getCurrencySymbol={getCurrencySymbol} />
                     </TabsContent>
                 </Tabs>
             </motion.div>

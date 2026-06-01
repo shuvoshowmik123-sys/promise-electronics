@@ -94,6 +94,10 @@ export function FilterBar({
                                 </SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="all">All Statuses</SelectItem>
+                                    <SelectItem value="Received">Received</SelectItem>
+                                    <SelectItem value="Checking">Checking</SelectItem>
+                                    <SelectItem value="Declared OK">Declared OK</SelectItem>
+                                    <SelectItem value="Declared NG">Declared NG</SelectItem>
                                     <SelectItem value="Pending">Pending</SelectItem>
                                     <SelectItem value="Approval Requested">Approval Requested</SelectItem>
                                     <SelectItem value="Diagnosing">Diagnosing</SelectItem>

@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { CheckCircle2, Circle, Clock, MapPin, Package, Search, Truck, User, Wrench } from "lucide-react";
+import { CheckCircle2, Package, Phone, Search, Wrench } from "lucide-react";
 import type { ServiceRequest } from "@shared/schema";
 
 interface TrackingTimelineProps {
@@ -7,7 +7,6 @@ interface TrackingTimelineProps {
 }
 
 export function TrackingTimeline({ order }: TrackingTimelineProps) {
-    // Simplified stages for mobile view
     const stages = [
         { id: "received", label: "Received", icon: Package, activeStates: ["Request Received", "Arriving to Receive", "Awaiting Drop-off", "Received", "intake", "assessment", "device_received"] },
         { id: "diagnosing", label: "Diagnosing", icon: Search, activeStates: ["Technician Assigned", "Diagnosis Completed", "assessment", "authorized"] },
@@ -15,29 +14,21 @@ export function TrackingTimeline({ order }: TrackingTimelineProps) {
         { id: "ready", label: "Ready", icon: CheckCircle2, activeStates: ["Ready for Delivery", "Delivered", "ready", "completed", "out_for_delivery"] },
     ];
 
-    const getCurrentStageIndex = () => {
-        // Check order.stage (new system) or order.trackingStatus (legacy)
-        const currentStatus = order.stage || order.trackingStatus || "";
-
-        // Find the last stage that contains the current status
-        // This is a simplified logic for the demo; in production, we'd map exact states
-        for (let i = stages.length - 1; i >= 0; i--) {
-            if (stages[i].activeStates.some(s => s === currentStatus || currentStatus.includes(s))) {
-                return i;
-            }
+    const currentStatus = order.stage || order.trackingStatus || "";
+    let activeIndex = 0;
+    for (let index = stages.length - 1; index >= 0; index -= 1) {
+        if (stages[index].activeStates.some((state) => state === currentStatus || currentStatus.includes(state))) {
+            activeIndex = index;
+            break;
         }
-        return 0; // Default to first stage
-    };
-
-    const activeIndex = getCurrentStageIndex();
+    }
 
     return (
-        <div className="px-4 py-6">
+        <div className="px-2 py-6">
             <div className="relative">
-                {/* Vertical Line */}
-                <div className="absolute left-6 top-4 bottom-10 w-1 bg-slate-200 rounded-full" />
+                <div className="absolute bottom-10 left-6 top-4 w-1 rounded-full bg-emerald-100" />
 
-                <div className="space-y-8 relative">
+                <div className="relative space-y-8">
                     {stages.map((stage, index) => {
                         const isActive = index === activeIndex;
                         const isCompleted = index < activeIndex;
@@ -51,24 +42,24 @@ export function TrackingTimeline({ order }: TrackingTimelineProps) {
                                 transition={{ delay: index * 0.1 }}
                                 className="flex items-center gap-4"
                             >
-                                {/* Icon Circle */}
-                                <div className={`relative z-10 w-12 h-12 rounded-full flex items-center justify-center transition-all duration-500 ${isActive ? "bg-primary text-white shadow-lg scale-110" :
-                                        isCompleted ? "bg-green-500 text-white" : "bg-slate-100 text-slate-300 border-2 border-slate-200"
+                                <div className={`relative z-10 flex h-12 w-12 items-center justify-center rounded-full transition-all duration-500 ${isActive
+                                    ? "scale-110 bg-emerald-600 text-white shadow-lg shadow-emerald-200"
+                                    : isCompleted
+                                        ? "bg-emerald-500 text-white"
+                                        : "border-2 border-emerald-100 bg-white text-slate-300"
                                     }`}>
-                                    <Icon className="w-5 h-5" />
+                                    <Icon className="h-5 w-5" />
                                     {isActive && (
-                                        <span className="absolute inset-0 rounded-full bg-primary/30 animate-ping" />
+                                        <span className="absolute inset-0 animate-ping rounded-full bg-emerald-500/30" />
                                     )}
                                 </div>
 
-                                {/* Text */}
-                                <div className={`p-4 rounded-xl flex-1 transition-all duration-300 ${isActive ? "bg-white shadow-neumorph" : "opacity-60"
-                                    }`}>
+                                <div className={`flex-1 rounded-3xl p-4 transition-all duration-300 ${isActive ? "border border-emerald-100 bg-white shadow-sm" : "opacity-60"}`}>
                                     <h4 className={`font-bold ${isActive ? "text-slate-800" : "text-slate-500"}`}>
                                         {stage.label}
                                     </h4>
                                     {isActive && (
-                                        <p className="text-xs text-primary font-medium mt-1">Current Stage</p>
+                                        <p className="mt-1 text-xs font-medium text-emerald-700">Current Stage</p>
                                     )}
                                 </div>
                             </motion.div>
@@ -77,27 +68,27 @@ export function TrackingTimeline({ order }: TrackingTimelineProps) {
                 </div>
             </div>
 
-            {/* Technician Card */}
             <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.5 }}
-                className="mt-8 bg-slate-100 rounded-2xl p-4 shadow-neumorph flex items-center gap-4"
+                className="mt-8 flex items-center gap-4 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm"
             >
-                <div className="w-12 h-12 rounded-full bg-slate-200 overflow-hidden border-2 border-white shadow-sm">
-                    <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=Felix" alt="Technician" />
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                    <Phone className="h-6 w-6" />
                 </div>
                 <div className="flex-1">
-                    <p className="text-xs text-slate-500 uppercase font-bold tracking-wider">Your Technician</p>
-                    <h3 className="font-bold text-slate-800">Karim Ahmed</h3>
-                    <div className="flex items-center gap-1 text-xs text-orange-500">
-                        <span>★★★★★</span>
-                        <span className="text-slate-400">(4.9)</span>
-                    </div>
+                    <p className="text-xs font-bold uppercase tracking-wider text-emerald-700">Need help?</p>
+                    <h3 className="font-bold text-slate-800">Call Promise Electronics</h3>
+                    <p className="text-xs text-slate-500">We will confirm technician details by phone.</p>
                 </div>
-                <button className="p-3 rounded-full bg-green-500 text-white shadow-lg active:scale-95 transition-transform">
-                    <User className="w-5 h-5" />
-                </button>
+                <a
+                    href="tel:+8801700000000"
+                    className="rounded-full bg-emerald-600 p-3 text-white shadow-lg shadow-emerald-200 transition-transform active:scale-95"
+                    aria-label="Call support"
+                >
+                    <Phone className="h-5 w-5" />
+                </a>
             </motion.div>
         </div>
     );

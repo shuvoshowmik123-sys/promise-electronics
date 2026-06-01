@@ -7,10 +7,10 @@ import { cn } from "@/lib/utils";
 import { adminNotificationsApi } from "@/lib/api";
 import {
     BarChart3, Activity, ShieldAlert, MessageSquare, ClipboardList,
-    Truck, ScrollText, ShoppingCart, Monitor, ShoppingBag, Package,
-    Banknote, Contact, UserCheck, UserCog, HardHat, Building2,
+    Truck, ScrollText, ShoppingCart, ShoppingBag, Package,
+    Banknote, UserCheck, UserCog, HardHat, Building2,
     FileText, HelpCircle, Settings, Bell, Search, User, Zap,
-    PieChart, Users, LineChart, Menu, X, Wrench,
+    PieChart, Users, LineChart, Menu, LogOut,
     ShieldCheck, RotateCcw, FileWarning, Brain, WifiOff
 } from "lucide-react";
 
@@ -18,15 +18,17 @@ import {
 import { RollbackProvider } from "@/contexts/RollbackContext";
 import { useModules } from "@/contexts/ModuleContext";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import type { UserPermissions } from "@shared/schema";
 import { useOffline } from "@/contexts/OfflineContext";
 
 // Shared Components & Utilities
 import { OfflineBanner } from "@/components/admin/OfflineBanner";
 import { QRScanButton } from "@/components/admin/QRScanButton";
 import { SyncConflictReview } from "@/components/admin/SyncConflictReview";
+import { ReminderBell } from "@/components/admin/ReminderBell";
+import { TeamChatPanel } from "@/components/admin/TeamChatPanel";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { DashboardSkeleton } from "./bento/shared/DashboardSkeleton";
-import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { GlobalSearch } from "./bento/shared/GlobalSearch";
 import { NotificationPanel } from "./bento/shared/NotificationPanel";
@@ -209,7 +211,7 @@ export default function DesignConcept() {
         // We let them pass if no mapping exists, Or map them to the closest parent.
     };
 
-    const TAB_TO_PERMISSION: Record<string, any> = {
+    const TAB_TO_PERMISSION: Record<string, string> = {
         'dashboard': 'dashboard',
         'overview': 'dashboard',
         'jobs': 'jobs',
@@ -259,7 +261,7 @@ export default function DesignConcept() {
         if (Array.isArray(permKey)) {
             return permKey.some((k) => hasPermission(k));
         }
-        return hasPermission(permKey);
+        return hasPermission(permKey as keyof UserPermissions);
     };
 
     // Display names for breadcrumb
@@ -383,7 +385,7 @@ export default function DesignConcept() {
 
     return (
         <RollbackProvider>
-            <div className="flex h-screen w-full bg-[#f8fafc] overflow-hidden">
+            <div className="flex h-screen w-full bg-[#f8fafc] overflow-hidden select-none">
                 {/* SIDEBAR - Desktop */}
                 <aside className={cn(
                     "hidden md:flex flex-col bg-slate-900 shrink-0 z-30 shadow-2xl transition-all duration-300 overflow-y-auto overflow-x-hidden",
@@ -518,29 +520,28 @@ export default function DesignConcept() {
                     </div>
 
                     {/* HEADER - Hidden on mobile, fixed on desktop */}
-                    <header className="hidden md:flex h-20 bg-white/80 backdrop-blur-lg border-b border-slate-100 items-center justify-between px-8 shrink-0 z-20 sticky top-0">
-                        <div className="flex items-center gap-6">
+                    <header className="hidden md:flex h-14 bg-white/80 backdrop-blur-lg border-b border-slate-100 items-center justify-between px-5 lg:px-6 shrink-0 z-20 sticky top-0">
+                        <div className="flex items-center gap-4">
                             <div
                                 onClick={() => setSearchOpen(true)}
-                                className="h-9 w-9 md:h-10 md:w-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-400 cursor-pointer hover:bg-slate-100 transition-colors"
+                                className="h-9 w-9 rounded-xl bg-slate-50 flex items-center justify-center text-slate-400 cursor-pointer hover:bg-slate-100 transition-colors"
                             >
                                 <Search size={18} />
                             </div>
-                            <h2 className="text-lg md:text-xl font-bold text-slate-800 capitalize tracking-tight flex items-center">
+                            <h2 className="text-lg font-bold text-slate-800 capitalize tracking-tight flex items-center">
                                 {TAB_DISPLAY_NAMES[activeTab] || activeTab}
-                                <span className="hidden sm:inline-block text-slate-300 mx-2">/</span>
-                                <span className="hidden sm:inline-block text-slate-400 font-medium tracking-normal text-xs md:text-sm">Admin Concept</span>
                             </h2>
                         </div>
 
-                        <div className="flex items-center gap-2 md:gap-4">
-                            <div className="hidden lg:flex items-center px-4 py-2 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black ring-1 ring-emerald-100 uppercase tracking-widest">
+                        <div className="flex items-center gap-2">
+                            <div className="hidden lg:flex items-center px-3 py-1.5 bg-emerald-50 text-emerald-600 rounded-full text-[10px] font-black ring-1 ring-emerald-100 uppercase tracking-widest">
                                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 mr-2 animate-pulse" />
                                 Live
                             </div>
+                            <ReminderBell />
                             <div
                                 onClick={() => setNotificationOpen(true)}
-                                className="h-9 w-9 md:h-10 md:w-10 rounded-2xl bg-slate-50 flex items-center justify-center text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all cursor-pointer relative"
+                                className="h-9 w-9 rounded-xl bg-slate-50 flex items-center justify-center text-slate-500 hover:bg-blue-50 hover:text-blue-600 transition-all cursor-pointer relative"
                             >
                                 <Bell size={18} />
                                 {showNotificationBadge && (
@@ -551,7 +552,7 @@ export default function DesignConcept() {
                             </div>
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <div className="h-9 w-9 md:h-10 md:w-10 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 cursor-pointer hover:shadow-blue-500/40 transition-shadow">
+                                    <div className="h-9 w-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white shadow-lg shadow-blue-500/20 cursor-pointer hover:shadow-blue-500/40 transition-shadow">
                                         <User size={18} />
                                     </div>
                                 </DropdownMenuTrigger>
@@ -565,7 +566,7 @@ export default function DesignConcept() {
                                                 </>
                                             ) : (
                                                 <>
-                                                    <p className="text-sm font-bold text-slate-800 leading-none hover:text-[var(--corp-blue)] transition-colors cursor-pointer">{user?.name || user?.username || 'Admin User'}</p>
+                                                    <p className="text-sm font-bold text-slate-800 leading-none cursor-pointer">{user?.name || user?.username || 'Admin User'}</p>
                                                     <p className="text-xs font-medium text-slate-500 leading-none mt-1">{user?.role || 'Administrator'}</p>
                                                 </>
                                             )}
@@ -581,7 +582,7 @@ export default function DesignConcept() {
                                         </Link>
                                     )}
                                     <DropdownMenuItem className="cursor-pointer focus:bg-rose-50 text-rose-600 font-medium rounded-lg px-3 py-2 mt-1" onClick={() => logout()}>
-                                        <Wrench className="mr-3 h-4 w-4 rotate-90 opacity-70" />
+                                        <LogOut className="mr-3 h-4 w-4 opacity-70" />
                                         Log out
                                     </DropdownMenuItem>
                                 </DropdownMenuContent>
@@ -772,6 +773,7 @@ export default function DesignConcept() {
                     }}
                 />
                 <SyncConflictReview />
+                <TeamChatPanel />
             </div>
         </RollbackProvider>
     );
@@ -781,7 +783,7 @@ export default function DesignConcept() {
 function MainContentWrapper({ children, isFixed }: { children: React.ReactNode, isFixed: boolean }) {
     if (isFixed) {
         return (
-            <div className="h-full pt-20 p-4 md:p-8 md:pt-8 pb-24 md:pb-8 flex flex-col">
+            <div className="h-full pt-20 p-4 md:p-5 md:pt-5 pb-24 md:pb-5 flex flex-col">
                 <div className="max-w-[1600px] mx-auto w-full h-full flex flex-col min-h-0">
                     {children}
                 </div>
@@ -789,7 +791,7 @@ function MainContentWrapper({ children, isFixed }: { children: React.ReactNode, 
         );
     }
     return (
-        <div className="min-h-full pt-20 p-4 md:p-8 md:pt-8 pb-32 flex flex-col">
+        <div className="min-h-full pt-20 p-4 md:p-5 md:pt-5 pb-32 flex flex-col">
             <div className="max-w-[1600px] mx-auto w-full flex-1">
                 {children}
             </div>
@@ -797,8 +799,21 @@ function MainContentWrapper({ children, isFixed }: { children: React.ReactNode, 
     );
 }
 
+interface SidebarItem {
+    label: string;
+    id: string;
+    icon: React.FC<{ size?: number; className?: string }>;
+    color: string;
+    layout: string;
+}
+
+interface SidebarGroup {
+    title: string;
+    items: SidebarItem[];
+}
+
 // Extracted Sidebar Content Component
-function SidebarContent({ groups, activeTab, setActiveTab, isOnline, getTabTier }: { groups: any[], activeTab: string, setActiveTab: (id: string) => void, isOnline: boolean, getTabTier: (id: string) => string }) {
+function SidebarContent({ groups, activeTab, setActiveTab, isOnline, getTabTier }: { groups: SidebarGroup[], activeTab: string, setActiveTab: (id: string) => void, isOnline: boolean, getTabTier: (id: string) => string }) {
     const gradients: Record<string, string> = {
         blue: "bg-gradient-to-br from-blue-500 to-blue-600 shadow-blue-500/30",
         indigo: "bg-gradient-to-br from-indigo-500 to-indigo-600 shadow-indigo-500/30",
@@ -825,7 +840,7 @@ function SidebarContent({ groups, activeTab, setActiveTab, isOnline, getTabTier 
                         {group.title}
                     </h2>
                     <div className="space-y-1">
-                        {group.items.map((item: any) => {
+                        {group.items.map((item: SidebarItem) => {
                             const tier = getTabTier(item.id);
                             const isLockedOffline = !isOnline && tier === 'locked';
                             const isReadOnlyOffline = !isOnline && tier === 'read-only';

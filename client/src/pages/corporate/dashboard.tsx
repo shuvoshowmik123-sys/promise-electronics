@@ -1,6 +1,6 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { corporatePortalApi } from "@/lib/api";
 import { corporateQueryConfig } from "@/lib/corporateApiErrorHandler";
 import {
@@ -31,12 +31,29 @@ const DashboardCharts = React.lazy(() => import("@/components/corporate/dashboar
 
 export default function CorporateDashboard() {
     const { user } = useCorporateAuth();
+    const queryClient = useQueryClient();
 
     const { data: stats, isLoading } = useQuery({
         queryKey: ["corporateDashboard"],
         queryFn: corporatePortalApi.getDashboardStats,
         refetchInterval: 30000, // Refresh every 30s
         ...corporateQueryConfig
+    });
+
+    const { data: extensionRequests = [] } = useQuery({
+        queryKey: ["corporatePortalExtensionRequests"],
+        queryFn: corporatePortalApi.getExtensionRequests,
+        refetchInterval: 30000,
+        ...corporateQueryConfig
+    });
+
+    const respondExtensionMutation = useMutation({
+        mutationFn: ({ id, status }: { id: string; status: "accepted" | "rejected" }) =>
+            corporatePortalApi.respondExtensionRequest(id, { status }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["corporatePortalExtensionRequests"] });
+            queryClient.invalidateQueries({ queryKey: ["corporateDashboard"] });
+        }
     });
 
     const formatCurrency = (amount: number) => {
@@ -74,6 +91,8 @@ export default function CorporateDashboard() {
         { name: 'Pending', value: stats?.pendingApprovals || 0, color: '#f59e0b' },
         { name: 'Completed', value: stats?.recentActivity?.filter((a: any) => a.status === 'Completed').length || 0, color: '#10b981' },
     ];
+
+    const pendingExtensionRequests = extensionRequests.filter((request: any) => request.status === "pending");
 
     const containerVariants = {
         hidden: variants.staggerContainer.initial as any,
@@ -178,6 +197,53 @@ export default function CorporateDashboard() {
                     </Card>
                 </motion.div>
             </div>
+
+            {pendingExtensionRequests.length > 0 && (
+                <motion.div variants={itemVariants}>
+                    <Card className="border-amber-200 bg-amber-50 shadow-sm">
+                        <CardHeader>
+                            <CardTitle className="text-xl text-amber-900">Batch Clearance Extension Needed</CardTitle>
+                            <CardDescription className="text-amber-700">
+                                Promise is asking before holding these items longer than the batch target date.
+                            </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            {pendingExtensionRequests.map((request: any) => (
+                                <div key={request.id} className="rounded-2xl border border-amber-200 bg-white p-4">
+                                    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                                        <div>
+                                            <div className="text-sm font-bold text-slate-900">Job {request.jobId}</div>
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                Requested until {new Date(request.requestedUntil).toLocaleDateString()}
+                                            </div>
+                                            <div className="mt-2 text-sm text-slate-700">{request.reason}</div>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                size="sm"
+                                                className="bg-emerald-600 hover:bg-emerald-700"
+                                                disabled={respondExtensionMutation.isPending}
+                                                onClick={() => respondExtensionMutation.mutate({ id: request.id, status: "accepted" })}
+                                            >
+                                                Accept
+                                            </Button>
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                className="border-red-200 text-red-700 hover:bg-red-50"
+                                                disabled={respondExtensionMutation.isPending}
+                                                onClick={() => respondExtensionMutation.mutate({ id: request.id, status: "rejected" })}
+                                            >
+                                                Reject
+                                            </Button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </CardContent>
+                    </Card>
+                </motion.div>
+            )}
 
             {/* Charts Section */}
             <Suspense fallback={

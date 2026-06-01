@@ -188,12 +188,13 @@ export async function getComprehensiveDashboard() {
         allJobs,
         lowStockItemsList,
         monthlyRevenueRows,
-        currentMonthRevenueResult,
+        currentMonthPosRevenueResult,
         currentMonthCorporateRevenueResult,
         currentMonthWastageSummary,
     ] = await Promise.all([
         jobRepo.getAllJobTickets(),
         db.select().from(schema.inventoryItems).where(eq(schema.inventoryItems.status, "Low Stock")),
+        // 6-month trend: POS only (repair-cash flows through POS)
         db.select({
             month: sql<string>`to_char(date_trunc('month', ${schema.posTransactions.createdAt}), 'YYYY-MM')`,
             total: sql<string>`coalesce(sum(${schema.posTransactions.total}), 0)`,
@@ -202,19 +203,20 @@ export async function getComprehensiveDashboard() {
             .where(gte(schema.posTransactions.createdAt, sixMonthsAgo))
             .groupBy(sql`date_trunc('month', ${schema.posTransactions.createdAt})`)
             .orderBy(sql`date_trunc('month', ${schema.posTransactions.createdAt})`),
+        // This-month POS revenue
         db.select({
             total: sql<string>`coalesce(sum(${schema.posTransactions.total}), 0)`,
         })
             .from(schema.posTransactions)
             .where(gte(schema.posTransactions.createdAt, thisMonthStart)),
+        // This-month corporate revenue: sum grandTotal from corporate_bills created this month.
+        // (paymentMethod='Corporate' in pos_transactions is never written — corporate billing
+        // lives in corporate_bills. The old query always returned 0.)
         db.select({
-            total: sql<string>`coalesce(sum(${schema.posTransactions.total}), 0)`,
+            total: sql<string>`coalesce(sum(${schema.corporateBills.grandTotal}), 0)`,
         })
-            .from(schema.posTransactions)
-            .where(and(
-                gte(schema.posTransactions.createdAt, thisMonthStart),
-                eq(schema.posTransactions.paymentMethod, 'Corporate'),
-            )),
+            .from(schema.corporateBills)
+            .where(gte(schema.corporateBills.createdAt, thisMonthStart)),
         db.select({
             count: count(),
             totalLoss: sql<string>`coalesce(sum(${schema.wastageLogs.financialLoss}), 0)`,
@@ -252,9 +254,10 @@ export async function getComprehensiveDashboard() {
         name,
         value: revenueByMonth.get(key) || 0,
     }));
-    const totalRevenue = Number(currentMonthRevenueResult[0]?.total || 0);
+    const posRevenueThisMonth = Number(currentMonthPosRevenueResult[0]?.total || 0);
     const corporateRevenueThisMonth = Number(currentMonthCorporateRevenueResult[0]?.total || 0);
-    const posRevenueThisMonth = totalRevenue - corporateRevenueThisMonth;
+    // Total = POS (retail + repair cash) + corporate invoices raised this month
+    const totalRevenue = posRevenueThisMonth + corporateRevenueThisMonth;
     const totalWastageLoss = Number(currentMonthWastageSummary[0]?.totalLoss || 0);
     const wastageCount = Number(currentMonthWastageSummary[0]?.count || 0);
     const jobStatusData = Array.from(jobStatusCounts.entries()).map(([name, value]) => ({
@@ -405,7 +408,8 @@ export async function getReportData(startDate: Date, endDate: Date): Promise<{
     // Get all users
     const users = await db.select().from(schema.users);
     const technicians = users.filter(u => u.role === "Technician");
-    const staff = users.filter(u => u.role !== "Customer");
+    // "Active Staff" card — exclude customers AND inactive/terminated staff.
+    const staff = users.filter(u => u.role !== "Customer" && u.status === "Active");
 
     // Calculate monthly financials
     const monthlyMap = new Map<string, { income: number; expense: number; repairs: number }>();
@@ -439,12 +443,16 @@ export async function getReportData(startDate: Date, endDate: Date): Promise<{
         monthlyMap.set(monthKey, current);
     });
 
-    const monthlyFinancials = Array.from(monthlyMap.entries()).map(([name, data]) => ({
-        name,
-        income: Math.round(data.income),
-        expense: Math.round(data.expense),
-        repairs: data.repairs,
-    }));
+    const monthlyFinancials = Array.from(monthlyMap.entries())
+        // Map insertion order follows whichever record was seen first, so the
+        // chart bars could appear out of calendar order. Sort by month index.
+        .sort(([a], [b]) => months.indexOf(a) - months.indexOf(b))
+        .map(([name, data]) => ({
+            name,
+            income: Math.round(data.income),
+            expense: Math.round(data.expense),
+            repairs: data.repairs,
+        }));
 
     // Technician performance
     const techMap = new Map<string, { tasks: number; completed: number }>();
@@ -462,6 +470,34 @@ export async function getReportData(startDate: Date, endDate: Date): Promise<{
         efficiency: data.tasks > 0 ? Math.round((data.completed / data.tasks) * 100) : 0,
     }));
 
+    // Activity logs — recent audit entries in range (was hardcoded empty, so the
+    // Reports "Activity Logs" tab never showed anything despite a populated table).
+    const recentAudit = await db
+        .select({
+            action: schema.auditLogs.action,
+            details: schema.auditLogs.details,
+            createdAt: schema.auditLogs.createdAt,
+            entity: schema.auditLogs.entity,
+            userName: schema.users.name,
+        })
+        .from(schema.auditLogs)
+        .leftJoin(schema.users, eq(schema.auditLogs.userId, schema.users.id))
+        .where(and(
+            gte(schema.auditLogs.createdAt, startDate),
+            lte(schema.auditLogs.createdAt, endDate)
+        ))
+        .orderBy(desc(schema.auditLogs.createdAt))
+        .limit(20);
+
+    const activityLogs = recentAudit.map(log => ({
+        action: log.details ? `${log.action} — ${log.details}` : log.action,
+        user: log.userName || 'System',
+        time: log.createdAt,
+        type: /JOB|TICKET/i.test(log.entity || '') ? 'job'
+            : /PAYMENT|POS|FINANCE|REFUND|DRAWER|BONUS|PAYROLL/i.test(log.entity || '') ? 'payment'
+                : 'system',
+    }));
+
     // Summary
     const totalRevenue = transactions.reduce((sum, t) => sum + t.total, 0);
     const totalRepairs = jobs.length;
@@ -470,7 +506,7 @@ export async function getReportData(startDate: Date, endDate: Date): Promise<{
     return {
         monthlyFinancials,
         technicianPerformance,
-        activityLogs: [], // Would need activity log table
+        activityLogs,
         summary: {
             totalRevenue: Math.round(totalRevenue),
             totalRepairs,

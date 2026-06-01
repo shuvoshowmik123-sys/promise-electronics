@@ -39,7 +39,7 @@ function withOpeningVariance<T extends { startingFloat: number }>(
 }
 
 // Get active drawer session
-drawerRouter.get('/api/drawer/active', async (req: Request, res: Response) => {
+drawerRouter.get('/api/drawer/active', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const activeDrawer = await posRepo.getCurrentDrawerSession();
         if (!activeDrawer) {
@@ -55,7 +55,7 @@ drawerRouter.get('/api/drawer/active', async (req: Request, res: Response) => {
 });
 
 // Get drawer history
-drawerRouter.get('/api/drawer/history', async (req: Request, res: Response) => {
+drawerRouter.get('/api/drawer/history', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
@@ -186,7 +186,7 @@ drawerRouter.post('/api/drawer/:id/close-day', requireAdminAuth, async (req: Req
 });
 
 // Open a new register session
-drawerRouter.post('/api/drawer/open', async (req: Request, res: Response) => {
+drawerRouter.post('/api/drawer/open', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const data = insertDrawerSessionSchema.parse(req.body);
 
@@ -260,7 +260,7 @@ drawerRouter.post('/api/drawer/open', async (req: Request, res: Response) => {
 });
 
 // Perform a Blind Drop (Cashier closes shift)
-drawerRouter.post('/api/drawer/:id/drop', async (req: Request, res: Response) => {
+drawerRouter.post('/api/drawer/:id/drop', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { declaredCash } = req.body;
@@ -331,7 +331,7 @@ drawerRouter.post('/api/drawer/:id/drop', async (req: Request, res: Response) =>
 });
 
 // Reconcile Drawer (Manager verifies counts)
-drawerRouter.patch('/api/drawer/:id/reconcile', async (req: Request, res: Response) => {
+drawerRouter.patch('/api/drawer/:id/reconcile', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { status, notes, closedBy, closedByName } = req.body;
@@ -353,7 +353,7 @@ drawerRouter.patch('/api/drawer/:id/reconcile', async (req: Request, res: Respon
 });
 
 // Get session summary (live stats for the active drawer)
-drawerRouter.get('/api/drawer/:id/summary', async (req: Request, res: Response) => {
+drawerRouter.get('/api/drawer/:id/summary', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const session = await posRepo.getDrawerSession(id);
@@ -387,13 +387,23 @@ drawerRouter.get('/api/drawer/:id/summary', async (req: Request, res: Response) 
 });
 
 // Super Admin: Justify a shortage (add unrecorded expense)
-drawerRouter.post('/api/drawer/:id/justify', async (req: Request, res: Response) => {
+drawerRouter.post('/api/drawer/:id/justify', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const { amount, description, justifiedBy, justifiedByName } = req.body;
+        const { amount, description } = req.body;
 
-        if (!amount || !description || !justifiedBy || !justifiedByName) {
-            return res.status(400).json({ message: "Amount, description, justifiedBy, and justifiedByName are required." });
+        // Justifying a shortage masks missing cash + creates a petty-cash expense —
+        // restrict to Super Admin, identity taken from the session (not the body,
+        // which previously let the caller name anyone as the justifier).
+        const actor = (req as any).user;
+        if (actor?.role !== 'Super Admin') {
+            return res.status(403).json({ message: 'Only Super Admin can justify a shortage.' });
+        }
+        const justifiedBy = actor.id;
+        const justifiedByName = actor.name || actor.username || 'Super Admin';
+
+        if (!amount || !description) {
+            return res.status(400).json({ message: "Amount and description are required." });
         }
 
         const justifyAmount = Number(amount);

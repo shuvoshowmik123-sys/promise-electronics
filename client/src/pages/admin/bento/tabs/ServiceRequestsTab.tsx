@@ -134,6 +134,13 @@ const normalizeServiceRequest = <T extends ServiceRequest | null | undefined>(re
 };
 
 const STATUS_FILTERS = ["all", ...ADMIN_PIPELINE_FLOW] as const;
+type CustodyOtpAction = "receive" | "delivery";
+
+const getCustodyActionForStage = (stage: string): CustodyOtpAction | null => {
+    if (stage === "picked_up" || stage === "device_received") return "receive";
+    if (stage === "completed") return "delivery";
+    return null;
+};
 
 const statusActiveColors: Record<string, string> = {
     all: "bg-slate-600 text-white",
@@ -242,6 +249,8 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
     const [showRollbackDialog, setShowRollbackDialog] = useState(false);
     const [rollbackReason, setRollbackReason] = useState("");
     const { addRollbackRequest } = useRollback();
+    const [custodyOtp, setCustodyOtp] = useState<{ requestId: string; action: CustodyOtpAction; targetStage: string; phone?: string } | null>(null);
+    const [custodyOtpCode, setCustodyOtpCode] = useState("");
 
     const queryClient = useQueryClient();
 
@@ -368,8 +377,29 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
 
     const stageTransitionMutation = useMutation({
         mutationFn: ({ id, stage }: { id: string; stage: string }) => adminStageApi.transitionStage(id, { stage }),
-        onSuccess: (u) => { queryClient.invalidateQueries({ queryKey: ["serviceRequests"] }); queryClient.invalidateQueries({ queryKey: ["next-stages", u.id] }); setSelectedRequest(normalizeServiceRequest(u)); toast.success(`Stage → "${formatStageName(u.stage || "")}"`); if (u.convertedJobId) toast.success(`Job ticket ${u.convertedJobId} created!`); },
+        onSuccess: (u) => { queryClient.invalidateQueries({ queryKey: ["serviceRequests"] }); queryClient.invalidateQueries({ queryKey: ["next-stages", u.id] }); setSelectedRequest(normalizeServiceRequest(u)); toast.success(`Stage -> "${formatStageName(u.stage || "")}"`); if (u.convertedJobId) toast.success(`Job ticket ${u.convertedJobId} created!`); },
         onError: (e: Error) => { toast.error(e.message || "Failed to update stage"); },
+    });
+    const sendCustodyOtpMutation = useMutation({
+        mutationFn: ({ id, action }: { id: string; action: CustodyOtpAction }) => adminStageApi.sendCustodyOtp(id, { action }),
+        onSuccess: (r, vars) => {
+            setCustodyOtp({ requestId: vars.id, action: vars.action, targetStage: r.targetStage, phone: r.phone });
+            setCustodyOtpCode("");
+            toast.success("Customer OTP sent");
+        },
+        onError: (e: Error) => { toast.error(e.message || "Failed to send OTP"); },
+    });
+    const confirmCustodyOtpMutation = useMutation({
+        mutationFn: ({ id, action, code }: { id: string; action: CustodyOtpAction; code: string }) => adminStageApi.confirmCustodyOtp(id, { action, code }),
+        onSuccess: (u) => {
+            queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
+            queryClient.invalidateQueries({ queryKey: ["next-stages", u.id] });
+            setSelectedRequest(normalizeServiceRequest(u));
+            setCustodyOtp(null);
+            setCustodyOtpCode("");
+            toast.success(`Stage -> "${formatStageName(u.stage || "")}"`);
+        },
+        onError: (e: Error) => { toast.error(e.message || "Failed to confirm OTP"); },
     });
     const expectedDatesMutation = useMutation({
         mutationFn: ({ id, data }: { id: string; data: any }) => adminStageApi.updateExpectedDates(id, data),
@@ -378,11 +408,19 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
     });
     const verifyMutation = useMutation({
         mutationFn: ({ id, verificationNotes: vn, priority: p }: { id: string; verificationNotes: string; priority: string }) => serviceRequestsApi.verifyAndConvert(id, { verificationNotes: vn, priority: p }),
-        onSuccess: (r) => { queryClient.invalidateQueries({ queryKey: ["serviceRequests"] }); toast.success(`Converted to Job #${r.jobTicket.id}`); setShowVerifyDialog(false); setVerificationNotes(""); setPriority("Medium"); setRequestToVerify(null); },
+        onSuccess: (r) => { queryClient.invalidateQueries({ queryKey: ["serviceRequests"] }); toast.success(`Job #${r.jobTicket.id} created`); setShowVerifyDialog(false); setVerificationNotes(""); setPriority("Medium"); setRequestToVerify(null); },
         onError: (e: Error) => { toast.error(e.message || "Failed to verify"); },
     });
 
     const canVerifyAndConvert = hasPermission("serviceRequests") && hasPermission("jobs") && hasPermission("canCreate");
+    const handleStageSelect = (id: string, stage: string) => {
+        const custodyAction = getCustodyActionForStage(stage);
+        if (custodyAction) {
+            sendCustodyOtpMutation.mutate({ id, action: custodyAction });
+            return;
+        }
+        stageTransitionMutation.mutate({ id, stage });
+    };
 
     // === STATUS HELPERS ===
     const isStatusDisabled = (status: string, current: string, flow: readonly string[]): boolean => {
@@ -808,7 +846,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                                                 {(nextStagesData?.validNextStages?.length || 0) > 0 && !isClosedState && (
                                                     <div className="space-y-1">
                                                         <Label className="text-[10px] text-muted-foreground">Move to next stage:</Label>
-                                                        <Select onValueChange={(v) => stageTransitionMutation.mutate({ id: sr.id, stage: v })} disabled={stageTransitionMutation.isPending}>
+                                                        <Select onValueChange={(v) => handleStageSelect(sr.id, v)} disabled={stageTransitionMutation.isPending || sendCustodyOtpMutation.isPending}>
                                                             <SelectTrigger className="w-full h-8 text-xs rounded-lg"><SelectValue placeholder="Select next stage..." /></SelectTrigger>
                                                             <SelectContent>{nextStagesData?.validNextStages?.map((s: string) => <SelectItem key={s} value={s}>{formatStageName(s)}</SelectItem>)}</SelectContent>
                                                         </Select>
@@ -961,8 +999,8 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                                         {selectedRequest.isQuote && (!selectedRequest.quoteStatus || selectedRequest.quoteStatus === "Pending") && (
                                             <Button size="sm" className="rounded-xl bg-amber-600 hover:bg-amber-700" onClick={() => { setQuoteAmount(selectedRequest.quoteAmount?.toString() || ""); setQuoteNotes(selectedRequest.quoteNotes || ""); setShowQuotePriceDialog(true); }}><Send className="w-3.5 h-3.5 mr-1.5" />Send Quote</Button>
                                         )}
-                                        {!selectedRequest.convertedJobId && ["New", "Under Review", "Approved"].includes(selectedRequest.status) && canVerifyAndConvert && (
-                                            <Button size="sm" className="rounded-xl bg-green-600 hover:bg-green-700" onClick={() => { setRequestToVerify(selectedRequest); setVerificationNotes(selectedRequest.description || ""); setShowVerifyDialog(true); }}><CheckCircle className="w-3.5 h-3.5 mr-1.5" />Convert to Job</Button>
+                                        {!selectedRequest.convertedJobId && ["picked_up", "device_received"].includes(selectedRequest.stage || "") && canVerifyAndConvert && (
+                                            <Button size="sm" className="rounded-xl bg-green-600 hover:bg-green-700" onClick={() => { setRequestToVerify(selectedRequest); setVerificationNotes(selectedRequest.description || ""); setShowVerifyDialog(true); }}><CheckCircle className="w-3.5 h-3.5 mr-1.5" />Create Job</Button>
                                         )}
                                     </div>
                                     <div className="flex gap-2 pl-4 border-l ml-2">
@@ -1037,6 +1075,41 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                 </DialogContent>
             </Dialog>
 
+            <Dialog open={!!custodyOtp} onOpenChange={(open) => { if (!open) { setCustodyOtp(null); setCustodyOtpCode(""); } }}>
+                <DialogContent className="sm:max-w-[425px] rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Customer OTP Required</DialogTitle>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-2">
+                        <div className="bg-muted/50 p-3 rounded-xl space-y-1.5 text-sm">
+                            <div className="flex justify-between"><span className="text-muted-foreground">Stage:</span><span className="font-medium">{formatStageName(custodyOtp?.targetStage || "")}</span></div>
+                            <div className="flex justify-between"><span className="text-muted-foreground">Phone:</span><span>{custodyOtp?.phone || selectedRequest?.phone}</span></div>
+                        </div>
+                        <div className="grid gap-2">
+                            <Label>OTP</Label>
+                            <Input
+                                value={custodyOtpCode}
+                                onChange={(e) => setCustodyOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                                inputMode="numeric"
+                                autoComplete="one-time-code"
+                                placeholder="6-digit code"
+                                className="rounded-xl tracking-[0.25em]"
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => { setCustodyOtp(null); setCustodyOtpCode(""); }} className="rounded-xl">Cancel</Button>
+                        <Button
+                            onClick={() => custodyOtp && confirmCustodyOtpMutation.mutate({ id: custodyOtp.requestId, action: custodyOtp.action, code: custodyOtpCode })}
+                            disabled={!custodyOtpCode.trim() || confirmCustodyOtpMutation.isPending}
+                            className="rounded-xl"
+                        >
+                            {confirmCustodyOtpMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Confirm
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Quote Price */}
             <Dialog open={showQuotePriceDialog} onOpenChange={setShowQuotePriceDialog}>
                 <DialogContent className="rounded-2xl">
@@ -1061,10 +1134,10 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                 </DialogContent>
             </Dialog>
 
-            {/* Verify & Convert */}
+            {/* Confirm & Create Job */}
             <Dialog open={showVerifyDialog} onOpenChange={setShowVerifyDialog}>
                 <DialogContent className="sm:max-w-[425px] rounded-2xl">
-                    <DialogHeader><DialogTitle>Verify & Convert Request</DialogTitle></DialogHeader>
+                    <DialogHeader><DialogTitle>Confirm Device & Create Job</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
                         <div className="grid gap-2"><Label>Priority</Label><Select value={priority} onValueChange={setPriority}><SelectTrigger className="rounded-xl"><SelectValue placeholder="Select priority" /></SelectTrigger><SelectContent>{["Low", "Medium", "High", "Urgent"].map(p => <SelectItem key={p} value={p}>{p}</SelectItem>)}</SelectContent></Select></div>
                         <div className="grid gap-2"><Label>Verification Notes</Label><Textarea value={verificationNotes} onChange={(e) => setVerificationNotes(e.target.value)} placeholder="Add notes..." className="h-32 rounded-xl" /></div>
@@ -1072,7 +1145,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setShowVerifyDialog(false)} className="rounded-xl">Cancel</Button>
                         <Button onClick={() => requestToVerify && verifyMutation.mutate({ id: requestToVerify.id, verificationNotes, priority })} disabled={verifyMutation.isPending} className="rounded-xl">
-                            {verifyMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Convert to Job
+                            {verifyMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Create Job
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -190,8 +190,8 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         </Sidebar>
 
         <div className="flex-1 flex flex-col">
-          <header className="h-16 border-b bg-background px-6 flex items-center justify-between sticky top-0 z-10">
-            <div className="flex items-center gap-4">
+          <header className="h-14 border-b bg-background px-5 flex items-center justify-between sticky top-0 z-10">
+            <div className="flex items-center gap-3">
               <SidebarTrigger />
               <h1 className="text-lg font-semibold capitalize">
                 {location.split("/").pop() || "Dashboard"}
@@ -204,7 +204,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               </Button>
             </div>
           </header>
-          <main className="flex-1 p-6 overflow-auto">
+          <main className="flex-1 p-5 overflow-auto">
             {children}
           </main>
         </div>

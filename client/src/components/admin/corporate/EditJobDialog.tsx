@@ -35,6 +35,7 @@ interface ServiceLineItem {
     name: string;
     basePrice: number;
     customPrice: number; // Allow custom pricing per client
+    source?: "catalog" | "custom";
 }
 
 interface ProductLineItem {
@@ -45,6 +46,8 @@ interface ProductLineItem {
     unitPrice: number;
     isSerialized?: boolean;
     serialNumbers?: string[];
+    source?: "inventory" | "outsourced";
+    purchaseNote?: string;
 }
 
 const PROBLEM_OPTIONS = [
@@ -90,11 +93,16 @@ export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobD
     // Service types applied
     const [serviceLines, setServiceLines] = useState<ServiceLineItem[]>([]);
     const [selectedServiceId, setSelectedServiceId] = useState<string>("");
+    const [customServiceName, setCustomServiceName] = useState("");
+    const [customServicePrice, setCustomServicePrice] = useState("");
 
     // Products/Parts used
     const [productLines, setProductLines] = useState<ProductLineItem[]>([]);
     const [selectedProductId, setSelectedProductId] = useState<string>("");
     const [productQuantity, setProductQuantity] = useState(1);
+    const [outsourcedProductName, setOutsourcedProductName] = useState("");
+    const [outsourcedProductCost, setOutsourcedProductCost] = useState("");
+    const [outsourcedProductQuantity, setOutsourcedProductQuantity] = useState(1);
 
     // Warranty
     const [warrantyDays, setWarrantyDays] = useState(30); // 1 month default
@@ -195,8 +203,29 @@ export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobD
             name: item.name,
             basePrice: Number(item.price) || 0,
             customPrice: Number(item.price) || 0,
+            source: "catalog",
         }]);
         setSelectedServiceId("");
+    };
+
+    const addCustomServiceLine = () => {
+        const name = customServiceName.trim();
+        const price = parseFloat(customServicePrice) || 0;
+        if (!name) {
+            toast({ variant: "destructive", title: "Missing service", description: "Enter the custom service name." });
+            return;
+        }
+
+        setServiceLines(prev => [...prev, {
+            id: crypto.randomUUID(),
+            inventoryItemId: `custom-service-${crypto.randomUUID()}`,
+            name,
+            basePrice: price,
+            customPrice: price,
+            source: "custom",
+        }]);
+        setCustomServiceName("");
+        setCustomServicePrice("");
     };
 
     // Update service price
@@ -240,10 +269,35 @@ export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobD
                 unitPrice: Number(item.price) || 0,
                 isSerialized: item.isSerialized ?? false,
                 serialNumbers: Array(productQuantity).fill(""),
+                source: "inventory",
             }]);
         }
         setSelectedProductId("");
         setProductQuantity(1);
+    };
+
+    const addOutsourcedProductLine = () => {
+        const name = outsourcedProductName.trim();
+        const unitPrice = parseFloat(outsourcedProductCost) || 0;
+        if (!name || outsourcedProductQuantity < 1) {
+            toast({ variant: "destructive", title: "Missing outsourced part", description: "Enter part name and quantity." });
+            return;
+        }
+
+        setProductLines(prev => [...prev, {
+            id: crypto.randomUUID(),
+            inventoryItemId: `outsourced-${crypto.randomUUID()}`,
+            name,
+            quantity: outsourcedProductQuantity,
+            unitPrice,
+            isSerialized: false,
+            serialNumbers: [],
+            source: "outsourced",
+            purchaseNote: "Purchased from market / outside source",
+        }]);
+        setOutsourcedProductName("");
+        setOutsourcedProductCost("");
+        setOutsourcedProductQuantity(1);
     };
 
     const updateProductSerial = (lineId: string, index: number, serial: string) => {
@@ -532,10 +586,14 @@ export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobD
                                         <div className="w-1.5 h-1.5 rounded-full bg-indigo-500"></div> Services Rendered
                                     </h3>
 
+                                    <p className="mb-4 text-xs font-medium text-slate-500">
+                                        Catalog service fees are only a starting point. Adjust the price per job, or add a custom variable service fee below.
+                                    </p>
+
                                     <div className="flex gap-2 mb-4">
                                         <Select value={selectedServiceId} onValueChange={setSelectedServiceId}>
                                             <SelectTrigger className="flex-1 rounded-xl">
-                                                <SelectValue placeholder="Add a service type..." />
+                                                <SelectValue placeholder="Add catalog service..." />
                                             </SelectTrigger>
                                             <SelectContent>
                                                 {serviceItems.map((item: any) => (
@@ -550,11 +608,42 @@ export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobD
                                         </Button>
                                     </div>
 
+                                    <div className="mb-4 rounded-2xl border border-dashed border-indigo-200 bg-indigo-50/40 p-3">
+                                        <div className="mb-3">
+                                            <div className="text-sm font-semibold text-slate-800">Custom / Variable Service Fee</div>
+                                            <div className="text-xs text-slate-500">Use this when the general fee fluctuates for this exact job.</div>
+                                        </div>
+                                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_130px_44px]">
+                                            <Input
+                                                value={customServiceName}
+                                                onChange={(e) => setCustomServiceName(e.target.value)}
+                                                placeholder="Service name, e.g. Deep diagnosis"
+                                                className="rounded-xl bg-white"
+                                            />
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                value={customServicePrice}
+                                                onChange={(e) => setCustomServicePrice(e.target.value)}
+                                                placeholder="Fee BDT"
+                                                className="rounded-xl bg-white"
+                                            />
+                                            <Button onClick={addCustomServiceLine} className="rounded-xl bg-indigo-100 text-indigo-700 hover:bg-indigo-200" variant="ghost">
+                                                <Plus className="h-5 w-5" />
+                                            </Button>
+                                        </div>
+                                    </div>
+
                                     {serviceLines.length > 0 ? (
                                         <div className="space-y-2">
                                             {serviceLines.map((line) => (
                                                 <div key={line.id} className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-100 rounded-xl">
-                                                    <span className="flex-1 text-sm font-medium text-slate-700">{line.name}</span>
+                                                    <span className="flex-1 text-sm font-medium text-slate-700">
+                                                        {line.name}
+                                                        {line.source === "custom" && (
+                                                            <Badge variant="outline" className="ml-2 border-indigo-200 bg-indigo-50 text-indigo-700">Variable</Badge>
+                                                        )}
+                                                    </span>
                                                     <span className="text-xs text-slate-400 hidden sm:inline-block">Base: ৳{line.basePrice}</span>
                                                     <div className="relative">
                                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs shadow-none">৳</span>
@@ -587,6 +676,10 @@ export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobD
                                         <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Hardware & Parts
                                     </h3>
 
+                                    <p className="mb-4 text-xs font-medium text-slate-500">
+                                        Add stock parts from inventory, or record a market/outsourced part when purchase and use happen together.
+                                    </p>
+
                                     <div className="flex gap-2 mb-4">
                                         <Select value={selectedProductId} onValueChange={setSelectedProductId}>
                                             <SelectTrigger className="flex-1 rounded-xl">
@@ -613,12 +706,54 @@ export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobD
                                         </Button>
                                     </div>
 
+                                    <div className="mb-4 rounded-2xl border border-dashed border-amber-200 bg-amber-50/40 p-3">
+                                        <div className="mb-3 flex items-center justify-between gap-3">
+                                            <div>
+                                                <div className="text-sm font-semibold text-slate-800">Outsourced / Market Part</div>
+                                                <div className="text-xs text-slate-500">Use when the part is bought outside and consumed in this job.</div>
+                                            </div>
+                                            <Badge variant="outline" className="bg-white text-amber-700 border-amber-200">No stock effect</Badge>
+                                        </div>
+                                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_90px_120px_44px]">
+                                            <Input
+                                                value={outsourcedProductName}
+                                                onChange={(e) => setOutsourcedProductName(e.target.value)}
+                                                placeholder="Part name, e.g. LVDS cable"
+                                                className="rounded-xl bg-white"
+                                            />
+                                            <Input
+                                                type="number"
+                                                min={1}
+                                                value={outsourcedProductQuantity}
+                                                onChange={(e) => setOutsourcedProductQuantity(parseInt(e.target.value) || 1)}
+                                                placeholder="Qty"
+                                                className="rounded-xl bg-white"
+                                            />
+                                            <Input
+                                                type="number"
+                                                min={0}
+                                                value={outsourcedProductCost}
+                                                onChange={(e) => setOutsourcedProductCost(e.target.value)}
+                                                placeholder="Cost BDT"
+                                                className="rounded-xl bg-white"
+                                            />
+                                            <Button onClick={addOutsourcedProductLine} className="rounded-xl bg-amber-100 text-amber-700 hover:bg-amber-200" variant="ghost">
+                                                <Plus className="h-5 w-5" />
+                                            </Button>
+                                        </div>
+                                    </div>
+
                                     {productLines.length > 0 ? (
                                         <div className="space-y-3">
                                             {productLines.map((line) => (
                                                 <div key={line.id} className="flex flex-col gap-2 p-3 bg-slate-50 border border-slate-100 rounded-xl">
                                                     <div className="flex items-center gap-3">
-                                                        <span className="flex-1 text-sm font-medium text-slate-700">{line.name}</span>
+                                                        <span className="flex-1 text-sm font-medium text-slate-700">
+                                                            {line.name}
+                                                            {line.source === "outsourced" && (
+                                                                <Badge variant="outline" className="ml-2 bg-amber-50 text-amber-700 border-amber-200">Outsourced</Badge>
+                                                            )}
+                                                        </span>
                                                         <span className="text-xs bg-white border px-2 py-1 rounded-md text-slate-500 font-mono">x{line.quantity}</span>
                                                         <span className="text-sm font-semibold text-slate-900 w-20 text-right">৳{(line.unitPrice * line.quantity).toLocaleString()}</span>
                                                         <Button variant="ghost" size="icon" className="h-8 w-8 text-rose-500 hover:bg-rose-50 rounded-lg shrink-0" onClick={() => removeProductLine(line.id)}>
@@ -654,7 +789,7 @@ export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobD
                                     )}
                                 </div>
 
-                                {/* Summary & Warranty Split Matrix */}
+                                {/* Summary & Service Warranty Split Matrix */}
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                                     {/* Grand Total */}
                                     <div className="bg-gradient-to-br from-slate-900 to-slate-800 p-6 rounded-2xl shadow-lg border border-slate-700 text-white flex flex-col justify-center">
@@ -664,11 +799,11 @@ export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobD
                                         </div>
                                     </div>
 
-                                    {/* Warranty Settings */}
+                                    {/* Service Warranty Settings */}
                                     <div className="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm flex flex-col justify-center">
                                         <Label className="text-sm font-semibold text-slate-800 mb-3 flex items-center gap-2">
                                             <ShieldCheck className="h-4 w-4 text-emerald-500" />
-                                            Corporate Warranty
+                                            Corporate Service Warranty
                                         </Label>
                                         <div className="grid grid-cols-2 gap-3">
                                             <div className="space-y-1.5">

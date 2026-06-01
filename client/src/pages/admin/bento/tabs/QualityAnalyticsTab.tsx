@@ -17,6 +17,7 @@ import { cn } from "@/lib/utils";
 
 import { BentoCard } from "../shared/BentoCard";
 import { containerVariants, itemVariants } from "../shared/animations";
+import { fetchApi } from "@/lib/api/httpClient";
 
 const COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
@@ -34,31 +35,19 @@ export default function QualityAnalyticsTab() {
     // Fetch Defect Stats
     const { data: defectStats, isLoading: isLoadingDefects } = useQuery({
         queryKey: ["analytics-defects", dateRange],
-        queryFn: async () => {
-            const res = await fetch(`/api/analytics/defects?${queryParams}`);
-            if (!res.ok) throw new Error("Failed to fetch defect stats");
-            return res.json();
-        },
+        queryFn: () => fetchApi<any>(`/analytics/defects?${queryParams}`),
     });
 
     // Fetch Technician Performance
     const { data: techPerformance, isLoading: isLoadingPerformance } = useQuery({
         queryKey: ["analytics-performance", dateRange],
-        queryFn: async () => {
-            const res = await fetch(`/api/analytics/performance?${queryParams}`);
-            if (!res.ok) throw new Error("Failed to fetch performance stats");
-            return res.json();
-        },
+        queryFn: () => fetchApi<any>(`/analytics/performance?${queryParams}`),
     });
 
     // Fetch Supplier Defect Stats
     const { data: supplierDefects, isLoading: isLoadingSupplierDefects } = useQuery({
         queryKey: ["analytics-supplier-defects", dateRange],
-        queryFn: async () => {
-            const res = await fetch(`/api/analytics/supplier-defects?${queryParams}`);
-            if (!res.ok) throw new Error("Failed to fetch supplier defect stats");
-            return res.json();
-        },
+        queryFn: () => fetchApi<any>(`/analytics/supplier-defects?${queryParams}`),
     });
 
     return (

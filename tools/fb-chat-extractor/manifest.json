@@ -1,0 +1,19 @@
+{
+  "manifest_version": 3,
+  "name": "Promise Chat Extractor",
+  "version": "1.0",
+  "description": "Extract all Facebook Business Suite inbox conversations for AI training",
+  "permissions": ["activeTab", "scripting", "downloads"],
+  "host_permissions": ["https://business.facebook.com/*"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://business.facebook.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

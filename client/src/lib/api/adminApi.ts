@@ -244,6 +244,41 @@ export const dueRecordsApi = {
         }),
 };
 
+export const manualPaymentsApi = {
+    getAll: (filters?: { status?: string }) => {
+        const params = new URLSearchParams();
+        if (filters?.status) params.append('status', filters.status);
+        const query = params.toString();
+        return fetchApi<{ items: any[] }>(`/manual-payments${query ? `?${query}` : ''}`);
+    },
+    create: (data: {
+        jobTicketId?: string;
+        serviceRequestId?: string;
+        dueRecordId?: string;
+        customerName?: string;
+        customerPhone?: string;
+        method: "bkash_send_money" | "nagad_send_money" | "cash" | "credit";
+        amount: number;
+        senderNumber?: string;
+        transactionId?: string;
+        proofUrl?: string;
+        notes?: string;
+    }) =>
+        fetchApi<any>("/manual-payments", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    verify: (id: string) =>
+        fetchApi<any>(`/manual-payments/${id}/verify`, {
+            method: "POST",
+        }),
+    reject: (id: string, reason: string) =>
+        fetchApi<any>(`/manual-payments/${id}/reject`, {
+            method: "POST",
+            body: JSON.stringify({ reason }),
+        }),
+};
+
 // Drawer API
 export interface DrawerDayCloseRunResult {
     executed: boolean;
@@ -673,6 +708,16 @@ export const adminStageApi = {
         fetchApi<{ currentStage: string; validNextStages: string[]; stageFlow: string[] }>(`/admin/service-requests/${id}/next-stages`),
     transitionStage: (id: string, data: { stage: string; actorName?: string }) =>
         fetchApi<any>(`/admin/service-requests/${id}/transition-stage`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }).then(res => res.serviceRequest || res),
+    sendCustodyOtp: (id: string, data: { action: "receive" | "delivery" }) =>
+        fetchApi<{ success: boolean; action: "receive" | "delivery"; targetStage: string; expiresAt: string; phone: string }>(`/admin/service-requests/${id}/custody-otp/send`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    confirmCustodyOtp: (id: string, data: { action: "receive" | "delivery"; code: string }) =>
+        fetchApi<any>(`/admin/service-requests/${id}/custody-otp/confirm`, {
             method: "POST",
             body: JSON.stringify(data),
         }).then(res => res.serviceRequest || res),

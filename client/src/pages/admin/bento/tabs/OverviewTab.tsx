@@ -10,12 +10,11 @@ import {
 import { Button } from "@/components/ui/button";
 import { BentoCard, DashboardSkeleton, containerVariants, itemVariants } from "../shared";
 import { analyticsApi } from "@/lib/api";
+import { fetchApi } from "@/lib/api/httpClient";
 
-async function fetchJobOverview() {
-    const response = await fetch("/api/admin/job-overview");
-    if (!response.ok) throw new Error("Failed to fetch job overview");
-    return response.json();
-}
+// Raw fetch("/api/...") used a relative URL + no credentials → broke under the
+// split Vercel+Render deploy. fetchApi handles base URL + auth cookie + CSRF.
+const fetchJobOverview = () => fetchApi<any>("/admin/job-overview");
 
 export default function OverviewTab() {
     const { data: overviewData, isLoading: isOverviewLoading, isError: isOverviewError } = useQuery({

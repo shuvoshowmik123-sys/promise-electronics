@@ -1,11 +1,12 @@
 import { motion } from "framer-motion";
 import { format } from "date-fns";
+import type { MouseEvent } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BentoCard } from "../../shared";
-import { Clock, Eye, MoreVertical, PenTool, Phone, Printer, QrCode, User, Zap } from "lucide-react";
+import { CheckCircle2, Clock, CreditCard, Eye, MoreVertical, PackageCheck, PenTool, Phone, Play, Printer, QrCode, Truck, User, UserCheck, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { JobTicket } from "@shared/schema";
 import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
@@ -16,7 +17,8 @@ const HighlightMatch = ({ text, query }: { text: string | undefined | null; quer
     if (!text) return null;
     if (!query) return <>{text}</>;
     const textStr = String(text);
-    const regex = new RegExp(`(${query})`, "gi");
+    const escapedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const regex = new RegExp(`(${escapedQuery})`, "gi");
     const parts = textStr.split(regex);
     return (
         <>
@@ -31,6 +33,22 @@ const HighlightMatch = ({ text, query }: { text: string | undefined | null; quer
             )}
         </>
     );
+};
+
+const getPrimaryAction = (job: JobTicket, canEdit: boolean) => {
+    const status = job.status || "";
+    const hasTechnician = Boolean(job.technician && job.technician !== "Unassigned");
+
+    if (!canEdit) return { label: "View Job", type: "view" as const, Icon: Eye };
+    if (!hasTechnician && !["Delivered", "Completed", "Cancelled", "Abandoned", "Forfeited"].includes(status)) {
+        return { label: "Assign Technician", type: "edit" as const, Icon: UserCheck };
+    }
+    if (["Pending", "Diagnosing"].includes(status)) return { label: "Start Repair", type: "advance" as const, Icon: Play };
+    if (["Pending Parts", "Waiting on Parts"].includes(status)) return { label: "Parts Arrived", type: "advance" as const, Icon: PackageCheck };
+    if (["In Progress", "On Workbench"].includes(status)) return { label: "Mark Ready", type: "advance" as const, Icon: CheckCircle2 };
+    if (status === "Ready") return { label: "Take Payment", type: "advance" as const, Icon: CreditCard };
+    if (status === "Completed") return { label: "Print & Deliver", type: "print" as const, Icon: Truck };
+    return { label: "View Job", type: "view" as const, Icon: Eye };
 };
 
 export const containerVariants = {
@@ -77,6 +95,15 @@ export function JobTicketGrid({
             {jobs.map((job: any) => {
                 const isTechnician = userRole === "Technician";
                 const showCustomerDetails = !isTechnician || canEdit;
+                const primaryAction = getPrimaryAction(job, canEdit);
+                const PrimaryActionIcon = primaryAction.Icon;
+                const handlePrimaryAction = (event: MouseEvent) => {
+                    event.stopPropagation();
+                    if (primaryAction.type === "edit") onEditJob(job);
+                    else if (primaryAction.type === "advance") onAdvanceStage(job);
+                    else if (primaryAction.type === "print") onPrintTicket(job);
+                    else onViewDetails(job);
+                };
                 return (
                     <motion.div
                         variants={tableRowVariants}
@@ -132,12 +159,12 @@ export function JobTicketGrid({
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end" className="w-48 rounded-xl bg-white/95 backdrop-blur-xl border-white/20 shadow-xl" onClick={(e) => e.stopPropagation()}>
-                                            <DropdownMenuLabel className="font-bold text-[10px] uppercase text-slate-500 tracking-wider">Actions</DropdownMenuLabel>
+                                            <DropdownMenuLabel className="font-bold text-[10px] uppercase text-slate-500 tracking-wider">More</DropdownMenuLabel>
                                             <DropdownMenuItem onClick={() => onViewDetails(job)} className="font-medium cursor-pointer"><Eye className="w-4 h-4 mr-2" /> View Details</DropdownMenuItem>
                                             {canEdit && <DropdownMenuItem onClick={() => onEditJob(job)} className="font-medium cursor-pointer"><PenTool className="w-4 h-4 mr-2" /> Edit Job</DropdownMenuItem>}
                                             {canEdit && job.status !== 'Completed' && job.status !== 'Cancelled' && (
                                                 <DropdownMenuItem onClick={() => onAdvanceStage(job)} className="font-medium cursor-pointer text-blue-600">
-                                                    <Zap className="w-4 h-4 mr-2" /> Advance Stage
+                                                    <Zap className="w-4 h-4 mr-2" /> Move to Next Step
                                                 </DropdownMenuItem>
                                             )}
                                             <DropdownMenuSeparator />
@@ -151,12 +178,6 @@ export function JobTicketGrid({
                             <div className="flex-1 mb-5">
                                 <h3 className="text-sm font-bold text-slate-800 flex items-start justify-between gap-3">
                                     <span className="flex-1 leading-snug line-clamp-2"><HighlightMatch text={job.device} query={searchQuery} /></span>
-                                    <span
-                                        className="p-1.5 bg-slate-50 hover:bg-blue-50 rounded-lg text-slate-300 hover:text-blue-600 transition-colors cursor-pointer group/qr"
-                                        onClick={(e) => { e.stopPropagation(); onGenerateQr(job); }}
-                                    >
-                                        <QrCode className="w-5 h-5 shrink-0" />
-                                    </span>
                                 </h3>
                                 {job.screenSize && <span className="text-[10px] px-1.5 py-0.5 bg-slate-50/80 rounded text-slate-500 font-mono border border-slate-200 mt-1.5 inline-block">{job.screenSize}"</span>}
                                 <p className="text-xs text-slate-500 mt-2.5 line-clamp-2 leading-relaxed font-medium">
@@ -164,55 +185,67 @@ export function JobTicketGrid({
                                 </p>
                             </div>
 
-                            <div className="pt-4 border-t border-slate-100 flex justify-between items-end">
-                                <div className="flex flex-col gap-1 max-w-[50%]">
-                                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Customer</span>
-                                    <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5 truncate">
-                                        <User className="w-3 h-3 text-slate-400 shrink-0" />
-                                        <span className="truncate">{showCustomerDetails ? <HighlightMatch text={job.customer} query={searchQuery} /> : (job.customer ? <HighlightMatch text={job.customer.split(' ')[0] + ' ***'} query={searchQuery} /> : 'Unknown')}</span>
-                                    </span>
-                                    {showCustomerDetails && job.customerPhone && (
-                                        <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1.5 truncate mt-0.5">
-                                            <Phone className="w-3 h-3 text-slate-400 shrink-0" />
-                                            <span className="truncate text-blue-600"><HighlightMatch text={job.customerPhone} query={searchQuery} /></span>
+                            <div className="pt-4 border-t border-slate-100 flex flex-col gap-4">
+                                <div className="flex justify-between items-end">
+                                    <div className="flex flex-col gap-1 max-w-[50%]">
+                                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Customer</span>
+                                        <span className="text-[11px] font-semibold text-slate-700 flex items-center gap-1.5 truncate">
+                                            <User className="w-3 h-3 text-slate-400 shrink-0" />
+                                            <span className="truncate">{showCustomerDetails ? <HighlightMatch text={job.customer} query={searchQuery} /> : (job.customer ? <HighlightMatch text={job.customer.split(' ')[0] + ' ***'} query={searchQuery} /> : 'Unknown')}</span>
                                         </span>
-                                    )}
-                                </div>
+                                        {showCustomerDetails && job.customerPhone && (
+                                            <span className="text-[10px] font-mono text-slate-500 flex items-center gap-1.5 truncate mt-0.5">
+                                                <Phone className="w-3 h-3 text-slate-400 shrink-0" />
+                                                <span className="truncate text-blue-600"><HighlightMatch text={job.customerPhone} query={searchQuery} /></span>
+                                            </span>
+                                        )}
+                                    </div>
 
-                                <div className="flex flex-col items-end gap-1 max-w-[45%] text-right">
-                                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Technician</span>
-                                    {!job.technician || job.technician === "Unassigned" ? (
-                                        <span className="text-[11px] italic text-slate-400 flex items-center gap-1 mt-0.5">Unassigned</span>
-                                    ) : (
-                                        <div className="flex items-center gap-1.5 truncate mt-0.5">
-                                            <div className="w-4 h-4 shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-[8px] font-bold shadow-sm">
-                                                {job.technician.charAt(0)}
-                                            </div>
-                                            <span className="text-[11px] font-bold text-slate-700 truncate"><HighlightMatch text={job.technician} query={searchQuery} /></span>
-                                        </div>
-                                    )}
-                                    {(() => {
-                                        const names = job.assistedByNames
-                                            ? (typeof job.assistedByNames === 'string' && job.assistedByNames.trim() ? job.assistedByNames.split(',').map((n: string) => n.trim()).filter(Boolean) : [])
-                                            : [];
-                                        if (names.length === 0) return null;
-                                        return (
-                                            <div className="flex flex-col items-end gap-0.5 mt-1">
-                                                <span className="text-[9px] font-bold uppercase tracking-wider text-violet-400">+ Assist</span>
-                                                <div className="flex items-center justify-end gap-1 flex-wrap">
-                                                    {names.map((name: string) => (
-                                                        <div key={name} className="flex items-center gap-1">
-                                                            <div className="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-violet-400 to-purple-600 text-white flex items-center justify-center text-[7px] font-bold shadow-sm shrink-0">
-                                                                {name.charAt(0)}
-                                                            </div>
-                                                            <span className="text-[10px] text-violet-700 font-medium truncate max-w-[70px]">{name}</span>
-                                                        </div>
-                                                    ))}
+                                    <div className="flex flex-col items-end gap-1 max-w-[45%] text-right">
+                                        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400">Technician</span>
+                                        {!job.technician || job.technician === "Unassigned" ? (
+                                            <span className="text-[11px] italic text-slate-400 flex items-center gap-1 mt-0.5">Unassigned</span>
+                                        ) : (
+                                            <div className="flex items-center gap-1.5 truncate mt-0.5">
+                                                <div className="w-4 h-4 shrink-0 rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center text-[8px] font-bold shadow-sm">
+                                                    {job.technician.charAt(0)}
                                                 </div>
+                                                <span className="text-[11px] font-bold text-slate-700 truncate"><HighlightMatch text={job.technician} query={searchQuery} /></span>
                                             </div>
-                                        );
-                                    })()}
+                                        )}
+                                        {(() => {
+                                            const names = job.assistedByNames
+                                                ? (typeof job.assistedByNames === 'string' && job.assistedByNames.trim() ? job.assistedByNames.split(',').map((n: string) => n.trim()).filter(Boolean) : [])
+                                                : [];
+                                            if (names.length === 0) return null;
+                                            return (
+                                                <div className="flex flex-col items-end gap-0.5 mt-1">
+                                                    <span className="text-[9px] font-bold uppercase tracking-wider text-violet-400">+ Assist</span>
+                                                    <div className="flex items-center justify-end gap-1 flex-wrap">
+                                                        {names.map((name: string) => (
+                                                            <div key={name} className="flex items-center gap-1">
+                                                                <div className="w-3.5 h-3.5 rounded-full bg-gradient-to-br from-violet-400 to-purple-600 text-white flex items-center justify-center text-[7px] font-bold shadow-sm shrink-0">
+                                                                    {name.charAt(0)}
+                                                                </div>
+                                                                <span className="text-[10px] text-violet-700 font-medium truncate max-w-[70px]">{name}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
                                 </div>
+                                <Button
+                                    onClick={handlePrimaryAction}
+                                    className={cn(
+                                        "w-full h-10 rounded-lg gap-2 font-bold shadow-sm",
+                                        primaryAction.type === "view" ? "bg-slate-900 hover:bg-slate-800 text-white" : "bg-blue-600 hover:bg-blue-700 text-white"
+                                    )}
+                                >
+                                    <PrimaryActionIcon className="w-4 h-4" />
+                                    {primaryAction.label}
+                                </Button>
                             </div>
                         </BentoCard>
                     </motion.div>

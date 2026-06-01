@@ -250,6 +250,46 @@ const DAKTAR_VAI_PROMPT = `
      }
 `;
 
+// ── Phase H: Client-class prompt overlays ────────────────────────────────────
+// Appended to DAKTAR_VAI_PROMPT when clientClass is known. Additive — never replace base.
+const PROMPT_OVERLAYS: Record<string, string> = {
+    technician: `
+SPECIAL MODE — TECHNICIAN CLIENT:
+- This is a fellow TV repair technician, NOT a regular customer.
+- Tone: Short, technical, professional. No warmth. No "Sir/Mam" flattery.
+- DO NOT give free diagnosis or component-level advice. They will use it without paying.
+- When asked about a specific fault: "Bring the set in. We'll check and quote."
+- Remind them: repair takes +3 days longer than standard. Cash only. No credit.
+- If they push for technical info: "We inspect the set first, then quote. This protects both sides."
+`,
+    b2b_normal: `
+SPECIAL MODE — B2B COMPANY CLIENT:
+- This is a business client. Tone: Formal, professional, efficient.
+- Invoice is their preferred payment. Mention that billing is done per job.
+- No need for the standard booking script — they usually drop devices directly.
+- Keep responses concise. They are experienced with repair shops.
+`,
+    b2b_corporate: `
+SPECIAL MODE — CORPORATE CLIENT (MME-style):
+- This is a zero-tolerance corporate client. Tone: Strictly formal and precise.
+- They require per-unit serial number tracking. Ask for model number and serial.
+- Quotation happens by phone call after inspection — not via chat.
+- Billing and documentation are handled separately by our accounts team.
+- Do NOT commit to any timeline or cost. "Our team will call to confirm."
+`,
+    reference: `
+SPECIAL MODE — REFERRED CLIENT:
+- This customer was referred to us by a trusted contact.
+- Give a warm, slightly VIP treatment. Acknowledge the referral if mentioned.
+- Prioritize getting their phone number for a personal callback.
+`,
+};
+
+function getPromptOverlay(clientClass?: string): string {
+    if (!clientClass) return '';
+    return PROMPT_OVERLAYS[clientClass] ?? '';
+}
+
 // ── Price redaction for few-shot examples ────────────────────────────────────
 // Real staff replies contain taka amounts, but the AI must NEVER quote prices.
 // Redact money from retrieved examples so the model keeps tone/flow but cannot
@@ -1000,7 +1040,7 @@ Rules:
         message: string,
         history: any[] = [],
         image?: string,
-        userContext?: { id?: string; name?: string; phone?: string; address?: string; role?: string },
+        userContext?: { id?: string; name?: string; phone?: string; address?: string; role?: string; customerRecord?: any },
         modelType: 'customer' | 'admin' = 'customer',
         adminData?: any,
         existingTicket?: any
@@ -1103,6 +1143,12 @@ Rules:
         function buildContextPrompt() {
             let basePrompt = modelType === 'admin' ? COMBINED_ADMIN_PROMPT : DAKTAR_VAI_PROMPT;
 
+            // Phase H: append client-class overlay when class is known
+            if (modelType !== 'admin' && userContext?.customerRecord?.clientClass) {
+                const overlay = getPromptOverlay(userContext.customerRecord.clientClass);
+                if (overlay) basePrompt += overlay;
+            }
+
             // Inject KG facts at top of system prompt — highest priority context
             if (kgContextBlock) {
                 basePrompt = `${kgContextBlock}\nUse the KNOWN FACTS above when relevant — they are authoritative shop knowledge.\n\n${basePrompt}`;
@@ -1125,7 +1171,7 @@ Rules:
 
             if (userContext) {
                 const contextAddition = `
-                
+
 CURRENT USER CONTEXT:
 - Name: ${userContext.name || "Unknown"}
 - Phone: ${userContext.phone || "Not provided"}
@@ -1136,6 +1182,14 @@ ${userContext.name ? `Use their name "${userContext.name}" naturally in conversa
 ${userContext.phone ? `IMPORTANT: The user's phone number is "${userContext.phone}". You MUST use this for the booking. DO NOT ask the user for their phone number.` : ""}
 `;
                 basePrompt += contextAddition;
+
+                // Phase C: inject repeat/reference customer history into prompt
+                if (userContext.customerRecord) {
+                    const cr = userContext.customerRecord;
+                    if ((cr.totalJobs > 0 || cr.clientClass === 'reference') && cr.clientClass !== 'technician') {
+                        basePrompt += `\nKNOWN CUSTOMER HISTORY: ${cr.totalJobs} prior job(s). Last job: ${cr.lastJobAt ? new Date(cr.lastJobAt).toDateString() : 'unknown'}. Class: ${cr.clientClass}. Treat as valued returning customer.\n`;
+                    }
+                }
             }
 
             if (adminData) {

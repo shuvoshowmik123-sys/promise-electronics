@@ -1,3 +1,10 @@
+import dns from "node:dns";
+// Prefer IPv4 when resolving the DB host. Neon's hostname returns AAAA (IPv6)
+// records that are unreachable from some networks (ENETUNREACH), causing Node to
+// waste the connect timeout on a dead IPv6 route before falling back to IPv4 —
+// which repeatedly killed local + would stall Render connects. IPv4-first skips it.
+dns.setDefaultResultOrder("ipv4first");
+
 import { createApp, getHttpServer, log } from "./app.js";
 // Trigger restart v3 - inlined module auth
 import { serveStatic } from "./static.js";
@@ -9,7 +16,25 @@ import { startAbandonmentScheduler, stopAbandonmentScheduler } from "./services/
 import { startReminderScheduler, stopReminderScheduler } from "./services/reminder.service.js";
 import { startBackupScheduler, stopBackupScheduler } from "./services/backup-scheduler.service.js";
 import { seedDefaultCommissionRules } from "./services/commission.service.js";
+import { initNightlyJobs } from "./services/nightly-jobs.service.js";
 import { brainService } from "./brain/brain.service.js";
+import { migrateB2BRuleProfileTables } from "./services/b2b-rule-profile.service.js";
+import { migrateManualPaymentTables } from "./services/manual-payment-migration.service.js";
+
+// ── Crash guards ────────────────────────────────────────────────────────────
+// Keep the server alive through transient failures (esp. Neon DB connection
+// timeouts — see server/db.ts). A single uncaught DB-connect rejection used to
+// kill the whole process; for a 24/7 shop backend that means total outage on a
+// momentary network blip. Log and keep serving; the failed request just 500s.
+process.on("unhandledRejection", (reason: any) => {
+  const msg = reason?.message || reason?.code || String(reason);
+  console.error("[unhandledRejection] (kept alive):", msg);
+});
+
+process.on("uncaughtException", (err: any) => {
+  // Socket/network 'error' events with no listener surface here. Log, stay up.
+  console.error("[uncaughtException] (kept alive):", err?.message || err, err?.stack?.split("\n")[1]?.trim());
+});
 
 (async () => {
   // Seed super admin if not exists
@@ -21,11 +46,14 @@ import { brainService } from "./brain/brain.service.js";
   startAbandonmentScheduler();
   startReminderScheduler();
   startBackupScheduler();
+  initNightlyJobs(); // SLA breach check + acceptance ratio (Phase I)
   await seedDefaultCommissionRules();
   await brainService.migratePhase6Columns().catch(() => {}); // no-op if Brain DB not configured
   await brainService.migrateKGTables().catch(() => {});      // Knowledge Graph tables
   await brainService.seedConversationsIfEmpty().catch(() => {}); // seed real chat examples once
   await brainService.seedPhase2ConversationsIfNeeded().catch(() => {}); // import batch 2 (Facebook chats)
+  await migrateB2BRuleProfileTables().catch((e) => console.warn("[Startup] B2B rule profile migration skipped:", e.message?.slice(0, 80)));
+  await migrateManualPaymentTables().catch((e) => console.warn("[Startup] manual payment migration skipped:", e.message?.slice(0, 80)));
 
   // Firebase UID column — idempotent, safe to run on every start
   try {

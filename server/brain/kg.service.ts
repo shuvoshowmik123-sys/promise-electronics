@@ -240,7 +240,7 @@ export async function logModelCase(job: JobCaseInput): Promise<boolean> {
     // Also tokenize device name: "Samsung UA43CU7700" → ["samsung", "ua43cu7700", "43in"]
     device.toLowerCase().split(/\s+/).forEach(t => { if (t.length > 1) tags.push(t); });
     if (job.screenSize) tags.push(`${job.screenSize.replace(/\D/g, '')}in`);
-    const uniqueTags = [...new Set(tags)].filter(t => t.length > 0);
+    const uniqueTags = Array.from(new Set(tags)).filter(t => t.length > 0);
 
     try {
         await sql`

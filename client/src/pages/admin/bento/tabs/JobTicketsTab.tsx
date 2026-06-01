@@ -30,6 +30,22 @@ import { JobFilters } from "./jobs/JobFilters";
 import { generatePrintHtml } from "./jobs/JobPrintTemplate";
 import { LocalPurchaseModal } from "@/components/inventory/LocalPurchaseModal";
 
+type JobGroupKey = "new" | "repairing" | "waiting-parts" | "ready" | "delivered" | "all";
+
+const JOB_GROUPS: Array<{
+    key: JobGroupKey;
+    label: string;
+    helper: string;
+    statuses: string[];
+    className: string;
+}> = [
+    { key: "new", label: "New", helper: "Needs first action", statuses: ["Pending", "Diagnosing"], className: "border-blue-100 bg-blue-50/60 text-blue-700" },
+    { key: "repairing", label: "Repairing", helper: "Work is running", statuses: ["In Progress", "On Workbench"], className: "border-indigo-100 bg-indigo-50/60 text-indigo-700" },
+    { key: "waiting-parts", label: "Waiting Parts", helper: "Needs parts update", statuses: ["Pending Parts", "Waiting on Parts"], className: "border-amber-100 bg-amber-50/70 text-amber-700" },
+    { key: "ready", label: "Ready", helper: "Payment or handover", statuses: ["Ready", "Completed"], className: "border-emerald-100 bg-emerald-50/70 text-emerald-700" },
+    { key: "delivered", label: "Delivered", helper: "Finished jobs", statuses: ["Delivered"], className: "border-slate-200 bg-slate-50 text-slate-700" },
+];
+
 interface JobTicketsTabProps {
     initialSearchQuery?: string;
     onSearchConsumed?: () => void;
@@ -48,6 +64,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
     const [jobTechnicianFilter, setJobTechnicianFilter] = useState("all");
     const [showJobFilters, setShowJobFilters] = useState(false);
     const [jobPage, setJobPage] = useState(1);
+    const [jobGroupFilter, setJobGroupFilter] = useState<JobGroupKey>("new");
     const [viewMode, setViewMode] = useState<"grid" | "list" | "kanban">("grid");
 
     const autoOpenedQueryRef = useRef<string | null>(null);
@@ -59,6 +76,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
             setJobStatusFilter("all");
             setJobPriorityFilter("all");
             setJobTechnicianFilter("all");
+            setJobGroupFilter("all");
             autoOpenedQueryRef.current = null; // Reset auto-open tracking
             onSearchConsumed?.();
         }
@@ -126,6 +144,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
     };
     const tvInches = getSettingArray("tv_inches", ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch"]);
     const notificationTone = (settings.find(s => s.key === "notification_tone")?.value as NotificationTone) || "default";
+    const selectedJobGroup = JOB_GROUPS.find((group) => group.key === jobGroupFilter);
 
     // Sounds & Sync
     useEffect(() => {
@@ -179,20 +198,33 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
             (j as any).tvSerialNumber,
             (j as any).corporateJobNumber,
         );
+        const matchesGroup = jobGroupFilter === "all" || !selectedJobGroup || selectedJobGroup.statuses.includes(j.status || "");
         const matchesStatus = jobStatusFilter === "all" || j.status === jobStatusFilter;
         const matchesPriority = jobPriorityFilter === "all" || j.priority === jobPriorityFilter;
         const matchesTechnician = jobTechnicianFilter === "all" ||
             (jobTechnicianFilter === "Unassigned" && (!j.technician || j.technician === "Unassigned")) ||
             j.technician === jobTechnicianFilter;
 
-        return matchesSearch && matchesStatus && matchesPriority && matchesTechnician;
+        return matchesSearch && matchesGroup && matchesStatus && matchesPriority && matchesTechnician;
     });
 
+    const groupCounts = useMemo(() => {
+        return JOB_GROUPS.reduce<Record<JobGroupKey, number>>((acc, group) => {
+            acc[group.key] = jobTickets.filter((job) => group.statuses.includes(job.status || "")).length;
+            return acc;
+        }, { new: 0, repairing: 0, "waiting-parts": 0, ready: 0, delivered: 0, all: jobTickets.length });
+    }, [jobTickets]);
+
     const paginatedJobs = filteredJobs.slice((jobPage - 1) * 10, jobPage * 10);
-    const hasActiveFilters = jobStatusFilter !== "all" || jobPriorityFilter !== "all" || jobTechnicianFilter !== "all";
+    const hasActiveFilters = jobGroupFilter !== "new" || jobStatusFilter !== "all" || jobPriorityFilter !== "all" || jobTechnicianFilter !== "all";
+
+    useEffect(() => {
+        setJobPage(1);
+    }, [jobSearchQuery, jobGroupFilter, jobStatusFilter, jobPriorityFilter, jobTechnicianFilter]);
 
     const clearFilters = () => {
         setJobSearchQuery("");
+        setJobGroupFilter("new");
         setJobStatusFilter("all");
         setJobPriorityFilter("all");
         setJobTechnicianFilter("all");
@@ -321,32 +353,32 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                         <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center mb-6">
                             <div>
                                 <div className="flex items-center gap-3">
-                                    <h1 className="text-2xl font-bold text-slate-800">Job Tickets</h1>
+                                    <h1 className="text-2xl font-bold text-slate-800">Jobs</h1>
                                     <div className={cn("flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium",
                                         sseSupported ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-700")}>
                                         <Zap className={cn("w-3 h-3", sseSupported ? "text-emerald-600" : "text-slate-500")} />
                                         <span>{sseSupported ? "Live" : "Reconnecting"}</span>
                                     </div>
                                 </div>
-                                <p className="text-slate-500 mt-1">Manage repair jobs, assignments, and status updates.</p>
+                                <p className="text-slate-500 mt-1">Find a customer, open the job, then use the next clear action.</p>
                             </div>
                             {hasPermission("canCreate") && (
                                 <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all bc-hover bc-rise" onClick={() => setIsCreateDrawerOpen(true)}>
-                                    <Plus className="w-4 h-4" /> Create New Ticket
+                                    <Plus className="w-4 h-4" /> New Job
                                 </Button>
                             )}
                         </div>
 
                         <div className="flex flex-col gap-4">
                             <div className="flex flex-col sm:flex-row items-center gap-4">
-                                <div className="relative flex-1 w-full max-w-md">
+                                <div className="relative flex-1 w-full max-w-xl">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                     <input
                                         type="text"
-                                        placeholder="Search by Job ID, Phone, or Name..."
+                                        placeholder="Search phone, job number, customer, device..."
                                         value={jobSearchQuery}
                                         onChange={(e) => setJobSearchQuery(e.target.value)}
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-3xl pl-10 pr-4 py-2.5 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 text-slate-700 shadow-sm"
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-3xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 text-slate-700 shadow-sm"
                                     />
                                 </div>
                                 <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 hide-scrollbar">
@@ -378,6 +410,40 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                                 </div>
                             </div>
 
+                            <div className="flex gap-2 overflow-x-auto pb-1 hide-scrollbar">
+                                {JOB_GROUPS.map((group) => (
+                                    <button
+                                        key={group.key}
+                                        type="button"
+                                        onClick={() => setJobGroupFilter(group.key)}
+                                        className={cn(
+                                            "min-w-[132px] rounded-lg border px-3 py-2.5 text-left transition-all shadow-sm",
+                                            jobGroupFilter === group.key ? group.className : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                        )}
+                                    >
+                                        <span className="flex items-center justify-between gap-3">
+                                            <span className="text-sm font-bold">{group.label}</span>
+                                            <span className="font-mono text-sm font-bold">{groupCounts[group.key]}</span>
+                                        </span>
+                                        <span className="mt-1 block text-[11px] font-medium opacity-75">{group.helper}</span>
+                                    </button>
+                                ))}
+                                <button
+                                    type="button"
+                                    onClick={() => setJobGroupFilter("all")}
+                                    className={cn(
+                                        "min-w-[104px] rounded-lg border px-3 py-2.5 text-left transition-all shadow-sm",
+                                        jobGroupFilter === "all" ? "border-slate-300 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                                    )}
+                                >
+                                    <span className="flex items-center justify-between gap-3">
+                                        <span className="text-sm font-bold">All</span>
+                                        <span className="font-mono text-sm font-bold">{groupCounts.all}</span>
+                                    </span>
+                                    <span className="mt-1 block text-[11px] font-medium opacity-75">Everything</span>
+                                </button>
+                            </div>
+
                             <JobFilters
                                 show={showJobFilters}
                                 statusFilter={jobStatusFilter}
@@ -400,7 +466,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                                 <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
                                     <Search className="w-8 h-8 text-slate-300" />
                                 </div>
-                                <p className="text-lg font-medium text-slate-600">No job tickets found</p>
+                                <p className="text-lg font-medium text-slate-600">No jobs found here</p>
                                 {hasActiveFilters && <Button variant="link" onClick={clearFilters}>Clear Filters</Button>}
                             </div>
                         ) : viewMode === "grid" ? (
@@ -447,7 +513,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                     {filteredJobs.length > 0 && (
                         <div className="flex-none flex items-center justify-between p-4 px-6 border-t border-slate-100 bg-white/95 backdrop-blur-sm z-20">
                             <div className="text-xs font-medium text-slate-500">
-                                Showing {Math.min((jobPage - 1) * 10 + 1, filteredJobs.length)} to {Math.min(jobPage * 10, filteredJobs.length)} of {filteredJobs.length} Tickets
+                                Showing {Math.min((jobPage - 1) * 10 + 1, filteredJobs.length)} to {Math.min(jobPage * 10, filteredJobs.length)} of {filteredJobs.length} Jobs
                             </div>
                             <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1 border border-slate-100">
                                 <Button variant="ghost" size="sm" onClick={() => setJobPage(p => Math.max(1, p - 1))} disabled={jobPage === 1} className="h-7 w-7 p-0 rounded-md">

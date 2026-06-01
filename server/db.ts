@@ -20,7 +20,7 @@ function getPool(): Pool {
       connectionString: dbUrl,
       max: parseInt(process.env.DB_POOL_MAX || '10', 10),
       idleTimeoutMillis: 30_000,
-      connectionTimeoutMillis: 5_000,
+      connectionTimeoutMillis: 10_000, // Neon free tier cold-wake can exceed 5s
       keepAlive: true,
     });
     _pool.on('error', (err: Error) => {

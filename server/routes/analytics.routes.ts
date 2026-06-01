@@ -6,8 +6,15 @@ import ExcelJS from "exceljs";
 import { simpleCache } from "../utils/cache.js";
 import { getJobOverview } from "../repositories/analytics.repository.js";
 import { logRouteError } from "../utils/route-error.js";
+import { requireAdminAuth } from "./middleware/auth.js";
 
 const router = Router();
+
+// These endpoints expose revenue, business metrics and data exports. They were
+// mounted (app.use('/api/analytics', ...)) with NO auth despite the "admin
+// session auth" intent below — anyone could read shop revenue. Require an admin
+// session for the whole router. (All consumers are admin-panel tabs.)
+router.use(requireAdminAuth);
 
 // GET /analytics/workload — Tech Workload: all active jobs grouped by technician
 // Uses admin session auth (NOT corporate portal auth). Returns combined retail + corporate.

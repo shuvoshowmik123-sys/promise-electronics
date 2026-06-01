@@ -669,7 +669,7 @@ export default function PosTab() {
                                 <div className="text-slate-600 md:ml-auto">
                                     <span className="text-slate-400">Since:</span>{' '}
                                     <span className="font-medium text-slate-700">
-                                        {activeDrawer.openedAt ? new Date(activeDrawer.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'â€”'}
+                                        {activeDrawer.openedAt ? new Date(activeDrawer.openedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—'}
                                     </span>
                                 </div>
                             </div>

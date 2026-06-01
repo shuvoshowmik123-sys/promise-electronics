@@ -76,7 +76,7 @@ export function ChallanHistoryTable({ client }: ChallanHistoryTableProps) {
                 // Trigger print
                 setTimeout(() => window.print(), 500);
             } else {
-                alert("Reprinting Challan IN is not yet implemented in this view.");
+                alert("Reprinting receive work records is not yet implemented in this view.");
             }
         } catch (error) {
             console.error("Failed to prepare reprint:", error);

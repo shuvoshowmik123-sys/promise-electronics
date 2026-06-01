@@ -6,7 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
-import { financeRepo, posRepo, userRepo } from '../repositories/index.js';
+import { financeRepo, posRepo, userRepo, inventoryRepo } from '../repositories/index.js';
 import { insertPosTransactionSchema } from '../../shared/schema.js';
 import { requireAdminAuth, requirePermission } from './middleware/auth.js';
 import { auditLogger } from '../utils/auditLogger.js';
@@ -90,15 +90,44 @@ router.post('/api/pos-transactions', requireAdminAuth, requirePermission('proces
             return res.status(400).json({ error: 'Invalid payment method' });
         }
 
+        // Parse cart items + linked jobs BEFORE creating the transaction. Doing
+        // this after the insert meant malformed JSON threw post-commit, leaving an
+        // orphan paid transaction with no inventory/finance side-effects.
+        let cartItems: any[] = [];
+        let linkedJobs: any[] = [];
+        try {
+            if (validated.items) cartItems = JSON.parse(validated.items);
+            if (validated.linkedJobs) linkedJobs = JSON.parse((validated as any).linkedJobs);
+        } catch {
+            return res.status(400).json({ error: 'Malformed items or linkedJobs payload' });
+        }
+        if (!Array.isArray(cartItems)) cartItems = [];
+        if (!Array.isArray(linkedJobs)) linkedJobs = [];
+
+        // Server-side stock guard. Frontend validates, but a direct API call or a
+        // stale client could oversell — updateInventoryStock silently floors at 0,
+        // losing the real count. Reject before creating the transaction.
+        for (const item of cartItems) {
+            if (item?.id && item?.quantity) {
+                const inv = await inventoryRepo.getInventoryItem(item.id);
+                // Only enforce for tracked physical stock; non-inventory products
+                // (not found) and service items pass through unchanged.
+                if (inv && inv.itemType !== 'service' && item.quantity > (inv.stock ?? 0)) {
+                    return res.status(409).json({
+                        error: `Insufficient stock for "${inv.name}"`,
+                        available: inv.stock ?? 0,
+                        requested: item.quantity,
+                    });
+                }
+            }
+        }
+
         const transaction = await posRepo.createPosTransaction(validated);
 
         // Handle Inventory Updates
-        if (validated.items) {
-            const items = JSON.parse(validated.items);
-            for (const item of items) {
-                if (item.id && item.quantity) {
-                    await storage.updateInventoryStock(item.id, -item.quantity);
-                }
+        for (const item of cartItems) {
+            if (item?.id && item?.quantity) {
+                await storage.updateInventoryStock(item.id, -item.quantity);
             }
         }
 
@@ -134,8 +163,7 @@ router.post('/api/pos-transactions', requireAdminAuth, requirePermission('proces
         }
 
         // Handle Linked Jobs
-        if (validated.linkedJobs) {
-            const linkedJobs = JSON.parse(validated.linkedJobs);
+        if (linkedJobs.length > 0) {
             for (const job of linkedJobs) {
                 if (job.jobId) {
                     const existingJob = await storage.getJobTicket(job.jobId);
@@ -159,8 +187,14 @@ router.post('/api/pos-transactions', requireAdminAuth, requirePermission('proces
         }
 
         res.status(201).json(transaction);
-    } catch (error) {
-        res.status(400).json({ error: 'Invalid POS transaction data', details: { message: (error as any).message } });
+    } catch (error: any) {
+        // Zod validation = client error (400). Anything else (DB, runtime) is a
+        // 500 — masking it as 400 hid real server failures.
+        if (error?.name === 'ZodError') {
+            return res.status(400).json({ error: 'Invalid POS transaction data', details: error.errors });
+        }
+        console.error('[POS] transaction failed:', error?.message || error);
+        res.status(500).json({ error: 'Failed to create POS transaction', details: { message: error?.message } });
     }
 });
 

@@ -564,7 +564,7 @@ export default function InventoryTab() {
                                             <div className="font-bold text-slate-800 line-clamp-2 leading-tight" title={item.name}><HighlightMatch text={item.name} query={searchQuery} /></div>
                                             <div className="text-[10px] text-slate-400 font-mono mt-1 w-full truncate space-x-2">
                                                 <span><HighlightMatch text={item.id} query={searchQuery} /></span>
-                                                <span>â€¢</span>
+                                                <span>•</span>
                                                 <span><HighlightMatch text={item.category} query={searchQuery} /></span>
                                             </div>
                                         </div>

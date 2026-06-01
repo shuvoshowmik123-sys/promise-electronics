@@ -14,7 +14,8 @@ interface TechUser {
     id: string;
     name: string;
     role: string;
-    skills?: string | null; // comma-separated skill tags
+    skills?: string | null;
+    _dimmed?: boolean;
 }
 
 interface TechnicianPickerProps {
@@ -49,7 +50,7 @@ export function TechnicianPicker({
         // Show matching techs first, then all others greyed out
         const matched = allTechs.filter(t => hasSkill(t, requiredSkills));
         const others = allTechs.filter(t => !hasSkill(t, requiredSkills));
-        return [...matched, ...others.map(t => ({ ...t, _dimmed: true } as TechUser & { _dimmed?: boolean }))];
+        return [...matched, ...others.map(t => ({ ...t, _dimmed: true }))];
     }, [users, ticketType]);
 
     // Assigned tech info
@@ -97,11 +98,9 @@ export function TechnicianPicker({
                     <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
                         <User className="w-3.5 h-3.5" /> Assigned Technician
                     </span>
-                    {assignedTech && (
-                        <span className="text-xs font-medium text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
-                            {assignedTech.name}
-                        </span>
-                    )}
+                    <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${assignedTech ? "text-emerald-600 bg-emerald-50 border-emerald-200" : "text-slate-500 bg-white border-slate-200"}`}>
+                        {assignedTech ? assignedTech.name : "No one assigned"}
+                    </span>
                 </div>
 
                 <div className="flex overflow-x-auto pb-2 -mx-1 px-1 gap-3 snap-x scrollbar-hide">
@@ -111,7 +110,7 @@ export function TechnicianPicker({
 
                     {eligibleTechs.map(tech => {
                         const isSelected = assignedTechnicianId === tech.id;
-                        const isDimmed = (tech as any)._dimmed === true;
+                        const isDimmed = tech._dimmed === true;
                         return (
                             <motion.button
                                 type="button"
@@ -153,6 +152,11 @@ export function TechnicianPicker({
                                 <span className={`text-[11px] font-semibold truncate w-full text-center transition-colors ${isSelected ? 'text-blue-700' : 'text-slate-600'}`}>
                                     {tech.name.split(' ')[0]}
                                 </span>
+                                {isDimmed && (
+                                    <span className="text-[9px] font-semibold text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200 whitespace-nowrap">
+                                        Skill
+                                    </span>
+                                )}
                             </motion.button>
                         );
                     })}

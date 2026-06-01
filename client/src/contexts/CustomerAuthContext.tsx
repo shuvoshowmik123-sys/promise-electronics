@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from "react";
 import { customerAuthApi, type CustomerSession } from "@/lib/api";
+import { fetchApi } from "@/lib/api/httpClient";
 import { storeAuthSession, clearAuthSession, getStoredAuthSession } from "@/lib/authStorage";
 import { Capacitor } from "@capacitor/core";
 import { GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut } from "firebase/auth";
@@ -84,14 +85,13 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     const cred = await signInWithPopup(auth, provider);
     const idToken = await cred.user.getIdToken();
 
-    const res = await fetch("/api/auth/firebase", {
+    // Use fetchApi: in the split deploy (frontend on Vercel, backend on Render)
+    // a raw relative fetch hit the Vercel origin with no auth cookie and failed.
+    // fetchApi targets the API base URL and sends credentials + CSRF.
+    const { user } = await fetchApi<{ user: CustomerSession }>("/auth/firebase", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idToken }),
     });
-    if (!res.ok) throw new Error("Firebase token exchange failed");
-
-    const { user } = await res.json();
     setCustomer(user as CustomerSession);
   };
 
@@ -115,7 +115,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     try { await firebaseSignOut(auth); } catch { /* ignore */ }
 
     try {
-      await fetch("/api/auth/firebase/logout", { method: "POST" });
+      await fetchApi("/auth/firebase/logout", { method: "POST" });
     } catch { /* ignore */ }
 
     // Clear stored auth on native

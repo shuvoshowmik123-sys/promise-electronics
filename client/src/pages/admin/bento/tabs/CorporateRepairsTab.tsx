@@ -3,7 +3,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     ArrowLeft, FileDown, FileUp, Filter, MoreVertical, Printer, Search,
     Loader2, Users, Receipt, CreditCard, Pencil, Eye, Building2, Check,
-    LayoutGrid, List, ChevronLeft, ChevronRight
+    LayoutGrid, List, ChevronLeft, ChevronRight, Clock,
+    PackageCheck, RotateCcw, ShieldCheck, AlertTriangle
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { format, isWithinInterval } from "date-fns";
@@ -44,9 +45,9 @@ import { EditJobDialog } from "@/components/admin/corporate/EditJobDialog";
 import { GenerateBillDialog } from "@/components/admin/corporate/GenerateBillDialog";
 import { BulkAssignTechnicianDialog } from "@/components/admin/corporate/BulkAssignTechnicianDialog";
 import { JobDetailsSheet } from "@/components/admin/corporate/JobDetailsSheet";
+import { CreateWarrantyClaimDialog } from "@/components/admin/corporate/CreateWarrantyClaimDialog";
 import { ChallanInWizard } from "@/components/admin/challan/ChallanInWizard";
 import { SlaTimer } from "@/components/admin/corporate/SlaTimer";
-import CorporateMessagesTab from "./CorporateMessagesTab";
 
 import { DashboardSkeleton, BentoCard, containerVariants, itemVariants, tableRowVariants } from "../shared";
 
@@ -56,6 +57,62 @@ interface CorporateRepairsTabProps {
     onSearchConsumed?: () => void;
     onBack?: () => void;
 }
+
+const isServiceWarrantyActive = (job: any) => {
+    if (!job?.warrantyDays || job.warrantyDays <= 0 || !job.warrantyExpiryDate) return false;
+    return new Date(job.warrantyExpiryDate) > new Date();
+};
+
+const matchesCockpitFilter = (job: any, filter: string) => {
+    const status = job.status || "";
+    switch (filter) {
+        case "received":
+            return true;
+        case "checking":
+            return ["Checking", "Diagnosing", "Repairing", "In Progress"].includes(status);
+        case "declared-ok":
+            return ["Declared OK", "Ready", "Delivered", "Completed"].includes(status) || job.initialStatus === "OK";
+        case "declared-not-ok":
+            return ["Declared NG", "Declared Not OK", "Cancelled"].includes(status) || job.initialStatus === "NG";
+        case "pending":
+            return ["Pending", "Approval Requested", "Quote Sent", "Pending Parts"].includes(status);
+        case "ready":
+            return status === "Ready";
+        case "delivered":
+            return status === "Delivered";
+        case "billed":
+            return !!job.corporateBillId || ["billed", "invoiced"].includes(job.billingStatus);
+        case "bill-pending":
+            return ["Ready", "Delivered", "Completed"].includes(status) && !job.corporateBillId && !["billed", "invoiced"].includes(job.billingStatus);
+        case "service-warranty":
+            return isServiceWarrantyActive(job);
+        case "crr":
+            return ["warranty_claim", "repeat_repair"].includes(job.jobType) && !["Delivered", "Closed", "Cancelled"].includes(status);
+        default:
+            return true;
+    }
+};
+
+const displayJobStatus = (status?: string | null) => status === "Declared Not OK" ? "Declared NG" : status;
+
+const clientTypeOptions = [
+    { value: "limited_company", label: "Limited Company" },
+    { value: "corporate", label: "Corporate" },
+    { value: "regular", label: "Regular" },
+    { value: "panel_batch", label: "Panel / Batch Client" },
+    { value: "parts_buyer", label: "Parts Buyer" },
+    { value: "service_online_partner", label: "Service / Online Partner" },
+];
+
+const workTypeOptions = [
+    { value: "full_tv", label: "Full TV" },
+    { value: "panel", label: "Panel" },
+    { value: "panel_batch", label: "Panel Batch" },
+    { value: "board", label: "Board" },
+    { value: "parts", label: "Parts Service" },
+    { value: "parts_sale", label: "Parts Sale" },
+    { value: "crr", label: "CRR / Re-service" },
+];
 
 export default function CorporateRepairsTab({ initialClientId, initialSearchQuery, onSearchConsumed, onBack }: CorporateRepairsTabProps) {
     const { toast } = useToast();
@@ -77,8 +134,9 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
     const [statusFilter, setStatusFilter] = useState("all");
     const [billingFilter, setBillingFilter] = useState("all");
     const [technicianFilter, setTechnicianFilter] = useState("all");
+    const [quickFilter, setQuickFilter] = useState("all");
     const [dateRange, setDateRange] = useState<DateRange | undefined>();
-    const [activeTab, setActiveTab] = useState("jobs");
+    const [activeTab, setActiveTab] = useState("work");
     const [viewMode, setViewMode] = useState<"list" | "grid">("list");
     const [clientPage, setClientPage] = useState(1);
     const [showFilters, setShowFilters] = useState(false);
@@ -108,8 +166,26 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
     const [isGenerateBillOpen, setIsGenerateBillOpen] = useState(false);
     const [isEditJobOpen, setIsEditJobOpen] = useState(false);
     const [selectedJobForEdit, setSelectedJobForEdit] = useState<any>(null);
+    const [selectedJobForCrr, setSelectedJobForCrr] = useState<any>(null);
     const [isChallanInOpen, setIsChallanInOpen] = useState(false);
     const [isChallanOutOpen, setIsChallanOutOpen] = useState(false);
+    const [isExtensionRequestOpen, setIsExtensionRequestOpen] = useState(false);
+    const [isRulesOpen, setIsRulesOpen] = useState(false);
+    const [extensionReason, setExtensionReason] = useState("");
+    const [extensionUntil, setExtensionUntil] = useState("");
+    const [clientRulesForm, setClientRulesForm] = useState({
+        clientType: "corporate",
+        allowedWorkTypes: ["full_tv"],
+        defaultBatchClearanceDays: "7",
+        serviceWarrantyEnabled: true,
+        defaultServiceWarrantyDays: "30",
+        paymentTerms: "30",
+        billingCycle: "monthly",
+        requiresChallanIn: true,
+        requiresChallanOut: true,
+        crrRule: "no_charge_inside_service_warranty",
+        reminderRule: "due_soon_and_overdue",
+    });
 
     // Challan Out Form
     const [receiverName, setReceiverName] = useState("");
@@ -167,6 +243,44 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
     const jobs = jobData?.jobs || [];
     const pagination = jobData?.pagination;
 
+    useEffect(() => {
+        if (!client || !isRulesOpen) return;
+        const ruleProfile = (client as any).ruleProfile || {};
+        setClientRulesForm({
+            clientType: (client as any).clientType || "corporate",
+            allowedWorkTypes: Array.isArray(ruleProfile.allowedWorkTypes) && ruleProfile.allowedWorkTypes.length ? ruleProfile.allowedWorkTypes : ["full_tv"],
+            defaultBatchClearanceDays: String((client as any).defaultBatchClearanceDays || 7),
+            serviceWarrantyEnabled: (client as any).serviceWarrantyEnabled !== false,
+            defaultServiceWarrantyDays: String((client as any).defaultServiceWarrantyDays || 30),
+            paymentTerms: String((client as any).paymentTerms || 30),
+            billingCycle: (client as any).billingCycle || "monthly",
+            requiresChallanIn: ruleProfile.requiresChallanIn !== false,
+            requiresChallanOut: ruleProfile.requiresChallanOut !== false,
+            crrRule: ruleProfile.crrRule || "no_charge_inside_service_warranty",
+            reminderRule: ruleProfile.reminderRule || "due_soon_and_overdue",
+        });
+    }, [client, isRulesOpen]);
+
+    const { data: batches = [] } = useQuery({
+        queryKey: ["corporateBatches", selectedClientId],
+        queryFn: async () => {
+            if (!selectedClientId) return [];
+            return corporateApi.getBatches(selectedClientId);
+        },
+        enabled: !!selectedClientId,
+        staleTime: 30 * 1000,
+    });
+
+    const { data: extensionRequests = [] } = useQuery({
+        queryKey: ["corporateExtensionRequests", selectedClientId],
+        queryFn: async () => {
+            if (!selectedClientId) return [];
+            return corporateApi.getExtensionRequests(selectedClientId);
+        },
+        enabled: !!selectedClientId,
+        staleTime: 30 * 1000,
+    });
+
     // --- Mutations (Simplified from production for brevity, logic maintained) ---
     const createChallanOutMutation = useMutation({
         mutationFn: async () => {
@@ -195,11 +309,87 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                     model: j.device || "Unknown", serial: j.tvSerialNumber || "", problem: j.reportedDefect || "", status: j.status
                 }))
             });
-            toast({ title: "Challan OUT Created" });
+            toast({ title: "Delivery Created" });
             setIsChallanOutOpen(false);
             setSelectedJobs([]);
             queryClient.invalidateQueries({ queryKey: ["corporateJobs"] });
             queryClient.invalidateQueries({ queryKey: ["corporateClient", selectedClientId] });
+        },
+        onError: (err) => toast({ variant: "destructive", title: "Failed", description: err.message })
+    });
+
+    const updateSelectedStatusMutation = useMutation({
+        mutationFn: async ({ status, jobIds }: { status: string; jobIds?: string[] }) => {
+            const targetIds = jobIds || selectedJobs;
+            await Promise.all(targetIds.map((id) => corporateApi.updateJobStatus(id, status)));
+            return { status, count: targetIds.length };
+        },
+        onSuccess: ({ status, count }) => {
+            toast({ title: "Status Updated", description: `${count} item(s) marked ${status}.` });
+            setSelectedJobs([]);
+            queryClient.invalidateQueries({ queryKey: ["corporateJobs"] });
+            queryClient.invalidateQueries({ queryKey: ["corporateClient", selectedClientId] });
+        },
+        onError: (err) => toast({ variant: "destructive", title: "Failed", description: err.message })
+    });
+
+    const createExtensionRequestMutation = useMutation({
+        mutationFn: async () => {
+            const job = selectedJobObjects[0];
+            if (!job?.batchId) throw new Error("Selected item is not linked to a batch.");
+            if (!extensionReason.trim()) throw new Error("Reason is required.");
+            if (!extensionUntil) throw new Error("New target date is required.");
+
+            return corporateApi.createExtensionRequest(job.batchId, {
+                jobId: job.id,
+                reason: extensionReason.trim(),
+                requestedUntil: extensionUntil,
+            });
+        },
+        onSuccess: () => {
+            toast({ title: "Extension Requested", description: "Corporate portal can accept or reject it now." });
+            setIsExtensionRequestOpen(false);
+            setExtensionReason("");
+            setExtensionUntil("");
+            queryClient.invalidateQueries({ queryKey: ["corporateJobs"] });
+            queryClient.invalidateQueries({ queryKey: ["corporateBatches"] });
+            queryClient.invalidateQueries({ queryKey: ["corporateExtensionRequests"] });
+        },
+        onError: (err) => toast({ variant: "destructive", title: "Failed", description: err.message })
+    });
+
+    const updateClientRulesMutation = useMutation({
+        mutationFn: async () => {
+            if (!selectedClientId) throw new Error("Client ID missing");
+            const existingRuleProfile = ((client as any)?.ruleProfile || {}) as Record<string, any>;
+            const defaultBatchClearanceDays = parseInt(clientRulesForm.defaultBatchClearanceDays, 10) || 7;
+            const defaultServiceWarrantyDays = clientRulesForm.serviceWarrantyEnabled ? parseInt(clientRulesForm.defaultServiceWarrantyDays, 10) || 30 : 0;
+            const paymentTerms = parseInt(clientRulesForm.paymentTerms, 10) || 30;
+
+            return corporateApi.updateRules(selectedClientId, {
+                clientType: clientRulesForm.clientType,
+                clientClass: clientRulesForm.clientType === "regular" ? "b2b_normal" : "b2b_corporate",
+                defaultBatchClearanceDays,
+                serviceWarrantyEnabled: clientRulesForm.serviceWarrantyEnabled,
+                defaultServiceWarrantyDays,
+                paymentTerms,
+                billingCycle: clientRulesForm.billingCycle,
+                ruleProfile: {
+                    ...existingRuleProfile,
+                    allowedWorkTypes: clientRulesForm.allowedWorkTypes,
+                    requiresChallanIn: clientRulesForm.requiresChallanIn,
+                    requiresChallanOut: clientRulesForm.requiresChallanOut,
+                    crrRule: clientRulesForm.crrRule,
+                    reminderRule: clientRulesForm.reminderRule,
+                },
+            });
+        },
+        onSuccess: () => {
+            toast({ title: "Client Rules Updated", description: "B2B client working rules were saved." });
+            setIsRulesOpen(false);
+            queryClient.invalidateQueries({ queryKey: ["corporateClient", selectedClientId] });
+            queryClient.invalidateQueries({ queryKey: ["corporate-clients"] });
+            queryClient.invalidateQueries({ queryKey: ["corporateJobs", selectedClientId] });
         },
         onError: (err) => toast({ variant: "destructive", title: "Failed", description: err.message })
     });
@@ -227,8 +417,9 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                 billingFilter === "all" ? true :
                     billingFilter === "unbilled" ? !job.corporateBillId :
                         billingFilter === "billed" ? !!job.corporateBillId : true;
+            const matchesQuick = matchesCockpitFilter(job, quickFilter);
 
-            return matchesSearch && matchesStatus && matchesTechnician && matchesDate && matchesBilling;
+            return matchesSearch && matchesStatus && matchesTechnician && matchesDate && matchesBilling && matchesQuick;
         }).sort((a, b) => {
             const now = new Date();
             const aDeadline = a.slaDeadline ? new Date(a.slaDeadline) : null;
@@ -242,12 +433,90 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
             if (bDeadline) return 1;
             return 0;
         });
-    }, [jobs, search, statusFilter, technicianFilter, dateRange, billingFilter]);
+    }, [jobs, search, statusFilter, technicianFilter, dateRange, billingFilter, quickFilter]);
+
+    const selectedJobObjects = useMemo(
+        () => jobs?.filter((j: any) => selectedJobs.includes(j.id)) || [],
+        [jobs, selectedJobs]
+    );
+
+    const cockpitCards = useMemo(() => [
+        { key: "received", label: "Received", value: jobs.filter((job) => matchesCockpitFilter(job, "received")).length, icon: FileDown, tone: "bg-slate-50 text-slate-700 border-slate-200" },
+        { key: "checking", label: "Checking", value: jobs.filter((job) => matchesCockpitFilter(job, "checking")).length, icon: Clock, tone: "bg-blue-50 text-blue-700 border-blue-200" },
+        { key: "declared-ok", label: "Declared OK", value: jobs.filter((job) => matchesCockpitFilter(job, "declared-ok")).length, icon: Check, tone: "bg-emerald-50 text-emerald-700 border-emerald-200" },
+        { key: "declared-not-ok", label: "Declared NG", value: jobs.filter((job) => matchesCockpitFilter(job, "declared-not-ok")).length, icon: AlertTriangle, tone: "bg-red-50 text-red-700 border-red-200" },
+        { key: "pending", label: "Pending", value: jobs.filter((job) => matchesCockpitFilter(job, "pending")).length, icon: Clock, tone: "bg-amber-50 text-amber-700 border-amber-200" },
+        { key: "ready", label: "Ready", value: jobs.filter((job) => matchesCockpitFilter(job, "ready")).length, icon: PackageCheck, tone: "bg-teal-50 text-teal-700 border-teal-200" },
+        { key: "delivered", label: "Delivered", value: jobs.filter((job) => matchesCockpitFilter(job, "delivered")).length, icon: FileUp, tone: "bg-indigo-50 text-indigo-700 border-indigo-200" },
+        { key: "billed", label: "Billed", value: jobs.filter((job) => matchesCockpitFilter(job, "billed")).length, icon: Receipt, tone: "bg-violet-50 text-violet-700 border-violet-200" },
+        { key: "bill-pending", label: "Bill Pending", value: jobs.filter((job) => matchesCockpitFilter(job, "bill-pending")).length, icon: CreditCard, tone: "bg-orange-50 text-orange-700 border-orange-200" },
+        { key: "service-warranty", label: "Service Warranty Active", value: jobs.filter((job) => matchesCockpitFilter(job, "service-warranty")).length, icon: ShieldCheck, tone: "bg-green-50 text-green-700 border-green-200" },
+        { key: "crr", label: "CRR / Reservice Active", value: jobs.filter((job) => matchesCockpitFilter(job, "crr")).length, icon: RotateCcw, tone: "bg-rose-50 text-rose-700 border-rose-200" },
+    ], [jobs]);
+
+    const batchSummary = useMemo(() => ({
+        total: batches.length,
+        dueSoon: batches.filter((batch: any) => batch.isDueSoon && !batch.isOverdue).length,
+        overdue: batches.filter((batch: any) => batch.isOverdue).length,
+        extensionPending: extensionRequests.filter((request: any) => request.status === "pending").length,
+    }), [batches, extensionRequests]);
+
+    const setCockpitFilter = (filter: string) => {
+        setQuickFilter(filter);
+        setStatusFilter("all");
+        setActiveTab("work");
+    };
+
+    const clearCockpitFilter = () => {
+        setQuickFilter("all");
+        setStatusFilter("all");
+    };
+
+    const workspaceCards = useMemo(() => [
+        { key: "pending", label: "Pending", helper: "Needs action", value: jobs.filter((job) => matchesCockpitFilter(job, "pending")).length, icon: Clock, className: "from-amber-400 to-orange-600 text-white", action: () => setCockpitFilter("pending") },
+        { key: "ready", label: "Ready", helper: "Can deliver", value: jobs.filter((job) => matchesCockpitFilter(job, "ready")).length, icon: PackageCheck, className: "from-emerald-400 to-teal-600 text-white", action: () => setCockpitFilter("ready") },
+        { key: "delivered", label: "Delivered", helper: "Completed out", value: jobs.filter((job) => matchesCockpitFilter(job, "delivered")).length, icon: FileUp, className: "from-blue-500 to-indigo-600 text-white", action: () => setCockpitFilter("delivered") },
+        { key: "bill-pending", label: "Bill Pending", helper: "Money follow-up", value: jobs.filter((job) => matchesCockpitFilter(job, "bill-pending")).length, icon: CreditCard, className: "from-violet-500 to-fuchsia-600 text-white", action: () => setCockpitFilter("bill-pending") },
+        { key: "batch-risk", label: "Batch Risk", helper: "Due soon / overdue", value: batchSummary.dueSoon + batchSummary.overdue, icon: AlertTriangle, className: "from-rose-500 to-red-600 text-white", action: () => setActiveTab("dashboard") },
+        { key: "extension", label: "Extensions", helper: "Waiting reply", value: batchSummary.extensionPending, icon: RotateCcw, className: "from-cyan-500 to-blue-600 text-white", action: () => setActiveTab("service-warranty") },
+    ], [jobs, batchSummary]);
+
+    const clientRuleChips = useMemo(() => {
+        if (!client) return [];
+        const clientType = (client.clientType || client.clientClass || "B2B").replace(/_/g, " ");
+        const serviceWarrantyDays = client.serviceWarrantyEnabled === false ? "Off" : `${client.defaultServiceWarrantyDays || 30} days`;
+        const paymentTerms = `${client.paymentTerms || 30} working days`;
+        const batchDays = `${client.defaultBatchClearanceDays || 7} days batch`;
+
+        return [
+            { label: "Type", value: clientType },
+            { label: "Service Warranty", value: serviceWarrantyDays },
+            { label: "Payment", value: paymentTerms },
+            { label: "Clearance", value: batchDays },
+        ];
+    }, [client]);
+
+    const handleSelectedStatus = (status: string) => {
+        if (selectedJobs.length === 0) {
+            toast({ variant: "destructive", title: "Select Items", description: "Select one or more work items first." });
+            return;
+        }
+        updateSelectedStatusMutation.mutate({ status });
+    };
+
+    const handleCreateCrr = () => {
+        if (selectedJobObjects.length !== 1) {
+            toast({ variant: "destructive", title: "Select One Item", description: "Choose one delivered item for CRR / reservice." });
+            return;
+        }
+        setSelectedJobForCrr(selectedJobObjects[0]);
+    };
 
     const itemsPerPage = 10;
     const totalPages = Math.ceil((filteredJobs?.length || 0) / itemsPerPage);
     const paginatedJobs = filteredJobs?.slice((clientPage - 1) * itemsPerPage, clientPage * itemsPerPage) || [];
     const allVisibleJobsSelected = paginatedJobs.length > 0 && paginatedJobs.every((job) => selectedJobs.includes(job.id));
+    const activeWorkbenchJob = selectedJobForDetails || selectedJobObjects[0] || filteredJobs[0];
 
     useEffect(() => {
         setClientPage(1);
@@ -258,13 +527,14 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
         statusFilter,
         billingFilter,
         technicianFilter,
+        quickFilter,
         dateRange?.from?.getTime(),
         dateRange?.to?.getTime(),
     ]);
 
     useEffect(() => {
-        if (totalPages === 0 && clientPage !== 1) {
-            setClientPage(1);
+        if (totalPages === 0) {
+            if (clientPage !== 1) setClientPage(1);
             return;
         }
         if (clientPage > totalPages) {
@@ -310,7 +580,7 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
 
     // Main Manager View
     return (
-        <div className="flex flex-col h-full min-h-0 gap-4 overflow-y-auto lg:overflow-hidden lg:pb-0 pb-20 pt-1 px-1 animate-in fade-in slide-in-from-bottom-4 duration-500 relative">
+        <div className="fixed inset-0 z-40 flex min-h-0 flex-col gap-3 overflow-hidden bg-slate-50 p-2 animate-in fade-in slide-in-from-bottom-3 duration-500 lg:p-3">
             {/* Hidden Print Components */}
             <div className="hidden print:block">
                 {jobForPrint && <CorporateSingleJobPrint job={jobForPrint} />}
@@ -318,74 +588,100 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                 {challanOutPrintData && <ChallanOutPrint data={challanOutPrintData} />}
             </div>
 
-            {/* Header - Desktop */}
-            <BentoCard variant="ghost" className="hidden lg:flex flex-col md:flex-row md:items-center justify-between gap-4 py-4 px-6 shadow-sm border-slate-200/60" disableHover>
-                <div className="flex items-center gap-4">
-                    <Button variant="ghost" size="icon" onClick={() => {
-                        if (onBack) {
-                            onBack();
-                        } else {
-                            setSelectedClientId(null);
-                        }
-                    }}>
-                        <ArrowLeft className="h-5 w-5" />
+            <motion.header
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.25 }}
+                className="flex shrink-0 flex-col gap-3 rounded-[22px] border border-slate-200 bg-white/95 px-3 py-2 shadow-sm backdrop-blur md:flex-row md:items-center md:justify-between"
+            >
+                <div className="flex min-w-0 items-center gap-3">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-2xl border-slate-200 bg-white px-3 font-black text-slate-700 shadow-sm transition-all hover:-translate-x-0.5 hover:bg-slate-50"
+                        onClick={() => {
+                            if (onBack) onBack();
+                            else setSelectedClientId(null);
+                        }}
+                    >
+                        <ArrowLeft className="mr-2 h-4 w-4" /> Back
                     </Button>
-                    <div>
-                        <h1 className="text-xl font-bold flex items-center gap-2">
-                            {client?.companyName || "Loading..."}
-                            {client && <Badge variant="secondary">{client.shortCode}</Badge>}
-                        </h1>
-                        <p className="text-xs text-muted-foreground">Corporate Repair Manager</p>
+                    <div className="min-w-0">
+                        <div className="flex min-w-0 items-center gap-2">
+                            <h1 className="truncate text-lg font-black tracking-tight text-slate-950 md:text-xl">{client?.companyName || "Loading..."}</h1>
+                            {client?.shortCode && <Badge className="hidden rounded-full bg-slate-100 font-mono text-slate-700 hover:bg-slate-100 sm:inline-flex">{client.shortCode}</Badge>}
+                        </div>
+                        <p className="text-xs font-bold text-slate-500">B2B full-page control room</p>
                     </div>
                 </div>
-
-                <div className="flex flex-wrap gap-2">
-                    {activeTab === 'jobs' && (
-                        <>
-                            <Button className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm rounded-xl bc-hover bc-rise transition-all" variant="outline" onClick={() => setIsChallanInOpen(true)}>
-                                <FileDown className="h-4 w-4" /> Challan IN
-                            </Button>
-                            <Button
-                                className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm rounded-xl bc-hover bc-rise transition-all"
-                                variant="outline"
-                                disabled={selectedJobs.length === 0}
-                                onClick={() => setIsBulkAssignOpen(true)}
-                            >
-                                <Users className="h-4 w-4" /> Bulk Assign
-                            </Button>
-                            <Button
-                                className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm rounded-xl bc-hover bc-rise transition-all"
-                                variant="outline"
-                                disabled={selectedJobs.length === 0}
-                                onClick={() => {
-                                    const jobsToPrint = jobs?.filter((j: any) => selectedJobs.includes(j.id)) || [];
-                                    setJobsForMultiPrint(jobsToPrint);
-                                }}
-                            >
-                                <Printer className="h-4 w-4" /> Print
-                            </Button>
-                            <Button
-                                disabled={selectedJobs.length === 0}
-                                onClick={() => setIsGenerateBillOpen(true)}
-                                className="gap-2 bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-500/20 rounded-xl bc-hover bc-rise transition-all"
-                            >
-                                <Receipt className="h-4 w-4" /> Bill
-                            </Button>
-                            <Button
-                                className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm rounded-xl bc-hover bc-rise transition-all"
-                                variant="outline"
-                                disabled={selectedJobs.length === 0}
-                                onClick={() => setIsChallanOutOpen(true)}
-                            >
-                                <FileUp className="h-4 w-4" /> Challan OUT
-                            </Button>
-                        </>
-                    )}
+                <div className="flex flex-wrap items-center gap-2">
+                    {clientRuleChips.slice(0, 4).map((chip) => (
+                        <span key={chip.label} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-slate-700">
+                            {chip.label}: <span className="capitalize text-slate-950">{chip.value}</span>
+                        </span>
+                    ))}
+                    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-black text-emerald-700">
+                        <span className="mr-2 h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Portal Live
+                    </span>
                 </div>
-            </BentoCard>
+            </motion.header>
+
+            <div className="flex min-h-0 flex-1 flex-col gap-3 lg:grid lg:grid-cols-[280px_minmax(0,1fr)] lg:overflow-hidden">
+                <aside className="hidden min-h-0 overflow-hidden rounded-[22px] border border-slate-200 bg-white shadow-sm lg:flex lg:flex-col">
+                    <div className="border-b border-slate-100 p-4">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-700 ring-1 ring-blue-100">
+                                <Building2 className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0">
+                                <h2 className="truncate text-base font-black tracking-tight text-slate-950">Client Profile</h2>
+                                <div className="mt-1 flex items-center gap-2 text-xs font-bold text-slate-500">
+                                    <span>Rules and relation</span>
+                                    {client?.shortCode && <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-slate-700">{client.shortCode}</span>}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="flex-1 overflow-auto p-4">
+                        <div className="space-y-3">
+                            {clientRuleChips.map((chip) => (
+                                <div key={chip.label} className="rounded-2xl border border-slate-100 bg-slate-50 p-3 transition-all hover:bg-white hover:shadow-sm">
+                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">{chip.label}</div>
+                                    <div className="mt-1 text-lg font-black capitalize text-slate-950">{chip.value}</div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="mt-5 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                            <div className="text-sm font-black text-slate-950">Allowed Work</div>
+                            <div className="mt-3 flex flex-wrap gap-2">
+                                {["Full TV", "Panel", "Batch", "CRR", "Parts"].map((item) => (
+                                    <span key={item} className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-bold text-slate-700">{item}</span>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                            <div className="flex items-center justify-between gap-3">
+                                <div>
+                                    <div className="text-sm font-black text-slate-950">Portal Access</div>
+                                    <div className="mt-1 text-xs font-semibold text-emerald-700">Corporate users active</div>
+                                </div>
+                                <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-lg shadow-emerald-400/40" />
+                            </div>
+                        </div>
+                    </div>
+
+                    <div className="border-t border-slate-100 p-4">
+                        <Button variant="outline" className="w-full rounded-2xl border-slate-200 bg-white font-black text-slate-800 transition-all hover:-translate-y-0.5 hover:bg-slate-50" onClick={() => setIsRulesOpen(true)}>
+                            Edit Client Rules
+                        </Button>
+                    </div>
+                </aside>
 
             {/* Header - Mobile (Hero Card) */}
-            <div className="lg:hidden relative overflow-hidden bg-gradient-to-br from-indigo-600 to-violet-600 text-white p-5 rounded-3xl shadow-lg shadow-indigo-500/20 mb-1 shrink-0">
+            <div className="hidden relative overflow-hidden bg-gradient-to-br from-indigo-600 to-violet-600 text-white p-5 rounded-3xl shadow-lg shadow-indigo-500/20 mb-1 shrink-0">
                 <div className="absolute top-0 right-0 p-4 opacity-10 pointer-events-none">
                     <Building2 className="w-32 h-32 transform rotate-12" />
                 </div>
@@ -410,7 +706,7 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                     <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-1 shadow-sm">
                         <FileDown className="w-5 h-5" />
                     </div>
-                    <span className="text-sm font-semibold text-emerald-800">Challan IN</span>
+                    <span className="text-sm font-semibold text-emerald-800">Add Incoming Work</span>
                 </BentoCard>
                 <BentoCard className="flex flex-col items-center justify-center p-4 gap-2 border-violet-100 bg-violet-50/40 hover:bg-violet-50 cursor-pointer shadow-sm active:scale-95 transition-transform" disableHover onClick={() => {
                     if (selectedJobs.length === 0) toast({ title: "Select Jobs", description: "Select items first to bill.", variant: "destructive" });
@@ -428,7 +724,7 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                     <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 mb-1 shadow-sm">
                         <FileUp className="w-5 h-5" />
                     </div>
-                    <span className="text-sm font-semibold text-amber-800">Challan OUT</span>
+                    <span className="text-sm font-semibold text-amber-800">Deliver</span>
                 </BentoCard>
                 <BentoCard className="flex flex-col items-center justify-center p-4 gap-2 border-slate-200 bg-slate-50/40 hover:bg-slate-100 cursor-pointer shadow-sm active:scale-95 transition-transform" disableHover onClick={() => {
                     if (selectedJobs.length === 0) toast({ title: "Select Jobs", description: "Select items first to print.", variant: "destructive" });
@@ -444,20 +740,521 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                 </BentoCard>
             </div>
 
+                <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+                    <div className="flex shrink-0 flex-col gap-3 border-b border-slate-200 bg-white p-3 lg:p-4">
+                        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                            <div className="min-w-0">
+                                <div className="hidden lg:block">
+                                    <h2 className="text-xl font-black text-slate-900">Work Items</h2>
+                                    <p className="text-sm text-slate-500">Operate from the list. Client rules stay visible on the left.</p>
+                                </div>
+                                <div className="lg:hidden">
+                                    <h2 className="text-lg font-black text-slate-900">{client?.companyName || "B2B Workspace"}</h2>
+                                    <p className="text-xs font-semibold text-slate-500">Workbench view</p>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                                <Button size="sm" className="rounded-xl bg-emerald-600 font-bold text-white hover:bg-emerald-700" onClick={() => setIsChallanInOpen(true)}>
+                                    <FileDown className="mr-2 h-4 w-4" /> Receive Work
+                                </Button>
+                                <Button size="sm" variant="outline" className="rounded-xl" disabled={selectedJobs.length === 0} onClick={() => setIsChallanOutOpen(true)}>
+                                    <FileUp className="mr-2 h-4 w-4" /> Deliver Selected
+                                </Button>
+                                <Button size="sm" variant="outline" className="rounded-xl" disabled={selectedJobs.length === 0} onClick={() => setIsGenerateBillOpen(true)}>
+                                    <Receipt className="mr-2 h-4 w-4" /> Generate Bill
+                                </Button>
+                                {selectedJobs.length > 0 && (
+                                    <Badge className="rounded-full bg-blue-50 px-3 py-1 text-blue-700 hover:bg-blue-50">
+                                        {selectedJobs.length} selected
+                                    </Badge>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { key: "pending", label: "Pending", value: cockpitCards.find(c => c.key === "pending")?.value || 0, className: "bg-amber-50 text-amber-800 border-amber-200" },
+                                    { key: "ready", label: "Ready", value: cockpitCards.find(c => c.key === "ready")?.value || 0, className: "bg-emerald-50 text-emerald-800 border-emerald-200" },
+                                    { key: "delivered", label: "Delivered", value: cockpitCards.find(c => c.key === "delivered")?.value || 0, className: "bg-blue-50 text-blue-800 border-blue-200" },
+                                    { key: "bill-pending", label: "Bill Pending", value: cockpitCards.find(c => c.key === "bill-pending")?.value || 0, className: "bg-violet-50 text-violet-800 border-violet-200" },
+                                    { key: "crr", label: "CRR", value: cockpitCards.find(c => c.key === "crr")?.value || 0, className: "bg-rose-50 text-rose-800 border-rose-200" },
+                                ].map((chip) => (
+                                    <button key={chip.key} type="button" onClick={() => setCockpitFilter(chip.key)} className={`rounded-full border px-3 py-1 text-xs font-black transition hover:shadow-sm ${chip.className} ${quickFilter === chip.key ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}>
+                                        {chip.value} {chip.label}
+                                    </button>
+                                ))}
+                                <button type="button" onClick={() => setActiveTab("dashboard")} className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-black text-red-800 hover:shadow-sm">
+                                    {batchSummary.dueSoon + batchSummary.overdue} Batch Risk
+                                </button>
+                                <button type="button" onClick={() => setActiveTab("service-warranty")} className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-800 hover:shadow-sm">
+                                    {batchSummary.extensionPending} Extension Wait
+                                </button>
+                            </div>
+
+                            <div className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row xl:max-w-xl">
+                                <div className="relative min-w-0 flex-1">
+                                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                    <Input
+                                        value={search}
+                                        onChange={e => { setSearch(e.target.value); setClientPage(1); }}
+                                        placeholder="Search job, device, serial..."
+                                        className="h-9 rounded-xl border-slate-200 bg-slate-50 pl-9 text-sm"
+                                    />
+                                </div>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    className={`h-9 rounded-xl ${showFilters ? "border-blue-200 bg-blue-50 text-blue-700 hover:bg-blue-100" : ""}`}
+                                    onClick={() => setShowFilters(!showFilters)}
+                                    aria-expanded={showFilters}
+                                >
+                                    <Filter className="mr-2 h-4 w-4" /> {showFilters ? "Hide Filters" : "Show Filters"}
+                                </Button>
+                                {quickFilter !== "all" && (
+                                    <Button variant="ghost" size="sm" className="h-9 rounded-xl text-blue-700 hover:bg-blue-50" onClick={clearCockpitFilter}>
+                                        Clear
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+
+                        <Tabs value={activeTab} onValueChange={setActiveTab} className="shrink-0">
+                            <TabsList className="h-auto gap-1 rounded-2xl bg-slate-100 p-1">
+                                <TabsTrigger value="work" className="rounded-xl px-3 py-1 text-xs font-bold">Work</TabsTrigger>
+                                <TabsTrigger value="dashboard" className="rounded-xl px-3 py-1 text-xs font-bold">Batch</TabsTrigger>
+                                <TabsTrigger value="billing" className="rounded-xl px-3 py-1 text-xs font-bold">Billing</TabsTrigger>
+                                <TabsTrigger value="portal-access" className="rounded-xl px-3 py-1 text-xs font-bold">Portal Access</TabsTrigger>
+                                <TabsTrigger value="service-warranty" className="rounded-xl px-3 py-1 text-xs font-bold">CRR</TabsTrigger>
+                                <TabsTrigger value="history" className="rounded-xl px-3 py-1 text-xs font-bold">History</TabsTrigger>
+                            </TabsList>
+                        </Tabs>
+
+                        <AnimatePresence>
+                            {showFilters && (
+                                <motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
+                                    <FilterBar
+                                        statusFilter={statusFilter} setStatusFilter={setStatusFilter}
+                                        billingFilter={billingFilter} setBillingFilter={setBillingFilter}
+                                        technicianFilter={technicianFilter} setTechnicianFilter={setTechnicianFilter}
+                                        dateRange={dateRange} setDateRange={setDateRange}
+                                        technicians={technicians}
+                                        onReset={() => { setQuickFilter("all"); setStatusFilter("all"); setBillingFilter("all"); setTechnicianFilter("all"); setDateRange(undefined); setSearch(""); setClientPage(1); }}
+                                    />
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+                    </div>
+
+                    <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
+                        <TabsContent value="work" className="m-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+                            <div className="flex min-h-0 flex-1 overflow-hidden">
+                                <div className="h-full min-h-0 flex-1 overflow-auto bg-slate-50/40 p-3">
+                                    {isLoading ? (
+                                        <div className="flex h-40 items-center justify-center">
+                                            <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+                                        </div>
+                                    ) : paginatedJobs.length === 0 ? (
+                                        <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-10 text-center text-slate-500">
+                                            <Search className="mx-auto mb-4 h-10 w-10 text-slate-300" />
+                                            <p className="text-base font-bold">No work items found.</p>
+                                        </div>
+                                    ) : (
+                                        <div className="min-w-[860px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                            <Table>
+                                                <TableHeader className="sticky top-0 z-10 border-b bg-slate-50">
+                                                    <TableRow>
+                                                        <TableHead className="w-[42px]">
+                                                            <Checkbox
+                                                                checked={allVisibleJobsSelected}
+                                                                onCheckedChange={() => {
+                                                                    const pageJobIds = paginatedJobs.map((job) => job.id);
+                                                                    const pageJobIdSet = new Set(pageJobIds);
+                                                                    setSelectedJobs((prev) => {
+                                                                        const areAllSelected = pageJobIds.every((id) => prev.includes(id));
+                                                                        if (areAllSelected) return prev.filter((id) => !pageJobIdSet.has(id));
+                                                                        const next = [...prev];
+                                                                        pageJobIds.forEach((id) => {
+                                                                            if (!next.includes(id)) next.push(id);
+                                                                        });
+                                                                        return next;
+                                                                    });
+                                                                }}
+                                                            />
+                                                        </TableHead>
+                                                        <TableHead className="font-black text-slate-600">Job</TableHead>
+                                                        <TableHead className="font-black text-slate-600">Device</TableHead>
+                                                        <TableHead className="font-black text-slate-600">Status</TableHead>
+                                                        <TableHead className="font-black text-slate-600">Batch</TableHead>
+                                                        <TableHead className="font-black text-slate-600">Billing</TableHead>
+                                                        <TableHead className="w-[110px] text-right font-black text-slate-600">Action</TableHead>
+                                                    </TableRow>
+                                                </TableHeader>
+                                                <TableBody>
+                                                    {paginatedJobs.map((job) => (
+                                                        <TableRow
+                                                            key={job.id}
+                                                            className={`cursor-pointer transition-colors hover:bg-blue-50/60 ${activeWorkbenchJob?.id === job.id ? "bg-blue-50" : ""} ${selectedJobs.includes(job.id) ? "ring-1 ring-inset ring-blue-200" : ""}`}
+                                                            onClick={() => { setSelectedJobForDetails(job); setIsDetailsOpen(true); }}
+                                                        >
+                                                            <TableCell onClick={e => e.stopPropagation()}>
+                                                                <Checkbox
+                                                                    checked={selectedJobs.includes(job.id)}
+                                                                    onCheckedChange={() => setSelectedJobs(prev => prev.includes(job.id) ? prev.filter(id => id !== job.id) : [...prev, job.id])}
+                                                                />
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <div className="font-mono text-sm font-black text-blue-700">#{job.corporateJobNumber || "N/A"}</div>
+                                                                <div className="mt-1 text-xs text-slate-500">{job.tvSerialNumber || "No serial"}</div>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <div className="font-bold text-slate-900">{job.device || "Unknown device"}</div>
+                                                                <div className="mt-1 max-w-[260px] truncate text-xs text-slate-500">{job.reportedDefect || "No defect reported"}</div>
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Badge variant="outline" className={job.status === "Ready" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : job.status === "Delivered" ? "bg-blue-50 text-blue-700 border-blue-200" : job.status === "Pending" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-slate-100 text-slate-700"}>
+                                                                    {displayJobStatus(job.status)}
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell className="text-xs">
+                                                                <div className="font-bold text-slate-700">{job.batchTargetClearDate ? format(new Date(job.batchTargetClearDate), "dd MMM") : "No target"}</div>
+                                                                {job.extensionStatus && job.extensionStatus !== "none" && <div className="mt-1 text-amber-700">Extension {job.extensionStatus}</div>}
+                                                            </TableCell>
+                                                            <TableCell>
+                                                                <Badge variant="outline" className={job.corporateBillId ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-orange-50 text-orange-700 border-orange-200"}>
+                                                                    {job.corporateBillId ? "Billed" : "Pending"}
+                                                                </Badge>
+                                                            </TableCell>
+                                                            <TableCell className="text-right" onClick={e => e.stopPropagation()}>
+                                                                <div className="flex justify-end gap-1">
+                                                                    <Button
+                                                                        variant="ghost"
+                                                                        size="icon"
+                                                                        className="h-8 w-8 rounded-xl text-blue-600 hover:bg-blue-50"
+                                                                        onClick={() => { setSelectedJobForDetails(job); setIsDetailsOpen(true); }}
+                                                                        title="Full Details"
+                                                                    >
+                                                                        <Eye className="h-4 w-4" />
+                                                                    </Button>
+                                                                    <DropdownMenu>
+                                                                        <DropdownMenuTrigger asChild>
+                                                                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-xl text-slate-500 hover:bg-slate-100">
+                                                                                <MoreVertical className="h-4 w-4" />
+                                                                            </Button>
+                                                                        </DropdownMenuTrigger>
+                                                                        <DropdownMenuContent align="end" className="w-52">
+                                                                            <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Checking", jobIds: [job.id] })}>
+                                                                                <Clock className="mr-2 h-4 w-4" /> Mark Checking
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Declared OK", jobIds: [job.id] })}>
+                                                                                <Check className="mr-2 h-4 w-4" /> Declare OK
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Declared NG", jobIds: [job.id] })}>
+                                                                                <AlertTriangle className="mr-2 h-4 w-4" /> Declare NG
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Ready", jobIds: [job.id] })}>
+                                                                                <PackageCheck className="mr-2 h-4 w-4" /> Mark Ready
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem onClick={() => { setSelectedJobs([job.id]); setIsExtensionRequestOpen(true); }}>
+                                                                                <RotateCcw className="mr-2 h-4 w-4" /> Request Extension
+                                                                            </DropdownMenuItem>
+                                                                            <DropdownMenuItem onClick={() => setSelectedJobForCrr(job)}>
+                                                                                <RotateCcw className="mr-2 h-4 w-4" /> Create CRR / Reservice
+                                                                            </DropdownMenuItem>
+                                                                        </DropdownMenuContent>
+                                                                    </DropdownMenu>
+                                                                </div>
+                                                            </TableCell>
+                                                        </TableRow>
+                                                    ))}
+                                                </TableBody>
+                                            </Table>
+                                        </div>
+                                    )}
+                                </div>
+
+                            </div>
+                            {totalPages > 0 && (
+                                <div className="grid shrink-0 grid-cols-1 items-center gap-2 border-t border-slate-100 bg-white/95 px-4 py-2.5 backdrop-blur sm:grid-cols-[1fr_auto_1fr]">
+                                    <span className="text-center text-xs font-bold text-slate-500 sm:text-left">
+                                        {(clientPage - 1) * itemsPerPage + 1}-{Math.min(clientPage * itemsPerPage, filteredJobs.length)} of {filteredJobs.length} work items
+                                    </span>
+                                    <span className="justify-self-center rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-black text-slate-700 shadow-sm">
+                                        Page {clientPage} / {totalPages}
+                                    </span>
+                                    <div className="flex items-center justify-center gap-2 sm:justify-end">
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setClientPage(p => Math.max(1, p - 1))}
+                                            disabled={clientPage === 1}
+                                            className="h-8 rounded-xl border-slate-200 bg-white px-2.5 text-xs font-black text-slate-700 shadow-sm transition-all hover:-translate-x-0.5 hover:bg-slate-50 disabled:translate-x-0 disabled:opacity-45"
+                                            aria-label="Previous page"
+                                        >
+                                            <ChevronLeft className="mr-1 h-4 w-4" />
+                                            Prev
+                                        </Button>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setClientPage(p => Math.min(totalPages, p + 1))}
+                                            disabled={clientPage === totalPages}
+                                            className="h-8 rounded-xl border-slate-200 bg-white px-2.5 text-xs font-black text-slate-700 shadow-sm transition-all hover:translate-x-0.5 hover:bg-slate-50 disabled:translate-x-0 disabled:opacity-45"
+                                            aria-label="Next page"
+                                        >
+                                            Next
+                                            <ChevronRight className="ml-1 h-4 w-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+                        </TabsContent>
+
+                        <TabsContent value="dashboard" className="m-0 flex-1 overflow-auto bg-slate-50/60 p-4">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                                <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                                    <div>
+                                        <h3 className="text-xl font-black text-slate-900">Batch Clearance</h3>
+                                        <p className="text-sm text-slate-500">See whether batches are on track before the client asks.</p>
+                                    </div>
+                                    <div className="flex flex-wrap gap-2">
+                                        <Badge className="rounded-full bg-slate-100 text-slate-700 hover:bg-slate-100">{batchSummary.total} open</Badge>
+                                        <Badge className="rounded-full bg-amber-100 text-amber-800 hover:bg-amber-100">{batchSummary.dueSoon} due soon</Badge>
+                                        <Badge className="rounded-full bg-red-100 text-red-800 hover:bg-red-100">{batchSummary.overdue} risk</Badge>
+                                    </div>
+                                </div>
+                                <div className="grid gap-3 lg:grid-cols-2">
+                                    {batches.slice(0, 8).map((batch: any) => (
+                                        <div key={batch.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                            <div className="font-black text-slate-900">{batch.batchNumber || batch.id}</div>
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                Target: {batch.targetClearDate ? format(new Date(batch.targetClearDate), "dd MMM yyyy") : "Not set"} | {batch.clearedItems || 0}/{batch.totalItems || 0} cleared
+                                            </div>
+                                        </div>
+                                    ))}
+                                    {batches.length === 0 && <div className="rounded-2xl border border-dashed p-8 text-sm text-slate-500">No received batches yet.</div>}
+                                </div>
+                            </div>
+                        </TabsContent>
+                        <TabsContent value="billing" className="m-0 flex-1 overflow-auto bg-slate-50/60 p-4">
+                            <CorporateBillsTable clientId={client?.id || ""} />
+                        </TabsContent>
+
+                        <TabsContent value="portal-access" className="m-0 flex-1 overflow-hidden bg-slate-50/60 p-4">
+                            <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+                                <div className="font-black">Corporate Portal Credentials</div>
+                                <div className="mt-1 text-xs">
+                                    Passwords are not recoverable after creation. Use a 6-digit reset code for client-assisted recovery, or issue an instant temporary password only when needed.
+                                </div>
+                            </div>
+                            {client?.id && <CorporateUsersTable clientId={selectedClientId || ""} />}
+                        </TabsContent>
+
+                        <TabsContent value="service-warranty" className="m-0 flex-1 overflow-auto bg-slate-50/60 p-4">
+                            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+                                <WarrantyClaimsTable jobIds={jobs.map((job: any) => job.id)} />
+                                <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                                    <h3 className="font-bold text-slate-900">Extension Requests</h3>
+                                    <p className="mt-1 text-xs text-slate-500">Corporate client must accept or reject delayed batch items.</p>
+                                    <div className="mt-4 space-y-2">
+                                        {extensionRequests.slice(0, 8).map((request: any) => {
+                                            const job = jobs.find((item: any) => item.id === request.jobId);
+                                            return (
+                                                <div key={request.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <div className="font-bold text-sm text-slate-800">{job?.corporateJobNumber || request.jobId}</div>
+                                                        <Badge variant={request.status === "pending" ? "default" : "outline"}>{request.status}</Badge>
+                                                    </div>
+                                                    <div className="mt-1 text-xs text-slate-500">Until {format(new Date(request.requestedUntil), "dd MMM yyyy")}</div>
+                                                    <div className="mt-2 text-xs text-slate-600">{request.reason}</div>
+                                                </div>
+                                            );
+                                        })}
+                                        {extensionRequests.length === 0 && <div className="rounded-xl border border-dashed p-4 text-sm text-slate-500">No extension requests yet.</div>}
+                                    </div>
+                                </div>
+                            </div>
+                        </TabsContent>
+
+                        <TabsContent value="history" className="m-0 flex-1 overflow-auto bg-slate-50/60 p-4">
+                            {client && <ChallanHistoryTable client={client} />}
+                        </TabsContent>
+                    </Tabs>
+                </main>
+
+                {false && (
+                    <>
+                <div className="hidden">
+                {workspaceCards.map((card) => {
+                    const Icon = card.icon;
+                    const isActive = quickFilter === card.key;
+                    return (
+                        <button
+                            key={card.key}
+                            type="button"
+                            onClick={card.action}
+                            className={`group relative overflow-hidden rounded-[18px] bg-gradient-to-br p-2.5 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-lg ${card.className} ${isActive ? "ring-2 ring-blue-500 ring-offset-2" : ""}`}
+                        >
+                            <div className="absolute -right-5 -top-6 h-20 w-20 rounded-full bg-white/20 blur-xl transition-transform group-hover:scale-125" />
+                            <div className="relative flex items-center justify-between gap-2">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-white/20">
+                                    <Icon className="h-4 w-4 shrink-0" />
+                                </div>
+                                <span className="text-xl font-black tabular-nums">{card.value}</span>
+                            </div>
+                            <div className="relative mt-2 text-sm font-black leading-tight">{card.label}</div>
+                            <div className="relative mt-0.5 text-xs font-semibold opacity-80">{card.helper}</div>
+                        </button>
+                    );
+                })}
+            </div>
+
             {/* Main Tabs */}
-            <BentoCard variant="ghost" className="flex-1 flex flex-col p-0 lg:overflow-hidden lg:border-slate-200/60 lg:bg-white border-transparent bg-transparent" disableHover>
+            <BentoCard variant="ghost" className="hidden min-h-0 flex-1 flex-col overflow-hidden rounded-[20px] border-slate-200/70 bg-white p-0 shadow-sm" disableHover>
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col min-h-0">
-                    <div className="pb-1 px-1 lg:px-4 lg:bg-slate-50 lg:border-b shrink-0 z-10 sticky top-0 bg-slate-50/90 backdrop-blur-md lg:bg-transparent -mx-1 lg:mx-0 pt-1 lg:pt-0">
-                        <TabsList className="bg-slate-200/50 p-1 w-full flex lg:inline-flex rounded-full lg:h-12 h-auto shadow-inner shadow-slate-300/30 overflow-x-auto gap-1">
-                            <TabsTrigger value="jobs" className="rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-2 lg:py-1.5 text-xs lg:text-sm transition-all whitespace-nowrap px-4 font-semibold">Repair Jobs</TabsTrigger>
-                            <TabsTrigger value="history" className="rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-2 lg:py-1.5 text-xs lg:text-sm transition-all whitespace-nowrap px-4 font-semibold">History</TabsTrigger>
-                            <TabsTrigger value="billing" className="rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-2 lg:py-1.5 text-xs lg:text-sm transition-all whitespace-nowrap px-4 font-semibold">Billing</TabsTrigger>
-                            <TabsTrigger value="messages" className="hidden lg:inline-flex rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-2 lg:py-1.5 text-xs lg:text-sm transition-all whitespace-nowrap px-4 font-semibold">Messages</TabsTrigger>
-                            <TabsTrigger value="users" className="hidden lg:inline-flex rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-2 lg:py-1.5 text-xs lg:text-sm transition-all whitespace-nowrap px-4 font-semibold">Users</TabsTrigger>
+                    <div className="sticky top-0 z-10 shrink-0 border-b bg-white/95 px-3 py-1.5 backdrop-blur-md lg:px-4">
+                        <TabsList className="flex h-auto w-full gap-1 overflow-x-auto rounded-2xl bg-slate-100 p-1 shadow-inner shadow-slate-300/30 lg:inline-flex lg:w-auto">
+                            <TabsTrigger value="dashboard" className="rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-1 text-xs transition-all whitespace-nowrap px-3 font-semibold">Dashboard</TabsTrigger>
+                            <TabsTrigger value="work" className="rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-1 text-xs transition-all whitespace-nowrap px-3 font-semibold">Work</TabsTrigger>
+                            <TabsTrigger value="receive" className="rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-1 text-xs transition-all whitespace-nowrap px-3 font-semibold">Receive</TabsTrigger>
+                            <TabsTrigger value="deliver" className="rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-1 text-xs transition-all whitespace-nowrap px-3 font-semibold">Delivery</TabsTrigger>
+                            <TabsTrigger value="billing" className="rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-1 text-xs transition-all whitespace-nowrap px-3 font-semibold">Billing</TabsTrigger>
+                            <TabsTrigger value="portal-access" className="rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-1 text-xs transition-all whitespace-nowrap px-3 font-semibold">Portal</TabsTrigger>
+                            <TabsTrigger value="service-warranty" className="rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-1 text-xs transition-all whitespace-nowrap px-3 font-semibold">CRR</TabsTrigger>
+                            <TabsTrigger value="history" className="rounded-full flex-1 lg:flex-none data-[state=active]:shadow-md data-[state=active]:bg-white py-1 text-xs transition-all whitespace-nowrap px-3 font-semibold">History</TabsTrigger>
                         </TabsList>
                     </div>
 
-                    <TabsContent value="jobs" className="flex-1 flex flex-col p-0 m-0 lg:overflow-hidden">
+                    <TabsContent value="dashboard" className="m-0 flex-1 overflow-auto bg-slate-50/60 p-4 lg:p-5">
+                        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+                            <div className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+                            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 p-4">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900">Priority Work Area</h3>
+                                    <p className="text-sm text-slate-500">Shows important live items only. Full records stay in Work.</p>
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        <Badge className="rounded-full bg-slate-100 text-slate-700 hover:bg-slate-100">{jobs.length} total work items</Badge>
+                                        <Badge className="rounded-full bg-blue-100 text-blue-800 hover:bg-blue-100">Showing {Math.min(filteredJobs.length, 8)} priority rows</Badge>
+                                        {quickFilter !== "all" && <Badge className="rounded-full bg-amber-100 text-amber-800 hover:bg-amber-100">Filtered view</Badge>}
+                                    </div>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <Button size="sm" className="rounded-xl bg-emerald-600 hover:bg-emerald-700" onClick={() => setIsChallanInOpen(true)}>
+                                        <FileDown className="mr-2 h-4 w-4" /> Add Work
+                                    </Button>
+                                    <Button variant="outline" size="sm" className="rounded-xl" onClick={() => setActiveTab("work")}>Full List</Button>
+                                </div>
+                            </div>
+                            <div className="divide-y divide-slate-100">
+                                {filteredJobs.slice(0, 8).map((job: any) => (
+                                    <button
+                                        key={job.id}
+                                        type="button"
+                                        onClick={() => { setSelectedJobForDetails(job); setIsDetailsOpen(true); }}
+                                        className="flex w-full items-center justify-between gap-4 p-4 text-left hover:bg-slate-50"
+                                    >
+                                        <div className="min-w-0">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="font-mono text-sm font-bold text-blue-700">#{job.corporateJobNumber || job.id}</span>
+                                                <Badge variant="outline">{displayJobStatus(job.status)}</Badge>
+                                                {job.extensionStatus && job.extensionStatus !== "none" && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Extension {job.extensionStatus}</Badge>}
+                                            </div>
+                                            <div className="mt-1 truncate font-semibold text-slate-900">{job.device || "Unknown device"}</div>
+                                            <div className="mt-0.5 truncate text-xs text-slate-500">{job.reportedDefect || job.issue || "No defect reported"}</div>
+                                        </div>
+                                        <div className="hidden shrink-0 text-right md:block">
+                                            <div className="text-xs font-bold text-slate-600">{job.technician || "Unassigned"}</div>
+                                            <div className="text-xs text-slate-400">{job.batchTargetClearDate ? `Batch target ${format(new Date(job.batchTargetClearDate), "dd MMM")}` : "No batch target"}</div>
+                                        </div>
+                                    </button>
+                                ))}
+                                {filteredJobs.length === 0 && <div className="p-8 text-center text-sm text-slate-500">No priority items match this view. Open Work for the full record list.</div>}
+                            </div>
+                        </div>
+                            <div className="space-y-5">
+                                <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                                    <h3 className="text-lg font-black text-slate-900">Today Needs Action</h3>
+                                    <div className="mt-4 space-y-3">
+                                        {[
+                                            { label: "Ready to deliver", value: cockpitCards.find(c => c.key === "ready")?.value || 0, color: "text-emerald-700", action: () => setCockpitFilter("ready") },
+                                            { label: "Bill pending", value: cockpitCards.find(c => c.key === "bill-pending")?.value || 0, color: "text-violet-700", action: () => setCockpitFilter("bill-pending") },
+                                            { label: "Batch overdue risk", value: batchSummary.overdue, color: "text-red-700", action: () => setActiveTab("dashboard") },
+                                            { label: "Extension waiting", value: batchSummary.extensionPending, color: "text-blue-700", action: () => setActiveTab("service-warranty") },
+                                        ].map((item) => (
+                                            <button key={item.label} type="button" onClick={item.action} className="flex w-full items-center justify-between rounded-2xl border border-slate-100 bg-slate-50 px-4 py-3 text-left hover:bg-white hover:shadow-sm">
+                                                <span className="text-sm font-bold text-slate-700">{item.label}</span>
+                                                <span className={`text-xl font-black tabular-nums ${item.color}`}>{item.value}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                                    <h3 className="text-lg font-black text-slate-900">Client Rules</h3>
+                                    <div className="mt-4 space-y-2">
+                                        {clientRuleChips.map((chip) => (
+                                            <div key={chip.label} className="flex items-center justify-between gap-4 rounded-2xl bg-slate-50 px-4 py-3">
+                                                <span className="text-xs font-bold uppercase tracking-wide text-slate-500">{chip.label}</span>
+                                                <span className="text-sm font-black capitalize text-slate-900">{chip.value}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                                <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                                    <h3 className="text-lg font-black text-slate-900">Quick Actions</h3>
+                                    <p className="text-xs text-slate-500">Use after selecting one or more items.</p>
+                                    <div className="mt-4 grid gap-2">
+                                        <Button variant="outline" className="justify-start rounded-xl" disabled={selectedJobs.length === 0} onClick={() => setIsChallanOutOpen(true)}>
+                                            <FileUp className="mr-2 h-4 w-4" /> Deliver selected
+                                        </Button>
+                                        <Button variant="outline" className="justify-start rounded-xl" disabled={selectedJobs.length === 0} onClick={() => setIsGenerateBillOpen(true)}>
+                                            <Receipt className="mr-2 h-4 w-4" /> Generate bill
+                                        </Button>
+                                        <Button variant="outline" className="justify-start rounded-xl" disabled={selectedJobs.length !== 1} onClick={() => setIsExtensionRequestOpen(true)}>
+                                            <AlertTriangle className="mr-2 h-4 w-4" /> Request extension
+                                        </Button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="mt-5 rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+                            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+                                <div>
+                                    <h3 className="text-xl font-black text-slate-900">Batch Clearance</h3>
+                                    <p className="text-sm text-slate-500">One place to see whether batches are on track.</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <Badge className="rounded-full bg-slate-100 text-slate-700 hover:bg-slate-100">{batchSummary.total} open</Badge>
+                                    <Badge className="rounded-full bg-amber-100 text-amber-800 hover:bg-amber-100">{batchSummary.dueSoon} due soon</Badge>
+                                    <Badge className="rounded-full bg-red-100 text-red-800 hover:bg-red-100">{batchSummary.overdue} risk</Badge>
+                                </div>
+                            </div>
+                            <div className="grid gap-3 lg:grid-cols-2">
+                                {batches.slice(0, 6).map((batch: any) => (
+                                    <div key={batch.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                                        <div>
+                                            <div className="font-black text-slate-900">{batch.batchNumber || batch.id}</div>
+                                            <div className="mt-1 text-xs text-slate-500">
+                                                Target: {batch.targetClearDate ? format(new Date(batch.targetClearDate), "dd MMM yyyy") : "Not set"} · {batch.clearedItems || 0}/{batch.totalItems || 0} cleared
+                                            </div>
+                                        </div>
+                                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                                            {batch.extensionPendingCount > 0 && <Badge className="rounded-full bg-blue-100 text-blue-800 hover:bg-blue-100">{batch.extensionPendingCount} extension pending</Badge>}
+                                            {batch.isOverdue ? <Badge className="rounded-full bg-red-100 text-red-800 hover:bg-red-100">Overdue risk</Badge> : batch.isDueSoon ? <Badge className="rounded-full bg-amber-100 text-amber-800 hover:bg-amber-100">Due soon</Badge> : <Badge variant="outline" className="rounded-full">On track</Badge>}
+                                        </div>
+                                        {batch.totalItems > 0 && (
+                                            <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
+                                                <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-emerald-500" style={{ width: `${Math.min(100, Math.round(((batch.clearedItems || 0) / batch.totalItems) * 100))}%` }} />
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                                {batches.length === 0 && <div className="rounded-2xl border border-dashed p-8 text-sm text-slate-500">No received batches yet.</div>}
+                            </div>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="work" className="flex-1 flex flex-col p-0 m-0 lg:overflow-hidden">
                         {/* Filters & View Toggle */}
                         <div className="p-4 border-b flex flex-col md:flex-row gap-4 justify-between items-start md:items-center bg-white z-10 w-full shrink-0">
                             <div className="flex flex-col lg:flex-row gap-4 w-full md:w-auto flex-1">
@@ -478,10 +1275,15 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                                     onClick={() => setShowFilters(!showFilters)}
                                 >
                                     <Filter className="w-4 h-4" /> Filters
-                                    {(statusFilter !== "all" || billingFilter !== "all" || technicianFilter !== "all" || dateRange) && (
+                                    {(quickFilter !== "all" || statusFilter !== "all" || billingFilter !== "all" || technicianFilter !== "all" || dateRange) && (
                                         <Badge className="ml-1 h-5 w-5 p-0 flex items-center justify-center rounded-full bg-blue-100 text-blue-700 border-none shadow-none font-bold">!</Badge>
                                     )}
                                 </Button>
+                                {quickFilter !== "all" && (
+                                    <Button variant="ghost" size="sm" className="h-[42px] rounded-xl text-blue-700 hover:bg-blue-50" onClick={clearCockpitFilter}>
+                                        Clear cockpit filter
+                                    </Button>
+                                )}
                             </div>
 
                             <div className="hidden sm:flex items-center bg-slate-100/80 p-1 rounded-lg border border-slate-200 shadow-sm shrink-0 h-[42px] mt-0.5">
@@ -509,7 +1311,7 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                                             technicianFilter={technicianFilter} setTechnicianFilter={setTechnicianFilter}
                                             dateRange={dateRange} setDateRange={setDateRange}
                                             technicians={technicians}
-                                            onReset={() => { setStatusFilter("all"); setBillingFilter("all"); setTechnicianFilter("all"); setDateRange(undefined); setSearch(""); setClientPage(1); }}
+                                            onReset={() => { setQuickFilter("all"); setStatusFilter("all"); setBillingFilter("all"); setTechnicianFilter("all"); setDateRange(undefined); setSearch(""); setClientPage(1); }}
                                         />
                                     </div>
                                 </motion.div>
@@ -528,7 +1330,7 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                                     <p className="text-lg font-medium">No repair jobs found.</p>
                                 </div>
                             ) : viewMode === 'list' ? (
-                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-w-[800px]">
+                                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-w-[1080px]">
                                     <Table>
                                         <TableHeader className="bg-slate-50 border-b border-slate-100 sticky top-0 shadow-sm z-10">
                                             <TableRow>
@@ -559,6 +1361,8 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                                                 <TableHead className="font-bold text-slate-600">Device</TableHead>
                                                 <TableHead className="font-bold text-slate-600">Problem</TableHead>
                                                 <TableHead className="font-bold text-slate-600">Status</TableHead>
+                                                <TableHead className="font-bold text-slate-600">Batch</TableHead>
+                                                <TableHead className="font-bold text-slate-600">Billing</TableHead>
                                                 <TableHead className="font-bold text-slate-600">Tech</TableHead>
                                             </TableRow>
                                         </TableHeader>
@@ -588,13 +1392,22 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                                                             ${job.status === 'Ready' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
                                                                 job.status === 'Delivered' ? 'bg-blue-50 text-blue-700 border-blue-200' : 'bg-slate-100 text-slate-700'}
                                                         `}>
-                                                            {job.status}
+                                                            {displayJobStatus(job.status)}
                                                         </Badge>
                                                         {job.slaDeadline && (
                                                             <div className="mt-1">
                                                                 <SlaTimer deadline={job.slaDeadline} status={job.status} />
                                                             </div>
                                                         )}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs">
+                                                        <div className="font-semibold text-slate-700">{job.batchTargetClearDate ? format(new Date(job.batchTargetClearDate), "dd MMM") : "No target"}</div>
+                                                        {job.extensionStatus && job.extensionStatus !== "none" && <div className="mt-1 text-amber-700">Extension {job.extensionStatus}</div>}
+                                                    </TableCell>
+                                                    <TableCell className="text-xs">
+                                                        <Badge variant="outline" className={job.corporateBillId ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-orange-50 text-orange-700 border-orange-200"}>
+                                                            {job.corporateBillId ? "Billed" : "Pending"}
+                                                        </Badge>
                                                     </TableCell>
                                                     <TableCell className="text-xs">
                                                         <div className="flex items-center gap-1.5 font-medium text-slate-700">
@@ -667,7 +1480,7 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                                                         <Badge variant="outline" className={`rounded-xl px-3 py-1 border-none font-bold tracking-wide text-xs ${job.status === 'Ready' ? 'bg-emerald-100 text-emerald-800' :
                                                             job.status === 'Delivered' ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-800'
                                                             }`}>
-                                                            {job.status}
+                                                            {displayJobStatus(job.status)}
                                                         </Badge>
                                                     </div>
                                                 </div>
@@ -719,27 +1532,89 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                         )}
                     </TabsContent>
 
+                    <TabsContent value="receive" className="flex-1 overflow-auto p-4 bg-slate-50/30">
+                        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm max-w-xl">
+                            <FileDown className="h-6 w-6 text-emerald-600 mb-3" />
+                            <h3 className="text-lg font-bold text-slate-900">Receive Work</h3>
+                            <p className="text-sm text-slate-500 mt-1 mb-5">Add Full TV, Panel, Panel Batch, Board, Parts, Parts Sale, or CRR / Reservice work from one simple entry point.</p>
+                            <Button onClick={() => setIsChallanInOpen(true)} className="bg-emerald-600 hover:bg-emerald-700">
+                                <FileDown className="h-4 w-4 mr-2" /> Add Incoming Work
+                            </Button>
+                        </div>
+                    </TabsContent>
+
+                    <TabsContent value="deliver" className="flex-1 overflow-auto p-4 bg-slate-50/30">
+                        <div className="bg-white border border-slate-200 rounded-2xl p-6 shadow-sm max-w-xl">
+                            <FileUp className="h-6 w-6 text-indigo-600 mb-3" />
+                            <h3 className="text-lg font-bold text-slate-900">Delivery</h3>
+                            <p className="text-sm text-slate-500 mt-1 mb-5">Select ready items from Work Items, then deliver and print the delivery challan.</p>
+                            <div className="flex flex-wrap gap-2">
+                                <Button variant="outline" onClick={() => setCockpitFilter("ready")}>
+                                    View Ready Items
+                                </Button>
+                                <Button disabled={selectedJobs.length === 0} onClick={() => setIsChallanOutOpen(true)}>
+                                    <FileUp className="h-4 w-4 mr-2" /> Deliver Selected
+                                </Button>
+                            </div>
+                        </div>
+                    </TabsContent>
+
                     <TabsContent value="history" className="flex-1 lg:overflow-hidden p-4">
-                        {client && <ChallanHistoryTable client={client} />}
+                        {null}
                     </TabsContent>
 
                     <TabsContent value="billing" className="flex-1 lg:overflow-hidden p-4">
                         <CorporateBillsTable clientId={client?.id || ""} />
                     </TabsContent>
 
-                    <TabsContent value="messages" className="flex-1 lg:overflow-hidden p-0 m-0 relative">
-                        {client && <CorporateMessagesTab preSelectedClientId={client.id} hideSidebar={true} />}
+                    <TabsContent value="portal-access" className="flex-1 overflow-hidden p-4">
+                        <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 p-4 text-sm text-blue-900">
+                            <div className="font-black">Corporate Portal Credentials</div>
+                            <div className="mt-1 text-xs">
+                                Passwords are not recoverable after creation. Use a 6-digit reset code for client-assisted recovery, or issue an instant temporary password only when needed.
+                            </div>
+                        </div>
+                        {client?.id && <CorporateUsersTable clientId={selectedClientId || ""} />}
                     </TabsContent>
 
-                    <TabsContent value="users" className="flex-1 lg:overflow-hidden p-4">
-                        <CorporateUsersTable clientId={client?.id || ""} />
+                    <TabsContent value="service-warranty" className="flex-1 lg:overflow-hidden p-4">
+                        <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
+                            <WarrantyClaimsTable jobIds={jobs.map((job: any) => job.id)} />
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                                <h3 className="font-bold text-slate-900">Extension Requests</h3>
+                                <p className="text-xs text-slate-500 mt-1">Corporate client must accept or reject delayed batch items.</p>
+                                <div className="mt-4 space-y-2">
+                                    {extensionRequests.slice(0, 8).map((request: any) => {
+                                        const job = jobs.find((item: any) => item.id === request.jobId);
+                                        return (
+                                            <div key={request.id} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="font-bold text-sm text-slate-800">{job?.corporateJobNumber || request.jobId}</div>
+                                                    <Badge variant={request.status === "pending" ? "default" : "outline"}>{request.status}</Badge>
+                                                </div>
+                                                <div className="mt-1 text-xs text-slate-500">Until {format(new Date(request.requestedUntil), "dd MMM yyyy")}</div>
+                                                <div className="mt-2 text-xs text-slate-600">{request.reason}</div>
+                                            </div>
+                                        );
+                                    })}
+                                    {extensionRequests.length === 0 && <div className="rounded-xl border border-dashed p-4 text-sm text-slate-500">No extension requests yet.</div>}
+                                </div>
+                            </div>
+                        </div>
                     </TabsContent>
                 </Tabs>
             </BentoCard>
+                    </>
+                )}
+            </div>
 
             {/* Dialogs */}
             <Dialog open={isChallanInOpen} onOpenChange={setIsChallanInOpen}>
-                <DialogContent className="sm:max-w-4xl max-h-[90vh]">
+                <DialogContent className="h-screen w-screen max-w-none overflow-hidden p-0 sm:rounded-none">
+                    <DialogHeader className="sr-only">
+                        <DialogTitle>Add Incoming Work</DialogTitle>
+                        <DialogDescription>Receive B2B work items by manual entry or file import.</DialogDescription>
+                    </DialogHeader>
                     <ChallanInWizard clientId={selectedClientId} onClose={() => setIsChallanInOpen(false)} userName={user?.name || "Admin"} />
                 </DialogContent>
             </Dialog>
@@ -747,7 +1622,7 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
             <Dialog open={isChallanOutOpen} onOpenChange={setIsChallanOutOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Create Challan OUT</DialogTitle>
+                        <DialogTitle>Deliver Items</DialogTitle>
                         <DialogDescription>Generating delivery challan for {selectedJobs.length} items.</DialogDescription>
                     </DialogHeader>
                     <div className="space-y-4 py-4">
@@ -763,7 +1638,173 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsChallanOutOpen(false)}>Cancel</Button>
                         <Button onClick={() => createChallanOutMutation.mutate()} disabled={createChallanOutMutation.isPending}>
-                            {createChallanOutMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Generate
+                            {createChallanOutMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Deliver
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isExtensionRequestOpen} onOpenChange={setIsExtensionRequestOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Request Batch Clearance Extension</DialogTitle>
+                        <DialogDescription>
+                            Ask the corporate client before holding this item longer than the batch target.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-4 py-4">
+                        <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
+                            Selected item: {selectedJobObjects[0]?.corporateJobNumber || selectedJobObjects[0]?.id || "None"}
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Requested Until</label>
+                            <Input type="date" value={extensionUntil} onChange={(e) => setExtensionUntil(e.target.value)} />
+                        </div>
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">Reason</label>
+                            <Input value={extensionReason} onChange={(e) => setExtensionReason(e.target.value)} placeholder="Example: panel line needed, waiting for special part" />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsExtensionRequestOpen(false)}>Cancel</Button>
+                        <Button onClick={() => createExtensionRequestMutation.mutate()} disabled={createExtensionRequestMutation.isPending}>
+                            {createExtensionRequestMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />} Send Request
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isRulesOpen} onOpenChange={setIsRulesOpen}>
+                <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Edit Client Rules</DialogTitle>
+                        <DialogDescription>
+                            Set the default B2B rules used for receiving work, service warranty, batch clearance, and reminders.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-5 py-2">
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">Client Type</label>
+                                <Select value={clientRulesForm.clientType} onValueChange={(value) => setClientRulesForm(prev => ({ ...prev, clientType: value }))}>
+                                    <SelectTrigger className="rounded-xl">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {clientTypeOptions.map((option) => (
+                                            <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">Payment Time</label>
+                                <Select value={clientRulesForm.paymentTerms} onValueChange={(value) => setClientRulesForm(prev => ({ ...prev, paymentTerms: value }))}>
+                                    <SelectTrigger className="rounded-xl">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="30">30 working days</SelectItem>
+                                        <SelectItem value="60">60 working days</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">Batch Clearance Days</label>
+                                <Input type="number" min={1} max={90} value={clientRulesForm.defaultBatchClearanceDays} onChange={(e) => setClientRulesForm(prev => ({ ...prev, defaultBatchClearanceDays: e.target.value }))} className="rounded-xl" />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">Billing Cycle</label>
+                                <Select value={clientRulesForm.billingCycle} onValueChange={(value) => setClientRulesForm(prev => ({ ...prev, billingCycle: value }))}>
+                                    <SelectTrigger className="rounded-xl">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="weekly">Weekly</SelectItem>
+                                        <SelectItem value="monthly">Monthly</SelectItem>
+                                        <SelectItem value="batch">Per batch</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+
+                        <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4">
+                            <div className="mb-3 text-sm font-black text-slate-800">Allowed Work Types</div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                                {workTypeOptions.map((option) => {
+                                    const checked = clientRulesForm.allowedWorkTypes.includes(option.value);
+                                    return (
+                                        <label key={option.value} className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 text-sm font-bold transition ${checked ? "border-blue-200 bg-blue-50 text-blue-800" : "border-slate-200 bg-white text-slate-700"}`}>
+                                            <Checkbox
+                                                checked={checked}
+                                                onCheckedChange={() => setClientRulesForm(prev => ({
+                                                    ...prev,
+                                                    allowedWorkTypes: checked ? prev.allowedWorkTypes.filter((item) => item !== option.value) : [...prev.allowedWorkTypes, option.value],
+                                                }))}
+                                            />
+                                            {option.label}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <label className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 text-sm font-bold text-slate-700">
+                                <Checkbox checked={clientRulesForm.requiresChallanIn} onCheckedChange={(checked) => setClientRulesForm(prev => ({ ...prev, requiresChallanIn: checked === true }))} />
+                                Requires challan in
+                            </label>
+                            <label className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-4 text-sm font-bold text-slate-700">
+                                <Checkbox checked={clientRulesForm.requiresChallanOut} onCheckedChange={(checked) => setClientRulesForm(prev => ({ ...prev, requiresChallanOut: checked === true }))} />
+                                Requires challan out
+                            </label>
+                        </div>
+
+                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <div>
+                                    <div className="text-sm font-black text-slate-800">Service Warranty</div>
+                                    <div className="text-xs font-medium text-slate-500">Use service warranty wording for B2B work.</div>
+                                </div>
+                                <Checkbox checked={clientRulesForm.serviceWarrantyEnabled} onCheckedChange={(checked) => setClientRulesForm(prev => ({ ...prev, serviceWarrantyEnabled: checked === true }))} />
+                            </div>
+                            <Input type="number" min={0} max={365} disabled={!clientRulesForm.serviceWarrantyEnabled} value={clientRulesForm.defaultServiceWarrantyDays} onChange={(e) => setClientRulesForm(prev => ({ ...prev, defaultServiceWarrantyDays: e.target.value }))} className="rounded-xl bg-white" />
+                        </div>
+
+                        <div className="grid gap-4 md:grid-cols-2">
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">CRR / Re-service Rule</label>
+                                <Select value={clientRulesForm.crrRule} onValueChange={(value) => setClientRulesForm(prev => ({ ...prev, crrRule: value }))}>
+                                    <SelectTrigger className="rounded-xl">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="no_charge_inside_service_warranty">No charge inside service warranty</SelectItem>
+                                        <SelectItem value="review_before_no_charge">Review before no-charge</SelectItem>
+                                        <SelectItem value="always_charge">Always charge</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-bold text-slate-700">Reminder Rule</label>
+                                <Select value={clientRulesForm.reminderRule} onValueChange={(value) => setClientRulesForm(prev => ({ ...prev, reminderRule: value }))}>
+                                    <SelectTrigger className="rounded-xl">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="due_soon_and_overdue">Due soon and overdue</SelectItem>
+                                        <SelectItem value="overdue_only">Overdue only</SelectItem>
+                                        <SelectItem value="manual_only">Manual only</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsRulesOpen(false)}>Cancel</Button>
+                        <Button onClick={() => updateClientRulesMutation.mutate()} disabled={updateClientRulesMutation.isPending || clientRulesForm.allowedWorkTypes.length === 0}>
+                            {updateClientRulesMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Save Rules
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -787,6 +1828,13 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
             />
             <GenerateBillDialog open={isGenerateBillOpen} onOpenChange={setIsGenerateBillOpen} clientId={selectedClientId} selectedJobs={jobs?.filter((j: any) => selectedJobs.includes(j.id)) || []} onSuccess={() => setSelectedJobs([])} />
             <BulkAssignTechnicianDialog open={isBulkAssignOpen} onOpenChange={setIsBulkAssignOpen} jobs={jobs?.filter((j: any) => selectedJobs.includes(j.id)) || []} technicians={technicians} onSuccess={() => setSelectedJobs([])} />
+            <CreateWarrantyClaimDialog
+                job={selectedJobForCrr}
+                open={!!selectedJobForCrr}
+                onOpenChange={(open) => {
+                    if (!open) setSelectedJobForCrr(null);
+                }}
+            />
         </div>
     );
 }

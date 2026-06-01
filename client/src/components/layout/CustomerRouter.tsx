@@ -113,7 +113,7 @@ export function CustomerRouter() {
 
                                 <Route path="/repair">
                                     <CustomerErrorBoundary fallbackTitle="Repair Request Error">
-                                        <CustomerModuleGuard module="service_requests"><RepairRequestPage /></CustomerModuleGuard>
+                                        <RepairRequestPage />
                                     </CustomerErrorBoundary>
                                 </Route>
 

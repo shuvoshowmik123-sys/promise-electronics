@@ -9,6 +9,7 @@ import { storage } from '../storage.js';
 import { settingsRepo, notificationRepo, systemRepo, userRepo, jobRepo, serviceRequestRepo, warrantyRepo, hrRepo } from '../repositories/index.js';
 import { insertInquirySchema } from '../../shared/schema.js';
 import { requireCustomerAuth, requireAdminAuth, requirePermission } from './middleware/auth.js';
+import { serviceRequestLimiter } from './middleware/rate-limit.js';
 
 const router = Router();
 
@@ -48,8 +49,10 @@ router.post('/api/push/register', requireCustomerAuth, async (req: Request, res:
 
 /**
  * POST /api/inquiries - Submit inquiry
+ * Public, unauthenticated → rate-limited (10/hour per IP) to stop spam-flooding
+ * the inquiries table. 10/hour is far above any real customer's usage.
  */
-router.post('/api/inquiries', async (req: Request, res: Response) => {
+router.post('/api/inquiries', serviceRequestLimiter, async (req: Request, res: Response) => {
     try {
         const validated = insertInquirySchema.parse(req.body);
         const inquiry = await storage.createInquiry(validated);

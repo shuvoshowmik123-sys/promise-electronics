@@ -1,7 +1,6 @@
 import { motion, AnimatePresence } from "framer-motion";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,7 +10,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { jobTicketsApi, adminUsersApi } from "@/lib/api";
 import { JobTicket, InsertJobTicket } from "@shared/schema"; // Ensure shared/schema is available
 import { format } from "date-fns";
-import { Loader2, Save, History, Shield, Info, DollarSign, Building, Plus, X, Pencil, ShoppingCart } from "lucide-react";
+import { AlertTriangle, Check, Clock, Loader2, Save, History, Shield, Info, DollarSign, Building, Plus, X, Pencil, ShoppingCart, PackageCheck, RotateCcw } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { JobChargesDialog } from "@/components/admin/corporate/JobChargesDialog";
@@ -24,9 +23,26 @@ interface JobDetailsSheetProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     onEditClick?: () => void;
+    onMarkChecking?: (job: JobTicket) => void;
+    onDeclareOk?: (job: JobTicket) => void;
+    onDeclareNg?: (job: JobTicket) => void;
+    onMarkReady?: (job: JobTicket) => void;
+    onRequestExtension?: (job: JobTicket) => void;
+    onCreateCrr?: (job: JobTicket) => void;
 }
 
-export function JobDetailsSheet({ job, open, onOpenChange, onEditClick }: JobDetailsSheetProps) {
+export function JobDetailsSheet({
+    job,
+    open,
+    onOpenChange,
+    onEditClick,
+    onMarkChecking,
+    onDeclareOk,
+    onDeclareNg,
+    onMarkReady,
+    onRequestExtension,
+    onCreateCrr,
+}: JobDetailsSheetProps) {
     const queryClient = useQueryClient();
     const [activeTab, setActiveTab] = useState("info");
     const [isChargesOpen, setIsChargesOpen] = useState(false);
@@ -90,7 +106,7 @@ export function JobDetailsSheet({ job, open, onOpenChange, onEditClick }: JobDet
     return (
         <AnimatePresence>
             {open && job && (
-                <div className="fixed inset-0 z-40 flex justify-end">
+                <div className="fixed inset-0 z-50 flex justify-end">
                     {/* Backdrop */}
                     <motion.div
                         initial={{ opacity: 0 }}
@@ -133,46 +149,75 @@ export function JobDetailsSheet({ job, open, onOpenChange, onEditClick }: JobDet
                                 <p className="mt-1 text-sm text-slate-500">
                                     {job.device} - {job.issue}
                                 </p>
+                                {(onMarkChecking || onDeclareOk || onDeclareNg || onMarkReady || onRequestExtension || onCreateCrr) && (
+                                    <div className="mt-4 flex flex-wrap gap-2 pr-10">
+                                        {onMarkChecking && (
+                                            <Button size="sm" variant="outline" className="h-8 rounded-xl bg-white" onClick={() => onMarkChecking(job)}>
+                                                <Clock className="mr-1.5 h-3.5 w-3.5" /> Checking
+                                            </Button>
+                                        )}
+                                        {onDeclareOk && (
+                                            <Button size="sm" variant="outline" className="h-8 rounded-xl bg-emerald-50 text-emerald-700 hover:bg-emerald-100" onClick={() => onDeclareOk(job)}>
+                                                <Check className="mr-1.5 h-3.5 w-3.5" /> OK
+                                            </Button>
+                                        )}
+                                        {onDeclareNg && (
+                                            <Button size="sm" variant="outline" className="h-8 rounded-xl bg-red-50 text-red-700 hover:bg-red-100" onClick={() => onDeclareNg(job)}>
+                                                <AlertTriangle className="mr-1.5 h-3.5 w-3.5" /> NG
+                                            </Button>
+                                        )}
+                                        {onMarkReady && (
+                                            <Button size="sm" variant="outline" className="h-8 rounded-xl bg-teal-50 text-teal-700 hover:bg-teal-100" onClick={() => onMarkReady(job)}>
+                                                <PackageCheck className="mr-1.5 h-3.5 w-3.5" /> Ready
+                                            </Button>
+                                        )}
+                                        {onRequestExtension && (
+                                            <Button size="sm" variant="outline" className="h-8 rounded-xl bg-amber-50 text-amber-700 hover:bg-amber-100" onClick={() => onRequestExtension(job)}>
+                                                <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Extension
+                                            </Button>
+                                        )}
+                                        {onCreateCrr && (
+                                            <Button size="sm" variant="outline" className="h-8 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={() => onCreateCrr(job)}>
+                                                <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> CRR
+                                            </Button>
+                                        )}
+                                    </div>
+                                )}
                             </div>
                         </div>
 
                         <div className="flex-1 overflow-hidden flex flex-col min-h-0">
                             <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full flex flex-col">
-                                <div className="px-6 border-b">
-                                    <TabsList className="w-full justify-start h-12 bg-transparent p-0 gap-4">
+                                <div className="border-b px-3 py-2 sm:px-5">
+                                    <TabsList className="grid h-auto w-full grid-cols-4 gap-1 rounded-2xl bg-slate-100 p-1">
                                         <TabsTrigger
                                             value="info"
-                                            className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-none border-b-2 border-transparent data-[state=active]:border-primary h-full px-4"
+                                            className="h-9 min-w-0 rounded-xl px-2 text-xs font-bold data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-sm"
                                         >
-                                            <Info className="w-4 h-4 mr-2" />
-                                            Info
+                                            <Info className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                                            <span className="truncate">Info</span>
                                         </TabsTrigger>
                                         <TabsTrigger
                                             value="history"
-                                            className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-none border-b-2 border-transparent data-[state=active]:border-primary h-full px-4"
+                                            className="h-9 min-w-0 rounded-xl px-2 text-xs font-bold data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-sm"
                                         >
-                                            <History className="w-4 h-4 mr-2" />
-                                            History
+                                            <History className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                                            <span className="truncate">History</span>
                                         </TabsTrigger>
                                         <TabsTrigger
                                             value="warranty"
-                                            className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-none border-b-2 border-transparent data-[state=active]:border-primary h-full px-4"
+                                            className="h-9 min-w-0 rounded-xl px-2 text-xs font-bold data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-sm"
                                         >
-                                            <Shield className="w-4 h-4 mr-2" />
-                                            Warranty
+                                            <Shield className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                                            <span className="truncate">Service</span>
                                         </TabsTrigger>
                                         <TabsTrigger
                                             value="charges"
-                                            className="data-[state=active]:bg-primary/10 data-[state=active]:text-primary rounded-none border-b-2 border-transparent data-[state=active]:border-primary h-full px-4"
+                                            className="h-9 min-w-0 rounded-xl px-2 text-xs font-bold data-[state=active]:bg-white data-[state=active]:text-blue-700 data-[state=active]:shadow-sm"
                                         >
-                                            <DollarSign className="w-4 h-4 mr-2" />
-                                            Charges
+                                            <DollarSign className="mr-1.5 h-3.5 w-3.5 shrink-0" />
+                                            <span className="truncate">Charges</span>
                                         </TabsTrigger>
-                                        {onEditClick && (
-                                            <div className="ml-auto pr-4 hidden sm:flex items-center">
-                                                {/* Edit gets its own space on desktop in header, handled above */}
-                                            </div>
-                                        )}
                                     </TabsList>
                                 </div>
 
@@ -185,7 +230,7 @@ export function JobDetailsSheet({ job, open, onOpenChange, onEditClick }: JobDet
                                     </div>
                                 )}
 
-                                <ScrollArea className="flex-1 p-6">
+                                <div className="flex-1 overflow-y-auto p-6">
                                     <TabsContent value="info" className="mt-0 space-y-6">
                                         <div className="p-5 bg-white border border-slate-100 rounded-xl shadow-sm">
                                             <div className="pb-3 mb-3 border-b border-slate-50">
@@ -284,7 +329,7 @@ export function JobDetailsSheet({ job, open, onOpenChange, onEditClick }: JobDet
                                         <div className="space-y-4">
                                             <div className="grid grid-cols-2 gap-4">
                                                 <div className="space-y-2">
-                                                    <Label>Warranty Period (Days)</Label>
+                                                    <Label>Service Warranty Period (Days)</Label>
                                                     <Input
                                                         type="number"
                                                         value={warrantyDays}
@@ -301,17 +346,17 @@ export function JobDetailsSheet({ job, open, onOpenChange, onEditClick }: JobDet
                                                 </div>
                                             </div>
                                             <div className="space-y-2">
-                                                <Label>Warranty Notes / Terms</Label>
+                                                <Label>Service Warranty Notes / Terms</Label>
                                                 <Textarea
                                                     value={warrantyNotes}
                                                     onChange={(e) => setWarrantyNotes(e.target.value)}
-                                                    placeholder="Enter specific warranty terms for corporate client..."
+                                                    placeholder="Enter specific service warranty terms for corporate client..."
                                                     className="min-h-[100px]"
                                                 />
                                             </div>
                                             <Button onClick={handleSaveWarranty} disabled={updateJobMutation.isPending}>
                                                 {updateJobMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                                Save Warranty Terms
+                                                Save Service Warranty Terms
                                             </Button>
 
                                             {job && ['Completed', 'Delivered', 'Closed'].includes(job.status) && (
@@ -320,17 +365,17 @@ export function JobDetailsSheet({ job, open, onOpenChange, onEditClick }: JobDet
                                                     <div className="bg-red-50 p-4 rounded-md border border-red-100">
                                                         <h4 className="font-medium text-red-900 mb-2 flex items-center gap-2">
                                                             <Shield className="h-4 w-4" />
-                                                            Warranty Claim
+                                                            CRR / Reservice
                                                         </h4>
                                                         <p className="text-sm text-red-700 mb-4">
-                                                            If this device has returned with a recurring issue covered under warranty, you can initiate a claim here.
+                                                            If this item returned under service warranty, create a linked CRR / reservice record here.
                                                         </p>
                                                         <Button
                                                             variant="destructive"
                                                             className="w-full"
                                                             onClick={() => setIsWarrantyClaimOpen(true)}
                                                         >
-                                                            Create Warranty Claim
+                                                            Create CRR / Reservice
                                                         </Button>
                                                     </div>
                                                 </>
@@ -339,20 +384,20 @@ export function JobDetailsSheet({ job, open, onOpenChange, onEditClick }: JobDet
                                     </TabsContent>
 
                                     <TabsContent value="charges" className="mt-0">
-                                        <div className="space-y-4">
-                                            <div className="flex justify-between items-center bg-muted/20 p-4 rounded-lg border">
+                                        <div className="space-y-4 pb-8">
+                                            <div className="flex flex-col gap-4 bg-muted/20 p-4 rounded-lg border sm:flex-row sm:items-center sm:justify-between">
                                                 <div>
                                                     <h3 className="font-medium text-sm">Estimated Cost</h3>
                                                     <p className="text-2xl font-bold text-primary">
                                                         {job.estimatedCost ? `${job.estimatedCost.toFixed(2)} BDT` : "0.00 BDT"}
                                                     </p>
                                                 </div>
-                                                <div className="flex gap-2">
-                                                    <Button size="sm" variant="outline" className="border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => setIsLocalPurchaseOpen(true)}>
+                                                <div className="flex flex-wrap gap-2">
+                                                    <Button size="sm" variant="outline" className="shrink-0 border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => setIsLocalPurchaseOpen(true)}>
                                                         <ShoppingCart className="w-4 h-4 mr-2" />
                                                         Source Locally
                                                     </Button>
-                                                    <Button size="sm" onClick={() => setIsChargesOpen(true)}>
+                                                    <Button size="sm" className="shrink-0" onClick={() => setIsChargesOpen(true)}>
                                                         <Plus className="w-4 h-4 mr-2" />
                                                         Manage Charges
                                                     </Button>
@@ -386,7 +431,7 @@ export function JobDetailsSheet({ job, open, onOpenChange, onEditClick }: JobDet
                                             </div>
                                         </div>
                                     </TabsContent>
-                                </ScrollArea>
+                                </div>
                             </Tabs>
                         </div>
                         <JobChargesDialog

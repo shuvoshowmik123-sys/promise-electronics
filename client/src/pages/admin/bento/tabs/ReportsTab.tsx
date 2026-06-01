@@ -48,9 +48,49 @@ export default function ReportsTab() {
         const printWindow = window.open("", "_blank");
         if (!printWindow) return;
 
-        // Use existing PDF generation logic from production reports.tsx
-        // (Simplified for brevity, assuming similar structure)
-        const html = `<!DOCTYPE html><html><head><title>Report</title><style>body{font-family:sans-serif;padding:20px;}</style></head><body><h1>Promise Electronics Report</h1><p>Date: ${new Date().toLocaleDateString()}</p><button onclick="window.print()">Print</button></body></html>`;
+        const cur = getCurrencySymbol();
+        const esc = (v: any) => String(v ?? "").replace(/[&<>]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] as string));
+        const periodLabel = ({ this_week: "This Week", this_month: "This Month", last_month: "Last Month", this_year: "This Year" } as Record<string, string>)[selectedPeriod] || selectedPeriod;
+
+        const finRows = monthlyFinancials.map((m: any) =>
+            `<tr><td>${esc(m.name)}</td><td>${cur}${(m.income || 0).toLocaleString()}</td><td>${cur}${(m.expense || 0).toLocaleString()}</td><td>${m.repairs || 0}</td></tr>`
+        ).join("") || `<tr><td colspan="4">No data</td></tr>`;
+
+        const techRows = technicianPerformance.map((t: any) =>
+            `<tr><td>${esc(t.name)}</td><td>${t.tasks || 0}</td><td>${t.efficiency || 0}%</td></tr>`
+        ).join("") || `<tr><td colspan="3">No data</td></tr>`;
+
+        const logRows = activityLogs.map((l: any) =>
+            `<tr><td>${esc(l.action)}</td><td>${esc(l.user)}</td><td>${esc(new Date(l.time).toLocaleString())}</td></tr>`
+        ).join("") || `<tr><td colspan="3">No recent activity</td></tr>`;
+
+        const html = `<!DOCTYPE html><html><head><title>Promise Electronics — Report (${esc(periodLabel)})</title>
+<style>
+  body{font-family:system-ui,sans-serif;padding:32px;color:#1e293b;}
+  h1{margin:0 0 4px;} .sub{color:#64748b;margin:0 0 24px;font-size:13px;}
+  .kpis{display:flex;gap:16px;margin:0 0 28px;flex-wrap:wrap;}
+  .kpi{border:1px solid #e2e8f0;border-radius:10px;padding:14px 18px;min-width:150px;}
+  .kpi .v{font-size:24px;font-weight:800;} .kpi .l{font-size:12px;color:#64748b;}
+  h2{font-size:15px;margin:24px 0 8px;border-bottom:2px solid #e2e8f0;padding-bottom:4px;}
+  table{width:100%;border-collapse:collapse;font-size:13px;} th,td{text-align:left;padding:6px 10px;border-bottom:1px solid #eef2f7;}
+  th{background:#f8fafc;font-size:11px;text-transform:uppercase;color:#64748b;}
+  @media print{button{display:none;}}
+</style></head><body>
+  <h1>Promise Electronics — Report</h1>
+  <p class="sub">Period: ${esc(periodLabel)} · Generated ${esc(new Date().toLocaleString())}</p>
+  <div class="kpis">
+    <div class="kpi"><div class="v">${cur}${(summary.totalRevenue || 0).toLocaleString()}</div><div class="l">Total Revenue</div></div>
+    <div class="kpi"><div class="v">${summary.totalRepairs || 0}</div><div class="l">Repair Jobs</div></div>
+    <div class="kpi"><div class="v">${summary.totalStaff || 0}</div><div class="l">Active Staff</div></div>
+  </div>
+  <h2>Monthly Financials</h2>
+  <table><thead><tr><th>Month</th><th>Income</th><th>Expense</th><th>Repairs</th></tr></thead><tbody>${finRows}</tbody></table>
+  <h2>Technician Performance</h2>
+  <table><thead><tr><th>Technician</th><th>Tasks</th><th>Efficiency</th></tr></thead><tbody>${techRows}</tbody></table>
+  <h2>Recent Activity</h2>
+  <table><thead><tr><th>Action</th><th>User</th><th>Time</th></tr></thead><tbody>${logRows}</tbody></table>
+  <button onclick="window.print()" style="margin-top:24px;padding:10px 20px;border:none;background:#2563eb;color:#fff;border-radius:8px;cursor:pointer;font-weight:600;">Print / Save as PDF</button>
+</body></html>`;
         printWindow.document.write(html);
         printWindow.document.close();
     };
