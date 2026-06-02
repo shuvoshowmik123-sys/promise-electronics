@@ -190,8 +190,15 @@ export function SuccessDialog({ open, onOpenChange, lastTransaction, getCurrency
                 <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-gradient-to-br from-green-400 to-green-600 flex items-center justify-center shadow-lg animate-in zoom-in-50 duration-300">
                     <CheckCircle className="w-10 h-10 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold text-slate-900 mb-2">Sale Complete!</h2>
-                <p className="text-slate-500 mb-6">Transaction #{lastTransaction?.invoiceNumber || lastTransaction?.id}</p>
+                <h2 className="text-2xl font-bold text-slate-900 mb-2">Payment Done!</h2>
+                <p className="text-slate-600 font-semibold mb-1">
+                    {lastTransaction?.customer
+                        ? <>Billed to <span className="text-slate-900">{lastTransaction.customer}</span></>
+                        : "Walk-in sale recorded"}
+                </p>
+                {lastTransaction?.invoiceNumber && (
+                    <p className="text-xs text-slate-400 mb-6">Invoice #{lastTransaction.invoiceNumber}</p>
+                )}
                 <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl p-5 mb-6 border border-slate-200/50">
                     <div className="text-sm text-slate-500 mb-1">Amount Received</div>
                     <div className="text-3xl font-bold text-green-600 tabular-nums">{getCurrencySymbol()}{lastTransaction ? parseFloat(lastTransaction.total).toFixed(2) : "0.00"}</div>
@@ -224,6 +231,8 @@ export function InvoicePreviewDialog({ open, onOpenChange, lastTransaction, comp
     lastTransaction: TransactionData | null; companyInfo: any;
 }) {
     const invoiceRef = useRef<HTMLDivElement>(null);
+    const [downloading, setDownloading] = useState(false);
+
     const handlePrint = () => {
         if (!invoiceRef.current) return;
         const w = window.open("", "_blank");
@@ -232,6 +241,31 @@ export function InvoicePreviewDialog({ open, onOpenChange, lastTransaction, comp
             w.document.close(); w.print();
         }
     };
+
+    const handleDownloadPDF = async () => {
+        if (!invoiceRef.current || !lastTransaction) return;
+        setDownloading(true);
+        try {
+            const html2canvas = (await import("html2canvas")).default;
+            const { default: jsPDF } = await import("jspdf");
+            const canvas = await html2canvas(invoiceRef.current, { scale: 2, backgroundColor: "#ffffff", useCORS: true, logging: false });
+            const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+            const pageW = 210; const pageH = (canvas.height * pageW) / canvas.width;
+            pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, pageW, pageH);
+            const filename = `invoice-${lastTransaction.invoiceNumber || lastTransaction.id}.pdf`;
+            const blob = pdf.output("blob");
+            const file = new File([blob], filename, { type: "application/pdf" });
+            if (navigator.canShare?.({ files: [file] })) {
+                await navigator.share({ files: [file], title: `Invoice ${lastTransaction.invoiceNumber || ""}` });
+            } else {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
+                URL.revokeObjectURL(url);
+            }
+        } catch { handlePrint(); }
+        finally { setDownloading(false); }
+    };
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
@@ -239,7 +273,13 @@ export function InvoicePreviewDialog({ open, onOpenChange, lastTransaction, comp
                 <div className="border rounded-lg overflow-hidden bg-white">{lastTransaction && <Invoice ref={invoiceRef} data={lastTransaction} company={companyInfo} />}</div>
                 <DialogFooter className="gap-2">
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
-                    <Button onClick={handlePrint} className="gap-2"><Printer className="h-4 w-4" /> Print Invoice</Button>
+                    {/* Mobile: download/share only */}
+                    <Button onClick={handleDownloadPDF} disabled={downloading} className="gap-2 md:hidden bg-[#25D366] hover:bg-[#1ebe5c] text-white">
+                        {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                        {downloading ? "Generating…" : "Download PDF"}
+                    </Button>
+                    {/* Desktop: print */}
+                    <Button onClick={handlePrint} className="gap-2 hidden md:inline-flex"><Printer className="h-4 w-4" /> Print Invoice</Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>
