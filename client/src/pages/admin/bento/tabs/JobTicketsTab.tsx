@@ -353,10 +353,10 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
     return (
         <div className="flex flex-col h-full min-h-0 gap-0 md:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden relative">
             <div className="flex-1 min-h-0 flex flex-col">
-                <BentoCard className="flex-1 min-h-0 flex flex-col bg-white border-0 md:border-slate-200 shadow-none md:shadow-sm rounded-none md:rounded-[2rem] overflow-hidden p-0" variant="ghost" disableHover>
+                <BentoCard className="flex-1 min-h-0 flex flex-col bg-[#f8fafc] md:bg-white border-0 md:border-slate-200 shadow-none md:shadow-sm rounded-none md:rounded-[2rem] overflow-hidden p-0" variant="ghost" disableHover>
 
                     {/* Fixed Top Header (Sticky on Desktop, Scrolls on Mobile) */}
-                    <div className="flex-none px-4 py-4 pb-3 md:p-6 md:pb-4 bg-white/95 backdrop-blur-sm border-b border-slate-100 z-30">
+                    <div className="flex-none px-4 py-4 pb-3 md:p-6 md:pb-4 bg-[#f8fafc]/95 md:bg-white/95 backdrop-blur-sm border-b border-slate-100 z-30">
                         <div className="flex flex-row gap-3 md:gap-4 justify-between items-center mb-4 md:mb-6">
                             <div>
                                 <div className="flex items-center gap-3">
@@ -471,7 +471,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
 
                     {/* Scrollable Card Grid Area */}
                     <div
-                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-slate-50/60 px-3 py-3 pb-4 md:p-6 lg:p-8 md:pb-24"
+                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] md:bg-slate-50/60 px-3 py-3 pb-4 md:p-6 lg:p-8 md:pb-24"
                         onScroll={(event) => {
                             if (window.innerWidth >= 768) return;
                             window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {

@@ -801,7 +801,7 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
 
     if (isFixed) {
         return (
-            <div className={cn("h-full md:pt-5 px-0 md:px-5 pb-[calc(8.5rem+env(safe-area-inset-bottom))] md:pb-5 flex flex-col transition-[padding] duration-200", mobileTopPadding)}>
+            <div className={cn("h-full md:pt-5 px-0 md:px-5 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-5 flex flex-col transition-[padding] duration-200", mobileTopPadding)}>
                 <div className="max-w-[1600px] mx-auto w-full h-full flex flex-col min-h-0">
                     {children}
                 </div>
@@ -809,7 +809,7 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
         );
     }
     return (
-        <div className={cn("min-h-full md:pt-5 px-0 md:px-5 pb-[calc(9rem+env(safe-area-inset-bottom))] md:pb-5 flex flex-col transition-[padding] duration-200", mobileTopPadding)}>
+        <div className={cn("min-h-full md:pt-5 px-0 md:px-5 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-5 flex flex-col transition-[padding] duration-200", mobileTopPadding)}>
             <div className="max-w-[1600px] mx-auto w-full flex-1">
                 {children}
             </div>
