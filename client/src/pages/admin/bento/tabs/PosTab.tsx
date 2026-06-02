@@ -228,8 +228,12 @@ export default function PosTab() {
                 discount: String(response.discount || "0"), total: String(response.total), paymentMethod: response.paymentMethod,
                 paymentStatus: response.paymentStatus || (response.paymentMethod === "Due" ? "Due" : "Paid"), createdAt: String(response.createdAt),
             };
-            setLastTransaction(td); setShowSuccessDialog(true);
+            // Close mobile cart sheet FIRST, then show dialog after spring exit animation (~350ms).
+            // Without this the SuccessDialog (z-50) renders behind the cart sheet (z-[60]) and is invisible.
+            setMobileCartOpen(false);
+            setLastTransaction(td);
             setCartItems([]); setLinkedJobCharges([]); setCustomerName(""); setCustomerPhone(""); setCustomerAddress(""); setDiscount(0); setPaymentMethod("Cash");
+            setTimeout(() => setShowSuccessDialog(true), 380);
             queryClient.invalidateQueries({ queryKey: ["pos-transactions"] });
             queryClient.invalidateQueries({ queryKey: ["inventory"] });
             queryClient.invalidateQueries({ queryKey: ["pettyCash"] });
