@@ -15,6 +15,10 @@ import { eq, and, sql, lt } from 'drizzle-orm';
 import { brainService } from '../brain/brain.service.js';
 import { upsertPresence } from './assignment.service.js';
 
+type SlaState = 'ok' | 'at-risk' | 'breached';
+const lastSlaStates = new Map<string, SlaState>();
+let lastSlaSummary = '';
+
 // ─── SLA breach check ─────────────────────────────────────────────────────────
 
 export async function checkSlaBreach() {
@@ -40,25 +44,36 @@ export async function checkSlaBreach() {
             )
         );
 
-        let yellowed = 0, redded = 0;
+        let yellowed = 0, redded = 0, changed = 0;
+        const currentIds = new Set<string>();
         for (const job of atRisk) {
             if (!job.slaDeadline) continue;
+            currentIds.add(job.id);
             const deadline = new Date(job.slaDeadline);
             const remaining = deadline.getTime() - now.getTime();
+            let state: SlaState = 'ok';
 
             if (remaining < 0) {
-                // SLA breached — red
-                console.warn(`[SLA] BREACH — Job ${job.id} (${job.device}) for client ${job.corporateClientId} — overdue by ${Math.round(-remaining / 3600000)}h`);
+                state = 'breached';
                 redded++;
             } else if (remaining < twoDaysMs) {
-                // 2 days warning — yellow
-                console.warn(`[SLA] WARNING — Job ${job.id} (${job.device}) — ${Math.round(remaining / 3600000)}h remaining`);
+                state = 'at-risk';
                 yellowed++;
             }
+
+            const previous = lastSlaStates.get(job.id);
+            if (previous && previous !== state) changed++;
+            lastSlaStates.set(job.id, state);
         }
 
-        if (yellowed + redded > 0) {
-            console.log(`[SLA] Sweep: ${redded} breached, ${yellowed} at-risk`);
+        for (const jobId of Array.from(lastSlaStates.keys())) {
+            if (!currentIds.has(jobId)) lastSlaStates.delete(jobId);
+        }
+
+        const summary = `${redded}:${yellowed}`;
+        if ((yellowed + redded > 0 || lastSlaSummary !== summary) && (changed > 0 || lastSlaSummary !== summary)) {
+            console.log(`[SLA] Sweep: ${redded} breached, ${yellowed} at-risk${changed > 0 ? `, ${changed} changed` : ''}`);
+            lastSlaSummary = summary;
         }
     } catch (e: any) {
         console.warn('[SLA] Sweep failed:', e.message?.slice(0, 80));

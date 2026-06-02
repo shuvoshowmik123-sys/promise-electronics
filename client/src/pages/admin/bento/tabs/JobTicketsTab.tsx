@@ -460,7 +460,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                     </div>
 
                     {/* Scrollable Card Grid Area */}
-                    <div className="flex-1 bg-slate-50/30 p-4 sm:p-6 lg:p-8 pb-4 md:pb-24">
+                    <div className="flex-1 bg-slate-50/30 p-4 sm:p-6 lg:p-8 pb-24">
                         {filteredJobs.length === 0 ? (
                             <div className="h-64 flex flex-col items-center justify-center gap-4">
                                 <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">

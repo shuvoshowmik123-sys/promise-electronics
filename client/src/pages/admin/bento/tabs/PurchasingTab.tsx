@@ -37,7 +37,7 @@ export default function PurchasingTab() {
     const pastOrders = pos?.filter((po: PurchaseOrder) => po.status === 'Received' || po.status === 'Cancelled') || [];
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-24 md:pb-0">
             <div className="flex justify-between items-center mb-6">
                 <div>
                     <h2 className="text-2xl font-bold tracking-tight text-gray-900">Purchasing & Receiving</h2>
@@ -98,7 +98,7 @@ export default function PurchasingTab() {
                 </div>
 
                 {/* Quick Stats Column */}
-                <div className="space-y-6">
+                <div className="space-y-6 pb-24 md:pb-0">
                     <div className="bg-gradient-to-br from-orange-500 to-amber-600 rounded-[2rem] p-6 text-white shadow-lg">
                         <div className="flex justify-between items-start">
                             <div>

@@ -105,7 +105,7 @@ export default function OrdersTab({ initialSearchQuery, onSearchConsumed }: { in
     return (
         <>
             <motion.div
-                className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6"
+                className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6 pb-24 md:pb-0"
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"

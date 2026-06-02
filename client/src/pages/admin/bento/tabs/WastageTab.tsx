@@ -103,7 +103,7 @@ export default function WastageTab() {
 
     return (
         <motion.div
-            className="space-y-6"
+            className="space-y-6 pb-24 md:pb-0"
             variants={containerVariants}
             initial="hidden"
             animate="visible"

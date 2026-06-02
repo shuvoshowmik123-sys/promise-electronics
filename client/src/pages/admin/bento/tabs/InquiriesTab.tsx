@@ -86,7 +86,7 @@ export default function InquiriesTab() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6"
+            className="space-y-6 pb-24 md:pb-0"
         >
             {/* Header Stats */}
             <motion.div variants={itemVariants} className="grid gap-4 md:grid-cols-3">

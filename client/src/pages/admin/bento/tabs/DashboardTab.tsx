@@ -8,7 +8,8 @@ import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from "recharts";
 import {
-    BentoCard, containerVariants, itemVariants, DashboardSkeleton
+    BentoCard, containerVariants, itemVariants, DashboardSkeleton,
+    MobileActionList, MobileKpiGrid, MobileSectionHeader
 } from "../shared";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -227,16 +228,90 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                 return null;
         }
     }
+    const pendingMobileItems = (data.pendingJobsList ?? []).slice(0, 3).map((job: any) => ({
+        key: job.id || job.ticketNumber,
+        title: `Action: ${job.ticketNumber}`,
+        meta: job.problemDescription || job.deviceModel || "Needs staff review",
+        icon: <AlertCircle className="h-4 w-4" />,
+        tone: "amber" as const,
+        onClick: () => navigateTo("jobs", job.ticketNumber),
+    }));
+    const lowStockMobileItems = (data.lowStockItems ?? []).slice(0, 2).map((item: any) => ({
+        key: item.id || item.name,
+        title: item.name || "Low stock item",
+        meta: `Stock ${item.stock ?? 0} / Min ${item.lowStockThreshold || 5}`,
+        icon: <Package className="h-4 w-4" />,
+        tone: "rose" as const,
+        onClick: () => navigateTo("inventory", item.name),
+    }));
+    const recentMobileItems = (data.recentJobs ?? []).slice(0, 4).map((job: any, i: number) => ({
+        key: job.id || `${job.ticketNumber}-${i}`,
+        title: job.ticketNumber || "Recent job",
+        meta: [job.deviceModel, job.status, job.technician].filter(Boolean).join(" - "),
+        icon: <CheckCircle2 className="h-4 w-4" />,
+        tone: "blue" as const,
+        onClick: () => setSelectedActivity(job),
+    }));
+
     return (
         <motion.div
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6 pb-8"
+            className="space-y-4 pb-24 md:pb-8 md:space-y-6"
         >
+            <div className="space-y-3 md:hidden">
+                <MobileSectionHeader title="Command Dashboard" meta="Today at a glance" />
+                <MobileKpiGrid
+                    items={[
+                        {
+                            label: "Revenue",
+                            value: `BDT ${(data.totalRevenue ?? 0).toLocaleString()}`,
+                            meta: "This month",
+                            icon: <DollarSign className="h-4 w-4" />,
+                            tone: "emerald",
+                            onClick: () => setSelectedCard("revenue"),
+                        },
+                        {
+                            label: "Active",
+                            value: data.activeCount ?? 0,
+                            meta: `${(data.activeJobsList ?? []).length} updates`,
+                            icon: <Activity className="h-4 w-4" />,
+                            tone: "blue",
+                            onClick: () => setSelectedCard("active"),
+                        },
+                        {
+                            label: "Pending",
+                            value: data.pendingCount ?? 0,
+                            meta: "Needs action",
+                            icon: <AlertCircle className="h-4 w-4" />,
+                            tone: "amber",
+                            onClick: () => setSelectedCard("pending"),
+                        },
+                        {
+                            label: "Parts Low",
+                            value: data.lowStockCount ?? 0,
+                            meta: "Restock",
+                            icon: <Package className="h-4 w-4" />,
+                            tone: "rose",
+                            onClick: () => setSelectedCard("parts"),
+                        },
+                    ]}
+                />
+                <MobileActionList
+                    title="Urgent Work"
+                    empty="No urgent work right now."
+                    items={[...pendingMobileItems, ...lowStockMobileItems]}
+                />
+                <MobileActionList
+                    title="Recent Jobs"
+                    empty="No recent job activity."
+                    items={recentMobileItems}
+                />
+            </div>
 
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {/* ROW 1: GRAPHS */}
                 <motion.div variants={itemVariants} className="col-span-1 md:col-span-2 h-full min-h-[320px]">
                     <BentoCard
@@ -571,10 +646,10 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                                 animate={{ opacity: 1, scale: 1, x: 0, y: 0 }}
                                 exit={{ opacity: 0, scale: 0.9, x: (cardMeta[selectedCard]?.slideFrom.x ?? 0) / 2, y: (cardMeta[selectedCard]?.slideFrom.y ?? 0) / 2 }}
                                 transition={{ type: "spring", stiffness: 260, damping: 25 }}
-                                className="fixed z-[9999] top-1/2 left-1/2 w-[90vw] max-w-2xl max-h-[80vh] -translate-x-1/2 -translate-y-1/2 rounded-[2rem] bg-white shadow-2xl shadow-black/20 ring-1 ring-black/5 overflow-hidden flex flex-col"
+                                className="fixed bottom-0 left-0 right-0 z-[9999] flex max-h-[86vh] w-full flex-col overflow-hidden rounded-t-[1.5rem] bg-white shadow-2xl shadow-black/20 ring-1 ring-black/5 md:bottom-auto md:left-1/2 md:right-auto md:top-1/2 md:max-h-[80vh] md:w-[90vw] md:max-w-2xl md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-[2rem]"
                             >
                                 {/* Header with gradient */}
-                                <div className={`bg-gradient-to-br ${cardMeta[selectedCard]?.gradient} p-6 text-white flex items-center justify-between`}>
+                                <div className={`bg-gradient-to-br ${cardMeta[selectedCard]?.gradient} p-4 text-white flex items-center justify-between md:p-6`}>
                                     <div className="flex items-center gap-3">
                                         <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
                                             {cardMeta[selectedCard]?.icon}
@@ -590,7 +665,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                                 </div>
 
                                 {/* Content */}
-                                <div className="p-6 overflow-y-auto flex-1">
+                                <div className="flex-1 overflow-y-auto p-4 md:p-6">
                                     {getPopupContent(selectedCard)}
                                 </div>
                             </motion.div>
@@ -620,10 +695,10 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                                 animate={{ opacity: 1, scale: 1, y: 0 }}
                                 exit={{ opacity: 0, scale: 0.92, y: 20 }}
                                 transition={{ type: "spring", stiffness: 280, damping: 26 }}
-                                className="fixed z-[9999] top-1/2 left-1/2 w-[90vw] max-w-lg -translate-x-1/2 -translate-y-1/2 rounded-[2rem] bg-white shadow-2xl shadow-black/20 ring-1 ring-black/5 overflow-hidden flex flex-col"
+                                className="fixed bottom-0 left-0 right-0 z-[9999] flex max-h-[86vh] w-full flex-col overflow-hidden rounded-t-[1.5rem] bg-white shadow-2xl shadow-black/20 ring-1 ring-black/5 md:bottom-auto md:left-1/2 md:right-auto md:top-1/2 md:w-[90vw] md:max-w-lg md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-[2rem]"
                             >
                                 {/* Header */}
-                                <div className="bg-gradient-to-br from-slate-700 to-slate-900 p-6 text-white flex items-center justify-between">
+                                <div className="bg-gradient-to-br from-slate-700 to-slate-900 p-4 text-white flex items-center justify-between md:p-6">
                                     <div className="flex items-center gap-3">
                                         <div className="h-10 w-10 rounded-xl bg-white/20 flex items-center justify-center backdrop-blur-sm">
                                             <Clock size={20} />
@@ -642,7 +717,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                                 </div>
 
                                 {/* Content */}
-                                <div className="p-6 space-y-4">
+                                <div className="space-y-4 overflow-y-auto p-4 md:p-6">
                                     {/* Status banner */}
                                     <div className="flex items-center gap-2 px-4 py-3 rounded-xl bg-blue-50 border border-blue-100">
                                         <CheckCircle2 size={16} className="text-blue-600 shrink-0" />

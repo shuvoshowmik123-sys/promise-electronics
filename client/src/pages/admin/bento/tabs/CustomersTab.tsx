@@ -72,7 +72,7 @@ export default function CustomersTab() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6"
+            className="space-y-6 pb-24 md:pb-0"
         >
             {/* Header section with Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

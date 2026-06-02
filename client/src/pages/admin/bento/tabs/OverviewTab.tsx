@@ -42,7 +42,7 @@ export default function OverviewTab() {
     const { stats, technicianWorkloads, dueToday, readyForDelivery } = overviewData as any;
 
     return (
-        <div className="space-y-6 pb-8">
+        <div className="space-y-6 pb-24 md:pb-8">
             {/* KPI ROW */}
             <motion.div
                 variants={containerVariants}

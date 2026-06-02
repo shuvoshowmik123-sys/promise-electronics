@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CheckCircle, Link2, Loader2, Search, XCircle } from "lucide-react";
+import { CheckCircle, Link2, Loader2, PlusCircle, Search, XCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { dueRecordsApi, manualPaymentsApi, searchApi } from "@/lib/api";
@@ -46,6 +47,7 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
     const [selectedLinkLabel, setSelectedLinkLabel] = useState("");
     const [rejectTarget, setRejectTarget] = useState<any>(null);
     const [rejectReason, setRejectReason] = useState("");
+    const [showWalkinSheet, setShowWalkinSheet] = useState(false);
     const [form, setForm] = useState({
         jobTicketId: "",
         dueRecordId: "",
@@ -135,6 +137,7 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
             setLinkSearch("");
             setSelectedLinkLabel("");
             setIsLinkSearchOpen(false);
+            setShowWalkinSheet(false);
         },
         onError: (error: Error) => toast.error(error.message || "Failed to record payment"),
     });
@@ -205,111 +208,154 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
         });
     };
 
+    // Walk-in form fields — shared between Sheet (mobile) and inline panel (desktop)
+    const walkinFields = (
+        <div className="space-y-3">
+            <div className="grid gap-2">
+                <Label>Link job, due, or request</Label>
+                <div className="relative">
+                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        value={linkSearch}
+                        onChange={(e) => {
+                            setLinkSearch(e.target.value);
+                            setSelectedLinkLabel("");
+                            setIsLinkSearchOpen(true);
+                        }}
+                        placeholder="Search phone, ticket, invoice, name..."
+                        className="pl-9 pr-9 rounded-xl"
+                    />
+                    {linkedReference && (
+                        <button
+                            type="button"
+                            onClick={clearLink}
+                            className="absolute right-3 top-2.5 text-muted-foreground hover:text-slate-900"
+                        >
+                            <XCircle className="h-4 w-4" />
+                        </button>
+                    )}
+                </div>
+                {linkedReference && (
+                    <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                        <Link2 className="h-4 w-4" />
+                        <span className="font-mono">{selectedLinkLabel || linkedReference}</span>
+                    </div>
+                )}
+                {isLinkSearchOpen && debouncedLinkSearch.length >= 2 && (
+                    <div className="rounded-xl border bg-slate-50 max-h-56 overflow-y-auto">
+                        {isSearchingLinks ? (
+                            <div className="flex items-center justify-center py-5 text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />Searching
+                            </div>
+                        ) : linkOptions.length === 0 ? (
+                            <div className="py-5 text-center text-sm text-muted-foreground">No matching job, due, or request</div>
+                        ) : linkOptions.map((link) => (
+                            <button
+                                key={`${link.type}-${link.id}`}
+                                type="button"
+                                onClick={() => applyLink(link)}
+                                className="w-full border-b last:border-b-0 px-3 py-2 text-left hover:bg-white"
+                            >
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-2">
+                                            <Badge variant="outline" className="capitalize">{link.type.replace("-", " ")}</Badge>
+                                            <span className="font-mono text-xs font-semibold truncate">{link.label}</span>
+                                        </div>
+                                        <div className="mt-1 text-xs text-muted-foreground truncate">
+                                            {[link.customerName, link.customerPhone, link.meta].filter(Boolean).join(" | ")}
+                                        </div>
+                                    </div>
+                                    {link.amount != null && (
+                                        <div className="shrink-0 text-sm font-semibold">{getCurrencySymbol()}{link.amount.toLocaleString()}</div>
+                                    )}
+                                </div>
+                            </button>
+                        ))}
+                    </div>
+                )}
+            </div>
+            <div className="grid gap-2">
+                <Label>Method</Label>
+                <Select value={form.method} onValueChange={(method) => setForm({ ...form, method })}>
+                    <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="bkash_send_money">bKash Send Money</SelectItem>
+                        <SelectItem value="nagad_send_money">Nagad Send Money</SelectItem>
+                        <SelectItem value="cash">Cash</SelectItem>
+                        <SelectItem value="credit">Credit</SelectItem>
+                    </SelectContent>
+                </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-2"><Label>Amount</Label><Input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="rounded-xl" /></div>
+                <div className="grid gap-2"><Label>Sender</Label><Input value={form.senderNumber} onChange={(e) => setForm({ ...form, senderNumber: e.target.value })} className="rounded-xl" /></div>
+            </div>
+            {(form.method === "bkash_send_money" || form.method === "nagad_send_money") && (
+                <div className="grid gap-2"><Label>Transaction ID</Label><Input value={form.transactionId} onChange={(e) => setForm({ ...form, transactionId: e.target.value })} className="rounded-xl" /></div>
+            )}
+            <div className="grid gap-2"><Label>Job Ticket ID</Label><Input value={form.jobTicketId} onChange={(e) => { setSelectedLinkLabel(""); setForm({ ...form, jobTicketId: e.target.value, dueRecordId: "", serviceRequestId: "" }); }} className="rounded-xl" /></div>
+            <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-2"><Label>Due ID</Label><Input value={form.dueRecordId} onChange={(e) => { setSelectedLinkLabel(""); setForm({ ...form, dueRecordId: e.target.value, jobTicketId: "", serviceRequestId: "" }); }} className="rounded-xl" /></div>
+                <div className="grid gap-2"><Label>Request ID</Label><Input value={form.serviceRequestId} onChange={(e) => { setSelectedLinkLabel(""); setForm({ ...form, serviceRequestId: e.target.value, jobTicketId: "", dueRecordId: "" }); }} className="rounded-xl" /></div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+                <div className="grid gap-2"><Label>Customer</Label><Input value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} className="rounded-xl" /></div>
+                <div className="grid gap-2"><Label>Phone</Label><Input value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} className="rounded-xl" /></div>
+            </div>
+            <div className="grid gap-2">
+                <Label>Notes</Label>
+                <Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="rounded-xl" />
+            </div>
+        </div>
+    );
+
     return (
-        <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] gap-4">
-            <div className="rounded-xl border bg-white p-4 space-y-3">
+        <div className="flex flex-col gap-2 xl:grid xl:grid-cols-[360px_1fr] xl:gap-4">
+
+            {/* ── Mobile: FAB opens a bottom Sheet with the walk-in form ── */}
+            <div className="xl:hidden">
+                <button
+                    type="button"
+                    onClick={() => setShowWalkinSheet(true)}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-bold text-emerald-700 active:bg-emerald-100"
+                >
+                    <PlusCircle className="h-4 w-4" />
+                    Record Walk-in Payment
+                </button>
+                <Sheet open={showWalkinSheet} onOpenChange={setShowWalkinSheet}>
+                    <SheetContent side="bottom" className="h-[92dvh] rounded-t-3xl overflow-y-auto pb-8 pt-0 px-4">
+                        <div className="sticky top-0 z-10 border-b bg-white pb-3 pt-4 mb-4">
+                            <h3 className="font-bold text-slate-900">Walk-in Manual Record</h3>
+                            <p className="text-xs text-muted-foreground">Use only when staff collected payment outside the customer portal.</p>
+                        </div>
+                        {walkinFields}
+                        <Button
+                            onClick={submitPayment}
+                            disabled={createMutation.isPending || !form.amount}
+                            className="mt-4 w-full rounded-xl"
+                        >
+                            {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Record
+                        </Button>
+                    </SheetContent>
+                </Sheet>
+            </div>
+
+            {/* ── Desktop xl+: inline walk-in form panel ── */}
+            <div className="hidden xl:block order-2 xl:order-1 rounded-xl border bg-white p-4 space-y-3">
                 <div>
                     <h3 className="font-bold text-slate-900">Walk-in Manual Record</h3>
                     <p className="text-xs text-muted-foreground">Use only when staff collected payment outside the customer portal.</p>
                 </div>
-                <div className="grid gap-2">
-                    <Label>Link job, due, or request</Label>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                        <Input
-                            value={linkSearch}
-                            onChange={(e) => {
-                                setLinkSearch(e.target.value);
-                                setSelectedLinkLabel("");
-                                setIsLinkSearchOpen(true);
-                            }}
-                            placeholder="Search phone, ticket, invoice, name..."
-                            className="pl-9 pr-9 rounded-xl"
-                        />
-                        {linkedReference && (
-                            <button
-                                type="button"
-                                onClick={clearLink}
-                                className="absolute right-3 top-2.5 text-muted-foreground hover:text-slate-900"
-                            >
-                                <XCircle className="h-4 w-4" />
-                            </button>
-                        )}
-                    </div>
-                    {linkedReference && (
-                        <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
-                            <Link2 className="h-4 w-4" />
-                            <span className="font-mono">{selectedLinkLabel || linkedReference}</span>
-                        </div>
-                    )}
-                    {isLinkSearchOpen && debouncedLinkSearch.length >= 2 && (
-                        <div className="rounded-xl border bg-slate-50 max-h-56 overflow-y-auto">
-                            {isSearchingLinks ? (
-                                <div className="flex items-center justify-center py-5 text-sm text-muted-foreground">
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />Searching
-                                </div>
-                            ) : linkOptions.length === 0 ? (
-                                <div className="py-5 text-center text-sm text-muted-foreground">No matching job, due, or request</div>
-                            ) : linkOptions.map((link) => (
-                                <button
-                                    key={`${link.type}-${link.id}`}
-                                    type="button"
-                                    onClick={() => applyLink(link)}
-                                    className="w-full border-b last:border-b-0 px-3 py-2 text-left hover:bg-white"
-                                >
-                                    <div className="flex items-center justify-between gap-2">
-                                        <div className="min-w-0">
-                                            <div className="flex items-center gap-2">
-                                                <Badge variant="outline" className="capitalize">{link.type.replace("-", " ")}</Badge>
-                                                <span className="font-mono text-xs font-semibold truncate">{link.label}</span>
-                                            </div>
-                                            <div className="mt-1 text-xs text-muted-foreground truncate">
-                                                {[link.customerName, link.customerPhone, link.meta].filter(Boolean).join(" | ")}
-                                            </div>
-                                        </div>
-                                        {link.amount != null && (
-                                            <div className="shrink-0 text-sm font-semibold">{getCurrencySymbol()}{link.amount.toLocaleString()}</div>
-                                        )}
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
-                <div className="grid gap-2">
-                    <Label>Method</Label>
-                    <Select value={form.method} onValueChange={(method) => setForm({ ...form, method })}>
-                        <SelectTrigger className="rounded-xl"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="bkash_send_money">bKash Send Money</SelectItem>
-                            <SelectItem value="nagad_send_money">Nagad Send Money</SelectItem>
-                            <SelectItem value="cash">Cash</SelectItem>
-                            <SelectItem value="credit">Credit</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                    <div className="grid gap-2"><Label>Amount</Label><Input type="number" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} className="rounded-xl" /></div>
-                    <div className="grid gap-2"><Label>Sender</Label><Input value={form.senderNumber} onChange={(e) => setForm({ ...form, senderNumber: e.target.value })} className="rounded-xl" /></div>
-                </div>
-                <div className="grid gap-2"><Label>Transaction ID</Label><Input value={form.transactionId} onChange={(e) => setForm({ ...form, transactionId: e.target.value })} className="rounded-xl" /></div>
-                <div className="grid gap-2"><Label>Job Ticket ID</Label><Input value={form.jobTicketId} onChange={(e) => { setSelectedLinkLabel(""); setForm({ ...form, jobTicketId: e.target.value, dueRecordId: "", serviceRequestId: "" }); }} className="rounded-xl" /></div>
-                <div className="grid grid-cols-2 gap-2">
-                    <div className="grid gap-2"><Label>Due ID</Label><Input value={form.dueRecordId} onChange={(e) => { setSelectedLinkLabel(""); setForm({ ...form, dueRecordId: e.target.value, jobTicketId: "", serviceRequestId: "" }); }} className="rounded-xl" /></div>
-                    <div className="grid gap-2"><Label>Request ID</Label><Input value={form.serviceRequestId} onChange={(e) => { setSelectedLinkLabel(""); setForm({ ...form, serviceRequestId: e.target.value, jobTicketId: "", dueRecordId: "" }); }} className="rounded-xl" /></div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                    <div className="grid gap-2"><Label>Customer</Label><Input value={form.customerName} onChange={(e) => setForm({ ...form, customerName: e.target.value })} className="rounded-xl" /></div>
-                    <div className="grid gap-2"><Label>Phone</Label><Input value={form.customerPhone} onChange={(e) => setForm({ ...form, customerPhone: e.target.value })} className="rounded-xl" /></div>
-                </div>
-                <div className="grid gap-2"><Label>Notes</Label><Textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="rounded-xl" /></div>
+                {walkinFields}
                 <Button onClick={submitPayment} disabled={createMutation.isPending || !form.amount} className="w-full rounded-xl">
                     {createMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Record
                 </Button>
             </div>
 
-            <div className="rounded-xl border bg-white overflow-hidden">
-                <div className="flex items-center justify-between p-4 border-b">
+            {/* ── Customer Payment Verification panel (always visible) ── */}
+            <div className="order-1 rounded-xl border bg-white overflow-hidden xl:order-2">
+                <div className="flex flex-col gap-2 p-3 border-b md:flex-row md:items-center md:justify-between md:p-4">
                     <div>
                         <h3 className="font-bold text-slate-900">
                             {source === "customer_submission" ? "Customer Payment Verification" : "Manual Payment Records"}
@@ -320,16 +366,16 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
                                 : "Staff-entered walk-in or internal payment records."}
                         </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:flex md:items-center">
                         <Select value={source} onValueChange={(value) => setSource(value as typeof source)}>
-                            <SelectTrigger className="w-52 rounded-xl"><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="w-full rounded-xl md:w-52"><SelectValue /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="customer_submission">Customer Submissions</SelectItem>
                                 <SelectItem value="admin_manual">Walk-in Manual</SelectItem>
                             </SelectContent>
                         </Select>
                         <Select value={status} onValueChange={setStatus}>
-                            <SelectTrigger className="w-44 rounded-xl"><SelectValue /></SelectTrigger>
+                            <SelectTrigger className="w-full rounded-xl md:w-44"><SelectValue /></SelectTrigger>
                             <SelectContent>
                                 <SelectItem value="pending">Pending</SelectItem>
                                 <SelectItem value="staff_verified">Verified</SelectItem>
@@ -339,7 +385,52 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
                         </Select>
                     </div>
                 </div>
-                <Table>
+                {/* Mobile card list */}
+                <div className="space-y-2 p-2.5 md:hidden">
+                    {isLoading ? (
+                        <div className="flex h-28 items-center justify-center rounded-xl bg-slate-50">
+                            <Loader2 className="w-5 h-5 animate-spin" />
+                        </div>
+                    ) : records.length === 0 ? (
+                        <div className="rounded-xl bg-slate-50 px-4 py-8 text-center text-sm text-muted-foreground">No manual payments found</div>
+                    ) : records.map((record: any) => (
+                        <div key={record.id} className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                            <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                    <div className="text-sm font-bold text-slate-900">{methodLabels[record.method] || record.method}</div>
+                                    <div className="mt-1 font-mono text-xs text-slate-500">{record.transactionId || record.id}</div>
+                                </div>
+                                <Badge variant="outline" className={statusColors[record.status]}>{record.status}</Badge>
+                            </div>
+                            <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
+                                <div className="rounded-lg bg-slate-50 p-1.5">
+                                    <div className="text-slate-400">Sender</div>
+                                    <div className="truncate font-semibold text-slate-800">{record.senderNumber || "-"}</div>
+                                </div>
+                                <div className="rounded-lg bg-slate-50 p-1.5">
+                                    <div className="text-slate-400">Amount</div>
+                                    <div className="font-semibold text-slate-800">{getCurrencySymbol()}{Number(record.amount).toLocaleString()}</div>
+                                </div>
+                                <div className="rounded-lg bg-slate-50 p-1.5">
+                                    <div className="text-slate-400">Customer</div>
+                                    <div className="truncate font-semibold text-slate-800">{record.customerName || record.customerPhone || "-"}</div>
+                                </div>
+                                <div className="rounded-lg bg-slate-50 p-1.5">
+                                    <div className="text-slate-400">Reference</div>
+                                    <div className="truncate font-mono font-semibold text-slate-800">{record.jobTicketId || record.dueRecordId || record.serviceRequestId || "-"}</div>
+                                </div>
+                            </div>
+                            {record.status === "pending" && (
+                                <div className="mt-2 grid grid-cols-2 gap-1.5">
+                                    <Button size="sm" onClick={() => verifyMutation.mutate(record.id)} disabled={verifyMutation.isPending} className="rounded-xl"><CheckCircle className="w-4 h-4 mr-1" />Verify</Button>
+                                    <Button size="sm" variant="outline" onClick={() => setRejectTarget(record)} className="rounded-xl"><XCircle className="w-4 h-4 mr-1" />Reject</Button>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+                {/* Desktop table */}
+                <Table className="hidden md:table">
                     <TableHeader>
                         <TableRow>
                             <TableHead>Method</TableHead>

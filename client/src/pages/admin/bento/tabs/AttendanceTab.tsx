@@ -95,7 +95,7 @@ export default function AttendanceTab() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6"
+            className="space-y-6 pb-24 md:pb-0"
         >
             {/* Header */}
             <motion.div variants={itemVariants} className="flex flex-col md:flex-row md:items-center justify-between gap-4">

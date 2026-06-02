@@ -551,7 +551,7 @@ export default function PosTab() {
 
             {/* Mobile Floating Cart Bar */}
             {isMobile && cartCount > 0 && !mobileCartOpen && (
-                <motion.div initial={{ y: 80 }} animate={{ y: 0 }} className="fixed bottom-4 left-4 right-4 z-40 bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 text-white rounded-2xl shadow-xl shadow-indigo-500/30 p-4 flex items-center justify-between" onClick={() => setMobileCartOpen(true)}>
+                <motion.div initial={{ y: 80 }} animate={{ y: 0 }} className="fixed bottom-[84px] left-4 right-4 z-40 bg-gradient-to-r from-indigo-600 via-violet-600 to-purple-600 text-white rounded-2xl shadow-xl shadow-indigo-500/30 p-4 flex items-center justify-between" onClick={() => setMobileCartOpen(true)}>
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-white/20 backdrop-blur-sm flex items-center justify-center relative">
                             <ShoppingCart className="w-5 h-5" />
@@ -567,8 +567,8 @@ export default function PosTab() {
             <AnimatePresence>
                 {isMobile && mobileCartOpen && (
                     <>
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40" onClick={() => setMobileCartOpen(false)} />
-                        <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="fixed bottom-0 left-0 right-0 z-50 bg-white rounded-t-3xl shadow-2xl max-h-[90vh] flex flex-col">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[55]" onClick={() => setMobileCartOpen(false)} />
+                        <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="fixed bottom-0 left-0 right-0 z-[60] bg-white rounded-t-3xl shadow-2xl max-h-[90vh] flex flex-col">
                             <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1" />
                             <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-purple-50">
                                 <div className="flex items-center gap-2 text-indigo-900"><ShoppingCart className="w-5 h-5" /><h3 className="font-bold text-lg">Cart ({cartCount})</h3></div>

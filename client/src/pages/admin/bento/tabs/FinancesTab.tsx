@@ -1,10 +1,10 @@
 
 import { motion } from "framer-motion";
 import {
-    TrendingUp, AlertCircle, Wallet, ShoppingCart, TrendingDown,
+    TrendingUp, AlertCircle, ChevronDown, Wallet, ShoppingCart, TrendingDown,
     DollarSign, Clock, Loader2, Smartphone, ArrowRight, CheckCircle2, Inbox
 } from "lucide-react";
-import { BentoCard, containerVariants, itemVariants } from "../shared";
+import { BentoCard, containerVariants, itemVariants, MobileCommandRail, MobileMicroMetricGrid, MobileSegmentTabs } from "../shared";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { posTransactionsApi, pettyCashApi, dueRecordsApi, refundsApi, settingsApi, manualPaymentsApi, drawerApi } from "@/lib/api";
@@ -38,6 +38,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
     const [moneyOutView, setMoneyOutView] = useState<"expenses" | "refunds">(
         defaultTab === "refunds" ? "refunds" : "expenses"
     );
+    const [kpiOpen, setKpiOpen] = useState(false);
     useEffect(() => {
         if (defaultTab) setActiveFinanceTab(mapLegacy(defaultTab));
     }, [defaultTab]);
@@ -184,6 +185,12 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
         refundsData?.items?.filter(r => r.status === 'processed').reduce((sum, r) => sum + r.refundAmount, 0) || 0,
         [refundsData]
     );
+    const compactMoney = (value: number) => {
+        const abs = Math.abs(value);
+        if (abs >= 100000) return `${getCurrencySymbol()}${(value / 100000).toFixed(value % 100000 === 0 ? 0 : 1)}L`;
+        if (abs >= 1000) return `${getCurrencySymbol()}${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
+        return `${getCurrencySymbol()}${value.toLocaleString()}`;
+    };
 
     const isLoading = isPosLoading || isPettyCashLoading || isDueRecordsLoading || isRefundsLoading;
 
@@ -198,13 +205,68 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
 
     return (
         <motion.div
-            className="space-y-6"
+            className="mx-auto w-full max-w-[430px] space-y-2 pb-24 md:max-w-none md:space-y-6 md:pb-0"
             variants={containerVariants}
             initial="hidden"
             animate="visible"
         >
             {/* KPI Header Row */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Mobile KPI strip — collapsed by default, tap to expand */}
+            <div className="md:hidden">
+                <button
+                    type="button"
+                    onClick={() => setKpiOpen(v => !v)}
+                    className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm active:bg-slate-50"
+                >
+                    <div className="flex items-center gap-3 overflow-hidden text-[11px] font-bold">
+                        <span className="text-emerald-700">Sales {compactMoney(totalSales)}</span>
+                        <span className="text-amber-700">Due {compactMoney(totalDue)}</span>
+                        <span className="text-violet-700">Cash {compactMoney(cashInHand)}</span>
+                    </div>
+                    <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${kpiOpen ? "rotate-180" : ""}`} />
+                </button>
+                {kpiOpen && (
+                    <div className="mt-1">
+                        <MobileMicroMetricGrid
+                            items={[
+                                { label: "Sales", value: compactMoney(totalSales), meta: `${salesSummary?.count || 0} transactions`, tone: "emerald" },
+                                { label: "Cash", value: compactMoney(cashInHand), meta: "In hand", tone: "violet" },
+                                { label: "Due", value: compactMoney(totalDue), meta: `${dueSummary?.pendingCount || 0} outstanding`, tone: "amber", onClick: () => { setActiveFinanceTab("money-in"); setMoneyInView("dues"); } },
+                                { label: "Refund", value: compactMoney(totalRefunded), meta: `${refundsData?.items?.filter(r => r.status === 'processed').length || 0} processed`, tone: "rose" },
+                            ]}
+                        />
+                    </div>
+                )}
+            </div>
+            <MobileCommandRail
+                items={[
+                    {
+                        key: "verify",
+                        title: "Verify",
+                        badge: pendingPaymentsCount || null,
+                        icon: <Smartphone className="h-3.5 w-3.5" />,
+                        tone: pendingPaymentsCount > 0 ? "amber" : "slate",
+                        onClick: () => { setActiveFinanceTab("money-in"); setMoneyInView("payments"); },
+                    },
+                    {
+                        key: "dues",
+                        title: "Dues",
+                        badge: dueSummary?.pendingCount || null,
+                        icon: <Clock className="h-3.5 w-3.5" />,
+                        tone: (dueSummary?.pendingCount || 0) > 0 ? "rose" : "slate",
+                        onClick: () => { setActiveFinanceTab("money-in"); setMoneyInView("dues"); },
+                    },
+                    {
+                        key: "drawer",
+                        title: "Drawer",
+                        badge: activeDrawer ? "Open" : null,
+                        icon: <Wallet className="h-3.5 w-3.5" />,
+                        tone: activeDrawer ? "blue" : "slate",
+                        onClick: () => setActiveFinanceTab("drawer"),
+                    },
+                ]}
+            />
+            <div className="hidden md:grid md:grid-cols-4 gap-4">
                 <motion.div variants={itemVariants}>
                     <BentoCard
                         className="h-full min-h-[140px] bg-gradient-to-br from-emerald-500 to-teal-600"
@@ -293,7 +355,18 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
             {/* Sub-Tabs System */}
             <motion.div variants={itemVariants}>
                 <Tabs value={activeFinanceTab} onValueChange={(v) => setActiveFinanceTab(v as typeof activeFinanceTab)} className="w-full">
-                    <TabsList className="inline-flex h-12 items-center justify-center rounded-full bg-slate-100 p-1 text-slate-500 w-full sm:w-auto gap-1 flex-wrap sm:flex-nowrap">
+                    <MobileSegmentTabs
+                        value={activeFinanceTab}
+                        onChange={setActiveFinanceTab}
+                        items={[
+                            { value: "overview", label: "Overview", icon: <TrendingUp className="h-4 w-4" /> },
+                            { value: "money-in", label: "Money In", icon: <TrendingUp className="h-4 w-4" />, badge: pendingPaymentsCount > 0 ? <span className="rounded-full bg-white/70 px-1.5 text-[10px]">{pendingPaymentsCount}</span> : null },
+                            { value: "money-out", label: "Money Out", icon: <TrendingDown className="h-4 w-4" /> },
+                            { value: "drawer", label: "Drawer", icon: <Wallet className="h-4 w-4" /> },
+                        ]}
+                        tone={activeFinanceTab === "money-in" ? "emerald" : activeFinanceTab === "money-out" ? "rose" : activeFinanceTab === "drawer" ? "blue" : "slate"}
+                    />
+                    <TabsList className="hidden h-12 items-center justify-center rounded-full bg-slate-100 p-1 text-slate-500 w-full sm:w-auto gap-1 flex-wrap sm:flex-nowrap md:inline-flex">
                         <TabsTrigger
                             value="overview"
                             className="rounded-full px-5 py-2 text-sm font-semibold transition-all data-[state=active]:bg-white data-[state=active]:text-slate-900 data-[state=active]:shadow-sm"
@@ -325,8 +398,16 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     </TabsList>
 
                     {/* OVERVIEW — what needs you, at a glance */}
-                    <TabsContent value="overview" className="mt-6">
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <TabsContent value="overview" className="mt-3 md:mt-6">
+                        <div className="rounded-xl border border-slate-200 bg-white p-2.5 text-xs text-slate-600 md:hidden">
+                            <div className="font-black uppercase tracking-wide text-slate-700">Finance queue</div>
+                            <div className="mt-1 grid grid-cols-3 gap-1.5 text-center">
+                                <div className="rounded-lg bg-amber-50 px-2 py-1 text-amber-700">{pendingPaymentsCount} pay</div>
+                                <div className="rounded-lg bg-rose-50 px-2 py-1 text-rose-700">{dueSummary?.pendingCount || 0} due</div>
+                                <div className="rounded-lg bg-blue-50 px-2 py-1 text-blue-700">{activeDrawer ? "open" : "closed"}</div>
+                            </div>
+                        </div>
+                        <div className="hidden grid-cols-1 lg:grid-cols-2 gap-4 md:grid">
                             {/* Needs your attention */}
                             <BentoCard className="bg-amber-50/60 border border-amber-100" disableHover>
                                 <div className="flex items-center gap-2 mb-3">
@@ -412,8 +493,18 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     </TabsContent>
 
                     {/* MONEY IN — Payments · Sales · Dues */}
-                    <TabsContent value="money-in" className="mt-6 space-y-4">
-                        <div className="inline-flex rounded-full bg-emerald-50 p-1 gap-1">
+                    <TabsContent value="money-in" className="mt-2 space-y-2 md:mt-6 md:space-y-4">
+                        <MobileSegmentTabs
+                            value={moneyInView}
+                            onChange={setMoneyInView}
+                            tone="emerald"
+                            items={[
+                                { value: "payments", label: "Payments", badge: pendingPaymentsCount > 0 ? <span className="rounded-full bg-white/70 px-1.5 text-[10px]">{pendingPaymentsCount}</span> : null },
+                                { value: "sales", label: "Sales" },
+                                { value: "dues", label: "Dues" },
+                            ]}
+                        />
+                        <div className="hidden rounded-full bg-emerald-50 p-1 gap-1 md:inline-flex">
                             {(["payments", "sales", "dues"] as const).map((k) => (
                                 <button key={k} onClick={() => setMoneyInView(k)}
                                     className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-all capitalize ${moneyInView === k ? "bg-emerald-600 text-white shadow-sm" : "text-emerald-700 hover:bg-emerald-100"}`}>
@@ -431,8 +522,17 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     </TabsContent>
 
                     {/* MONEY OUT — Expenses · Refunds */}
-                    <TabsContent value="money-out" className="mt-6 space-y-4">
-                        <div className="inline-flex rounded-full bg-rose-50 p-1 gap-1">
+                    <TabsContent value="money-out" className="mt-2 space-y-2 md:mt-6 md:space-y-4">
+                        <MobileSegmentTabs
+                            value={moneyOutView}
+                            onChange={setMoneyOutView}
+                            tone="rose"
+                            items={[
+                                { value: "expenses", label: "Expenses" },
+                                { value: "refunds", label: "Refunds" },
+                            ]}
+                        />
+                        <div className="hidden rounded-full bg-rose-50 p-1 gap-1 md:inline-flex">
                             {(["expenses", "refunds"] as const).map((k) => (
                                 <button key={k} onClick={() => setMoneyOutView(k)}
                                     className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-all capitalize ${moneyOutView === k ? "bg-rose-600 text-white shadow-sm" : "text-rose-700 hover:bg-rose-100"}`}>
@@ -449,7 +549,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     </TabsContent>
 
                     {/* CASH DRAWER + end-of-day blacklist review */}
-                    <TabsContent value="drawer" className="mt-6 border-0 p-0 outline-none space-y-6">
+                    <TabsContent value="drawer" className="mt-2 border-0 p-0 outline-none space-y-2 md:mt-6 md:space-y-6">
                         <FinancesTabDrawer
                             getCurrencySymbol={getCurrencySymbol}
                             exportToCSV={exportToCSV}

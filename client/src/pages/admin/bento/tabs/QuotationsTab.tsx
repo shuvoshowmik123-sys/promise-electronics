@@ -258,7 +258,7 @@ export default function QuotationsTab() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6 print:hidden"
+            className="space-y-6 pb-24 md:pb-0 print:hidden print:pb-0"
         >
             {/* Header Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

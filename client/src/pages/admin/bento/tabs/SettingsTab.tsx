@@ -342,7 +342,7 @@ export default function SettingsTab() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6 max-w-[1600px] mx-auto"
+            className="space-y-6 pb-24 md:pb-0 max-w-[1600px] mx-auto"
         >
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/50 backdrop-blur-xl p-6 rounded-3xl border border-white/40 shadow-sm">

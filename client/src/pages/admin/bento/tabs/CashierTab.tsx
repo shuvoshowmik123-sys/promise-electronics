@@ -218,7 +218,7 @@ export default function CashierTab() {
     const unpaidJobsCount = readyJobs.filter(j => j.paymentStatus === 'unpaid' || j.paymentStatus === 'partial').length;
 
     return (
-        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
+        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6 pb-24 md:pb-0">
             <motion.div variants={itemVariants} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                     <div className="flex items-center gap-2 mb-1">

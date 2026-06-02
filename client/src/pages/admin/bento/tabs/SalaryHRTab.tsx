@@ -309,7 +309,7 @@ export default function SalaryHRTab() {
     const confirmDeleteHoliday = (id: string, name: string) => { if (window.confirm(`Delete "${name}" from the calendar?`)) deleteHoliday.mutate(id); };
 
     return (
-        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
+        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6 pb-24 md:pb-0">
             <RejectLeaveDialog open={rejectDialogOpen} onOpenChange={setRejectDialogOpen} onConfirm={(reason: string) => rejectTargetId && rejectLeave.mutate({ id: rejectTargetId, rejectionReason: reason })} isPending={rejectLeave.isPending} />
             <DismissHolidayDialog open={dismissDialogOpen} onOpenChange={setDismissDialogOpen} onConfirm={(reason: string) => dismissTargetId && dismissHoliday.mutate({ id: dismissTargetId, reason })} isPending={dismissHoliday.isPending} />
             <AddHolidayDialog open={addHolidayOpen} onOpenChange={setAddHolidayOpen} onConfirm={(data: any) => addHoliday.mutate(data)} isPending={addHoliday.isPending} selectedYear={selectedYear} />

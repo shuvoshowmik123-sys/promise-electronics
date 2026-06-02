@@ -261,7 +261,22 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requirePerm
             }
         }
 
-        const updatedJob = await jobRepo.updateJobTicket(jobId, { status: nextStatus });
+        // On completion, stamp completedAt and the warranty expiry window.
+        // advance-status bypasses completeJobTicket(), so both must be set here or
+        // normal repairs finish with completedAt/warrantyExpiryDate = NULL — which
+        // makes every warranty read as expired (warranty.routes + customer warranties view).
+        const completionPatch: Partial<typeof job> = { status: nextStatus } as any;
+        if (nextStatus === 'Completed') {
+            (completionPatch as any).completedAt = new Date();
+            const warrantyDays = (job as any).warrantyDays ?? 30;
+            if (warrantyDays > 0 && !(job as any).warrantyExpiryDate) {
+                const expiry = new Date();
+                expiry.setDate(expiry.getDate() + warrantyDays);
+                (completionPatch as any).warrantyExpiryDate = expiry;
+            }
+        }
+
+        const updatedJob = await jobRepo.updateJobTicket(jobId, completionPatch as any);
         if (!updatedJob) {
             return res.status(500).json({ error: 'Failed to update job status' });
         }
@@ -377,7 +392,19 @@ router.post('/api/job-tickets/bulk-update', requireAdminAuth, requirePermission(
             const job = await jobRepo.getJobTicket(id);
             if (!job) return null;
 
-            const updatedJob = await jobRepo.updateJobTicket(id, updates);
+            // Mirror advance-status: stamp completion + warranty window when bulk-set to Completed.
+            const bulkPatch = { ...updates };
+            if (bulkPatch.status === 'Completed') {
+                if (!bulkPatch.completedAt) bulkPatch.completedAt = new Date();
+                const warrantyDays = (job as any).warrantyDays ?? 30;
+                if (warrantyDays > 0 && !(job as any).warrantyExpiryDate && !bulkPatch.warrantyExpiryDate) {
+                    const expiry = new Date();
+                    expiry.setDate(expiry.getDate() + warrantyDays);
+                    bulkPatch.warrantyExpiryDate = expiry;
+                }
+            }
+
+            const updatedJob = await jobRepo.updateJobTicket(id, bulkPatch);
 
             await auditLogger.log({
                 userId: req.session?.adminUserId || 'system',

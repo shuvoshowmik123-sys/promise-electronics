@@ -181,7 +181,7 @@ export default function PickupTab() {
     };
 
     return (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pb-24 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <BentoCard className="col-span-1 md:col-span-1 h-full min-h-[200px] bg-gradient-to-br from-cyan-500 to-blue-600" title="Pending Pickups" icon={<Clock size={24} className="text-white" />} variant="vibrant">
                 <div className="flex-1 flex flex-col justify-end">
                     <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{pickups.filter((p: any) => p.status === 'Pending').length}</div>
