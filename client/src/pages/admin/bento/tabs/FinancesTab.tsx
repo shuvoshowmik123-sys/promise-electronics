@@ -212,11 +212,11 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
         >
             {/* KPI Header Row */}
             {/* Mobile KPI strip — collapsed by default, tap to expand */}
-            <div className="md:hidden">
+            <div className="md:hidden sticky top-0 z-30 bg-white/95 backdrop-blur-sm shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
                 <button
                     type="button"
                     onClick={() => setKpiOpen(v => !v)}
-                    className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm active:bg-slate-50"
+                    className="flex w-full items-center justify-between gap-2 px-3 py-2.5 active:bg-slate-50"
                 >
                     <div className="flex items-center gap-3 overflow-hidden text-[11px] font-bold">
                         <span className="text-emerald-700">Sales {compactMoney(totalSales)}</span>
