@@ -4,7 +4,7 @@ import {
     TrendingUp, AlertCircle, ChevronDown, Wallet, ShoppingCart, TrendingDown,
     DollarSign, Clock, Loader2, Smartphone, ArrowRight, CheckCircle2, Inbox
 } from "lucide-react";
-import { BentoCard, containerVariants, itemVariants, MobileCommandRail, MobileMicroMetricGrid, MobileSegmentTabs } from "../shared";
+import { BentoCard, containerVariants, itemVariants, MobileCommandRail, MobileMicroMetricGrid, MobileSegmentTabs, MobileTabLayout, MobileTabHeader, MobileScrollContent } from "../shared";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { posTransactionsApi, pettyCashApi, dueRecordsApi, refundsApi, settingsApi, manualPaymentsApi, drawerApi } from "@/lib/api";
@@ -211,7 +211,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
             animate="visible"
         >
             {/* Mobile sticky header block — KPI strip + command rail + tab switcher all stay at top */}
-            <div className="md:hidden flex-none bg-[#f8fafc] border-b border-slate-100/80 z-30 px-3 space-y-1 pb-1.5">
+            <MobileTabHeader>
                 {/* KPI strip */}
                 <button
                     type="button"
@@ -302,18 +302,9 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                         ]}
                     />
                 )}
-            </div>{/* end mobile header */}
+            </MobileTabHeader>
 
-            {/* Scrollable content — fires admin:mobile-chrome, same mechanism as Jobs */}
-            <div
-                className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] md:bg-transparent px-3 pt-0 space-y-2 pb-4 md:px-0 md:pt-0 md:space-y-6"
-                onScroll={(e) => {
-                    if (window.innerWidth >= 768) return;
-                    window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {
-                        detail: { hidden: e.currentTarget.scrollTop > 24 },
-                    }));
-                }}
-            >
+            <MobileScrollContent className="md:overflow-visible md:bg-transparent md:px-0 md:space-y-6">
             <div className="hidden md:grid md:grid-cols-4 gap-4">
                 <motion.div variants={itemVariants}>
                     <BentoCard
@@ -576,7 +567,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     </TabsContent>
                 </Tabs>
             </motion.div>
-            </div>{/* end scrollable content */}
+            </MobileScrollContent>
         </motion.div>
     );
 }
