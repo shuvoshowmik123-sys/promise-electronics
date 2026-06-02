@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useRef } from "react";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -42,18 +42,26 @@ export function MobileTabHeader({ children, className }: { children: ReactNode; 
  * bg matches page bg so no gap shows between content and bottom nav.
  */
 export function MobileScrollContent({ children, className }: { children: ReactNode; className?: string }) {
+    // rAF-throttle: coalesce many scroll events into one layout read per frame.
+    const tickingRef = useRef(false);
+    const onScroll = (e: { currentTarget: HTMLDivElement }) => {
+        if (window.innerWidth >= 768 || tickingRef.current) return;
+        const el = e.currentTarget;
+        tickingRef.current = true;
+        requestAnimationFrame(() => {
+            tickingRef.current = false;
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {
+                detail: { scrollTop: el.scrollTop },
+            }));
+        });
+    };
     return (
         <div
             className={cn(
                 "flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] px-3 pt-0 space-y-2 pb-4",
                 className,
             )}
-            onScroll={(e) => {
-                if (window.innerWidth >= 768) return;
-                window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {
-                    detail: { hidden: (e.currentTarget as HTMLDivElement).scrollTop > 24 },
-                }));
-            }}
+            onScroll={onScroll}
         >
             {children}
         </div>

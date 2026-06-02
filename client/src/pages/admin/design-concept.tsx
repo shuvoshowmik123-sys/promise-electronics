@@ -1,7 +1,7 @@
-import { useState, lazy, Suspense, useEffect, useRef, useCallback } from "react";
+import { useState, lazy, Suspense, useEffect, useRef, useCallback, type UIEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { variants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import { adminNotificationsApi } from "@/lib/api";
@@ -158,6 +158,10 @@ export default function DesignConcept() {
     const [searchOpen, setSearchOpen] = useState(false);
     const [notificationOpen, setNotificationOpen] = useState(false);
     const [mobileChromeHidden, setMobileChromeHidden] = useState(false);
+    const [visitedTabs, setVisitedTabs] = useState<string[]>(() => [activeTab]);
+    const mobileChromeScrollTopRef = useRef(0);
+    const mobileChromeHiddenRef = useRef(false);
+    const mobileScrollTickingRef = useRef(false);
 
     const { isEnabled } = useModules();
     const { logout, user, hasPermission, status } = useAdminAuth();
@@ -376,23 +380,67 @@ export default function DesignConcept() {
     const isFixed = currentTabConfig?.layout === 'fixed';
 
     useEffect(() => {
+        setVisitedTabs((tabs) => {
+            if (tabs.includes(activeTab)) return tabs;
+            return [...tabs, activeTab].slice(-8);
+        });
+    }, [activeTab]);
+
+    useEffect(() => {
         if (activeTab !== "b2b" && selectedCorporateClientId) {
             setSelectedCorporateClientId(null);
         }
         if (activeTab !== "corp-msg") {
             setSelectedCorpMsgThreadId(null);
         }
+        mobileChromeScrollTopRef.current = 0;
+        mobileChromeHiddenRef.current = false;
         setMobileChromeHidden(false);
     }, [activeTab, selectedCorporateClientId]);
 
     useEffect(() => {
         const handleMobileChrome = (event: Event) => {
-            const detail = (event as CustomEvent<{ hidden?: boolean }>).detail;
-            setMobileChromeHidden(Boolean(detail?.hidden));
+            const detail = (event as CustomEvent<{ hidden?: boolean; scrollTop?: number }>).detail;
+            if (typeof detail?.scrollTop === "number") {
+                const prev = mobileChromeScrollTopRef.current;
+                const cur = detail.scrollTop;
+                const delta = cur - prev;
+                // Ignore momentum micro-jitter (iOS rubber-band, sub-pixel settle).
+                if (Math.abs(delta) < 6) return;
+                mobileChromeScrollTopRef.current = cur;
+
+                // Hysteresis: hide only when scrolling DOWN past the header (64px),
+                // reveal on ANY upward scroll, always show near the very top.
+                let shouldHide = mobileChromeHiddenRef.current;
+                if (delta > 0 && cur > 64) shouldHide = true;
+                else if (delta < 0) shouldHide = false;
+                if (cur < 16) shouldHide = false;
+
+                if (mobileChromeHiddenRef.current === shouldHide) return;
+                mobileChromeHiddenRef.current = shouldHide;
+                setMobileChromeHidden(shouldHide);
+                return;
+            }
+            const hidden = Boolean(detail?.hidden);
+            mobileChromeHiddenRef.current = hidden;
+            if (!hidden) mobileChromeScrollTopRef.current = 0;
+            setMobileChromeHidden(hidden);
         };
         window.addEventListener("admin:mobile-chrome", handleMobileChrome);
         return () => window.removeEventListener("admin:mobile-chrome", handleMobileChrome);
     }, []);
+
+    const handleMainMobileScroll = (event: UIEvent<HTMLElement>) => {
+        if (window.innerWidth >= 768 || mobileScrollTickingRef.current) return;
+        const el = event.currentTarget;
+        mobileScrollTickingRef.current = true;
+        requestAnimationFrame(() => {
+            mobileScrollTickingRef.current = false;
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {
+                detail: { scrollTop: el.scrollTop },
+            }));
+        });
+    };
 
     return (
         <RollbackProvider>
@@ -626,12 +674,7 @@ export default function DesignConcept() {
                     <main
                         ref={pullContainerRef}
                         className={cn("flex-1 bg-slate-50/50 flex flex-col min-h-0", isFixed ? "overflow-hidden" : "overflow-y-auto scroll-smooth")}
-                        onScroll={(e) => {
-                            if (window.innerWidth >= 768) return;
-                            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {
-                                detail: { hidden: e.currentTarget.scrollTop > 24 },
-                            }));
-                        }}
+                        onScroll={handleMainMobileScroll}
                     >
                         {/* Pull-to-refresh indicator (mobile only) */}
                         {pullDistance > 0 && !isFixed && (
@@ -652,51 +695,50 @@ export default function DesignConcept() {
                         )}
                         <OfflineBanner />
                         <MainContentWrapper isFixed={isFixed} activeTab={activeTab} mobileChromeHidden={mobileChromeHidden}>
-                            <AnimatePresence mode="popLayout">
+                            {visitedTabs.map((tabId) => (
                                 <motion.div
-                                    key={activeTab}
+                                    key={tabId}
                                     variants={variants.pageEnter}
                                     initial="initial"
                                     animate="animate"
-                                    exit="exit"
-                                    className="h-full"
+                                    className={cn("h-full", tabId !== activeTab && "hidden")}
                                 >
-                                    <Suspense fallback={<DashboardSkeleton />}>
+                                    <Suspense fallback={tabId === activeTab ? <DashboardSkeleton /> : null}>
                                         {/* Module & Permission Guard */}
                                         {status === "pending" ? (
                                             <DashboardSkeleton />
-                                        ) : TAB_TO_MODULE[activeTab] && !isTabEnabled(activeTab) ? (
+                                        ) : TAB_TO_MODULE[tabId] && !isTabEnabled(tabId) ? (
                                             <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500">
                                                 <div className="h-20 w-20 bg-slate-100 rounded-full flex items-center justify-center mb-6">
                                                     <ShieldAlert size={32} className="text-slate-400" />
                                                 </div>
                                                 <h2 className="text-2xl font-bold text-slate-700 mb-2">Access Restricted</h2>
                                                 <p className="max-w-md mx-auto">
-                                                    You do not have permission to view this section, or the <span className="font-semibold text-slate-700">{TAB_DISPLAY_NAMES[activeTab] || activeTab}</span> module is currently disabled.
+                                                    You do not have permission to view this section, or the <span className="font-semibold text-slate-700">{TAB_DISPLAY_NAMES[tabId] || tabId}</span> module is currently disabled.
                                                 </p>
                                             </div>
-                                        ) : !isOnline && getTabTier(activeTab) === 'locked' ? (
+                                        ) : !isOnline && getTabTier(tabId) === 'locked' ? (
                                             <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500">
                                                 <div className="h-20 w-20 bg-slate-100 rounded-full flex items-center justify-center mb-6 ring-8 ring-slate-50">
                                                     <WifiOff size={32} className="text-slate-400" />
                                                 </div>
                                                 <h2 className="text-2xl font-bold text-slate-700 mb-2">Requires Internet</h2>
                                                 <p className="max-w-md mx-auto leading-relaxed">
-                                                    <span className="font-semibold text-slate-700">{TAB_DISPLAY_NAMES[activeTab] || activeTab}</span> requires an active internet connection to function. It will become available automatically when you're back online.
+                                                    <span className="font-semibold text-slate-700">{TAB_DISPLAY_NAMES[tabId] || tabId}</span> requires an active internet connection to function. It will become available automatically when you're back online.
                                                 </p>
                                             </div>
                                         ) : (
                                             <>
-                                                {activeTab === 'dashboard' && <DashboardTab onNavigate={(tab: string, searchQuery?: string) => {
+                                                {tabId === 'dashboard' && <DashboardTab onNavigate={(tab: string, searchQuery?: string) => {
                                                     const nextTab = normalizeTab(tab);
                                                     window.location.hash = searchQuery ? `#${nextTab}?search=${encodeURIComponent(searchQuery)}` : `#${nextTab}`;
                                                 }} />}
 
                                                 {/* Overview Group */}
-                                                {activeTab === 'overview' && <OverviewTab />}
-                                                {activeTab === 'reports' && <ReportsTab />}
-                                                {activeTab === 'quality' && <QualityAnalyticsTab />}
-                                                {activeTab === 'system-health' && <SystemHealthTab onNavigate={(tab: string, searchQuery?: string, clientId?: string) => {
+                                                {tabId === 'overview' && <OverviewTab />}
+                                                {tabId === 'reports' && <ReportsTab />}
+                                                {tabId === 'quality' && <QualityAnalyticsTab />}
+                                                {tabId === 'system-health' && <SystemHealthTab onNavigate={(tab: string, searchQuery?: string, clientId?: string) => {
                                                     const nextTab = normalizeTab(tab);
                                                     if (nextTab === 'jobs') setJobTypeOverride('all');
                                                     if (nextTab === 'b2b' && clientId) {
@@ -706,26 +748,26 @@ export default function DesignConcept() {
                                                 }} />}
 
                                                 {/* Operations Group */}
-                                                {activeTab === 'service-requests' && <ServiceRequestsTab initialSearchQuery={globalSearchQuery} onSearchConsumed={() => setGlobalSearchQuery('')} />}
+                                                {tabId === 'service-requests' && <ServiceRequestsTab initialSearchQuery={globalSearchQuery} onSearchConsumed={() => setGlobalSearchQuery('')} />}
 
-                                                {activeTab === 'jobs' && <JobTicketsTab
+                                                {tabId === 'jobs' && <JobTicketsTab
                                                     initialSearchQuery={globalSearchQuery}
                                                     onSearchConsumed={() => { setGlobalSearchQuery(''); setJobTypeOverride(undefined); }}
                                                     initialJobType={jobTypeOverride}
                                                 />}
-                                                {activeTab === 'pickup' && <PickupTab />}
-                                                {activeTab === 'challans' && <ChallanTab />}
+                                                {tabId === 'pickup' && <PickupTab />}
+                                                {tabId === 'challans' && <ChallanTab />}
 
                                                 {/* Sales Group */}
-                                                {activeTab === 'pos' && <PosTab />}
-                                                {activeTab === 'orders' && <OrdersTab initialSearchQuery={globalSearchQuery} onSearchConsumed={() => setGlobalSearchQuery('')} />}
-                                                {activeTab === 'finance' && <FinancesTab defaultTab="sales" />}
-                                                {activeTab === 'customers' && <CustomersTab />}
-                                                {activeTab === 'quotations' && <QuotationsTab />}
-                                                {activeTab === 'inquiries' && <InquiriesTab />}
+                                                {tabId === 'pos' && <PosTab />}
+                                                {tabId === 'orders' && <OrdersTab initialSearchQuery={globalSearchQuery} onSearchConsumed={() => setGlobalSearchQuery('')} />}
+                                                {tabId === 'finance' && <FinancesTab defaultTab="sales" />}
+                                                {tabId === 'customers' && <CustomersTab />}
+                                                {tabId === 'quotations' && <QuotationsTab />}
+                                                {tabId === 'inquiries' && <InquiriesTab />}
 
                                                 {/* B2B Group */}
-                                                {activeTab === 'b2b' && <UnifiedB2BTab
+                                                {tabId === 'b2b' && <UnifiedB2BTab
                                                     initialClientId={selectedCorporateClientId}
                                                     initialSearchQuery={globalSearchQuery}
                                                     onSearchConsumed={() => setGlobalSearchQuery('')}
@@ -733,44 +775,44 @@ export default function DesignConcept() {
                                                 />}
 
                                                 {/* Corp. Messages (standalone admin chat) */}
-                                                {activeTab === 'corp-msg' && <CorporateMessagesAdminTab
+                                                {tabId === 'corp-msg' && <CorporateMessagesAdminTab
                                                     preSelectedThreadId={selectedCorpMsgThreadId ?? undefined}
                                                 />}
 
                                                 {/* Warehouse Group */}
                                                 {/* {activeTab === 'shipments' && <PlaceholderTab title="Shipments" />} */}
                                                 {/* {activeTab === 'procurement' && <PlaceholderTab title="Procurement" />} */}
-                                                {activeTab === 'inventory' && <InventoryTab />}
-                                                {activeTab === 'purchasing' && <PurchasingTab />}
-                                                {activeTab === 'warranty' && <WarrantyClaimsTab />}
-                                                {activeTab === 'refunds' && <FinancesTab defaultTab="refunds" />}
-                                                {activeTab === 'wastage' && <WastageTab />}
+                                                {tabId === 'inventory' && <InventoryTab />}
+                                                {tabId === 'purchasing' && <PurchasingTab />}
+                                                {tabId === 'warranty' && <WarrantyClaimsTab />}
+                                                {tabId === 'refunds' && <FinancesTab defaultTab="refunds" />}
+                                                {tabId === 'wastage' && <WastageTab />}
 
                                                 {/* People & Staff Group */}
-                                                {activeTab === 'users' && <UsersTab />}
-                                                {activeTab === 'attendance' && <AttendanceTab />}
-                                                {activeTab === 'salary' && <SalaryHRTab />}
-                                                {activeTab === 'cashier' && <CashierTab />}
-                                                {activeTab === 'technician' && <TechnicianTab />}
+                                                {tabId === 'users' && <UsersTab />}
+                                                {tabId === 'attendance' && <AttendanceTab />}
+                                                {tabId === 'salary' && <SalaryHRTab />}
+                                                {tabId === 'cashier' && <CashierTab />}
+                                                {tabId === 'technician' && <TechnicianTab />}
 
                                                 {/* System Group */}
-                                                {activeTab === 'settings' && <SettingsTab />}
-                                                {activeTab === 'brain' && <BrainTab />}
+                                                {tabId === 'settings' && <SettingsTab />}
+                                                {tabId === 'brain' && <BrainTab />}
 
                                                 {/* Fallback */}
-                                                {activeTab === 'workflow-demo' && <Suspense fallback={<DashboardSkeleton />}><PlaceholderTab tabName={activeTab} /></Suspense>}
-                                                {activeTab === 'audit-logs' && <Suspense fallback={<DashboardSkeleton />}><AuditLogsTab /></Suspense>}
+                                                {tabId === 'workflow-demo' && <Suspense fallback={<DashboardSkeleton />}><PlaceholderTab tabName={tabId} /></Suspense>}
+                                                {tabId === 'audit-logs' && <Suspense fallback={<DashboardSkeleton />}><AuditLogsTab /></Suspense>}
 
-                                                {!['dashboard', 'overview', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'customers', 'quotations', 'inquiries', 'workflow-demo', 'salary', 'cashier', 'technician', 'purchasing', 'warranty', 'refunds', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain'].includes(activeTab) && (
+                                                {!['dashboard', 'overview', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'customers', 'quotations', 'inquiries', 'workflow-demo', 'salary', 'cashier', 'technician', 'purchasing', 'warranty', 'refunds', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain'].includes(tabId) && (
                                                     <Suspense fallback={<DashboardSkeleton />}>
-                                                        <PlaceholderTab tabName={activeTab} />
+                                                        <PlaceholderTab tabName={tabId} />
                                                     </Suspense>
                                                 )}
                                             </>
                                         )}
                                     </Suspense>
                                 </motion.div>
-                            </AnimatePresence>
+                            ))}
                         </MainContentWrapper>
                     </main>
                 </div>
@@ -824,7 +866,7 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
 
     if (isFixed) {
         return (
-            <div className={cn("h-full md:pt-5 px-0 md:px-5 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-5 flex flex-col transition-[padding] duration-200", mobileTopPadding)}>
+            <div className={cn("h-full md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col", mobileTopPadding)}>
                 <div className="max-w-[1600px] mx-auto w-full h-full flex flex-col min-h-0">
                     {children}
                 </div>
@@ -832,7 +874,7 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
         );
     }
     return (
-        <div className={cn("min-h-full md:pt-5 px-0 md:px-5 pb-[calc(5rem+env(safe-area-inset-bottom))] md:pb-5 flex flex-col transition-[padding] duration-200", mobileTopPadding)}>
+        <div className={cn("min-h-full md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col", mobileTopPadding)}>
             <div className="max-w-[1600px] mx-auto w-full flex-1">
                 {children}
             </div>
