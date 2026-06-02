@@ -56,6 +56,8 @@ export default function PosTab() {
     // Mobile cart drawer
     const [mobileCartOpen, setMobileCartOpen] = useState(false);
     const [activeCategory, setActiveCategory] = useState<string>("All");
+    const [showCustomerAutocomplete, setShowCustomerAutocomplete] = useState(false);
+    const [customerSearchField, setCustomerSearchField] = useState<"name" | "phone">("name");
 
     // Barcode scanning
     const [barcodeBuffer, setBarcodeBuffer] = useState("");
@@ -70,6 +72,14 @@ export default function PosTab() {
     const { data: posTransactions } = useQuery({ queryKey: ["pos-transactions"], queryFn: () => posTransactionsApi.getAll() });
     const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: settingsApi.getAll });
     const { data: customers, isLoading: customersLoading } = useQuery({ queryKey: ["admin-customers"], queryFn: adminCustomersApi.getAll });
+    // Only fetches when register is confirmed closed — shows last opener in lock screen
+    const { data: recentDrawerHistory } = useQuery({
+        queryKey: ["drawerHistory", "recent"],
+        queryFn: () => drawerApi.getHistory("?limit=1"),
+        enabled: !drawerLoading && !activeDrawer,
+        staleTime: 60_000,
+    });
+    const lastDrawerSession = (recentDrawerHistory as any)?.items?.[0] ?? null;
 
     const jobsList = Array.isArray(jobTickets) ? jobTickets : (jobTickets?.items || []);
     const billableJobs = jobsList.filter((job: any) => ["Completed", "Delivered", "Ready for Delivery"].includes(job.status));
@@ -253,6 +263,29 @@ export default function PosTab() {
 
     const handleRequestRefund = (t: any) => { setRefundTransaction(t); setShowRefundDialog(true); };
 
+    // ── Customer autocomplete ──
+    const customerSuggestions = useMemo(() => {
+        if (!customers) return [];
+        const list = customers as any[];
+        if (customerSearchField === "phone") {
+            const q = customerPhone.trim();
+            if (q.length < 2) return [];
+            return list.filter((c) => c.phone?.includes(q)).slice(0, 6);
+        }
+        const q = customerName.trim().toLowerCase();
+        if (q.length < 1) return [];
+        return list.filter((c) =>
+            c.name?.toLowerCase().includes(q) || c.phone?.includes(customerName)
+        ).slice(0, 6);
+    }, [customerName, customerPhone, customers, customerSearchField]);
+
+    const handleSelectCustomerSuggestion = (c: any) => {
+        setCustomerName(c.name || "");
+        setCustomerPhone(c.phone || "");
+        setCustomerAddress(c.address || "");
+        setShowCustomerAutocomplete(false);
+    };
+
     // ── Categories (mobile filter chips) ──
     const categories = useMemo(() => {
         if (!products?.length) return ["All"];
@@ -413,21 +446,60 @@ export default function PosTab() {
     return (
         <motion.div variants={containerVariants} initial="hidden" animate="visible" className="h-full flex flex-col overflow-hidden relative">
             {!hasDrawerSession && (
-                <div className="absolute inset-0 z-50 bg-slate-100/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
-                    <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border border-slate-200">
-                        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-rose-100 mb-6">
-                            <LockKeyhole className="h-10 w-10 text-rose-600" />
+                <div className="absolute inset-0 z-50 flex flex-col">
+                    {/* ── Mobile lock screen ── */}
+                    <div className="md:hidden flex flex-col h-full bg-slate-900 px-5 py-8">
+                        <div className="flex-1 flex flex-col items-center justify-center gap-5">
+                            <div className="w-24 h-24 rounded-[2rem] bg-white/10 border border-white/10 flex items-center justify-center">
+                                <LockKeyhole className="w-12 h-12 text-white/80" />
+                            </div>
+                            <div className="text-center">
+                                <p className="text-white/40 text-[11px] font-black uppercase tracking-widest mb-1">Register</p>
+                                <h1 className="text-white font-black text-3xl leading-tight">Closed</h1>
+                                <p className="text-white/40 text-xs mt-2 max-w-[240px]">Open a session with starting float to begin transactions</p>
+                            </div>
+                            {lastDrawerSession?.openedByName && (
+                                <div className="w-full max-w-[280px] px-4 py-3 rounded-2xl bg-white/8 border border-white/10 text-center space-y-0.5">
+                                    <p className="text-white/40 text-[10px] font-bold uppercase tracking-widest">Last opened by</p>
+                                    <p className="text-white font-black text-xl">{lastDrawerSession.openedByName}</p>
+                                    {lastDrawerSession.closedAt && (
+                                        <p className="text-white/30 text-[11px]">
+                                            {new Date(lastDrawerSession.closedAt).toLocaleDateString("en-BD", { day: "numeric", month: "short" })}
+                                            {" · "}
+                                            {new Date(lastDrawerSession.closedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
                         </div>
-                        <h2 className="text-2xl font-bold text-slate-900 mb-2">Register is Closed</h2>
-                        <p className="text-slate-500 mb-8">
-                            You must open a register session with a starting cash float before making any transactions.
-                        </p>
-                        <Button
-                            className="w-full h-12 text-lg font-bold shadow-lg bg-blue-600 hover:bg-blue-700"
-                            onClick={() => setDrawerModalType('open')}
+                        <button
+                            type="button"
+                            onClick={() => setDrawerModalType("open")}
+                            className="w-full h-14 rounded-2xl bg-blue-600 text-white font-black text-lg active:scale-[0.97] transition-transform shadow-lg shadow-blue-900/50"
                         >
                             Open Register
-                        </Button>
+                        </button>
+                    </div>
+                    {/* ── Desktop lock screen (original style) ── */}
+                    <div className="hidden md:flex bg-slate-100/80 backdrop-blur-md flex-col items-center justify-center h-full p-6 text-center">
+                        <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border border-slate-200">
+                            <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-rose-100 mb-6">
+                                <LockKeyhole className="h-10 w-10 text-rose-600" />
+                            </div>
+                            <h2 className="text-2xl font-bold text-slate-900 mb-2">Register is Closed</h2>
+                            {lastDrawerSession?.openedByName && (
+                                <p className="text-sm text-slate-500 mb-2">
+                                    Last opened by <strong className="text-slate-700">{lastDrawerSession.openedByName}</strong>
+                                    {lastDrawerSession.closedAt && (
+                                        <span className="text-slate-400"> · {new Date(lastDrawerSession.closedAt).toLocaleDateString()}</span>
+                                    )}
+                                </p>
+                            )}
+                            <p className="text-slate-500 mb-8">Open a register session with a starting cash float before making transactions.</p>
+                            <Button className="w-full h-12 text-lg font-bold shadow-lg bg-blue-600 hover:bg-blue-700" onClick={() => setDrawerModalType("open")}>
+                                Open Register
+                            </Button>
+                        </div>
                     </div>
                 </div>
             )}
@@ -596,11 +668,85 @@ export default function PosTab() {
                             </div>
 
                             <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/30">
-                                {/* Mobile Cart Customer */}
+                                {/* Mobile Cart Customer — with autocomplete */}
                                 <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-100 space-y-2">
-                                    <div className="flex gap-2"><Input placeholder="Customer name" className="h-10 text-sm bg-slate-50 border-slate-200" value={customerName} onChange={(e) => setCustomerName(e.target.value)} /><Button size="icon" variant="outline" className="h-10 w-10 shrink-0 border-slate-200 bg-slate-50" onClick={() => setIsCustomerDialogOpen(true)}><UserPlus className="h-4 w-4 text-slate-500" /></Button></div>
-                                    <Input placeholder="Phone" className="h-10 text-sm bg-slate-50 border-slate-200" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
-                                    <Input placeholder="Address" className="h-10 text-sm bg-slate-50 border-slate-200" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} />
+                                    {/* Name field + autocomplete */}
+                                    <div className="relative">
+                                        <div className="flex gap-2">
+                                            <input
+                                                type="text"
+                                                placeholder="Customer name"
+                                                className="flex-1 h-10 px-3 rounded-xl border border-slate-200 bg-slate-50 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                                                value={customerName}
+                                                onChange={(e) => { setCustomerName(e.target.value); setCustomerSearchField("name"); setShowCustomerAutocomplete(true); }}
+                                                onFocus={() => { setCustomerSearchField("name"); if (customerName.length > 0) setShowCustomerAutocomplete(true); }}
+                                                onBlur={() => setTimeout(() => setShowCustomerAutocomplete(false), 150)}
+                                            />
+                                            <Button size="icon" variant="outline" className="h-10 w-10 shrink-0 border-slate-200 bg-slate-50" onClick={() => setIsCustomerDialogOpen(true)}>
+                                                <UserPlus className="h-4 w-4 text-slate-500" />
+                                            </Button>
+                                        </div>
+                                        {showCustomerAutocomplete && customerSearchField === "name" && customerSuggestions.length > 0 && (
+                                            <div className="absolute left-0 right-10 top-full mt-1 z-50 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                                                {customerSuggestions.map((c: any) => (
+                                                    <button
+                                                        key={c.id}
+                                                        type="button"
+                                                        onMouseDown={() => handleSelectCustomerSuggestion(c)}
+                                                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 active:bg-blue-50 border-b border-slate-100 last:border-0"
+                                                    >
+                                                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                                                            <span className="text-blue-700 font-black text-xs">{(c.name || "?")[0].toUpperCase()}</span>
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-bold text-slate-900 truncate">{c.name}</p>
+                                                            {c.phone && <p className="text-[11px] text-slate-400">{c.phone}</p>}
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    {/* Phone field + autocomplete */}
+                                    <div className="relative">
+                                        <input
+                                            type="text"
+                                            inputMode="tel"
+                                            placeholder="Phone number"
+                                            className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-slate-50 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                                            value={customerPhone}
+                                            onChange={(e) => { setCustomerPhone(e.target.value); setCustomerSearchField("phone"); setShowCustomerAutocomplete(true); }}
+                                            onFocus={() => { setCustomerSearchField("phone"); if (customerPhone.length > 0) setShowCustomerAutocomplete(true); }}
+                                            onBlur={() => setTimeout(() => setShowCustomerAutocomplete(false), 150)}
+                                        />
+                                        {showCustomerAutocomplete && customerSearchField === "phone" && customerSuggestions.length > 0 && (
+                                            <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
+                                                {customerSuggestions.map((c: any) => (
+                                                    <button
+                                                        key={c.id}
+                                                        type="button"
+                                                        onMouseDown={() => handleSelectCustomerSuggestion(c)}
+                                                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 active:bg-blue-50 border-b border-slate-100 last:border-0"
+                                                    >
+                                                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
+                                                            <span className="text-blue-700 font-black text-xs">{(c.name || "?")[0].toUpperCase()}</span>
+                                                        </div>
+                                                        <div className="min-w-0">
+                                                            <p className="text-sm font-bold text-slate-900 truncate">{c.name}</p>
+                                                            <p className="text-[11px] text-slate-400">{c.phone}</p>
+                                                        </div>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                    <input
+                                        type="text"
+                                        placeholder="Address (optional)"
+                                        className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-slate-50 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                                        value={customerAddress}
+                                        onChange={(e) => setCustomerAddress(e.target.value)}
+                                    />
                                 </div>
                                 {/* Mobile Cart Items */}
                                 {cartItems.map(item => {
@@ -682,8 +828,22 @@ export default function PosTab() {
 
             {/* ─── MOBILE PRODUCT GRID ─────────────────────────────────────── */}
             <div className="flex flex-col flex-1 min-h-0 overflow-hidden md:hidden">
-                {/* Header: search + category chips */}
+                {/* Header: session pill + search + category chips */}
                 <div className="flex-none bg-[#f8fafc] border-b border-slate-100/80 px-3 pb-1.5 pt-1 space-y-1.5">
+                    {/* Live session indicator — opener name */}
+                    {hasDrawerSession && activeDrawer && (
+                        <div className={cn("flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-[11px]", isDrawerCounting ? "bg-amber-100" : "bg-emerald-100")}>
+                            <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", isDrawerCounting ? "bg-amber-500" : "bg-emerald-500 animate-pulse")} />
+                            <span className={cn("font-black uppercase tracking-wide", isDrawerCounting ? "text-amber-800" : "text-emerald-800")}>
+                                {isDrawerCounting ? "Under Review" : "Live"}
+                            </span>
+                            <span className="text-slate-400 ml-auto">Opened by</span>
+                            <span className="font-bold text-slate-700">{activeDrawer.openedByName}</span>
+                            <span className="text-slate-400">
+                                {activeDrawer.openedAt ? new Date(activeDrawer.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+                            </span>
+                        </div>
+                    )}
                     <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                         <input
