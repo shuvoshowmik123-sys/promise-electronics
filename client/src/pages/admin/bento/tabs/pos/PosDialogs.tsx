@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,7 +7,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, UserPlus, Trash2, Plus, Minus, Loader2, FileText, Receipt, CheckCircle, Printer, Shield, RotateCcw, Link, ListPlus } from "lucide-react";
+import { Search, UserPlus, Trash2, Plus, Minus, Loader2, FileText, Receipt, CheckCircle, Printer, Shield, RotateCcw, Link, ListPlus, Share2 } from "lucide-react";
 import { Invoice, Receipt as ReceiptPrint, PrintStyles } from "@/components/print";
 import { toast } from "sonner";
 import { TransactionData, LinkedJobCharge, parseTransactionForReprint } from "./pos-types";
@@ -178,10 +178,11 @@ export function InventoryDialog({ open, onOpenChange, inventoryItems, inventoryL
 }
 
 // ── Success Dialog ──
-export function SuccessDialog({ open, onOpenChange, lastTransaction, getCurrencySymbol, onShowInvoice, onShowReceipt }: {
+export function SuccessDialog({ open, onOpenChange, lastTransaction, getCurrencySymbol, onShowInvoice, onShowReceipt, onSharePDF }: {
     open: boolean; onOpenChange: (v: boolean) => void;
     lastTransaction: TransactionData | null; getCurrencySymbol: () => string;
     onShowInvoice: () => void; onShowReceipt: () => void;
+    onSharePDF?: () => void;
 }) {
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -196,6 +197,17 @@ export function SuccessDialog({ open, onOpenChange, lastTransaction, getCurrency
                     <div className="text-3xl font-bold text-green-600 tabular-nums">{getCurrencySymbol()}{lastTransaction ? parseFloat(lastTransaction.total).toFixed(2) : "0.00"}</div>
                     <div className="text-xs text-slate-400 mt-1">via {lastTransaction?.paymentMethod}</div>
                 </div>
+                {/* Mobile: prominent Share PDF → WhatsApp button */}
+                {onSharePDF && (
+                    <button
+                        type="button"
+                        onClick={() => { onOpenChange(false); onSharePDF(); }}
+                        className="md:hidden w-full h-12 mb-3 rounded-xl bg-[#25D366] text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.97] transition-transform shadow-md shadow-green-200"
+                    >
+                        <Share2 className="w-4 h-4" />
+                        Share Bill PDF (WhatsApp)
+                    </button>
+                )}
                 <div className="grid grid-cols-2 gap-3 mb-4">
                     <Button variant="outline" onClick={onShowReceipt} className="gap-2"><Receipt className="w-4 h-4" /> Receipt</Button>
                     <Button onClick={onShowInvoice} className="gap-2 bg-primary text-white hover:bg-primary/90"><FileText className="w-4 h-4" /> Invoice</Button>
@@ -235,11 +247,14 @@ export function InvoicePreviewDialog({ open, onOpenChange, lastTransaction, comp
 }
 
 // ── Receipt Preview Dialog ──
-export function ReceiptPreviewDialog({ open, onOpenChange, lastTransaction, companyInfo }: {
+export function ReceiptPreviewDialog({ open, onOpenChange, lastTransaction, companyInfo, autoShare = false }: {
     open: boolean; onOpenChange: (v: boolean) => void;
     lastTransaction: TransactionData | null; companyInfo: any;
+    autoShare?: boolean;
 }) {
     const receiptRef = useRef<HTMLDivElement>(null);
+    const [sharing, setSharing] = useState(false);
+
     const handlePrint = () => {
         if (!receiptRef.current) return;
         const w = window.open("", "_blank");
@@ -248,14 +263,87 @@ export function ReceiptPreviewDialog({ open, onOpenChange, lastTransaction, comp
             w.document.close(); w.print();
         }
     };
+
+    const handleSharePDF = async () => {
+        if (!receiptRef.current || !lastTransaction) return;
+        setSharing(true);
+        try {
+            const html2canvas = (await import("html2canvas")).default;
+            const { default: jsPDF } = await import("jspdf");
+
+            const canvas = await html2canvas(receiptRef.current, {
+                scale: 3,
+                backgroundColor: "#ffffff",
+                useCORS: true,
+                logging: false,
+            });
+
+            // 57mm wide receipt
+            const pxPerMm = canvas.width / 57;
+            const heightMm = canvas.height / pxPerMm;
+            const pdf = new jsPDF({ unit: "mm", format: [57, heightMm], orientation: "portrait" });
+            pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 57, heightMm);
+
+            const filename = `receipt-${lastTransaction.invoiceNumber || lastTransaction.id}.pdf`;
+            const blob = pdf.output("blob");
+            const file = new File([blob], filename, { type: "application/pdf" });
+
+            if (navigator.canShare?.({ files: [file] })) {
+                await navigator.share({
+                    files: [file],
+                    title: `Receipt #${lastTransaction.invoiceNumber || lastTransaction.id}`,
+                    text: "Bill from Promise Electronics",
+                });
+            } else {
+                // Desktop fallback: direct download
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url; a.download = filename; a.click();
+                URL.revokeObjectURL(url);
+            }
+        } catch (err) {
+            console.error("PDF share failed:", err);
+            handlePrint(); // fallback to print
+        } finally {
+            setSharing(false);
+        }
+    };
+
+    // Auto-trigger share when dialog opens with autoShare=true
+    useEffect(() => {
+        if (!open || !autoShare) return;
+        const t = setTimeout(() => handleSharePDF(), 600); // wait for receipt to render
+        return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open, autoShare]);
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-sm">
-                <DialogHeader><DialogTitle className="flex items-center gap-2"><Receipt className="h-5 w-5" /> Receipt Preview (57mm Thermal)</DialogTitle></DialogHeader>
-                <div className="border rounded-lg overflow-hidden bg-white flex justify-center p-4">{lastTransaction && <ReceiptPrint ref={receiptRef} data={lastTransaction} company={companyInfo} />}</div>
-                <DialogFooter className="gap-2">
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2">
+                        <Receipt className="h-5 w-5" /> Receipt Preview
+                        {autoShare && sharing && <span className="ml-1 text-xs text-slate-400 font-normal">Generating PDF…</span>}
+                    </DialogTitle>
+                </DialogHeader>
+                <div className="border rounded-lg overflow-hidden bg-white flex justify-center p-4">
+                    {lastTransaction && <ReceiptPrint ref={receiptRef} data={lastTransaction} company={companyInfo} />}
+                </div>
+                <DialogFooter className="gap-2 flex-wrap">
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
-                    <Button onClick={handlePrint} className="gap-2"><Printer className="h-4 w-4" /> Print Receipt</Button>
+                    {/* Mobile: Share PDF (WhatsApp) */}
+                    <Button
+                        onClick={handleSharePDF}
+                        disabled={sharing}
+                        className="gap-2 md:hidden bg-[#25D366] hover:bg-[#1ebe5c] text-white"
+                    >
+                        {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                        {sharing ? "Generating…" : "Share PDF"}
+                    </Button>
+                    {/* Desktop: Print */}
+                    <Button onClick={handlePrint} className="gap-2 hidden md:inline-flex">
+                        <Printer className="h-4 w-4" /> Print Receipt
+                    </Button>
                 </DialogFooter>
             </DialogContent>
         </Dialog>

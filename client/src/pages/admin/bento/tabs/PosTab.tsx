@@ -52,6 +52,7 @@ export default function PosTab() {
     const [showRefundDialog, setShowRefundDialog] = useState(false);
     const [refundTransaction, setRefundTransaction] = useState<any>(null);
     const [lastTransaction, setLastTransaction] = useState<TransactionData | null>(null);
+    const [autoShareReceipt, setAutoShareReceipt] = useState(false);
 
     // Mobile cart drawer
     const [mobileCartOpen, setMobileCartOpen] = useState(false);
@@ -628,9 +629,23 @@ export default function PosTab() {
             <CustomerDialog open={isCustomerDialogOpen} onOpenChange={setIsCustomerDialogOpen} customers={customers || []} customersLoading={customersLoading} onSelect={handleSelectCustomer} getCurrencySymbol={getCurrencySymbol} />
             <JobLinkDialog open={isJobDialogOpen} onOpenChange={setIsJobDialogOpen} billableJobs={billableJobs} jobsLoading={jobsLoading} linkedJobCharges={linkedJobCharges} onJobSelection={handleJobSelection} />
             <InventoryDialog open={isInventoryDialogOpen} onOpenChange={setIsInventoryDialogOpen} inventoryItems={inventoryItems} inventoryLoading={inventoryLoading} selectedInventory={selectedInventory} onInventorySelection={handleInventorySelection} onAddToCart={handleAddInventoryToCart} getCurrencySymbol={getCurrencySymbol} />
-            <SuccessDialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog} lastTransaction={lastTransaction} getCurrencySymbol={getCurrencySymbol} onShowInvoice={() => { setShowSuccessDialog(false); setShowInvoicePreview(true); }} onShowReceipt={() => { setShowSuccessDialog(false); setShowReceiptPreview(true); }} />
+            <SuccessDialog
+                open={showSuccessDialog}
+                onOpenChange={setShowSuccessDialog}
+                lastTransaction={lastTransaction}
+                getCurrencySymbol={getCurrencySymbol}
+                onShowInvoice={() => { setShowSuccessDialog(false); setShowInvoicePreview(true); }}
+                onShowReceipt={() => { setShowSuccessDialog(false); setShowReceiptPreview(true); }}
+                onSharePDF={() => { setAutoShareReceipt(true); setShowReceiptPreview(true); }}
+            />
             <InvoicePreviewDialog open={showInvoicePreview} onOpenChange={setShowInvoicePreview} lastTransaction={lastTransaction} companyInfo={companyInfo} />
-            <ReceiptPreviewDialog open={showReceiptPreview} onOpenChange={setShowReceiptPreview} lastTransaction={lastTransaction} companyInfo={companyInfo} />
+            <ReceiptPreviewDialog
+                open={showReceiptPreview}
+                onOpenChange={(v) => { setShowReceiptPreview(v); if (!v) setAutoShareReceipt(false); }}
+                lastTransaction={lastTransaction}
+                companyInfo={companyInfo}
+                autoShare={autoShareReceipt}
+            />
             <HistoryDialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog} posTransactions={Array.isArray(posTransactions) ? posTransactions : (posTransactions?.items || [])} getCurrencySymbol={getCurrencySymbol} onRequestRefund={handleRequestRefund} onSetTransaction={setLastTransaction} onShowInvoice={() => setShowInvoicePreview(true)} onShowReceipt={() => setShowReceiptPreview(true)} />
             <RefundDialog open={showRefundDialog} onOpenChange={setShowRefundDialog} refundTransaction={refundTransaction} getCurrencySymbol={getCurrencySymbol} />
 
