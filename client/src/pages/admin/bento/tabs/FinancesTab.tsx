@@ -205,13 +205,13 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
 
     return (
         <motion.div
-            className="mx-auto w-full max-w-[430px] space-y-2 pb-24 md:max-w-none md:space-y-6 md:pb-0"
+            className="flex flex-col h-full w-full overflow-hidden"
             variants={containerVariants}
             initial="hidden"
             animate="visible"
         >
             {/* Mobile sticky header block — KPI strip + command rail + tab switcher all stay at top */}
-            <div className="md:hidden sticky top-0 z-30 bg-white/95 backdrop-blur-sm shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+            <div className="md:hidden flex-none bg-[#f8fafc]/95 backdrop-blur-sm border-b border-slate-100 z-30">
                 {/* KPI strip */}
                 <button
                     type="button"
@@ -278,7 +278,18 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     ]}
                     tone={activeFinanceTab === "money-in" ? "emerald" : activeFinanceTab === "money-out" ? "rose" : activeFinanceTab === "drawer" ? "blue" : "slate"}
                 />
-            </div>{/* end mobile sticky header */}
+            </div>{/* end mobile header */}
+
+            {/* Scrollable content — fires admin:mobile-chrome, same mechanism as Jobs */}
+            <div
+                className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] md:bg-transparent px-3 py-3 space-y-2 pb-4 md:px-0 md:py-0 md:space-y-6"
+                onScroll={(e) => {
+                    if (window.innerWidth >= 768) return;
+                    window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {
+                        detail: { hidden: e.currentTarget.scrollTop > 24 },
+                    }));
+                }}
+            >
             <div className="hidden md:grid md:grid-cols-4 gap-4">
                 <motion.div variants={itemVariants}>
                     <BentoCard
@@ -560,6 +571,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     </TabsContent>
                 </Tabs>
             </motion.div>
+            </div>{/* end scrollable content */}
         </motion.div>
     );
 }

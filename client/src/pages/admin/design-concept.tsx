@@ -308,7 +308,7 @@ export default function DesignConcept() {
             items: [
                 { label: "POS", id: "pos", icon: ShoppingCart, color: "pink", layout: "fixed" },
                 { label: "Orders", id: "orders", icon: ShoppingBag, color: "rose", layout: "fixed" },
-                { label: "Finance", id: "finance", icon: Banknote, color: "emerald", layout: "scroll" },
+                { label: "Finance", id: "finance", icon: Banknote, color: "emerald", layout: "fixed" },
                 { label: "Quotations", id: "quotations", icon: FileText, color: "blue", layout: "scroll" },
                 { label: "Customers", id: "customers", icon: Users, color: "blue", layout: "fixed" },
                 { label: "Inquiries", id: "inquiries", icon: HelpCircle, color: "sky", layout: "fixed" },
