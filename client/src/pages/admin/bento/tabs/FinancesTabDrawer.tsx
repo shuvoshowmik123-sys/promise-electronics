@@ -98,7 +98,7 @@ export function FinancesTabDrawer({ getCurrencySymbol, exportToCSV }: any) {
     ) || [];
 
     return (
-        <div className="space-y-2 pb-[calc(10rem+env(safe-area-inset-bottom))] md:space-y-6 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="space-y-2 md:space-y-6 pb-4 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 md:hidden">
                 <div className="relative min-w-0 flex-1">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -144,7 +144,7 @@ export function FinancesTabDrawer({ getCurrencySymbol, exportToCSV }: any) {
                     </div>
                 ) : (
                     filteredSessions.map((session: any) => (
-                        <div key={session.id} className="scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                        <div key={session.id} className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
                             <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
                                     <p className="truncate text-sm font-black text-slate-900">
@@ -167,7 +167,7 @@ export function FinancesTabDrawer({ getCurrencySymbol, exportToCSV }: any) {
                                 <Button
                                     size="sm"
                                     variant={session.status === 'counting' && canReconcile ? "default" : "outline"}
-                                    className="h-8 scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] px-3 text-xs"
+                                    className="h-8 px-3 text-xs"
                                     onClick={() => setReconcileSession(session)}
                                 >
                                     {session.status === 'counting' && canReconcile ? "Reconcile" : "View"}

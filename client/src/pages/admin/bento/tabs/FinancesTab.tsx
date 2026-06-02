@@ -211,7 +211,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
             animate="visible"
         >
             {/* Mobile sticky header block — KPI strip + command rail + tab switcher all stay at top */}
-            <div className="md:hidden flex-none bg-[#f8fafc]/95 backdrop-blur-sm border-b border-slate-100/80 z-30 px-3 space-y-1 pb-1.5">
+            <div className="md:hidden flex-none bg-[#f8fafc] border-b border-slate-100/80 z-30 px-3 space-y-1 pb-1.5">
                 {/* KPI strip */}
                 <button
                     type="button"

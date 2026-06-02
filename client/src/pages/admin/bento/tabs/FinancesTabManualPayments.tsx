@@ -27,6 +27,15 @@ const statusColors: Record<string, string> = {
     rejected: "bg-red-50 text-red-700 border-red-200",
 };
 
+const statusLabels: Record<string, string> = {
+    pending: "Pending",
+    staff_verified: "Verified",
+    applied_to_invoice: "Applied",
+    rejected: "Rejected",
+};
+
+const DIGITAL_METHODS = ["bkash_send_money", "nagad_send_money"];
+
 type LinkOption = {
     type: "job" | "due" | "service-request";
     id: string;
@@ -398,9 +407,11 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
                             <div className="flex items-start justify-between gap-3">
                                 <div className="min-w-0">
                                     <div className="text-sm font-bold text-slate-900">{methodLabels[record.method] || record.method}</div>
-                                    <div className="mt-1 font-mono text-xs text-slate-500">{record.transactionId || record.id}</div>
+                                    {DIGITAL_METHODS.includes(record.method) && record.transactionId && (
+                                        <div className="mt-1 font-mono text-xs text-slate-500">{record.transactionId}</div>
+                                    )}
                                 </div>
-                                <Badge variant="outline" className={statusColors[record.status]}>{record.status}</Badge>
+                                <Badge variant="outline" className={statusColors[record.status]}>{statusLabels[record.status] || record.status}</Badge>
                             </div>
                             <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
                                 <div className="rounded-lg bg-slate-50 p-1.5">
@@ -450,7 +461,9 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
                             <TableRow key={record.id}>
                                 <TableCell>{methodLabels[record.method] || record.method}</TableCell>
                                 <TableCell>
-                                    <div className="font-mono text-xs">{record.transactionId || record.id}</div>
+                                    {DIGITAL_METHODS.includes(record.method) && record.transactionId && (
+                                        <div className="font-mono text-xs">{record.transactionId}</div>
+                                    )}
                                     <div className="text-xs text-muted-foreground">{record.senderNumber || "-"}</div>
                                     <div className="text-xs text-muted-foreground">{record.jobTicketId || record.dueRecordId || record.serviceRequestId}</div>
                                 </TableCell>
@@ -459,7 +472,7 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
                                     <div className="text-xs text-muted-foreground">{record.customerPhone || record.senderNumber || "-"}</div>
                                 </TableCell>
                                 <TableCell className="text-right font-semibold">{getCurrencySymbol()}{Number(record.amount).toLocaleString()}</TableCell>
-                                <TableCell><Badge variant="outline" className={statusColors[record.status]}>{record.status}</Badge></TableCell>
+                                <TableCell><Badge variant="outline" className={statusColors[record.status]}>{statusLabels[record.status] || record.status}</Badge></TableCell>
                                 <TableCell className="text-right">
                                     {record.status === "pending" && (
                                         <div className="flex justify-end gap-2">
