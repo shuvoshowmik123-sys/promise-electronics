@@ -508,7 +508,7 @@ export default function DesignConcept() {
                     <div
                         className={cn(
                             "md:hidden absolute top-4 right-4 z-[60] flex items-center gap-3 transition-all duration-200",
-                            activeTab === "jobs" && mobileChromeHidden && "-translate-y-20 opacity-0 pointer-events-none"
+                            mobileChromeHidden && "-translate-y-20 opacity-0 pointer-events-none"
                         )}
                     >
                         <QRScanButton onJobFound={(jobId) => {
@@ -609,6 +609,12 @@ export default function DesignConcept() {
                     <main
                         ref={pullContainerRef}
                         className={cn("flex-1 bg-slate-50/50 flex flex-col min-h-0", isFixed ? "overflow-hidden" : "overflow-y-auto scroll-smooth")}
+                        onScroll={(e) => {
+                            if (window.innerWidth >= 768) return;
+                            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {
+                                detail: { hidden: e.currentTarget.scrollTop > 24 },
+                            }));
+                        }}
                     >
                         {/* Pull-to-refresh indicator (mobile only) */}
                         {pullDistance > 0 && !isFixed && (
@@ -797,7 +803,7 @@ export default function DesignConcept() {
 
 // Reusable Layout Wrapper
 function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }: { children: React.ReactNode, isFixed: boolean, activeTab: string, mobileChromeHidden: boolean }) {
-    const mobileTopPadding = activeTab === "jobs" && mobileChromeHidden ? "pt-0" : "pt-16";
+    const mobileTopPadding = mobileChromeHidden ? "pt-0" : "pt-16";
 
     if (isFixed) {
         return (
