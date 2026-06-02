@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
-import { Plus, Search, X, Download, TrendingUp, TrendingDown, Wallet, Loader2, Calendar as CalendarIcon } from "lucide-react";
+import { Plus, Search, X, Download, TrendingUp, TrendingDown, Wallet, Loader2, Calendar as CalendarIcon, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +39,7 @@ export function PettyCashTab({
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isDetailDialogOpen, setIsDetailDialogOpen] = useState(false);
+    const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
     const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
 
     const [form, setForm] = useState({
@@ -114,10 +115,10 @@ export function PettyCashTab({
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-2 md:space-y-6 pb-4 md:pb-0">
             {/* KPI Cards - Bento Style */}
             <motion.div
-                className="grid grid-cols-1 md:grid-cols-2 gap-4"
+                className="hidden grid-cols-1 md:grid md:grid-cols-2 gap-4"
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"
@@ -156,7 +157,60 @@ export function PettyCashTab({
             </motion.div>
 
             {/* Toolbar */}
-            <div className="flex flex-col lg:flex-row items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200/60 shadow-sm">
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 md:hidden">
+                <div className="relative min-w-0 flex-1">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Search expenses..."
+                        className="h-9 rounded-lg pl-9 text-sm"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
+                <Button variant="outline" size="sm" className="h-9 rounded-lg px-2" onClick={() => setIsFilterDialogOpen(true)}>
+                    <SlidersHorizontal className="h-4 w-4" />
+                </Button>
+            </div>
+            <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>
+                <DialogContent className="rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Filter transactions</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <Select value={typeFilter} onValueChange={setTypeFilter}>
+                            <SelectTrigger><SelectValue placeholder="All Types" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Types</SelectItem>
+                                <SelectItem value="Income">Income</SelectItem>
+                                <SelectItem value="Expense">Expense</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="h-9 w-full justify-start text-left font-normal">
+                                    {dateRange?.from ? (
+                                        dateRange.to ? (
+                                            <>{format(dateRange.from, "MMM d")} - {format(dateRange.to, "MMM d")}</>
+                                        ) : (
+                                            format(dateRange.from, "MMM d")
+                                        )
+                                    ) : (
+                                        <span>Date range</span>
+                                    )}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={1} />
+                            </PopoverContent>
+                        </Popover>
+                        <Button variant="outline" onClick={() => { setSearch(""); setTypeFilter("all"); setDateRange(undefined); setPage(1); }} className="w-full">
+                            Clear filters
+                        </Button>
+                        <Button onClick={() => setIsFilterDialogOpen(false)} className="w-full">Apply</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+            <div className="hidden flex-col lg:flex-row items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200/60 shadow-sm md:flex">
                 <div className="relative flex-1 w-full max-w-sm">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -312,8 +366,41 @@ export function PettyCashTab({
                 </Dialog>
             </div>
 
+            <div className="space-y-2 pb-4 md:hidden">
+                {isLoading ? (
+                    <div className="rounded-xl border bg-white p-4 text-center text-sm text-muted-foreground">
+                        <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                    </div>
+                ) : transactions.length === 0 ? (
+                    <div className="rounded-xl border bg-white p-4 text-center text-sm text-muted-foreground">No transactions found</div>
+                ) : transactions.map((record: any) => (
+                    <button
+                        key={record.id}
+                        type="button"
+                        onClick={() => {
+                            setSelectedTransaction(record);
+                            setIsDetailDialogOpen(true);
+                        }}
+                        className="w-full scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-xl border border-slate-200 bg-white p-2.5 text-left shadow-sm"
+                    >
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                                <div className="truncate text-sm font-black text-slate-900">{record.description}</div>
+                                <div className="truncate text-xs text-slate-500">{record.category || "Uncategorized"} - {record.createdAt ? format(new Date(record.createdAt), 'MMM d') : 'No date'}</div>
+                            </div>
+                            <div className={`text-right text-base font-black ${isIncome(record.type) ? "text-green-600" : "text-red-600"}`}>
+                                {isIncome(record.type) ? "+" : "-"}{getCurrencySymbol()}{Number(record.amount).toLocaleString()}
+                            </div>
+                        </div>
+                        <div className="mt-1.5">
+                            <Badge variant={isIncome(record.type) ? "default" : "destructive"}>{record.type}</Badge>
+                        </div>
+                    </button>
+                ))}
+            </div>
+
             {/* Table - Bento Style */}
-            <div className="bg-white rounded-3xl border border-slate-200/60 shadow-sm p-6 relative min-h-[400px]">
+            <div className="hidden bg-white rounded-3xl border border-slate-200/60 shadow-sm p-6 relative min-h-[400px] md:block">
                 <div className="overflow-auto">
                     <Table>
                         <TableHeader className="sticky top-0 bg-slate-50">

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
-import { Plus, Search, X, Download, FileText, Loader2, AlertCircle, DollarSign, Calendar as CalendarIcon } from "lucide-react";
+import { Plus, Search, X, Download, FileText, Loader2, AlertCircle, DollarSign, Calendar as CalendarIcon, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -39,6 +39,7 @@ export function DuesTab({
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [isSettleDialogOpen, setIsSettleDialogOpen] = useState(false);
+    const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState<any>(null);
     const [paymentAmount, setPaymentAmount] = useState("");
     const [paymentMethod, setPaymentMethod] = useState("Cash");
@@ -125,9 +126,10 @@ export function DuesTab({
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-2 md:space-y-6 pb-4 md:pb-0">
             {/* Header Stats - Bento Style */}
             <motion.div
+                className="hidden md:block"
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"
@@ -155,7 +157,61 @@ export function DuesTab({
             </motion.div>
 
             {/* Toolbar */}
-            <div className="flex flex-col xl:flex-row items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200/60 shadow-sm">
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 md:hidden">
+                <div className="relative min-w-0 flex-1">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Search dues..."
+                        className="h-9 rounded-lg pl-9 text-sm"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
+                <Button variant="outline" size="sm" className="h-9 rounded-lg px-2" onClick={() => setIsFilterDialogOpen(true)}>
+                    <SlidersHorizontal className="h-4 w-4" />
+                </Button>
+            </div>
+            <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>
+                <DialogContent className="rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Filter dues</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <Select value={statusFilter} onValueChange={setStatusFilter}>
+                            <SelectTrigger><SelectValue placeholder="All Status" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Status</SelectItem>
+                                <SelectItem value="Pending">Pending</SelectItem>
+                                <SelectItem value="Overdue">Overdue</SelectItem>
+                                <SelectItem value="Paid">Paid</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="h-9 w-full justify-start text-left font-normal">
+                                    {dateRange?.from ? (
+                                        dateRange.to ? (
+                                            <>{format(dateRange.from, "MMM d")} - {format(dateRange.to, "MMM d")}</>
+                                        ) : (
+                                            format(dateRange.from, "MMM d")
+                                        )
+                                    ) : (
+                                        <span>Date range</span>
+                                    )}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={1} />
+                            </PopoverContent>
+                        </Popover>
+                        <Button variant="outline" onClick={() => { setSearch(""); setStatusFilter("all"); setDateRange(undefined); setPage(1); }} className="w-full">
+                            Clear filters
+                        </Button>
+                        <Button onClick={() => setIsFilterDialogOpen(false)} className="w-full">Apply</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+            <div className="hidden flex-col xl:flex-row items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200/60 shadow-sm md:flex">
                 <div className="relative flex-1 w-full max-w-sm">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -307,8 +363,55 @@ export function DuesTab({
                 </Dialog>
             </div>
 
+            <div className="space-y-2 pb-4 md:hidden">
+                {isLoading ? (
+                    <div className="rounded-xl border bg-white p-4 text-center text-sm text-muted-foreground">
+                        <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                    </div>
+                ) : transactions.length === 0 ? (
+                    <div className="rounded-xl border bg-white p-4 text-center text-sm text-muted-foreground">No dues found</div>
+                ) : transactions.map((record: any) => {
+                    const remaining = Number(record.amount) - Number(record.paidAmount || 0);
+                    return (
+                        <div key={record.id} className="scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <div className="truncate font-mono text-xs font-black text-slate-800">{record.invoice}</div>
+                                    <div className="truncate text-xs text-slate-500">{record.customer}</div>
+                                </div>
+                                <Badge variant={record.status === "Paid" ? "default" : record.status === "Overdue" ? "destructive" : "secondary"}>{record.status}</Badge>
+                            </div>
+                            <div className="mt-2 flex items-end justify-between gap-2">
+                                <div>
+                                    <div className="text-[10px] uppercase text-slate-400">Remaining</div>
+                                    <div className="text-base font-black text-slate-950">{getCurrencySymbol()}{remaining.toLocaleString()}</div>
+                                </div>
+                                <div className="text-right text-[11px] text-slate-500">
+                                    <div>{record.dueDate ? format(new Date(record.dueDate), 'MMM d') : 'No date'}</div>
+                                    <div>Paid {getCurrencySymbol()}{Number(record.paidAmount || 0).toLocaleString()}</div>
+                                </div>
+                            </div>
+                            {record.status !== "Paid" && (
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="mt-2 h-8 w-full scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-lg"
+                                    onClick={() => {
+                                        setSelectedRecord(record);
+                                        setPaymentAmount(remaining.toString());
+                                        setIsSettleDialogOpen(true);
+                                    }}
+                                >
+                                    Settle
+                                </Button>
+                            )}
+                        </div>
+                    );
+                })}
+            </div>
+
             {/* Table - Bento Style */}
-            <div className="bg-white rounded-3xl border border-slate-200/60 shadow-sm p-6 relative min-h-[400px]">
+            <div className="hidden bg-white rounded-3xl border border-slate-200/60 shadow-sm p-6 relative min-h-[400px] md:block">
                 <div className="overflow-auto">
                     <Table>
                         <TableHeader className="sticky top-0 bg-slate-50">

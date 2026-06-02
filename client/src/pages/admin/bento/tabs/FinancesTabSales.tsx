@@ -1,7 +1,7 @@
 import { useState, useRef, useMemo, useEffect } from "react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
-import { Eye, Printer, Search, X, Download, Banknote, CreditCard, Smartphone, Clock, ShoppingCart, Loader2, Calendar as CalendarIcon } from "lucide-react";
+import { Eye, Printer, Search, X, Download, Banknote, CreditCard, Smartphone, Clock, ShoppingCart, Loader2, Calendar as CalendarIcon, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +35,7 @@ export function SalesTab({
     const limit = 25;
 
     const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false);
+    const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
     const [selectedSaleTransaction, setSelectedSaleTransaction] = useState<any>(null);
     const invoiceRef = useRef<HTMLDivElement>(null);
 
@@ -145,10 +146,10 @@ export function SalesTab({
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-2 md:space-y-6 pb-4 md:pb-0">
             {/* Payment Methods Grid - Bento Style */}
             <motion.div
-                className="grid grid-cols-2 md:grid-cols-5 gap-4"
+                className="hidden grid-cols-2 md:grid md:grid-cols-5 gap-4"
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"
@@ -225,7 +226,63 @@ export function SalesTab({
             </motion.div>
 
             {/* Search and Filter Bar */}
-            <div className="flex flex-col lg:flex-row items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200/60 shadow-sm">
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 md:hidden">
+                <div className="relative min-w-0 flex-1">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Search sales..."
+                        className="h-9 rounded-lg pl-9 text-sm"
+                        value={salesSearch}
+                        onChange={(e) => setSalesSearch(e.target.value)}
+                    />
+                </div>
+                <Button variant="outline" size="sm" className="h-9 rounded-lg px-2" onClick={() => setIsFilterDialogOpen(true)}>
+                    <SlidersHorizontal className="h-4 w-4" />
+                </Button>
+            </div>
+            <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>
+                <DialogContent className="rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Filter sales</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <Select value={salesPaymentFilter} onValueChange={setSalesPaymentFilter}>
+                            <SelectTrigger><SelectValue placeholder="All Payments" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Payments</SelectItem>
+                                <SelectItem value="Cash">Cash</SelectItem>
+                                <SelectItem value="Bank">Bank</SelectItem>
+                                <SelectItem value="bKash">bKash</SelectItem>
+                                <SelectItem value="Nagad">Nagad</SelectItem>
+                                <SelectItem value="Due">Due</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                                <Button variant="outline" className="h-9 w-full justify-start text-left font-normal">
+                                    {dateRange?.from ? (
+                                        dateRange.to ? (
+                                            <>{format(dateRange.from, "MMM d")} - {format(dateRange.to, "MMM d")}</>
+                                        ) : (
+                                            format(dateRange.from, "MMM d")
+                                        )
+                                    ) : (
+                                        <span>Date range</span>
+                                    )}
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                                <Calendar initialFocus mode="range" defaultMonth={dateRange?.from} selected={dateRange} onSelect={setDateRange} numberOfMonths={1} />
+                            </PopoverContent>
+                        </Popover>
+                        <Button variant="outline" onClick={() => { setSalesSearch(""); setSalesPaymentFilter("all"); setDateRange(undefined); setPage(1); }} className="w-full">
+                            Clear filters
+                        </Button>
+                        <Button onClick={() => setIsFilterDialogOpen(false)} className="w-full">Apply</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+            <div className="hidden flex-col lg:flex-row items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200/60 shadow-sm md:flex">
                 <div className="relative flex-1 w-full max-w-sm">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -315,8 +372,48 @@ export function SalesTab({
                 </div>
             </div>
 
+            <div className="space-y-2 pb-4 md:hidden">
+                {isSalesLoading ? (
+                    <div className="rounded-xl border bg-white p-4 text-center text-sm text-muted-foreground">
+                        <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                    </div>
+                ) : transactions.length === 0 ? (
+                    <div className="rounded-xl border bg-white p-4 text-center text-sm text-muted-foreground">No sales found</div>
+                ) : transactions.map((transaction: any) => (
+                    <div key={transaction.id} className="scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                                <div className="truncate font-mono text-xs font-black text-slate-800">{transaction.invoiceNumber || transaction.id}</div>
+                                <div className="truncate text-xs text-slate-500">{transaction.customer || "Walk-in"}</div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-base font-black text-slate-950">{getCurrencySymbol()}{Number(transaction.total).toLocaleString()}</div>
+                                <div className="text-[10px] text-slate-500">{transaction.createdAt ? format(new Date(transaction.createdAt), 'MMM d') : 'No date'}</div>
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                            <div className="flex gap-1.5">
+                                <Badge variant="outline">{transaction.paymentMethod}</Badge>
+                                <Badge variant={transaction.paymentStatus === "Paid" ? "default" : "destructive"}>{transaction.paymentStatus === "Paid" ? "Paid" : "Due"}</Badge>
+                            </div>
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-7 scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-lg px-2"
+                                onClick={() => {
+                                    setSelectedSaleTransaction(parseTransactionForPrint(transaction));
+                                    setIsInvoiceDialogOpen(true);
+                                }}
+                            >
+                                View
+                            </Button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
             {/* Sales Table - Bento Style */}
-            <div className="bg-white rounded-3xl border border-slate-200/60 shadow-sm p-6 relative min-h-[400px]">
+            <div className="hidden bg-white rounded-3xl border border-slate-200/60 shadow-sm p-6 relative min-h-[400px] md:block">
                 <div className="overflow-auto">
                     <Table>
                         <TableHeader className="sticky top-0 bg-slate-50">

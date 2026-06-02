@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
-import { Search, X, Download, TrendingDown, CheckCircle, XCircle, Loader2, AlertTriangle } from "lucide-react";
+import { Search, X, Download, TrendingDown, CheckCircle, XCircle, Loader2, AlertTriangle, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -34,6 +34,7 @@ export function RefundsTab({
     const [statusFilter, setStatusFilter] = useState("all");
     const [isProcessDialogOpen, setIsProcessDialogOpen] = useState(false);
     const [isRejectDialogOpen, setIsRejectDialogOpen] = useState(false);
+    const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
     const [selectedRefund, setSelectedRefund] = useState<any>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [rejectionReason, setRejectionReason] = useState("");
@@ -136,10 +137,10 @@ export function RefundsTab({
     };
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-2 md:space-y-6 pb-4 md:pb-0">
             {/* Stats Row - Bento Style */}
             <motion.div
-                className="grid grid-cols-1 md:grid-cols-3 gap-4"
+                className="hidden grid-cols-1 md:grid md:grid-cols-3 gap-4"
                 variants={containerVariants}
                 initial="hidden"
                 animate="visible"
@@ -194,7 +195,44 @@ export function RefundsTab({
             </motion.div>
 
             {/* Toolbar */}
-            <div className="flex flex-col sm:flex-row items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200/60 shadow-sm">
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 md:hidden">
+                <div className="relative min-w-0 flex-1">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Search refunds..."
+                        className="h-9 rounded-lg pl-9 text-sm"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
+                <Button variant="outline" size="sm" className="h-9 rounded-lg px-2" onClick={() => setIsFilterDialogOpen(true)}>
+                    <SlidersHorizontal className="h-4 w-4" />
+                </Button>
+            </div>
+            <Dialog open={isFilterDialogOpen} onOpenChange={setIsFilterDialogOpen}>
+                <DialogContent className="rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Filter refunds</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <Select value={statusFilter} onValueChange={setStatusFilter}>
+                            <SelectTrigger><SelectValue placeholder="All Status" /></SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Status</SelectItem>
+                                <SelectItem value="pending">Pending</SelectItem>
+                                <SelectItem value="approved">Approved</SelectItem>
+                                <SelectItem value="processed">Processed</SelectItem>
+                                <SelectItem value="rejected">Rejected</SelectItem>
+                            </SelectContent>
+                        </Select>
+                        <Button variant="outline" onClick={() => { setSearch(""); setStatusFilter("all"); }} className="w-full">
+                            Clear filters
+                        </Button>
+                        <Button onClick={() => setIsFilterDialogOpen(false)} className="w-full">Apply</Button>
+                    </div>
+                </DialogContent>
+            </Dialog>
+            <div className="hidden flex-col sm:flex-row items-center gap-4 bg-white p-4 rounded-3xl border border-slate-200/60 shadow-sm md:flex">
                 <div className="relative flex-1 w-full max-w-sm">
                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                     <Input
@@ -253,8 +291,43 @@ export function RefundsTab({
                 </div>
             </div>
 
+            <div className="space-y-2 pb-4 md:hidden">
+                {isLoading ? (
+                    <div className="rounded-xl border bg-white p-4 text-center text-sm text-muted-foreground">
+                        <Loader2 className="mx-auto h-5 w-5 animate-spin" />
+                    </div>
+                ) : filteredRefunds.length === 0 ? (
+                    <div className="rounded-xl border bg-white p-4 text-center text-sm text-muted-foreground">No refunds found</div>
+                ) : filteredRefunds.map((refund: any) => (
+                    <div key={refund.id} className="scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                        <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                                <div className="truncate font-mono text-xs font-black text-slate-800">{refund.invoiceNumber}</div>
+                                <div className="truncate text-xs text-slate-500">{refund.reason}</div>
+                            </div>
+                            <div className="text-right">
+                                <div className="text-base font-black text-red-600">-{getCurrencySymbol()}{Number(refund.refundAmount).toLocaleString()}</div>
+                                <div className="text-[10px] text-slate-500">{refund.createdAt ? format(new Date(refund.createdAt), 'MMM d') : 'No date'}</div>
+                            </div>
+                        </div>
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                            <Badge variant={refund.status === "processed" ? "default" : refund.status === "rejected" ? "destructive" : "secondary"}>{refund.status}</Badge>
+                            {refund.status === 'pending' && (
+                                <div className="flex gap-1.5">
+                                    <Button size="sm" className="h-7 scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-lg px-2" disabled={isProcessing} onClick={() => handleApproveRefund(refund)}>Approve</Button>
+                                    <Button size="sm" variant="outline" className="h-7 scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-lg px-2" onClick={() => { setSelectedRefund(refund); setIsRejectDialogOpen(true); }}>Reject</Button>
+                                </div>
+                            )}
+                            {refund.status === 'approved' && (
+                                <Button size="sm" className="h-7 scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-lg bg-emerald-600 px-2 hover:bg-emerald-700" onClick={() => { setSelectedRefund(refund); setRefundMethod('cash'); setIsProcessDialogOpen(true); }}>Process</Button>
+                            )}
+                        </div>
+                    </div>
+                ))}
+            </div>
+
             {/* Table - Bento Style */}
-            <div className="bg-white rounded-3xl border border-slate-200/60 shadow-sm p-6">
+            <div className="hidden bg-white rounded-3xl border border-slate-200/60 shadow-sm p-6 md:block">
                 <div className="overflow-auto">
                     <Table>
                         <TableHeader className="sticky top-0 bg-slate-50">

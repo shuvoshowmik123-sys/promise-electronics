@@ -211,12 +211,12 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
             animate="visible"
         >
             {/* Mobile sticky header block — KPI strip + command rail + tab switcher all stay at top */}
-            <div className="md:hidden flex-none bg-[#f8fafc]/95 backdrop-blur-sm border-b border-slate-100 z-30">
+            <div className="md:hidden flex-none bg-[#f8fafc]/95 backdrop-blur-sm border-b border-slate-100/80 z-30 px-3 space-y-1 pb-1.5">
                 {/* KPI strip */}
                 <button
                     type="button"
                     onClick={() => setKpiOpen(v => !v)}
-                    className="flex w-full items-center justify-between gap-2 px-3 py-2.5 active:bg-slate-50"
+                    className="flex w-full items-center justify-between gap-2 -mx-3 px-3 py-2 active:bg-slate-50"
                 >
                     <div className="flex items-center gap-3 overflow-hidden text-[11px] font-bold">
                         <span className="text-emerald-700">Sales {compactMoney(totalSales)}</span>
@@ -278,11 +278,35 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     ]}
                     tone={activeFinanceTab === "money-in" ? "emerald" : activeFinanceTab === "money-out" ? "rose" : activeFinanceTab === "drawer" ? "blue" : "slate"}
                 />
+                {/* Sub-nav — lives in header so it never scrolls away */}
+                {activeFinanceTab === "money-in" && (
+                    <MobileSegmentTabs
+                        value={moneyInView}
+                        onChange={setMoneyInView}
+                        tone="emerald"
+                        items={[
+                            { value: "payments", label: "Payments", badge: pendingPaymentsCount > 0 ? <span className="rounded-full bg-white/70 px-1.5 text-[10px]">{pendingPaymentsCount}</span> : null },
+                            { value: "sales", label: "Sales" },
+                            { value: "dues", label: "Dues" },
+                        ]}
+                    />
+                )}
+                {activeFinanceTab === "money-out" && (
+                    <MobileSegmentTabs
+                        value={moneyOutView}
+                        onChange={setMoneyOutView}
+                        tone="rose"
+                        items={[
+                            { value: "expenses", label: "Expenses" },
+                            { value: "refunds", label: "Refunds" },
+                        ]}
+                    />
+                )}
             </div>{/* end mobile header */}
 
             {/* Scrollable content — fires admin:mobile-chrome, same mechanism as Jobs */}
             <div
-                className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] md:bg-transparent px-3 py-3 space-y-2 pb-4 md:px-0 md:py-0 md:space-y-6"
+                className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] md:bg-transparent px-3 pt-0 space-y-2 pb-4 md:px-0 md:pt-0 md:space-y-6"
                 onScroll={(e) => {
                     if (window.innerWidth >= 768) return;
                     window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {
@@ -506,17 +530,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     </TabsContent>
 
                     {/* MONEY IN — Payments · Sales · Dues */}
-                    <TabsContent value="money-in" className="mt-2 space-y-2 md:mt-6 md:space-y-4">
-                        <MobileSegmentTabs
-                            value={moneyInView}
-                            onChange={setMoneyInView}
-                            tone="emerald"
-                            items={[
-                                { value: "payments", label: "Payments", badge: pendingPaymentsCount > 0 ? <span className="rounded-full bg-white/70 px-1.5 text-[10px]">{pendingPaymentsCount}</span> : null },
-                                { value: "sales", label: "Sales" },
-                                { value: "dues", label: "Dues" },
-                            ]}
-                        />
+                    <TabsContent value="money-in" className="space-y-2 md:mt-6 md:space-y-4">
                         <div className="hidden rounded-full bg-emerald-50 p-1 gap-1 md:inline-flex">
                             {(["payments", "sales", "dues"] as const).map((k) => (
                                 <button key={k} onClick={() => setMoneyInView(k)}
@@ -535,16 +549,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     </TabsContent>
 
                     {/* MONEY OUT — Expenses · Refunds */}
-                    <TabsContent value="money-out" className="mt-2 space-y-2 md:mt-6 md:space-y-4">
-                        <MobileSegmentTabs
-                            value={moneyOutView}
-                            onChange={setMoneyOutView}
-                            tone="rose"
-                            items={[
-                                { value: "expenses", label: "Expenses" },
-                                { value: "refunds", label: "Refunds" },
-                            ]}
-                        />
+                    <TabsContent value="money-out" className="space-y-2 md:mt-6 md:space-y-4">
                         <div className="hidden rounded-full bg-rose-50 p-1 gap-1 md:inline-flex">
                             {(["expenses", "refunds"] as const).map((k) => (
                                 <button key={k} onClick={() => setMoneyOutView(k)}
@@ -562,7 +567,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     </TabsContent>
 
                     {/* CASH DRAWER + end-of-day blacklist review */}
-                    <TabsContent value="drawer" className="mt-2 border-0 p-0 outline-none space-y-2 md:mt-6 md:space-y-6">
+                    <TabsContent value="drawer" className="border-0 p-0 outline-none space-y-2 md:mt-6 md:space-y-6">
                         <FinancesTabDrawer
                             getCurrencySymbol={getCurrencySymbol}
                             exportToCSV={exportToCSV}

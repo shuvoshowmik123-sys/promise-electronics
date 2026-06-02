@@ -98,9 +98,21 @@ export function FinancesTabDrawer({ getCurrencySymbol, exportToCSV }: any) {
     ) || [];
 
     return (
-        <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="space-y-2 pb-[calc(10rem+env(safe-area-inset-bottom))] md:space-y-6 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white p-2 md:hidden">
+                <div className="relative min-w-0 flex-1">
+                    <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input
+                        placeholder="Search sessions..."
+                        className="h-9 rounded-lg pl-9 text-sm"
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                    />
+                </div>
+            </div>
+
             {/* Header Actions */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200">
+            <div className="hidden flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-4 rounded-xl border border-slate-200 md:flex">
                 <div className="flex items-center gap-3 w-full sm:w-auto">
                     <div className="relative flex-1 sm:w-80">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -120,8 +132,54 @@ export function FinancesTabDrawer({ getCurrencySymbol, exportToCSV }: any) {
                 </div>
             </div>
 
+            <div className="space-y-2 pb-4 md:hidden">
+                {isLoading ? (
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 text-center text-sm text-slate-500">
+                        <RefreshCw className="mr-1 inline h-4 w-4 animate-spin" />
+                        Loading drawer history...
+                    </div>
+                ) : filteredSessions.length === 0 ? (
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 text-center text-sm text-slate-500">
+                        No drawer sessions found.
+                    </div>
+                ) : (
+                    filteredSessions.map((session: any) => (
+                        <div key={session.id} className="scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <p className="truncate text-sm font-black text-slate-900">
+                                        {format(new Date(session.openedAt), "MMM d, h:mm a")}
+                                    </p>
+                                    <p className="truncate font-mono text-[11px] text-slate-500">
+                                        {session.id.slice(0, 8)} - {session.openedByName}
+                                    </p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-sm font-black text-slate-900">{getCurrencySymbol()}{session.declaredCash ?? session.startingFloat ?? 0}</p>
+                                    <p className="text-[11px] font-semibold text-slate-500">drop</p>
+                                </div>
+                            </div>
+                            <div className="mt-2 flex items-center justify-between gap-2">
+                                {session.status === 'open' && <Badge variant="default" className="bg-blue-100 text-blue-700 border-blue-200">Open</Badge>}
+                                {session.status === 'counting' && <Badge variant="default" className="bg-amber-100 text-amber-700 border-amber-200">Recon</Badge>}
+                                {session.status === 'reconciled' && <Badge variant="default" className="bg-green-100 text-green-700 border-green-200">Done</Badge>}
+                                {session.status === 'discrepancy' && <Badge variant="default" className="bg-rose-100 text-rose-700 border-rose-200">Issue</Badge>}
+                                <Button
+                                    size="sm"
+                                    variant={session.status === 'counting' && canReconcile ? "default" : "outline"}
+                                    className="h-8 scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] px-3 text-xs"
+                                    onClick={() => setReconcileSession(session)}
+                                >
+                                    {session.status === 'counting' && canReconcile ? "Reconcile" : "View"}
+                                </Button>
+                            </div>
+                        </div>
+                    ))
+                )}
+            </div>
+
             {/* Main Table */}
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="hidden bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden md:block">
                 <div className="overflow-x-auto">
                     <Table>
                         <TableHeader className="bg-slate-50 border-b border-slate-200">
