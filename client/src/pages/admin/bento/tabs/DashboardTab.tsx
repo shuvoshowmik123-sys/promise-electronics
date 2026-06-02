@@ -16,6 +16,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useQuery } from "@tanstack/react-query";
 import { adminAuthApi, type AdminAggregatedDashboard, type AdminDashboardJobSummary } from "@/lib/api";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { format } from "date-fns";
 import { saveDashboardSnapshot, getDashboardSnapshot } from "@/lib/dashboardSnapshot";
 
@@ -33,6 +34,7 @@ interface DashboardTabProps {
 }
 
 export default function DashboardTab({ onNavigate }: DashboardTabProps) {
+    const { user } = useAdminAuth();
     const [selectedCard, setSelectedCard] = useState<string | null>(null);
     const [selectedActivity, setSelectedActivity] = useState<AdminDashboardJobSummary | null>(null);
 
@@ -259,9 +261,13 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
             {/* Mobile header — title stays pinned */}
             <MobileTabHeader>
                 <div className="flex items-center justify-between py-1.5">
-                    <div>
-                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Command Dashboard</p>
-                        <p className="text-[10px] text-slate-400">Today at a glance</p>
+                    <div className="min-w-0">
+                        <p className="text-base font-black text-slate-900 truncate">
+                            Hey, {user?.name?.split(" ")[0] ?? "there"} 👋
+                        </p>
+                        <p className="text-[10px] font-semibold text-slate-400 truncate">
+                            {user?.role ?? "Staff"} · Today at a glance
+                        </p>
                     </div>
                 </div>
             </MobileTabHeader>
