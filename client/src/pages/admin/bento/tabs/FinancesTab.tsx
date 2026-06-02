@@ -210,9 +210,9 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
             initial="hidden"
             animate="visible"
         >
-            {/* KPI Header Row */}
-            {/* Mobile KPI strip — collapsed by default, tap to expand */}
+            {/* Mobile sticky header block — KPI strip + command rail + tab switcher all stay at top */}
             <div className="md:hidden sticky top-0 z-30 bg-white/95 backdrop-blur-sm shadow-[0_2px_8px_rgba(0,0,0,0.06)]">
+                {/* KPI strip */}
                 <button
                     type="button"
                     onClick={() => setKpiOpen(v => !v)}
@@ -226,7 +226,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${kpiOpen ? "rotate-180" : ""}`} />
                 </button>
                 {kpiOpen && (
-                    <div className="mt-1">
+                    <div className="px-3 pb-2">
                         <MobileMicroMetricGrid
                             items={[
                                 { label: "Sales", value: compactMoney(totalSales), meta: `${salesSummary?.count || 0} transactions`, tone: "emerald" },
@@ -237,8 +237,8 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                         />
                     </div>
                 )}
-            </div>
-            <MobileCommandRail
+                {/* Command rail */}
+                <MobileCommandRail
                 items={[
                     {
                         key: "verify",
@@ -266,6 +266,19 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                     },
                 ]}
             />
+                {/* Tab switcher — Overview / Money In / Money Out / Drawer */}
+                <MobileSegmentTabs
+                    value={activeFinanceTab}
+                    onChange={setActiveFinanceTab}
+                    items={[
+                        { value: "overview", label: "Overview", icon: <TrendingUp className="h-4 w-4" /> },
+                        { value: "money-in", label: "Money In", icon: <TrendingUp className="h-4 w-4" />, badge: pendingPaymentsCount > 0 ? <span className="rounded-full bg-white/70 px-1.5 text-[10px]">{pendingPaymentsCount}</span> : null },
+                        { value: "money-out", label: "Money Out", icon: <TrendingDown className="h-4 w-4" /> },
+                        { value: "drawer", label: "Drawer", icon: <Wallet className="h-4 w-4" /> },
+                    ]}
+                    tone={activeFinanceTab === "money-in" ? "emerald" : activeFinanceTab === "money-out" ? "rose" : activeFinanceTab === "drawer" ? "blue" : "slate"}
+                />
+            </div>{/* end mobile sticky header */}
             <div className="hidden md:grid md:grid-cols-4 gap-4">
                 <motion.div variants={itemVariants}>
                     <BentoCard
@@ -355,17 +368,6 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
             {/* Sub-Tabs System */}
             <motion.div variants={itemVariants}>
                 <Tabs value={activeFinanceTab} onValueChange={(v) => setActiveFinanceTab(v as typeof activeFinanceTab)} className="w-full">
-                    <MobileSegmentTabs
-                        value={activeFinanceTab}
-                        onChange={setActiveFinanceTab}
-                        items={[
-                            { value: "overview", label: "Overview", icon: <TrendingUp className="h-4 w-4" /> },
-                            { value: "money-in", label: "Money In", icon: <TrendingUp className="h-4 w-4" />, badge: pendingPaymentsCount > 0 ? <span className="rounded-full bg-white/70 px-1.5 text-[10px]">{pendingPaymentsCount}</span> : null },
-                            { value: "money-out", label: "Money Out", icon: <TrendingDown className="h-4 w-4" /> },
-                            { value: "drawer", label: "Drawer", icon: <Wallet className="h-4 w-4" /> },
-                        ]}
-                        tone={activeFinanceTab === "money-in" ? "emerald" : activeFinanceTab === "money-out" ? "rose" : activeFinanceTab === "drawer" ? "blue" : "slate"}
-                    />
                     <TabsList className="hidden h-12 items-center justify-center rounded-full bg-slate-100 p-1 text-slate-500 w-full sm:w-auto gap-1 flex-wrap sm:flex-nowrap md:inline-flex">
                         <TabsTrigger
                             value="overview"
