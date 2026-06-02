@@ -287,7 +287,7 @@ export default function DesignConcept() {
         {
             title: "Overview",
             items: [
-                { label: "Dashboard", id: "dashboard", icon: BarChart3, color: "blue", layout: "scroll" },
+                { label: "Dashboard", id: "dashboard", icon: BarChart3, color: "blue", layout: "fixed" },
                 { label: "Overview", id: "overview", icon: Activity, color: "indigo", layout: "scroll" },
                 { label: "Reports", id: "reports", icon: PieChart, color: "violet", layout: "scroll" },
                 { label: "Quality", id: "quality", icon: LineChart, color: "rose", layout: "scroll" },
@@ -432,20 +432,29 @@ export default function DesignConcept() {
                     </div>
                 </aside>
 
-                {/* BOTTOM NAV - Mobile Only */}
-                <nav className="fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-xl border-t border-slate-100 flex justify-around items-center h-20 z-50 md:hidden safe-area-pb px-4 shadow-[0_-8px_30px_rgb(0,0,0,0.04)]">
+                {/* Floating Bottom Dock - Mobile Only */}
+                <nav
+                    className={cn(
+                        "fixed left-4 right-4 bottom-[calc(env(safe-area-inset-bottom)+10px)] z-50 md:hidden",
+                        "h-14 rounded-[1.65rem] border border-slate-200/80 bg-white/88 px-2 shadow-[0_12px_36px_rgba(15,23,42,0.18)] backdrop-blur-2xl",
+                        "flex items-center justify-around transition-all duration-200",
+                        mobileChromeHidden && "translate-y-24 opacity-0 pointer-events-none"
+                    )}
+                >
                     {mobileNavItems.filter(item => item.id === 'menu' || isTabEnabled(item.id)).map(item => (
                         item.id === 'menu' ? (
                             <Sheet key={item.id}>
                                 <SheetTrigger asChild>
                                     <button
                                         className={cn(
-                                            "flex flex-col items-center gap-1.5 px-3 py-2 rounded-2xl transition-all duration-300",
-                                            "text-slate-400 hover:text-slate-600"
+                                            "flex h-11 min-w-[3rem] flex-col items-center justify-center gap-0.5 rounded-2xl px-2 transition-all duration-200",
+                                            "text-slate-400 active:scale-95"
                                         )}
                                     >
-                                        <item.icon size={20} />
-                                        <span className="text-[10px] font-bold uppercase tracking-tight">{item.label}</span>
+                                        <span className="flex h-7 w-7 items-center justify-center rounded-full">
+                                            <item.icon size={17} strokeWidth={2.4} />
+                                        </span>
+                                        <span className="text-[9px] font-black uppercase leading-none tracking-tight">{item.label}</span>
                                     </button>
                                 </SheetTrigger>
                                 <SheetContent side="left" className="w-[85%] bg-slate-900 border-r-slate-800 text-white p-0 overflow-y-auto">
@@ -490,12 +499,20 @@ export default function DesignConcept() {
                                 key={item.id}
                                 onClick={() => setActiveTab(item.id)}
                                 className={cn(
-                                    "flex flex-col items-center gap-1.5 px-3 py-2 rounded-2xl transition-all duration-300",
-                                    activeTab === item.id ? "text-blue-600 bg-blue-50" : "text-slate-400"
+                                    "flex h-11 min-w-[3rem] flex-col items-center justify-center gap-0.5 rounded-2xl px-2 transition-all duration-200 active:scale-95",
+                                    activeTab === item.id ? "text-blue-700" : "text-slate-400"
                                 )}
                             >
-                                <item.icon size={20} className={cn(activeTab === item.id && "fill-blue-600/10")} />
-                                <span className="text-[10px] font-bold uppercase tracking-tight">{item.label}</span>
+                                <span className={cn(
+                                    "flex h-7 w-7 items-center justify-center rounded-full transition-all",
+                                    activeTab === item.id && "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                                )}>
+                                    <item.icon size={17} strokeWidth={2.4} className={cn(activeTab === item.id && "fill-white/10")} />
+                                </span>
+                                <span className={cn(
+                                    "text-[9px] font-black uppercase leading-none tracking-tight",
+                                    activeTab === item.id ? "text-blue-700" : "text-slate-400"
+                                )}>{item.label}</span>
                             </button>
                         )
                     ))}

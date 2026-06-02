@@ -9,7 +9,8 @@ import {
 } from "recharts";
 import {
     BentoCard, containerVariants, itemVariants, DashboardSkeleton,
-    MobileActionList, MobileKpiGrid, MobileSectionHeader
+    MobileActionList, MobileKpiGrid, MobileSectionHeader,
+    MobileTabLayout, MobileTabHeader, MobileScrollContent,
 } from "../shared";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -254,14 +255,19 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
     }));
 
     return (
-        <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            className="space-y-4 pb-24 md:pb-8 md:space-y-6"
-        >
-            <div className="space-y-3 md:hidden">
-                <MobileSectionHeader title="Command Dashboard" meta="Today at a glance" />
+        <MobileTabLayout>
+            {/* Mobile header — title stays pinned */}
+            <MobileTabHeader>
+                <div className="flex items-center justify-between py-1.5">
+                    <div>
+                        <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Command Dashboard</p>
+                        <p className="text-[10px] text-slate-400">Today at a glance</p>
+                    </div>
+                </div>
+            </MobileTabHeader>
+
+            {/* Mobile scroll content */}
+            <MobileScrollContent className="md:hidden">
                 <MobileKpiGrid
                     items={[
                         {
@@ -308,10 +314,16 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                     empty="No recent job activity."
                     items={recentMobileItems}
                 />
-            </div>
+            </MobileScrollContent>
 
-
-            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+            {/* Desktop content — unchanged */}
+            <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                className="hidden md:block space-y-6 pb-8 overflow-y-auto flex-1"
+            >
+            <div className="md:grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {/* ROW 1: GRAPHS */}
                 <motion.div variants={itemVariants} className="col-span-1 md:col-span-2 h-full min-h-[320px]">
                     <BentoCard
@@ -778,6 +790,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                 </AnimatePresence>,
                 document.body
             )}
-        </motion.div>
+            </motion.div>{/* end desktop motion wrapper */}
+        </MobileTabLayout>
     );
 }
