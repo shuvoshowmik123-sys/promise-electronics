@@ -803,7 +803,7 @@ export default function DesignConcept() {
 
 // Reusable Layout Wrapper
 function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }: { children: React.ReactNode, isFixed: boolean, activeTab: string, mobileChromeHidden: boolean }) {
-    const mobileTopPadding = mobileChromeHidden ? "pt-0" : "pt-16";
+    const mobileTopPadding = isFixed && mobileChromeHidden ? "pt-0" : "pt-16";
 
     if (isFixed) {
         return (
