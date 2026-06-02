@@ -6,10 +6,13 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BentoCard } from "../../shared";
-import { CheckCircle2, Clock, CreditCard, Eye, MoreVertical, PackageCheck, PenTool, Phone, Play, Printer, QrCode, Truck, User, UserCheck, Zap } from "lucide-react";
+import { Clock, Eye, MoreVertical, PenTool, Phone, Printer, QrCode, User, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { JobTicket } from "@shared/schema";
 import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { JobCardMobile } from "./JobCardMobile";
+import { getPrimaryAction, mobileListVariants } from "./jobActions";
 
 // We need a local or imported HighlightMatch. Let's assume it exists in JobTicketsTab or we can recreate it.
 // Assuming HighlightMatch from JobTicketsTab can be imported if it was exported, or we'll recreate a simple one.
@@ -35,22 +38,6 @@ const HighlightMatch = ({ text, query }: { text: string | undefined | null; quer
     );
 };
 
-const getPrimaryAction = (job: JobTicket, canEdit: boolean) => {
-    const status = job.status || "";
-    const hasTechnician = Boolean(job.technician && job.technician !== "Unassigned");
-
-    if (!canEdit) return { label: "View Job", type: "view" as const, Icon: Eye };
-    if (!hasTechnician && !["Delivered", "Completed", "Cancelled", "Abandoned", "Forfeited"].includes(status)) {
-        return { label: "Assign Technician", type: "edit" as const, Icon: UserCheck };
-    }
-    if (["Pending", "Diagnosing"].includes(status)) return { label: "Start Repair", type: "advance" as const, Icon: Play };
-    if (["Pending Parts", "Waiting on Parts"].includes(status)) return { label: "Parts Arrived", type: "advance" as const, Icon: PackageCheck };
-    if (["In Progress", "On Workbench"].includes(status)) return { label: "Mark Ready", type: "advance" as const, Icon: CheckCircle2 };
-    if (status === "Ready") return { label: "Take Payment", type: "advance" as const, Icon: CreditCard };
-    if (status === "Completed") return { label: "Print & Deliver", type: "print" as const, Icon: Truck };
-    return { label: "View Job", type: "view" as const, Icon: Eye };
-};
-
 export const containerVariants = {
     hidden: { opacity: 0 },
     visible: { opacity: 1, transition: { staggerChildren: 0.05, duration: 0.3 } }
@@ -74,6 +61,7 @@ interface JobTicketGridProps {
     onGenerateQr: (job: JobTicket) => void;
     userRole?: string;
     canEdit: boolean;
+    currencySymbol?: string;
 }
 
 export function JobTicketGrid({
@@ -88,8 +76,38 @@ export function JobTicketGrid({
     onPrintTicket,
     onGenerateQr,
     userRole,
-    canEdit
+    canEdit,
+    currencySymbol = "৳",
 }: JobTicketGridProps) {
+    const isMobile = useIsMobile();
+
+    // Mobile: technician-first single-column card list (bulk select dropped on mobile).
+    if (isMobile) {
+        return (
+            <motion.div
+                variants={mobileListVariants}
+                initial="hidden"
+                animate="visible"
+                className="flex flex-col gap-3"
+            >
+                {jobs.map((job) => (
+                    <JobCardMobile
+                        key={job.id}
+                        job={job}
+                        searchQuery={searchQuery}
+                        onViewDetails={onViewDetails}
+                        onEditJob={onEditJob}
+                        onAdvanceStage={onAdvanceStage}
+                        onPrintTicket={onPrintTicket}
+                        userRole={userRole}
+                        canEdit={canEdit}
+                        currencySymbol={currencySymbol}
+                    />
+                ))}
+            </motion.div>
+        );
+    }
+
     return (
         <motion.div variants={containerVariants} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {jobs.map((job: any) => {

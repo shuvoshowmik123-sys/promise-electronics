@@ -35,15 +35,16 @@ type JobGroupKey = "new" | "repairing" | "waiting-parts" | "ready" | "delivered"
 const JOB_GROUPS: Array<{
     key: JobGroupKey;
     label: string;
+    shortLabel: string;
     helper: string;
     statuses: string[];
     className: string;
 }> = [
-    { key: "new", label: "New", helper: "Needs first action", statuses: ["Pending", "Diagnosing"], className: "border-blue-100 bg-blue-50/60 text-blue-700" },
-    { key: "repairing", label: "Repairing", helper: "Work is running", statuses: ["In Progress", "On Workbench"], className: "border-indigo-100 bg-indigo-50/60 text-indigo-700" },
-    { key: "waiting-parts", label: "Waiting Parts", helper: "Needs parts update", statuses: ["Pending Parts", "Waiting on Parts"], className: "border-amber-100 bg-amber-50/70 text-amber-700" },
-    { key: "ready", label: "Ready", helper: "Payment or handover", statuses: ["Ready", "Completed"], className: "border-emerald-100 bg-emerald-50/70 text-emerald-700" },
-    { key: "delivered", label: "Delivered", helper: "Finished jobs", statuses: ["Delivered"], className: "border-slate-200 bg-slate-50 text-slate-700" },
+    { key: "new", label: "New", shortLabel: "New", helper: "Needs first action", statuses: ["Pending", "Diagnosing"], className: "border-blue-100 bg-blue-50/60 text-blue-700" },
+    { key: "repairing", label: "Repairing", shortLabel: "Active", helper: "Work is running", statuses: ["In Progress", "On Workbench"], className: "border-indigo-100 bg-indigo-50/60 text-indigo-700" },
+    { key: "waiting-parts", label: "Waiting Parts", shortLabel: "Parts", helper: "Needs parts update", statuses: ["Pending Parts", "Waiting on Parts"], className: "border-amber-100 bg-amber-50/70 text-amber-700" },
+    { key: "ready", label: "Ready", shortLabel: "Ready", helper: "Payment or handover", statuses: ["Ready", "Completed"], className: "border-emerald-100 bg-emerald-50/70 text-emerald-700" },
+    { key: "delivered", label: "Delivered", shortLabel: "Done", helper: "Finished jobs", statuses: ["Delivered"], className: "border-slate-200 bg-slate-50 text-slate-700" },
 ];
 
 interface JobTicketsTabProps {
@@ -103,6 +104,12 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
             onSearchConsumed?.();
         }
     }, [initialSearchQuery]);
+
+    useEffect(() => {
+        return () => {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+        };
+    }, []);
 
     // Data Fetching
     // Use `initialJobType` if provided (e.g., when deep-linking from System Health so all job types are searched)
@@ -344,13 +351,13 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
     if (isLoading) return <DashboardSkeleton />;
 
     return (
-        <div className="flex flex-col h-full min-h-0 gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden relative">
+        <div className="flex flex-col h-full min-h-0 gap-0 md:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden relative">
             <div className="flex-1 min-h-0 flex flex-col">
-                <BentoCard className="flex-1 min-h-0 flex flex-col bg-white border-slate-200 shadow-sm overflow-y-auto overflow-x-hidden p-0" variant="ghost" disableHover>
+                <BentoCard className="flex-1 min-h-0 flex flex-col bg-white border-0 md:border-slate-200 shadow-none md:shadow-sm rounded-none md:rounded-[2rem] overflow-hidden p-0" variant="ghost" disableHover>
 
                     {/* Fixed Top Header (Sticky on Desktop, Scrolls on Mobile) */}
-                    <div className="flex-none p-6 pb-4 bg-white/95 backdrop-blur-sm border-b border-slate-100 z-30 md:sticky md:top-0">
-                        <div className="flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center mb-6">
+                    <div className="flex-none px-4 py-4 pb-3 md:p-6 md:pb-4 bg-white/95 backdrop-blur-sm border-b border-slate-100 z-30">
+                        <div className="flex flex-row gap-3 md:gap-4 justify-between items-center mb-4 md:mb-6">
                             <div>
                                 <div className="flex items-center gap-3">
                                     <h1 className="text-2xl font-bold text-slate-800">Jobs</h1>
@@ -360,29 +367,29 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                                         <span>{sseSupported ? "Live" : "Reconnecting"}</span>
                                     </div>
                                 </div>
-                                <p className="text-slate-500 mt-1">Find a customer, open the job, then use the next clear action.</p>
+                                <p className="text-slate-500 mt-1 hidden md:block">Find a customer, open the job, then use the next clear action.</p>
                             </div>
                             {hasPermission("canCreate") && (
-                                <Button className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all bc-hover bc-rise" onClick={() => setIsCreateDrawerOpen(true)}>
+                                <Button className="h-10 rounded-xl gap-1.5 px-3 md:px-4 bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all bc-hover bc-rise shrink-0" onClick={() => setIsCreateDrawerOpen(true)}>
                                     <Plus className="w-4 h-4" /> New Job
                                 </Button>
                             )}
                         </div>
 
                         <div className="flex flex-col gap-4">
-                            <div className="flex flex-col sm:flex-row items-center gap-4">
-                                <div className="relative flex-1 w-full max-w-xl">
+                            <div className="flex flex-row items-center gap-2 md:gap-4">
+                                <div className="relative flex-1 min-w-0 w-full max-w-xl">
                                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                                     <input
                                         type="text"
                                         placeholder="Search phone, job number, customer, device..."
                                         value={jobSearchQuery}
                                         onChange={(e) => setJobSearchQuery(e.target.value)}
-                                        className="w-full bg-slate-50 border border-slate-200 rounded-3xl pl-10 pr-4 py-3 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 text-slate-700 shadow-sm"
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-3xl pl-10 pr-4 py-2.5 md:py-3 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all placeholder:text-slate-400 text-slate-700 shadow-sm text-sm md:text-base"
                                     />
                                 </div>
-                                <div className="flex gap-2 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0 hide-scrollbar">
-                                    <Button variant={isSelectionMode ? "default" : "outline"} className={cn("gap-2 shadow-sm whitespace-nowrap", isSelectionMode ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-600" : "border-slate-200 text-slate-600 hover:bg-slate-50")} onClick={() => { setIsSelectionMode(!isSelectionMode); setSelectedJobIds([]); }}>
+                                <div className="flex gap-2 w-auto overflow-x-auto pb-1 sm:pb-0 hide-scrollbar shrink-0">
+                                    <Button variant={isSelectionMode ? "default" : "outline"} className={cn("gap-2 shadow-sm whitespace-nowrap hidden md:inline-flex", isSelectionMode ? "bg-blue-600 hover:bg-blue-700 text-white border-blue-600" : "border-slate-200 text-slate-600 hover:bg-slate-50")} onClick={() => { setIsSelectionMode(!isSelectionMode); setSelectedJobIds([]); }}>
                                         <CheckCircle2 className="w-4 h-4" /> {isSelectionMode ? "Cancel Selection" : "Bulk Select"}
                                     </Button>
                                     <Button
@@ -393,7 +400,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                                         <Filter className="w-4 h-4" /> Filters
                                         {hasActiveFilters && <Badge variant="secondary" className="ml-1 h-5 w-5 p-0 flex items-center justify-center text-xs bg-blue-100 text-blue-700">!</Badge>}
                                     </Button>
-                                    <Button variant="outline" className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm" onClick={handleExport}>
+                                    <Button variant="outline" className="gap-2 border-slate-200 text-slate-600 hover:bg-slate-50 shadow-sm hidden md:inline-flex" onClick={handleExport}>
                                         <Download className="w-4 h-4" /> Export
                                     </Button>
                                     <div className="hidden sm:flex items-center bg-slate-100/80 p-1 rounded-lg border border-slate-200 shadow-sm ml-2">
@@ -417,30 +424,33 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                                         type="button"
                                         onClick={() => setJobGroupFilter(group.key)}
                                         className={cn(
-                                            "min-w-[132px] rounded-lg border px-3 py-2.5 text-left transition-all shadow-sm",
+                                            "min-w-[78px] md:min-w-[132px] rounded-lg border px-2.5 md:px-3 py-2 md:py-2.5 text-left transition-all shadow-sm",
                                             jobGroupFilter === group.key ? group.className : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                                         )}
                                     >
-                                        <span className="flex items-center justify-between gap-3">
-                                            <span className="text-sm font-bold">{group.label}</span>
-                                            <span className="font-mono text-sm font-bold">{groupCounts[group.key]}</span>
+                                        <span className="flex items-center justify-between gap-2 md:gap-3">
+                                            <span className="text-xs md:text-sm font-bold">
+                                                <span className="md:hidden">{group.shortLabel}</span>
+                                                <span className="hidden md:inline">{group.label}</span>
+                                            </span>
+                                            <span className="font-mono text-xs md:text-sm font-bold">{groupCounts[group.key]}</span>
                                         </span>
-                                        <span className="mt-1 block text-[11px] font-medium opacity-75">{group.helper}</span>
+                                        <span className="mt-1 hidden md:block text-[11px] font-medium opacity-75">{group.helper}</span>
                                     </button>
                                 ))}
                                 <button
                                     type="button"
                                     onClick={() => setJobGroupFilter("all")}
                                     className={cn(
-                                        "min-w-[104px] rounded-lg border px-3 py-2.5 text-left transition-all shadow-sm",
+                                        "min-w-[78px] md:min-w-[104px] rounded-lg border px-2.5 md:px-3 py-2 md:py-2.5 text-left transition-all shadow-sm",
                                         jobGroupFilter === "all" ? "border-slate-300 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                                     )}
                                 >
-                                    <span className="flex items-center justify-between gap-3">
-                                        <span className="text-sm font-bold">All</span>
-                                        <span className="font-mono text-sm font-bold">{groupCounts.all}</span>
+                                    <span className="flex items-center justify-between gap-2 md:gap-3">
+                                        <span className="text-xs md:text-sm font-bold">All</span>
+                                        <span className="font-mono text-xs md:text-sm font-bold">{groupCounts.all}</span>
                                     </span>
-                                    <span className="mt-1 block text-[11px] font-medium opacity-75">Everything</span>
+                                    <span className="mt-1 hidden md:block text-[11px] font-medium opacity-75">Everything</span>
                                 </button>
                             </div>
 
@@ -460,7 +470,15 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                     </div>
 
                     {/* Scrollable Card Grid Area */}
-                    <div className="flex-1 bg-slate-50/30 p-4 sm:p-6 lg:p-8 pb-24">
+                    <div
+                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-slate-50/60 px-3 py-3 pb-4 md:p-6 lg:p-8 md:pb-24"
+                        onScroll={(event) => {
+                            if (window.innerWidth >= 768) return;
+                            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {
+                                detail: { hidden: event.currentTarget.scrollTop > 24 },
+                            }));
+                        }}
+                    >
                         {filteredJobs.length === 0 ? (
                             <div className="h-64 flex flex-col items-center justify-center gap-4">
                                 <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center">
@@ -483,6 +501,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                                 onGenerateQr={(job) => { setSelectedJob(job); setQrDialogOpen(true); }}
                                 userRole={user?.role}
                                 canEdit={hasPermission("canEdit")}
+                                currencySymbol={getCurrencySymbol()}
                             />
                         ) : viewMode === "list" ? (
                             <JobTicketList
@@ -507,11 +526,29 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                                 onJobClick={handleViewDetails}
                             />
                         ) : null}
+                        {filteredJobs.length > 0 && (
+                            <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 md:hidden">
+                                <span className="text-[11px] font-semibold text-slate-500">
+                                    {Math.min((jobPage - 1) * 10 + 1, filteredJobs.length)}-{Math.min(jobPage * 10, filteredJobs.length)} of {filteredJobs.length}
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                    <Button variant="ghost" size="sm" onClick={() => setJobPage(p => Math.max(1, p - 1))} disabled={jobPage === 1} className="h-8 w-8 p-0 rounded-lg">
+                                        <ChevronRight className="w-4 h-4 rotate-180" />
+                                    </Button>
+                                    <span className="text-xs font-bold text-slate-700 min-w-[2.5rem] text-center font-mono">
+                                        {jobPage}/{Math.ceil(filteredJobs.length / 10)}
+                                    </span>
+                                    <Button variant="ghost" size="sm" onClick={() => setJobPage(p => Math.min(Math.ceil(filteredJobs.length / 10), p + 1))} disabled={jobPage >= Math.ceil(filteredJobs.length / 10)} className="h-8 w-8 p-0 rounded-lg">
+                                        <ChevronRight className="w-4 h-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        )}
                     </div>
 
                     {/* Fixed Pagination Footer */}
                     {filteredJobs.length > 0 && (
-                        <div className="flex-none flex items-center justify-between p-4 px-6 border-t border-slate-100 bg-white/95 backdrop-blur-sm z-20">
+                        <div className="hidden md:flex flex-none items-center justify-between p-4 px-6 border-t border-slate-100 bg-white/95 backdrop-blur-sm z-20">
                             <div className="text-xs font-medium text-slate-500">
                                 Showing {Math.min((jobPage - 1) * 10 + 1, filteredJobs.length)} to {Math.min(jobPage * 10, filteredJobs.length)} of {filteredJobs.length} Jobs
                             </div>
@@ -562,6 +599,7 @@ export default function JobTicketsTab({ initialSearchQuery, onSearchConsumed, in
                 onEditJob={(job) => { setViewDialogOpen(false); handleEditJob(job); }}
                 onPrintTicket={handlePrintTicket}
                 onOutsidePurchase={() => setIsLocalPurchaseOpen(true)}
+                onAdvanceStage={(job) => { setSelectedJob(job); setIsAdvanceDialogOpen(true); }}
             />
 
             {/* OUTSIDE PURCHASE — lives at parent z-level, above the details sheet */}

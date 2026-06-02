@@ -157,6 +157,7 @@ export default function DesignConcept() {
     const [selectedCorpMsgThreadId, setSelectedCorpMsgThreadId] = useState<string | null>(null);
     const [searchOpen, setSearchOpen] = useState(false);
     const [notificationOpen, setNotificationOpen] = useState(false);
+    const [mobileChromeHidden, setMobileChromeHidden] = useState(false);
 
     const { isEnabled } = useModules();
     const { logout, user, hasPermission, status } = useAdminAuth();
@@ -381,7 +382,17 @@ export default function DesignConcept() {
         if (activeTab !== "corp-msg") {
             setSelectedCorpMsgThreadId(null);
         }
+        setMobileChromeHidden(false);
     }, [activeTab, selectedCorporateClientId]);
+
+    useEffect(() => {
+        const handleMobileChrome = (event: Event) => {
+            const detail = (event as CustomEvent<{ hidden?: boolean }>).detail;
+            setMobileChromeHidden(Boolean(detail?.hidden));
+        };
+        window.addEventListener("admin:mobile-chrome", handleMobileChrome);
+        return () => window.removeEventListener("admin:mobile-chrome", handleMobileChrome);
+    }, []);
 
     return (
         <RollbackProvider>
@@ -494,7 +505,12 @@ export default function DesignConcept() {
                 <div className="flex-1 flex flex-col min-w-0 relative">
 
                     {/* Floating Mobile Tools (Glass Island) */}
-                    <div className="md:hidden absolute top-4 right-4 z-[60] flex items-center gap-3">
+                    <div
+                        className={cn(
+                            "md:hidden absolute top-4 right-4 z-[60] flex items-center gap-3 transition-all duration-200",
+                            activeTab === "jobs" && mobileChromeHidden && "-translate-y-20 opacity-0 pointer-events-none"
+                        )}
+                    >
                         <QRScanButton onJobFound={(jobId) => {
                             setActiveTab("jobs");
                             setGlobalSearchQuery(jobId);
@@ -612,7 +628,7 @@ export default function DesignConcept() {
                             </div>
                         )}
                         <OfflineBanner />
-                        <MainContentWrapper isFixed={isFixed}>
+                        <MainContentWrapper isFixed={isFixed} activeTab={activeTab} mobileChromeHidden={mobileChromeHidden}>
                             <AnimatePresence mode="popLayout">
                                 <motion.div
                                     key={activeTab}
@@ -780,10 +796,12 @@ export default function DesignConcept() {
 }
 
 // Reusable Layout Wrapper
-function MainContentWrapper({ children, isFixed }: { children: React.ReactNode, isFixed: boolean }) {
+function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }: { children: React.ReactNode, isFixed: boolean, activeTab: string, mobileChromeHidden: boolean }) {
+    const mobileTopPadding = activeTab === "jobs" && mobileChromeHidden ? "pt-0" : "pt-16";
+
     if (isFixed) {
         return (
-            <div className="h-full pt-20 p-4 md:p-5 md:pt-5 pb-24 md:pb-5 flex flex-col">
+            <div className={cn("h-full md:pt-5 px-0 md:px-5 pb-[calc(8.5rem+env(safe-area-inset-bottom))] md:pb-5 flex flex-col transition-[padding] duration-200", mobileTopPadding)}>
                 <div className="max-w-[1600px] mx-auto w-full h-full flex flex-col min-h-0">
                     {children}
                 </div>
@@ -791,7 +809,7 @@ function MainContentWrapper({ children, isFixed }: { children: React.ReactNode, 
         );
     }
     return (
-        <div className="min-h-full pt-20 p-4 md:p-5 md:pt-5 pb-32 flex flex-col">
+        <div className={cn("min-h-full md:pt-5 px-0 md:px-5 pb-[calc(9rem+env(safe-area-inset-bottom))] md:pb-5 flex flex-col transition-[padding] duration-200", mobileTopPadding)}>
             <div className="max-w-[1600px] mx-auto w-full flex-1">
                 {children}
             </div>
