@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -41,6 +41,8 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { BentoCard } from "../shared/BentoCard";
 import { containerVariants, itemVariants, tableRowVariants } from "../shared/animations";
 import { MobileTabLayout, MobileTabHeader, MobileScrollContent } from "../shared/MobileAdminPrimitives";
+import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // Zod schema for quotation creation/editing
 const quotationSchema = z.object({
@@ -63,7 +65,9 @@ type QuotationFormData = z.infer<typeof quotationSchema>;
 
 export default function QuotationsTab() {
     const queryClient = useQueryClient();
+    const isMobile = useIsMobile();
     const [searchTerm, setSearchTerm] = useState("");
+    const [loadingPdfId, setLoadingPdfId] = useState<string | null>(null);
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
     const [editingQuotation, setEditingQuotation] = useState<Quotation & { items: QuotationItem[] } | null>(null);
@@ -80,7 +84,6 @@ export default function QuotationsTab() {
     // Mobile preview: render the A4 doc at true size, scale it down to fit the
     // phone (keeps proportions perfect; pinch-zoom + correct PDF). Desktop = 1.
     const [previewScale, setPreviewScale] = useState(1);
-    const dragStartY = useRef<number | null>(null);
     useEffect(() => {
         if (!printQuotation) return;
         const calc = () => {
@@ -130,6 +133,7 @@ export default function QuotationsTab() {
     });
 
     const checkAndPrint = async (id: string) => {
+        setLoadingPdfId(id);
         try {
             const data = await quotationsApi.getOne(id);
             setPrintQuotation(data);
@@ -137,6 +141,8 @@ export default function QuotationsTab() {
             // The user will preview the layout in the new dialog and click Print manually.
         } catch (error) {
             toast.error("Failed to load quotation for printing");
+        } finally {
+            setLoadingPdfId(null);
         }
     };
 
@@ -326,14 +332,15 @@ export default function QuotationsTab() {
                             </div>
                         </button>
                         <div className="flex border-t border-slate-100">
-                            <button type="button" onClick={() => checkAndPrint(q.id)} className="flex-1 h-10 flex items-center justify-center gap-1.5 text-xs font-bold text-blue-700 active:bg-blue-50">
-                                <Download className="h-3.5 w-3.5" /> Download PDF
+                            <button type="button" disabled={loadingPdfId === q.id} onClick={() => checkAndPrint(q.id)} className="flex-1 h-10 flex items-center justify-center gap-1 text-[10px] font-bold text-blue-700 active:bg-blue-50 disabled:opacity-60 px-1">
+                                {loadingPdfId === q.id ? <Loader2 className="h-3 w-3 animate-spin shrink-0" /> : <Download className="h-3 w-3 shrink-0" />}
+                                <span className="truncate">{loadingPdfId === q.id ? "Opening…" : "Download PDF"}</span>
                             </button>
-                            <button type="button" onClick={() => handleEdit(q.id)} className="flex-1 h-10 flex items-center justify-center gap-1.5 text-xs font-bold text-slate-600 border-l border-slate-100 active:bg-slate-50">
-                                <Edit className="h-3.5 w-3.5" /> Edit
+                            <button type="button" onClick={() => handleEdit(q.id)} className="flex-1 h-10 flex items-center justify-center gap-1 text-[10px] font-bold text-slate-600 border-l border-slate-100 active:bg-slate-50 px-1">
+                                <Edit className="h-3 w-3 shrink-0" /> <span className="truncate">Edit</span>
                             </button>
-                            <button type="button" onClick={() => { if (confirm("Delete this quotation? Cannot be undone.")) deleteMutation.mutate(q.id); }} className="flex-1 h-10 flex items-center justify-center gap-1.5 text-xs font-bold text-rose-600 border-l border-slate-100 active:bg-rose-50">
-                                <Trash2 className="h-3.5 w-3.5" /> Delete
+                            <button type="button" onClick={() => { if (confirm("Delete this quotation? Cannot be undone.")) deleteMutation.mutate(q.id); }} className="flex-1 h-10 flex items-center justify-center gap-1 text-[10px] font-bold text-rose-600 border-l border-slate-100 active:bg-rose-50 px-1">
+                                <Trash2 className="h-3 w-3 shrink-0" /> <span className="truncate">Delete</span>
                             </button>
                         </div>
                     </div>
@@ -795,180 +802,72 @@ export default function QuotationsTab() {
             </Dialog>
 
             {/* Print Preview Dialog */}
-            <Dialog open={!!printQuotation} onOpenChange={(open) => !open && setPrintQuotation(null)}>
-                <DialogContent className="w-[96vw] max-w-4xl max-h-[95vh] flex flex-col p-0 overflow-hidden rounded-t-3xl sm:rounded-xl border-slate-200 shadow-2xl print:hidden bg-slate-100 [&>button.absolute]:!right-4 [&>button.absolute]:!top-4 [&>button.absolute]:!bg-slate-100 [&>button.absolute]:!p-2 [&>button.absolute]:hover:!bg-slate-200 [&>button.absolute]:!rounded-full [&>button.absolute]:hidden md:[&>button.absolute]:inline-flex">
-                    {/* Mobile drag-to-close handle (keeps the preview clean — no round close button) */}
-                    <div
-                        className="md:hidden flex justify-center pt-2.5 pb-1.5 bg-white shrink-0 touch-none cursor-grab active:cursor-grabbing"
-                        onPointerDown={(e) => { dragStartY.current = e.clientY; }}
-                        onPointerMove={(e) => {
-                            if (dragStartY.current != null && e.clientY - dragStartY.current > 60) {
-                                dragStartY.current = null;
-                                setPrintQuotation(null);
-                            }
-                        }}
-                        onPointerUp={() => { dragStartY.current = null; }}
-                    >
-                        <div className="h-1.5 w-10 rounded-full bg-slate-300" />
-                    </div>
-                    <DialogHeader className="px-4 md:pl-8 md:pr-24 py-3 md:py-5 bg-white border-b border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shrink-0">
-                        <div className="pr-10 md:pr-0">
-                            <DialogTitle className="text-base md:text-xl font-bold flex items-center gap-2">
-                                <FileText className="h-5 w-5 text-blue-600" />
-                                Quotation PDF
+            {/* ─── DESKTOP: centered preview dialog (Print + Download) ─── */}
+            <Dialog open={!!printQuotation && !isMobile} onOpenChange={(open) => !open && setPrintQuotation(null)}>
+                <DialogContent className="max-w-4xl max-h-[95vh] flex flex-col p-0 overflow-hidden rounded-xl border-slate-200 shadow-2xl print:hidden bg-slate-100">
+                    <DialogHeader className="pl-8 pr-24 py-5 bg-white border-b border-slate-200 flex flex-row items-center justify-between gap-3 shrink-0">
+                        <div>
+                            <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                                <FileText className="h-5 w-5 text-blue-600" /> Quotation PDF
                             </DialogTitle>
-                            <DialogDescription className="mt-1 text-xs md:text-sm">
-                                <span className="md:hidden">Download the PDF to share with the customer.</span>
-                                <span className="hidden md:inline">Review the quotation layout before printing.</span>
-                            </DialogDescription>
+                            <DialogDescription className="mt-1">Review the quotation layout before printing.</DialogDescription>
                         </div>
-                        <div className="flex items-center gap-2 md:gap-4">
-                            <Button
-                                variant="outline"
-                                onClick={() => setPrintQuotation(null)}
-                                className="rounded-xl border-slate-200 hover:bg-slate-50"
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                onClick={handleDownloadPDF}
-                                disabled={isGeneratingPDF}
-                                className="flex-1 md:flex-none rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20"
-                            >
-                                {isGeneratingPDF ? (
-                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                                ) : (
-                                    <Download className="h-4 w-4 mr-2" />
-                                )}
+                        <div className="flex items-center gap-4">
+                            <Button variant="outline" onClick={() => setPrintQuotation(null)} className="rounded-xl border-slate-200 hover:bg-slate-50">Cancel</Button>
+                            <Button onClick={handleDownloadPDF} disabled={isGeneratingPDF} className="rounded-xl bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20">
+                                {isGeneratingPDF ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
                                 Download PDF
                             </Button>
-                            {/* Print = desktop only; not logical on mobile */}
-                            <Button
-                                onClick={() => window.print()}
-                                className="hidden md:inline-flex rounded-xl bg-slate-800 hover:bg-slate-900 text-white shadow-lg shadow-slate-900/20"
-                            >
+                            <Button onClick={() => window.print()} className="rounded-xl bg-slate-800 hover:bg-slate-900 text-white shadow-lg shadow-slate-900/20">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-printer h-4 w-4 mr-2"><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><path d="M6 9V3a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v6" /><rect x="6" y="14" width="12" height="8" rx="1" /></svg>
                                 Print Document
                             </Button>
                         </div>
                     </DialogHeader>
-
-                    <div className="flex-1 overflow-auto w-full custom-scrollbar p-3 md:p-8" style={{ touchAction: "pan-x pan-y pinch-zoom" }}>
-                        {/* The visible preview paper on screen.
-                            Mobile: render the A4 doc at TRUE size (w-[800px]) then `zoom` it down
-                            to fit the phone — proportions stay perfect, text never breaks the box,
-                            pinch-zoom works, and the captured PDF stays full A4. Desktop = zoom 1. */}
-                        {printQuotation && (
-                            <div style={{ zoom: previewScale }} className="origin-top">
-                            <div id="quotation-print-preview" className="w-[800px] mx-auto p-12 shadow-sm border rounded-xl min-h-[1100px]" style={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', color: '#0f172a' }}>
-
-                                {/* Header / Company Info */}
-                                <div className="flex justify-between items-start mb-10 border-b-2 pb-6" style={{ borderColor: '#1e293b' }}>
-                                    <div className="flex items-center gap-4">
-                                        <img src="/logo.png" alt="Promise Electronics Logo" className="h-16 w-16 object-contain rounded-md" />
-                                        <div className="flex flex-col leading-none">
-                                            <h1 className="text-3xl font-black tracking-tighter uppercase" style={{ color: '#0f172a' }}>Promise</h1>
-                                            <span className="text-xs font-bold tracking-[0.3em] uppercase" style={{ color: '#64748b' }}>Electronics</span>
-                                        </div>
-                                    </div>
-                                    <div className="text-right">
-                                        <h2 className="text-4xl font-black uppercase tracking-widest mb-2" style={{ color: '#cbd5e1' }}>Quotation</h2>
-                                        <div className="text-lg font-bold" style={{ color: '#1e293b' }}>{printQuotation.quotationNumber}</div>
-                                        <div className="text-sm font-medium mt-1" style={{ color: '#64748b' }}>Date: {format(new Date(printQuotation.createdAt), 'MMMM d, yyyy')}</div>
-                                    </div>
-                                </div>
-
-                                {/* Addresses: From / To */}
-                                <div className="grid grid-cols-2 gap-8 mb-10">
-                                    {/* FROM */}
-                                    <div>
-                                        <h3 className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: '#94a3b8' }}>From</h3>
-                                        <p className="text-sm font-medium" style={{ color: '#334155' }}>
-                                            116 Hossain Tower, Lift 8<br />
-                                            Box Culvert Road, Naya Paltan<br />
-                                            Dhaka-1000, Bangladesh<br />
-                                            <span className="mt-2 block" style={{ color: '#64748b' }}>
-                                                Email: support@promise.com<br />
-                                                Phone: +880 1968 123456
-                                            </span>
-                                        </p>
-                                    </div>
-                                    {/* TO */}
-                                    <div className="text-right">
-                                        <h3 className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: '#94a3b8' }}>Quotation For</h3>
-                                        <div className="text-base font-bold" style={{ color: '#1e293b' }}>{printQuotation.customerName}</div>
-                                        <p className="text-sm mt-1" style={{ color: '#475569' }}>{printQuotation.customerPhone}</p>
-                                        {printQuotation.customerEmail && <p className="text-sm" style={{ color: '#475569' }}>{printQuotation.customerEmail}</p>}
-                                        {printQuotation.customerAddress && <p className="text-sm mt-1 whitespace-pre-wrap" style={{ color: '#475569' }}>{printQuotation.customerAddress}</p>}
-                                    </div>
-                                </div>
-
-                                {/* Items Table */}
-                                <table className="w-full mb-12">
-                                    <thead>
-                                        <tr className="border-b-2" style={{ borderColor: '#1e293b' }}>
-                                            <th className="text-left py-3 text-xs font-bold uppercase tracking-wider w-[50%]" style={{ color: '#64748b' }}>Description</th>
-                                            <th className="text-center py-3 text-xs font-bold uppercase tracking-wider w-[15%]" style={{ color: '#64748b' }}>Qty</th>
-                                            <th className="text-right py-3 text-xs font-bold uppercase tracking-wider w-[15%]" style={{ color: '#64748b' }}>Unit Price</th>
-                                            <th className="text-right py-3 text-xs font-bold uppercase tracking-wider w-[20%]" style={{ color: '#64748b' }}>Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {printQuotation.items.map((item, index) => (
-                                            <tr key={index} className="border-b" style={{ borderColor: '#e2e8f0' }}>
-                                                <td className="py-4 text-sm font-medium" style={{ color: '#1e293b' }}>{item.description}</td>
-                                                <td className="py-4 text-sm text-center" style={{ color: '#475569' }}>{item.quantity}</td>
-                                                <td className="py-4 text-sm text-right" style={{ color: '#475569' }}>{item.unitPrice.toFixed(2)}</td>
-                                                <td className="py-4 text-sm font-bold text-right" style={{ color: '#1e293b' }}>{(item.quantity * item.unitPrice).toFixed(2)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-
-                                {/* Totals */}
-                                <div className="flex justify-end mb-16">
-                                    <div className="w-[300px]">
-                                        <div className="flex justify-between py-2 text-sm" style={{ color: '#475569' }}>
-                                            <span>Subtotal</span>
-                                            <span className="font-semibold">{formatTaka(printQuotation.subtotal)}</span>
-                                        </div>
-                                        <div className="flex justify-between py-3 border-t-2 font-bold text-xl mt-1" style={{ borderColor: '#1e293b', color: '#0f172a' }}>
-                                            <span>Total</span>
-                                            <span>{formatTaka(printQuotation.total)}</span>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Terms & Conditions and Signature */}
-                                <div className="mt-12 pt-8 border-t-2" style={{ borderColor: '#f1f5f9' }}>
-                                    <div className="grid grid-cols-2 gap-12">
-                                        <div>
-                                            <h3 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#1e293b' }}>Terms & Conditions</h3>
-                                            <ul className="text-xs list-disc pl-4 space-y-1" style={{ color: '#64748b' }}>
-                                                <li>Quotation is valid for 15 days from the date of issue.</li>
-                                                <li>Payment terms: 100% advance or as discussed.</li>
-                                                <li>Warranty: Standard manufacturer warranty applies unless stated otherwise.</li>
-                                                <li>Items are subject to availability at the time of order confirmation.</li>
-                                                {printQuotation.notes && <li className="font-medium mt-2 list-none -ml-4 pt-2 border-t" style={{ color: '#334155', borderColor: '#f1f5f9' }}>Additional Notes: {printQuotation.notes}</li>}
-                                            </ul>
-                                        </div>
-                                        <div className="flex flex-col items-end justify-end">
-                                            <div className="w-48 border-b-2 mb-2" style={{ borderColor: '#cbd5e1' }}></div>
-                                            <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Authorized Signature</div>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Footer */}
-                                <div className="mt-12 w-full text-center text-xs font-medium" style={{ color: '#94a3b8' }}>
-                                    Thank you for your business.
-                                </div>
-                            </div>
-                            </div>
-                        )}
+                    <div className="flex-1 overflow-auto w-full custom-scrollbar p-8">
+                        {printQuotation && <QuotationPaper data={printQuotation} />}
                     </div>
                 </DialogContent>
             </Dialog>
+
+            {/* ─── MOBILE: bottom sheet — slides up to open, down to close, drag-to-close ─── */}
+            {typeof document !== "undefined" && createPortal(
+                <AnimatePresence>
+                    {isMobile && printQuotation && (
+                        <>
+                            <motion.div
+                                initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                                className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-sm"
+                                onClick={() => setPrintQuotation(null)}
+                            />
+                            <MobileBottomSheetFrame
+                                onClose={() => setPrintQuotation(null)}
+                                className="fixed inset-x-0 bottom-0 z-[200] flex max-h-[94vh] flex-col rounded-t-3xl bg-slate-100 shadow-2xl"
+                            >
+                                <div className="shrink-0 bg-white rounded-t-3xl px-4 pt-2.5 pb-3 border-b border-slate-200">
+                                    <MobileBottomSheetHandle />
+                                    <div className="mt-3 flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <h3 className="text-base font-black text-slate-900 flex items-center gap-2"><FileText className="h-4 w-4 text-blue-600" /> Quotation PDF</h3>
+                                            <p className="text-[11px] text-slate-400 truncate">Pinch to zoom · drag down to close</p>
+                                        </div>
+                                        <Button onClick={handleDownloadPDF} disabled={isGeneratingPDF} className="shrink-0 rounded-xl bg-blue-600 hover:bg-blue-700 text-white">
+                                            {isGeneratingPDF ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+                                            Download
+                                        </Button>
+                                    </div>
+                                </div>
+                                <div className="flex-1 overflow-auto custom-scrollbar p-3" style={{ touchAction: "pan-x pan-y pinch-zoom" }}>
+                                    <div style={{ zoom: previewScale }} className="origin-top">
+                                        <QuotationPaper data={printQuotation} />
+                                    </div>
+                                </div>
+                            </MobileBottomSheetFrame>
+                        </>
+                    )}
+                </AnimatePresence>,
+                document.body,
+            )}
 
             {/* Hidden actual print layout (This replaces the entire screen during print) */}
             {printQuotation && typeof window !== "undefined" && createPortal(
@@ -1076,5 +975,112 @@ export default function QuotationsTab() {
                 document.body
             )}
         </MobileTabLayout>
+    );
+}
+
+// ─── Shared A4 quotation document (true desktop size; capture target for PDF) ───
+function QuotationPaper({ data }: { data: Quotation & { items: QuotationItem[] } }) {
+    return (
+        <div id="quotation-print-preview" className="w-[800px] mx-auto p-12 shadow-sm border rounded-xl min-h-[1100px]" style={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', color: '#0f172a' }}>
+            {/* Header / Company Info */}
+            <div className="flex justify-between items-start mb-10 border-b-2 pb-6" style={{ borderColor: '#1e293b' }}>
+                <div className="flex items-center gap-4">
+                    <img src="/logo.png" alt="Promise Electronics Logo" className="h-16 w-16 object-contain rounded-md" />
+                    <div className="flex flex-col leading-none">
+                        <h1 className="text-3xl font-black tracking-tighter uppercase" style={{ color: '#0f172a' }}>Promise</h1>
+                        <span className="text-xs font-bold tracking-[0.3em] uppercase" style={{ color: '#64748b' }}>Electronics</span>
+                    </div>
+                </div>
+                <div className="text-right">
+                    <h2 className="text-4xl font-black uppercase tracking-widest mb-2" style={{ color: '#cbd5e1' }}>Quotation</h2>
+                    <div className="text-lg font-bold" style={{ color: '#1e293b' }}>{data.quotationNumber}</div>
+                    <div className="text-sm font-medium mt-1" style={{ color: '#64748b' }}>Date: {format(new Date(data.createdAt), 'MMMM d, yyyy')}</div>
+                </div>
+            </div>
+
+            {/* Addresses: From / To */}
+            <div className="grid grid-cols-2 gap-8 mb-10">
+                <div>
+                    <h3 className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: '#94a3b8' }}>From</h3>
+                    <p className="text-sm font-medium" style={{ color: '#334155' }}>
+                        116 Hossain Tower, Lift 8<br />
+                        Box Culvert Road, Naya Paltan<br />
+                        Dhaka-1000, Bangladesh<br />
+                        <span className="mt-2 block" style={{ color: '#64748b' }}>
+                            Email: support@promise.com<br />
+                            Phone: +880 1968 123456
+                        </span>
+                    </p>
+                </div>
+                <div className="text-right">
+                    <h3 className="text-[10px] font-bold uppercase tracking-widest mb-2" style={{ color: '#94a3b8' }}>Quotation For</h3>
+                    <div className="text-base font-bold" style={{ color: '#1e293b' }}>{data.customerName}</div>
+                    <p className="text-sm mt-1" style={{ color: '#475569' }}>{data.customerPhone}</p>
+                    {data.customerEmail && <p className="text-sm" style={{ color: '#475569' }}>{data.customerEmail}</p>}
+                    {data.customerAddress && <p className="text-sm mt-1 whitespace-pre-wrap" style={{ color: '#475569' }}>{data.customerAddress}</p>}
+                </div>
+            </div>
+
+            {/* Items Table */}
+            <table className="w-full mb-12">
+                <thead>
+                    <tr className="border-b-2" style={{ borderColor: '#1e293b' }}>
+                        <th className="text-left py-3 text-xs font-bold uppercase tracking-wider w-[50%]" style={{ color: '#64748b' }}>Description</th>
+                        <th className="text-center py-3 text-xs font-bold uppercase tracking-wider w-[15%]" style={{ color: '#64748b' }}>Qty</th>
+                        <th className="text-right py-3 text-xs font-bold uppercase tracking-wider w-[15%]" style={{ color: '#64748b' }}>Unit Price</th>
+                        <th className="text-right py-3 text-xs font-bold uppercase tracking-wider w-[20%]" style={{ color: '#64748b' }}>Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {data.items.map((item, index) => (
+                        <tr key={index} className="border-b" style={{ borderColor: '#e2e8f0' }}>
+                            <td className="py-4 text-sm font-medium" style={{ color: '#1e293b' }}>{item.description}</td>
+                            <td className="py-4 text-sm text-center" style={{ color: '#475569' }}>{item.quantity}</td>
+                            <td className="py-4 text-sm text-right" style={{ color: '#475569' }}>{item.unitPrice.toFixed(2)}</td>
+                            <td className="py-4 text-sm font-bold text-right" style={{ color: '#1e293b' }}>{(item.quantity * item.unitPrice).toFixed(2)}</td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+
+            {/* Totals */}
+            <div className="flex justify-end mb-16">
+                <div className="w-[300px]">
+                    <div className="flex justify-between py-2 text-sm" style={{ color: '#475569' }}>
+                        <span>Subtotal</span>
+                        <span className="font-semibold">{formatTaka(data.subtotal)}</span>
+                    </div>
+                    <div className="flex justify-between py-3 border-t-2 font-bold text-xl mt-1" style={{ borderColor: '#1e293b', color: '#0f172a' }}>
+                        <span>Total</span>
+                        <span>{formatTaka(data.total)}</span>
+                    </div>
+                </div>
+            </div>
+
+            {/* Terms & Conditions and Signature */}
+            <div className="mt-12 pt-8 border-t-2" style={{ borderColor: '#f1f5f9' }}>
+                <div className="grid grid-cols-2 gap-12">
+                    <div>
+                        <h3 className="text-xs font-bold uppercase tracking-wider mb-3" style={{ color: '#1e293b' }}>Terms & Conditions</h3>
+                        <ul className="text-xs list-disc pl-4 space-y-1" style={{ color: '#64748b' }}>
+                            <li>Quotation is valid for 15 days from the date of issue.</li>
+                            <li>Payment terms: 100% advance or as discussed.</li>
+                            <li>Warranty: Standard manufacturer warranty applies unless stated otherwise.</li>
+                            <li>Items are subject to availability at the time of order confirmation.</li>
+                            {data.notes && <li className="font-medium mt-2 list-none -ml-4 pt-2 border-t" style={{ color: '#334155', borderColor: '#f1f5f9' }}>Additional Notes: {data.notes}</li>}
+                        </ul>
+                    </div>
+                    <div className="flex flex-col items-end justify-end">
+                        <div className="w-48 border-b-2 mb-2" style={{ borderColor: '#cbd5e1' }}></div>
+                        <div className="text-xs font-bold uppercase tracking-wider" style={{ color: '#64748b' }}>Authorized Signature</div>
+                    </div>
+                </div>
+            </div>
+
+            {/* Footer */}
+            <div className="mt-12 w-full text-center text-xs font-medium" style={{ color: '#94a3b8' }}>
+                Thank you for your business.
+            </div>
+        </div>
     );
 }
