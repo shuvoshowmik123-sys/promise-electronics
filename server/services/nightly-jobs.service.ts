@@ -190,13 +190,11 @@ export function initNightlyJobs() {
     // Audit log retention once per 24h (runs at 3 AM effectively — first run 24h after boot)
     setInterval(pruneOldAuditLogs, 24 * 60 * 60 * 1000);
 
-    // Run once at startup (non-blocking)
-    setTimeout(() => {
-        checkSlaBreach().catch(() => {});
-        updateAcceptanceRatios().catch(() => {});
-        // Retention: run 30s after boot to clean up on restart too
-        setTimeout(() => pruneOldAuditLogs().catch(() => {}), 30_000);
-    }, 10_000); // 10s delay to let server fully boot first
+    // Stagger startup tasks so cold-start doesn't spike memory on 512MB free tier.
+    // HTTP server must be accepting requests before any heavy DB work begins.
+    setTimeout(() => checkSlaBreach().catch(() => {}), 45_000);          // 45s
+    setTimeout(() => updateAcceptanceRatios().catch(() => {}), 90_000);  // 90s
+    setTimeout(() => pruneOldAuditLogs().catch(() => {}), 120_000);      // 2 min
 
     console.log('[NightlyJobs] SLA + acceptance ratio jobs scheduled');
 }
