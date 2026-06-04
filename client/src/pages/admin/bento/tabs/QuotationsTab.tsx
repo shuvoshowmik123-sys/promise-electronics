@@ -255,7 +255,7 @@ export default function QuotationsTab() {
     });
 
     return (
-        <MobileTabLayout className="print:hidden">
+        <MobileTabLayout className="print:hidden md:block md:h-auto md:overflow-visible">
             {/* ─── MOBILE HEADER ─── */}
             <MobileTabHeader>
                 <div className="flex items-center justify-between pt-1">
@@ -283,7 +283,7 @@ export default function QuotationsTab() {
             </MobileTabHeader>
 
             {/* ─── MOBILE CARD LIST ─── */}
-            <MobileScrollContent>
+            <MobileScrollContent className="md:hidden">
                 {isLoadingQuotations ? (
                     <div className="flex justify-center py-16"><Loader2 className="h-7 w-7 animate-spin text-slate-300" /></div>
                 ) : filteredQuotations.length === 0 ? (
