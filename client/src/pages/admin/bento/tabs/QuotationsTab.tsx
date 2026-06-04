@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -41,7 +41,6 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { BentoCard } from "../shared/BentoCard";
 import { containerVariants, itemVariants, tableRowVariants } from "../shared/animations";
 import { MobileTabLayout, MobileTabHeader, MobileScrollContent } from "../shared/MobileAdminPrimitives";
-import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 // Zod schema for quotation creation/editing
@@ -84,6 +83,7 @@ export default function QuotationsTab() {
     // Mobile preview: render the A4 doc at true size, scale it down to fit the
     // phone (keeps proportions perfect; pinch-zoom + correct PDF). Desktop = 1.
     const [previewScale, setPreviewScale] = useState(1);
+    const dragStartY = useRef<number | null>(null);
     useEffect(() => {
         if (!printQuotation) return;
         const calc = () => {
@@ -840,16 +840,23 @@ export default function QuotationsTab() {
                                 className="fixed inset-0 z-[200] bg-slate-900/50 backdrop-blur-sm"
                                 onClick={() => setPrintQuotation(null)}
                             />
-                            <MobileBottomSheetFrame
-                                onClose={() => setPrintQuotation(null)}
+                            <motion.div
+                                initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }}
+                                transition={{ type: "spring", stiffness: 340, damping: 34 }}
                                 className="fixed inset-x-0 bottom-0 z-[200] flex max-h-[94vh] flex-col rounded-t-3xl bg-slate-100 shadow-2xl"
                             >
-                                <div className="shrink-0 bg-white rounded-t-3xl px-4 pt-2.5 pb-3 border-b border-slate-200">
-                                    <MobileBottomSheetHandle />
+                                {/* Header + drag-handle (drag-to-close lives here so the document can pinch freely) */}
+                                <div
+                                    className="shrink-0 bg-white rounded-t-3xl px-4 pt-2.5 pb-3 border-b border-slate-200 touch-none"
+                                    onPointerDown={(e) => { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); dragStartY.current = e.clientY; }}
+                                    onPointerMove={(e) => { if (dragStartY.current != null && e.clientY - dragStartY.current > 70) { dragStartY.current = null; setPrintQuotation(null); } }}
+                                    onPointerUp={() => { dragStartY.current = null; }}
+                                >
+                                    <div className="mx-auto h-1.5 w-10 rounded-full bg-slate-300" />
                                     <div className="mt-3 flex items-center justify-between gap-3">
                                         <div className="min-w-0">
                                             <h3 className="text-base font-black text-slate-900 flex items-center gap-2"><FileText className="h-4 w-4 text-blue-600" /> Quotation PDF</h3>
-                                            <p className="text-[11px] text-slate-400 truncate">Pinch to zoom · drag down to close</p>
+                                            <p className="text-[11px] text-slate-400 truncate">Pinch to zoom · pull the bar down to close</p>
                                         </div>
                                         <Button onClick={handleDownloadPDF} disabled={isGeneratingPDF} className="shrink-0 rounded-xl bg-blue-600 hover:bg-blue-700 text-white">
                                             {isGeneratingPDF ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
@@ -857,12 +864,10 @@ export default function QuotationsTab() {
                                         </Button>
                                     </div>
                                 </div>
-                                <div className="flex-1 overflow-auto custom-scrollbar p-3" style={{ touchAction: "pan-x pan-y pinch-zoom" }}>
-                                    <div style={{ zoom: previewScale }} className="origin-top">
-                                        <QuotationPaper data={printQuotation} />
-                                    </div>
-                                </div>
-                            </MobileBottomSheetFrame>
+                                <PinchZoomPane baseScale={previewScale} className="flex-1 min-h-0 bg-slate-100">
+                                    <QuotationPaper data={printQuotation} />
+                                </PinchZoomPane>
+                            </motion.div>
                         </>
                     )}
                 </AnimatePresence>,
@@ -1080,6 +1085,81 @@ function QuotationPaper({ data }: { data: Quotation & { items: QuotationItem[] }
             {/* Footer */}
             <div className="mt-12 w-full text-center text-xs font-medium" style={{ color: '#94a3b8' }}>
                 Thank you for your business.
+            </div>
+        </div>
+    );
+}
+
+// ─── Self-contained pinch-zoom + pan viewer (native pinch is disabled app-wide
+//     via maximum-scale=1, so we implement it ourselves on the document) ───
+function PinchZoomPane({ baseScale, className, children }: { baseScale: number; className?: string; children: ReactNode }) {
+    const ref = useRef<HTMLDivElement>(null);
+    const [t, setT] = useState({ scale: 1, x: 0, y: 0 });
+    const tRef = useRef(t);
+    const g = useRef<{ mode: "pinch" | "pan" | null; startDist: number; startScale: number; startX: number; startY: number; startTx: number; startTy: number }>({
+        mode: null, startDist: 0, startScale: 1, startX: 0, startY: 0, startTx: 0, startTy: 0,
+    });
+    const set = (n: { scale: number; x: number; y: number }) => { tRef.current = n; setT(n); };
+
+    // Reset zoom whenever the base fit changes (new doc / resize)
+    useEffect(() => { set({ scale: 1, x: 0, y: 0 }); }, [baseScale]);
+
+    useEffect(() => {
+        const el = ref.current;
+        if (!el) return;
+        const dist = (ts: TouchList) => Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY);
+        const onStart = (e: TouchEvent) => {
+            const cur = tRef.current;
+            if (e.touches.length === 2) {
+                g.current = { mode: "pinch", startDist: dist(e.touches), startScale: cur.scale, startX: 0, startY: 0, startTx: cur.x, startTy: cur.y };
+            } else if (e.touches.length === 1 && cur.scale > 1) {
+                g.current = { ...g.current, mode: "pan", startX: e.touches[0].clientX, startY: e.touches[0].clientY, startTx: cur.x, startTy: cur.y };
+            } else {
+                g.current.mode = null;
+            }
+        };
+        const onMove = (e: TouchEvent) => {
+            const cur = tRef.current;
+            if (g.current.mode === "pinch" && e.touches.length === 2) {
+                e.preventDefault();
+                const s = Math.min(4, Math.max(1, g.current.startScale * (dist(e.touches) / (g.current.startDist || 1))));
+                set({ ...cur, scale: s });
+            } else if (g.current.mode === "pan" && e.touches.length === 1) {
+                e.preventDefault();
+                set({ scale: cur.scale, x: g.current.startTx + (e.touches[0].clientX - g.current.startX), y: g.current.startTy + (e.touches[0].clientY - g.current.startY) });
+            }
+        };
+        const onEnd = (e: TouchEvent) => {
+            if (e.touches.length === 0) {
+                g.current.mode = null;
+                if (tRef.current.scale <= 1) set({ scale: 1, x: 0, y: 0 });
+            }
+        };
+        el.addEventListener("touchstart", onStart, { passive: false });
+        el.addEventListener("touchmove", onMove, { passive: false });
+        el.addEventListener("touchend", onEnd);
+        return () => {
+            el.removeEventListener("touchstart", onStart);
+            el.removeEventListener("touchmove", onMove);
+            el.removeEventListener("touchend", onEnd);
+        };
+    }, []);
+
+    return (
+        <div
+            ref={ref}
+            className={className}
+            style={{ overflow: "auto", touchAction: t.scale > 1 ? "none" : "pan-y", padding: 12 }}
+            onDoubleClick={() => set(t.scale > 1 ? { scale: 1, x: 0, y: 0 } : { scale: 2, x: 0, y: 0 })}
+        >
+            <div style={{
+                transform: `translate(${t.x}px, ${t.y}px) scale(${baseScale * t.scale})`,
+                transformOrigin: "top center",
+                transition: g.current.mode ? "none" : "transform 0.15s ease-out",
+                width: 800,
+                margin: "0 auto",
+            }}>
+                {children}
             </div>
         </div>
     );
