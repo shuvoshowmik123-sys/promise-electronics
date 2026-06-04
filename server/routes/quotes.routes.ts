@@ -294,6 +294,45 @@ router.get('/api/pickups/by-request/:serviceRequestId', async (req: Request, res
 });
 
 /**
+ * POST /api/admin/service-requests/:id/transfer-to-pickup
+ * Creates a pickup & delivery schedule from a service request (idempotent).
+ * Used by the "Transfer to Pickup & Delivery" action on pickup-type requests.
+ */
+router.post('/api/admin/service-requests/:id/transfer-to-pickup', requireAdminAuth, async (req: Request, res: Response) => {
+    try {
+        const sr = await serviceRequestRepo.getServiceRequest(req.params.id);
+        if (!sr) {
+            return res.status(404).json({ error: 'Service request not found' });
+        }
+
+        // Idempotent — return the existing pickup if already transferred
+        const existing = await storage.getPickupScheduleByServiceRequestId(sr.id);
+        if (existing) {
+            return res.json({ pickup: existing, alreadyExisted: true });
+        }
+
+        const { tier, tierCost } = req.body || {};
+        const pickup = await storage.createPickupSchedule({
+            serviceRequestId: sr.id,
+            tier: tier || (sr as any).pickupTier || 'Regular',
+            tierCost: typeof tierCost === 'number' ? tierCost : ((sr as any).pickupCost || 0),
+            status: 'Pending',
+            pickupAddress: (sr as any).address || null,
+        } as any);
+
+        notifyAdminUpdate({
+            type: 'pickup_created',
+            data: pickup,
+            updatedAt: new Date().toISOString()
+        });
+
+        res.status(201).json({ pickup, alreadyExisted: false });
+    } catch (error: any) {
+        res.status(500).json({ error: error?.message || 'Failed to transfer to pickup' });
+    }
+});
+
+/**
  * PATCH /api/admin/pickups/:id - Update pickup schedule (admin)
  */
 router.patch('/api/admin/pickups/:id', requireAdminAuth, async (req: Request, res: Response) => {

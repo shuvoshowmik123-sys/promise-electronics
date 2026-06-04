@@ -771,6 +771,11 @@ export const serviceCategoriesApi = {
 export const adminPickupsApi = {
     getAll: (status?: string) => fetchApi<PickupSchedule[]>(status ? `/admin/pickups?status=${status}` : "/admin/pickups"),
     getPending: () => fetchApi<PickupSchedule[]>("/admin/pickups/pending"),
+    transferFromServiceRequest: (serviceRequestId: string, data?: { tier?: string; tierCost?: number }) =>
+        fetchApi<{ pickup: PickupSchedule; alreadyExisted: boolean }>(`/admin/service-requests/${serviceRequestId}/transfer-to-pickup`, {
+            method: "POST",
+            body: JSON.stringify(data || {}),
+        }),
     update: (id: string, data: Partial<PickupSchedule>) =>
         fetchApi<PickupSchedule>(`/admin/pickups/${id}`, {
             method: "PATCH",

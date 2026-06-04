@@ -55,6 +55,9 @@ export * as orderRepo from './order.repository.js';
 // POS Repository (point of sale transactions)
 export * as posRepo from './pos.repository.js';
 
+// Pickup Repository (pickup & delivery schedules)
+export * as pickupRepo from './pickup.repository.js';
+
 // Analytics Repository (dashboard, reports)
 export * as analyticsRepo from './analytics.repository.js';
 

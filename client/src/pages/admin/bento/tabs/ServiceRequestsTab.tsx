@@ -11,7 +11,7 @@ import { format } from "date-fns";
 import {
     Clock, Search, MessageSquare, FileText, Trash2, ChevronLeft, ChevronRight,
     X, Phone, MapPin, Tv, AlertTriangle, Loader2, CheckCircle, XCircle,
-    ArrowRightCircle, Image, Film, DollarSign, Send, Calendar, Undo2, LayoutGrid, LayoutList
+    ArrowRightCircle, Image, Film, DollarSign, Send, Calendar, Undo2, LayoutGrid, LayoutList, Truck
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
@@ -107,11 +107,24 @@ function getStatusChangeWarning(type: 'internal' | 'tracking', from: string, to:
         color: 'bg-blue-50 border-blue-200 text-blue-800',
     };
 }
-import { serviceRequestsApi, adminQuotesApi, adminStageApi, jobTicketsApi, settingsApi } from "@/lib/api";
+import { serviceRequestsApi, adminQuotesApi, adminStageApi, jobTicketsApi, settingsApi, adminPickupsApi } from "@/lib/api";
 import { useRollback } from "@/contexts/RollbackContext";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { cn } from "@/lib/utils";
-import { BentoCard, DashboardSkeleton, containerVariants, itemVariants, HighlightMatch, smartMatch } from "../shared";
+import {
+    BentoCard,
+    DashboardSkeleton,
+    containerVariants,
+    itemVariants,
+    HighlightMatch,
+    smartMatch,
+    MobileTabLayout,
+    MobileTabHeader,
+    MobileScrollContent,
+    MobileMicroMetricGrid,
+    MobileCommandRail,
+    MobileSegmentTabs,
+} from "../shared";
 import { toast } from "sonner";
 
 const LEGACY_ADMIN_STATUS_MAP: Record<string, string> = {
@@ -255,7 +268,11 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
     const queryClient = useQueryClient();
 
     const { data: srData, isLoading } = useQuery<{ items: ServiceRequest[]; pagination: any }>({
-        queryKey: ["serviceRequests"], queryFn: () => serviceRequestsApi.getAll(), staleTime: 0, refetchOnMount: "always",
+        queryKey: ["serviceRequests"],
+        queryFn: () => serviceRequestsApi.getAll(),
+        staleTime: 15_000,
+        refetchOnMount: false,
+        placeholderData: (previousData) => previousData,
     });
     const { data: settings = [] } = useQuery({ queryKey: ["settings"], queryFn: settingsApi.getAll });
     const { data: nextStagesData } = useQuery({
@@ -379,6 +396,14 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
         mutationFn: ({ id, stage }: { id: string; stage: string }) => adminStageApi.transitionStage(id, { stage }),
         onSuccess: (u) => { queryClient.invalidateQueries({ queryKey: ["serviceRequests"] }); queryClient.invalidateQueries({ queryKey: ["next-stages", u.id] }); setSelectedRequest(normalizeServiceRequest(u)); toast.success(`Stage -> "${formatStageName(u.stage || "")}"`); if (u.convertedJobId) toast.success(`Job ticket ${u.convertedJobId} created!`); },
         onError: (e: Error) => { toast.error(e.message || "Failed to update stage"); },
+    });
+    const transferToPickupMutation = useMutation({
+        mutationFn: (id: string) => adminPickupsApi.transferFromServiceRequest(id),
+        onSuccess: (res) => {
+            queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
+            toast.success(res.alreadyExisted ? "Already in Pickup & Delivery" : "Transferred to Pickup & Delivery");
+        },
+        onError: (e: Error) => toast.error(e.message || "Failed to transfer to pickup"),
     });
     const sendCustodyOtpMutation = useMutation({
         mutationFn: ({ id, action }: { id: string; action: CustodyOtpAction }) => adminStageApi.sendCustodyOtp(id, { action }),
@@ -591,11 +616,161 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
     const isTrackingBlocked = isClosedState || (!developerMode && quoteBlocked);
     const jobStatusBlocked = !canUseJobStatuses;
     const jobStatusHint = !isConverted ? " (Requires job)" : (!hasTechAssigned ? " (Assign tech)" : "");
+    const statusCounts = STATUS_FILTERS.reduce<Record<string, number>>((acc, status) => {
+        acc[status] = status === "all" ? serviceRequests.length : serviceRequests.filter((request: any) => request.status === status).length;
+        return acc;
+    }, {});
+    const pendingQuoteCount = serviceRequests.filter((request: any) => request.isQuote && (!request.quoteStatus || request.quoteStatus === "Pending")).length;
+    const unreadCount = serviceRequests.filter((request: any) => !request.adminInteracted).length;
+    const mobileStatusLabels: Record<string, string> = {
+        all: "All",
+        New: "New",
+        "Under Review": "Review",
+        Approved: "Ok",
+        "Work Order": "Work",
+        Resolved: "Done",
+        Closed: "Closed",
+        Declined: "No",
+        Cancelled: "Cancel",
+        Unrepairable: "Bad",
+    };
+    const selectStatusFilter = (status: (typeof STATUS_FILTERS)[number]) => {
+        setSrStatusFilter(status);
+        setSrPage(1);
+    };
+    const mobileStatusItems = STATUS_FILTERS.map((status) => ({
+        value: status,
+        label: mobileStatusLabels[status] || status,
+        badge: statusCounts[status] || 0,
+    }));
 
     return (
-        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="flex flex-col h-full gap-6">
+        <MobileTabLayout>
+        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="flex flex-col h-full overflow-hidden md:gap-6">
+            <MobileTabHeader>
+                <div className="flex items-center justify-between gap-2 pt-1">
+                    <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                            <h2 className="truncate text-[17px] font-black text-slate-950">Service Requests</h2>
+                            {unreadCount > 0 && <Badge className="h-5 rounded-full bg-rose-100 px-2 text-[10px] font-black text-rose-700 shadow-none">{unreadCount} new</Badge>}
+                        </div>
+                        <p className="truncate text-[11px] font-medium text-slate-500">{filtered.length} showing from {serviceRequests.length}</p>
+                    </div>
+                    <Button
+                        size="sm"
+                        className="h-8 rounded-xl bg-blue-600 px-3 text-xs font-black text-white shadow-sm"
+                        onClick={() => selectStatusFilter("New")}
+                    >
+                        Review
+                    </Button>
+                </div>
+
+                <MobileMicroMetricGrid
+                    items={[
+                        { label: "All", value: serviceRequests.length, meta: "total", tone: "slate", onClick: () => selectStatusFilter("all") },
+                        { label: "New", value: statusCounts.New || 0, meta: "unread queue", tone: "blue", onClick: () => selectStatusFilter("New") },
+                        { label: "Review", value: statusCounts["Under Review"] || 0, meta: "staff check", tone: "amber", onClick: () => selectStatusFilter("Under Review") },
+                        { label: "Work", value: statusCounts["Work Order"] || 0, meta: "job linked", tone: "violet", onClick: () => selectStatusFilter("Work Order") },
+                    ]}
+                />
+
+                <MobileCommandRail
+                    items={[
+                        { key: "new", title: "New", badge: statusCounts.New || 0, tone: "blue", icon: <MessageSquare className="h-3.5 w-3.5" />, onClick: () => selectStatusFilter("New") },
+                        { key: "quotes", title: "Quotes", badge: pendingQuoteCount, tone: "amber", icon: <FileText className="h-3.5 w-3.5" />, onClick: () => selectStatusFilter("Under Review") },
+                        { key: "work", title: "Work", badge: statusCounts["Work Order"] || 0, tone: "violet", icon: <Tv className="h-3.5 w-3.5" />, onClick: () => selectStatusFilter("Work Order") },
+                    ]}
+                />
+
+                <div className="flex items-center gap-1.5">
+                    <div className="relative min-w-0 flex-1">
+                        <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+                        <Input
+                            placeholder="Search ticket, phone, customer..."
+                            className="h-8 rounded-xl border-slate-200 bg-white pl-8 pr-2 text-xs font-semibold shadow-sm"
+                            value={srSearchQuery}
+                            onChange={(e) => { setSrSearchQuery(e.target.value); setSrPage(1); }}
+                        />
+                    </div>
+                </div>
+                <MobileSegmentTabs
+                    value={srStatusFilter as (typeof STATUS_FILTERS)[number]}
+                    items={mobileStatusItems}
+                    onChange={selectStatusFilter}
+                    tone="blue"
+                />
+            </MobileTabHeader>
+
+            <MobileScrollContent className="md:hidden">
+                {paginated.length === 0 ? (
+                    <div className="mt-2 flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-4 text-center text-slate-500 shadow-sm">
+                        <MessageSquare className="mb-3 h-8 w-8 opacity-25" />
+                        <p className="text-sm font-bold text-slate-700">No request found</p>
+                        <Button variant="link" className="h-8 text-xs" onClick={() => { setSrSearchQuery(""); setSrStatusFilter("all"); }}>Clear filters</Button>
+                    </div>
+                ) : (
+                    <div className="space-y-2 pt-2">
+                        {paginated.map((request: any, index: number) => {
+                            const sc = statusCardColors[request.status] || statusCardColors.Closed;
+                            const modeLabel = request.servicePreference === "pickup" ? "Pickup" : "Center";
+                            return (
+                                <button
+                                    key={request.id}
+                                    type="button"
+                                    onClick={() => handleViewDetails(request, index)}
+                                    className={cn(
+                                        "w-full rounded-2xl border bg-white p-3 text-left shadow-sm transition active:scale-[0.99]",
+                                        "border-l-4 border-slate-300",
+                                        sc.border,
+                                        !request.adminInteracted && "bg-rose-50/40 ring-1 ring-rose-100"
+                                    )}
+                                >
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-1.5">
+                                                {!request.adminInteracted && <span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" />}
+                                                <span className="truncate font-mono text-[10px] font-black text-slate-400">#<HighlightMatch text={request.ticketNumber} query={srSearchQuery} /></span>
+                                                {request.isQuote && <Badge className="h-4 rounded-md border-amber-200 bg-amber-50 px-1.5 text-[9px] font-black text-amber-700 shadow-none">QUOTE</Badge>}
+                                            </div>
+                                            <h3 className="mt-1 truncate text-sm font-black leading-tight text-slate-950"><HighlightMatch text={request.customerName} query={srSearchQuery} /></h3>
+                                        </div>
+                                        <Badge className={cn("shrink-0 border px-1.5 py-0 text-[9px] font-black shadow-none", sc.badge)}>{request.status}</Badge>
+                                    </div>
+                                    <div className="mt-2 grid grid-cols-[1fr_auto] items-end gap-2 border-t border-slate-100 pt-2">
+                                        <div className="min-w-0 space-y-1">
+                                            <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-slate-700">
+                                                <Tv className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+                                                <span className="truncate"><HighlightMatch text={request.brand || "Unknown"} query={srSearchQuery} /> {request.screenSize ? `${request.screenSize}"` : ""}</span>
+                                            </div>
+                                            <div className="truncate text-[11px] font-medium text-slate-500"><HighlightMatch text={request.primaryIssue || "No issue noted"} query={srSearchQuery} /></div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-[10px] font-black uppercase text-slate-400">{modeLabel}</div>
+                                            <div className="text-[10px] font-bold text-slate-500">{format(new Date(request.createdAt), 'MMM d')}</div>
+                                        </div>
+                                    </div>
+                                    <div className="mt-2 flex items-center justify-between gap-2">
+                                        <div className="flex min-w-0 items-center gap-1 text-[10px] font-semibold text-slate-500">
+                                            <Phone className="h-3 w-3 shrink-0" />
+                                            <span className="truncate"><HighlightMatch text={request.phone || "No phone"} query={srSearchQuery} /></span>
+                                        </div>
+                                        <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-black", getStageColor(request.stage || "intake"))}>{formatStageName(request.stage || "intake")}</span>
+                                    </div>
+                                </button>
+                            );
+                        })}
+                    </div>
+                )}
+                {filtered.length > 12 && (
+                    <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
+                        <Button variant="outline" size="sm" disabled={srPage === 1} onClick={() => setSrPage(p => Math.max(1, p - 1))} className="h-8 rounded-xl text-xs">Prev</Button>
+                        <span className="text-xs font-black text-slate-500">{srPage} / {totalPages}</span>
+                        <Button variant="outline" size="sm" disabled={srPage === totalPages} onClick={() => setSrPage(p => Math.min(totalPages, p + 1))} className="h-8 rounded-xl text-xs">Next</Button>
+                    </div>
+                )}
+            </MobileScrollContent>
             {/* KPI Row */}
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 shrink-0">
+            <div className="hidden md:grid grid-cols-1 md:grid-cols-4 gap-6 shrink-0">
                 <motion.div variants={itemVariants} className="col-span-1 h-full min-h-[200px]">
                     <BentoCard className="h-full bg-gradient-to-br from-blue-500 to-indigo-600" title="Total Requests" icon={<MessageSquare size={24} className="text-white" />} variant="vibrant">
                         <div className="flex-1 flex flex-col justify-end">
@@ -623,7 +798,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
             </div>
 
             {/* Filter Toolbar */}
-            <motion.div variants={itemVariants} className="flex flex-wrap items-center gap-3">
+            <motion.div variants={itemVariants} className="hidden md:flex flex-wrap items-center gap-3">
                 <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
                     {STATUS_FILTERS.map(s => (
                         <button key={s} onClick={() => { setSrStatusFilter(s); setSrPage(1); }} className={cn("px-3 py-1.5 text-xs font-semibold rounded-lg transition-all", srStatusFilter === s ? statusActiveColors[s] : "text-slate-500 hover:text-slate-700 hover:bg-slate-200")}>
@@ -643,7 +818,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
             </motion.div>
 
             {/* View Area */}
-            <div className="min-h-0 pb-6">
+            <div className="hidden md:block min-h-0 pb-6">
                 {paginated.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 bg-slate-50 rounded-3xl border border-dashed border-slate-200 text-slate-500">
                         <MessageSquare className="h-10 w-10 opacity-20 mb-3" />
@@ -743,7 +918,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
 
             {/* Pagination */}
             {filtered.length > 12 && (
-                <div className="flex items-center justify-between px-2 pt-2 pb-6">
+                <div className="hidden md:flex items-center justify-between px-2 pt-2 pb-6">
                     <div className="text-sm text-slate-500">Viewing {((srPage - 1) * 12) + 1}-{Math.min(srPage * 12, filtered.length)} of {filtered.length}</div>
                     <div className="flex items-center gap-2">
                         <Button variant="outline" size="sm" disabled={srPage === 1} onClick={() => setSrPage(p => Math.max(1, p - 1))}><ChevronLeft className="h-4 w-4 mr-1" /> Prev</Button>
@@ -1002,6 +1177,12 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                                         {!selectedRequest.convertedJobId && ["picked_up", "device_received"].includes(selectedRequest.stage || "") && canVerifyAndConvert && (
                                             <Button size="sm" className="rounded-xl bg-green-600 hover:bg-green-700" onClick={() => { setRequestToVerify(selectedRequest); setVerificationNotes(selectedRequest.description || ""); setShowVerifyDialog(true); }}><CheckCircle className="w-3.5 h-3.5 mr-1.5" />Create Job</Button>
                                         )}
+                                        {(selectedRequest.servicePreference === "pickup" || selectedRequest.servicePreference === "home_pickup" || selectedRequest.serviceMode === "pickup") && (
+                                            <Button size="sm" variant="outline" className="rounded-xl border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => transferToPickupMutation.mutate(selectedRequest.id)} disabled={transferToPickupMutation.isPending}>
+                                                {transferToPickupMutation.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Truck className="w-3.5 h-3.5 mr-1.5" />}
+                                                Transfer to Pickup & Delivery
+                                            </Button>
+                                        )}
                                     </div>
                                     <div className="flex gap-2 pl-4 border-l ml-2">
                                         <Button variant="destructive" size="sm" className="rounded-xl" onClick={() => { setRequestToDelete(selectedRequest); setShowDeleteDialog(true); handleCloseDialog(); }}><Trash2 className="w-3.5 h-3.5 mr-1.5" />Delete</Button>
@@ -1221,5 +1402,6 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
             {/* Media Viewer */}
             <MediaViewer urls={currentMediaUrls} initialIndex={mediaViewerIndex} isOpen={mediaViewerOpen} onClose={() => setMediaViewerOpen(false)} />
         </motion.div>
+        </MobileTabLayout>
     );
 }
