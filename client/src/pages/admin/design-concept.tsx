@@ -216,7 +216,7 @@ export default function DesignConcept() {
         // We let them pass if no mapping exists, Or map them to the closest parent.
     };
 
-    const TAB_TO_PERMISSION: Record<string, string> = {
+    const TAB_TO_PERMISSION: Record<string, string | string[]> = {
         'dashboard': 'dashboard',
         'overview': 'dashboard',
         'jobs': 'jobs',
@@ -234,7 +234,7 @@ export default function DesignConcept() {
         'salary': 'salary',
         'cashier': 'pos',          // cashier is a POS subset
         'reports': 'reports',
-        'pickup': 'jobs',         // pickups are job-adjacent
+        'pickup': ['pickup', 'jobs'], // driver (pickup) or job-staff (jobs) can view
         'technician': 'technician',
         'orders': 'orders',
         'warranty': 'warrantyClaims',
@@ -264,7 +264,7 @@ export default function DesignConcept() {
         const permKey = TAB_TO_PERMISSION[tabId];
         if (!permKey) return true; // No permission mapping -> allow
         if (Array.isArray(permKey)) {
-            return permKey.some((k) => hasPermission(k));
+            return permKey.some((k) => hasPermission(k as keyof UserPermissions));
         }
         return hasPermission(permKey as keyof UserPermissions);
     };

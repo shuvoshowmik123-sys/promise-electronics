@@ -96,6 +96,32 @@ export function getDefaultPermissionsForRole(role: string): Record<string, boole
         canDelete: false,
         canExport: false,
       };
+    case "Driver":
+      // Courier / delivery staff — sees only Pickup & Delivery (scoped to their jobs)
+      return {
+        dashboard: false,
+        jobs: false,
+        inventory: false,
+        pos: false,
+        challans: false,
+        finance: false,
+        attendance: true,
+        reports: false,
+        serviceRequests: false,
+        orders: false,
+        technician: false,
+        inquiries: false,
+        systemHealth: false,
+        users: false,
+        settings: false,
+        pickup: true,
+        canCreate: false,
+        canEdit: true,
+        canDelete: false,
+        canExport: false,
+        process_payment: true,
+        canViewCustomerPhone: true,
+      };
     case "Corporate":
       return {
         dashboard: true,

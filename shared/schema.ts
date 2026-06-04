@@ -133,6 +133,7 @@ export type UserPermissions = {
   technician?: boolean;       // Technician View
   inquiries?: boolean;        // Inquiries / Contact Messages
   systemHealth?: boolean;     // System Health / Server Status
+  pickup?: boolean;           // Pickup & Delivery (driver/courier access)
   warrantyClaims?: boolean;   // Warranty Claims Management
   refunds?: boolean;          // Refund Management
   users?: boolean;

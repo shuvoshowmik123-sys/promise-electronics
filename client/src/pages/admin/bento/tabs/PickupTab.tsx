@@ -40,6 +40,7 @@ import { Calendar as CalendarUI } from "@/components/ui/calendar";
 import { adminPickupsApi, serviceRequestsApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { BentoCard, DashboardSkeleton, MobileTabLayout, MobileTabHeader, MobileScrollContent } from "../shared";
 import { HandoverSheet } from "./pickup/HandoverSheet";
 import type { PickupSchedule } from "@shared/schema";
@@ -66,6 +67,9 @@ function maskPhone(phone?: string): string {
 
 export default function PickupTab() {
     const queryClient = useQueryClient();
+    const { user } = useAdminAuth();
+    // Drivers see only pickups assigned to them (scoped by assignedStaff name)
+    const isDriver = user?.role === "Driver";
     const [pickupSearchQuery, setPickupSearchQuery] = useState("");
     const [pickupFilterStatus, setPickupFilterStatus] = useState("all");
     const [pickupFilterTier, setPickupFilterTier] = useState("all");
@@ -141,7 +145,12 @@ export default function PickupTab() {
         };
     });
 
-    const pickups = enrichedPickups.filter(pickup => {
+    // Driver scope: only pickups assigned to the logged-in driver
+    const scopedPickups = isDriver
+        ? enrichedPickups.filter((p) => p.assignedStaff && user?.name && p.assignedStaff === user.name)
+        : enrichedPickups;
+
+    const pickups = scopedPickups.filter(pickup => {
         const matchesSearch =
             pickupSearchQuery === "" ||
             pickup.serviceRequest?.customerName?.toLowerCase().includes(pickupSearchQuery.toLowerCase()) ||
@@ -209,7 +218,7 @@ export default function PickupTab() {
     const legOf = (status: string): "collect" | "shop" | "done" =>
         status === "Delivered" ? "done" : status === "PickedUp" ? "shop" : "collect";
 
-    const mobilePickups = enrichedPickups.filter((p) => {
+    const mobilePickups = scopedPickups.filter((p) => {
         const q = pickupSearchQuery.toLowerCase();
         const matchesSearch = q === "" ||
             p.serviceRequest?.customerName?.toLowerCase().includes(q) ||

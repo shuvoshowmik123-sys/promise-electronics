@@ -113,6 +113,7 @@ const PERMISSION_LABELS: Record<keyof UserPermissions, string> = {
     finance: "Finance",
     attendance: "Attendance",
     reports: "Reports",
+    pickup: "Pickup & Delivery",
     serviceRequests: "Service Requests",
     orders: "Shop Orders",
     technician: "Technician View",

@@ -73,13 +73,30 @@ export type MissingPart = typeof MISSING_PARTS_LIST[number];
 export const JOB_STATUSES =["Pending", "Diagnosing", "Pending Parts", "In Progress", "On Workbench", "Ready", "Not OK", "Delivered", "Cancelled", "Abandoned", "Forfeited"] as const;
 export const TICKET_TYPES = ["full_device", "panel_only", "motherboard_only", "parts_only"] as const;
 export const PANEL_TYPES = ["LED", "OLED", "QLED", "AMOLED", "VA", "IPS", "Other"] as const;
+export const TECHNICIAN_SKILLS = [
+    "tv_general_diagnosis",
+    "full_tv_handling",
+    "backlight_repair",
+    "panel_opening",
+    "panel_diagnosis",
+    "panel_repair",
+    "laser_machine_operation",
+    "tcon_repair",
+    "motherboard_repair",
+    "power_board_repair",
+    "software_firmware",
+    "audio_speaker",
+    "remote_ir_wifi",
+    "all_rounder",
+] as const;
+export type TechnicianSkill = typeof TECHNICIAN_SKILLS[number];
 export const JOB_TYPES = ["standard", "warranty_claim", "repeat_repair"] as const;
 export const JOB_PRIORITIES = ["Low", "Medium", "High"] as const;
 export const CHALLAN_STATUSES = ["Pending", "Delivered", "Received"] as const;
 export const CHALLAN_TYPES = ["Corporate", "Customer", "Transfer"] as const;
 export const STOCK_STATUSES = ["In Stock", "Low Stock", "Out of Stock"] as const;
 export const ITEM_TYPES = ["product", "service"] as const;
-export const USER_ROLES = ["Super Admin", "Manager", "Cashier", "Technician", "Customer"] as const;
+export const USER_ROLES = ["Super Admin", "Manager", "Cashier", "Technician", "Driver", "Customer"] as const;
 export const DUE_STATUSES = ["Pending", "Overdue", "Paid"] as const;
 export const PAYMENT_METHODS = ["Cash", "Bank", "bKash", "Nagad", "Due"] as const;
 export const PAYMENT_STATUSES = ["Paid", "Due"] as const;
