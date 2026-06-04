@@ -333,6 +333,62 @@ router.post('/api/admin/service-requests/:id/transfer-to-pickup', requireAdminAu
 });
 
 /**
+ * POST /api/admin/pickups/:id/collect-payment
+ * Records cash-on-delivery collected at handover. Mirrors POS posting:
+ * petty-cash Income (Sales) + bumps active drawer expectedCash for Cash,
+ * and marks the linked service request paid.
+ */
+router.post('/api/admin/pickups/:id/collect-payment', requireAdminAuth, async (req: Request, res: Response) => {
+    try {
+        const { amount, method } = req.body || {};
+        const amt = Number(amount);
+        const pay = String(method || 'Cash');
+        if (!Number.isFinite(amt) || amt <= 0) {
+            return res.status(400).json({ error: 'Valid amount is required' });
+        }
+        if (!['Cash', 'Bank', 'bKash', 'Nagad'].includes(pay)) {
+            return res.status(400).json({ error: 'Invalid payment method' });
+        }
+
+        const pickup = await storage.getPickupSchedule(req.params.id);
+        if (!pickup) {
+            return res.status(404).json({ error: 'Pickup schedule not found' });
+        }
+
+        // 1. Income record (counts in finance regardless of method)
+        await storage.createPettyCashRecord({
+            description: `COD - Pickup/Delivery ${pickup.serviceRequestId}`,
+            category: 'Sales',
+            amount: amt,
+            type: 'Income',
+        } as any);
+
+        // 2. Cash only → bump active drawer expected cash
+        if (pay === 'Cash') {
+            const activeDrawer = await storage.getActiveDrawer();
+            if (activeDrawer) {
+                await storage.updateDrawerExpectedCash(activeDrawer.id, amt);
+            }
+        }
+
+        // 3. Mark the service request paid
+        await serviceRequestRepo.updateServiceRequest(pickup.serviceRequestId, {
+            paymentStatus: 'paid',
+        } as any);
+
+        notifyAdminUpdate({
+            type: 'cod_collected',
+            data: { pickupId: pickup.id, serviceRequestId: pickup.serviceRequestId, amount: amt, method: pay },
+            updatedAt: new Date().toISOString()
+        });
+
+        res.json({ success: true, amount: amt, method: pay });
+    } catch (error: any) {
+        res.status(500).json({ error: error?.message || 'Failed to record COD payment' });
+    }
+});
+
+/**
  * PATCH /api/admin/pickups/:id - Update pickup schedule (admin)
  */
 router.patch('/api/admin/pickups/:id', requireAdminAuth, async (req: Request, res: Response) => {

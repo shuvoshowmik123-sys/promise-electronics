@@ -240,10 +240,12 @@ export default function PickupTab() {
         const leg = legOf(p.status);
         setHandoverTarget({
             serviceRequestId: p.serviceRequest.id,
+            pickupId: p.id,
             device: p.serviceRequest.brand || "Device",
             customerName: p.serviceRequest.customerName,
             phone: p.serviceRequest.phone,
             ticketNumber: p.serviceRequest.ticketNumber,
+            amountDue: Number(p.serviceRequest.totalAmount || 0),
             mode: leg === "shop" ? "delivery" : "receive",
         });
     };

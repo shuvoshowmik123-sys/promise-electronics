@@ -2,18 +2,20 @@ import { useState, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { X, Tv, ShieldCheck, Loader2, RotateCcw, CheckCircle } from "lucide-react";
+import { X, Tv, ShieldCheck, Loader2, RotateCcw, CheckCircle, Banknote, Smartphone, Landmark } from "lucide-react";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
-import { adminStageApi } from "@/lib/api";
+import { adminStageApi, adminPickupsApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 
 export type HandoverTarget = {
     serviceRequestId: string;
+    pickupId?: string;
     device: string;
     customerName?: string;
     phone?: string;
     ticketNumber?: string;
+    amountDue?: number;
     // "receive" = customer hands device to us (pickup leg)
     // "delivery" = we hand repaired device back to customer (delivery leg)
     mode: "receive" | "delivery";
@@ -40,10 +42,15 @@ export function HandoverSheet({
     const [step, setStep] = useState<"idle" | "sent">("idle");
     const [digits, setDigits] = useState<string[]>(Array(OTP_LEN).fill(""));
     const [sentPhone, setSentPhone] = useState<string>("");
+    const [codCollected, setCodCollected] = useState(false);
+    const [codMethod, setCodMethod] = useState<"Cash" | "bKash" | "Nagad" | "Bank">("Cash");
     const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
     const open = !!target;
     const mode = target?.mode ?? "delivery";
+    const amountDue = Number(target?.amountDue || 0);
+    // COD only applies to the delivery leg with an outstanding balance
+    const needsCod = mode === "delivery" && amountDue > 0 && !codCollected;
     const actionVerb = mode === "delivery" ? "Verify & Release" : "Verify & Receive";
     const title = mode === "delivery" ? "Release Device" : "Receive Device";
     const subtitle = mode === "delivery"
@@ -55,7 +62,21 @@ export function HandoverSheet({
         setStep("idle");
         setDigits(Array(OTP_LEN).fill(""));
         setSentPhone("");
+        setCodCollected(false);
+        setCodMethod("Cash");
     }, [target?.serviceRequestId, target?.mode]);
+
+    const collectMutation = useMutation({
+        mutationFn: () => adminPickupsApi.collectPayment(target!.pickupId!, { amount: amountDue, method: codMethod }),
+        onSuccess: () => {
+            setCodCollected(true);
+            queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
+            queryClient.invalidateQueries({ queryKey: ["pettyCash"] });
+            queryClient.invalidateQueries({ queryKey: ["activeDrawer"] });
+            toast.success(`Collected ৳${amountDue.toLocaleString()} (${codMethod})`);
+        },
+        onError: (e: Error) => toast.error(e.message || "Failed to record payment"),
+    });
 
     const sendMutation = useMutation({
         mutationFn: () => adminStageApi.sendCustodyOtp(target!.serviceRequestId, { action: mode }),
@@ -141,7 +162,32 @@ export function HandoverSheet({
                             <h2 className="mt-4 text-2xl font-black text-slate-900 leading-tight">{target?.device || "Device"}</h2>
                             {target?.ticketNumber && <p className="mt-0.5 text-xs font-mono text-slate-400">#{target.ticketNumber}</p>}
 
-                            {step === "idle" ? (
+                            {needsCod ? (
+                                <>
+                                    <div className="mt-5 w-full rounded-2xl border border-rose-100 bg-rose-50 px-4 py-3 text-left">
+                                        <p className="text-[11px] font-bold uppercase tracking-wide text-rose-500">Amount Due</p>
+                                        <p className="text-3xl font-black text-slate-900 tabular-nums">৳ {amountDue.toLocaleString()}</p>
+                                    </div>
+                                    <p className="mt-4 text-sm font-bold text-slate-700">Collect payment before release</p>
+                                    <div className="mt-3 grid grid-cols-2 gap-2 w-full">
+                                        {([
+                                            { v: "Cash", icon: Banknote, bg: "#10b981" },
+                                            { v: "bKash", icon: Smartphone, bg: "#E2136E" },
+                                            { v: "Nagad", icon: Smartphone, bg: "#F06823" },
+                                            { v: "Bank", icon: Landmark, bg: "#0ea5e9" },
+                                        ] as const).map(({ v, icon: Icon, bg }) => {
+                                            const sel = codMethod === v;
+                                            return (
+                                                <button key={v} type="button" onClick={() => setCodMethod(v)}
+                                                    className={cn("h-14 rounded-2xl flex items-center justify-center gap-2 border-2 font-bold text-sm transition-all active:scale-[0.97]", sel ? "border-transparent text-white" : "border-slate-200 bg-white text-slate-600")}
+                                                    style={sel ? { background: bg } : {}}>
+                                                    <Icon className="h-4 w-4" /> {v}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </>
+                            ) : step === "idle" ? (
                                 <>
                                     <p className="mt-5 text-sm text-slate-500 max-w-[260px]">
                                         We'll send a 6-digit code to the customer's phone. Ask them to read it out, then enter it here.
@@ -188,7 +234,17 @@ export function HandoverSheet({
 
                         {/* Bottom action */}
                         <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-                            {step === "idle" ? (
+                            {needsCod ? (
+                                <button
+                                    type="button"
+                                    onClick={() => collectMutation.mutate()}
+                                    disabled={collectMutation.isPending || !target?.pickupId}
+                                    className="w-full py-3.5 rounded-2xl bg-blue-600 text-white font-bold text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-50"
+                                >
+                                    {collectMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Banknote className="h-5 w-5" />}
+                                    Collect ৳{amountDue.toLocaleString()}
+                                </button>
+                            ) : step === "idle" ? (
                                 <button
                                     type="button"
                                     onClick={() => sendMutation.mutate()}

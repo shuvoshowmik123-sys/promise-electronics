@@ -776,6 +776,11 @@ export const adminPickupsApi = {
             method: "POST",
             body: JSON.stringify(data || {}),
         }),
+    collectPayment: (pickupId: string, data: { amount: number; method: string }) =>
+        fetchApi<{ success: boolean; amount: number; method: string }>(`/admin/pickups/${pickupId}/collect-payment`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
     update: (id: string, data: Partial<PickupSchedule>) =>
         fetchApi<PickupSchedule>(`/admin/pickups/${id}`, {
             method: "PATCH",
