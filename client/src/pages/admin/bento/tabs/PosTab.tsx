@@ -631,7 +631,18 @@ export default function PosTab() {
 
             {/* All Dialogs */}
             <CustomerDialog open={isCustomerDialogOpen} onOpenChange={setIsCustomerDialogOpen} customers={customers || []} customersLoading={customersLoading} onSelect={handleSelectCustomer} getCurrencySymbol={getCurrencySymbol} />
-            <JobLinkDialog open={isJobDialogOpen} onOpenChange={setIsJobDialogOpen} billableJobs={billableJobs} jobsLoading={jobsLoading} linkedJobCharges={linkedJobCharges} onJobSelection={handleJobSelection} />
+            <JobLinkDialog
+                open={isJobDialogOpen}
+                onOpenChange={setIsJobDialogOpen}
+                billableJobs={billableJobs}
+                jobsLoading={jobsLoading}
+                linkedJobCharges={linkedJobCharges}
+                onJobSelection={handleJobSelection}
+                serviceItems={serviceItems}
+                onServiceItemSelect={handleServiceItemSelect}
+                onBilledAmountChange={handleBilledAmountChange}
+                getCurrencySymbol={getCurrencySymbol}
+            />
             <InventoryDialog open={isInventoryDialogOpen} onOpenChange={setIsInventoryDialogOpen} inventoryItems={inventoryItems} inventoryLoading={inventoryLoading} selectedInventory={selectedInventory} onInventorySelection={handleInventorySelection} onAddToCart={handleAddInventoryToCart} getCurrencySymbol={getCurrencySymbol} />
             <SuccessDialog
                 open={showSuccessDialog}

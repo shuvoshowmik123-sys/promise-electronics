@@ -1,4 +1,6 @@
 import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -7,10 +9,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, UserPlus, Trash2, Plus, Minus, Loader2, FileText, Receipt, CheckCircle, Printer, Shield, RotateCcw, Link, ListPlus, Share2 } from "lucide-react";
+import { Search, UserPlus, Trash2, Plus, Minus, Loader2, FileText, Receipt, CheckCircle, Printer, Shield, RotateCcw, Link, ListPlus, Share2, X, Package, ScanBarcode } from "lucide-react";
+import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
+import { cn } from "@/lib/utils";
 import { Invoice, Receipt as ReceiptPrint, PrintStyles } from "@/components/print";
 import { toast } from "sonner";
-import { TransactionData, LinkedJobCharge, parseTransactionForReprint } from "./pos-types";
+import { TransactionData, LinkedJobCharge, parseTransactionForReprint, parseImages } from "./pos-types";
 
 // ── Customer Select Dialog ──
 export function CustomerDialog({ open, onOpenChange, customers, customersLoading, onSelect, getCurrencySymbol }: {
@@ -63,14 +67,124 @@ export function CustomerDialog({ open, onOpenChange, customers, customersLoading
 }
 
 // ── Job Link Dialog ──
-export function JobLinkDialog({ open, onOpenChange, billableJobs, jobsLoading, linkedJobCharges, onJobSelection }: {
+export function JobLinkDialog({ open, onOpenChange, billableJobs, jobsLoading, linkedJobCharges, onJobSelection, serviceItems, onServiceItemSelect, onBilledAmountChange, getCurrencySymbol }: {
     open: boolean; onOpenChange: (v: boolean) => void;
     billableJobs: any[]; jobsLoading: boolean;
     linkedJobCharges: LinkedJobCharge[]; onJobSelection: (id: string, checked: boolean) => void;
+    // Optional — enables inline service/bill editing in the mobile sheet
+    serviceItems?: any[];
+    onServiceItemSelect?: (jobId: string, serviceItemId: string) => void;
+    onBilledAmountChange?: (jobId: string, amount: number) => void;
+    getCurrencySymbol?: () => string;
 }) {
+    const cur = getCurrencySymbol?.() || "৳";
+    const statusPill = (status: string) => {
+        const s = status?.toLowerCase() || "";
+        if (s.includes("paid") && !s.includes("unpaid")) return "bg-emerald-100 text-emerald-700";
+        if (s.includes("diagnos")) return "bg-amber-100 text-amber-700";
+        return "bg-blue-100 text-blue-700";
+    };
+    const statusAccent = (status: string) => {
+        const s = status?.toLowerCase() || "";
+        if (s.includes("paid") && !s.includes("unpaid")) return "bg-emerald-500";
+        if (s.includes("diagnos")) return "bg-amber-500";
+        return "bg-blue-500";
+    };
     return (
+        <>
+        {/* ── Mobile bottom sheet ── */}
+        {typeof document !== "undefined" && createPortal(
+            <AnimatePresence>
+                {open && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm md:hidden"
+                            onClick={() => onOpenChange(false)}
+                        />
+                        <MobileBottomSheetFrame
+                            onClose={() => onOpenChange(false)}
+                            className="fixed inset-x-0 bottom-0 z-[200] flex max-h-[88vh] flex-col rounded-t-3xl bg-white shadow-2xl md:hidden"
+                        >
+                            <div className="px-5 pt-3 pb-2 shrink-0">
+                                <MobileBottomSheetHandle />
+                                <div className="mt-3 flex items-center justify-between">
+                                    <h3 className="text-xl font-black text-slate-900">Link Job Ticket</h3>
+                                    <button onClick={() => onOpenChange(false)} className="text-slate-400"><X className="h-5 w-5" /></button>
+                                </div>
+                                <div className="relative mt-3">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                    <input className="w-full h-11 pl-9 pr-3 rounded-xl bg-slate-100 text-sm placeholder:text-slate-400 focus:outline-none" placeholder="Search by Ticket # or Customer" disabled />
+                                </div>
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2.5 bg-[#f8fafc]">
+                                {jobsLoading ? (
+                                    <div className="flex justify-center py-10"><Loader2 className="h-7 w-7 animate-spin text-slate-300" /></div>
+                                ) : billableJobs.length === 0 ? (
+                                    <div className="text-center py-10 text-sm text-slate-400">No billable jobs available</div>
+                                ) : billableJobs.map((job) => {
+                                    const selected = linkedJobCharges.find(j => j.jobId === job.id);
+                                    const isSel = !!selected;
+                                    return (
+                                        <div key={job.id} className={cn("relative rounded-2xl border bg-white overflow-hidden", isSel ? "border-blue-500 ring-1 ring-blue-500 bg-blue-50/40" : "border-slate-200")}>
+                                            <div className={cn("absolute left-0 top-0 bottom-0 w-[3px]", statusAccent(job.status))} />
+                                            <button type="button" onClick={() => onJobSelection(job.id, !isSel)} className="w-full text-left pl-3.5 pr-3 py-3">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide", statusPill(job.status))}>{job.status}</span>
+                                                    <span className="font-mono text-[11px] text-slate-400 bg-slate-100 rounded px-1.5 py-0.5">#{job.id}</span>
+                                                </div>
+                                                <div className="mt-1.5 flex items-center justify-between gap-2">
+                                                    <p className="font-black text-slate-900 text-[15px] truncate">{job.device}</p>
+                                                    {isSel && <CheckCircle className="h-5 w-5 text-blue-600 shrink-0" />}
+                                                </div>
+                                                <div className="mt-0.5 flex items-center gap-1.5 text-xs text-slate-500">
+                                                    <UserPlus className="h-3 w-3" /> {job.customer}
+                                                </div>
+                                            </button>
+                                            {isSel && serviceItems && onServiceItemSelect && onBilledAmountChange && (
+                                                <div className="px-3.5 pb-3 pt-1 border-t border-blue-100 grid grid-cols-2 gap-2">
+                                                    <div>
+                                                        <label className="text-[10px] font-bold text-slate-500">Service Type</label>
+                                                        <Select value={selected.serviceItemId || ""} onValueChange={(v) => onServiceItemSelect(job.id, v)}>
+                                                            <SelectTrigger className="h-9 text-xs bg-white mt-1"><SelectValue placeholder="Select…" /></SelectTrigger>
+                                                            <SelectContent>{serviceItems.map((si: any) => (<SelectItem key={si.id} value={si.id} className="text-xs">{si.name}</SelectItem>))}</SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                    <div>
+                                                        <div className="flex items-center justify-between">
+                                                            <label className="text-[10px] font-bold text-slate-500">Bill Amount</label>
+                                                            {selected.serviceItemId && <span className="text-[9px] text-slate-400">Est: {cur}{selected.minPrice}-{selected.maxPrice}</span>}
+                                                        </div>
+                                                        <div className="relative mt-1">
+                                                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">{cur}</span>
+                                                            <input type="number" value={selected.billedAmount || ""} onChange={(e) => onBilledAmountChange(job.id, parseFloat(e.target.value) || 0)} className={cn("w-full h-9 pl-6 pr-2 rounded-lg border bg-white text-sm", !selected.isValid && selected.billedAmount > 0 ? "border-rose-400" : "border-slate-200")} />
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                            <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+                                <button
+                                    type="button"
+                                    onClick={() => { onOpenChange(false); if (linkedJobCharges.length > 0) toast.success(`Linked ${linkedJobCharges.length} job(s)`); }}
+                                    disabled={linkedJobCharges.length === 0}
+                                    className="w-full py-3.5 rounded-2xl bg-blue-600 text-white font-bold text-base active:scale-[0.98] transition-transform disabled:opacity-40"
+                                >
+                                    Add to Cart{linkedJobCharges.length > 0 ? ` (${linkedJobCharges.length})` : ""}
+                                </button>
+                            </div>
+                        </MobileBottomSheetFrame>
+                    </>
+                )}
+            </AnimatePresence>,
+            document.body,
+        )}
+        {/* ── Desktop dialog ── */}
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="hidden md:flex flex-col max-w-2xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Link Job Tickets</DialogTitle>
                     <DialogDescription>Select multiple job tickets to link to this invoice.</DialogDescription>
@@ -110,6 +224,7 @@ export function JobLinkDialog({ open, onOpenChange, billableJobs, jobsLoading, l
                 </div>
             </DialogContent>
         </Dialog>
+        </>
     );
 }
 
@@ -121,9 +236,101 @@ export function InventoryDialog({ open, onOpenChange, inventoryItems, inventoryL
     onInventorySelection: (id: string, qty: number) => void;
     onAddToCart: () => void; getCurrencySymbol: () => string;
 }) {
+    const [search, setSearch] = useState("");
+    const items: any[] = Array.isArray(inventoryItems) ? inventoryItems : [];
+    const filtered = search.trim()
+        ? items.filter((i) => i.name?.toLowerCase().includes(search.toLowerCase()))
+        : items;
+    const selCount = selectedInventory.reduce((n, s) => n + (s.qty > 0 ? 1 : 0), 0);
     return (
+        <>
+        {/* ── Mobile bottom sheet ── */}
+        {typeof document !== "undefined" && createPortal(
+            <AnimatePresence>
+                {open && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm md:hidden"
+                            onClick={() => onOpenChange(false)}
+                        />
+                        <MobileBottomSheetFrame
+                            onClose={() => onOpenChange(false)}
+                            className="fixed inset-x-0 bottom-0 z-[200] flex max-h-[90vh] flex-col rounded-t-3xl bg-white shadow-2xl md:hidden"
+                        >
+                            <div className="px-5 pt-3 pb-2 shrink-0">
+                                <MobileBottomSheetHandle />
+                                <div className="mt-3 flex items-center justify-between">
+                                    <h3 className="text-xl font-black text-slate-900">Add Items</h3>
+                                    <button onClick={() => onOpenChange(false)} className="text-slate-400"><X className="h-5 w-5" /></button>
+                                </div>
+                                <div className="relative mt-3">
+                                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                    <input className="w-full h-11 pl-9 pr-9 rounded-xl border border-slate-200 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20" placeholder="Search inventory…" value={search} onChange={(e) => setSearch(e.target.value)} />
+                                    <ScanBarcode className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                </div>
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 bg-[#f8fafc]">
+                                {inventoryLoading ? (
+                                    <div className="flex justify-center py-10"><Loader2 className="h-7 w-7 animate-spin text-slate-300" /></div>
+                                ) : (
+                                    <div className="grid grid-cols-2 gap-2.5">
+                                        {filtered.map((item) => {
+                                            const sel = selectedInventory.find(s => s.id === item.id);
+                                            const isSel = !!sel && sel.qty > 0;
+                                            const stock = Number(item.stock ?? 0);
+                                            const isOut = stock <= 0;
+                                            const isLow = !isOut && stock <= 5;
+                                            const pill = isOut ? "bg-rose-100 text-rose-700" : isLow ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600";
+                                            const imgs = parseImages(item.images);
+                                            const imgUrl = imgs[0] || "";
+                                            return (
+                                                <div key={item.id} className={cn("rounded-2xl border bg-white overflow-hidden flex flex-col", isSel ? "border-blue-500 ring-1 ring-blue-500" : "border-slate-200", isOut && "opacity-50")}>
+                                                    <div className="p-2.5 pb-0">
+                                                        <div className="relative aspect-square rounded-xl bg-slate-50 overflow-hidden flex items-center justify-center">
+                                                            {imgUrl ? <img src={imgUrl} alt={item.name} className="w-full h-full object-cover" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} /> : <Package className="w-7 h-7 text-slate-200" />}
+                                                            <span className={cn("absolute top-1.5 right-1.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold", pill)}>{isOut ? "Out" : `${stock} left`}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="px-2.5 pt-2 pb-2.5 flex flex-col flex-1">
+                                                        <p className="text-[13px] font-bold text-slate-900 leading-snug line-clamp-2 min-h-[34px]">{item.name}</p>
+                                                        <p className="mt-1 text-sm font-black text-blue-600 tabular-nums">{getCurrencySymbol()} {Number(item.price).toLocaleString()}</p>
+                                                        {isSel ? (
+                                                            <div className="mt-2 flex items-center justify-between rounded-xl bg-blue-600 text-white h-10 px-1">
+                                                                <button type="button" className="w-9 h-full flex items-center justify-center active:scale-90" onClick={() => onInventorySelection(item.id, Math.max(0, (sel?.qty || 1) - 1))}><Minus className="h-4 w-4" /></button>
+                                                                <span className="font-black tabular-nums">{sel?.qty}</span>
+                                                                <button type="button" disabled={(sel?.qty || 0) >= stock} className="w-9 h-full flex items-center justify-center active:scale-90 disabled:opacity-40" onClick={() => onInventorySelection(item.id, Math.min(stock, (sel?.qty || 0) + 1))}><Plus className="h-4 w-4" /></button>
+                                                            </div>
+                                                        ) : (
+                                                            <button type="button" disabled={isOut} onClick={() => onInventorySelection(item.id, 1)} className="mt-2 h-10 rounded-xl bg-slate-100 text-slate-700 font-bold text-sm flex items-center justify-center gap-1 active:scale-[0.97] disabled:opacity-40">
+                                                                <Plus className="h-4 w-4" /> Add
+                                                            </button>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                            <div className="shrink-0 border-t border-slate-100 bg-white px-4 py-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] flex items-center justify-between gap-3">
+                                <div>
+                                    <p className="text-[11px] uppercase tracking-wide font-bold text-slate-400">Total</p>
+                                    <p className="font-black text-slate-900">{selCount} item{selCount !== 1 ? "s" : ""}</p>
+                                </div>
+                                <button type="button" onClick={onAddToCart} disabled={selCount === 0} className="flex items-center gap-2 px-6 h-12 rounded-2xl bg-blue-600 text-white font-bold active:scale-[0.97] transition-transform disabled:opacity-40">
+                                    <ListPlus className="h-5 w-5" /> Add to Cart
+                                </button>
+                            </div>
+                        </MobileBottomSheetFrame>
+                    </>
+                )}
+            </AnimatePresence>,
+            document.body,
+        )}
+        {/* ── Desktop dialog ── */}
         <Dialog open={open} onOpenChange={onOpenChange}>
-            <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogContent className="hidden md:flex flex-col max-w-3xl max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                     <DialogTitle>Add Inventory Items</DialogTitle>
                     <DialogDescription>Search and add parts or items directly from inventory.</DialogDescription>
@@ -174,6 +381,7 @@ export function InventoryDialog({ open, onOpenChange, inventoryItems, inventoryL
                 </div>
             </DialogContent>
         </Dialog>
+        </>
     );
 }
 
@@ -399,13 +607,97 @@ export function HistoryDialog({ open, onOpenChange, posTransactions, getCurrency
     onShowInvoice: () => void; onShowReceipt: () => void;
 }) {
     const [selected, setSelected] = useState<TransactionData | null>(null);
+    const [expandedId, setExpandedId] = useState<string | null>(null);
     const handleSelect = (t: any) => { const parsed = parseTransactionForReprint(t); setSelected(parsed); };
     const handleReprintInvoice = (t?: any) => { const data = t ? parseTransactionForReprint(t) : selected; if (data) { onSetTransaction(data); onOpenChange(false); onShowInvoice(); } };
     const handleReprintReceipt = (t?: any) => { const data = t ? parseTransactionForReprint(t) : selected; if (data) { onSetTransaction(data); onOpenChange(false); onShowReceipt(); } };
 
+    const txns: any[] = Array.isArray(posTransactions) ? posTransactions : [];
+    const totalRevenue = txns.reduce((sum, t) => sum + Number(t.total || 0), 0);
+    const methodPill = (m: string) => {
+        const s = (m || "").toLowerCase();
+        if (s.includes("bkash")) return "bg-[#E2136E]/10 text-[#E2136E]";
+        if (s.includes("nagad")) return "bg-[#F06823]/10 text-[#F06823]";
+        if (s.includes("card") || s.includes("bank")) return "bg-blue-100 text-blue-700";
+        return "bg-slate-100 text-slate-600";
+    };
+
     return (
+        <>
+        {/* ── Mobile bottom sheet — Today's Sales ── */}
+        {typeof document !== "undefined" && createPortal(
+            <AnimatePresence>
+                {open && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm md:hidden"
+                            onClick={() => { onOpenChange(false); setExpandedId(null); }}
+                        />
+                        <MobileBottomSheetFrame
+                            onClose={() => { onOpenChange(false); setExpandedId(null); }}
+                            className="fixed inset-x-0 bottom-0 z-[200] flex max-h-[90vh] flex-col rounded-t-3xl bg-white shadow-2xl md:hidden"
+                        >
+                            <div className="px-5 pt-3 pb-3 shrink-0 border-b border-slate-100">
+                                <MobileBottomSheetHandle />
+                                <div className="mt-3 flex items-center justify-between">
+                                    <h3 className="text-xl font-black text-slate-900">Today's Sales</h3>
+                                    <button onClick={() => { onOpenChange(false); setExpandedId(null); }} className="text-slate-400"><X className="h-5 w-5" /></button>
+                                </div>
+                                <div className="mt-3 flex items-end justify-between">
+                                    <div>
+                                        <p className="text-[11px] text-slate-400 font-medium">Total Volume</p>
+                                        <p className="text-blue-600 font-black">{txns.length} Sales</p>
+                                    </div>
+                                    <div className="text-right">
+                                        <p className="text-[11px] text-slate-400 font-medium">Total Revenue</p>
+                                        <p className="text-slate-900 font-black text-xl tabular-nums">{getCurrencySymbol()} {totalRevenue.toLocaleString()}</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3 space-y-2.5 bg-[#f8fafc]">
+                                {txns.length === 0 ? (
+                                    <div className="text-center py-10 text-sm text-slate-400">No transactions yet today</div>
+                                ) : txns.map((t) => {
+                                    const isExp = expandedId === t.id;
+                                    return (
+                                        <div key={t.id} className="relative rounded-2xl border border-slate-200 bg-white overflow-hidden">
+                                            <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500" />
+                                            <button type="button" onClick={() => setExpandedId(isExp ? null : t.id)} className="w-full text-left pl-3.5 pr-3 py-3">
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <p className="font-black text-slate-900 text-sm font-mono">{t.invoiceNumber || t.id}</p>
+                                                        <p className="text-sm text-slate-500 truncate">{t.customer || "Walk-in Customer"}</p>
+                                                    </div>
+                                                    <div className="text-right shrink-0">
+                                                        <p className="font-black text-slate-900 tabular-nums">{getCurrencySymbol()} {Number(t.total).toLocaleString()}</p>
+                                                        <div className="mt-1 flex items-center justify-end gap-1.5">
+                                                            <span className="text-[11px] text-slate-400">{new Date(t.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                                                            <span className={cn("rounded-md px-1.5 py-0.5 text-[10px] font-bold", methodPill(t.paymentMethod))}>{t.paymentMethod}</span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </button>
+                                            {isExp && (
+                                                <div className="px-3.5 pb-3 pt-1 border-t border-slate-100 grid grid-cols-3 gap-2">
+                                                    <button type="button" onClick={() => handleReprintReceipt(t)} className="h-10 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 active:scale-95"><Receipt className="h-3.5 w-3.5" /> Receipt</button>
+                                                    <button type="button" onClick={() => handleReprintInvoice(t)} className="h-10 rounded-xl bg-slate-100 text-slate-700 text-xs font-bold flex items-center justify-center gap-1 active:scale-95"><FileText className="h-3.5 w-3.5" /> Invoice</button>
+                                                    <button type="button" onClick={() => { onRequestRefund(t); onOpenChange(false); }} className="h-10 rounded-xl bg-rose-50 text-rose-600 text-xs font-bold flex items-center justify-center gap-1 active:scale-95"><RotateCcw className="h-3.5 w-3.5" /> Refund</button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </MobileBottomSheetFrame>
+                    </>
+                )}
+            </AnimatePresence>,
+            document.body,
+        )}
+        {/* ── Desktop dialog ── */}
         <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setSelected(null); }}>
-            <DialogContent className="max-w-4xl max-h-[90vh]">
+            <DialogContent className="hidden md:block max-w-4xl max-h-[90vh]">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2"><FileText className="h-5 w-5" /> Transaction History</DialogTitle>
                     <DialogDescription>Select a transaction to reprint its invoice or receipt</DialogDescription>
@@ -445,6 +737,7 @@ export function HistoryDialog({ open, onOpenChange, posTransactions, getCurrency
                 <DialogFooter><Button variant="outline" onClick={() => { onOpenChange(false); setSelected(null); }}>Close</Button></DialogFooter>
             </DialogContent>
         </Dialog>
+        </>
     );
 }
 
