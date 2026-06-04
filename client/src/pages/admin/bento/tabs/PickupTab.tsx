@@ -1,9 +1,12 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
     Clock, Calendar, Truck, Search, Briefcase, MoreVertical, Eye,
-    CheckCircle, User, Zap, AlertCircle, Package
+    CheckCircle, User, Zap, AlertCircle, Package, X, Phone, ShieldCheck,
+    HandMetal, Loader2, Tv, ArrowRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +40,8 @@ import { Calendar as CalendarUI } from "@/components/ui/calendar";
 import { adminPickupsApi, serviceRequestsApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { BentoCard, DashboardSkeleton } from "../shared";
+import { BentoCard, DashboardSkeleton, MobileTabLayout, MobileTabHeader, MobileScrollContent } from "../shared";
+import { HandoverSheet } from "./pickup/HandoverSheet";
 import type { PickupSchedule } from "@shared/schema";
 
 type PickupWithServiceRequest = PickupSchedule & {
@@ -46,8 +50,19 @@ type PickupWithServiceRequest = PickupSchedule & {
         brand?: string;
         customerName?: string;
         phone?: string;
+        ticketNumber?: string;
+        totalAmount?: number;
+        paymentStatus?: string;
     };
 };
+
+// Mask a phone for at-a-glance display: 017***** keeps prefix, hides rest
+function maskPhone(phone?: string): string {
+    if (!phone) return "—";
+    const digits = phone.replace(/\s+/g, "");
+    if (digits.length <= 3) return digits;
+    return digits.slice(0, 3) + "*****";
+}
 
 export default function PickupTab() {
     const queryClient = useQueryClient();
@@ -64,6 +79,10 @@ export default function PickupTab() {
     const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
     const [assignedStaff, setAssignedStaff] = useState("");
     const [pickupNotes, setPickupNotes] = useState("");
+
+    // Mobile: leg-based filter + handover sheet target
+    const [mobileLeg, setMobileLeg] = useState<"all" | "collect" | "shop" | "done">("all");
+    const [handoverTarget, setHandoverTarget] = useState<import("./pickup/HandoverSheet").HandoverTarget | null>(null);
 
     const { data: serviceRequestsData } = useQuery({
         queryKey: ["service-requests"],
@@ -115,6 +134,9 @@ export default function PickupTab() {
                 brand: sr.brand,
                 customerName: sr.customerName,
                 phone: sr.phone,
+                ticketNumber: sr.ticketNumber,
+                totalAmount: sr.totalAmount,
+                paymentStatus: sr.paymentStatus,
             } : undefined,
         };
     });
@@ -180,8 +202,143 @@ export default function PickupTab() {
         });
     };
 
+    // ── Mobile leg model ──────────────────────────────────────────────
+    // collect = device still with customer (Pending/Scheduled) → receive OTP
+    // shop    = device in our shop (PickedUp) → ready to deliver → delivery OTP
+    // done    = Delivered
+    const legOf = (status: string): "collect" | "shop" | "done" =>
+        status === "Delivered" ? "done" : status === "PickedUp" ? "shop" : "collect";
+
+    const mobilePickups = enrichedPickups.filter((p) => {
+        const q = pickupSearchQuery.toLowerCase();
+        const matchesSearch = q === "" ||
+            p.serviceRequest?.customerName?.toLowerCase().includes(q) ||
+            p.serviceRequest?.phone?.includes(pickupSearchQuery) ||
+            p.serviceRequest?.ticketNumber?.toLowerCase().includes(q);
+        const matchesLeg = mobileLeg === "all" || legOf(p.status) === mobileLeg;
+        return matchesSearch && matchesLeg;
+    });
+
+    const mobileLegChips: { key: typeof mobileLeg; label: string }[] = [
+        { key: "all", label: "All" },
+        { key: "collect", label: "To Collect" },
+        { key: "shop", label: "In Shop" },
+        { key: "done", label: "Delivered" },
+    ];
+
+    // Card accent + action per leg
+    const legVisual = (status: string) => {
+        const leg = legOf(status);
+        if (leg === "done") return { accent: "bg-emerald-500", pill: "bg-emerald-100 text-emerald-700", label: "Delivered" };
+        if (leg === "shop") return { accent: "bg-blue-500", pill: "bg-blue-100 text-blue-700", label: "In Shop · Ready" };
+        if (status === "Scheduled") return { accent: "bg-amber-500", pill: "bg-amber-100 text-amber-700", label: "Scheduled" };
+        return { accent: "bg-slate-400", pill: "bg-slate-100 text-slate-600", label: "Pending" };
+    };
+
+    const openHandover = (p: PickupWithServiceRequest) => {
+        if (!p.serviceRequest?.id) { toast.error("No linked service request"); return; }
+        const leg = legOf(p.status);
+        setHandoverTarget({
+            serviceRequestId: p.serviceRequest.id,
+            device: p.serviceRequest.brand || "Device",
+            customerName: p.serviceRequest.customerName,
+            phone: p.serviceRequest.phone,
+            ticketNumber: p.serviceRequest.ticketNumber,
+            mode: leg === "shop" ? "delivery" : "receive",
+        });
+    };
+
     return (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pb-24 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <MobileTabLayout>
+            {/* ─── MOBILE HEADER ─── */}
+            <MobileTabHeader>
+                <div className="flex items-center justify-between pt-1">
+                    <h1 className="text-xl font-black text-slate-900">Pickup & Delivery</h1>
+                    <Truck className="h-5 w-5 text-blue-600" />
+                </div>
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                        className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                        placeholder="Search device, customer, ticket…"
+                        value={pickupSearchQuery}
+                        onChange={(e) => setPickupSearchQuery(e.target.value)}
+                    />
+                </div>
+                <div className="overflow-x-auto -mx-0.5 pb-0.5" style={{ scrollbarWidth: "none" }}>
+                    <div className="flex gap-1 px-0.5 min-w-max">
+                        {mobileLegChips.map((c) => (
+                            <button
+                                key={c.key}
+                                type="button"
+                                onClick={() => setMobileLeg(c.key)}
+                                className={cn(
+                                    "h-7 px-3 rounded-lg border text-[11px] font-bold transition-colors",
+                                    mobileLeg === c.key ? "bg-slate-800 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-500",
+                                )}
+                            >
+                                {c.label}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+            </MobileTabHeader>
+
+            {/* ─── MOBILE CARD LIST ─── */}
+            <MobileScrollContent>
+                {mobilePickups.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3">
+                        <Truck className="h-10 w-10 text-slate-200" />
+                        <p className="text-sm font-medium text-slate-400">No pickups here</p>
+                    </div>
+                ) : mobilePickups.map((p) => {
+                    const v = legVisual(p.status);
+                    const sr = p.serviceRequest;
+                    const due = Number(sr?.totalAmount || 0);
+                    const leg = legOf(p.status);
+                    const when = p.scheduledDate ? format(new Date(p.scheduledDate), "d MMM") : null;
+                    return (
+                        <div key={p.id} className="relative bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                            <div className={cn("absolute left-0 top-0 bottom-0 w-[3px]", v.accent)} />
+                            <div className="pl-4 pr-3 py-3">
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <p className="font-black text-slate-900 text-[15px] truncate">{sr?.brand || "Device"}</p>
+                                        {sr?.ticketNumber && <p className="font-mono text-[11px] text-slate-400">#{sr.ticketNumber}</p>}
+                                    </div>
+                                    <span className={cn("shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold", v.pill)}>{v.label}</span>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between gap-2">
+                                    <div className="min-w-0 text-xs text-slate-500">
+                                        <div className="flex items-center gap-1.5"><User className="h-3 w-3 shrink-0" /> <span className="truncate">{sr?.customerName || "Unknown"}</span></div>
+                                        <div className="flex items-center gap-1.5 mt-0.5"><Phone className="h-3 w-3 shrink-0" /> {maskPhone(sr?.phone)}</div>
+                                    </div>
+                                    <div className="text-right shrink-0">
+                                        {due > 0 && <div className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-black text-slate-700 tabular-nums">৳ {due.toLocaleString()}</div>}
+                                        {when && <div className="mt-1 text-[10px] text-slate-400">{leg === "done" ? "Done" : "Sched"} {when}</div>}
+                                    </div>
+                                </div>
+                                {leg !== "done" && (
+                                    <button
+                                        type="button"
+                                        onClick={() => openHandover(p)}
+                                        className="mt-3 w-full h-11 rounded-xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                                    >
+                                        <HandMetal className="h-4 w-4" />
+                                        {leg === "shop" ? "Hand Over to Customer" : "Receive from Customer"}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </MobileScrollContent>
+
+            {/* ─── HANDOVER OTP SHEET ─── */}
+            <HandoverSheet target={handoverTarget} onClose={() => setHandoverTarget(null)} />
+
+            {/* ─── DESKTOP (unchanged) ─── */}
+            <div className="hidden md:grid grid-cols-1 md:grid-cols-4 gap-6 pb-24 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto">
             <BentoCard className="col-span-1 md:col-span-1 h-full min-h-[200px] bg-gradient-to-br from-cyan-500 to-blue-600" title="Pending Pickups" icon={<Clock size={24} className="text-white" />} variant="vibrant">
                 <div className="flex-1 flex flex-col justify-end">
                     <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{pickups.filter((p: any) => p.status === 'Pending').length}</div>
@@ -435,6 +592,7 @@ export default function PickupTab() {
                     </DialogContent>
                 </Dialog>
             </BentoCard>
-        </div>
+            </div>
+        </MobileTabLayout>
     );
 }
