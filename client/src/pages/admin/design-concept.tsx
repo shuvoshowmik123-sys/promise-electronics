@@ -29,6 +29,7 @@ import { ReminderBell } from "@/components/admin/ReminderBell";
 import { TeamChatPanel } from "@/components/admin/TeamChatPanel";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { DashboardSkeleton } from "./bento/shared/DashboardSkeleton";
+import { MobileMoreMenu } from "./bento/shared/MobileMoreMenu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { GlobalSearch } from "./bento/shared/GlobalSearch";
 import { NotificationPanel } from "./bento/shared/NotificationPanel";
@@ -165,6 +166,7 @@ export default function DesignConcept() {
 
     const { isEnabled } = useModules();
     const { logout, user, hasPermission, status } = useAdminAuth();
+    const [moreOpen, setMoreOpen] = useState(false);
     const { isOnline, getTabTier } = useOffline();
     const {
         data: unreadNotificationCountData,
@@ -491,55 +493,35 @@ export default function DesignConcept() {
                 >
                     {mobileNavItems.filter(item => item.id === 'menu' || isTabEnabled(item.id)).map(item => (
                         item.id === 'menu' ? (
-                            <Sheet key={item.id}>
+                            <Sheet key={item.id} open={moreOpen} onOpenChange={setMoreOpen}>
                                 <SheetTrigger asChild>
                                     <button
                                         className={cn(
-                                            "flex h-11 min-w-[3rem] flex-col items-center justify-center gap-0.5 rounded-2xl px-2 transition-all duration-200",
-                                            "text-slate-400 active:scale-95"
+                                            "flex h-11 min-w-[3rem] flex-col items-center justify-center gap-0.5 rounded-2xl px-2 transition-all duration-200 active:scale-95",
+                                            moreOpen ? "text-blue-700" : "text-slate-400"
                                         )}
                                     >
-                                        <span className="flex h-7 w-7 items-center justify-center rounded-full">
+                                        <span className={cn(
+                                            "flex h-7 w-7 items-center justify-center rounded-full transition-all",
+                                            moreOpen && "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                                        )}>
                                             <item.icon size={17} strokeWidth={2.4} />
                                         </span>
                                         <span className="text-[9px] font-black uppercase leading-none tracking-tight">{item.label}</span>
                                     </button>
                                 </SheetTrigger>
-                                <SheetContent side="left" className="w-[85%] bg-slate-900 border-r-slate-800 text-white p-0 overflow-y-auto">
-                                    <div className="p-6 border-b border-slate-800/50 mb-4 flex justify-between items-center">
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-10 w-10 bg-blue-600 rounded-xl flex items-center justify-center text-white ring-4 ring-blue-600/20 shadow-lg shadow-blue-500/20 shrink-0">
-                                                <Zap size={22} className="fill-white" />
-                                            </div>
-                                            <div>
-                                                <h1 className="font-black text-xl text-white tracking-tighter leading-none">PROMISE</h1>
-                                                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em]">Electronics</span>
-                                            </div>
-                                        </div>
-                                        <button onClick={() => setNotificationOpen(true)} className="relative text-slate-400 hover:text-white transition-colors">
-                                            <Bell size={20} />
-                                            {showNotificationBadge && (
-                                                <span className="absolute -top-2 -right-2 min-w-[1.1rem] rounded-full border border-slate-900 bg-rose-500 px-1 py-0.5 text-center text-[10px] font-bold leading-none text-white">
-                                                    {notificationBadgeText}
-                                                </span>
-                                            )}
-                                        </button>
-                                    </div>
-                                    <div className="px-4 pb-12 space-y-8">
-                                        {status === "pending" ? (
-                                            <SidebarSkeleton />
-                                        ) : (
-                                            <SidebarContent
-                                                groups={filteredSidebarGroups}
-                                                activeTab={activeTab}
-                                                setActiveTab={(tab) => {
-                                                    setActiveTab(tab);
-                                                }}
-                                                isOnline={isOnline}
-                                                getTabTier={getTabTier}
-                                            />
-                                        )}
-                                    </div>
+                                <SheetContent side="bottom" className="h-[92dvh] w-full bg-[#f8fafc] border-0 p-0 rounded-t-3xl overflow-hidden [&>button]:hidden">
+                                    {status === "pending" ? (
+                                        <div className="p-6"><SidebarSkeleton /></div>
+                                    ) : (
+                                        <MobileMoreMenu
+                                            groups={filteredSidebarGroups}
+                                            user={user}
+                                            isOnline={isOnline}
+                                            onSelect={(tab) => { setActiveTab(tab); setMoreOpen(false); }}
+                                            onLogout={() => { setMoreOpen(false); logout(); }}
+                                        />
+                                    )}
                                 </SheetContent>
                             </Sheet>
                         ) : (
