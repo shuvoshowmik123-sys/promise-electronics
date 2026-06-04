@@ -40,6 +40,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 
 import { BentoCard } from "../shared/BentoCard";
 import { containerVariants, itemVariants, tableRowVariants } from "../shared/animations";
+import { MobileTabLayout, MobileTabHeader, MobileScrollContent } from "../shared/MobileAdminPrimitives";
 
 // Zod schema for quotation creation/editing
 const quotationSchema = z.object({
@@ -254,12 +255,81 @@ export default function QuotationsTab() {
     });
 
     return (
-        <motion.div
-            variants={containerVariants}
-            initial="hidden"
-            animate="visible"
-            className="space-y-6 pb-24 md:pb-0 print:hidden print:pb-0"
-        >
+        <MobileTabLayout className="print:hidden">
+            {/* ─── MOBILE HEADER ─── */}
+            <MobileTabHeader>
+                <div className="flex items-center justify-between pt-1">
+                    <div>
+                        <h1 className="text-xl font-black text-slate-900">Quotations</h1>
+                        <p className="text-[11px] text-slate-400">{stats.totalRows} total · ledger</p>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={handleCreateNew}
+                        className="flex items-center gap-1.5 h-9 px-3 rounded-xl bg-blue-600 text-white font-bold text-sm active:scale-[0.97] transition-transform"
+                    >
+                        <Plus className="h-4 w-4" /> New
+                    </button>
+                </div>
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                    <input
+                        className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                        placeholder="Search QT #, customer, phone…"
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                    />
+                </div>
+            </MobileTabHeader>
+
+            {/* ─── MOBILE CARD LIST ─── */}
+            <MobileScrollContent>
+                {isLoadingQuotations ? (
+                    <div className="flex justify-center py-16"><Loader2 className="h-7 w-7 animate-spin text-slate-300" /></div>
+                ) : filteredQuotations.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3">
+                        <FileText className="h-10 w-10 text-slate-200" />
+                        <p className="text-sm font-medium text-slate-400">No quotations found</p>
+                    </div>
+                ) : filteredQuotations.map((q: Quotation) => (
+                    <div key={q.id} className="relative bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+                        <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-blue-500" />
+                        <button type="button" onClick={() => checkAndPrint(q.id)} className="w-full text-left pl-4 pr-3 py-3">
+                            <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0">
+                                    <p className="font-mono text-[11px] text-slate-400">{q.quotationNumber}</p>
+                                    <p className="font-black text-slate-900 text-[15px] truncate mt-0.5">{q.customerName}</p>
+                                    <p className="text-xs text-slate-500">{q.customerPhone}</p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                    <p className="text-[10px] text-slate-400 uppercase font-bold">Total</p>
+                                    <p className="font-black text-slate-900 tabular-nums">{formatTaka(q.total)}</p>
+                                    <p className="text-[10px] text-slate-400 mt-0.5">{format(new Date(q.createdAt), "d MMM yyyy")}</p>
+                                </div>
+                            </div>
+                        </button>
+                        <div className="flex border-t border-slate-100">
+                            <button type="button" onClick={() => checkAndPrint(q.id)} className="flex-1 h-10 flex items-center justify-center gap-1.5 text-xs font-bold text-blue-700 active:bg-blue-50">
+                                <FileText className="h-3.5 w-3.5" /> Print / PDF
+                            </button>
+                            <button type="button" onClick={() => handleEdit(q.id)} className="flex-1 h-10 flex items-center justify-center gap-1.5 text-xs font-bold text-slate-600 border-l border-slate-100 active:bg-slate-50">
+                                <Edit className="h-3.5 w-3.5" /> Edit
+                            </button>
+                            <button type="button" onClick={() => { if (confirm("Delete this quotation? Cannot be undone.")) deleteMutation.mutate(q.id); }} className="flex-1 h-10 flex items-center justify-center gap-1.5 text-xs font-bold text-rose-600 border-l border-slate-100 active:bg-rose-50">
+                                <Trash2 className="h-3.5 w-3.5" /> Delete
+                            </button>
+                        </div>
+                    </div>
+                ))}
+            </MobileScrollContent>
+
+            {/* ─── DESKTOP (unchanged) ─── */}
+            <motion.div
+                variants={containerVariants}
+                initial="hidden"
+                animate="visible"
+                className="hidden md:block space-y-6 pb-24 md:pb-0 print:hidden print:pb-0 overflow-y-auto"
+            >
             {/* Header Stats */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <BentoCard className="bg-gradient-to-br from-blue-50 to-indigo-50 border-blue-100" title="Total Quotations Generated" icon={<FileText size={20} className="text-blue-600" />}>
@@ -407,6 +477,7 @@ export default function QuotationsTab() {
                     </TableBody>
                 </Table>
             </div>
+            </motion.div>
 
             {/* Create/Edit Dialog */}
             <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -966,6 +1037,6 @@ export default function QuotationsTab() {
                 </div>,
                 document.body
             )}
-        </motion.div >
+        </MobileTabLayout>
     );
 }
