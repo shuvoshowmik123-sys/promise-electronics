@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
@@ -76,6 +76,23 @@ export default function QuotationsTab() {
     const [isCustomerDropdownOpen, setIsCustomerDropdownOpen] = useState(false);
 
     const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+
+    // Mobile preview: render the A4 doc at true size, scale it down to fit the
+    // phone (keeps proportions perfect; pinch-zoom + correct PDF). Desktop = 1.
+    const [previewScale, setPreviewScale] = useState(1);
+    const dragStartY = useRef<number | null>(null);
+    useEffect(() => {
+        if (!printQuotation) return;
+        const calc = () => {
+            if (typeof window === "undefined") return;
+            if (window.innerWidth >= 768) { setPreviewScale(1); return; }
+            const usable = window.innerWidth - 24; // ~96vw dialog minus padding
+            setPreviewScale(Math.max(0.3, Math.min(1, usable / 800)));
+        };
+        calc();
+        window.addEventListener("resize", calc);
+        return () => window.removeEventListener("resize", calc);
+    }, [printQuotation]);
 
     const handleDownloadPDF = async () => {
         const element = document.getElementById("quotation-print-preview");
@@ -779,7 +796,21 @@ export default function QuotationsTab() {
 
             {/* Print Preview Dialog */}
             <Dialog open={!!printQuotation} onOpenChange={(open) => !open && setPrintQuotation(null)}>
-                <DialogContent className="w-[96vw] max-w-4xl max-h-[95vh] flex flex-col p-0 overflow-hidden sm:rounded-xl border-slate-200 shadow-2xl print:hidden bg-slate-100 [&>button.absolute]:!right-4 [&>button.absolute]:!top-4 [&>button.absolute]:!bg-slate-100 [&>button.absolute]:!p-2 [&>button.absolute]:!opacity-100 [&>button.absolute]:hover:!bg-slate-200 [&>button.absolute]:!rounded-full">
+                <DialogContent className="w-[96vw] max-w-4xl max-h-[95vh] flex flex-col p-0 overflow-hidden rounded-t-3xl sm:rounded-xl border-slate-200 shadow-2xl print:hidden bg-slate-100 [&>button.absolute]:!right-4 [&>button.absolute]:!top-4 [&>button.absolute]:!bg-slate-100 [&>button.absolute]:!p-2 [&>button.absolute]:hover:!bg-slate-200 [&>button.absolute]:!rounded-full [&>button.absolute]:hidden md:[&>button.absolute]:inline-flex">
+                    {/* Mobile drag-to-close handle (keeps the preview clean — no round close button) */}
+                    <div
+                        className="md:hidden flex justify-center pt-2.5 pb-1.5 bg-white shrink-0 touch-none cursor-grab active:cursor-grabbing"
+                        onPointerDown={(e) => { dragStartY.current = e.clientY; }}
+                        onPointerMove={(e) => {
+                            if (dragStartY.current != null && e.clientY - dragStartY.current > 60) {
+                                dragStartY.current = null;
+                                setPrintQuotation(null);
+                            }
+                        }}
+                        onPointerUp={() => { dragStartY.current = null; }}
+                    >
+                        <div className="h-1.5 w-10 rounded-full bg-slate-300" />
+                    </div>
                     <DialogHeader className="px-4 md:pl-8 md:pr-24 py-3 md:py-5 bg-white border-b border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-3 shrink-0">
                         <div className="pr-10 md:pr-0">
                             <DialogTitle className="text-base md:text-xl font-bold flex items-center gap-2">
@@ -822,10 +853,14 @@ export default function QuotationsTab() {
                         </div>
                     </DialogHeader>
 
-                    <div className="flex-1 overflow-auto w-full custom-scrollbar p-3 md:p-8">
-                        {/* The visible preview paper on screen */}
+                    <div className="flex-1 overflow-auto w-full custom-scrollbar p-3 md:p-8" style={{ touchAction: "pan-x pan-y pinch-zoom" }}>
+                        {/* The visible preview paper on screen.
+                            Mobile: render the A4 doc at TRUE size (w-[800px]) then `zoom` it down
+                            to fit the phone — proportions stay perfect, text never breaks the box,
+                            pinch-zoom works, and the captured PDF stays full A4. Desktop = zoom 1. */}
                         {printQuotation && (
-                            <div id="quotation-print-preview" className="w-full max-w-[800px] mx-auto p-5 md:p-12 shadow-sm border rounded-xl md:min-h-[1100px]" style={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', color: '#0f172a' }}>
+                            <div style={{ zoom: previewScale }} className="origin-top">
+                            <div id="quotation-print-preview" className="w-[800px] mx-auto p-12 shadow-sm border rounded-xl min-h-[1100px]" style={{ backgroundColor: '#ffffff', borderColor: '#e2e8f0', color: '#0f172a' }}>
 
                                 {/* Header / Company Info */}
                                 <div className="flex justify-between items-start mb-10 border-b-2 pb-6" style={{ borderColor: '#1e293b' }}>
@@ -928,6 +963,7 @@ export default function QuotationsTab() {
                                 <div className="mt-12 w-full text-center text-xs font-medium" style={{ color: '#94a3b8' }}>
                                     Thank you for your business.
                                 </div>
+                            </div>
                             </div>
                         )}
                     </div>
