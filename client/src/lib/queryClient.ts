@@ -67,6 +67,11 @@ export const queryClient = new QueryClient({
       refetchInterval: false,
       refetchOnWindowFocus: false,
       staleTime: Infinity,
+      // Stale-while-revalidate: with the persisted cache restored on load, this
+      // paints tabs instantly from cache AND refetches fresh data on mount in the
+      // background (React Query keeps showing cached data while refetching). This
+      // is what makes the admin panel feel snappy without serving stale numbers.
+      refetchOnMount: "always",
       retry: false,
       // Enable garbage collection time for persistence
       gcTime: 1000 * 60 * 60 * 24 * 7, // 7 days
@@ -151,27 +156,55 @@ const createCapacitorStorage = () => ({
 // Create persister with our storage adapter
 const storage = createCapacitorStorage();
 
-// Wrap async storage for sync persister
+// Wrap async storage for sync persister.
+//
+// On WEB, localStorage is already synchronous — so we read/write it directly.
+// The persister restores the cache *synchronously* on first paint, and the
+// previous shim returned null on that first call (only priming an async _cache
+// afterwards), which silently disabled cache restore on web: every reload
+// refetched everything. Reading localStorage directly fixes instant-paint.
+//
+// On NATIVE (Capacitor Preferences is async), we keep the warm-cache approach:
+// serve from _cache if present, otherwise prime it asynchronously.
 const syncStorage = {
   getItem: (key: string) => {
-    // For initial sync load, we use a promise that resolves synchronously via cache
+    if (!Capacitor.isNativePlatform()) {
+      try {
+        return localStorage.getItem(key);
+      } catch {
+        return null;
+      }
+    }
     const cached = (syncStorage as any)._cache?.[key];
     if (cached !== undefined) return cached;
-
-    // Async load for initial hydration
     storage.getItem(key).then((value) => {
       (syncStorage as any)._cache = (syncStorage as any)._cache || {};
       (syncStorage as any)._cache[key] = value;
     });
-
     return null;
   },
   setItem: (key: string, value: string) => {
+    if (!Capacitor.isNativePlatform()) {
+      try {
+        localStorage.setItem(key, value);
+      } catch {
+        /* quota / private mode — ignore */
+      }
+      return;
+    }
     (syncStorage as any)._cache = (syncStorage as any)._cache || {};
     (syncStorage as any)._cache[key] = value;
     storage.setItem(key, value);
   },
   removeItem: (key: string) => {
+    if (!Capacitor.isNativePlatform()) {
+      try {
+        localStorage.removeItem(key);
+      } catch {
+        /* ignore */
+      }
+      return;
+    }
     if ((syncStorage as any)._cache) {
       delete (syncStorage as any)._cache[key];
     }
@@ -203,17 +236,37 @@ export function initQueryPersistence() {
           '/customer/warranties',
           '/notifications',
           '/customer/addresses',
-          // Admin offline-critical queries
-          '/api/inventory',
-          '/api/jobs',
-          '/api/pos',
+          // Admin offline-critical / instant-paint queries.
+          // NOTE: these must match the ACTUAL queryKey[0] used by the tabs
+          // (verified against the codebase) — not the REST URL. A mismatch here
+          // is why the admin panel previously persisted almost nothing.
           '/api/modules',
-          '/api/users/me',
+          'dashboardStats',   // Dashboard KPIs
+          'jobOverview',      // Dashboard job overview
+          'jobTickets',       // Jobs tab
+          'serviceRequests',  // Service Requests tab
+          'service-requests',
+          'customers',        // Customers tab
+          'admin-customers',
+          'inventory',        // Stock / Inventory tab
+          'sales-summary-global',
+          'petty-cash-summary-global',
+          'due-summary-global',
+          'refunds',
+          'manual-payments',
+          'activeDrawer',
+          'inquiries',        // Inquiries tab
+          'adminPickups',     // Pickup & Delivery tab
+          'quotations',
+          'challans',
+          'corporate-clients',
+          'admin-users',
+          'admin-orders',
+          'settings',
         ];
         return typeof key === 'string' && persistedQueries.some(q => key.includes(q));
       },
     },
   });
 
-  console.log('[Persistence] Query persistence initialized');
 }

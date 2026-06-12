@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Jobs - Detail Sheet (Mobile)</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0f1117;
+  color: #e4e4e7;
+  max-width: 390px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  overflow-x: hidden;
+}
+
+/* Backdrop */
+.backdrop {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px); z-index: 50;
+}
+
+/* Bottom Sheet */
+.sheet {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 100%; max-width: 390px;
+  background: #18181b; border-radius: 24px 24px 0 0;
+  z-index: 100; max-height: 92dvh; overflow-y: auto;
+  padding-bottom: 100px;
+}
+.sheet-handle {
+  width: 36px; height: 4px; background: #3f3f46;
+  border-radius: 2px; margin: 10px auto 0;
+}
+
+/* Sheet Header */
+.sheet-header {
+  padding: 16px 20px 0;
+  display: flex; justify-content: space-between; align-items: flex-start;
+}
+.sheet-ticket { font-size: 13px; font-family: monospace; color: #60a5fa; font-weight: 600; }
+.sheet-date { font-size: 12px; color: #52525b; margin-top: 2px; }
+.sheet-status {
+  padding: 5px 12px; border-radius: 8px;
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  background: #312e81; color: #a5b4fc;
+}
+
+/* Device Hero */
+.device-hero {
+  padding: 16px 20px 0;
+}
+.device-title { font-size: 22px; font-weight: 700; color: #fff; margin-bottom: 4px; }
+.device-specs { display: flex; gap: 8px; flex-wrap: wrap; }
+.spec-chip {
+  padding: 4px 10px; border-radius: 6px;
+  background: #27272a; font-size: 12px; color: #a1a1aa;
+}
+
+/* Section */
+.section {
+  margin: 20px 20px 0; padding: 16px;
+  background: #1c1c24; border: 1px solid #27272a;
+  border-radius: 14px;
+}
+.section-label {
+  font-size: 11px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.8px; color: #52525b; margin-bottom: 10px;
+}
+
+/* Problem Block */
+.problem-block {
+  border-left: 3px solid #ef4444; padding-left: 12px;
+}
+.problem-text { font-size: 14px; color: #d4d4d8; line-height: 1.5; }
+.priority-badge {
+  display: inline-block; margin-top: 8px;
+  padding: 3px 8px; border-radius: 6px;
+  font-size: 11px; font-weight: 600;
+  background: #451a03; color: #fbbf24;
+}
+
+/* Tech Notes */
+.notes-block {
+  border-left: 3px solid #f59e0b; padding-left: 12px;
+}
+.notes-text { font-size: 14px; color: #d4d4d8; line-height: 1.5; font-style: italic; }
+
+/* Info Grid */
+.info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.info-item {}
+.info-label { font-size: 11px; color: #52525b; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.info-value { font-size: 14px; color: #e4e4e7; font-weight: 500; }
+.info-value.money { font-family: monospace; color: #34d399; font-weight: 700; }
+.info-value.phone { color: #60a5fa; text-decoration: underline; }
+
+/* Technician Card */
+.tech-card {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px; background: #27272a; border-radius: 10px;
+}
+.tech-avatar {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: #fff;
+}
+.tech-info {}
+.tech-name { font-size: 14px; font-weight: 600; color: #fff; }
+.tech-role { font-size: 12px; color: #71717a; }
+
+/* Assist Team */
+.assist-row { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+.assist-chip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 10px; background: #27272a; border-radius: 8px;
+}
+.assist-dot {
+  width: 24px; height: 24px; border-radius: 6px;
+  background: #7c3aed; display: flex; align-items: center; justify-content: center;
+  font-size: 10px; font-weight: 600; color: #fff;
+}
+.assist-name { font-size: 12px; color: #a1a1aa; }
+
+/* Timeline */
+.timeline { display: flex; flex-direction: column; gap: 0; }
+.timeline-item { display: flex; gap: 12px; position: relative; padding-bottom: 16px; }
+.timeline-item:last-child { padding-bottom: 0; }
+.timeline-line {
+  position: absolute; left: 11px; top: 24px; bottom: 0;
+  width: 2px; background: #27272a;
+}
+.timeline-item:last-child .timeline-line { display: none; }
+.timeline-dot {
+  width: 24px; height: 24px; border-radius: 50%; flex-shrink: 0;
+  background: #27272a; border: 2px solid #3f3f46;
+  display: flex; align-items: center; justify-content: center;
+}
+.timeline-dot.done { background: #166534; border-color: #22c55e; }
+.timeline-dot.active { background: #1e3a5f; border-color: #3b82f6; animation: pulse 2s infinite; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+.timeline-dot svg { width: 12px; height: 12px; }
+.timeline-content {}
+.timeline-title { font-size: 13px; color: #d4d4d8; font-weight: 500; }
+.timeline-time { font-size: 11px; color: #52525b; }
+
+/* Warranty */
+.warranty-badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 12px; border-radius: 8px;
+  background: #052e16; border: 1px solid #166534;
+  font-size: 13px; color: #4ade80; font-weight: 500;
+}
+
+/* Bottom Action Bar */
+.action-bar {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 100%; max-width: 390px;
+  padding: 12px 20px; padding-bottom: calc(12px + env(safe-area-inset-bottom));
+  background: #18181b; border-top: 1px solid #27272a;
+  display: flex; gap: 10px; z-index: 200;
+}
+.action-btn {
+  flex: 1; padding: 14px; border-radius: 12px;
+  font-size: 14px; font-weight: 600; border: none;
+  cursor: pointer; display: flex; align-items: center;
+  justify-content: center; gap: 8px; transition: all 0.2s;
+}
+.action-btn:active { transform: scale(0.96); }
+.action-btn.primary { background: #2563eb; color: #fff; }
+.action-btn.secondary { background: #27272a; color: #a1a1aa; border: 1px solid #3f3f46; }
+.action-btn.tertiary { background: transparent; color: #71717a; flex: 0; width: 48px; }
+</style>
+</head>
+<body>
+
+<div class="backdrop"></div>
+
+<div class="sheet">
+  <div class="sheet-handle"></div>
+
+  <div class="sheet-header">
+    <div>
+      <div class="sheet-ticket">#240887</div>
+      <div class="sheet-date">Created May 28, 2026 • 3:42 PM</div>
+    </div>
+    <div class="sheet-status">REPAIRING</div>
+  </div>
+
+  <div class="device-hero">
+    <div class="device-title">LG 43" WebOS Smart TV</div>
+    <div class="device-specs">
+      <span class="spec-chip">43 inch</span>
+      <span class="spec-chip">LED</span>
+      <span class="spec-chip">SN: LG43WO-2891</span>
+    </div>
+  </div>
+
+  <!-- Problem -->
+  <div class="section">
+    <div class="section-label">Reported Problem</div>
+    <div class="problem-block">
+      <div class="problem-text">No power, LED indicator not lighting up. Customer says it happened after a lightning strike during a storm. Power board suspected.</div>
+      <div class="priority-badge">⚡ Medium Priority</div>
+    </div>
+  </div>
+
+  <!-- Tech Notes -->
+  <div class="section">
+    <div class="section-label">Technician Notes</div>
+    <div class="notes-block">
+      <div class="notes-text">Power board burnt — capacitor C4 and C7 blown. Ordered replacements. Main board OK after visual inspection.</div>
+    </div>
+  </div>
+
+  <!-- Customer & Cost -->
+  <div class="section">
+    <div class="info-grid">
+      <div class="info-item">
+        <div class="info-label">Customer</div>
+        <div class="info-value">Mahfuz Hasan</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Phone</div>
+        <div class="info-value phone">01712-345-445</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Est. Cost</div>
+        <div class="info-value money">৳ 2,800</div>
+      </div>
+      <div class="info-item">
+        <div class="info-label">Received</div>
+        <div class="info-value">Remote, Stand</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Assigned Technician -->
+  <div class="section">
+    <div class="section-label">Assigned Technician</div>
+    <div class="tech-card">
+      <div class="tech-avatar">SA</div>
+      <div class="tech-info">
+        <div class="tech-name">Sajid Ahmed</div>
+        <div class="tech-role">Senior Technician</div>
+      </div>
+    </div>
+    <div class="assist-row">
+      <div class="assist-chip">
+        <div class="assist-dot">RH</div>
+        <span class="assist-name">Rahim (assist)</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Warranty -->
+  <div class="section">
+    <div class="section-label">Warranty</div>
+    <div class="warranty-badge">
+      <svg width="14" height="14" fill="currentColor" viewBox="0 0 24 24"><path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4z"/></svg>
+      90 days — Expires Aug 26, 2026
+    </div>
+  </div>
+
+  <!-- Timeline -->
+  <div class="section">
+    <div class="section-label">Progress</div>
+    <div class="timeline">
+      <div class="timeline-item">
+        <div class="timeline-dot done"><svg fill="#22c55e" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+        <div class="timeline-line"></div>
+        <div class="timeline-content">
+          <div class="timeline-title">Job Created</div>
+          <div class="timeline-time">May 28 • 3:42 PM</div>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot done"><svg fill="#22c55e" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+        <div class="timeline-line"></div>
+        <div class="timeline-content">
+          <div class="timeline-title">Technician Assigned — Sajid</div>
+          <div class="timeline-time">May 28 • 4:10 PM</div>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot done"><svg fill="#22c55e" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></div>
+        <div class="timeline-line"></div>
+        <div class="timeline-content">
+          <div class="timeline-title">Diagnosis Complete</div>
+          <div class="timeline-time">May 29 • 10:15 AM</div>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot active"></div>
+        <div class="timeline-line"></div>
+        <div class="timeline-content">
+          <div class="timeline-title">Repair In Progress</div>
+          <div class="timeline-time">Now</div>
+        </div>
+      </div>
+      <div class="timeline-item">
+        <div class="timeline-dot"></div>
+        <div class="timeline-content">
+          <div class="timeline-title">Ready for Delivery</div>
+          <div class="timeline-time">—</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Action Bar -->
+<div class="action-bar">
+  <button class="action-btn tertiary">
+    <svg width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+  </button>
+  <button class="action-btn secondary">Edit</button>
+  <button class="action-btn primary">
+    <svg width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+    Mark Ready
+  </button>
+</div>
+
+</body>
+</html>

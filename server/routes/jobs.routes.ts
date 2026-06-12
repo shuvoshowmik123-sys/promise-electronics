@@ -52,14 +52,14 @@ router.get('/api/job-tickets', async (req: Request, res: Response) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 50;
-        const type = (req.query.type as 'all' | 'walk-in' | 'corporate') || 'all';
+        const type = (req.query.type as 'all' | 'walk-in' | 'corporate') || 'walk-in';
 
         // Access Control: Filter jobs for Technicians
         const userId = req.session?.adminUserId;
         if (userId) {
             const user = await userRepo.getUser(userId);
             if (user && user.role === 'Technician') {
-                const myJobs = await jobRepo.getJobTicketsByTechnician(user.name);
+                const myJobs = jobRepo.filterJobTicketsByLane(await jobRepo.getJobTicketsByTechnician(user.name), type);
                 return res.json({
                     items: myJobs,
                     pagination: {
@@ -73,7 +73,7 @@ router.get('/api/job-tickets', async (req: Request, res: Response) => {
         }
 
         // Managers/Admins view all
-        const result = await jobRepo.getAllJobTickets();
+        const result = jobRepo.filterJobTicketsByLane(await jobRepo.getAllJobTickets(), type);
         // Mock pagination to prevent frontend break
         res.json({
             items: result,
@@ -106,7 +106,7 @@ router.get('/api/job-tickets/next-number', async (req: Request, res: Response) =
  */
 router.get('/api/job-tickets/ready-for-billing', async (req: Request, res: Response) => {
     try {
-        const allJobs = await jobRepo.getAllJobTickets();
+        const allJobs = jobRepo.filterJobTicketsByLane(await jobRepo.getAllJobTickets(), "walk-in");
         // Filter for jobs that are completed but not yet delivered/closed
         const readyJobs = allJobs.filter(j =>
             j.status === 'Completed' || j.status === 'Ready'
@@ -168,6 +168,10 @@ router.post('/api/job-tickets', requireAdminAuth, requirePermission('jobs'), asy
         let jobData = { ...req.body };
         if (!jobData.id) {
             jobData.id = await jobRepo.getNextJobNumber();
+        }
+
+        if (jobData.corporateClientId || jobData.corporateChallanId || jobData.corporateJobNumber || jobData.batchId || jobData.source === 'corporate_portal' || jobData.source === 'challan_in') {
+            return res.status(400).json({ error: 'Corporate and batch jobs must be created from the B2B workspace.' });
         }
 
         // Convert deadline string to Date if present

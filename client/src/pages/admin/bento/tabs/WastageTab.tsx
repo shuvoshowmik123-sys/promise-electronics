@@ -103,7 +103,7 @@ export default function WastageTab() {
 
     return (
         <motion.div
-            className="space-y-6 pb-24 md:pb-0"
+            className="space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8"
             variants={containerVariants}
             initial="hidden"
             animate="visible"
@@ -184,7 +184,7 @@ export default function WastageTab() {
                         </Select>
                     </div>
 
-                    <div className="rounded-xl border border-slate-200 overflow-hidden bg-white">
+                    <div className="rounded-xl border border-slate-200 overflow-x-auto bg-white">
                         <Table>
                             <TableHeader className="bg-slate-50">
                                 <TableRow>

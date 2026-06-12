@@ -77,8 +77,12 @@ router.get('/api/admin/me', async (req: Request, res: Response) => {
         const user = await userRepo.getUser(req.session.adminUserId);
         if (!user) {
             req.session.adminUserId = undefined;
+            req.session.adminUserRole = undefined;
+            req.session.adminUserPermissions = undefined;
             return res.status(401).json({ error: 'User not found' });
         }
+        req.session.adminUserRole = user.role;
+        req.session.adminUserPermissions = user.permissions ?? null;
         const { password: _, ...safeUser } = user;
         res.json(safeUser);
     } catch (error) {
@@ -155,6 +159,8 @@ router.post('/api/admin/login', authLimiter, validate(adminLoginSchema), async (
 
         console.log('Admin login successful for:', username);
         req.session.adminUserId = result.user.id;
+        req.session.adminUserRole = result.user.role;
+        req.session.adminUserPermissions = result.user.permissions ?? null;
 
         auditLogger.log({
             userId: result.user.id,

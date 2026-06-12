@@ -14,6 +14,8 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { format } from "date-fns";
+import { getApiUrl } from "@/lib/config";
+import { useRemindersSSE } from "@/hooks/useRemindersSSE";
 
 interface Reminder {
     id: string;
@@ -26,7 +28,7 @@ interface Reminder {
 }
 
 async function fetchReminders(): Promise<Reminder[]> {
-    const res = await fetch("/api/reminders");
+    const res = await fetch(getApiUrl("/api/reminders"), { credentials: "include" });
     if (!res.ok) throw new Error("Failed to fetch reminders");
     return res.json();
 }
@@ -37,11 +39,13 @@ export function ReminderBell() {
     const [showCreate, setShowCreate] = useState(false);
     const [newTitle, setNewTitle] = useState("");
     const [newAt, setNewAt] = useState("");
+    useRemindersSSE();
 
     const { data: allReminders = [] } = useQuery<Reminder[]>({
         queryKey: ["reminders"],
         queryFn: fetchReminders,
-        refetchInterval: 30_000,
+        staleTime: 60_000,
+        refetchOnWindowFocus: false,
     });
 
     const pending = allReminders.filter(r => !r.isDismissed && !r.isSent);
@@ -49,7 +53,7 @@ export function ReminderBell() {
 
     const dismissMutation = useMutation({
         mutationFn: async (id: string) => {
-            const res = await fetch(`/api/reminders/${id}/dismiss`, { method: "PATCH" });
+            const res = await fetch(getApiUrl(`/api/reminders/${id}/dismiss`), { method: "PATCH", credentials: "include" });
             if (!res.ok) throw new Error("Failed to dismiss");
         },
         onSuccess: () => qc.invalidateQueries({ queryKey: ["reminders"] }),
@@ -57,8 +61,9 @@ export function ReminderBell() {
 
     const createMutation = useMutation({
         mutationFn: async () => {
-            const res = await fetch("/api/reminders", {
+            const res = await fetch(getApiUrl("/api/reminders"), {
                 method: "POST",
+                credentials: "include",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ title: newTitle, remindAt: newAt }),
             });

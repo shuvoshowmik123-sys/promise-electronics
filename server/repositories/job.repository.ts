@@ -4,7 +4,7 @@
  * Handles all database operations for job tickets (repair jobs).
  */
 
-import { db, nanoid, eq, desc, like, or, schema, sql, type JobTicket, type InsertJobTicket } from './base.js';
+import { db, nanoid, eq, desc, like, or, inArray, schema, sql, type JobTicket, type InsertJobTicket } from './base.js';
 import { executeLegacyQuery, isMissingColumnError, mapLegacyJobTicketRow } from './legacy-schema.js';
 
 const JOB_TICKETS_LEGACY_COLUMNS = [
@@ -73,9 +73,65 @@ export async function getAllJobTickets(): Promise<JobTicket[]> {
     return loadAllJobTickets();
 }
 
+export function isCorporateJob(job: Pick<JobTicket, "corporateClientId" | "corporateChallanId" | "corporateJobNumber" | "batchId" | "source">): boolean {
+    return Boolean(
+        job.corporateClientId ||
+        job.corporateChallanId ||
+        job.corporateJobNumber ||
+        job.batchId ||
+        job.source === "corporate_portal" ||
+        job.source === "challan_in"
+    );
+}
+
+export function filterJobTicketsByLane(jobs: JobTicket[], type: "all" | "walk-in" | "corporate"): JobTicket[] {
+    if (type === "corporate") return jobs.filter(isCorporateJob);
+    if (type === "walk-in") return jobs.filter((job) => !isCorporateJob(job));
+    return jobs;
+}
+
 export async function getJobTicket(id: string): Promise<JobTicket | undefined> {
-    const jobs = await loadAllJobTickets();
-    return jobs.find((job) => job.id === id);
+    // Single-row indexed lookup (id is PK). Previously this loaded ALL job
+    // tickets then .find()'d — i.e. a full-table load per call. Keeps the same
+    // legacy-schema fallback used by loadAllJobTickets().
+    try {
+        const rows = await db.select().from(schema.jobTickets).where(eq(schema.jobTickets.id, id)).limit(1);
+        return rows[0];
+    } catch (error) {
+        if (!isMissingJobTicketColumn(error)) throw error;
+        console.warn('[LegacySchema][job_tickets] Falling back to raw SELECT for getJobTicket.', error);
+        const rows = await executeLegacyQuery(
+            sql`SELECT * FROM job_tickets WHERE id = ${id} LIMIT 1`,
+            mapLegacyJobTicketRow,
+        );
+        return rows[0];
+    }
+}
+
+/**
+ * Batch-fetch job tickets by id. Returns a Map keyed by id.
+ *
+ * Use this instead of calling getJobTicket() in a loop. Single indexed query
+ * via inArray (was an N+1 of full-table loads: /api/service-requests loaded
+ * ~15k rows to enrich 10 items). Keeps the legacy-schema fallback.
+ */
+export async function getJobTicketsByIds(ids: string[]): Promise<Map<string, JobTicket>> {
+    const map = new Map<string, JobTicket>();
+    const wanted = Array.from(new Set(ids.filter(Boolean)));
+    if (wanted.length === 0) return map;
+    let rows: JobTicket[];
+    try {
+        rows = await db.select().from(schema.jobTickets).where(inArray(schema.jobTickets.id, wanted));
+    } catch (error) {
+        if (!isMissingJobTicketColumn(error)) throw error;
+        console.warn('[LegacySchema][job_tickets] Falling back to raw SELECT for getJobTicketsByIds.', error);
+        rows = await executeLegacyQuery(
+            sql`SELECT * FROM job_tickets WHERE id = ANY(${wanted})`,
+            mapLegacyJobTicketRow,
+        );
+    }
+    for (const job of rows) map.set(job.id, job);
+    return map;
 }
 
 export async function getJobTicketsByTechnician(technicianName: string): Promise<JobTicket[]> {

@@ -8,7 +8,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from "recharts";
 import { Button } from "@/components/ui/button";
-import { BentoCard, DashboardSkeleton, containerVariants, itemVariants } from "../shared";
+import { BentoCard, DashboardSkeleton, containerVariants, itemVariants, MobileKpiGrid } from "../shared";
 import { analyticsApi } from "@/lib/api";
 import { fetchApi } from "@/lib/api/httpClient";
 
@@ -42,14 +42,23 @@ export default function OverviewTab() {
     const { stats, technicianWorkloads, dueToday, readyForDelivery } = overviewData as any;
 
     return (
-        <div className="space-y-6 pb-24 md:pb-8">
+        <div className="space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8">
+            {/* Mobile KPI strip — compact replacement for the oversized desktop cards */}
+            <MobileKpiGrid
+                items={[
+                    { label: "Due Today", value: stats.totalDueToday, meta: "Urgent action", icon: <Clock className="h-4 w-4" />, tone: "violet" },
+                    { label: "Due Tomorrow", value: stats.totalDueTomorrow, meta: "Upcoming", icon: <Calendar className="h-4 w-4" />, tone: "amber" },
+                    { label: "Ready Pickup", value: stats.totalReadyForDelivery, meta: "Completed", icon: <Truck className="h-4 w-4" />, tone: "emerald" },
+                    { label: "Active Repairs", value: stats.totalInProgress, meta: "On bench", icon: <Wrench className="h-4 w-4" />, tone: "blue" },
+                ]}
+            />
             {/* KPI ROW */}
             <motion.div
                 variants={containerVariants}
                 initial="hidden"
                 whileInView="visible"
                 viewport={{ once: true, margin: "-50px" }}
-                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+                className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
             >
                 <motion.div variants={itemVariants} className="col-span-1">
                     <BentoCard

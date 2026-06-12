@@ -12,8 +12,40 @@ import { reminders } from "../../shared/schema.js";
 import { eq, and, or, desc } from "drizzle-orm";
 import { requireAdminAuth } from "./middleware/auth.js";
 import { randomUUID } from "crypto";
+import { emitReminderChanged, offReminderChanged, onReminderChanged, ReminderChangedEvent } from "../services/reminder.service.js";
 
 const router = Router();
+
+router.get("/api/reminders/events", requireAdminAuth, (req: Request, res: Response) => {
+    const user = (req as any).user;
+    const userId = user?.id;
+    if (!userId) return res.status(401).json({ message: "Unauthorized" });
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+    res.setHeader("X-Accel-Buffering", "no");
+    res.flushHeaders();
+
+    res.write(`data: ${JSON.stringify({ type: "connected" })}\n\n`);
+
+    const listener = (event: ReminderChangedEvent) => {
+        if (event.userId !== userId) return;
+        res.write(`event: reminder.changed\n`);
+        res.write(`data: ${JSON.stringify(event)}\n\n`);
+    };
+
+    onReminderChanged(listener);
+
+    const heartbeat = setInterval(() => {
+        res.write(": ping\n\n");
+    }, 25000);
+
+    req.on("close", () => {
+        clearInterval(heartbeat);
+        offReminderChanged(listener);
+    });
+});
 
 // ── List ───────────────────────────────────────────────────────────────────
 router.get("/api/reminders", requireAdminAuth, async (req: Request, res: Response) => {
@@ -64,6 +96,7 @@ router.post("/api/reminders", requireAdminAuth, async (req: Request, res: Respon
         .returning()
         .then(r => r[0]);
 
+    emitReminderChanged({ type: "created", userId: reminder.userId, reminderId: reminder.id });
     res.status(201).json(reminder);
 });
 
@@ -93,6 +126,7 @@ router.patch("/api/reminders/:id/dismiss", requireAdminAuth, async (req: Request
         .returning()
         .then(r => r[0]);
 
+    emitReminderChanged({ type: "dismissed", userId: updated.userId, reminderId: updated.id });
     res.json(updated);
 });
 
@@ -102,7 +136,7 @@ router.delete("/api/reminders/:id", requireAdminAuth, async (req: Request, res: 
     const { id } = req.params;
 
     const reminder = await db
-        .select({ createdBy: reminders.createdBy })
+        .select({ createdBy: reminders.createdBy, userId: reminders.userId })
         .from(reminders)
         .where(eq(reminders.id, id))
         .then(r => r[0]);
@@ -116,6 +150,7 @@ router.delete("/api/reminders/:id", requireAdminAuth, async (req: Request, res: 
     if (!canDelete) return res.status(403).json({ message: "Forbidden" });
 
     await db.delete(reminders).where(eq(reminders.id, id));
+    emitReminderChanged({ type: "deleted", userId: reminder.userId, reminderId: id });
     res.json({ success: true });
 });
 

@@ -11,10 +11,24 @@ import { insertQuoteRequestSchema } from '../../shared/schema.js';
 import { getCustomerId, requireAdminAuth, requireCustomerAuth } from './middleware/auth.js';
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { pushService } from '../pushService.js';
+import { jobService } from '../services/job.service.js';
 
 import { serviceRequestLimiter } from './middleware/rate-limit.js';
 
 const router = Router();
+const PICKUP_SCHEDULEABLE_STAGES = ['intake', 'assessment', 'authorized', 'pickup_scheduled'];
+const PICKUP_RECEIVED_STAGES = ['picked_up', 'device_received', 'in_repair', 'ready', 'out_for_delivery', 'completed', 'closed'];
+const PICKUP_DELIVERED_STAGES = ['completed', 'closed'];
+
+function validatePickupCustodyStatus(status: string | undefined, stage: string | null | undefined) {
+    if (status === 'PickedUp' && !PICKUP_RECEIVED_STAGES.includes(stage || '')) {
+        return 'Customer receive OTP is required before marking this pickup as picked up.';
+    }
+    if (status === 'Delivered' && !PICKUP_DELIVERED_STAGES.includes(stage || '')) {
+        return 'Customer delivery OTP is required before marking this pickup as delivered.';
+    }
+    return null;
+}
 
 // ============================================
 // Quote Requests API
@@ -355,7 +369,11 @@ router.post('/api/admin/pickups/:id/collect-payment', requireAdminAuth, async (r
             return res.status(404).json({ error: 'Pickup schedule not found' });
         }
 
-        // 1. Income record (counts in finance regardless of method)
+        const activeDrawer = pay === 'Cash' ? await storage.getActiveDrawer() : null;
+        if (pay === 'Cash' && !activeDrawer) {
+            return res.status(409).json({ error: 'Open drawer first before collecting cash COD' });
+        }
+
         await storage.createPettyCashRecord({
             description: `COD - Pickup/Delivery ${pickup.serviceRequestId}`,
             category: 'Sales',
@@ -363,15 +381,10 @@ router.post('/api/admin/pickups/:id/collect-payment', requireAdminAuth, async (r
             type: 'Income',
         } as any);
 
-        // 2. Cash only → bump active drawer expected cash
-        if (pay === 'Cash') {
-            const activeDrawer = await storage.getActiveDrawer();
-            if (activeDrawer) {
-                await storage.updateDrawerExpectedCash(activeDrawer.id, amt);
-            }
+        if (activeDrawer) {
+            await storage.updateDrawerExpectedCash(activeDrawer.id, amt);
         }
 
-        // 3. Mark the service request paid
         await serviceRequestRepo.updateServiceRequest(pickup.serviceRequestId, {
             paymentStatus: 'paid',
         } as any);
@@ -405,9 +418,30 @@ router.patch('/api/admin/pickups/:id', requireAdminAuth, async (req: Request, re
             updates.deliveredAt = new Date(updates.deliveredAt);
         }
 
+        const existingPickup = await storage.getPickupSchedule(req.params.id);
+        if (!existingPickup) {
+            return res.status(404).json({ error: 'Pickup schedule not found' });
+        }
+
+        if (updates.status) {
+            const sr = await serviceRequestRepo.getServiceRequest(existingPickup.serviceRequestId);
+            const custodyError = validatePickupCustodyStatus(updates.status, sr?.stage);
+            if (custodyError) {
+                return res.status(409).json({ error: custodyError });
+            }
+        }
+
         const pickup = await storage.updatePickupSchedule(req.params.id, updates);
         if (!pickup) {
             return res.status(404).json({ error: 'Pickup schedule not found' });
+        }
+
+        if (updates.status === 'Scheduled' || updates.scheduledDate) {
+            const sr = await serviceRequestRepo.getServiceRequest(pickup.serviceRequestId);
+            if (sr && PICKUP_SCHEDULEABLE_STAGES.includes(sr.stage || 'intake')) {
+                const user = await userRepo.getUser(req.session.adminUserId!);
+                await jobService.transitionStage(pickup.serviceRequestId, 'pickup_scheduled', user?.name || 'Pickup Desk');
+            }
         }
 
         notifyAdminUpdate({
@@ -430,6 +464,17 @@ router.patch('/api/admin/pickups/:id/status', requireAdminAuth, async (req: Requ
         const { status } = req.body;
         if (!status) {
             return res.status(400).json({ error: 'Status is required' });
+        }
+
+        const currentPickup = await storage.getPickupSchedule(req.params.id);
+        if (!currentPickup) {
+            return res.status(404).json({ error: 'Pickup schedule not found' });
+        }
+
+        const sr = await serviceRequestRepo.getServiceRequest(currentPickup.serviceRequestId);
+        const custodyError = validatePickupCustodyStatus(status, sr?.stage);
+        if (custodyError) {
+            return res.status(409).json({ error: custodyError });
         }
 
         const updates: any = { status };

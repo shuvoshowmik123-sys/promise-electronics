@@ -1,16 +1,18 @@
+import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { format } from "date-fns";
 import {
     QrCode, FileText, Clock, User, Monitor, AlertCircle,
     PenTool, Users, Edit, Printer, ShoppingCart,
-    ArrowLeft, MoreVertical, Phone, ShieldCheck,
+    ArrowLeft, Phone, ShieldCheck, Download, Wrench, ClipboardCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getPrimaryAction, getStatusVisual } from "./jobActions";
+import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 
 interface JobDetailsSheetProps {
     job: any | null;
@@ -22,9 +24,28 @@ interface JobDetailsSheetProps {
     currencySymbol: string;
     onEditJob: (job: any) => void;
     onPrintTicket: (job: any) => void;
+    onDownloadTicket?: (job: any) => void;
+    onSaveWorkFeedback?: (job: any, payload: WorkFeedbackPayload) => Promise<void>;
     onOutsidePurchase?: () => void;
     onAdvanceStage?: (job: any) => void;
 }
+
+export interface WorkFeedbackPayload {
+    result: string;
+    workDone: string[];
+    partName: string;
+    partQty: number;
+    partSource: string;
+    internalNote: string;
+    customerSummary: string;
+    nextAction: string;
+}
+
+const RESULT_OPTIONS = ["Fixed", "Partially Fixed", "Waiting Parts", "Need Senior Check", "Unrepairable"];
+const WORK_DONE_OPTIONS = ["Diagnosis", "Backlight", "Panel Repair", "Panel GPR", "Laser Repair", "T-Con", "Main Board", "Power Board", "Software", "Cleaning"];
+const PART_OPTIONS = ["No parts used", "Backlight strip", "T-Con", "Panel COF", "Main board", "Power board", "Cable", "Fuse"];
+const PART_SOURCE_OPTIONS = ["Stock", "Outside", "Customer", "No Part"];
+const NEXT_ACTION_OPTIONS = ["Save only", "Mark Ready", "Wait Parts", "Senior Check"];
 
 export function JobDetailsSheet({
     job,
@@ -36,10 +57,40 @@ export function JobDetailsSheet({
     currencySymbol,
     onEditJob,
     onPrintTicket,
+    onDownloadTicket,
+    onSaveWorkFeedback,
     onOutsidePurchase,
     onAdvanceStage,
 }: JobDetailsSheetProps) {
     const isMobile = useIsMobile();
+    const [workSheetOpen, setWorkSheetOpen] = useState(false);
+    const [savingFeedback, setSavingFeedback] = useState(false);
+    const [workFeedback, setWorkFeedback] = useState<WorkFeedbackPayload>({
+        result: "Fixed",
+        workDone: [],
+        partName: "No parts used",
+        partQty: 1,
+        partSource: "No Part",
+        internalNote: "",
+        customerSummary: "",
+        nextAction: "Save only",
+    });
+
+    useEffect(() => {
+        if (!job?.id) return;
+        setWorkSheetOpen(false);
+        setSavingFeedback(false);
+        setWorkFeedback({
+            result: "Fixed",
+            workDone: [],
+            partName: "No parts used",
+            partQty: 1,
+            partSource: "No Part",
+            internalNote: "",
+            customerSummary: "",
+            nextAction: "Save only",
+        });
+    }, [job?.id]);
 
     if (typeof document === 'undefined') return null;
 
@@ -53,11 +104,17 @@ export function JobDetailsSheet({
 
     const action = job ? getPrimaryAction(job, canEdit) : null;
     const ActionIcon = action?.Icon;
+    const canRecordWork = canEdit && !!onSaveWorkFeedback && !!job && ["In Progress", "On Workbench", "Ready", "Pending Parts", "Waiting on Parts"].includes(job.status || "");
+    const handleTicketDocument = () => {
+        if (!job) return;
+        if (isMobile && onDownloadTicket) onDownloadTicket(job);
+        else onPrintTicket(job);
+    };
     const handlePrimaryAction = () => {
         if (!job || !action) return;
         if (action.type === "advance") { onClose(); onAdvanceStage?.(job); }
         else if (action.type === "edit") { onClose(); onEditJob(job); }
-        else if (action.type === "print") onPrintTicket(job);
+        else if (action.type === "print") handleTicketDocument();
         else onClose(); // view: already open
     };
 
@@ -65,6 +122,35 @@ export function JobDetailsSheet({
         name
             ? (typeof name === "string" && name.trim() ? name.split(",").map((n: string) => n.trim()).filter(Boolean) : [])
             : [];
+
+    const formatBdPhone = (phone?: string) => {
+        const digits = (phone || "").replace(/\D/g, "");
+        if (!digits) return "";
+        if (digits.startsWith("880")) return `+${digits}`;
+        if (digits.startsWith("0")) return `+88${digits}`;
+        if (digits.length === 10) return `+880${digits}`;
+        return phone || "";
+    };
+
+    const toggleWorkDone = (value: string) => {
+        setWorkFeedback((current) => ({
+            ...current,
+            workDone: current.workDone.includes(value)
+                ? current.workDone.filter((item) => item !== value)
+                : [...current.workDone, value],
+        }));
+    };
+
+    const submitWorkFeedback = async () => {
+        if (!job || !onSaveWorkFeedback || savingFeedback) return;
+        setSavingFeedback(true);
+        try {
+            await onSaveWorkFeedback(job, workFeedback);
+            setWorkSheetOpen(false);
+        } finally {
+            setSavingFeedback(false);
+        }
+    };
 
     // ---------- MOBILE: bottom sheet ----------
     if (isMobile) {
@@ -87,12 +173,9 @@ export function JobDetailsSheet({
                             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
                             onClick={onClose}
                         />
-                        <motion.div
-                            initial={{ y: "100%" }}
-                            animate={{ y: 0 }}
-                            exit={{ y: "100%" }}
-                            transition={{ type: "spring", stiffness: 340, damping: 34 }}
-                            className="absolute inset-x-0 bottom-0 top-10 flex flex-col rounded-t-3xl bg-slate-50 overflow-hidden shadow-2xl"
+                        <MobileBottomSheetFrame
+                            onClose={onClose}
+                            className="absolute inset-x-0 bottom-0 top-10 flex flex-col rounded-t-3xl bg-slate-50 overflow-hidden shadow-2xl select-none touch-pan-y"
                         >
                             {/* Dark header */}
                             <div className="relative shrink-0 bg-slate-900 px-5 pt-3 pb-6 text-white overflow-hidden rounded-t-3xl">
@@ -100,18 +183,18 @@ export function JobDetailsSheet({
                                     <QrCode className="w-40 h-40" />
                                 </div>
                                 <div className="relative z-10">
-                                    <div className="mx-auto mb-3 h-1.5 w-10 rounded-full bg-slate-600" />
+                                    <MobileBottomSheetHandle className="mb-3 bg-slate-600" />
                                     <div className="flex items-center justify-between">
                                         <button onClick={onClose} className="h-9 w-9 -ml-1 flex items-center justify-center rounded-full text-slate-300 active:bg-white/10">
                                             <ArrowLeft className="w-5 h-5" />
                                         </button>
                                         <span className="text-base font-bold">Job Detail</span>
                                         <button
-                                            onClick={() => onPrintTicket(job)}
+                                            onClick={handleTicketDocument}
                                             className="h-9 w-9 -mr-1 flex items-center justify-center rounded-full text-slate-300 active:bg-white/10"
-                                            aria-label="Print ticket"
+                                            aria-label="Download ticket PDF"
                                         >
-                                            <MoreVertical className="w-5 h-5" />
+                                            <Download className="w-5 h-5" />
                                         </button>
                                     </div>
                                     <div className="mt-4 flex items-end justify-between gap-3">
@@ -141,10 +224,10 @@ export function JobDetailsSheet({
                                             <p className="text-lg font-bold text-slate-900 mt-0.5 truncate">{customerLabel}</p>
                                             {showCustomerDetails && job.customerPhone && (
                                                 <a
-                                                    href={`tel:${job.customerPhone}`}
+                                                    href={`tel:${formatBdPhone(job.customerPhone)}`}
                                                     className="mt-2 inline-flex items-center gap-2 rounded-full bg-blue-50 px-3 py-1.5 text-sm font-semibold font-mono text-blue-700 active:bg-blue-100"
                                                 >
-                                                    <Phone className="w-4 h-4" /> {job.customerPhone}
+                                                    <Phone className="w-4 h-4" /> {formatBdPhone(job.customerPhone)}
                                                 </a>
                                             )}
                                         </div>
@@ -242,7 +325,16 @@ export function JobDetailsSheet({
 
                                 {/* Secondary actions */}
                                 {canEdit && (
-                                    <div className="flex gap-2 pt-1">
+                                    <div className="space-y-2 pt-1">
+                                        {canRecordWork && (
+                                            <Button
+                                                onClick={() => setWorkSheetOpen(true)}
+                                                className="h-12 w-full rounded-2xl bg-slate-900 text-white gap-2 font-bold shadow-sm"
+                                            >
+                                                <Wrench className="w-4 h-4" /> Add Work Done
+                                            </Button>
+                                        )}
+                                        <div className="flex gap-2">
                                         {onOutsidePurchase && (
                                             <Button
                                                 variant="outline"
@@ -261,11 +353,12 @@ export function JobDetailsSheet({
                                         </Button>
                                         <Button
                                             variant="outline"
-                                            onClick={() => onPrintTicket(job)}
+                                            onClick={handleTicketDocument}
                                             className="flex-1 h-11 rounded-xl border-slate-200 text-slate-700 gap-1.5 font-medium"
                                         >
-                                            <Printer className="w-4 h-4" /> Print
+                                            <Download className="w-4 h-4" /> PDF
                                         </Button>
+                                        </div>
                                     </div>
                                 )}
                             </div>
@@ -287,7 +380,171 @@ export function JobDetailsSheet({
                                     </Button>
                                 </div>
                             )}
-                        </motion.div>
+                            {workSheetOpen && (
+                                <div className="absolute inset-0 z-20 flex items-end bg-slate-950/35 backdrop-blur-sm">
+                                    <MobileBottomSheetFrame
+                                        onClose={() => setWorkSheetOpen(false)}
+                                        className="max-h-[86%] w-full overflow-hidden rounded-t-[1.75rem] border border-slate-200 bg-slate-50 shadow-2xl"
+                                    >
+                                        <div className="flex max-h-full flex-col">
+                                            <div className="flex-none border-b border-slate-100 bg-white px-4 pb-3 pt-3">
+                                                <MobileBottomSheetHandle />
+                                                <div className="mt-2 flex items-start justify-between gap-3">
+                                                    <div>
+                                                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-blue-600">Technician Feedback</p>
+                                                        <h3 className="text-lg font-black text-slate-950">Work Done</h3>
+                                                    </div>
+                                                    <Badge className="rounded-full border-0 bg-blue-100 text-blue-700">{workFeedback.result}</Badge>
+                                                </div>
+                                            </div>
+                                            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 pb-28">
+                                                <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                                    <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Result</p>
+                                                    <div className="flex flex-wrap gap-2">
+                                                        {RESULT_OPTIONS.map((option) => (
+                                                            <button
+                                                                key={option}
+                                                                type="button"
+                                                                onClick={() => setWorkFeedback({ ...workFeedback, result: option })}
+                                                                className={cn(
+                                                                    "min-h-9 rounded-xl border px-3 text-xs font-bold",
+                                                                    workFeedback.result === option ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-white text-slate-600",
+                                                                )}
+                                                            >
+                                                                {option}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </section>
+
+                                                <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                                    <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Repair Work</p>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {WORK_DONE_OPTIONS.map((option) => (
+                                                            <button
+                                                                key={option}
+                                                                type="button"
+                                                                onClick={() => toggleWorkDone(option)}
+                                                                className={cn(
+                                                                    "min-h-10 rounded-xl border px-2 text-xs font-bold",
+                                                                    workFeedback.workDone.includes(option) ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-slate-200 bg-white text-slate-600",
+                                                                )}
+                                                            >
+                                                                {option}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </section>
+
+                                                <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                                    <div className="mb-2 flex items-center justify-between">
+                                                        <p className="text-xs font-black uppercase tracking-wide text-slate-500">Parts Used</p>
+                                                        <div className="flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setWorkFeedback({ ...workFeedback, partQty: Math.max(1, workFeedback.partQty - 1) })}
+                                                                className="h-7 w-7 rounded-lg bg-white text-sm font-black text-slate-700"
+                                                            >
+                                                                -
+                                                            </button>
+                                                            <span className="w-7 text-center font-mono text-xs font-black">{workFeedback.partQty}</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setWorkFeedback({ ...workFeedback, partQty: workFeedback.partQty + 1 })}
+                                                                className="h-7 w-7 rounded-lg bg-white text-sm font-black text-slate-700"
+                                                            >
+                                                                +
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex gap-2 overflow-x-auto pb-1">
+                                                        {PART_OPTIONS.map((option) => (
+                                                            <button
+                                                                key={option}
+                                                                type="button"
+                                                                onClick={() => setWorkFeedback({
+                                                                    ...workFeedback,
+                                                                    partName: option,
+                                                                    partSource: option === "No parts used" ? "No Part" : (workFeedback.partSource === "No Part" ? "Stock" : workFeedback.partSource),
+                                                                })}
+                                                                className={cn(
+                                                                    "min-h-9 shrink-0 rounded-xl border px-3 text-xs font-bold",
+                                                                    workFeedback.partName === option ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-600",
+                                                                )}
+                                                            >
+                                                                {option}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                    {workFeedback.partName !== "No parts used" && (
+                                                        <div className="mt-2 grid grid-cols-4 gap-1.5">
+                                                            {PART_SOURCE_OPTIONS.filter(option => option !== "No Part").map((option) => (
+                                                                <button
+                                                                    key={option}
+                                                                    type="button"
+                                                                    onClick={() => setWorkFeedback({ ...workFeedback, partSource: option })}
+                                                                    className={cn(
+                                                                        "min-h-8 rounded-lg border px-1 text-[11px] font-bold",
+                                                                        workFeedback.partSource === option ? "border-emerald-200 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-500",
+                                                                    )}
+                                                                >
+                                                                    {option}
+                                                                </button>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </section>
+
+                                                <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                                    <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Notes</p>
+                                                    <textarea
+                                                        value={workFeedback.customerSummary}
+                                                        onChange={(event) => setWorkFeedback({ ...workFeedback, customerSummary: event.target.value })}
+                                                        placeholder="Customer summary, optional"
+                                                        className="min-h-[64px] w-full resize-none rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-medium outline-none focus:border-blue-300"
+                                                    />
+                                                    <textarea
+                                                        value={workFeedback.internalNote}
+                                                        onChange={(event) => setWorkFeedback({ ...workFeedback, internalNote: event.target.value })}
+                                                        placeholder="Internal note, optional"
+                                                        className="mt-2 min-h-[54px] w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-medium outline-none focus:border-blue-300"
+                                                    />
+                                                </section>
+
+                                                <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                                    <p className="mb-2 text-xs font-black uppercase tracking-wide text-slate-500">Next</p>
+                                                    <div className="grid grid-cols-2 gap-2">
+                                                        {NEXT_ACTION_OPTIONS.map((option) => (
+                                                            <button
+                                                                key={option}
+                                                                type="button"
+                                                                onClick={() => setWorkFeedback({ ...workFeedback, nextAction: option })}
+                                                                className={cn(
+                                                                    "min-h-10 rounded-xl border px-2 text-xs font-bold",
+                                                                    workFeedback.nextAction === option ? "border-slate-800 bg-slate-900 text-white" : "border-slate-200 bg-white text-slate-600",
+                                                                )}
+                                                            >
+                                                                {option}
+                                                            </button>
+                                                        ))}
+                                                    </div>
+                                                </section>
+                                            </div>
+                                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent p-4 pt-8">
+                                                <Button
+                                                    onClick={submitWorkFeedback}
+                                                    disabled={savingFeedback || workFeedback.workDone.length === 0}
+                                                    className="h-12 w-full rounded-2xl bg-blue-600 text-base font-black text-white shadow-lg shadow-blue-500/20"
+                                                >
+                                                    <ClipboardCheck className="h-5 w-5" />
+                                                    {savingFeedback ? "Saving..." : "Save Work Feedback"}
+                                                </Button>
+                                            </div>
+                                        </div>
+                                    </MobileBottomSheetFrame>
+                                </div>
+                            )}
+                        </MobileBottomSheetFrame>
                     </div>
                 )}
             </AnimatePresence>,

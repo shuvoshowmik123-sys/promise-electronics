@@ -63,6 +63,7 @@ export function EditJobDrawer({
                 warrantyDays: job.warrantyDays || 30,
                 gracePeriodDays: (job as any).gracePeriodDays || 7,
                 assignedTechnicianId: job.assignedTechnicianId,
+                ticketType: (job as any).ticketType,
             });
             try {
                 const assistedIds = (job as any).assistedByIds ? JSON.parse((job as any).assistedByIds as string) : [];
@@ -249,6 +250,8 @@ export function EditJobDrawer({
 
                         <TechnicianPicker
                             users={technicianUsers}
+                            ticketType={(editFormData as any).ticketType || (job as any)?.ticketType || "full_device"}
+                            issue={editFormData.issue}
                             assignedTechnicianId={editFormData.assignedTechnicianId as string}
                             assistedByIds={selectedAssistedBy}
                             onAssignedChange={(id, name) => setEditFormData({ ...editFormData, assignedTechnicianId: id, technician: name })}

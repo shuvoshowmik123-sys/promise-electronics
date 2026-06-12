@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
 import { Search, X, Download, TrendingDown, CheckCircle, XCircle, Loader2, AlertTriangle, SlidersHorizontal } from "lucide-react";
@@ -20,6 +20,7 @@ interface RefundsTabProps {
     getCurrencySymbol: () => string;
     refundsApi: any;
     queryClient: any;
+    initialSearchQuery?: string;
 }
 
 export function RefundsTab({
@@ -27,7 +28,8 @@ export function RefundsTab({
     isLoading,
     getCurrencySymbol,
     refundsApi,
-    queryClient
+    queryClient,
+    initialSearchQuery
 }: RefundsTabProps) {
     const { user } = useAdminAuth();
     const [search, setSearch] = useState("");
@@ -41,6 +43,13 @@ export function RefundsTab({
     const [refundMethod, setRefundMethod] = useState("cash");
 
     const refunds = refundsData?.items || [];
+
+    // Apply initial search query from Smart Search
+    useEffect(() => {
+        if (initialSearchQuery !== undefined) {
+            setSearch(initialSearchQuery);
+        }
+    }, [initialSearchQuery]);
 
     // After a refund is processed it writes a petty-cash Expense + adjusts the
     // active drawer. Invalidate every dependent cache so balances refresh live.

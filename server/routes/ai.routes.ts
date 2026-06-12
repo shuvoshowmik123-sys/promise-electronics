@@ -8,6 +8,26 @@ import { aiLimiter } from "./middleware/rate-limit.js";
 
 const router = Router();
 
+const inflightAiRequests = new Map<string, Promise<unknown>>();
+
+function setNoStore(res: any) {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+}
+
+async function runDeduped<T>(key: string, task: () => Promise<T>): Promise<T> {
+    const existing = inflightAiRequests.get(key) as Promise<T> | undefined;
+    if (existing) return existing;
+
+    const promise = task().finally(() => {
+        inflightAiRequests.delete(key);
+    });
+
+    inflightAiRequests.set(key, promise as Promise<unknown>);
+    return promise;
+}
+
 // Middleware to check if user is admin/staff
 const requireStaff = (req: any, res: any, next: any) => {
     if (!req.user || req.user.role === "Customer") {
@@ -19,6 +39,7 @@ const requireStaff = (req: any, res: any, next: any) => {
 // POST /api/ai/suggest-tech
 router.post("/suggest-tech", requireStaff, async (req, res) => {
     try {
+        setNoStore(res);
         const { jobDescription } = req.body;
 
         if (!jobDescription) {
@@ -50,6 +71,7 @@ router.post("/suggest-tech", requireStaff, async (req, res) => {
 // POST /api/ai/inspect (rate limited - 30/hour)
 router.post("/inspect", aiLimiter, async (req, res) => {
     try {
+        setNoStore(res);
         const { image } = req.body;
 
         if (!image) {
@@ -72,6 +94,7 @@ router.post("/inspect", aiLimiter, async (req, res) => {
 // POST /api/ai/chat - Enhanced with multimodal and auto-booking (rate limited - 30/hour)
 router.post("/chat", aiLimiter, async (req, res) => {
     try {
+        setNoStore(res);
         const { message, image, history, userId, modelType } = req.body;
 
         // Input validation
@@ -212,8 +235,19 @@ router.post("/chat", aiLimiter, async (req, res) => {
             }
         }
 
-        // Call AI service with all parameters, including existing ticket
-        const response = await aiService.chatWithDaktarVai(
+        const requestKey = JSON.stringify({
+            route: 'chat',
+            message: message || "Please analyze this image",
+            image: image ? `${image.slice(0, 96)}:${image.length}` : null,
+            history,
+            userId,
+            modelType,
+            userContext: userContext ? { id: userContext.id, phone: userContext.phone, role: userContext.role } : null,
+            existingTicketId: existingTicket?.id ?? null,
+        });
+
+        // Deduplicate identical in-flight AI requests so repeated clicks don't double bill.
+        const response = await runDeduped(requestKey, () => aiService.chatWithDaktarVai(
             message || "Please analyze this image",
             history || [],
             image,
@@ -221,7 +255,7 @@ router.post("/chat", aiLimiter, async (req, res) => {
             modelType,
             businessData,
             existingTicket
-        );
+        ));
 
         // Check for error responses from AI - only 503 if completely unavailable
         if (response.error && response.errorCode === 'AI_SERVICE_UNAVAILABLE') {
@@ -331,6 +365,7 @@ router.post("/chat", aiLimiter, async (req, res) => {
 // POST /api/ai/transliterate (Fast 8B Model for Banglish dictation)
 router.post("/transliterate", aiLimiter, async (req, res) => {
     try {
+        setNoStore(res);
         const { text } = req.body;
         if (!text) return res.status(400).json({ message: "Text is required" });
 
@@ -348,6 +383,8 @@ router.get("/morning-brief", async (req, res) => {
     if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
         return res.status(401).json({ error: "Unauthorized" });
     }
+
+    setNoStore(res);
 
     try {
         // Calculate stats (simplified for now)
@@ -386,6 +423,7 @@ router.get("/morning-brief", async (req, res) => {
 // GET /api/ai/insights
 router.get("/insights", async (req, res) => {
     try {
+        setNoStore(res);
         const data = await db.select().from(aiInsights).orderBy(desc(aiInsights.createdAt)).limit(10);
         res.json({ insights: data });
     } catch (error) {
@@ -396,6 +434,7 @@ router.get("/insights", async (req, res) => {
 // POST /api/ai/feedback
 router.post("/feedback", async (req, res) => {
     try {
+        setNoStore(res);
         await db.insert(diagnosisTrainingData).values(req.body);
         res.json({ success: true });
     } catch (error) {
@@ -407,6 +446,7 @@ router.post("/feedback", async (req, res) => {
 // GET /api/ai/debug-suggestions
 router.get("/debug-suggestions", requireStaff, async (req, res) => {
     try {
+        setNoStore(res);
         const { aiDebugSuggestions } = await import("../../shared/schema.js");
         const suggestions = await db.select().from(aiDebugSuggestions).orderBy(desc(aiDebugSuggestions.createdAt)).limit(50);
         res.json(suggestions);
@@ -419,6 +459,7 @@ router.get("/debug-suggestions", requireStaff, async (req, res) => {
 // PATCH /api/ai/debug-suggestions/:id
 router.patch("/debug-suggestions/:id", requireStaff, async (req, res) => {
     try {
+        setNoStore(res);
         const { id } = req.params;
         const { status } = req.body;
         const { aiDebugSuggestions } = await import("../../shared/schema.js");
@@ -438,6 +479,7 @@ router.patch("/debug-suggestions/:id", requireStaff, async (req, res) => {
 // POST /api/ai/apply-settings (Safe settings update with allowlist)
 router.post("/apply-settings", requireStaff, async (req, res) => {
     try {
+        setNoStore(res);
         const { changes } = req.body;
 
         if (!changes || !Array.isArray(changes)) {

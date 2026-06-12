@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Create Job - Step 5: Assign</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0f1117; color: #e4e4e7;
+  max-width: 390px; margin: 0 auto; min-height: 100dvh;
+  display: flex; flex-direction: column;
+}
+.top-nav { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; position: sticky; top: 0; background: #0f1117; z-index: 10; }
+.nav-back { width: 36px; height: 36px; border-radius: 10px; background: #1c1c24; border: 1px solid #27272a; display: flex; align-items: center; justify-content: center; color: #a1a1aa; }
+.nav-title { font-size: 16px; font-weight: 600; color: #fff; }
+.nav-step { font-size: 13px; color: #52525b; }
+.progress-wrap { padding: 0 16px 20px; }
+.progress-bar { height: 4px; background: #27272a; border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; width: 83.3%; background: linear-gradient(90deg, #2563eb, #60a5fa); border-radius: 2px; }
+
+.content { flex: 1; padding: 0 16px; overflow-y: auto; }
+.section-title { font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+.section-subtitle { font-size: 14px; color: #71717a; margin-bottom: 24px; }
+.sub-title { font-size: 13px; font-weight: 600; color: #a1a1aa; margin-bottom: 12px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+/* Priority Selector */
+.priority-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 28px; }
+.priority-card {
+  padding: 14px 6px; border-radius: 12px; text-align: center;
+  background: #1c1c24; border: 2px solid #27272a;
+  cursor: pointer; transition: all 0.15s;
+}
+.priority-card:active { transform: scale(0.94); }
+.priority-card.selected { border-color: var(--pc); background: var(--bg); }
+.priority-card[data-p="low"] { --pc: #22c55e; --bg: #052e16; }
+.priority-card[data-p="medium"] { --pc: #f59e0b; --bg: #451a03; }
+.priority-card[data-p="high"] { --pc: #ef4444; --bg: #450a0a; }
+.priority-card[data-p="critical"] { --pc: #e11d48; --bg: #4c0519; }
+.priority-dot { width: 10px; height: 10px; border-radius: 50%; margin: 0 auto 6px; }
+.priority-card[data-p="low"] .priority-dot { background: #22c55e; }
+.priority-card[data-p="medium"] .priority-dot { background: #f59e0b; }
+.priority-card[data-p="high"] .priority-dot { background: #ef4444; }
+.priority-card[data-p="critical"] .priority-dot { background: #e11d48; box-shadow: 0 0 8px #e11d48; }
+.priority-label { font-size: 12px; color: #a1a1aa; font-weight: 500; }
+.priority-card.selected .priority-label { color: var(--pc); font-weight: 600; }
+
+/* Technician List */
+.tech-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 24px; }
+.tech-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 14px; border-radius: 12px;
+  background: #1c1c24; border: 2px solid #27272a;
+  cursor: pointer; transition: all 0.15s;
+}
+.tech-row:active { transform: scale(0.98); }
+.tech-row.selected { border-color: #6366f1; background: #1e1b4b; }
+.tech-row.dimmed { opacity: 0.45; }
+.tech-avatar {
+  width: 40px; height: 40px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; color: #fff;
+}
+.tech-row:nth-child(1) .tech-avatar { background: linear-gradient(135deg, #6366f1, #4f46e5); }
+.tech-row:nth-child(2) .tech-avatar { background: linear-gradient(135deg, #2563eb, #1d4ed8); }
+.tech-row:nth-child(3) .tech-avatar { background: linear-gradient(135deg, #0891b2, #0e7490); }
+.tech-info { flex: 1; }
+.tech-name { font-size: 14px; font-weight: 600; color: #e4e4e7; }
+.tech-meta { font-size: 12px; color: #52525b; }
+.tech-workload {
+  text-align: right;
+}
+.workload-count { font-size: 18px; font-weight: 700; color: #a1a1aa; }
+.workload-label { font-size: 10px; color: #52525b; text-transform: uppercase; }
+.skill-match {
+  font-size: 10px; padding: 2px 6px; border-radius: 4px;
+  background: #052e16; color: #4ade80; font-weight: 500;
+  margin-top: 2px; display: inline-block;
+}
+.skill-mismatch {
+  font-size: 10px; padding: 2px 6px; border-radius: 4px;
+  background: #27272a; color: #71717a; font-weight: 500;
+  margin-top: 2px; display: inline-block;
+}
+
+/* Estimated Cost */
+.cost-section { margin-top: 4px; }
+.cost-input-wrap {
+  display: flex; align-items: center; gap: 4px;
+  padding: 14px 16px; background: #1c1c24;
+  border: 1px solid #27272a; border-radius: 12px;
+}
+.cost-symbol { font-size: 18px; font-weight: 700; color: #52525b; }
+.cost-input {
+  flex: 1; background: transparent; border: none;
+  color: #34d399; font-size: 22px; font-weight: 700;
+  font-family: monospace; outline: none;
+}
+.cost-input::placeholder { color: #27272a; }
+
+.bottom-bar { padding: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom)); display: flex; gap: 10px; }
+.back-btn { padding: 16px 20px; border-radius: 14px; background: #27272a; color: #a1a1aa; font-size: 15px; font-weight: 600; border: none; cursor: pointer; }
+.next-btn { flex: 1; padding: 16px; border-radius: 14px; background: #2563eb; color: #fff; font-size: 16px; font-weight: 600; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+</style>
+</head>
+<body>
+
+<div class="top-nav">
+  <div class="nav-back"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></div>
+  <span class="nav-title">New Job</span>
+  <span class="nav-step">5 / 6</span>
+</div>
+<div class="progress-wrap"><div class="progress-bar"><div class="progress-fill"></div></div></div>
+
+<div class="content">
+  <h1 class="section-title">Assign & Price</h1>
+  <p class="section-subtitle">Set priority, assign a technician, and estimate cost.</p>
+
+  <div class="sub-title">Priority</div>
+  <div class="priority-row">
+    <div class="priority-card" data-p="low">
+      <div class="priority-dot"></div>
+      <div class="priority-label">Low</div>
+    </div>
+    <div class="priority-card selected" data-p="medium">
+      <div class="priority-dot"></div>
+      <div class="priority-label">Medium</div>
+    </div>
+    <div class="priority-card" data-p="high">
+      <div class="priority-dot"></div>
+      <div class="priority-label">High</div>
+    </div>
+    <div class="priority-card" data-p="critical">
+      <div class="priority-dot"></div>
+      <div class="priority-label">Critical</div>
+    </div>
+  </div>
+
+  <div class="sub-title">Assign Technician</div>
+  <div class="tech-list">
+    <div class="tech-row selected">
+      <div class="tech-avatar">SA</div>
+      <div class="tech-info">
+        <div class="tech-name">Sajid Ahmed</div>
+        <div class="tech-meta">Senior • Power boards specialist</div>
+        <span class="skill-match">Skill match</span>
+      </div>
+      <div class="tech-workload">
+        <div class="workload-count">4</div>
+        <div class="workload-label">Active</div>
+      </div>
+    </div>
+    <div class="tech-row">
+      <div class="tech-avatar">RH</div>
+      <div class="tech-info">
+        <div class="tech-name">Rahim Hossain</div>
+        <div class="tech-meta">Junior • Panel specialist</div>
+        <span class="skill-mismatch">Different skill</span>
+      </div>
+      <div class="tech-workload">
+        <div class="workload-count">6</div>
+        <div class="workload-label">Active</div>
+      </div>
+    </div>
+    <div class="tech-row dimmed">
+      <div class="tech-avatar">KA</div>
+      <div class="tech-info">
+        <div class="tech-name">Kamal Ali</div>
+        <div class="tech-meta">Junior • General repair</div>
+        <span class="skill-mismatch">Different skill</span>
+      </div>
+      <div class="tech-workload">
+        <div class="workload-count">8</div>
+        <div class="workload-label">Active</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="sub-title">Estimated Cost</div>
+  <div class="cost-section">
+    <div class="cost-input-wrap">
+      <span class="cost-symbol">৳</span>
+      <input class="cost-input" type="number" placeholder="0" value="2800">
+    </div>
+  </div>
+</div>
+
+<div class="bottom-bar">
+  <button class="back-btn">Back</button>
+  <button class="next-btn">Review <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Jobs - Filters Panel</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0f1117; color: #e4e4e7;
+  max-width: 390px; margin: 0 auto; min-height: 100dvh;
+}
+
+.backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); backdrop-filter: blur(3px); z-index: 50; }
+
+/* Filter Sheet (bottom) */
+.filter-sheet {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 100%; max-width: 390px; z-index: 100;
+  background: #18181b; border-radius: 24px 24px 0 0;
+  padding: 0 0 calc(16px + env(safe-area-inset-bottom));
+  max-height: 75dvh; overflow-y: auto;
+}
+.sheet-handle { width: 36px; height: 4px; background: #3f3f46; border-radius: 2px; margin: 10px auto 0; }
+
+.filter-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 16px 20px 8px;
+}
+.filter-title { font-size: 18px; font-weight: 700; color: #fff; }
+.filter-clear { font-size: 13px; color: #ef4444; font-weight: 500; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+.filter-clear:active { background: #450a0a; }
+
+/* Filter Section */
+.filter-section { padding: 12px 20px; }
+.filter-label { font-size: 12px; font-weight: 600; color: #52525b; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 10px; }
+
+/* Chip Group */
+.chip-group { display: flex; flex-wrap: wrap; gap: 8px; }
+.filter-chip {
+  padding: 8px 14px; border-radius: 10px;
+  background: #27272a; border: 1px solid #3f3f46;
+  font-size: 13px; color: #a1a1aa; font-weight: 500;
+  cursor: pointer; transition: all 0.15s;
+}
+.filter-chip:active { transform: scale(0.94); }
+.filter-chip.active { background: #1e293b; border-color: #3b82f6; color: #60a5fa; }
+.filter-chip.active-amber { background: #451a03; border-color: #f59e0b; color: #fbbf24; }
+.filter-chip.active-red { background: #450a0a; border-color: #ef4444; color: #fca5a5; }
+.filter-chip.active-green { background: #052e16; border-color: #22c55e; color: #86efac; }
+
+/* Technician Selector */
+.tech-select-list { display: flex; flex-direction: column; gap: 6px; }
+.tech-option {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 10px;
+  background: #1c1c24; border: 1px solid #27272a;
+  cursor: pointer; transition: all 0.15s;
+}
+.tech-option:active { transform: scale(0.98); }
+.tech-option.selected { border-color: #6366f1; background: #1e1b4b; }
+.tech-option .dot {
+  width: 10px; height: 10px; border-radius: 50%; border: 2px solid #3f3f46;
+}
+.tech-option.selected .dot { background: #6366f1; border-color: #6366f1; }
+.tech-option-name { font-size: 14px; color: #d4d4d8; }
+.tech-option.selected .tech-option-name { color: #a5b4fc; font-weight: 500; }
+
+/* Date Range */
+.date-row { display: flex; gap: 8px; }
+.date-input {
+  flex: 1; padding: 10px 12px; background: #1c1c24;
+  border: 1px solid #27272a; border-radius: 10px;
+  color: #e4e4e7; font-size: 14px; text-align: center;
+}
+
+/* Divider */
+.divider { height: 1px; background: #27272a; margin: 4px 20px; }
+
+/* Apply Button */
+.apply-bar { padding: 16px 20px; }
+.apply-btn {
+  width: 100%; padding: 14px; border-radius: 12px;
+  background: #2563eb; color: #fff; font-size: 15px;
+  font-weight: 600; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.apply-btn:active { transform: scale(0.97); }
+.active-count {
+  background: rgba(255,255,255,0.2); padding: 2px 8px;
+  border-radius: 6px; font-size: 12px;
+}
+</style>
+</head>
+<body>
+
+<div class="backdrop"></div>
+
+<div class="filter-sheet">
+  <div class="sheet-handle"></div>
+
+  <div class="filter-header">
+    <span class="filter-title">Filters</span>
+    <span class="filter-clear">Clear All</span>
+  </div>
+
+  <!-- Status -->
+  <div class="filter-section">
+    <div class="filter-label">Status</div>
+    <div class="chip-group">
+      <div class="filter-chip active">All</div>
+      <div class="filter-chip">Pending</div>
+      <div class="filter-chip">Diagnosing</div>
+      <div class="filter-chip">In Progress</div>
+      <div class="filter-chip">Pending Parts</div>
+      <div class="filter-chip">Ready</div>
+      <div class="filter-chip">Delivered</div>
+      <div class="filter-chip">Cancelled</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Priority -->
+  <div class="filter-section">
+    <div class="filter-label">Priority</div>
+    <div class="chip-group">
+      <div class="filter-chip">All</div>
+      <div class="filter-chip active-red">High</div>
+      <div class="filter-chip active-amber">Medium</div>
+      <div class="filter-chip active-green">Low</div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Technician -->
+  <div class="filter-section">
+    <div class="filter-label">Technician</div>
+    <div class="tech-select-list">
+      <div class="tech-option selected">
+        <div class="dot"></div>
+        <span class="tech-option-name">All Technicians</span>
+      </div>
+      <div class="tech-option">
+        <div class="dot"></div>
+        <span class="tech-option-name">Unassigned</span>
+      </div>
+      <div class="tech-option">
+        <div class="dot"></div>
+        <span class="tech-option-name">Sajid Ahmed</span>
+      </div>
+      <div class="tech-option">
+        <div class="dot"></div>
+        <span class="tech-option-name">Rahim Hossain</span>
+      </div>
+      <div class="tech-option">
+        <div class="dot"></div>
+        <span class="tech-option-name">Kamal Ali</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Date Range -->
+  <div class="filter-section">
+    <div class="filter-label">Date Range</div>
+    <div class="date-row">
+      <input class="date-input" type="text" value="Last 7 days" readonly>
+    </div>
+  </div>
+
+  <div class="apply-bar">
+    <button class="apply-btn">
+      Apply Filters
+      <span class="active-count">2</span>
+    </button>
+  </div>
+</div>
+
+</body>
+</html>

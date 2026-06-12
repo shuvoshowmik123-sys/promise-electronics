@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -6,18 +6,51 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PrintStyles } from "@/components/print";
-import { Search, UserPlus, Trash2, CreditCard, Plus, ShoppingCart, Package, Loader2, Minus, FileText, Banknote, Smartphone, Clock, Shield, ChevronDown, Link, ListPlus, X, Landmark, ScanBarcode, LockKeyhole, AlertTriangle, TrendingDown, TrendingUp, Equal, Ban } from "lucide-react";
+import { Search, UserPlus, Trash2, CreditCard, Plus, ShoppingCart, Package, Loader2, Minus, FileText, Banknote, Smartphone, Clock, Shield, ChevronDown, Link, ListPlus, X, Landmark, ScanBarcode, LockKeyhole, AlertTriangle, TrendingDown, TrendingUp, Equal, Ban, RefreshCcw, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { inventoryApi, jobTicketsApi, posTransactionsApi, settingsApi, adminCustomersApi, drawerApi } from "@/lib/api";
 import { toast } from "sonner";
-import { CartItem, LinkedJobCharge, TransactionData, PAYMENT_METHODS, parseImages } from "./pos/pos-types";
-import { CustomerDialog, JobLinkDialog, InventoryDialog, SuccessDialog, InvoicePreviewDialog, ReceiptPreviewDialog, HistoryDialog, RefundDialog } from "./pos/PosDialogs";
+import { CartItem, LinkedJobCharge, TransactionData, PAYMENT_METHODS, parseImages, parseTransactionForReprint } from "./pos/pos-types";
+const CustomerDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.CustomerDialog })));
+const JobLinkDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.JobLinkDialog })));
+const InventoryDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.InventoryDialog })));
+const SuccessDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.SuccessDialog })));
+const InvoicePreviewDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.InvoicePreviewDialog })));
+const ReceiptPreviewDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.ReceiptPreviewDialog })));
+const HistoryDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.HistoryDialog })));
+const RefundDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.RefundDialog })));
 import { containerVariants, itemVariants, bounceItemVariants, BentoCard } from "../shared";
 import { DrawerModals } from "@/components/admin/DrawerModals";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 
-export default function PosTab() {
+const OPEN_REGISTER_DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 2, 1] as const;
+type OpenRegisterDenomination = typeof OPEN_REGISTER_DENOMINATIONS[number];
+type OpenRegisterCounts = Record<OpenRegisterDenomination, number>;
+
+const createEmptyOpenRegisterCounts = (): OpenRegisterCounts => ({
+    1000: 0,
+    500: 0,
+    200: 0,
+    100: 0,
+    50: 0,
+    20: 0,
+    10: 0,
+    5: 0,
+    2: 0,
+    1: 0,
+});
+
+const calculateOpenRegisterTotal = (counts: OpenRegisterCounts) =>
+    OPEN_REGISTER_DENOMINATIONS.reduce((total, denomination) => total + denomination * counts[denomination], 0);
+
+interface PosTabProps {
+    initialSearchQuery?: string;
+    initialTransactionId?: string;
+    onSearchConsumed?: () => void;
+}
+
+export default function PosTab({ initialSearchQuery, initialTransactionId, onSearchConsumed }: PosTabProps = {}) {
     const queryClient = useQueryClient();
     const [isMobile, setIsMobile] = useState(false);
     const { user } = useAdminAuth();
@@ -28,6 +61,7 @@ export default function PosTab() {
         queryFn: drawerApi.getActive
     });
     const [drawerModalType, setDrawerModalType] = useState<'open' | 'drop' | null>(null);
+    const [openRegisterCounts, setOpenRegisterCounts] = useState<OpenRegisterCounts>(() => createEmptyOpenRegisterCounts());
 
     // Cart & checkout state
     const [cartItems, setCartItems] = useState<CartItem[]>([]);
@@ -50,6 +84,8 @@ export default function PosTab() {
     const [showReceiptPreview, setShowReceiptPreview] = useState(false);
     const [showHistoryDialog, setShowHistoryDialog] = useState(false);
     const [showRefundDialog, setShowRefundDialog] = useState(false);
+    const [showPaymentReview, setShowPaymentReview] = useState(false);
+    const [holdConfirming, setHoldConfirming] = useState(false);
     const [refundTransaction, setRefundTransaction] = useState<any>(null);
     const [lastTransaction, setLastTransaction] = useState<TransactionData | null>(null);
     const [autoShareReceipt, setAutoShareReceipt] = useState(false);
@@ -64,6 +100,7 @@ export default function PosTab() {
     const [barcodeBuffer, setBarcodeBuffer] = useState("");
     const lastKeyTimeRef = useRef(0);
     const barcodeTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const holdConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     const mobileScrollTickingRef = useRef(false);
 
     // ── Data Queries ──
@@ -95,12 +132,28 @@ export default function PosTab() {
         address: getSettingValue("company_address", "Dhaka, Bangladesh"), phone: getSettingValue("support_phone", "+880 1700-000000"),
         email: getSettingValue("company_email", "support@promise-electronics.com"), website: getSettingValue("company_website", "www.promise-electronics.com"),
     });
+    const openRegisterTotal = calculateOpenRegisterTotal(openRegisterCounts);
+    const openRegisterNotesTotal = [1000, 500, 200, 100, 50, 20].reduce((sum, denomination) => sum + denomination * openRegisterCounts[denomination as OpenRegisterDenomination], 0);
+    const openRegisterSmallCashTotal = openRegisterTotal - openRegisterNotesTotal;
+
+    const updateOpenRegisterCount = (denomination: OpenRegisterDenomination, nextCount: number) => {
+        setOpenRegisterCounts((previous) => ({
+            ...previous,
+            [denomination]: Math.max(0, Math.min(999, Number.isFinite(nextCount) ? Math.floor(nextCount) : 0)),
+        }));
+    };
 
     // ── Effects ──
     useEffect(() => {
         const check = () => setIsMobile(window.innerWidth < 1024);
         check(); window.addEventListener("resize", check);
         return () => window.removeEventListener("resize", check);
+    }, []);
+
+    useEffect(() => {
+        return () => {
+            if (holdConfirmTimerRef.current) clearTimeout(holdConfirmTimerRef.current);
+        };
     }, []);
 
     // Navigation state from Cashier Dashboard
@@ -117,6 +170,33 @@ export default function PosTab() {
             toast.success(`Loaded linked job #${state.linkedJobId}`);
         }
     }, []);
+
+    // Handle initialSearchQuery from deep link (e.g., Smart Search)
+    useEffect(() => {
+        if (initialSearchQuery !== undefined) {
+            setProductSearch(initialSearchQuery);
+            onSearchConsumed?.();
+        }
+    }, [initialSearchQuery]);
+
+    // Auto-open transaction by initialTransactionId (from Smart Search deep-link)
+    const initialTransactionIdOpenedRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (initialTransactionId && posTransactions) {
+            if (initialTransactionIdOpenedRef.current === initialTransactionId) return;
+            const transactions = Array.isArray(posTransactions) ? posTransactions : (posTransactions as any)?.items || [];
+            const match = transactions.find((t: any) =>
+                t.id === initialTransactionId ||
+                t.invoiceNumber === initialTransactionId
+            );
+            if (match) {
+                initialTransactionIdOpenedRef.current = initialTransactionId;
+                const td = parseTransactionForReprint(match);
+                setLastTransaction(td);
+                setShowInvoicePreview(true);
+            }
+        }
+    }, [initialTransactionId, posTransactions]);
 
     // ── Cart Logic ──
     const addToCart = (item: CartItem) => {
@@ -176,7 +256,6 @@ export default function PosTab() {
             }
         });
         setSelectedInventory([]); setIsInventoryDialogOpen(false);
-        toast.success(`Added ${selectedInventory.length} item(s) to cart`);
     };
 
     // ── Customer ──
@@ -196,7 +275,7 @@ export default function PosTab() {
             if (matched) {
                 const imgs = parseImages(matched.images);
                 addToCart({ id: matched.id, name: matched.name, price: String(matched.price), quantity: 1, image: imgs[0] });
-                setProductSearch(""); setBarcodeBuffer(""); toast.success(`Scanned: ${matched.name}`);
+                setProductSearch(""); setBarcodeBuffer("");
             }
         }, 150);
     };
@@ -210,6 +289,25 @@ export default function PosTab() {
     const calculateTotal = () => { const s = calculateSubtotal(); return s + calculateTax(s) - discount; };
 
     // ── Checkout ──
+    const openRegisterMutation = useMutation({
+        mutationFn: () => {
+            if (!user?.id) throw new Error("Current user is required to open register");
+            return drawerApi.open({
+                startingFloat: openRegisterTotal,
+                openedBy: user.id,
+                openedByName: user.name,
+            });
+        },
+        onSuccess: () => {
+            toast.success("Register opened successfully");
+            setOpenRegisterCounts(createEmptyOpenRegisterCounts());
+            queryClient.invalidateQueries({ queryKey: ["activeDrawer"] });
+            queryClient.invalidateQueries({ queryKey: ["drawer-active"] });
+            queryClient.invalidateQueries({ queryKey: ["drawerHistory"] });
+        },
+        onError: (error: Error) => toast.error(error.message || "Failed to open register"),
+    });
+
     const checkoutMutation = useMutation({
         mutationFn: posTransactionsApi.create,
         onSuccess: async (response) => {
@@ -244,9 +342,8 @@ export default function PosTab() {
         onError: (error: Error) => toast.error(`Checkout failed: ${error.message}`),
     });
 
-    const handleCheckout = () => {
+    const validateCheckout = () => {
         if (cartItems.length === 0 && linkedJobCharges.length === 0) { toast.error("Cart is empty!"); return; }
-        // Stock validation
         for (const item of cartItems) {
             const inv = inventoryItems?.find((i: any) => i.id === item.id);
             if (inv) { const stock = inv.stock || 0; if (item.quantity > stock) { toast.error(`Insufficient stock for "${item.name}"`, { description: `Only ${stock} units available. You have ${item.quantity} in cart.` }); return; } }
@@ -254,7 +351,10 @@ export default function PosTab() {
         const invalidJobs = linkedJobCharges.filter(j => !j.isValid);
         if (invalidJobs.length > 0) { toast.error("Please select a service and valid billing amount for all linked jobs"); return; }
         if (paymentMethod === "Due" && !customerName.trim()) { toast.error("Customer name is required for Due/Credit payments!"); return; }
+        return true;
+    };
 
+    const submitCheckout = () => {
         const subtotal = calculateSubtotal(); const tax = calculateTax(subtotal); const total = calculateTotal(); const vatRate = getVatPercentage();
         const linkedJobsData = linkedJobCharges.map(j => ({ jobId: j.jobId, serviceItemId: j.serviceItemId, serviceItemName: j.serviceItemName, minPrice: j.minPrice, maxPrice: j.maxPrice, billedAmount: j.billedAmount, customerName: j.customerName, customerPhone: j.customerPhone, customerAddress: j.customerAddress, assistedByNames: j.assistedByNames }));
 
@@ -264,6 +364,31 @@ export default function PosTab() {
             subtotal: parseFloat(subtotal.toFixed(2)), tax: parseFloat(tax.toFixed(2)), taxRate: parseFloat(vatRate.toFixed(2)),
             discount: parseFloat(discount.toFixed(2)), total: parseFloat(total.toFixed(2)), paymentMethod, paymentStatus: paymentMethod === "Due" ? "Due" : "Paid",
         });
+    };
+
+    const handleCheckout = () => {
+        if (!validateCheckout()) return;
+        setShowPaymentReview(true);
+    };
+
+    const cancelHoldConfirm = () => {
+        if (holdConfirmTimerRef.current) {
+            clearTimeout(holdConfirmTimerRef.current);
+            holdConfirmTimerRef.current = null;
+        }
+        setHoldConfirming(false);
+    };
+
+    const startHoldConfirm = () => {
+        if (checkoutMutation.isPending) return;
+        setHoldConfirming(true);
+        holdConfirmTimerRef.current = setTimeout(() => {
+            holdConfirmTimerRef.current = null;
+            setHoldConfirming(false);
+            if (!validateCheckout()) return;
+            setShowPaymentReview(false);
+            submitCheckout();
+        }, 1400);
     };
 
     const handleRequestRefund = (t: any) => { setRefundTransaction(t); setShowRefundDialog(true); };
@@ -453,7 +578,106 @@ export default function PosTab() {
             {!hasDrawerSession && (
                 <div className="absolute inset-0 z-50 flex flex-col">
                     {/* ── Mobile lock screen ── */}
-                    <div className="md:hidden flex flex-col h-full bg-slate-900 px-5 py-8">
+                    <form
+                        className="md:hidden flex h-full min-h-0 flex-col bg-[#f8fafc] px-3 pt-2 pb-24"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            openRegisterMutation.mutate();
+                        }}
+                    >
+                        <div className="flex flex-none items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white/90 p-2.5 shadow-sm backdrop-blur">
+                            <button
+                                type="button"
+                                className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm active:scale-95"
+                                onClick={() => {
+                                    if (window.history.length > 1) {
+                                        window.history.back();
+                                        return;
+                                    }
+                                    window.location.hash = "dashboard";
+                                }}
+                                aria-label="Back"
+                            >
+                                <ChevronDown className="h-5 w-5 rotate-90" />
+                            </button>
+                            <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                    <h2 className="truncate text-lg font-black text-slate-950">Open Register</h2>
+                                    <Badge className="rounded-full border border-rose-200 bg-rose-50 px-2 py-0 text-[10px] text-rose-700 hover:bg-rose-50">Closed</Badge>
+                                </div>
+                                <p className="truncate text-[11px] font-semibold text-slate-500">Count opening cash before counter sales.</p>
+                            </div>
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                                <Wallet className="h-5 w-5" />
+                            </div>
+                        </div>
+
+                        <div className="mt-2 flex flex-none items-end justify-between rounded-2xl border border-slate-200 bg-slate-950 p-3 text-white shadow-sm">
+                            <div>
+                                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-white/40">Total Opening Float</p>
+                                <div className="mt-1 text-3xl font-black tabular-nums">{getCurrencySymbol()}{openRegisterTotal.toLocaleString()}</div>
+                            </div>
+                            <div className="text-right text-[11px] font-bold text-white/55">
+                                <div>Notes {getCurrencySymbol()}{openRegisterNotesTotal.toLocaleString()}</div>
+                                <div>Small {getCurrencySymbol()}{openRegisterSmallCashTotal.toLocaleString()}</div>
+                            </div>
+                        </div>
+
+                        {lastDrawerSession?.openedByName && (
+                            <div className="mt-2 flex flex-none items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs shadow-sm">
+                                <span className="font-bold text-slate-400">Last session</span>
+                                <span className="max-w-[180px] truncate font-black text-slate-700">{lastDrawerSession.openedByName}</span>
+                            </div>
+                        )}
+
+                        <div className="mt-2 min-h-0 flex-1 overflow-y-auto rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                            <div className="mb-2 flex items-center justify-between">
+                                <div>
+                                    <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">Cash counter pad</p>
+                                    <p className="text-xs font-semibold text-slate-500">Tap count. Total updates instantly.</p>
+                                </div>
+                                <Button type="button" variant="outline" size="sm" className="h-8 rounded-lg px-2 text-xs" onClick={() => setOpenRegisterCounts(createEmptyOpenRegisterCounts())}>
+                                    Clear
+                                </Button>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                {OPEN_REGISTER_DENOMINATIONS.map((denomination) => {
+                                    const count = openRegisterCounts[denomination];
+                                    const subtotalForDenomination = count * denomination;
+                                    const isActive = count > 0;
+                                    const isSmallCash = denomination <= 10;
+
+                                    return (
+                                        <div key={denomination} className={cn("rounded-xl border p-2.5", isActive ? "border-blue-200 bg-blue-50" : isSmallCash ? "border-slate-200 bg-slate-50" : "border-slate-200 bg-white")}>
+                                            <div className="flex items-start justify-between gap-1">
+                                                <div>
+                                                    <div className="text-base font-black tabular-nums text-slate-950">{getCurrencySymbol()}{denomination}</div>
+                                                    <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">{isSmallCash ? "Small" : "Note"}</div>
+                                                </div>
+                                                <div className={cn("rounded-md px-1.5 py-0.5 text-[10px] font-black tabular-nums", isActive ? "bg-white text-blue-700" : "bg-slate-100 text-slate-400")}>
+                                                    {getCurrencySymbol()}{subtotalForDenomination}
+                                                </div>
+                                            </div>
+                                            <div className="mt-2 grid grid-cols-[30px_1fr_30px] items-center gap-1.5">
+                                                <button type="button" className="flex h-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 active:scale-95" onClick={() => updateOpenRegisterCount(denomination, count - 1)}>
+                                                    <Minus className="h-3.5 w-3.5" />
+                                                </button>
+                                                <Input type="number" inputMode="numeric" min={0} value={count} onChange={(event) => updateOpenRegisterCount(denomination, Number(event.target.value))} className="h-8 rounded-lg border-slate-200 bg-white text-center text-sm font-black tabular-nums" />
+                                                <button type="button" className="flex h-8 items-center justify-center rounded-lg bg-blue-600 text-white active:scale-95" onClick={() => updateOpenRegisterCount(denomination, count + 1)}>
+                                                    <Plus className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <Button type="submit" className="mt-2 h-12 flex-none rounded-2xl bg-blue-600 text-base font-black text-white shadow-lg shadow-blue-500/20 hover:bg-blue-700" disabled={openRegisterMutation.isPending || !user?.id}>
+                            {openRegisterMutation.isPending ? "Opening..." : "Confirm Float & Open"}
+                        </Button>
+                    </form>
+                    <div className="hidden flex-col h-full bg-slate-900 px-5 py-8">
                         <div className="flex-1 flex flex-col items-center justify-center gap-5">
                             <div className="w-24 h-24 rounded-[2rem] bg-white/10 border border-white/10 flex items-center justify-center">
                                 <LockKeyhole className="w-12 h-12 text-white/80" />
@@ -486,7 +710,114 @@ export default function PosTab() {
                         </button>
                     </div>
                     {/* ── Desktop lock screen (original style) ── */}
-                    <div className="hidden md:flex bg-slate-100/80 backdrop-blur-md flex-col items-center justify-center h-full p-6 text-center">
+                    <div className="hidden md:flex h-full min-h-0 flex-col bg-[#f8fafc] p-4">
+                        <div className="flex flex-none items-start justify-between gap-4 rounded-[2rem] border border-slate-200 bg-white/85 p-5 shadow-sm">
+                            <div className="flex items-start gap-4">
+                                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-100">
+                                    <LockKeyhole className="h-7 w-7 text-rose-600" />
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h2 className="text-2xl font-black text-slate-950">Open Register</h2>
+                                        <Badge className="rounded-full border border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-50">Register Closed</Badge>
+                                    </div>
+                                    <p className="mt-1 text-sm font-medium text-slate-500">Count opening cash before POS transactions begin.</p>
+                                </div>
+                            </div>
+                            {lastDrawerSession?.openedByName && (
+                                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-right text-sm shadow-inner">
+                                    <p className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400">Last session</p>
+                                    <p className="mt-1 font-black text-slate-800">{lastDrawerSession.openedByName}</p>
+                                    {lastDrawerSession.closedAt && (
+                                        <p className="text-xs font-semibold text-slate-500">
+                                            {new Date(lastDrawerSession.closedAt).toLocaleDateString("en-BD", { day: "numeric", month: "short" })}
+                                            {" · "}
+                                            {new Date(lastDrawerSession.closedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                        <form
+                            onSubmit={(event) => {
+                                event.preventDefault();
+                                openRegisterMutation.mutate();
+                            }}
+                            className="mt-4 grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]"
+                        >
+                            <div className="flex min-h-0 flex-col rounded-[2rem] border border-slate-200 bg-white p-4 shadow-sm">
+                                <div className="flex flex-none items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                                    <div>
+                                        <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Opening Cash Count</p>
+                                        <h3 className="mt-1 text-xl font-black text-slate-950">Cash counter pad</h3>
+                                    </div>
+                                    <Button type="button" variant="outline" size="sm" className="h-9 rounded-xl gap-2" onClick={() => setOpenRegisterCounts(createEmptyOpenRegisterCounts())}>
+                                        <RefreshCcw className="h-4 w-4" />
+                                        Clear
+                                    </Button>
+                                </div>
+                                <div className="mt-4 grid min-h-0 grid-cols-2 gap-3 overflow-y-auto pr-1 xl:grid-cols-3">
+                                    {OPEN_REGISTER_DENOMINATIONS.map((denomination) => {
+                                        const count = openRegisterCounts[denomination];
+                                        const subtotalForDenomination = count * denomination;
+                                        const isActive = count > 0;
+                                        const isSmallCash = denomination <= 10;
+
+                                        return (
+                                            <div key={denomination} className={cn("rounded-2xl border p-3 transition-colors", isActive ? "border-blue-200 bg-blue-50/80 shadow-sm" : isSmallCash ? "border-slate-200 bg-slate-50/70" : "border-slate-200 bg-white")}>
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div>
+                                                        <div className="text-lg font-black tabular-nums text-slate-950">{getCurrencySymbol()}{denomination}</div>
+                                                        <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">{isSmallCash ? "Small cash" : "Note"}</div>
+                                                    </div>
+                                                    <div className={cn("rounded-full px-2 py-1 text-[11px] font-black tabular-nums", isActive ? "bg-white text-blue-700" : "bg-slate-100 text-slate-400")}>
+                                                        {getCurrencySymbol()}{subtotalForDenomination}
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3 grid grid-cols-[34px_1fr_34px] items-center gap-2">
+                                                    <button type="button" className="flex h-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm active:scale-95" onClick={() => updateOpenRegisterCount(denomination, count - 1)}>
+                                                        <Minus className="h-4 w-4" />
+                                                    </button>
+                                                    <Input type="number" inputMode="numeric" min={0} value={count} onChange={(event) => updateOpenRegisterCount(denomination, Number(event.target.value))} className="h-9 rounded-xl border-slate-200 bg-white text-center text-base font-black tabular-nums" />
+                                                    <button type="button" className="flex h-9 items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm active:scale-95" onClick={() => updateOpenRegisterCount(denomination, count + 1)}>
+                                                        <Plus className="h-4 w-4" />
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                            <div className="flex min-h-0 flex-col rounded-[2rem] border border-slate-200 bg-slate-950 p-5 text-white shadow-sm">
+                                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-500/15">
+                                    <Wallet className="h-6 w-6 text-blue-200" />
+                                </div>
+                                <p className="mt-5 text-[11px] font-black uppercase tracking-[0.16em] text-white/40">Total Opening Float</p>
+                                <div className="mt-2 text-5xl font-black tabular-nums">{getCurrencySymbol()}{openRegisterTotal.toLocaleString()}</div>
+                                <div className="mt-5 space-y-3 text-sm">
+                                    <div className="flex items-center justify-between rounded-2xl bg-white/8 px-3 py-2">
+                                        <span className="text-white/50">Notes total</span>
+                                        <span className="font-black tabular-nums">{getCurrencySymbol()}{openRegisterNotesTotal.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between rounded-2xl bg-white/8 px-3 py-2">
+                                        <span className="text-white/50">Small cash</span>
+                                        <span className="font-black tabular-nums">{getCurrencySymbol()}{openRegisterSmallCashTotal.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between rounded-2xl bg-white/8 px-3 py-2">
+                                        <span className="text-white/50">Opened by</span>
+                                        <span className="max-w-[150px] truncate font-black">{user?.name || "Unknown"}</span>
+                                    </div>
+                                </div>
+                                <div className="mt-auto rounded-2xl border border-blue-300/20 bg-blue-400/10 p-3 text-xs font-semibold leading-relaxed text-blue-100">
+                                    This amount becomes the opening float for the active POS session.
+                                </div>
+                                <Button type="submit" className="mt-4 h-12 rounded-2xl bg-blue-600 text-base font-black text-white hover:bg-blue-700" disabled={openRegisterMutation.isPending || !user?.id}>
+                                    {openRegisterMutation.isPending ? "Opening..." : "Confirm Float & Open"}
+                                </Button>
+                            </div>
+                        </form>
+                    </div>
+                    <div className="hidden bg-slate-100/80 backdrop-blur-md flex-col items-center justify-center h-full p-6 text-center">
                         <div className="bg-white p-8 rounded-3xl shadow-xl max-w-md w-full border border-slate-200">
                             <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-rose-100 mb-6">
                                 <LockKeyhole className="h-10 w-10 text-rose-600" />
@@ -630,39 +961,41 @@ export default function PosTab() {
             )}
 
             {/* All Dialogs */}
-            <CustomerDialog open={isCustomerDialogOpen} onOpenChange={setIsCustomerDialogOpen} customers={customers || []} customersLoading={customersLoading} onSelect={handleSelectCustomer} getCurrencySymbol={getCurrencySymbol} />
-            <JobLinkDialog
-                open={isJobDialogOpen}
-                onOpenChange={setIsJobDialogOpen}
-                billableJobs={billableJobs}
-                jobsLoading={jobsLoading}
-                linkedJobCharges={linkedJobCharges}
-                onJobSelection={handleJobSelection}
-                serviceItems={serviceItems}
-                onServiceItemSelect={handleServiceItemSelect}
-                onBilledAmountChange={handleBilledAmountChange}
-                getCurrencySymbol={getCurrencySymbol}
-            />
-            <InventoryDialog open={isInventoryDialogOpen} onOpenChange={setIsInventoryDialogOpen} inventoryItems={inventoryItems} inventoryLoading={inventoryLoading} selectedInventory={selectedInventory} onInventorySelection={handleInventorySelection} onAddToCart={handleAddInventoryToCart} getCurrencySymbol={getCurrencySymbol} />
-            <SuccessDialog
-                open={showSuccessDialog}
-                onOpenChange={setShowSuccessDialog}
-                lastTransaction={lastTransaction}
-                getCurrencySymbol={getCurrencySymbol}
-                onShowInvoice={() => { setShowSuccessDialog(false); setShowInvoicePreview(true); }}
-                onShowReceipt={() => { setShowSuccessDialog(false); setShowReceiptPreview(true); }}
-                onSharePDF={() => { setAutoShareReceipt(true); setShowReceiptPreview(true); }}
-            />
-            <InvoicePreviewDialog open={showInvoicePreview} onOpenChange={setShowInvoicePreview} lastTransaction={lastTransaction} companyInfo={companyInfo} />
-            <ReceiptPreviewDialog
-                open={showReceiptPreview}
-                onOpenChange={(v) => { setShowReceiptPreview(v); if (!v) setAutoShareReceipt(false); }}
-                lastTransaction={lastTransaction}
-                companyInfo={companyInfo}
-                autoShare={autoShareReceipt}
-            />
-            <HistoryDialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog} posTransactions={Array.isArray(posTransactions) ? posTransactions : (posTransactions?.items || [])} getCurrencySymbol={getCurrencySymbol} onRequestRefund={handleRequestRefund} onSetTransaction={setLastTransaction} onShowInvoice={() => setShowInvoicePreview(true)} onShowReceipt={() => setShowReceiptPreview(true)} />
-            <RefundDialog open={showRefundDialog} onOpenChange={setShowRefundDialog} refundTransaction={refundTransaction} getCurrencySymbol={getCurrencySymbol} />
+            <Suspense fallback={null}>
+                <CustomerDialog open={isCustomerDialogOpen} onOpenChange={setIsCustomerDialogOpen} customers={customers || []} customersLoading={customersLoading} onSelect={handleSelectCustomer} getCurrencySymbol={getCurrencySymbol} />
+                <JobLinkDialog
+                    open={isJobDialogOpen}
+                    onOpenChange={setIsJobDialogOpen}
+                    billableJobs={billableJobs}
+                    jobsLoading={jobsLoading}
+                    linkedJobCharges={linkedJobCharges}
+                    onJobSelection={handleJobSelection}
+                    serviceItems={serviceItems}
+                    onServiceItemSelect={handleServiceItemSelect}
+                    onBilledAmountChange={handleBilledAmountChange}
+                    getCurrencySymbol={getCurrencySymbol}
+                />
+                <InventoryDialog open={isInventoryDialogOpen} onOpenChange={setIsInventoryDialogOpen} inventoryItems={inventoryItems} inventoryLoading={inventoryLoading} selectedInventory={selectedInventory} onInventorySelection={handleInventorySelection} onAddToCart={handleAddInventoryToCart} getCurrencySymbol={getCurrencySymbol} />
+                <SuccessDialog
+                    open={showSuccessDialog}
+                    onOpenChange={setShowSuccessDialog}
+                    lastTransaction={lastTransaction}
+                    getCurrencySymbol={getCurrencySymbol}
+                    onShowInvoice={() => { setShowSuccessDialog(false); setShowInvoicePreview(true); }}
+                    onShowReceipt={() => { setShowSuccessDialog(false); setShowReceiptPreview(true); }}
+                    onSharePDF={() => { setAutoShareReceipt(true); setShowReceiptPreview(true); }}
+                />
+                <InvoicePreviewDialog open={showInvoicePreview} onOpenChange={setShowInvoicePreview} lastTransaction={lastTransaction} companyInfo={companyInfo} />
+                <ReceiptPreviewDialog
+                    open={showReceiptPreview}
+                    onOpenChange={(v) => { setShowReceiptPreview(v); if (!v) setAutoShareReceipt(false); }}
+                    lastTransaction={lastTransaction}
+                    companyInfo={companyInfo}
+                    autoShare={autoShareReceipt}
+                />
+                <HistoryDialog open={showHistoryDialog} onOpenChange={setShowHistoryDialog} posTransactions={Array.isArray(posTransactions) ? posTransactions : (posTransactions?.items || [])} getCurrencySymbol={getCurrencySymbol} onRequestRefund={handleRequestRefund} onSetTransaction={setLastTransaction} onShowInvoice={() => setShowInvoicePreview(true)} onShowReceipt={() => setShowReceiptPreview(true)} />
+                <RefundDialog open={showRefundDialog} onOpenChange={setShowRefundDialog} refundTransaction={refundTransaction} getCurrencySymbol={getCurrencySymbol} />
+            </Suspense>
 
             {/* Mobile Cart Bar — dark bottom strip, matches mockup */}
             {isMobile && cartCount > 0 && !mobileCartOpen && (
@@ -686,169 +1019,137 @@ export default function PosTab() {
             <AnimatePresence>
                 {isMobile && mobileCartOpen && (
                     <>
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[55]" onClick={() => setMobileCartOpen(false)} />
-                        <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="fixed bottom-0 left-0 right-0 z-[60] bg-white rounded-t-3xl shadow-2xl max-h-[90vh] flex flex-col">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[210] bg-black/40 backdrop-blur-sm" onClick={() => setMobileCartOpen(false)} />
+                        <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="fixed bottom-0 left-0 right-0 z-[220] flex h-[calc(100dvh-0.5rem)] flex-col rounded-t-[2rem] bg-white shadow-2xl">
                             <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1" />
-                            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-purple-50">
-                                <div className="flex items-center gap-2 text-indigo-900"><ShoppingCart className="w-5 h-5" /><h3 className="font-bold text-lg">Cart ({cartCount})</h3></div>
+                            <div className="flex items-center justify-between border-b border-slate-100 bg-white px-5 py-3">
+                                <div>
+                                    <div className="flex items-center gap-2 text-slate-950"><ShoppingCart className="w-5 h-5 text-blue-600" /><h3 className="text-xl font-black">Cart</h3></div>
+                                    <p className="mt-0.5 text-xs font-semibold text-slate-400">{cartCount} item{cartCount === 1 ? "" : "s"} ready for checkout</p>
+                                </div>
                                 <div className="flex gap-2">
-                                    <Button size="sm" variant="ghost" className="rounded-full hover:bg-indigo-100 text-indigo-700" onClick={() => setShowHistoryDialog(true)}><FileText className="h-4 w-4" /></Button>
-                                    <Button size="icon" variant="ghost" className="rounded-full hover:bg-rose-100 text-slate-500 hover:text-rose-600" onClick={() => setMobileCartOpen(false)}><X className="h-5 w-5" /></Button>
+                                    <Button size="icon" variant="ghost" className="h-9 w-9 rounded-full bg-slate-100 text-slate-500 hover:bg-blue-50 hover:text-blue-600" onClick={() => { setMobileCartOpen(false); setTimeout(() => setShowHistoryDialog(true), 220); }}><FileText className="h-4 w-4" /></Button>
+                                    <Button size="icon" variant="ghost" className="h-9 w-9 rounded-full bg-slate-100 text-slate-500 hover:bg-rose-50 hover:text-rose-600" onClick={() => setMobileCartOpen(false)}><X className="h-5 w-5" /></Button>
                                 </div>
                             </div>
 
-                            <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/30">
+                            <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4 pb-5">
                                 {/* Mobile Cart Customer — with autocomplete */}
-                                <div className="bg-white p-3 rounded-xl shadow-sm border border-slate-100 space-y-2">
-                                    {/* Name field + autocomplete */}
-                                    <div className="relative">
-                                        <div className="flex gap-2">
-                                            <input
-                                                type="text"
-                                                placeholder="Customer name"
-                                                className="flex-1 h-10 px-3 rounded-xl border border-slate-200 bg-slate-50 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                                                value={customerName}
-                                                onChange={(e) => { setCustomerName(e.target.value); setCustomerSearchField("name"); setShowCustomerAutocomplete(true); }}
-                                                onFocus={() => { setCustomerSearchField("name"); if (customerName.length > 0) setShowCustomerAutocomplete(true); }}
-                                                onBlur={() => setTimeout(() => setShowCustomerAutocomplete(false), 150)}
-                                            />
-                                            <Button size="icon" variant="outline" className="h-10 w-10 shrink-0 border-slate-200 bg-slate-50" onClick={() => setIsCustomerDialogOpen(true)}>
-                                                <UserPlus className="h-4 w-4 text-slate-500" />
-                                            </Button>
-                                        </div>
-                                        {showCustomerAutocomplete && customerSearchField === "name" && customerSuggestions.length > 0 && (
-                                            <div className="absolute left-0 right-10 top-full mt-1 z-50 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-                                                {customerSuggestions.map((c: any) => (
-                                                    <button
-                                                        key={c.id}
-                                                        type="button"
-                                                        onMouseDown={() => handleSelectCustomerSuggestion(c)}
-                                                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 active:bg-blue-50 border-b border-slate-100 last:border-0"
-                                                    >
-                                                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                                                            <span className="text-blue-700 font-black text-xs">{(c.name || "?")[0].toUpperCase()}</span>
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <p className="text-sm font-bold text-slate-900 truncate">{c.name}</p>
-                                                            {c.phone && <p className="text-[11px] text-slate-400">{c.phone}</p>}
-                                                        </div>
-                                                    </button>
-                                                ))}
+                                <div className="rounded-3xl border border-slate-100 bg-white p-3.5 shadow-sm">
+                                    <div className="flex items-start justify-between gap-3">
+                                        <div className="flex min-w-0 items-center gap-3">
+                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-sm font-black text-blue-700">
+                                                {(customerName || "G")[0].toUpperCase()}
                                             </div>
-                                        )}
+                                            <div className="min-w-0">
+                                                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Customer</p>
+                                                <p className="truncate text-sm font-black text-slate-950">{customerName || "Guest Customer"}</p>
+                                                <p className="truncate text-xs font-semibold text-slate-400">{customerPhone || "No phone added"}</p>
+                                            </div>
+                                        </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => setIsCustomerDialogOpen(true)}
+                                            className="flex h-9 shrink-0 items-center gap-1.5 rounded-xl bg-blue-600 px-3 text-xs font-black text-white shadow-sm active:scale-[0.97]"
+                                        >
+                                            <UserPlus className="h-4 w-4" />
+                                            Choose
+                                        </button>
                                     </div>
-                                    {/* Phone field + autocomplete */}
-                                    <div className="relative">
+                                    <div className="mt-3 grid grid-cols-1 gap-2">
                                         <input
                                             type="text"
                                             inputMode="tel"
                                             placeholder="Phone number"
-                                            className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-slate-50 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                                            className="h-10 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
                                             value={customerPhone}
-                                            onChange={(e) => { setCustomerPhone(e.target.value); setCustomerSearchField("phone"); setShowCustomerAutocomplete(true); }}
-                                            onFocus={() => { setCustomerSearchField("phone"); if (customerPhone.length > 0) setShowCustomerAutocomplete(true); }}
-                                            onBlur={() => setTimeout(() => setShowCustomerAutocomplete(false), 150)}
+                                            onChange={(e) => setCustomerPhone(e.target.value)}
                                         />
-                                        {showCustomerAutocomplete && customerSearchField === "phone" && customerSuggestions.length > 0 && (
-                                            <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
-                                                {customerSuggestions.map((c: any) => (
-                                                    <button
-                                                        key={c.id}
-                                                        type="button"
-                                                        onMouseDown={() => handleSelectCustomerSuggestion(c)}
-                                                        className="w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-slate-50 active:bg-blue-50 border-b border-slate-100 last:border-0"
-                                                    >
-                                                        <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center shrink-0">
-                                                            <span className="text-blue-700 font-black text-xs">{(c.name || "?")[0].toUpperCase()}</span>
-                                                        </div>
-                                                        <div className="min-w-0">
-                                                            <p className="text-sm font-bold text-slate-900 truncate">{c.name}</p>
-                                                            <p className="text-[11px] text-slate-400">{c.phone}</p>
-                                                        </div>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
+                                        <input
+                                            type="text"
+                                            placeholder="Address (optional)"
+                                            className="h-10 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
+                                            value={customerAddress}
+                                            onChange={(e) => setCustomerAddress(e.target.value)}
+                                        />
                                     </div>
-                                    <input
-                                        type="text"
-                                        placeholder="Address (optional)"
-                                        className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-slate-50 text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                                        value={customerAddress}
-                                        onChange={(e) => setCustomerAddress(e.target.value)}
-                                    />
                                 </div>
                                 {/* Mobile Cart Items */}
                                 {cartItems.map(item => {
                                     const price = parseFloat(item.price.replace(/[^0-9.-]+/g, "")); const inv = inventoryItems?.find((i: any) => i.id === item.id); const stock = inv?.stock || 0;
                                     return (
-                                        <div key={item.id} className="flex gap-3 items-start bg-white p-3 rounded-xl shadow-sm border border-slate-100">
-                                            <div className="w-14 h-14 bg-slate-50 rounded-lg shrink-0 overflow-hidden flex items-center justify-center border border-slate-100">{item.image ? <img src={item.image} alt={item.name} className="w-full h-full object-cover" /> : <Package className="w-6 h-6 text-slate-300" />}</div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-semibold text-slate-700 line-clamp-1">{item.name}</p>
-                                                <div className="flex items-center gap-2 mt-2">
-                                                    <div className="flex items-center border border-slate-200 rounded-lg bg-slate-50">
-                                                        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-l-lg hover:bg-slate-200" onClick={() => updateCartItemQuantity(item.id, item.quantity - 1)}><Minus className="h-3 w-3" /></Button>
-                                                        <span className="px-2 text-xs font-medium tabular-nums">{item.quantity}</span>
-                                                        <Button variant="ghost" size="icon" className="h-7 w-7 rounded-r-lg hover:bg-slate-200" onClick={() => updateCartItemQuantity(item.id, item.quantity + 1)}><Plus className="h-3 w-3" /></Button>
+                                        <div key={item.id} className="flex gap-3 rounded-3xl border border-slate-100 bg-white p-3.5 shadow-sm">
+                                            <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-100 bg-slate-50">{item.image ? <img src={item.image} alt={item.name} className="h-full w-full object-cover" /> : <Package className="h-6 w-6 text-slate-300" />}</div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-start gap-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        <p className="line-clamp-2 text-[13px] font-black leading-snug text-slate-900">{item.name}</p>
+                                                        <p className="mt-0.5 text-[10px] font-semibold text-slate-400">Stock {stock}</p>
                                                     </div>
-                                                    <span className="text-sm font-bold ml-auto text-slate-900">{getCurrencySymbol()}{(price * item.quantity).toFixed(2)}</span>
+                                                    <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full text-slate-300 hover:bg-red-50 hover:text-red-500" onClick={() => removeFromCart(item.id)}><Trash2 className="h-4 w-4" /></Button>
+                                                </div>
+                                                <div className="mt-2.5 flex items-center justify-between gap-3">
+                                                    <div className="flex items-center rounded-2xl border border-slate-200 bg-slate-50">
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-l-2xl hover:bg-slate-200" onClick={() => updateCartItemQuantity(item.id, item.quantity - 1)}><Minus className="h-3.5 w-3.5" /></Button>
+                                                        <span className="min-w-7 text-center text-sm font-black tabular-nums text-slate-800">{item.quantity}</span>
+                                                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-r-2xl hover:bg-slate-200" onClick={() => updateCartItemQuantity(item.id, item.quantity + 1)}><Plus className="h-3.5 w-3.5" /></Button>
+                                                    </div>
+                                                    <span className="text-sm font-black tabular-nums text-slate-950">{getCurrencySymbol()}{(price * item.quantity).toFixed(0)}</span>
                                                 </div>
                                             </div>
-                                            <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full" onClick={() => removeFromCart(item.id)}><Trash2 className="h-4 w-4" /></Button>
                                         </div>
                                     );
                                 })}
                                 <LinkedJobsInCart />
 
                                 {/* Close Register Mobile Button */}
-                                <div className="mt-4 pt-4 border-t border-slate-200 flex justify-center">
-                                    <Button variant="outline" className="w-full border-rose-200 text-rose-600 hover:bg-rose-50" onClick={() => setDrawerModalType('drop')}>
+                                <div className="pt-1">
+                                    <Button variant="outline" className="w-full rounded-2xl border-rose-200 bg-white text-rose-600 hover:bg-rose-50" onClick={() => setDrawerModalType('drop')}>
                                         Close Register
                                     </Button>
                                 </div>
                             </div>
 
                             {/* Mobile Sticky Footer */}
-                            <div className="border-t border-slate-200 bg-white p-4 space-y-3 z-10 shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.1)]">
+                            <div className="z-10 space-y-2.5 border-t border-slate-200 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.1)]">
                                 <div className="flex items-center justify-between">
-                                    <span className="text-slate-500 text-sm">Total Due</span>
-                                    <span className="font-bold text-2xl text-slate-900">{getCurrencySymbol()}{total.toFixed(2)}</span>
+                                    <span className="text-xs font-bold uppercase tracking-[0.14em] text-slate-400">Total Due</span>
+                                    <span className="text-xl font-black tabular-nums text-slate-900">{getCurrencySymbol()}{total.toFixed(0)}</span>
                                 </div>
                                 {/* 2×2 brand-colour payment tiles */}
-                                <div className="grid grid-cols-2 gap-2">
+                                <div className="-mx-1 overflow-x-auto px-1" style={{ scrollbarWidth: "none" }}>
+                                    <div className="flex min-w-max gap-2">
                                     {PAYMENT_METHODS.map(m => {
                                         const isSel = paymentMethod === m.value;
                                         if (m.value === "bKash") return (
                                             <button key={m.value} type="button" onClick={() => setPaymentMethod(m.value)}
-                                                className={cn("h-16 rounded-2xl flex flex-col items-center justify-center gap-0.5 border-2 transition-all active:scale-[0.97]", isSel ? "border-transparent" : "border-slate-200 bg-white")}
+                                                className={cn("flex h-9 min-w-[76px] items-center justify-center rounded-full border px-3 text-xs font-black transition-all active:scale-[0.97]", isSel ? "border-transparent text-white shadow-sm" : "border-slate-200 bg-white text-[#E2136E]")}
                                                 style={isSel ? { background: "#E2136E" } : {}}>
-                                                <span className={cn("text-[17px] font-black leading-none tracking-tight", isSel ? "text-white" : "text-[#E2136E]")}>bKash</span>
-                                                <span className={cn("text-[10px] font-medium", isSel ? "text-white/60" : "text-slate-400")}>Mobile Money</span>
+                                                bKash
                                             </button>
                                         );
                                         if (m.value === "Nagad") return (
                                             <button key={m.value} type="button" onClick={() => setPaymentMethod(m.value)}
-                                                className={cn("h-16 rounded-2xl flex flex-col items-center justify-center gap-0.5 border-2 transition-all active:scale-[0.97]", isSel ? "border-transparent" : "border-slate-200 bg-white")}
+                                                className={cn("flex h-9 min-w-[76px] items-center justify-center rounded-full border px-3 text-xs font-black transition-all active:scale-[0.97]", isSel ? "border-transparent text-white shadow-sm" : "border-slate-200 bg-white text-[#F06823]")}
                                                 style={isSel ? { background: "#F06823" } : {}}>
-                                                <span className={cn("text-[17px] font-black leading-none tracking-tight", isSel ? "text-white" : "text-[#F06823]")}>Nagad</span>
-                                                <span className={cn("text-[10px] font-medium", isSel ? "text-white/60" : "text-slate-400")}>Mobile Money</span>
+                                                Nagad
                                             </button>
                                         );
                                         const Icon = m.icon === "Banknote" ? Banknote : m.icon === "Landmark" ? Landmark : m.icon === "Clock" ? Clock : CreditCard;
                                         const selBg: Record<string, string> = { Cash: "#10b981", Bank: "#0ea5e9", Due: "#8b5cf6" };
                                         return (
                                             <button key={m.value} type="button" onClick={() => setPaymentMethod(m.value)}
-                                                className={cn("h-16 rounded-2xl flex flex-col items-center justify-center gap-1 border-2 transition-all active:scale-[0.97]", isSel ? "border-transparent" : "border-slate-200 bg-white")}
+                                                className={cn("flex h-9 min-w-[76px] items-center justify-center gap-1.5 rounded-full border px-3 text-xs font-black transition-all active:scale-[0.97]", isSel ? "border-transparent text-white shadow-sm" : "border-slate-200 bg-white text-slate-600")}
                                                 style={isSel ? { background: selBg[m.value] || "#64748b" } : {}}>
-                                                <Icon className={cn("w-5 h-5", isSel ? "text-white" : "text-slate-400")} />
-                                                <span className={cn("text-xs font-bold", isSel ? "text-white" : "text-slate-600")}>{m.label}</span>
+                                                <Icon className={cn("h-3.5 w-3.5", isSel ? "text-white" : "text-slate-400")} />
+                                                {m.label}
                                             </button>
                                         );
                                     })}
+                                    </div>
                                 </div>
-                                <Button className="w-full h-12 font-bold bg-gradient-to-r from-emerald-500 to-green-600 shadow-lg shadow-emerald-500/20 text-white rounded-xl text-base" onClick={handleCheckout} disabled={checkoutMutation.isPending || cartCount === 0}>
-                                    {checkoutMutation.isPending ? (<><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Processing...</>) : (<><CreditCard className="w-5 h-5 mr-2" /> {paymentMethod === "Due" ? "Create Due" : `Pay ${getCurrencySymbol()}${total.toFixed(0)}`}</>)}
+                                <Button className="h-11 w-full rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 text-sm font-black text-white shadow-lg shadow-emerald-500/20" onClick={handleCheckout} disabled={checkoutMutation.isPending || cartCount === 0}>
+                                    {checkoutMutation.isPending ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Processing...</>) : (<><CreditCard className="mr-2 h-4 w-4" /> {paymentMethod === "Due" ? "Review Due" : `Review ${getCurrencySymbol()}${total.toFixed(0)}`}</>)}
                                 </Button>
                             </div>
                         </motion.div>
@@ -857,6 +1158,139 @@ export default function PosTab() {
             </AnimatePresence>
 
             {/* ─── MOBILE PRODUCT GRID ─────────────────────────────────────── */}
+            <AnimatePresence>
+                {showPaymentReview && (
+                    <>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            className="fixed inset-0 z-[280] bg-slate-950/45 backdrop-blur-sm"
+                            onClick={() => {
+                                cancelHoldConfirm();
+                                setShowPaymentReview(false);
+                            }}
+                        />
+                        <motion.div
+                            initial={{ y: "100%" }}
+                            animate={{ y: 0 }}
+                            exit={{ y: "100%" }}
+                            transition={{ type: "spring", damping: 28, stiffness: 260 }}
+                            className="fixed inset-x-0 bottom-0 z-[290] flex max-h-[88dvh] flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:left-1/2 md:max-w-lg md:-translate-x-1/2"
+                        >
+                            <div className="flex items-center justify-center px-4 pt-3">
+                                <div className="h-1.5 w-12 rounded-full bg-slate-200" />
+                            </div>
+                            <div className="flex items-start justify-between gap-3 border-b border-slate-100 px-5 pb-4 pt-3">
+                                <div>
+                                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-emerald-600">Final Review</p>
+                                    <h3 className="text-xl font-black text-slate-950">Confirm payment</h3>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">Check items, customer, and method before billing.</p>
+                                </div>
+                                <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-9 w-9 shrink-0 rounded-full bg-slate-100 text-slate-500"
+                                    onClick={() => {
+                                        cancelHoldConfirm();
+                                        setShowPaymentReview(false);
+                                    }}
+                                >
+                                    <X className="h-4 w-4" />
+                                </Button>
+                            </div>
+                            <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-5 py-4">
+                                <div className="rounded-3xl border border-slate-100 bg-slate-50 p-4">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div>
+                                            <p className="text-xs font-bold text-slate-400">Customer</p>
+                                            <p className="mt-0.5 text-sm font-black text-slate-900">{customerName || "Walk-in customer"}</p>
+                                            {(customerPhone || customerAddress) && (
+                                                <p className="mt-1 line-clamp-2 text-xs font-medium text-slate-500">{[customerPhone, customerAddress].filter(Boolean).join(" - ")}</p>
+                                            )}
+                                        </div>
+                                        <div className="rounded-2xl bg-white px-3 py-2 text-right shadow-sm">
+                                            <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Method</p>
+                                            <p className="text-sm font-black text-slate-900">{paymentMethod}</p>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    {cartItems.map((item) => {
+                                        const price = parseFloat(item.price.replace(/[^0-9.-]+/g, ""));
+                                        return (
+                                            <div key={item.id} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+                                                <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-50">
+                                                    {item.image ? <img src={item.image} alt={item.name} className="h-full w-full object-cover" /> : <Package className="h-5 w-5 text-slate-300" />}
+                                                </div>
+                                                <div className="min-w-0 flex-1">
+                                                    <p className="line-clamp-1 text-sm font-black text-slate-900">{item.name}</p>
+                                                    <p className="text-xs font-semibold text-slate-400">Qty {item.quantity} x {getCurrencySymbol()}{price.toFixed(0)}</p>
+                                                </div>
+                                                <p className="text-sm font-black tabular-nums text-slate-950">{getCurrencySymbol()}{(price * item.quantity).toFixed(0)}</p>
+                                            </div>
+                                        );
+                                    })}
+                                    {linkedJobCharges.map((job) => (
+                                        <div key={job.jobId} className="rounded-2xl border border-blue-100 bg-blue-50 p-3">
+                                            <p className="text-sm font-black text-blue-950">Job #{job.jobId}</p>
+                                            <p className="mt-0.5 text-xs font-semibold text-blue-700">{job.serviceItemName || "Service charge"}</p>
+                                            <p className="mt-1 text-sm font-black tabular-nums text-blue-950">{getCurrencySymbol()}{Number(job.billedAmount || 0).toFixed(0)}</p>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="rounded-3xl bg-slate-950 p-4 text-white">
+                                    <div className="space-y-2 text-sm">
+                                        <div className="flex justify-between text-slate-300"><span>Subtotal</span><span>{getCurrencySymbol()}{subtotal.toFixed(0)}</span></div>
+                                        <div className="flex justify-between text-slate-300"><span>VAT</span><span>{getCurrencySymbol()}{tax.toFixed(0)}</span></div>
+                                        {discount > 0 && <div className="flex justify-between text-rose-200"><span>Discount</span><span>-{getCurrencySymbol()}{discount.toFixed(0)}</span></div>}
+                                    </div>
+                                    <div className="mt-3 flex items-end justify-between border-t border-white/10 pt-3">
+                                        <span className="text-xs font-black uppercase tracking-[0.16em] text-slate-400">Total</span>
+                                        <span className="text-2xl font-black tabular-nums">{getCurrencySymbol()}{total.toFixed(0)}</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="space-y-3 border-t border-slate-100 bg-white px-5 py-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                <Button
+                                    variant="outline"
+                                    className="h-11 w-full rounded-2xl border-slate-200 font-bold text-slate-600"
+                                    onClick={() => {
+                                        cancelHoldConfirm();
+                                        setShowPaymentReview(false);
+                                    }}
+                                >
+                                    Back to Edit
+                                </Button>
+                                <button
+                                    type="button"
+                                    disabled={checkoutMutation.isPending}
+                                    onPointerDown={startHoldConfirm}
+                                    onPointerUp={cancelHoldConfirm}
+                                    onPointerCancel={cancelHoldConfirm}
+                                    onPointerLeave={cancelHoldConfirm}
+                                    className={cn(
+                                        "relative h-14 w-full overflow-hidden rounded-2xl bg-emerald-600 text-sm font-black text-white shadow-lg shadow-emerald-500/25 transition active:scale-[0.99]",
+                                        checkoutMutation.isPending && "opacity-60",
+                                    )}
+                                >
+                                    <motion.span
+                                        className="absolute inset-y-0 left-0 bg-emerald-400"
+                                        initial={false}
+                                        animate={{ width: holdConfirming ? "100%" : "0%" }}
+                                        transition={{ duration: holdConfirming ? 1.4 : 0.12, ease: "linear" }}
+                                    />
+                                    <span className="relative z-10 flex items-center justify-center gap-2">
+                                        {checkoutMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+                                        {holdConfirming ? "Keep holding..." : "Hold to Confirm"}
+                                    </span>
+                                </button>
+                            </div>
+                        </motion.div>
+                    </>
+                )}
+            </AnimatePresence>
+
             <div className="flex flex-col flex-1 min-h-0 overflow-hidden md:hidden">
                 {/* Header: session pill + search + category chips */}
                 <div className="flex-none bg-[#f8fafc] border-b border-slate-100/80 px-3 pb-1.5 pt-1 space-y-1.5">
@@ -973,10 +1407,7 @@ export default function PosTab() {
                                                 <button
                                                     type="button"
                                                     disabled={isOut}
-                                                    onClick={() => {
-                                                        addToCart({ id: product.id, name: product.name, price: String(product.price), quantity: 1, image: imgUrl });
-                                                        toast.success(`Added ${product.name}`, { icon: "🛒" });
-                                                    }}
+                                                    onClick={() => addToCart({ id: product.id, name: product.name, price: String(product.price), quantity: 1, image: imgUrl })}
                                                     className={cn(
                                                         "w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-[0.93]",
                                                         isOut ? "bg-slate-100 text-slate-300 cursor-not-allowed" : "bg-blue-600 text-white shadow-sm",
@@ -1066,7 +1497,7 @@ export default function PosTab() {
                                 const imgs = parseImages(product.images); const imgUrl = imgs[0] || "";
                                 return (
                                     <motion.div variants={bounceItemVariants} key={product.id} className="group bg-white/70 backdrop-blur-sm border border-white/60 rounded-2xl shadow-sm hover:shadow-xl hover:shadow-primary/5 cursor-pointer transition-all duration-300 bc-hover bc-rise relative z-10 hover:z-20 active:scale-[0.98] overflow-hidden flex flex-col"
-                                        onClick={() => { addToCart({ id: product.id, name: product.name, price: String(product.price), quantity: 1, image: imgUrl }); toast.success(`Added ${product.name}`, { icon: '🛒' }); }}>
+                                        onClick={() => addToCart({ id: product.id, name: product.name, price: String(product.price), quantity: 1, image: imgUrl })}>
                                         <div className="aspect-[4/3] bg-gradient-to-br from-slate-50 to-slate-100 relative overflow-hidden">
                                             {imgUrl ? <img src={imgUrl} className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110" alt={product.name} loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} /> : <div className="w-full h-full flex items-center justify-center"><Package className="w-8 h-8 text-slate-200" /></div>}
                                             <div className="absolute inset-0 bg-gradient-to-t from-primary/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-center pb-3">
@@ -1278,7 +1709,7 @@ export default function PosTab() {
                                     Suspend
                                 </Button>
                                 <Button className="h-11 bg-gradient-to-r from-emerald-500 to-green-600 hover:from-emerald-600 hover:to-green-700 text-white font-bold shadow-lg shadow-emerald-500/30 rounded-xl bc-hover bc-rise relative z-10 hover:z-20" onClick={handleCheckout} disabled={checkoutMutation.isPending || cartCount === 0}>
-                                    {checkoutMutation.isPending ? (<><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Processing...</>) : (<><CreditCard className="w-5 h-5 mr-2" /> Pay Now</>)}
+                                    {checkoutMutation.isPending ? (<><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Processing...</>) : (<><CreditCard className="w-5 h-5 mr-2" /> Review Payment</>)}
                                 </Button>
                             </div>
                         </div>

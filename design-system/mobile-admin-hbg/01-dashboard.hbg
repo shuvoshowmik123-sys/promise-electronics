@@ -1,0 +1,161 @@
+HBG 1.0
+project: Promise Electronics
+artifact: Mobile Admin Mockup
+board: 01 Dashboard Command Center
+device: Android phone, 390x844 safe viewport
+purpose: Define the real mobile Dashboard tab before image generation.
+
+source_tabs:
+  - dashboard
+  - overview
+  - system-health
+  - reports
+  - quality
+
+global_mobile_shell:
+  header:
+    left: PROMISE
+    center: Today
+    right:
+      - search
+      - notifications
+  bottom_nav:
+    - Jobs
+    - POS
+    - Stock
+    - Finance
+    - More
+  interaction_model:
+    - one vertical scroll container
+    - bottom safe area always reserved
+    - primary actions open bottom sheets
+    - no desktop tables
+    - no oversized KPI cards
+
+screen_1:
+  id: dashboard_today
+  title: Today
+  objective: Show what the operator must act on now.
+  layout:
+    - compact_status_strip:
+        columns: 4
+        items:
+          - label: Jobs
+            value: 12
+            tone: blue
+          - label: Pickup
+            value: 3
+            tone: cyan
+          - label: Due
+            value: 4
+            tone: amber
+          - label: Alerts
+            value: 2
+            tone: rose
+    - command_rail:
+        items:
+          - label: Receive
+            action: open_receive_sheet
+          - label: Ready
+            action: open_ready_jobs
+          - label: Verify
+            action: open_payment_verification
+    - work_queue:
+        title: Needs action
+        card_height: 76
+        cards:
+          - title: Pickup OTP pending
+            meta: Samsung 43 inch, Mirpur
+            action: Verify
+          - title: Job ready for billing
+            meta: PTV-1024, panel repair
+            action: Bill
+          - title: Payment check
+            meta: bKash send money
+            action: Review
+    - secondary_band:
+        title: Health
+        items:
+          - API ok
+          - Drawer open
+          - Backup due
+
+screen_2:
+  id: dashboard_bottom_sheet
+  title: Receive
+  objective: Show how dashboard actions should appear on mobile.
+  trigger: Receive command chip
+  component: bottom_sheet
+  height: 62 percent viewport
+  content:
+    - sheet_handle
+    - title: Confirm custody
+    - summary_card:
+        ticket: SR-1029
+        customer: Rahman
+        device: Sony TV
+    - otp_input:
+        digits: 6
+        helper: Customer OTP required
+    - optional_row:
+        - Photo
+        - Notes
+    - primary_button: Confirm receive
+
+screen_3:
+  id: dashboard_more_drawer
+  title: More
+  objective: Expose all admin areas without overcrowding bottom nav.
+  layout:
+    - search_bar: Search admin tools
+    - grouped_list:
+        Operations:
+          - Requests
+          - Pickup
+          - Challans
+          - Technician
+        Business:
+          - Orders
+          - Quotations
+          - Customers
+          - Inquiries
+        Back Office:
+          - Reports
+          - Quality
+          - Health
+          - Audit Logs
+        People:
+          - Users
+          - Attendance
+          - Salary
+        System:
+          - Settings
+          - AI Brain
+
+visual_rules:
+  density: spacious operator UI
+  cards:
+    radius: 12
+    padding: 12
+    min_touch_target: 44
+  typography:
+    header: 18 semibold
+    section: 13 bold uppercase
+    body: 13 regular
+    meta: 11 regular
+  color:
+    background: slate-50
+    surface: white
+    operations: blue
+    finance: emerald
+    warning: amber
+    danger: rose
+  avoid:
+    - desktop chart first layout
+    - huge KPI blocks
+    - table rows
+    - nested cards
+    - floating controls covering actions
+
+image_prompt:
+  Create a high fidelity mobile UI mockup board with three phone screens based exactly on this HBG. The screens are Today, Receive bottom sheet, and More. Use Promise Electronics admin styling, clean white and slate surfaces, blue operation accents, amber alerts, real Android phone proportions, touch-friendly controls, and visible bottom navigation. No code, no wireframe labels, no lorem ipsum.

@@ -1,7 +1,7 @@
 import dotenv from "dotenv";
 import path from "path";
 import crypto from "crypto";
-import express, { type Express } from "express";
+import express, { type Express, type Request, type Response } from "express";
 import session from "express-session";
 import { createServer, type Server } from "http";
 import pgSession from "connect-pg-simple";
@@ -17,6 +17,8 @@ import { aiErrorHandler } from "./routes/middleware/ai-logger.js";
 import { setupSwagger } from "./swagger.js";
 import { errorHandler } from "./routes/middleware/error-handler.js";
 import { apiLimiter } from "./routes/middleware/rate-limit.js";
+import { coldStartCacheMiddleware, getColdStartCacheState } from "./middleware/cold-start-cache.js";
+import { getReadinessState, isDbReady } from "./services/db-readiness.js";
 
 // Load environment variables early - required for local dev and module-level repository evaluation
 const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
@@ -27,6 +29,7 @@ declare module "express-session" {
     interface SessionData {
         adminUserId?: string;
         adminUserRole?: string;
+        adminUserPermissions?: string | null;
         passport?: { user: any };
     }
 }
@@ -149,7 +152,8 @@ export async function createApp(): Promise<Express> {
         },
     };
 
-    if (process.env.DATABASE_URL) {
+    const usePgSession = isProduction || process.env.SESSION_STORE === "postgres";
+    if (process.env.DATABASE_URL && usePgSession) {
         sessionConfig.store = new PgStore({
             conString: process.env.DATABASE_URL,
             tableName: 'user_sessions',
@@ -160,7 +164,7 @@ export async function createApp(): Promise<Express> {
         });
         console.log('[Session] Using PostgreSQL session store (persistent)');
     } else {
-        console.log('[Session] DATABASE_URL not set — using memory store (dev only)');
+        console.log('[Session] Using memory session store (dev only)');
     }
 
     app.use(session(sessionConfig));
@@ -197,8 +201,12 @@ export async function createApp(): Promise<Express> {
         res.on("finish", () => {
             const duration = Date.now() - start;
             if (reqPath.startsWith("/api")) {
+                const verboseRequests = process.env.API_REQUEST_LOGS === "verbose";
+                const shouldLog = verboseRequests || res.statusCode >= 400 || duration >= 1000;
+                if (!shouldLog) return;
+
                 let logLine = `[${correlationId}] ${req.method} ${reqPath} ${res.statusCode} in ${duration}ms`;
-                if (capturedJsonResponse) {
+                if (verboseRequests && capturedJsonResponse) {
                     const redactedResponse = redactLogData(capturedJsonResponse);
                     logLine += ` :: ${JSON.stringify(redactedResponse)}`;
                 }
@@ -219,9 +227,24 @@ export async function createApp(): Promise<Express> {
         });
     });
 
+    const readinessHandler = (_req: Request, res: Response) => {
+        const readiness = getReadinessState();
+        const ready = isDbReady();
+        res.status(ready ? 200 : 503).json({
+            ready,
+            ...readiness,
+            cache: getColdStartCacheState(),
+            ts: new Date().toISOString(),
+        });
+    };
+
+    app.get('/ready', readinessHandler);
+    app.get('/api/ready', readinessHandler);
+
     // ─── 8. Global API rate limiter (non-admin IPs: 100 req/min) ────────────
     // Skips authenticated admin sessions (see rate-limit.ts skip logic)
     app.use('/api/', apiLimiter);
+    app.use(coldStartCacheMiddleware);
 
     // ─── 9. Routes & error handlers ───────────────────────────────────────────
     setupSwagger(app);

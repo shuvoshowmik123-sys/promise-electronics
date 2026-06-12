@@ -43,6 +43,8 @@ import { toast } from "sonner";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { BentoCard, DashboardSkeleton, MobileTabLayout, MobileTabHeader, MobileScrollContent } from "../shared";
 import { HandoverSheet } from "./pickup/HandoverSheet";
+import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { PickupSchedule } from "@shared/schema";
 
 type PickupWithServiceRequest = PickupSchedule & {
@@ -54,6 +56,11 @@ type PickupWithServiceRequest = PickupSchedule & {
         ticketNumber?: string;
         totalAmount?: number;
         paymentStatus?: string;
+        stage?: string | null;
+        convertedJobId?: string | null;
+        expectedPickupDate?: string | Date | null;
+        expectedReturnDate?: string | Date | null;
+        expectedReadyDate?: string | Date | null;
     };
 };
 
@@ -68,6 +75,7 @@ function maskPhone(phone?: string): string {
 export default function PickupTab() {
     const queryClient = useQueryClient();
     const { user } = useAdminAuth();
+    const isMobile = useIsMobile();
     // Drivers see only pickups assigned to them (scoped by assignedStaff name)
     const isDriver = user?.role === "Driver";
     const [pickupSearchQuery, setPickupSearchQuery] = useState("");
@@ -85,7 +93,7 @@ export default function PickupTab() {
     const [pickupNotes, setPickupNotes] = useState("");
 
     // Mobile: leg-based filter + handover sheet target
-    const [mobileLeg, setMobileLeg] = useState<"all" | "collect" | "shop" | "done">("all");
+    const [mobileLeg, setMobileLeg] = useState<"all" | "collect" | "return" | "done">("all");
     const [handoverTarget, setHandoverTarget] = useState<import("./pickup/HandoverSheet").HandoverTarget | null>(null);
 
     const { data: serviceRequestsData } = useQuery({
@@ -104,6 +112,8 @@ export default function PickupTab() {
         onSuccess: () => {
             toast.success("Pickup schedule updated successfully");
             queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
+            queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
+            queryClient.invalidateQueries({ queryKey: ["service-requests"] });
             setScheduleDialogOpen(false);
             setSelectedPickup(null);
         },
@@ -118,6 +128,8 @@ export default function PickupTab() {
         onSuccess: () => {
             toast.success("Status updated successfully");
             queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
+            queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
+            queryClient.invalidateQueries({ queryKey: ["service-requests"] });
         },
         onError: (error: Error) => {
             toast.error(error.message || "Failed to update status");
@@ -141,6 +153,11 @@ export default function PickupTab() {
                 ticketNumber: sr.ticketNumber,
                 totalAmount: sr.totalAmount,
                 paymentStatus: sr.paymentStatus,
+                stage: sr.stage,
+                convertedJobId: sr.convertedJobId,
+                expectedPickupDate: sr.expectedPickupDate,
+                expectedReturnDate: sr.expectedReturnDate,
+                expectedReadyDate: sr.expectedReadyDate,
             } : undefined,
         };
     });
@@ -215,8 +232,12 @@ export default function PickupTab() {
     // collect = device still with customer (Pending/Scheduled) → receive OTP
     // shop    = device in our shop (PickedUp) → ready to deliver → delivery OTP
     // done    = Delivered
-    const legOf = (status: string): "collect" | "shop" | "done" =>
-        status === "Delivered" ? "done" : status === "PickedUp" ? "shop" : "collect";
+    const legOf = (pickup: PickupWithServiceRequest): "collect" | "return" | "done" => {
+        const stage = pickup.serviceRequest?.stage || "";
+        if (stage === "completed" || stage === "closed" || pickup.status === "Delivered") return "done";
+        if (["picked_up", "device_received", "in_repair", "ready", "out_for_delivery"].includes(stage) || pickup.status === "PickedUp") return "return";
+        return "collect";
+    };
 
     const mobilePickups = scopedPickups.filter((p) => {
         const q = pickupSearchQuery.toLowerCase();
@@ -224,29 +245,50 @@ export default function PickupTab() {
             p.serviceRequest?.customerName?.toLowerCase().includes(q) ||
             p.serviceRequest?.phone?.includes(pickupSearchQuery) ||
             p.serviceRequest?.ticketNumber?.toLowerCase().includes(q);
-        const matchesLeg = mobileLeg === "all" || legOf(p.status) === mobileLeg;
+        const matchesLeg = mobileLeg === "all" || legOf(p) === mobileLeg;
         return matchesSearch && matchesLeg;
     });
+    const collectCount = scopedPickups.filter((p) => legOf(p) === "collect").length;
+    const returnCount = scopedPickups.filter((p) => legOf(p) === "return").length;
+    const doneCount = scopedPickups.filter((p) => legOf(p) === "done").length;
 
     const mobileLegChips: { key: typeof mobileLeg; label: string }[] = [
-        { key: "all", label: "All" },
-        { key: "collect", label: "To Collect" },
-        { key: "shop", label: "In Shop" },
-        { key: "done", label: "Delivered" },
+        { key: "all", label: `All ${scopedPickups.length}` },
+        { key: "collect", label: `Collect ${collectCount}` },
+        { key: "return", label: `Return ${returnCount}` },
+        { key: "done", label: `Done ${doneCount}` },
     ];
 
     // Card accent + action per leg
-    const legVisual = (status: string) => {
-        const leg = legOf(status);
+    const formatStage = (stage?: string | null) => {
+        const m: Record<string, string> = {
+            intake: "Intake",
+            assessment: "Assessment",
+            authorized: "Authorized",
+            pickup_scheduled: "Pickup set",
+            picked_up: "Collected",
+            device_received: "Received",
+            in_repair: "Repairing",
+            ready: "Ready",
+            out_for_delivery: "Out",
+            completed: "Done",
+            closed: "Closed",
+        };
+        return m[stage || ""] || "Pending";
+    };
+
+    const legVisual = (pickup: PickupWithServiceRequest) => {
+        const leg = legOf(pickup);
+        const stage = pickup.serviceRequest?.stage || "";
         if (leg === "done") return { accent: "bg-emerald-500", pill: "bg-emerald-100 text-emerald-700", label: "Delivered" };
-        if (leg === "shop") return { accent: "bg-blue-500", pill: "bg-blue-100 text-blue-700", label: "In Shop · Ready" };
-        if (status === "Scheduled") return { accent: "bg-amber-500", pill: "bg-amber-100 text-amber-700", label: "Scheduled" };
-        return { accent: "bg-slate-400", pill: "bg-slate-100 text-slate-600", label: "Pending" };
+        if (leg === "return") return { accent: stage === "ready" || stage === "out_for_delivery" ? "bg-emerald-500" : "bg-blue-500", pill: stage === "ready" || stage === "out_for_delivery" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700", label: formatStage(stage) };
+        if (pickup.status === "Scheduled" || stage === "pickup_scheduled") return { accent: "bg-amber-500", pill: "bg-amber-100 text-amber-700", label: "Pickup set" };
+        return { accent: "bg-slate-400", pill: "bg-slate-100 text-slate-600", label: formatStage(stage) };
     };
 
     const openHandover = (p: PickupWithServiceRequest) => {
         if (!p.serviceRequest?.id) { toast.error("No linked service request"); return; }
-        const leg = legOf(p.status);
+        const leg = legOf(p);
         setHandoverTarget({
             serviceRequestId: p.serviceRequest.id,
             pickupId: p.id,
@@ -254,9 +296,21 @@ export default function PickupTab() {
             customerName: p.serviceRequest.customerName,
             phone: p.serviceRequest.phone,
             ticketNumber: p.serviceRequest.ticketNumber,
-            amountDue: Number(p.serviceRequest.totalAmount || 0),
-            mode: leg === "shop" ? "delivery" : "receive",
+            amountDue: (p.serviceRequest.paymentStatus || "").toLowerCase() === "paid" ? 0 : Number(p.serviceRequest.totalAmount || 0),
+            mode: leg === "return" ? "delivery" : "receive",
         });
+    };
+    const mobileDateValue = scheduledDate ? format(scheduledDate, "yyyy-MM-dd") : "";
+
+    const mobileAction = (p: PickupWithServiceRequest) => {
+        const leg = legOf(p);
+        const stage = p.serviceRequest?.stage || "";
+        if (leg === "done") return null;
+        if (leg === "collect" && !p.scheduledDate) return { label: "Schedule Pickup", disabled: false, onClick: () => handleOpenScheduleDialog(p), icon: <Calendar className="h-4 w-4" /> };
+        if (leg === "collect") return { label: "Receive with Customer OTP", disabled: false, onClick: () => openHandover(p), icon: <HandMetal className="h-4 w-4" /> };
+        if (stage === "ready" || stage === "out_for_delivery") return { label: "Hand Over to Customer", disabled: false, onClick: () => openHandover(p), icon: <HandMetal className="h-4 w-4" /> };
+        if (p.serviceRequest?.convertedJobId) return { label: "Open Job", disabled: false, onClick: () => { window.location.hash = `jobs?search=${encodeURIComponent(p.serviceRequest?.convertedJobId || "")}`; }, icon: <ArrowRight className="h-4 w-4" /> };
+        return { label: "Create Job from Service Request", disabled: false, onClick: () => { window.location.hash = `service-requests?search=${encodeURIComponent(p.serviceRequest?.ticketNumber || p.serviceRequestId)}`; }, icon: <ShieldCheck className="h-4 w-4" /> };
     };
 
     return (
@@ -264,7 +318,10 @@ export default function PickupTab() {
             {/* ─── MOBILE HEADER ─── */}
             <MobileTabHeader>
                 <div className="flex items-center justify-between pt-1">
-                    <h1 className="text-xl font-black text-slate-900">Pickup & Delivery</h1>
+                    <div className="min-w-0">
+                        <h1 className="truncate text-xl font-black text-slate-900">Pickup & Delivery</h1>
+                        <p className="truncate text-[11px] font-semibold text-slate-500">Schedule first, OTP at handover</p>
+                    </div>
                     <Truck className="h-5 w-5 text-blue-600" />
                 </div>
                 <div className="relative">
@@ -296,18 +353,20 @@ export default function PickupTab() {
             </MobileTabHeader>
 
             {/* ─── MOBILE CARD LIST ─── */}
-            <MobileScrollContent>
+            <MobileScrollContent className="md:hidden">
                 {mobilePickups.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 gap-3">
                         <Truck className="h-10 w-10 text-slate-200" />
                         <p className="text-sm font-medium text-slate-400">No pickups here</p>
                     </div>
                 ) : mobilePickups.map((p) => {
-                    const v = legVisual(p.status);
+                    const v = legVisual(p);
                     const sr = p.serviceRequest;
                     const due = Number(sr?.totalAmount || 0);
-                    const leg = legOf(p.status);
-                    const when = p.scheduledDate ? format(new Date(p.scheduledDate), "d MMM") : null;
+                    const leg = legOf(p);
+                    const action = mobileAction(p);
+                    const dateSource = leg === "collect" ? (sr?.expectedPickupDate || p.scheduledDate) : (sr?.expectedReturnDate || sr?.expectedReadyDate || p.scheduledDate);
+                    const when = dateSource ? format(new Date(dateSource), "d MMM") : null;
                     return (
                         <div key={p.id} className="relative bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                             <div className={cn("absolute left-0 top-0 bottom-0 w-[3px]", v.accent)} />
@@ -329,14 +388,15 @@ export default function PickupTab() {
                                         {when && <div className="mt-1 text-[10px] text-slate-400">{leg === "done" ? "Done" : "Sched"} {when}</div>}
                                     </div>
                                 </div>
-                                {leg !== "done" && (
+                                {action && (
                                     <button
                                         type="button"
-                                        onClick={() => openHandover(p)}
-                                        className="mt-3 w-full h-11 rounded-xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                                        onClick={action.onClick}
+                                        disabled={action.disabled}
+                                        className="mt-3 w-full h-11 rounded-xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:bg-slate-200 disabled:text-slate-500"
                                     >
-                                        <HandMetal className="h-4 w-4" />
-                                        {leg === "shop" ? "Hand Over to Customer" : "Receive from Customer"}
+                                        {action.icon}
+                                        {action.label}
                                     </button>
                                 )}
                             </div>
@@ -347,6 +407,58 @@ export default function PickupTab() {
 
             {/* ─── HANDOVER OTP SHEET ─── */}
             <HandoverSheet target={handoverTarget} onClose={() => setHandoverTarget(null)} />
+
+            {createPortal(
+                <AnimatePresence>
+                    {isMobile && scheduleDialogOpen && selectedPickup && (
+                        <div className="fixed inset-0 z-[205] md:hidden">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setScheduleDialogOpen(false)} />
+                            <MobileBottomSheetFrame onClose={() => setScheduleDialogOpen(false)} className="absolute inset-x-0 bottom-0 flex max-h-[90dvh] flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl">
+                                <div className="flex-none px-4 pb-3 pt-3">
+                                    <MobileBottomSheetHandle />
+                                    <h3 className="mt-4 text-lg font-black text-slate-950">Schedule Pickup</h3>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                                        {selectedPickup.serviceRequest?.ticketNumber ? `#${selectedPickup.serviceRequest.ticketNumber} · ` : ""}
+                                        {selectedPickup.serviceRequest?.customerName || "Customer"}
+                                    </p>
+                                </div>
+                                <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 space-y-3">
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                        <p className="text-[10px] font-black uppercase text-slate-400">Device</p>
+                                        <p className="mt-1 text-sm font-black text-slate-900">{selectedPickup.serviceRequest?.brand || "Device"}</p>
+                                        <p className="mt-1 text-xs font-semibold text-slate-500">{selectedPickup.pickupAddress || "No pickup address"}</p>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-black uppercase text-slate-500">Pickup Date</Label>
+                                        <Input
+                                            type="date"
+                                            value={mobileDateValue}
+                                            min={format(new Date(), "yyyy-MM-dd")}
+                                            onChange={(event) => setScheduledDate(event.target.value ? new Date(`${event.target.value}T12:00:00`) : undefined)}
+                                            className="h-12 rounded-2xl border-slate-200 text-base font-bold"
+                                        />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-black uppercase text-slate-500">Driver / Staff</Label>
+                                        <Input value={assignedStaff} onChange={(e) => setAssignedStaff(e.target.value)} placeholder="Driver name" className="h-12 rounded-2xl border-slate-200 text-base font-bold" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-black uppercase text-slate-500">Notes</Label>
+                                        <Textarea value={pickupNotes} onChange={(e) => setPickupNotes(e.target.value)} placeholder="Gate, timing, customer instruction..." className="min-h-24 rounded-2xl border-slate-200" />
+                                    </div>
+                                </div>
+                                <div className="grid flex-none grid-cols-2 gap-2 border-t border-slate-100 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                    <Button variant="outline" className="h-11 rounded-2xl font-black" onClick={() => setScheduleDialogOpen(false)}>Cancel</Button>
+                                    <Button className="h-11 rounded-2xl bg-blue-600 font-black hover:bg-blue-700" onClick={handleSaveSchedule} disabled={!scheduledDate || updatePickupMutation.isPending}>
+                                        {updatePickupMutation.isPending ? "Saving..." : "Save"}
+                                    </Button>
+                                </div>
+                            </MobileBottomSheetFrame>
+                        </div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
 
             {/* ─── DESKTOP (unchanged) ─── */}
             <div className="hidden md:grid grid-cols-1 md:grid-cols-4 gap-6 pb-24 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto">
@@ -491,7 +603,7 @@ export default function PickupTab() {
                 </div>
 
                 {/* Dialogs */}
-                <Dialog open={scheduleDialogOpen} onOpenChange={setScheduleDialogOpen}>
+                <Dialog open={scheduleDialogOpen && !isMobile} onOpenChange={setScheduleDialogOpen}>
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>Schedule Pickup</DialogTitle>
@@ -551,7 +663,7 @@ export default function PickupTab() {
                     </DialogContent>
                 </Dialog>
 
-                <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
+                <Dialog open={viewDialogOpen && !isMobile} onOpenChange={setViewDialogOpen}>
                     <DialogContent>
                         <DialogHeader>
                             <DialogTitle>Pickup Details</DialogTitle>

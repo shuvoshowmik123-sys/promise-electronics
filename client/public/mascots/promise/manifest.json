@@ -1,0 +1,55 @@
+{
+  "brand": "Promise Electronics",
+  "format": {
+    "primary": "webp",
+    "fallback": "png",
+    "alpha": true
+  },
+  "shadow": {
+    "source": "component",
+    "component": "client/src/components/brand/PromiseMascot.tsx"
+  },
+  "variants": {
+    "default": {
+      "webp": "/mascots/promise/default.webp",
+      "png": "/mascots/promise/default.png",
+      "status": "ready"
+    },
+    "loading": {
+      "status": "planned",
+      "pose": "front-facing, calm, syncing"
+    },
+    "welcome": {
+      "status": "planned",
+      "pose": "open hand greeting"
+    },
+    "notFound": {
+      "status": "planned",
+      "pose": "holding small map or question marker"
+    },
+    "empty": {
+      "status": "planned",
+      "pose": "holding empty tray"
+    },
+    "error": {
+      "status": "planned",
+      "pose": "holding warning diagnostic tablet"
+    },
+    "offline": {
+      "status": "planned",
+      "pose": "holding disconnected cable"
+    },
+    "success": {
+      "status": "planned",
+      "pose": "thumbs-up with completed repair tablet"
+    },
+    "cancelled": {
+      "status": "planned",
+      "pose": "gentle stop gesture with cancelled request tablet"
+    },
+    "maintenance": {
+      "status": "planned",
+      "pose": "repairing small circuit panel"
+    }
+  }
+}

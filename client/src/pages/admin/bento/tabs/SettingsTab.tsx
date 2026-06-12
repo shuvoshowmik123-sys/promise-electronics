@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Settings, Globe, PenTool, Users, Database, Save,
@@ -16,14 +16,28 @@ import { BentoCard } from "../shared/BentoCard";
 // Sections
 import GeneralSection from "./settings/GeneralSection";
 import ServiceConfigSection from "./settings/ServiceConfigSection";
-import { ServiceConfigEditor } from "./settings/ServiceConfigEditor";
-import CmsHomeSection, {
-    InfoBox, HomepageStat, FAQItem, ContactInfo, HomepageBrand,
-    ProblemNavItem, BeforeAfterItem, PricingItem
-} from "./settings/CmsHomeSection";
-import AboutUsSection, { TeamMember } from "./settings/AboutUsSection";
+import type { InfoBox, HomepageStat, FAQItem, ContactInfo, HomepageBrand, ProblemNavItem, BeforeAfterItem, PricingItem } from "./settings/CmsHomeSection";
+import type { TeamMember } from "./settings/AboutUsSection";
+const CmsHomeSection = lazy(() => import("./settings/CmsHomeSection"));
+const AboutUsSection = lazy(() => import("./settings/AboutUsSection"));
+const ServiceConfigEditor = lazy(() => import("./settings/ServiceConfigEditor").then(m => ({ default: m.ServiceConfigEditor })));
 
-export default function SettingsTab() {
+interface SettingsTabProps {
+    initialSearchQuery?: string;
+    onSearchConsumed?: () => void;
+}
+
+function resolveSettingsDestination(query: string): { sheet?: 'identity' | 'finance' | 'catalog'; panel?: string } {
+    const normalized = query.toLowerCase();
+    if (/(logo|company|site|phone|contact|business|identity|profile)/.test(normalized)) return { sheet: "identity" };
+    if (/(vat|tax|currency|timezone|drawer|day.?end|pos|invoice|payment|bkash|nagad)/.test(normalized)) return { sheet: "finance" };
+    if (/(service|category|brand|inch|symptom|catalog|stock|shop)/.test(normalized)) return { sheet: "catalog" };
+    if (/(home|homepage|hero|faq|pricing|banner|cms|website)/.test(normalized)) return { panel: "cmshome" };
+    if (/(about|team|mission|vision|address)/.test(normalized)) return { panel: "about" };
+    return {};
+}
+
+export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: SettingsTabProps = {}) {
     const { toast } = useToast();
 
     // Sheet State Management
@@ -329,6 +343,15 @@ export default function SettingsTab() {
 
     const [selectedPanel, setSelectedPanel] = useState<string | null>(null);
 
+    useEffect(() => {
+        if (!initialSearchQuery) return;
+        setSearchQuery(initialSearchQuery);
+        const destination = resolveSettingsDestination(initialSearchQuery);
+        if (destination.sheet) setActiveSheet(destination.sheet);
+        if (destination.panel) setSelectedPanel(destination.panel);
+        onSearchConsumed?.();
+    }, [initialSearchQuery]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-96">
@@ -554,7 +577,7 @@ export default function SettingsTab() {
                             </div>
                             <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-slate-50/30">
                                 {selectedPanel === "cmshome" && (
-                                    <CmsHomeSection
+                                    <Suspense fallback={null}><CmsHomeSection
                                         heroTitle={heroTitle} setHeroTitle={setHeroTitle}
                                         heroSubtitle={heroSubtitle} setHeroSubtitle={setHeroSubtitle}
                                         heroAnimationType={heroAnimationType} setHeroAnimationType={setHeroAnimationType}
@@ -571,10 +594,10 @@ export default function SettingsTab() {
                                         pricingTable={pricingTable} setPricingTable={setPricingTable}
                                         trackRepairEnabled={trackRepairEnabled} setTrackRepairEnabled={setTrackRepairEnabled}
                                         googleMapUrl={googleMapUrl} setGoogleMapUrl={setGoogleMapUrl}
-                                    />
+                                    /></Suspense>
                                 )}
                                 {selectedPanel === "about" && (
-                                    <AboutUsSection
+                                    <Suspense fallback={null}><AboutUsSection
                                         aboutTitle={aboutTitle} setAboutTitle={setAboutTitle}
                                         aboutDescription={aboutDescription} setAboutDescription={setAboutDescription}
                                         aboutMission={aboutMission} setAboutMission={setAboutMission}
@@ -585,7 +608,7 @@ export default function SettingsTab() {
                                         aboutEmail={aboutEmail} setAboutEmail={setAboutEmail}
                                         aboutWorkingHours={aboutWorkingHours} setAboutWorkingHours={setAboutWorkingHours}
                                         teamMembers={teamMembers} setTeamMembers={setTeamMembers}
-                                    />
+                                    /></Suspense>
                                 )}
                             </div>
                             <div className="p-5 border-t border-slate-100 bg-white flex justify-end gap-3">
@@ -770,14 +793,14 @@ export default function SettingsTab() {
                                     <p>Changes made here are auto-synced locally. Remember to click <strong>Save Changes</strong> to push everything to the server when you are done.</p>
                                 </div>
 
-                                <ServiceConfigEditor
+                                <Suspense fallback={null}><ServiceConfigEditor
                                     serviceCategories={serviceCategories} setServiceCategories={setServiceCategories}
                                     shopCategories={shopCategories} setShopCategories={setShopCategories}
                                     tvBrands={tvBrands} setTvBrands={setTvBrands}
                                     tvInches={tvInches} setTvInches={setTvInches}
                                     commonSymptoms={commonSymptoms} setCommonSymptoms={setCommonSymptoms}
                                     serviceFilterCategories={serviceFilterCategories} setServiceFilterCategories={setServiceFilterCategories}
-                                />
+                                /></Suspense>
                             </div>
 
                             <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0 rounded-b-3xl">

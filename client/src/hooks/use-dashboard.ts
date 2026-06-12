@@ -33,6 +33,8 @@ export function useDashboardStats() {
             return response.json();
         },
         refetchInterval: 60000,
+        // Show persisted cache instantly on reload, then refresh in background.
+        refetchOnMount: "always",
     });
 }
 
@@ -45,6 +47,7 @@ export function useJobOverview() {
             return response.json();
         },
         refetchInterval: 30000,
+        refetchOnMount: "always",
     });
 }
 

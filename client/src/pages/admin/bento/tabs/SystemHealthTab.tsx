@@ -23,7 +23,7 @@ export default function SystemHealthTab({ onNavigate }: SystemHealthTabProps) {
         queryKey: ["systemHealthAggregated"],
         queryFn: async () => {
             const [jobs, requests, inventory] = await Promise.all([
-                jobTicketsApi.getAll(),
+                jobTicketsApi.getAll("all"),
                 serviceRequestsApi.getAll(),
                 inventoryApi.getAll()
             ]);
@@ -147,7 +147,7 @@ export default function SystemHealthTab({ onNavigate }: SystemHealthTabProps) {
 
     return (
         <>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <BentoCard className="h-[200px] bg-gradient-to-br from-orange-500 to-red-600" title="System Alerts" icon={<AlertCircle size={24} className="text-white" />} variant="vibrant">
                     <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{issues.length}</div>
                     <div className="text-white/80 text-sm mt-2">Active Issues</div>

@@ -18,7 +18,8 @@ router.get('/api/admin/search', requireAdminAuth, async (req, res) => {
             posTransactions: [],
             inventory: [],
             challans: [],
-            counts: { jobs: 0, customers: 0, serviceRequests: 0, posTransactions: 0, inventory: 0, challans: 0 }
+            finance: [],
+            counts: { jobs: 0, customers: 0, serviceRequests: 0, posTransactions: 0, inventory: 0, challans: 0, finance: 0 }
         });
     }
 
@@ -49,6 +50,8 @@ router.get('/api/admin/search', requireAdminAuth, async (req, res) => {
         let inventoryTotal = 0;
         let challans: any[] = [];
         let challansTotal = 0;
+        let finance: any[] = [];
+        let financeTotal = 0;
 
         const user = req.user as any;
         const isSuperAdmin = user?.role === 'Super Admin';
@@ -98,7 +101,7 @@ router.get('/api/admin/search', requireAdminAuth, async (req, res) => {
 
                 jobs = jobData;
                 jobsTotal = Number(jobCount[0]?.count ?? 0);
-            } catch (e: any) { console.error("Search crash [jobs]:", e.message, e.stack); }
+            } catch (e) { console.error("[Search] jobs search crash", e); }
         }
 
         // --- Customers ---
@@ -128,7 +131,7 @@ router.get('/api/admin/search', requireAdminAuth, async (req, res) => {
 
                 customers = custData;
                 customersTotal = Number(custCount[0]?.count ?? 0);
-            } catch (e: any) { console.error("Search crash [customers]:", e.message); }
+            } catch (e) { console.error("[Search] customers search crash", e); }
         }
 
         // --- Service Requests ---
@@ -166,7 +169,7 @@ router.get('/api/admin/search', requireAdminAuth, async (req, res) => {
 
                 serviceRequests = srData;
                 serviceRequestsTotal = Number(srCount[0]?.count ?? 0);
-            } catch (e: any) { console.error("Search crash [serviceRequests]:", e.message); }
+            } catch (e) { console.error("[Search] service requests search crash", e); }
         }
 
         // --- POS Transactions ---
@@ -198,7 +201,7 @@ router.get('/api/admin/search', requireAdminAuth, async (req, res) => {
 
                 posTransactions = posData;
                 posTransactionsTotal = Number(posCount[0]?.count ?? 0);
-            } catch (e: any) { console.error("Search crash [posTransactions]:", e.message); }
+            } catch (e) { console.error("[Search] POS transactions search crash", e); }
         }
 
         // --- Inventory ---
@@ -228,7 +231,7 @@ router.get('/api/admin/search', requireAdminAuth, async (req, res) => {
 
                 inventory = invData;
                 inventoryTotal = Number(invCount[0]?.count ?? 0);
-            } catch (e: any) { console.error("Search crash [inventory]:", e.message); }
+            } catch (e) { console.error("[Search] inventory search crash", e); }
         }
 
         // --- Challans ---
@@ -259,7 +262,157 @@ router.get('/api/admin/search', requireAdminAuth, async (req, res) => {
 
                 challans = challanData;
                 challansTotal = Number(challanCount[0]?.count ?? 0);
-            } catch (e: any) { console.error("Search crash [challans]:", e.message); }
+            } catch (e) { console.error("[Search] challans search crash", e); }
+        }
+
+        // --- Finance (petty cash, dues, manual payments, refunds) ---
+        if (hasPerm('finance')) {
+            try {
+                const financeKeywords = query.trim().split(/\s+/).filter(k => k.length > 0);
+                const buildFinanceCondition = (columns: any[], numericColumns: any[] = []) => {
+                    const validColumns = columns.filter(col => col != null);
+                    const validNumericColumns = numericColumns.filter(col => col != null);
+                    if (validColumns.length === 0 && validNumericColumns.length === 0) return undefined;
+                    return and(
+                        ...financeKeywords.map(kw => {
+                            const term = `%${kw}%`;
+                            return or(
+                                ...validColumns.map(col => ilike(col, term)),
+                                ...validNumericColumns.map(col => ilike(sql<string>`cast(${col} as text)`, term))
+                            );
+                        })
+                    );
+                };
+
+                const pettyCondition = buildFinanceCondition([
+                    schema.pettyCashRecords.description,
+                    schema.pettyCashRecords.category,
+                    schema.pettyCashRecords.id
+                ], [schema.pettyCashRecords.amount]);
+                const dueCondition = buildFinanceCondition([
+                    schema.dueRecords.customer,
+                    schema.dueRecords.invoice,
+                    schema.dueRecords.id
+                ], [schema.dueRecords.amount]);
+                const manualCondition = buildFinanceCondition([
+                    schema.manualPayments.customerName,
+                    schema.manualPayments.customerPhone,
+                    schema.manualPayments.transactionId,
+                    schema.manualPayments.id,
+                    schema.manualPayments.method,
+                    schema.manualPayments.notes,
+                ], [schema.manualPayments.amount]);
+                const refundCondition = buildFinanceCondition([
+                    schema.refunds.customer,
+                    schema.refunds.customerPhone,
+                    schema.refunds.referenceInvoice,
+                    schema.refunds.id,
+                    schema.refunds.reason,
+                ], [schema.refunds.refundAmount]);
+
+                const [pettyData, dueData, manualData, refundData, pettyCount, dueCount, manualCount, refundCount] = await Promise.all([
+                    db.select({
+                        id: schema.pettyCashRecords.id,
+                        description: schema.pettyCashRecords.description,
+                        category: schema.pettyCashRecords.category,
+                        amount: schema.pettyCashRecords.amount,
+                        type: schema.pettyCashRecords.type,
+                        createdAt: schema.pettyCashRecords.createdAt,
+                    })
+                        .from(schema.pettyCashRecords)
+                        .where(pettyCondition)
+                        .limit(5),
+                    db.select({
+                        id: schema.dueRecords.id,
+                        customer: schema.dueRecords.customer,
+                        amount: schema.dueRecords.amount,
+                        status: schema.dueRecords.status,
+                        invoice: schema.dueRecords.invoice,
+                        createdAt: schema.dueRecords.createdAt,
+                    })
+                        .from(schema.dueRecords)
+                        .where(dueCondition)
+                        .limit(5),
+                    db.select({
+                        id: schema.manualPayments.id,
+                        customerName: schema.manualPayments.customerName,
+                        customerPhone: schema.manualPayments.customerPhone,
+                        amount: schema.manualPayments.amount,
+                        method: schema.manualPayments.method,
+                        transactionId: schema.manualPayments.transactionId,
+                        status: schema.manualPayments.status,
+                        createdAt: schema.manualPayments.createdAt,
+                    })
+                        .from(schema.manualPayments)
+                        .where(manualCondition)
+                        .limit(5),
+                    db.select({
+                        id: schema.refunds.id,
+                        customer: schema.refunds.customer,
+                        customerPhone: schema.refunds.customerPhone,
+                        referenceInvoice: schema.refunds.referenceInvoice,
+                        refundAmount: schema.refunds.refundAmount,
+                        status: schema.refunds.status,
+                        reason: schema.refunds.reason,
+                        createdAt: schema.refunds.createdAt,
+                    })
+                        .from(schema.refunds)
+                        .where(refundCondition)
+                        .limit(5),
+                    db.select({ count: sql<number>`count(*)` })
+                        .from(schema.pettyCashRecords)
+                        .where(pettyCondition),
+                    db.select({ count: sql<number>`count(*)` })
+                        .from(schema.dueRecords)
+                        .where(dueCondition),
+                    db.select({ count: sql<number>`count(*)` })
+                        .from(schema.manualPayments)
+                        .where(manualCondition),
+                    db.select({ count: sql<number>`count(*)` })
+                        .from(schema.refunds)
+                        .where(refundCondition),
+                ]);
+
+                const mappedPetty = pettyData.map(r => ({
+                    id: r.id,
+                    type: 'petty-cash',
+                    reference: r.description,
+                    customer: r.category,
+                    amount: r.amount,
+                    status: r.type,
+                    createdAt: r.createdAt,
+                }));
+                const mappedDue = dueData.map(r => ({
+                    id: r.id,
+                    type: 'due',
+                    reference: r.invoice,
+                    customer: r.customer,
+                    amount: r.amount,
+                    status: r.status,
+                    createdAt: r.createdAt,
+                }));
+                const mappedManual = manualData.map(r => ({
+                    id: r.id,
+                    type: 'manual-payment',
+                    reference: r.transactionId,
+                    customer: r.customerName,
+                    amount: r.amount,
+                    status: r.status,
+                    createdAt: r.createdAt,
+                }));
+                const mappedRefund = refundData.map(r => ({
+                    id: r.id,
+                    type: 'refund',
+                    reference: r.referenceInvoice,
+                    customer: r.customer,
+                    amount: r.refundAmount,
+                    status: r.status,
+                    createdAt: r.createdAt,
+                }));
+
+                finance = [...mappedPetty, ...mappedDue, ...mappedManual, ...mappedRefund];
+                financeTotal = Number(pettyCount[0]?.count ?? 0) + Number(dueCount[0]?.count ?? 0) + Number(manualCount[0]?.count ?? 0) + Number(refundCount[0]?.count ?? 0);
+            } catch (e) { console.error("[Search] finance search crash", e); }
         }
 
         res.json({
@@ -269,18 +422,20 @@ router.get('/api/admin/search', requireAdminAuth, async (req, res) => {
             posTransactions,
             inventory,
             challans,
+            finance,
             counts: {
                 jobs: jobsTotal,
                 customers: customersTotal,
                 serviceRequests: serviceRequestsTotal,
                 posTransactions: posTransactionsTotal,
                 inventory: inventoryTotal,
-                challans: challansTotal
+                challans: challansTotal,
+                finance: financeTotal
             }
         });
 
     } catch (error: any) {
-        console.error("Global search crash:", error);
+        console.error("[Search] global search crash", error);
         res.status(500).json({ error: 'Global search failed', details: error.message });
     }
 });

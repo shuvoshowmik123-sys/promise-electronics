@@ -68,11 +68,14 @@ export function HandoverSheet({
 
     const collectMutation = useMutation({
         mutationFn: () => adminPickupsApi.collectPayment(target!.pickupId!, { amount: amountDue, method: codMethod }),
-        onSuccess: () => {
+        onSuccess: async () => {
             setCodCollected(true);
             queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
             queryClient.invalidateQueries({ queryKey: ["pettyCash"] });
             queryClient.invalidateQueries({ queryKey: ["activeDrawer"] });
+            queryClient.invalidateQueries({ queryKey: ["drawer-active"] });
+            queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
+            queryClient.invalidateQueries({ queryKey: ["service-requests"] });
             toast.success(`Collected ৳${amountDue.toLocaleString()} (${codMethod})`);
         },
         onError: (e: Error) => toast.error(e.message || "Failed to record payment"),
@@ -91,10 +94,16 @@ export function HandoverSheet({
 
     const confirmMutation = useMutation({
         mutationFn: (code: string) => adminStageApi.confirmCustodyOtp(target!.serviceRequestId, { action: mode, code }),
-        onSuccess: () => {
+        onSuccess: async () => {
+            if (target?.pickupId) {
+                await adminPickupsApi.update(target.pickupId, mode === "delivery"
+                    ? { status: "Delivered", deliveredAt: new Date() } as any
+                    : { status: "PickedUp", pickedUpAt: new Date() } as any);
+            }
             toast.success(mode === "delivery" ? "Device released — verified delivery" : "Device received — custody confirmed");
             queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
             queryClient.invalidateQueries({ queryKey: ["service-requests"] });
+            queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
             onVerified?.(mode);
             onClose();
         },

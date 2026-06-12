@@ -95,7 +95,7 @@ export default function AttendanceTab() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6 pb-24 md:pb-0"
+            className="space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-0"
         >
             {/* Header */}
             <motion.div variants={itemVariants} className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -196,7 +196,46 @@ export default function AttendanceTab() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-0">
-                            <ScrollArea className="h-[500px]">
+                            {/* Mobile card list — replaces the 6-column table that overflows on phones */}
+                            <div className="md:hidden p-3 space-y-2">
+                                {filteredAttendance.length === 0 ? (
+                                    <div className="rounded-xl bg-slate-50 px-3 py-6 text-center text-xs font-medium text-slate-500">No records found for selected filters</div>
+                                ) : filteredAttendance.map((record: AttendanceRecord) => (
+                                    <div key={record.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-sm font-black text-slate-900">{format(parseISO(record.date), "MMM d")}</span>
+                                                    {record.date === format(new Date(), "yyyy-MM-dd") && (
+                                                        <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">Today</span>
+                                                    )}
+                                                </div>
+                                                <div className="truncate text-xs font-medium text-slate-500">{record.userName} · {record.userRole}</div>
+                                            </div>
+                                            {record.checkOutTime ? (
+                                                <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700"><CheckCircle className="w-3 h-3" />Complete</span>
+                                            ) : (
+                                                <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-yellow-200 bg-yellow-50 px-2 py-1 text-[10px] font-bold text-yellow-700"><Clock className="w-3 h-3" />Working</span>
+                                            )}
+                                        </div>
+                                        <div className="mt-2 grid grid-cols-3 gap-2">
+                                            <div className="rounded-lg bg-slate-50 px-2 py-1.5">
+                                                <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">In</div>
+                                                <div className="text-xs font-mono font-bold text-green-600">{formatTime(record.checkInTime)}</div>
+                                            </div>
+                                            <div className="rounded-lg bg-slate-50 px-2 py-1.5">
+                                                <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Out</div>
+                                                <div className="text-xs font-mono font-bold text-slate-600">{formatTime(record.checkOutTime)}</div>
+                                            </div>
+                                            <div className="rounded-lg bg-slate-50 px-2 py-1.5">
+                                                <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Hours</div>
+                                                <div className="text-xs font-bold text-slate-700">{calculateDuration(record.checkInTime, record.checkOutTime)}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <ScrollArea className="hidden md:block h-[500px]">
                                 <Table>
                                     <TableHeader className="bg-slate-50">
                                         <TableRow>

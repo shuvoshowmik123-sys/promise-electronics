@@ -88,7 +88,7 @@ export function JobTicketGrid({
                 variants={mobileListVariants}
                 initial="hidden"
                 animate="visible"
-                className="flex flex-col gap-3"
+                className="grid grid-cols-2 gap-2"
             >
                 {jobs.map((job) => (
                     <JobCardMobile

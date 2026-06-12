@@ -353,7 +353,7 @@ export default function UsersTab() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6 pb-24 md:pb-8"
+            className="space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8"
         >
             {/* KPI ROW */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
@@ -895,7 +895,7 @@ export default function UsersTab() {
                     <div className="p-8 overflow-y-auto space-y-6">
                         <div className="space-y-4">
                             <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Module Access</h4>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                 {(["dashboard", "jobs", "inventory", "pos", "challans", "finance", "attendance", "reports", "serviceRequests", "orders", "technician", "inquiries", "systemHealth", "users", "settings"] as const).map((key) => (
                                     <div key={key} className="flex items-center space-x-3 p-3 rounded-2xl bg-slate-50/50 border border-slate-100 hover:bg-slate-50 transition-colors">
                                         <Checkbox
@@ -912,7 +912,7 @@ export default function UsersTab() {
 
                         <div className="space-y-4">
                             <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Action Rights</h4>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                 {(["canCreate", "canEdit", "canDelete", "canExport", "process_payment"] as const).map((key) => (
                                     <div key={key} className="flex items-center space-x-3 p-3 rounded-2xl bg-amber-50/10 border border-amber-100/50 hover:bg-amber-50/20 transition-colors">
                                         <Checkbox
@@ -929,7 +929,7 @@ export default function UsersTab() {
 
                         <div className="space-y-4">
                             <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Advanced Modules</h4>
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                 {(["corporate", "warrantyClaims", "refunds", "notifications", "knowledgeBase"] as const).map((key) => (
                                     <div key={key} className="flex items-center space-x-3 p-3 rounded-2xl bg-indigo-50/30 border border-indigo-100/50 hover:bg-indigo-50/50 transition-colors">
                                         <Checkbox

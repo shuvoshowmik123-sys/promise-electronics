@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Jobs - Home (Mobile)</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0f1117;
+  color: #e4e4e7;
+  max-width: 390px;
+  margin: 0 auto;
+  min-height: 100dvh;
+  overflow-x: hidden;
+  position: relative;
+}
+
+/* Status Bar */
+.status-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 20px;
+  font-size: 12px; font-weight: 600;
+  color: #a1a1aa;
+}
+
+/* Header */
+.header {
+  padding: 4px 16px 12px;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.header-left { display: flex; align-items: center; gap: 12px; }
+.header-title { font-size: 22px; font-weight: 700; color: #fff; }
+.live-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #22c55e;
+  box-shadow: 0 0 6px #22c55e;
+  animation: pulse 2s infinite;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+.header-actions { display: flex; gap: 8px; }
+.icon-btn {
+  width: 38px; height: 38px; border-radius: 12px;
+  background: #1c1c24; border: 1px solid #27272a;
+  display: flex; align-items: center; justify-content: center;
+  color: #a1a1aa; cursor: pointer; transition: all 0.2s;
+}
+.icon-btn:active { background: #27272a; transform: scale(0.92); }
+.icon-btn.primary { background: #2563eb; border-color: #3b82f6; color: #fff; }
+
+/* Search */
+.search-bar {
+  margin: 0 16px 12px;
+  position: relative;
+}
+.search-bar input {
+  width: 100%; padding: 12px 16px 12px 42px;
+  background: #1c1c24; border: 1px solid #27272a;
+  border-radius: 14px; color: #e4e4e7;
+  font-size: 15px; outline: none;
+  transition: border-color 0.2s;
+}
+.search-bar input:focus { border-color: #3b82f6; }
+.search-bar input::placeholder { color: #52525b; }
+.search-icon {
+  position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+  color: #52525b;
+}
+
+/* Stats Row */
+.stats-row {
+  display: flex; gap: 8px; padding: 0 16px; margin-bottom: 14px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.stats-row::-webkit-scrollbar { display: none; }
+.stat-card {
+  flex-shrink: 0; padding: 10px 14px;
+  background: #1c1c24; border: 1px solid #27272a;
+  border-radius: 12px; text-align: center; min-width: 80px;
+}
+.stat-number { font-size: 20px; font-weight: 700; color: #fff; }
+.stat-label { font-size: 11px; color: #71717a; margin-top: 2px; text-transform: uppercase; letter-spacing: 0.5px; }
+.stat-card.active { border-color: #3b82f6; background: #1e293b; }
+.stat-card.active .stat-number { color: #60a5fa; }
+
+/* Status Pills */
+.pills-row {
+  display: flex; gap: 6px; padding: 0 16px; margin-bottom: 16px;
+  overflow-x: auto; -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.pills-row::-webkit-scrollbar { display: none; }
+.pill {
+  flex-shrink: 0; padding: 7px 14px;
+  border-radius: 20px; font-size: 13px; font-weight: 500;
+  background: #1c1c24; border: 1px solid #27272a;
+  color: #a1a1aa; cursor: pointer;
+  transition: all 0.2s; white-space: nowrap;
+  display: flex; align-items: center; gap: 6px;
+}
+.pill:active { transform: scale(0.95); }
+.pill.active { background: #2563eb; border-color: #3b82f6; color: #fff; }
+.pill .count {
+  background: rgba(255,255,255,0.15); padding: 1px 6px;
+  border-radius: 8px; font-size: 11px; font-weight: 600;
+}
+.pill.active .count { background: rgba(255,255,255,0.25); }
+
+/* Job Cards */
+.job-list { padding: 0 16px 100px; display: flex; flex-direction: column; gap: 10px; }
+.job-card {
+  background: #1c1c24; border: 1px solid #27272a;
+  border-radius: 16px; padding: 14px;
+  position: relative; overflow: hidden;
+  cursor: pointer; transition: all 0.2s;
+}
+.job-card:active { transform: scale(0.98); background: #222230; }
+.job-card::before {
+  content: ''; position: absolute; left: 0; top: 0; bottom: 0;
+  width: 4px; border-radius: 4px 0 0 4px;
+}
+.job-card.status-new::before { background: #3b82f6; }
+.job-card.status-repairing::before { background: #6366f1; }
+.job-card.status-waiting::before { background: #f59e0b; }
+.job-card.status-ready::before { background: #06b6d4; }
+.job-card.status-delivered::before { background: #64748b; }
+
+.card-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px; }
+.ticket-id { font-size: 12px; font-family: 'SF Mono', monospace; color: #60a5fa; font-weight: 600; }
+.status-badge {
+  font-size: 10px; font-weight: 600; padding: 3px 8px;
+  border-radius: 6px; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.badge-new { background: #1e3a5f; color: #60a5fa; }
+.badge-repairing { background: #312e81; color: #a5b4fc; }
+.badge-waiting { background: #451a03; color: #fbbf24; }
+.badge-ready { background: #083344; color: #22d3ee; }
+.badge-delivered { background: #1e293b; color: #94a3b8; }
+
+.device-name { font-size: 16px; font-weight: 600; color: #fff; margin-bottom: 4px; }
+.issue-text { font-size: 13px; color: #71717a; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.card-bottom { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid #27272a; }
+.card-customer { display: flex; align-items: center; gap: 8px; }
+.customer-avatar {
+  width: 28px; height: 28px; border-radius: 8px;
+  background: #27272a; display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; color: #a1a1aa;
+}
+.customer-info {}
+.customer-name { font-size: 13px; color: #d4d4d8; font-weight: 500; }
+.customer-phone { font-size: 11px; color: #52525b; }
+.card-meta { text-align: right; }
+.meta-tech { font-size: 12px; color: #a78bfa; font-weight: 500; }
+.meta-cost { font-size: 12px; color: #52525b; font-family: monospace; }
+
+/* Action Button on Card */
+.card-action {
+  position: absolute; right: 14px; bottom: 14px;
+  padding: 6px 12px; border-radius: 8px;
+  background: #2563eb; color: #fff; font-size: 11px;
+  font-weight: 600; border: none; cursor: pointer;
+  display: none;
+}
+.job-card:hover .card-action { display: block; }
+
+/* FAB */
+.fab {
+  position: fixed; bottom: 24px; right: 24px;
+  width: 56px; height: 56px; border-radius: 16px;
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  box-shadow: 0 8px 24px rgba(37,99,235,0.4);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff; font-size: 28px; cursor: pointer;
+  transition: all 0.2s; z-index: 100;
+}
+.fab:active { transform: scale(0.9); }
+
+/* Priority indicator */
+.priority-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  display: inline-block; margin-right: 4px;
+}
+.priority-high { background: #ef4444; }
+.priority-medium { background: #f59e0b; }
+.priority-low { background: #22c55e; }
+</style>
+</head>
+<body>
+
+<div class="status-bar">
+  <span>9:41</span>
+  <span>⚡ 87%</span>
+</div>
+
+<div class="header">
+  <div class="header-left">
+    <h1 class="header-title">Jobs</h1>
+    <div class="live-dot"></div>
+  </div>
+  <div class="header-actions">
+    <div class="icon-btn">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M3 4h18M3 8h12M3 12h18M3 16h8M3 20h14"/></svg>
+    </div>
+    <div class="icon-btn">
+      <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+    </div>
+  </div>
+</div>
+
+<div class="search-bar">
+  <svg class="search-icon" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+  <input type="text" placeholder="Search ticket, name, phone...">
+</div>
+
+<div class="stats-row">
+  <div class="stat-card active">
+    <div class="stat-number">47</div>
+    <div class="stat-label">Total</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">12</div>
+    <div class="stat-label">New</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">8</div>
+    <div class="stat-label">Repair</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">5</div>
+    <div class="stat-label">Parts</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-number">9</div>
+    <div class="stat-label">Ready</div>
+  </div>
+</div>
+
+<div class="pills-row">
+  <div class="pill active">All <span class="count">47</span></div>
+  <div class="pill">New <span class="count">12</span></div>
+  <div class="pill">Repairing <span class="count">8</span></div>
+  <div class="pill">Waiting <span class="count">5</span></div>
+  <div class="pill">Ready <span class="count">9</span></div>
+  <div class="pill">Delivered <span class="count">13</span></div>
+</div>
+
+<div class="job-list">
+  <!-- Card 1: New -->
+  <div class="job-card status-new">
+    <div class="card-top">
+      <span class="ticket-id">#240891</span>
+      <span class="status-badge badge-new">NEW</span>
+    </div>
+    <div class="device-name"><span class="priority-dot priority-high"></span>Samsung 55" QLED</div>
+    <div class="issue-text">Display flickering after 10 minutes, horizontal lines appearing at bottom half of screen</div>
+    <div class="card-bottom">
+      <div class="card-customer">
+        <div class="customer-avatar">AR</div>
+        <div class="customer-info">
+          <div class="customer-name">Abdul R***</div>
+          <div class="customer-phone">01886•••811</div>
+        </div>
+      </div>
+      <div class="card-meta">
+        <div class="meta-tech">Unassigned</div>
+        <div class="meta-cost">৳ 3,500</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 2: Repairing -->
+  <div class="job-card status-repairing">
+    <div class="card-top">
+      <span class="ticket-id">#240887</span>
+      <span class="status-badge badge-repairing">REPAIRING</span>
+    </div>
+    <div class="device-name">LG 43" WebOS</div>
+    <div class="issue-text">No power, LED indicator not lighting up. Customer says it happened after lightning</div>
+    <div class="card-bottom">
+      <div class="card-customer">
+        <div class="customer-avatar">MH</div>
+        <div class="customer-info">
+          <div class="customer-name">Mahfuz H***</div>
+          <div class="customer-phone">01712•••445</div>
+        </div>
+      </div>
+      <div class="card-meta">
+        <div class="meta-tech">Sajid</div>
+        <div class="meta-cost">৳ 2,800</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 3: Waiting Parts -->
+  <div class="job-card status-waiting">
+    <div class="card-top">
+      <span class="ticket-id">#240882</span>
+      <span class="status-badge badge-waiting">WAITING PARTS</span>
+    </div>
+    <div class="device-name"><span class="priority-dot priority-medium"></span>Walton 32" LED</div>
+    <div class="issue-text">T-Con board failure, needs replacement board model V500HJ1</div>
+    <div class="card-bottom">
+      <div class="card-customer">
+        <div class="customer-avatar">FK</div>
+        <div class="customer-info">
+          <div class="customer-name">Faruk K***</div>
+          <div class="customer-phone">01834•••290</div>
+        </div>
+      </div>
+      <div class="card-meta">
+        <div class="meta-tech">Rahim</div>
+        <div class="meta-cost">৳ 1,500</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 4: Ready -->
+  <div class="job-card status-ready">
+    <div class="card-top">
+      <span class="ticket-id">#240878</span>
+      <span class="status-badge badge-ready">READY</span>
+    </div>
+    <div class="device-name">Sony Bravia 50" 4K</div>
+    <div class="issue-text">Sound issue resolved — replaced internal speakers and audio board</div>
+    <div class="card-bottom">
+      <div class="card-customer">
+        <div class="customer-avatar">NS</div>
+        <div class="customer-info">
+          <div class="customer-name">Nasrin S***</div>
+          <div class="customer-phone">01956•••107</div>
+        </div>
+      </div>
+      <div class="card-meta">
+        <div class="meta-tech">Sajid</div>
+        <div class="meta-cost">৳ 4,200</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card 5: Delivered -->
+  <div class="job-card status-delivered">
+    <div class="card-top">
+      <span class="ticket-id">#240870</span>
+      <span class="status-badge badge-delivered">DELIVERED</span>
+    </div>
+    <div class="device-name">Singer 40" Smart TV</div>
+    <div class="issue-text">WiFi module replaced, firmware updated to latest version</div>
+    <div class="card-bottom">
+      <div class="card-customer">
+        <div class="customer-avatar">KR</div>
+        <div class="customer-info">
+          <div class="customer-name">Kamal R***</div>
+          <div class="customer-phone">01677•••823</div>
+        </div>
+      </div>
+      <div class="card-meta">
+        <div class="meta-tech">Rahim</div>
+        <div class="meta-cost">৳ 1,800</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Floating Action Button -->
+<div class="fab">+</div>
+
+</body>
+</html>

@@ -233,10 +233,12 @@ export function AdminSSEProvider({ children }: { children: ReactNode }) {
         let initialConnectTimeout: NodeJS.Timeout | null = null;
 
         if (isAuthenticated) {
-            // Defer connection to yield to the main thread after first paint
+            // Defer connection so the first dashboard data + paint win the
+            // network/main-thread first. Live updates starting ~1.5s later is
+            // imperceptible; freeing that window makes initial load snappier.
             initialConnectTimeout = setTimeout(() => {
                 connectSSE();
-            }, 0);
+            }, 1500);
         } else {
             setSseSupported(false);
             reconnectAttemptRef.current = 0;

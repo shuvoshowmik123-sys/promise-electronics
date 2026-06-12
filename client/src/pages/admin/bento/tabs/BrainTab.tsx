@@ -171,7 +171,7 @@ export function BrainTab() {
     }
 
     return (
-        <div className="space-y-6 p-1 pb-24 md:pb-1 relative">
+        <div className="space-y-6 p-1 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-1 relative">
             {/* Header + Mode Control */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-sm relative z-10">
                 <div>

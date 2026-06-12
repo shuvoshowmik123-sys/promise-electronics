@@ -107,7 +107,9 @@ export function MobileMoreMenu({
                     <div key={group.title}>
                         <p className="px-1 mb-2 text-[11px] font-black uppercase tracking-wider text-slate-400">{group.title}</p>
                         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                            {group.items.map((item, i) => (
+                            {group.items.map((item, i) => {
+                                const label = item.id === "service-requests" ? "Service Requests" : item.label;
+                                return (
                                 <button
                                     key={item.id}
                                     type="button"
@@ -120,10 +122,11 @@ export function MobileMoreMenu({
                                     <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-xl", TONE[item.color || "slate"])}>
                                         <item.icon size={18} strokeWidth={2.2} />
                                     </span>
-                                    <span className="flex-1 font-bold text-slate-900">{item.label}</span>
+                                    <span className="flex-1 font-bold text-slate-900">{label}</span>
                                     <ChevronRight className="h-4 w-4 text-slate-300 shrink-0" />
                                 </button>
-                            ))}
+                                );
+                            })}
                         </div>
                     </div>
                 ))}

@@ -73,12 +73,19 @@ router.get('/api/service-requests', requireAdminAuth, requirePermission('service
         if (status) items = items.filter(r => r.status === status);
         if (servicePreference) items = items.filter(r => r.servicePreference === servicePreference);
 
+        // Batch-fetch all linked job tickets in ONE load (was an N+1: each
+        // getJobTicket() call loaded the whole job_tickets table).
+        const linkedJobIds = items
+            .filter(i => (i.status === 'Work Order' || i.status === 'Converted') && i.convertedJobId)
+            .map(i => i.convertedJobId as string);
+        const linkedJobs = await jobRepo.getJobTicketsByIds(linkedJobIds);
+
         // Derive tracking status for each item
-        const enrichedItems = await Promise.all(items.map(async (item) => {
+        const enrichedItems = items.map((item) => {
             let jobStatus = undefined;
             let jobTechnician = undefined;
             if ((item.status === 'Work Order' || item.status === 'Converted') && item.convertedJobId) {
-                const jobTicket = await jobRepo.getJobTicket(item.convertedJobId);
+                const jobTicket = linkedJobs.get(item.convertedJobId);
                 if (jobTicket) {
                     jobStatus = jobTicket.status;
                     jobTechnician = jobTicket.technician;
@@ -94,7 +101,7 @@ router.get('/api/service-requests', requireAdminAuth, requirePermission('service
                     item.scheduledPickupDate || item.expectedPickupDate
                 )
             };
-        }));
+        });
 
         const result = {
             items: enrichedItems,

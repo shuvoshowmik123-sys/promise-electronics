@@ -53,8 +53,12 @@ router.get('/api/purchase-orders/:id/items', requireAdminAuth, requirePermission
 router.post('/api/purchase-orders', requireAdminAuth, requirePermission('purchasing'), async (req: Request, res: Response) => {
     try {
         const { order, items } = req.body;
+        const normalizedOrder = {
+            ...order,
+            expectedDeliveryDate: order?.expectedDeliveryDate ? new Date(order.expectedDeliveryDate) : null,
+        };
 
-        const validOrder = insertPurchaseOrderSchema.parse(order);
+        const validOrder = insertPurchaseOrderSchema.parse(normalizedOrder);
         const validItems = z.array(insertPurchaseOrderItemSchema).parse(items);
 
         const newPo = await inventoryService.createPurchaseOrder(validOrder, validItems);

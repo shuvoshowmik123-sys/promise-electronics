@@ -9,10 +9,30 @@ import { eq, and, lte, isNull } from "drizzle-orm";
 import { reminders } from "../../shared/schema.js";
 import { sendPushToDevice } from "./fcm.service.js";
 import { sql } from "drizzle-orm";
+import { EventEmitter } from "events";
 
 const SCHEDULER_INTERVAL_MS = 60 * 1000; // every minute
 
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
+const reminderEvents = new EventEmitter();
+
+export type ReminderChangedEvent = {
+    type: "created" | "dismissed" | "deleted" | "sent";
+    userId: string;
+    reminderId?: string;
+};
+
+export function emitReminderChanged(event: ReminderChangedEvent): void {
+    reminderEvents.emit("changed", event);
+}
+
+export function onReminderChanged(listener: (event: ReminderChangedEvent) => void): void {
+    reminderEvents.on("changed", listener);
+}
+
+export function offReminderChanged(listener: (event: ReminderChangedEvent) => void): void {
+    reminderEvents.off("changed", listener);
+}
 
 export function startReminderScheduler(): void {
     if (schedulerTimer) return;
@@ -74,6 +94,7 @@ export async function runReminderCheck(): Promise<number> {
             .update(reminders)
             .set({ isSent: true, sentAt: now })
             .where(eq(reminders.id, reminder.id));
+        emitReminderChanged({ type: "sent", userId: reminder.userId, reminderId: reminder.id });
 
         // Handle repeat — schedule next occurrence
         if (reminder.repeat) {

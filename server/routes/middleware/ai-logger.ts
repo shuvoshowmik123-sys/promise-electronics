@@ -10,6 +10,19 @@ import { nanoid } from "nanoid";
 const errorCache = new Map<string, number>();
 const RATE_LIMIT_MS = 60 * 1000; // 1 minute per unique error
 
+function shouldRunAiWatchdog(err: any) {
+    if (process.env.ENABLE_AI_ERROR_HANDLER === "true") return true;
+    if (process.env.NODE_ENV !== "production") return false;
+    if (!process.env.GROQ_API_KEY) return false;
+
+    const text = `${err?.code || ""} ${err?.message || ""} ${err?.stack || ""}`;
+    if (/ETIMEDOUT|ECONNRESET|ENETUNREACH|Connection terminated|timeout exceeded|WebSocket was closed/i.test(text)) {
+        return false;
+    }
+
+    return true;
+}
+
 export const aiErrorHandler = async (
     err: any,
     req: Request,
@@ -23,6 +36,11 @@ export const aiErrorHandler = async (
 
     const statusCode = err.status || err.statusCode || 500;
     if (statusCode < 500) {
+        return next(err);
+    }
+
+    if (!shouldRunAiWatchdog(err)) {
+        console.error("[AI Watchdog] Skipped:", err?.message || err);
         return next(err);
     }
 

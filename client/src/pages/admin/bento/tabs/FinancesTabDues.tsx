@@ -23,12 +23,14 @@ export function DuesTab({
     getCurrencySymbol,
     createDueMutation,
     updateDueMutation,
-    exportToCSV
+    exportToCSV,
+    initialSearchQuery
 }: {
     getCurrencySymbol: () => string;
     createDueMutation: any;
     updateDueMutation: any;
     exportToCSV: (data: any[], filename: string, columns: any[]) => void;
+    initialSearchQuery?: string;
 }) {
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -50,6 +52,13 @@ export function DuesTab({
         amount: "",
         dueDate: new Date(),
     });
+
+    // Apply initial search query from Smart Search
+    useEffect(() => {
+        if (initialSearchQuery !== undefined) {
+            setSearch(initialSearchQuery);
+        }
+    }, [initialSearchQuery]);
 
     // Debounce search
     useEffect(() => {

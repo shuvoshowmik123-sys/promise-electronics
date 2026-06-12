@@ -23,12 +23,14 @@ export function PettyCashTab({
     getCurrencySymbol,
     createPettyCashMutation,
     deletePettyCashMutation,
-    exportToCSV
+    exportToCSV,
+    initialSearchQuery
 }: {
     getCurrencySymbol: () => string;
     createPettyCashMutation: any;
     deletePettyCashMutation: any;
     exportToCSV: (data: any[], filename: string, columns: any[]) => void;
+    initialSearchQuery?: string;
 }) {
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -50,6 +52,13 @@ export function PettyCashTab({
     });
 
     const isIncome = (type: string) => ["Income", "Cash", "Bank", "bKash", "Nagad"].includes(type);
+
+    // Apply initial search query from Smart Search
+    useEffect(() => {
+        if (initialSearchQuery !== undefined) {
+            setSearch(initialSearchQuery);
+        }
+    }, [initialSearchQuery]);
 
     // Debounce search
     useEffect(() => {

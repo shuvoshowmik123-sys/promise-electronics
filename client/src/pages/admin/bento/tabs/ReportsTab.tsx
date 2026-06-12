@@ -119,7 +119,7 @@ export default function ReportsTab() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6 pb-24 md:pb-0"
+            className="space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8"
         >
             {/* Header Actions */}
             <motion.div variants={itemVariants} className="flex flex-wrap items-center justify-between gap-4">

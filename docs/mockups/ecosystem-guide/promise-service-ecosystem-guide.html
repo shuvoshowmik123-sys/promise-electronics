@@ -1,0 +1,473 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Promise Service Ecosystem Guide</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #e8eef7;
+      color: #0f172a;
+      font-family: Inter, "Noto Sans Bengali", "Noto Sans", Arial, sans-serif;
+    }
+    .page {
+      width: 1400px;
+      min-height: 2000px;
+      margin: 0;
+      padding: 52px;
+      background:
+        radial-gradient(circle at 14% 10%, rgba(37, 99, 235, 0.10), transparent 26%),
+        linear-gradient(180deg, #f8fbff 0%, #eef5ff 100%);
+    }
+    .hero {
+      border-radius: 34px;
+      padding: 42px 46px;
+      color: white;
+      background: linear-gradient(135deg, #0f172a 0%, #1d4ed8 65%, #0f766e 100%);
+      box-shadow: 0 24px 80px rgba(15, 23, 42, 0.18);
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::after {
+      content: "PROMISE";
+      position: absolute;
+      right: -12px;
+      bottom: -38px;
+      font-size: 138px;
+      font-weight: 900;
+      letter-spacing: 8px;
+      color: rgba(255, 255, 255, 0.07);
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 14px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.14);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      font-size: 22px;
+      font-weight: 800;
+    }
+    h1 {
+      margin: 22px 0 10px;
+      font-size: 58px;
+      line-height: 1.02;
+      letter-spacing: 0;
+      max-width: 1040px;
+    }
+    .subtitle {
+      max-width: 1010px;
+      margin: 0;
+      font-size: 27px;
+      line-height: 1.35;
+      color: rgba(255,255,255,0.86);
+      font-weight: 600;
+    }
+    .rule {
+      margin-top: 26px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 14px;
+      position: relative;
+      z-index: 2;
+    }
+    .rule-card {
+      border-radius: 22px;
+      padding: 18px 20px;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.18);
+      font-size: 21px;
+      font-weight: 800;
+    }
+    .section-title {
+      margin: 46px 0 18px;
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 24px;
+    }
+    .section-title h2 {
+      margin: 0;
+      font-size: 34px;
+      line-height: 1.1;
+    }
+    .section-title p {
+      margin: 0;
+      max-width: 500px;
+      color: #475569;
+      font-size: 20px;
+      font-weight: 650;
+      line-height: 1.35;
+      text-align: right;
+    }
+    .entry-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 14px;
+    }
+    .entry {
+      min-height: 96px;
+      border-radius: 22px;
+      background: #ffffff;
+      border: 1px solid #dbeafe;
+      box-shadow: 0 12px 36px rgba(30, 64, 175, 0.08);
+      padding: 18px 14px;
+      text-align: center;
+      font-size: 18px;
+      font-weight: 850;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .journey {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 18px;
+      position: relative;
+    }
+    .step {
+      min-height: 228px;
+      border-radius: 28px;
+      background: rgba(255,255,255,0.92);
+      border: 1px solid #dbeafe;
+      box-shadow: 0 18px 52px rgba(15, 23, 42, 0.10);
+      padding: 24px;
+      position: relative;
+    }
+    .num {
+      width: 42px;
+      height: 42px;
+      border-radius: 15px;
+      display: grid;
+      place-items: center;
+      background: #2563eb;
+      color: white;
+      font-size: 22px;
+      font-weight: 900;
+      margin-bottom: 20px;
+    }
+    .step h3 {
+      margin: 0 0 10px;
+      font-size: 26px;
+      line-height: 1.12;
+    }
+    .step p {
+      margin: 0;
+      color: #475569;
+      font-size: 19px;
+      line-height: 1.35;
+      font-weight: 650;
+    }
+    .step .tag {
+      position: absolute;
+      right: 18px;
+      top: 18px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      background: #dbeafe;
+      color: #1d4ed8;
+      font-size: 14px;
+      font-weight: 900;
+    }
+    .two-lanes {
+      display: grid;
+      grid-template-columns: 1.25fr 0.95fr;
+      gap: 22px;
+    }
+    .lane {
+      border-radius: 32px;
+      padding: 28px;
+      background: #ffffff;
+      border: 1px solid #dbeafe;
+      box-shadow: 0 18px 52px rgba(15, 23, 42, 0.10);
+    }
+    .lane.b2b {
+      border-color: #a7f3d0;
+      background: linear-gradient(180deg, #ecfdf5, #ffffff);
+    }
+    .lane h3 {
+      margin: 0 0 14px;
+      font-size: 30px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .lane p {
+      margin: 0 0 20px;
+      color: #475569;
+      font-size: 20px;
+      line-height: 1.35;
+      font-weight: 650;
+    }
+    .mini-flow {
+      display: grid;
+      gap: 12px;
+    }
+    .mini {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      min-height: 74px;
+      border-radius: 20px;
+      padding: 14px 16px;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      font-size: 18px;
+      font-weight: 800;
+      color: #1e293b;
+    }
+    .dot {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      background: #dbeafe;
+      color: #1d4ed8;
+      display: grid;
+      place-items: center;
+      font-weight: 950;
+      flex: 0 0 auto;
+    }
+    .lane.b2b .dot {
+      background: #d1fae5;
+      color: #047857;
+    }
+    .warning {
+      margin-top: 22px;
+      border-radius: 26px;
+      padding: 24px 28px;
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      display: grid;
+      grid-template-columns: 64px 1fr;
+      gap: 18px;
+      align-items: center;
+      box-shadow: 0 14px 36px rgba(194, 65, 12, 0.10);
+    }
+    .warning-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 22px;
+      display: grid;
+      place-items: center;
+      background: #fb923c;
+      color: white;
+      font-size: 34px;
+      font-weight: 900;
+    }
+    .warning strong {
+      display: block;
+      font-size: 26px;
+      color: #9a3412;
+      margin-bottom: 5px;
+    }
+    .warning span {
+      color: #7c2d12;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+    .footer {
+      margin-top: 42px;
+      border-radius: 30px;
+      padding: 28px 34px;
+      background: #0f172a;
+      color: white;
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 20px;
+      align-items: center;
+    }
+    .footer h2 {
+      margin: 0 0 8px;
+      font-size: 32px;
+    }
+    .footer p {
+      margin: 0;
+      font-size: 21px;
+      line-height: 1.32;
+      color: rgba(255,255,255,0.78);
+      font-weight: 650;
+    }
+    .badge {
+      padding: 12px 18px;
+      border-radius: 18px;
+      background: #2563eb;
+      font-size: 20px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+  <main id="english" class="page">
+    <section class="hero">
+      <div class="eyebrow">Promise Electronics · Service Ecosystem</div>
+      <h1>Different inputs. One clear service journey. Correct workspace.</h1>
+      <p class="subtitle">The software guides staff step by step, keeps custody safe with customer OTP, and separates individual customer work from B2B work.</p>
+      <div class="rule">
+        <div class="rule-card">Follow the main wizard action</div>
+        <div class="rule-card">Use More only for correction</div>
+        <div class="rule-card">Never mix normal and B2B jobs</div>
+      </div>
+    </section>
+
+    <div class="section-title">
+      <h2>All individual customers enter the same normal lane</h2>
+      <p>Online, shop counter, phone, social message, referral, pickup, or service-center visit.</p>
+    </div>
+    <section class="entry-grid">
+      <div class="entry">Online Request</div>
+      <div class="entry">Walk-in Customer</div>
+      <div class="entry">Phone Call</div>
+      <div class="entry">WhatsApp</div>
+      <div class="entry">Messenger</div>
+      <div class="entry">Referral</div>
+    </section>
+
+    <div class="section-title">
+      <h2>The normal service journey</h2>
+      <p>One record moves forward. Staff should see the next step, not a confusing list of options.</p>
+    </div>
+    <section class="journey">
+      <div class="step"><span class="tag">Start</span><div class="num">1</div><h3>Service Request</h3><p>Customer details, device, problem, and pickup or service-center choice are captured.</p></div>
+      <div class="step"><span class="tag">Custody</span><div class="num">2</div><h3>Pickup / Drop-off</h3><p>Staff schedules collection or receives the device at the counter. Customer OTP confirms handover.</p></div>
+      <div class="step"><span class="tag">Repair</span><div class="num">3</div><h3>Create Job</h3><p>Only after custody is confirmed, the job opens for technician work, parts, and repair feedback.</p></div>
+      <div class="step"><span class="tag">Money</span><div class="num">4</div><h3>Bill & Payment</h3><p>Invoice is created. bKash/Nagad send-money proof goes to Finance for staff verification.</p></div>
+      <div class="step"><span class="tag">Return</span><div class="num">5</div><h3>Delivery / Collection</h3><p>Device release uses customer OTP again, whether delivered by driver or collected at shop.</p></div>
+      <div class="step"><span class="tag">Done</span><div class="num">6</div><h3>Completed</h3><p>The customer portal shows one simple journey and one action card at a time.</p></div>
+      <div class="step"><span class="tag">Guide</span><div class="num">7</div><h3>Staff Wizard</h3><p>Every screen should say the recommended next action. Manual controls stay behind More.</p></div>
+      <div class="step"><span class="tag">Trust</span><div class="num">8</div><h3>Single Record</h3><p>Request, pickup, job, bill, payment, and delivery stay connected under one service story.</p></div>
+    </section>
+
+    <div class="section-title">
+      <h2>Two workspaces, same friendly language</h2>
+      <p>Normal and B2B can share lifecycle wording, but they must never leak into each other.</p>
+    </div>
+    <section class="two-lanes">
+      <div class="lane">
+        <h3>👤 Normal Customer Workspace</h3>
+        <p>For individual customers. This is where normal Jobs, Pickup/Delivery, Finance verification, and customer portal tracking belong.</p>
+        <div class="mini-flow">
+          <div class="mini"><span class="dot">1</span> Service Request or Walk-in record</div>
+          <div class="mini"><span class="dot">2</span> Custody OTP before job creation</div>
+          <div class="mini"><span class="dot">3</span> Normal Job and technician repair feedback</div>
+          <div class="mini"><span class="dot">4</span> Bill, payment verification, delivery OTP</div>
+        </div>
+      </div>
+      <div class="lane b2b">
+        <h3>🏢 B2B / Corporate Workspace</h3>
+        <p>For companies, batches, challans, panel-continuous work, and corporate portal work. It stays under B2B.</p>
+        <div class="mini-flow">
+          <div class="mini"><span class="dot">1</span> Corporate intake, challan, or batch</div>
+          <div class="mini"><span class="dot">2</span> Corporate jobs and batch tracking</div>
+          <div class="mini"><span class="dot">3</span> Corporate bill, statement, and portal</div>
+          <div class="mini"><span class="dot">4</span> No normal Jobs leakage</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="warning">
+      <div class="warning-icon">!</div>
+      <div>
+        <strong>The simple rule for staff</strong>
+        <span>If it is one household customer, use the normal wizard. If it is company, batch, challan, or continuous panel work, use B2B. The system should guide you, not make you guess.</span>
+      </div>
+    </section>
+
+    <section class="footer">
+      <div>
+        <h2>Promise goal: simple to use, hard to misuse.</h2>
+        <p>Each person sees the right work, the right next action, and the right customer status under one roof.</p>
+      </div>
+      <div class="badge">Universal Service Flow</div>
+    </section>
+  </main>
+
+  <main id="bangla" class="page">
+    <section class="hero">
+      <div class="eyebrow">Promise Electronics · সার্ভিস ইকোসিস্টেম</div>
+      <h1>ইনপুট আলাদা হতে পারে। সার্ভিস যাত্রা একটাই। কাজ থাকবে সঠিক জায়গায়।</h1>
+      <p class="subtitle">সফটওয়্যার স্টাফকে ধাপে ধাপে গাইড করবে, কাস্টমার OTP দিয়ে ডিভাইস হ্যান্ডওভার নিরাপদ রাখবে, এবং সাধারণ কাস্টমারের কাজ B2B কাজ থেকে আলাদা রাখবে।</p>
+      <div class="rule">
+        <div class="rule-card">প্রথমে মূল wizard action অনুসরণ করুন</div>
+        <div class="rule-card">More ব্যবহার করুন শুধু correction এর জন্য</div>
+        <div class="rule-card">Normal আর B2B job কখনো মিশাবেন না</div>
+      </div>
+    </section>
+
+    <div class="section-title">
+      <h2>সব সাধারণ কাস্টমার একই normal lane এ যাবে</h2>
+      <p>Online, shop counter, phone, social message, referral, pickup, অথবা service-center visit।</p>
+    </div>
+    <section class="entry-grid">
+      <div class="entry">Online Request</div>
+      <div class="entry">Walk-in Customer</div>
+      <div class="entry">Phone Call</div>
+      <div class="entry">WhatsApp</div>
+      <div class="entry">Messenger</div>
+      <div class="entry">Referral</div>
+    </section>
+
+    <div class="section-title">
+      <h2>সাধারণ সার্ভিস যাত্রা</h2>
+      <p>একটি record সামনে এগোবে। স্টাফ শুধু next step দেখবে, একসাথে অনেক confusing option নয়।</p>
+    </div>
+    <section class="journey">
+      <div class="step"><span class="tag">Start</span><div class="num">1</div><h3>Service Request</h3><p>কাস্টমার, ডিভাইস, সমস্যা, pickup নাকি service center—এই তথ্য নেওয়া হবে।</p></div>
+      <div class="step"><span class="tag">Custody</span><div class="num">2</div><h3>Pickup / Drop-off</h3><p>স্টাফ pickup schedule করবে অথবা counter এ device receive করবে। customer OTP দিয়ে handover confirm হবে।</p></div>
+      <div class="step"><span class="tag">Repair</span><div class="num">3</div><h3>Create Job</h3><p>Custody confirm হওয়ার পরেই technician job খুলবে। সেখানে repair, parts, feedback থাকবে।</p></div>
+      <div class="step"><span class="tag">Money</span><div class="num">4</div><h3>Bill & Payment</h3><p>Invoice তৈরি হবে। bKash/Nagad send-money proof Finance এ verification এর জন্য যাবে।</p></div>
+      <div class="step"><span class="tag">Return</span><div class="num">5</div><h3>Delivery / Collection</h3><p>Driver delivery করুক বা shop থেকে customer নিক—device release হবে customer OTP দিয়ে।</p></div>
+      <div class="step"><span class="tag">Done</span><div class="num">6</div><h3>Completed</h3><p>Customer portal এ একটাই simple journey আর একসময় একটাই action card দেখা যাবে।</p></div>
+      <div class="step"><span class="tag">Guide</span><div class="num">7</div><h3>Staff Wizard</h3><p>প্রতিটি screen এ recommended next action থাকবে। Manual control থাকবে More এর ভিতরে।</p></div>
+      <div class="step"><span class="tag">Trust</span><div class="num">8</div><h3>Single Record</h3><p>Request, pickup, job, bill, payment, delivery—সব এক service story তে connected থাকবে।</p></div>
+    </section>
+
+    <div class="section-title">
+      <h2>দুই workspace, ভাষা সহজ</h2>
+      <p>Normal আর B2B একই friendly status language ব্যবহার করতে পারে, কিন্তু একে অন্যের ভিতরে leak করা যাবে না।</p>
+    </div>
+    <section class="two-lanes">
+      <div class="lane">
+        <h3>👤 Normal Customer Workspace</h3>
+        <p>Individual customer এর জন্য। Normal Jobs, Pickup/Delivery, Finance verification, customer portal tracking এখানে থাকবে।</p>
+        <div class="mini-flow">
+          <div class="mini"><span class="dot">1</span> Service Request বা Walk-in record</div>
+          <div class="mini"><span class="dot">2</span> Job create এর আগে custody OTP</div>
+          <div class="mini"><span class="dot">3</span> Normal Job এবং technician repair feedback</div>
+          <div class="mini"><span class="dot">4</span> Bill, payment verification, delivery OTP</div>
+        </div>
+      </div>
+      <div class="lane b2b">
+        <h3>🏢 B2B / Corporate Workspace</h3>
+        <p>Company, batch, challan, panel-continuous work, corporate portal work—সব B2B এর ভিতরে থাকবে।</p>
+        <div class="mini-flow">
+          <div class="mini"><span class="dot">1</span> Corporate intake, challan, বা batch</div>
+          <div class="mini"><span class="dot">2</span> Corporate jobs এবং batch tracking</div>
+          <div class="mini"><span class="dot">3</span> Corporate bill, statement, portal</div>
+          <div class="mini"><span class="dot">4</span> Normal Jobs এ leak হবে না</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="warning">
+      <div class="warning-icon">!</div>
+      <div>
+        <strong>স্টাফদের জন্য সহজ নিয়ম</strong>
+        <span>একজন household customer হলে normal wizard ব্যবহার করুন। Company, batch, challan, বা continuous panel work হলে B2B ব্যবহার করুন। সফটওয়্যার আপনাকে guide করবে, guess করতে হবে না।</span>
+      </div>
+    </section>
+
+    <section class="footer">
+      <div>
+        <h2>Promise লক্ষ্য: ব্যবহার সহজ, ভুল করা কঠিন।</h2>
+        <p>প্রতিটি মানুষ সঠিক কাজ, সঠিক next action, এবং সঠিক customer status এক জায়গায় দেখতে পাবে।</p>
+      </div>
+      <div class="badge">Universal Service Flow</div>
+    </section>
+  </main>
+</body>
+</html>

@@ -198,6 +198,192 @@ describe("Phase 3 manual payment verification", () => {
         expect(res.body.payment.status).toBe("applied_to_invoice");
     });
 
+    it("notifies the customer when a submitted payment is verified", async () => {
+        const recordJobPayment = vi.fn(async () => ({ id: "job-1", paidAmount: 1000 }));
+        const createNotification = vi.fn(async (value: any) => ({ id: "notif-1", ...value }));
+        const notifyCustomerUpdate = vi.fn();
+        const payment = {
+            id: "pay-1",
+            source: "customer_submission",
+            serviceRequestId: "srv-1",
+            jobTicketId: "job-1",
+            dueRecordId: null,
+            customerPhone: "01710000000",
+            transactionId: "TXN-123",
+            amount: 1000,
+            method: "bkash_send_money",
+            status: "pending",
+            verifiedAt: null,
+            appliedAt: null,
+        };
+
+        vi.doMock("../server/routes/middleware/auth.js", createAuthMock);
+        vi.doMock("../server/repositories/index.js", () => ({
+            financeRepo: {},
+            posRepo: {},
+            serviceRequestRepo: {
+                getServiceRequest: vi.fn(async () => ({
+                    id: "srv-1",
+                    ticketNumber: "SR-1",
+                    customerId: "cust-1",
+                })),
+            },
+            notificationRepo: {
+                createNotification,
+            },
+            userRepo: {
+                getUser: vi.fn(async (id: string) => id === "admin-1"
+                    ? { id: "admin-1", name: "Manager" }
+                    : { id: "cust-1", name: "Customer One", phone: "01710000000" }),
+                getUserByPhoneNormalized: vi.fn(),
+            },
+        }));
+        vi.doMock("../server/routes/middleware/sse-broker.js", () => ({
+            notifyCustomerUpdate,
+        }));
+        vi.doMock("../server/db.js", () => ({
+            db: {
+                select: vi.fn(() => ({
+                    from: vi.fn(() => ({
+                        where: vi.fn(() => ({
+                            limit: vi.fn(async () => [payment]),
+                        })),
+                    })),
+                })),
+                update: vi.fn(() => ({
+                    set: vi.fn((values: any) => ({
+                        where: vi.fn(() => ({
+                            returning: vi.fn(async () => [{ ...payment, ...values }]),
+                        })),
+                    })),
+                })),
+            },
+        }));
+        vi.doMock("../server/services/finance.service.js", () => ({
+            financeService: {
+                recordDuePayment: vi.fn(),
+            },
+        }));
+        vi.doMock("../server/services/job.service.js", () => ({
+            jobService: {
+                recordJobPayment,
+            },
+        }));
+
+        const { default: router } = await import("../server/routes/finance.routes.js");
+        const app = createApp(router);
+
+        const res = await request(app).post("/api/manual-payments/pay-1/verify").send();
+
+        expect(res.status).toBe(200);
+        expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+            userId: "cust-1",
+            title: "Payment Verified",
+            type: "success",
+            contextType: "customer_payment",
+        }));
+        expect(notifyCustomerUpdate).toHaveBeenCalledWith("cust-1", expect.objectContaining({
+            type: "payment_verified",
+            paymentId: "pay-1",
+            serviceRequestId: "srv-1",
+            ticketNumber: "SR-1",
+            amount: 1000,
+        }));
+    });
+
+    it("notifies the customer with a reason when a submitted payment is rejected", async () => {
+        const createNotification = vi.fn(async (value: any) => ({ id: "notif-1", ...value }));
+        const notifyCustomerUpdate = vi.fn();
+        const payment = {
+            id: "pay-1",
+            source: "customer_submission",
+            serviceRequestId: "srv-1",
+            jobTicketId: "job-1",
+            dueRecordId: null,
+            customerPhone: "01710000000",
+            transactionId: "TXN-123",
+            amount: 1000,
+            method: "bkash_send_money",
+            status: "pending",
+        };
+
+        vi.doMock("../server/routes/middleware/auth.js", createAuthMock);
+        vi.doMock("../server/repositories/index.js", () => ({
+            financeRepo: {},
+            posRepo: {},
+            serviceRequestRepo: {
+                getServiceRequest: vi.fn(async () => ({
+                    id: "srv-1",
+                    ticketNumber: "SR-1",
+                    customerId: "cust-1",
+                })),
+            },
+            notificationRepo: {
+                createNotification,
+            },
+            userRepo: {
+                getUser: vi.fn(async (id: string) => id === "admin-1"
+                    ? { id: "admin-1", name: "Manager" }
+                    : { id: "cust-1", name: "Customer One", phone: "01710000000" }),
+                getUserByPhoneNormalized: vi.fn(),
+            },
+        }));
+        vi.doMock("../server/routes/middleware/sse-broker.js", () => ({
+            notifyCustomerUpdate,
+        }));
+        vi.doMock("../server/db.js", () => ({
+            db: {
+                select: vi.fn(() => ({
+                    from: vi.fn(() => ({
+                        where: vi.fn(() => ({
+                            limit: vi.fn(async () => [payment]),
+                        })),
+                    })),
+                })),
+                update: vi.fn(() => ({
+                    set: vi.fn((values: any) => ({
+                        where: vi.fn(() => ({
+                            returning: vi.fn(async () => [{ ...payment, ...values }]),
+                        })),
+                    })),
+                })),
+            },
+        }));
+        vi.doMock("../server/services/finance.service.js", () => ({
+            financeService: {
+                recordDuePayment: vi.fn(),
+            },
+        }));
+        vi.doMock("../server/services/job.service.js", () => ({
+            jobService: {
+                recordJobPayment: vi.fn(),
+            },
+        }));
+
+        const { default: router } = await import("../server/routes/finance.routes.js");
+        const app = createApp(router);
+
+        const res = await request(app)
+            .post("/api/manual-payments/pay-1/reject")
+            .send({ reason: "Transaction ID not found" });
+
+        expect(res.status).toBe(200);
+        expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
+            userId: "cust-1",
+            title: "Payment Rejected",
+            type: "warning",
+            contextType: "customer_payment",
+            message: expect.stringContaining("Transaction ID not found"),
+        }));
+        expect(notifyCustomerUpdate).toHaveBeenCalledWith("cust-1", expect.objectContaining({
+            type: "payment_rejected",
+            paymentId: "pay-1",
+            serviceRequestId: "srv-1",
+            ticketNumber: "SR-1",
+            reason: "Transaction ID not found",
+        }));
+    });
+
     it("creates customer-submitted payment verification requests", async () => {
         const insertedValues: any[] = [];
 
@@ -272,6 +458,7 @@ describe("Phase 3 manual payment verification", () => {
         vi.doMock("../server/routes/middleware/rate-limit.js", () => ({
             authLimiter: (_req: any, _res: any, next: () => void) => next(),
             registrationLimiter: (_req: any, _res: any, next: () => void) => next(),
+            serviceRequestLimiter: (_req: any, _res: any, next: () => void) => next(),
         }));
         vi.doMock("../server/routes/middleware/sse-broker.js", () => ({
             addCustomerSSEClient: vi.fn(),

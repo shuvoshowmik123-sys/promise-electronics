@@ -23,10 +23,100 @@ export function CustomerDialog({ open, onOpenChange, customers, customersLoading
     onSelect: (c: any) => void; getCurrencySymbol: () => string;
 }) {
     const [search, setSearch] = useState("");
+    const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
     const filtered = customers?.filter(c =>
         search === "" || c.name?.toLowerCase().includes(search.toLowerCase()) ||
         c.phone?.toLowerCase().includes(search.toLowerCase()) || c.email?.toLowerCase().includes(search.toLowerCase())
     ) || [];
+
+    useEffect(() => {
+        const check = () => setIsMobile(window.innerWidth < 768);
+        check();
+        window.addEventListener("resize", check);
+        return () => window.removeEventListener("resize", check);
+    }, []);
+
+    if (isMobile) {
+        return (
+            <>
+                {typeof document !== "undefined" && createPortal(
+                    <AnimatePresence>
+                        {open && (
+                            <>
+                                <motion.div
+                                    initial={{ opacity: 0 }}
+                                    animate={{ opacity: 1 }}
+                                    exit={{ opacity: 0 }}
+                                    className="fixed inset-0 z-[235] bg-slate-950/35 backdrop-blur-sm"
+                                    onClick={() => { onOpenChange(false); setSearch(""); }}
+                                />
+                                <MobileBottomSheetFrame
+                                    onClose={() => { onOpenChange(false); setSearch(""); }}
+                                    className="fixed inset-x-0 bottom-0 z-[240] flex max-h-[76vh] flex-col rounded-t-3xl bg-white shadow-2xl"
+                                >
+                                    <div className="shrink-0 px-5 pb-3 pt-3">
+                                        <MobileBottomSheetHandle />
+                                        <div className="mt-3 flex items-center justify-between">
+                                            <div>
+                                                <h3 className="text-xl font-black text-slate-950">Choose Customer</h3>
+                                                <p className="text-xs font-semibold text-slate-400">Add saved customer details to this bill.</p>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => { onOpenChange(false); setSearch(""); }}
+                                                className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-500 active:scale-95"
+                                            >
+                                                <X className="h-5 w-5" />
+                                            </button>
+                                        </div>
+                                        <div className="relative mt-4">
+                                            <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                                            <input
+                                                value={search}
+                                                onChange={(e) => setSearch(e.target.value)}
+                                                placeholder="Search name, phone or email"
+                                                className="h-12 w-full rounded-2xl border border-slate-200 bg-slate-50 pl-10 pr-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-400 focus:ring-4 focus:ring-blue-500/10"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50 px-4 py-3">
+                                        {customersLoading ? (
+                                            <div className="flex justify-center py-12"><Loader2 className="h-7 w-7 animate-spin text-blue-500" /></div>
+                                        ) : filtered.length === 0 ? (
+                                            <div className="rounded-3xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm font-semibold text-slate-400">
+                                                No customers found
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-2.5">
+                                                {filtered.slice(0, 30).map((customer) => (
+                                                    <button
+                                                        key={customer.id}
+                                                        type="button"
+                                                        onClick={() => { onSelect(customer); setSearch(""); }}
+                                                        className="flex w-full items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3 text-left shadow-sm active:scale-[0.99]"
+                                                    >
+                                                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-100 text-sm font-black text-blue-700">
+                                                            {(customer.name || "?")[0].toUpperCase()}
+                                                        </div>
+                                                        <div className="min-w-0 flex-1">
+                                                            <p className="truncate text-sm font-black text-slate-950">{customer.name || "Unnamed Customer"}</p>
+                                                            <p className="mt-0.5 truncate text-xs font-semibold text-slate-400">{customer.phone || customer.email || "No phone saved"}</p>
+                                                        </div>
+                                                        <span className="rounded-full bg-blue-600 px-3 py-1.5 text-xs font-black text-white">Select</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
+                                </MobileBottomSheetFrame>
+                            </>
+                        )}
+                    </AnimatePresence>,
+                    document.body,
+                )}
+            </>
+        );
+    }
 
     return (
         <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setSearch(""); }}>
@@ -99,7 +189,7 @@ export function JobLinkDialog({ open, onOpenChange, billableJobs, jobsLoading, l
                     <>
                         <motion.div
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm md:hidden"
+                            className="fixed inset-0 z-[245] bg-slate-900/40 backdrop-blur-sm md:hidden"
                             onClick={() => onOpenChange(false)}
                         />
                         <MobileBottomSheetFrame
@@ -251,12 +341,12 @@ export function InventoryDialog({ open, onOpenChange, inventoryItems, inventoryL
                     <>
                         <motion.div
                             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                            className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm md:hidden"
+                            className="fixed inset-0 z-[260] bg-slate-900/40 backdrop-blur-sm md:hidden"
                             onClick={() => onOpenChange(false)}
                         />
                         <MobileBottomSheetFrame
                             onClose={() => onOpenChange(false)}
-                            className="fixed inset-x-0 bottom-0 z-[200] flex max-h-[90vh] flex-col rounded-t-3xl bg-white shadow-2xl md:hidden"
+                            className="fixed inset-x-0 bottom-0 z-[250] flex max-h-[90vh] flex-col rounded-t-3xl bg-white shadow-2xl md:hidden"
                         >
                             <div className="px-5 pt-3 pb-2 shrink-0">
                                 <MobileBottomSheetHandle />
@@ -636,7 +726,7 @@ export function HistoryDialog({ open, onOpenChange, posTransactions, getCurrency
                         />
                         <MobileBottomSheetFrame
                             onClose={() => { onOpenChange(false); setExpandedId(null); }}
-                            className="fixed inset-x-0 bottom-0 z-[200] flex max-h-[90vh] flex-col rounded-t-3xl bg-white shadow-2xl md:hidden"
+                            className="fixed inset-x-0 bottom-0 z-[270] flex max-h-[90vh] flex-col rounded-t-3xl bg-white shadow-2xl md:hidden"
                         >
                             <div className="px-5 pt-3 pb-3 shrink-0 border-b border-slate-100">
                                 <MobileBottomSheetHandle />

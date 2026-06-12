@@ -30,7 +30,7 @@ export const auditLogsApi = {
 
 // Job Tickets API
 export const jobTicketsApi = {
-    getAll: (type: "all" | "walk-in" | "corporate" = "all") => fetchApi<{ items: JobTicket[]; pagination: { total: number; page: number; limit: number; pages: number } }>(`/job-tickets?type=${type}`),
+    getAll: (type: "all" | "walk-in" | "corporate" = "walk-in") => fetchApi<{ items: JobTicket[]; pagination: { total: number; page: number; limit: number; pages: number } }>(`/job-tickets?type=${type}`),
     getReadyForBilling: () => fetchApi<JobTicket[]>("/job-tickets/ready-for-billing"),
     getPendingRollbacks: () => fetchApi<RollbackRequest[]>("/job-tickets/pending-rollbacks"),
     getOne: (id: string) => fetchApi<JobTicket>(`/job-tickets/${id}`),
@@ -170,7 +170,7 @@ export const challansApi = {
             body: JSON.stringify(data),
         }),
     updateStatus: (id: string, status: string) =>
-        fetchApi<Challan>(`/challans/${id}/status`, {
+        fetchApi<Challan>(`/challans/${id}`, {
             method: "PATCH",
             body: JSON.stringify({ status }),
         }),
@@ -400,6 +400,7 @@ export const searchApi = {
             posTransactions: any[];
             inventory: any[];
             challans: any[];
+            finance: any[];
             counts: {
                 jobs: number;
                 customers: number;
@@ -407,6 +408,7 @@ export const searchApi = {
                 posTransactions: number;
                 inventory: number;
                 challans: number;
+                finance: number;
             };
         }>(`/admin/search?q=${encodeURIComponent(query)}`),
 };

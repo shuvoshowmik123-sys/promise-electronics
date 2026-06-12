@@ -16,12 +16,13 @@ import CorporateRepairsTab from "./CorporateRepairsTab";
 
 interface UnifiedB2BTabProps {
     initialClientId?: string | null;
+    initialJobId?: string | null;
     initialSearchQuery?: string;
     onSearchConsumed?: () => void;
     onBack?: () => void;
 }
 
-export default function UnifiedB2BTab({ initialClientId, initialSearchQuery, onSearchConsumed, onBack }: UnifiedB2BTabProps) {
+export default function UnifiedB2BTab({ initialClientId, initialJobId, initialSearchQuery, onSearchConsumed, onBack }: UnifiedB2BTabProps) {
     // Determine if we should show the Client List (CorporateTab) or the Client Details (CorporateRepairsTab)
     const [selectedClientId, setSelectedClientId] = useState<string | null>(initialClientId || null);
 
@@ -36,6 +37,7 @@ export default function UnifiedB2BTab({ initialClientId, initialSearchQuery, onS
         return (
             <CorporateRepairsTab
                 initialClientId={selectedClientId}
+                initialJobId={initialJobId}
                 initialSearchQuery={initialSearchQuery}
                 onSearchConsumed={onSearchConsumed}
                 onBack={() => {
@@ -128,6 +130,9 @@ function CorporateClientList({ onSelectClient }: { onSelectClient: (id: string) 
                                     <Plus size={16} className="mr-2" /> Add Client
                                 </Button>
                             </div>
+                        </div>
+                        <div className="mb-4 rounded-2xl border border-emerald-100 bg-emerald-50/80 px-4 py-3 text-sm font-semibold text-emerald-900">
+                            Company, batch, challan, and panel-continuous work stays in B2B. Use normal Jobs only for individual customers.
                         </div>
 
                         {/* Table */}

@@ -8,19 +8,27 @@ import { BentoCard, containerVariants, itemVariants, MobileCommandRail, MobileMi
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { posTransactionsApi, pettyCashApi, dueRecordsApi, refundsApi, settingsApi, manualPaymentsApi, drawerApi } from "@/lib/api";
-import { useMemo, useState, useEffect } from "react";
-import { SalesTab } from "./FinancesTabSales";
-import { PettyCashTab } from "./FinancesTabPettyCash";
-import { DuesTab } from "./FinancesTabDues";
-import { RefundsTab } from "./FinancesTabRefunds";
-import { FinancesTabDrawer } from "./FinancesTabDrawer";
-import { ManualPaymentsTab } from "./FinancesTabManualPayments";
-import { BlacklistReview } from "./FinancesTabBlacklist";
+import { useMemo, useState, useEffect, useRef, lazy, Suspense } from "react";
+// Lazy-loaded finance sub-sections — only the visible section's chunk downloads,
+// instead of bundling all ~3400 LOC of sub-tabs into the Finance chunk eagerly.
+const SalesTab = lazy(() => import("./FinancesTabSales").then(m => ({ default: m.SalesTab })));
+const PettyCashTab = lazy(() => import("./FinancesTabPettyCash").then(m => ({ default: m.PettyCashTab })));
+const DuesTab = lazy(() => import("./FinancesTabDues").then(m => ({ default: m.DuesTab })));
+const RefundsTab = lazy(() => import("./FinancesTabRefunds").then(m => ({ default: m.RefundsTab })));
+const FinancesTabDrawer = lazy(() => import("./FinancesTabDrawer").then(m => ({ default: m.FinancesTabDrawer })));
+const ManualPaymentsTab = lazy(() => import("./FinancesTabManualPayments").then(m => ({ default: m.ManualPaymentsTab })));
+const BlacklistReview = lazy(() => import("./FinancesTabBlacklist").then(m => ({ default: m.BlacklistReview })));
 import { format } from "date-fns";
 import { toast } from "sonner";
 import { InsertPettyCashRecord, InsertDueRecord } from "@shared/schema";
 
-export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "petty-cash" | "dues" | "refunds" | "drawer" | "manual-payments" }) {
+export default function FinancesTab({ defaultTab, initialSearchQuery, initialRecordId, initialRecordType, onSearchConsumed }: {
+    defaultTab?: "sales" | "petty-cash" | "dues" | "refunds" | "drawer" | "manual-payments";
+    initialSearchQuery?: string;
+    initialRecordId?: string;
+    initialRecordType?: string;
+    onSearchConsumed?: () => void;
+}) {
     const queryClient = useQueryClient();
 
     // 4-group layout: Overview · Money In · Money Out · Cash Drawer.
@@ -39,9 +47,41 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
         defaultTab === "refunds" ? "refunds" : "expenses"
     );
     const [kpiOpen, setKpiOpen] = useState(false);
+    const [financeSearchQuery, setFinanceSearchQuery] = useState(initialSearchQuery || "");
     useEffect(() => {
         if (defaultTab) setActiveFinanceTab(mapLegacy(defaultTab));
     }, [defaultTab]);
+
+    // Handle initialSearchQuery from deep link (e.g., Smart Search)
+    useEffect(() => {
+        if (initialSearchQuery !== undefined) {
+            setFinanceSearchQuery(initialSearchQuery);
+            onSearchConsumed?.();
+        }
+    }, [initialSearchQuery]);
+
+    // Auto-highlight finance record by initialRecordId (from Smart Search deep-link)
+    const initialRecordOpenedRef = useRef<string | null>(null);
+    useEffect(() => {
+        const recordKey = initialRecordId ? `${initialRecordType || "finance"}:${initialRecordId}` : null;
+        if (initialRecordId && initialRecordOpenedRef.current !== recordKey) {
+            initialRecordOpenedRef.current = recordKey;
+            if (initialRecordType === "due") {
+                setActiveFinanceTab("money-in");
+                setMoneyInView("dues");
+            } else if (initialRecordType === "manual-payment") {
+                setActiveFinanceTab("money-in");
+                setMoneyInView("payments");
+            } else if (initialRecordType === "petty-cash") {
+                setActiveFinanceTab("money-out");
+                setMoneyOutView("expenses");
+            } else if (initialRecordType === "refund") {
+                setActiveFinanceTab("money-out");
+                setMoneyOutView("refunds");
+            }
+            toast.info(`Showing finance record ${initialRecordId.slice(-6).toUpperCase()}`);
+        }
+    }, [initialRecordId, initialRecordType]);
 
     // API queries
     const { data: salesSummary, isLoading: isPosLoading } = useQuery({
@@ -304,7 +344,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                 )}
             </MobileTabHeader>
 
-            <MobileScrollContent className="md:overflow-visible md:bg-transparent md:px-0 md:space-y-6">
+            <MobileScrollContent className="pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:overflow-visible md:bg-transparent md:px-0 md:space-y-6 md:pb-0">
             <div className="hidden md:grid md:grid-cols-4 gap-4">
                 <motion.div variants={itemVariants}>
                     <BentoCard
@@ -393,6 +433,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
 
             {/* Sub-Tabs System */}
             <motion.div variants={itemVariants}>
+                <Suspense fallback={<div className="flex items-center justify-center py-10 text-slate-400"><Loader2 className="h-5 w-5 animate-spin" /></div>}>
                 <Tabs value={activeFinanceTab} onValueChange={(v) => setActiveFinanceTab(v as typeof activeFinanceTab)} className="w-full">
                     <TabsList className="hidden h-12 items-center justify-center rounded-full bg-slate-100 p-1 text-slate-500 w-full sm:w-auto gap-1 flex-wrap sm:flex-nowrap md:inline-flex">
                         <TabsTrigger
@@ -535,7 +576,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                             <SalesTab getCurrencySymbol={getCurrencySymbol} getCompanyInfo={getCompanyInfo} exportToCSV={exportToCSV} />
                         )}
                         {moneyInView === "dues" && (
-                            <DuesTab getCurrencySymbol={getCurrencySymbol} createDueMutation={createDueMutation} updateDueMutation={updateDueMutation} exportToCSV={exportToCSV} />
+                            <DuesTab getCurrencySymbol={getCurrencySymbol} createDueMutation={createDueMutation} updateDueMutation={updateDueMutation} exportToCSV={exportToCSV} initialSearchQuery={financeSearchQuery} />
                         )}
                     </TabsContent>
 
@@ -550,10 +591,10 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                             ))}
                         </div>
                         {moneyOutView === "expenses" && (
-                            <PettyCashTab getCurrencySymbol={getCurrencySymbol} createPettyCashMutation={createPettyCashMutation} deletePettyCashMutation={deletePettyCashMutation} exportToCSV={exportToCSV} />
+                            <PettyCashTab getCurrencySymbol={getCurrencySymbol} createPettyCashMutation={createPettyCashMutation} deletePettyCashMutation={deletePettyCashMutation} exportToCSV={exportToCSV} initialSearchQuery={financeSearchQuery} />
                         )}
                         {moneyOutView === "refunds" && (
-                            <RefundsTab refundsData={refundsData} isLoading={isRefundsLoading} getCurrencySymbol={getCurrencySymbol} refundsApi={refundsApi} queryClient={queryClient} />
+                            <RefundsTab refundsData={refundsData} isLoading={isRefundsLoading} getCurrencySymbol={getCurrencySymbol} refundsApi={refundsApi} queryClient={queryClient} initialSearchQuery={financeSearchQuery} />
                         )}
                     </TabsContent>
 
@@ -566,6 +607,7 @@ export default function FinancesTab({ defaultTab }: { defaultTab?: "sales" | "pe
                         <BlacklistReview getCurrencySymbol={getCurrencySymbol} />
                     </TabsContent>
                 </Tabs>
+                </Suspense>
             </motion.div>
             </MobileScrollContent>
         </motion.div>

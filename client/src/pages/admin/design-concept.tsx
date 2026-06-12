@@ -27,11 +27,12 @@ import { QRScanButton } from "@/components/admin/QRScanButton";
 import { SyncConflictReview } from "@/components/admin/SyncConflictReview";
 import { ReminderBell } from "@/components/admin/ReminderBell";
 import { TeamChatPanel } from "@/components/admin/TeamChatPanel";
+import { DatabaseSyncStatus } from "@/components/admin/DatabaseSyncStatus";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { DashboardSkeleton } from "./bento/shared/DashboardSkeleton";
 import { MobileMoreMenu } from "./bento/shared/MobileMoreMenu";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
-import { GlobalSearch } from "./bento/shared/GlobalSearch";
+import { GlobalSearch, type SearchNavigationPayload } from "./bento/shared/GlobalSearch";
 import { NotificationPanel } from "./bento/shared/NotificationPanel";
 import {
     DropdownMenu,
@@ -79,6 +80,25 @@ const SalaryHRTab = lazy(() => import("./bento/tabs/SalaryHRTab"));
 const CashierTab = lazy(() => import("./bento/tabs/CashierTab"));
 const TechnicianTab = lazy(() => import("./bento/tabs/TechnicianTab"));
 
+// Tab chunk preloaders — warming these during idle (and on nav hover/touch)
+// removes the lazy-chunk download wait on first tab switch, so switching feels
+// instant. import() is module-cached, so calling it again is a no-op once loaded.
+const TAB_PRELOADERS: Record<string, () => Promise<unknown>> = {
+    jobs: () => import("./bento/tabs/JobTicketsTab"),
+    pos: () => import("./bento/tabs/PosTab"),
+    inventory: () => import("./bento/tabs/InventoryTab"),
+    finance: () => import("./bento/tabs/FinancesTab"),
+    customers: () => import("./bento/tabs/CustomersTab"),
+    "service-requests": () => import("./bento/tabs/ServiceRequestsTab"),
+    pickup: () => import("./bento/tabs/PickupTab"),
+    inquiries: () => import("./bento/tabs/InquiriesTab"),
+};
+
+/** Warm a single tab's chunk (call on nav hover/touchstart). */
+export function preloadTab(id: string) {
+    TAB_PRELOADERS[id]?.();
+}
+
 export default function DesignConcept() {
     /**
      * Backward-compat: old bookmarks may still reference #corp-repairs.
@@ -87,6 +107,16 @@ export default function DesignConcept() {
      */
     const normalizeTab = (tab: string) => tab === "corp-repairs" ? "b2b" : tab;
     const isLikelyEntityId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+    const buildHash = (tab: string, searchQuery?: string, payload?: SearchNavigationPayload) => {
+        const params = new URLSearchParams();
+        const resolvedSearch = payload?.searchQuery || searchQuery;
+        if (resolvedSearch) params.set("search", resolvedSearch);
+        if (payload?.targetId) params.set("target", payload.targetId);
+        if (payload?.clientId) params.set("client", payload.clientId);
+        if (payload?.recordType) params.set("type", payload.recordType);
+        const query = params.toString();
+        return query ? `#${tab}?${query}` : `#${tab}`;
+    };
 
     const [activeTab, setActiveTab] = useState(() => {
         const hash = window.location.hash.replace("#", "");
@@ -95,6 +125,19 @@ export default function DesignConcept() {
 
     const activeTabRef = useRef(activeTab);
     useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+
+    // Warm the most-used tab chunks during idle (after first paint) so the first
+    // switch to Jobs/POS/Finance/etc has no lazy-chunk download wait.
+    useEffect(() => {
+        const warm = () => Object.values(TAB_PRELOADERS).forEach((load) => { void load(); });
+        const ric = (window as any).requestIdleCallback;
+        if (ric) {
+            const id = ric(warm, { timeout: 4000 });
+            return () => (window as any).cancelIdleCallback?.(id);
+        }
+        const t = setTimeout(warm, 2500);
+        return () => clearTimeout(t);
+    }, []);
 
     // Pull-to-refresh for mobile scrollable tabs
     const handlePullRefresh = useCallback(async () => {
@@ -134,12 +177,26 @@ export default function DesignConcept() {
             const tabName = normalizeTab(rawHash.split("?")[0]);
             const query = rawHash.split("?")[1];
 
-            if (query) {
-                const search = new URLSearchParams(query).get("search");
+            const params = query ? new URLSearchParams(query) : null;
+
+            if (params) {
+                const search = params.get("search");
                 if (search) setGlobalSearchQuery(search);
             } else {
                 setGlobalSearchQuery("");
             }
+
+            setSelectedCorporateClientId(tabName === "b2b" ? params?.get("client") || null : null);
+            setSelectedCorporateJobId(tabName === "b2b" ? params?.get("target") || null : null);
+            setSelectedInventoryItemId(tabName === "inventory" ? params?.get("target") || null : null);
+            setSelectedChallanId(tabName === "challans" ? params?.get("target") || null : null);
+            // New target parsing for Smart Search deep-linking
+            setSelectedJobId(tabName === "jobs" ? params?.get("target") || null : null);
+            setSelectedServiceRequestId(tabName === "service-requests" ? params?.get("target") || null : null);
+            setSelectedCustomerId(tabName === "customers" ? params?.get("target") || null : null);
+            setSelectedPosTransactionId(tabName === "pos" ? params?.get("target") || null : null);
+            setSelectedFinanceRecordId(tabName === "finance" ? params?.get("target") || null : null);
+            setSelectedFinanceRecordType(tabName === "finance" ? params?.get("type") || null : null);
 
             if (tabName !== "jobs") {
                 setJobTypeOverride(undefined);
@@ -149,11 +206,22 @@ export default function DesignConcept() {
                 setActiveTab(tabName);
             }
         };
+        handleHashChange();
         window.addEventListener("hashchange", handleHashChange);
         return () => window.removeEventListener("hashchange", handleHashChange);
     }, []);
 
     const [selectedCorporateClientId, setSelectedCorporateClientId] = useState<string | null>(null);
+    const [selectedCorporateJobId, setSelectedCorporateJobId] = useState<string | null>(null);
+    const [selectedInventoryItemId, setSelectedInventoryItemId] = useState<string | null>(null);
+    const [selectedChallanId, setSelectedChallanId] = useState<string | null>(null);
+    // New target selections for Smart Search deep-linking
+    const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+    const [selectedServiceRequestId, setSelectedServiceRequestId] = useState<string | null>(null);
+    const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+    const [selectedPosTransactionId, setSelectedPosTransactionId] = useState<string | null>(null);
+    const [selectedFinanceRecordId, setSelectedFinanceRecordId] = useState<string | null>(null);
+    const [selectedFinanceRecordType, setSelectedFinanceRecordType] = useState<string | null>(null);
     // Thread pre-selection for notification deep-links to corp-msg tab
     const [selectedCorpMsgThreadId, setSelectedCorpMsgThreadId] = useState<string | null>(null);
     const [searchOpen, setSearchOpen] = useState(false);
@@ -332,7 +400,7 @@ export default function DesignConcept() {
             items: [
                 // { id: 'shipments', label: 'Shipments', icon: Truck },
                 // { id: 'procurement', label: 'Procurement', icon: Building2 },
-                { label: "Stock Manager", id: "inventory", icon: Package, color: "amber", layout: "scroll" },
+                { label: "Stock Manager", id: "inventory", icon: Package, color: "amber", layout: "fixed" },
                 { label: "Purchasing (POs)", id: "purchasing", icon: ShoppingCart, color: "pink", layout: "scroll" },
                 { label: "Warranty Claims", id: "warranty", icon: ShieldCheck, color: "green", layout: "fixed" },
                 { label: "Refunds", id: "refunds", icon: RotateCcw, color: "rose", layout: "fixed" },
@@ -395,26 +463,34 @@ export default function DesignConcept() {
         if (activeTab !== "corp-msg") {
             setSelectedCorpMsgThreadId(null);
         }
+        if (activeTab !== "finance" && (selectedFinanceRecordId || selectedFinanceRecordType)) {
+            setSelectedFinanceRecordId(null);
+            setSelectedFinanceRecordType(null);
+        }
         mobileChromeScrollTopRef.current = 0;
         mobileChromeHiddenRef.current = false;
         setMobileChromeHidden(false);
-    }, [activeTab, selectedCorporateClientId]);
+    }, [activeTab, selectedCorporateClientId, selectedFinanceRecordId, selectedFinanceRecordType]);
 
     useEffect(() => {
         const handleMobileChrome = (event: Event) => {
-            const detail = (event as CustomEvent<{ hidden?: boolean; scrollTop?: number }>).detail;
+            const detail = (event as CustomEvent<{ hidden?: boolean; scrollTop?: number; syncOnly?: boolean }>).detail;
             if (typeof detail?.scrollTop === "number") {
                 const prev = mobileChromeScrollTopRef.current;
                 const cur = detail.scrollTop;
+                if (detail.syncOnly) {
+                    mobileChromeScrollTopRef.current = cur;
+                    return;
+                }
                 const delta = cur - prev;
                 // Ignore momentum micro-jitter (iOS rubber-band, sub-pixel settle).
                 if (Math.abs(delta) < 6) return;
                 mobileChromeScrollTopRef.current = cur;
 
-                // Hysteresis: hide only when scrolling DOWN past the header (64px),
+                // Hysteresis: hide only when scrolling DOWN past the first touch pull (24px),
                 // reveal on ANY upward scroll, always show near the very top.
                 let shouldHide = mobileChromeHiddenRef.current;
-                if (delta > 0 && cur > 64) shouldHide = true;
+                if (delta > 0 && cur > 24) shouldHide = true;
                 else if (delta < 0) shouldHide = false;
                 if (cur < 16) shouldHide = false;
 
@@ -528,6 +604,8 @@ export default function DesignConcept() {
                             <button
                                 key={item.id}
                                 onClick={() => setActiveTab(item.id)}
+                                onPointerEnter={() => preloadTab(item.id)}
+                                onTouchStart={() => preloadTab(item.id)}
                                 className={cn(
                                     "flex h-11 min-w-[3rem] flex-col items-center justify-center gap-0.5 rounded-2xl px-2 transition-all duration-200 active:scale-95",
                                     activeTab === item.id ? "text-blue-700" : "text-slate-400"
@@ -555,7 +633,7 @@ export default function DesignConcept() {
                     <div
                         className={cn(
                             "md:hidden absolute top-4 right-4 z-[60] flex items-center gap-3 transition-all duration-200",
-                            mobileChromeHidden && "-translate-y-20 opacity-0 pointer-events-none"
+                            (mobileChromeHidden || notificationOpen || searchOpen) && "-translate-y-20 opacity-0 pointer-events-none"
                         )}
                     >
                         <QRScanButton onJobFound={(jobId) => {
@@ -676,6 +754,7 @@ export default function DesignConcept() {
                             </div>
                         )}
                         <OfflineBanner />
+                        <DatabaseSyncStatus enabled={status === "authenticated"} />
                         <MainContentWrapper isFixed={isFixed} activeTab={activeTab} mobileChromeHidden={mobileChromeHidden}>
                             {visitedTabs.map((tabId) => (
                                 <motion.div
@@ -730,27 +809,51 @@ export default function DesignConcept() {
                                                 }} />}
 
                                                 {/* Operations Group */}
-                                                {tabId === 'service-requests' && <ServiceRequestsTab initialSearchQuery={globalSearchQuery} onSearchConsumed={() => setGlobalSearchQuery('')} />}
+                                                {tabId === 'service-requests' && <ServiceRequestsTab
+                                                    initialSearchQuery={globalSearchQuery}
+                                                    initialRequestId={selectedServiceRequestId ?? undefined}
+                                                    onSearchConsumed={() => setGlobalSearchQuery('')}
+                                                />}
 
                                                 {tabId === 'jobs' && <JobTicketsTab
                                                     initialSearchQuery={globalSearchQuery}
+                                                    initialJobId={selectedJobId ?? undefined}
                                                     onSearchConsumed={() => { setGlobalSearchQuery(''); setJobTypeOverride(undefined); }}
                                                     initialJobType={jobTypeOverride}
                                                 />}
                                                 {tabId === 'pickup' && <PickupTab />}
-                                                {tabId === 'challans' && <ChallanTab />}
+                                                {tabId === 'challans' && <ChallanTab
+                                                    initialSearchQuery={globalSearchQuery}
+                                                    initialChallanId={selectedChallanId ?? undefined}
+                                                    onSearchConsumed={() => setGlobalSearchQuery('')}
+                                                />}
 
                                                 {/* Sales Group */}
-                                                {tabId === 'pos' && <PosTab />}
+                                                {tabId === 'pos' && <PosTab
+                                                    initialSearchQuery={globalSearchQuery}
+                                                    initialTransactionId={selectedPosTransactionId ?? undefined}
+                                                    onSearchConsumed={() => setGlobalSearchQuery('')}
+                                                />}
                                                 {tabId === 'orders' && <OrdersTab initialSearchQuery={globalSearchQuery} onSearchConsumed={() => setGlobalSearchQuery('')} />}
-                                                {tabId === 'finance' && <FinancesTab defaultTab="sales" />}
-                                                {tabId === 'customers' && <CustomersTab />}
+                                                {tabId === 'finance' && <FinancesTab
+                                                    defaultTab="sales"
+                                                    initialSearchQuery={globalSearchQuery}
+                                                    initialRecordId={selectedFinanceRecordId ?? undefined}
+                                                    initialRecordType={selectedFinanceRecordType ?? undefined}
+                                                    onSearchConsumed={() => setGlobalSearchQuery('')}
+                                                />}
+                                                {tabId === 'customers' && <CustomersTab
+                                                    initialSearchQuery={globalSearchQuery}
+                                                    initialCustomerId={selectedCustomerId ?? undefined}
+                                                    onSearchConsumed={() => setGlobalSearchQuery('')}
+                                                />}
                                                 {tabId === 'quotations' && <QuotationsTab />}
                                                 {tabId === 'inquiries' && <InquiriesTab />}
 
                                                 {/* B2B Group */}
                                                 {tabId === 'b2b' && <UnifiedB2BTab
                                                     initialClientId={selectedCorporateClientId}
+                                                    initialJobId={selectedCorporateJobId}
                                                     initialSearchQuery={globalSearchQuery}
                                                     onSearchConsumed={() => setGlobalSearchQuery('')}
                                                     onBack={() => setSelectedCorporateClientId(null)}
@@ -764,7 +867,11 @@ export default function DesignConcept() {
                                                 {/* Warehouse Group */}
                                                 {/* {activeTab === 'shipments' && <PlaceholderTab title="Shipments" />} */}
                                                 {/* {activeTab === 'procurement' && <PlaceholderTab title="Procurement" />} */}
-                                                {tabId === 'inventory' && <InventoryTab />}
+                                                {tabId === 'inventory' && <InventoryTab
+                                                    initialSearchQuery={globalSearchQuery}
+                                                    initialItemId={selectedInventoryItemId ?? undefined}
+                                                    onSearchConsumed={() => setGlobalSearchQuery('')}
+                                                />}
                                                 {tabId === 'purchasing' && <PurchasingTab />}
                                                 {tabId === 'warranty' && <WarrantyClaimsTab />}
                                                 {tabId === 'refunds' && <FinancesTab defaultTab="refunds" />}
@@ -778,7 +885,10 @@ export default function DesignConcept() {
                                                 {tabId === 'technician' && <TechnicianTab />}
 
                                                 {/* System Group */}
-                                                {tabId === 'settings' && <SettingsTab />}
+                                                {tabId === 'settings' && <SettingsTab
+                                                    initialSearchQuery={globalSearchQuery}
+                                                    onSearchConsumed={() => setGlobalSearchQuery('')}
+                                                />}
                                                 {tabId === 'brain' && <BrainTab />}
 
                                                 {/* Fallback */}
@@ -802,16 +912,12 @@ export default function DesignConcept() {
                 <GlobalSearch
                     open={searchOpen}
                     onOpenChange={setSearchOpen}
-                    onNavigate={(tab, query) => {
+                    onNavigate={(tab, query, payload) => {
                         const nextTab = normalizeTab(tab);
-                        if (nextTab === 'b2b' && query) {
-                            if (isLikelyEntityId(query)) {
-                                setSelectedCorporateClientId(query);
-                                window.location.hash = `#b2b`;
-                                return;
-                            }
-                            setSelectedCorporateClientId(null);
-                            window.location.hash = `#b2b?search=${encodeURIComponent(query)}`;
+                        if (nextTab === 'b2b') {
+                            setSelectedCorporateClientId(payload?.clientId || (query && isLikelyEntityId(query) ? query : null));
+                            setSelectedCorporateJobId(payload?.targetId || null);
+                            window.location.hash = buildHash("b2b", query, payload);
                             return;
                         }
                         if (nextTab === 'corp-msg' && query) {
@@ -819,7 +925,17 @@ export default function DesignConcept() {
                             window.location.hash = `#corp-msg`;
                             return;
                         }
-                        window.location.hash = query ? `#${nextTab}?search=${encodeURIComponent(query)}` : `#${nextTab}`;
+                        if (nextTab === "inventory") setSelectedInventoryItemId(payload?.targetId || null);
+                        if (nextTab === "challans") setSelectedChallanId(payload?.targetId || null);
+                        if (nextTab === "jobs") setSelectedJobId(payload?.targetId || null);
+                        if (nextTab === "service-requests") setSelectedServiceRequestId(payload?.targetId || null);
+                        if (nextTab === "customers") setSelectedCustomerId(payload?.targetId || null);
+                        if (nextTab === "pos") setSelectedPosTransactionId(payload?.targetId || null);
+                        if (nextTab === "finance") {
+                            setSelectedFinanceRecordId(payload?.targetId || null);
+                            setSelectedFinanceRecordType(payload?.recordType || null);
+                        }
+                        window.location.hash = buildHash(nextTab, query, payload);
                     }}
                 />
                 <NotificationPanel
@@ -914,6 +1030,7 @@ function SidebarContent({ groups, activeTab, setActiveTab, isOnline, getTabTier 
                                 <div
                                     key={item.id}
                                     onClick={() => setActiveTab(item.id)}
+                                    onMouseEnter={() => preloadTab(item.id)}
                                     title={item.label}
                                     className={cn(
                                         "flex items-center gap-3 px-3 lg:px-4 py-3 rounded-xl cursor-pointer transition-all duration-300 group relative overflow-hidden",

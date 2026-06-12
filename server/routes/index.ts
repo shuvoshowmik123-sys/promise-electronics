@@ -79,7 +79,11 @@ export async function registerRoutes(
     httpServer: Server,
     app: Express
 ): Promise<Server> {
-    console.log('[Routes] Registering route modules...');
+    const verboseRouteLogs = process.env.ROUTE_REGISTRATION_LOGS === "verbose";
+    const routeLog = (message: string) => {
+        if (verboseRouteLogs) console.log(message);
+    };
+    routeLog('[Routes] Registering route modules...');
 
     // ============================================
     // Register Routes
@@ -87,15 +91,15 @@ export async function registerRoutes(
 
     // Firebase Auth — must be registered before session-dependent routes
     app.use(firebaseAuthRoutes);
-    console.log('[Routes] ✓ Firebase auth routes registered');
+    routeLog('[Routes] ✓ Firebase auth routes registered');
 
     // Audit routes - PRIORITY CHECK
     app.use(auditRoutes);
-    console.log('[Routes] ✓ Audit routes registered (PRIORITY)');
+    routeLog('[Routes] ✓ Audit routes registered (PRIORITY)');
 
     // File upload routes (moved to top for priority)
     app.use(uploadRoutes);
-    console.log('[Routes] ✓ Upload routes registered (priority)');
+    routeLog('[Routes] ✓ Upload routes registered (priority)');
     // Setup Customer Authentication (Google OAuth)
     // ============================================
     await setupCustomerAuth(app);
@@ -137,86 +141,86 @@ export async function registerRoutes(
 
     // Auth routes (admin login/logout) - FIRST to avoid conflicts
     app.use(authRoutes);
-    console.log('[Routes] ✓ Auth routes registered');
+    routeLog('[Routes] ✓ Auth routes registered');
 
     // Customer routes (customer auth, profile, SSE)
     app.use(customerRoutes);
-    console.log('[Routes] ✓ Customer routes registered');
+    routeLog('[Routes] ✓ Customer routes registered');
 
     // Core business routes
     app.use(jobsRoutes);
-    console.log('[Routes] ✓ Jobs routes registered');
+    routeLog('[Routes] ✓ Jobs routes registered');
 
     app.use(inventoryRoutes);
-    console.log('[Routes] ✓ Inventory routes registered');
+    routeLog('[Routes] ✓ Inventory routes registered');
 
     app.use(serviceRequestsRoutes);
-    console.log('[Routes] ✓ Service requests routes registered');
+    routeLog('[Routes] ✓ Service requests routes registered');
 
     app.use(ordersRoutes);
-    console.log('[Routes] ✓ Orders routes registered');
+    routeLog('[Routes] ✓ Orders routes registered');
 
     app.use(quotationRoutes);
-    console.log('[Routes] ✓ Quotation routes registered');
+    routeLog('[Routes] ✓ Quotation routes registered');
 
     app.use(posRoutes);
-    console.log('[Routes] ✓ POS routes registered');
+    routeLog('[Routes] ✓ POS routes registered');
 
     // Phase 7: Blind Drop Cash Drawer
     app.use(drawerRouter);
-    console.log('[Routes] ✓ Drawer routes registered');
+    routeLog('[Routes] ✓ Drawer routes registered');
 
     app.use(financeRoutes);
-    console.log('[Routes] ✓ Finance routes registered');
+    routeLog('[Routes] ✓ Finance routes registered');
 
     app.use(blacklistRoutes);
-    console.log('[Routes] ✓ Payment blacklist routes registered');
+    routeLog('[Routes] ✓ Payment blacklist routes registered');
 
     app.use(challansRoutes);
-    console.log('[Routes] ✓ Challans routes registered');
+    routeLog('[Routes] ✓ Challans routes registered');
 
     // Admin routes
     app.use(usersRoutes);
-    console.log('[Routes] ✓ Users routes registered');
+    routeLog('[Routes] ✓ Users routes registered');
 
     app.use(modulesRoutes);
-    console.log('[Routes] ✓ Modules routes registered');
+    routeLog('[Routes] ✓ Modules routes registered');
 
     app.use(searchRoutes);
-    console.log('[Routes] ✓ Global Search routes registered');
+    routeLog('[Routes] ✓ Global Search routes registered');
 
     // Offline Synchronization (Phase 3)
     app.use("/api/offline", offlineSyncRoutes);
-    console.log('[Routes] ✓ Offline synchronization routes registered');
+    routeLog('[Routes] ✓ Offline synchronization routes registered');
 
     app.use(settingsRoutes);
-    console.log('[Routes] ✓ Settings routes registered');
+    routeLog('[Routes] ✓ Settings routes registered');
 
     app.use(attendanceRoutes);
-    console.log('[Routes] ✓ Attendance routes registered');
+    routeLog('[Routes] ✓ Attendance routes registered');
 
     app.use(mobileRoutes);
-    console.log('[Routes] ✓ Mobile workforce routes registered');
+    routeLog('[Routes] ✓ Mobile workforce routes registered');
 
     // HR & Payroll
     app.use(leaveRoutes);
-    console.log('[Routes] ✓ Leave application routes registered');
+    routeLog('[Routes] ✓ Leave application routes registered');
 
     app.use(payrollRoutes);
-    console.log('[Routes] ✓ Payroll routes registered');
+    routeLog('[Routes] ✓ Payroll routes registered');
 
 
     // Technician personal dashboard routes
     app.use(technicianRoutes);
-    console.log('[Routes] ✓ Technician routes registered');
+    routeLog('[Routes] ✓ Technician routes registered');
 
     // Additional features
     app.use(notificationsRoutes);
-    console.log('[Routes] ✓ Notifications routes registered');
+    routeLog('[Routes] ✓ Notifications routes registered');
 
     // Admin Notifications (SSE + REST)
     app.use(adminNotificationsRoutes);
-    console.log('[Routes] ✓ Admin notifications routes registered');
+    routeLog('[Routes] ✓ Admin notifications routes registered');
 
     // Corporate B2B
     // Corporate B2B (Admin & Portal)
@@ -232,73 +236,74 @@ export async function registerRoutes(
 
     // Admin Backup Routes
     app.use("/api/admin", adminBackupRoutes);
-    console.log('[Routes] ✓ Admin backup routes registered');
+    routeLog('[Routes] ✓ Admin backup routes registered');
 
-    console.log('[Routes] ✓ Corporate B2B routes registered');
+    routeLog('[Routes] ✓ Corporate B2B routes registered');
 
     // Analytics (Phase 6)
     app.use("/api/analytics", analyticsRoutes);
-    console.log('[Routes] ✓ Analytics routes registered');
+    routeLog('[Routes] ✓ Analytics routes registered');
 
     // Warranty Claims
     app.use(warrantyRoutes);
-    console.log('[Routes] ✓ Warranty claims routes registered');
+    routeLog('[Routes] ✓ Warranty claims routes registered');
 
     // Refunds Management
     app.use(refundsRoutes);
-    console.log('[Routes] ✓ Refunds routes registered');
+    routeLog('[Routes] ✓ Refunds routes registered');
 
     // Approvals (Super Admin verification workflow)
     app.use("/api/approvals", approvalsRoutes);
-    console.log('[Routes] ✓ Approvals routes registered');
+    routeLog('[Routes] ✓ Approvals routes registered');
 
     app.use(quotesRoutes);
-    console.log('[Routes] ✓ Quotes routes registered');
+    routeLog('[Routes] ✓ Quotes routes registered');
 
     app.use(reviewsRoutes);
-    console.log('[Routes] ✓ Reviews routes registered');
+    routeLog('[Routes] ✓ Reviews routes registered');
 
     // OTP Routes (Phone Verification)
     app.use(otpRoutes);
-    console.log('[Routes] ✓ OTP routes registered');
+    routeLog('[Routes] ✓ OTP routes registered');
 
     // File upload routes (should be near the end)
     // app.use(uploadRoutes);
-    // console.log('[Routes] ✓ Upload routes registered (updated)');
+    // routeLog('[Routes] ✓ Upload routes registered (updated)');
 
     // AI Routes
     app.use('/api/ai', aiRoutes);
-    console.log('[Routes] ✓ AI routes registered');
+    routeLog('[Routes] ✓ AI routes registered');
 
     app.use('/api/brain', brainRoutes);
-    console.log('[Routes] ✓ Brain routes registered');
+    routeLog('[Routes] ✓ Brain routes registered');
 
     app.use('/api/lens', lensRoutes);
-    console.log('[Routes] ✓ Lens routes registered');
+    routeLog('[Routes] ✓ Lens routes registered');
 
     app.use(sparePartsRoutes);
 
-    console.log('[Routes] ✓ Spare parts routes registered');
+    routeLog('[Routes] ✓ Spare parts routes registered');
 
     app.use(purchaseOrdersRoutes);
-    console.log('[Routes] ✓ Purchase Orders routes registered');
+    routeLog('[Routes] ✓ Purchase Orders routes registered');
 
     app.use('/api/messenger', messengerRoutes);
-    console.log('[Routes] ✓ Messenger webhook registered');
+    routeLog('[Routes] ✓ Messenger webhook registered');
 
     app.use('/api/whatsapp', whatsappRoutes);
-    console.log('[Routes] ✓ WhatsApp webhook registered');
+    routeLog('[Routes] ✓ WhatsApp webhook registered');
 
     // Phase 3: Internal Team Chat + Reminders
     app.use(teamChatRoutes);
-    console.log('[Routes] ✓ Team chat routes registered');
+    routeLog('[Routes] ✓ Team chat routes registered');
     app.use(remindersRoutes);
-    console.log('[Routes] ✓ Reminders routes registered');
+    routeLog('[Routes] ✓ Reminders routes registered');
 
     app.use(kgRoutes);
-    console.log('[Routes] ✓ Knowledge Graph routes registered');
+    routeLog('[Routes] ✓ Knowledge Graph routes registered');
 
-    console.log('[Routes] All route modules registered successfully!');
+    routeLog('[Routes] All route modules registered successfully!');
 
     return httpServer;
 }
+

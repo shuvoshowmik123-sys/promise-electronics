@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Create Job - Step 6: Review & Submit</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0f1117; color: #e4e4e7;
+  max-width: 390px; margin: 0 auto; min-height: 100dvh;
+  display: flex; flex-direction: column;
+}
+.top-nav { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px; position: sticky; top: 0; background: #0f1117; z-index: 10; }
+.nav-back { width: 36px; height: 36px; border-radius: 10px; background: #1c1c24; border: 1px solid #27272a; display: flex; align-items: center; justify-content: center; color: #a1a1aa; }
+.nav-title { font-size: 16px; font-weight: 600; color: #fff; }
+.nav-step { font-size: 13px; color: #52525b; }
+.progress-wrap { padding: 0 16px 20px; }
+.progress-bar { height: 4px; background: #27272a; border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; width: 100%; background: linear-gradient(90deg, #2563eb, #22c55e); border-radius: 2px; }
+
+.content { flex: 1; padding: 0 16px; overflow-y: auto; padding-bottom: 120px; }
+.section-title { font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+.section-subtitle { font-size: 14px; color: #71717a; margin-bottom: 20px; }
+
+/* Review Card */
+.review-card {
+  background: #1c1c24; border: 1px solid #27272a;
+  border-radius: 14px; padding: 16px; margin-bottom: 12px;
+}
+.review-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
+}
+.review-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.8px; color: #52525b; }
+.review-edit {
+  font-size: 12px; color: #60a5fa; font-weight: 500; cursor: pointer;
+  padding: 2px 8px; border-radius: 4px;
+}
+.review-edit:active { background: #1e3a5f; }
+
+.review-row {
+  display: flex; justify-content: space-between; align-items: baseline;
+  padding: 6px 0;
+}
+.review-key { font-size: 13px; color: #71717a; }
+.review-value { font-size: 14px; color: #e4e4e7; font-weight: 500; text-align: right; max-width: 60%; }
+.review-value.highlight { color: #34d399; font-family: monospace; font-weight: 700; }
+.review-value.blue { color: #60a5fa; }
+
+/* Issue Block */
+.review-issue {
+  margin-top: 8px; padding: 10px 12px;
+  background: #27272a; border-radius: 8px;
+  font-size: 13px; color: #d4d4d8; line-height: 1.4;
+}
+
+/* Tags */
+.review-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.review-tag {
+  padding: 4px 8px; border-radius: 6px;
+  font-size: 11px; font-weight: 500;
+}
+.tag-missing { background: #450a0a; color: #fca5a5; }
+.tag-received { background: #052e16; color: #86efac; }
+
+/* Summary Box */
+.summary-box {
+  background: #1e293b; border: 1px solid #1e3a5f;
+  border-radius: 14px; padding: 16px; margin-top: 8px;
+}
+.summary-title { font-size: 12px; color: #60a5fa; font-weight: 600; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.summary-row { display: flex; justify-content: space-between; padding: 4px 0; }
+.summary-key { font-size: 13px; color: #94a3b8; }
+.summary-value { font-size: 13px; color: #fff; font-weight: 500; }
+
+/* Bottom */
+.bottom-bar {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+  width: 100%; max-width: 390px;
+  padding: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  background: #0f1117; border-top: 1px solid #27272a;
+  display: flex; gap: 10px;
+}
+.back-btn { padding: 16px 20px; border-radius: 14px; background: #27272a; color: #a1a1aa; font-size: 15px; font-weight: 600; border: none; cursor: pointer; }
+.submit-btn {
+  flex: 1; padding: 16px; border-radius: 14px;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff; font-size: 16px; font-weight: 700; border: none;
+  cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+  box-shadow: 0 4px 16px rgba(34,197,94,0.3);
+}
+.submit-btn:active { transform: scale(0.97); }
+</style>
+</head>
+<body>
+
+<div class="top-nav">
+  <div class="nav-back"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></div>
+  <span class="nav-title">New Job</span>
+  <span class="nav-step">6 / 6</span>
+</div>
+<div class="progress-wrap"><div class="progress-bar"><div class="progress-fill"></div></div></div>
+
+<div class="content">
+  <h1 class="section-title">Review</h1>
+  <p class="section-subtitle">Confirm everything before creating this job ticket.</p>
+
+  <!-- Job Type -->
+  <div class="review-card">
+    <div class="review-header">
+      <span class="review-label">Job Type</span>
+      <span class="review-edit">Edit</span>
+    </div>
+    <div class="review-row">
+      <span class="review-key">Ticket Type</span>
+      <span class="review-value">Full TV Repair</span>
+    </div>
+    <div class="review-row">
+      <span class="review-key">Ticket #</span>
+      <span class="review-value blue">#240892</span>
+    </div>
+  </div>
+
+  <!-- Customer -->
+  <div class="review-card">
+    <div class="review-header">
+      <span class="review-label">Customer</span>
+      <span class="review-edit">Edit</span>
+    </div>
+    <div class="review-row">
+      <span class="review-key">Name</span>
+      <span class="review-value">Mahfuz Hasan</span>
+    </div>
+    <div class="review-row">
+      <span class="review-key">Phone</span>
+      <span class="review-value">01712-345-445</span>
+    </div>
+  </div>
+
+  <!-- Device -->
+  <div class="review-card">
+    <div class="review-header">
+      <span class="review-label">Device</span>
+      <span class="review-edit">Edit</span>
+    </div>
+    <div class="review-row">
+      <span class="review-key">Device</span>
+      <span class="review-value">LG 43" WebOS Smart TV</span>
+    </div>
+    <div class="review-row">
+      <span class="review-key">Screen</span>
+      <span class="review-value">43 inch</span>
+    </div>
+    <div class="review-issue">No power — customer reports device shut off during storm. Power LED not visible.</div>
+  </div>
+
+  <!-- Parts -->
+  <div class="review-card">
+    <div class="review-header">
+      <span class="review-label">Parts & Accessories</span>
+      <span class="review-edit">Edit</span>
+    </div>
+    <div class="review-tags">
+      <span class="review-tag tag-missing">Missing: Back Cover</span>
+      <span class="review-tag tag-missing">Missing: Screws</span>
+      <span class="review-tag tag-received">Received: Remote</span>
+      <span class="review-tag tag-received">Received: Stand</span>
+    </div>
+  </div>
+
+  <!-- Assignment -->
+  <div class="review-card">
+    <div class="review-header">
+      <span class="review-label">Assignment</span>
+      <span class="review-edit">Edit</span>
+    </div>
+    <div class="review-row">
+      <span class="review-key">Priority</span>
+      <span class="review-value">Medium</span>
+    </div>
+    <div class="review-row">
+      <span class="review-key">Technician</span>
+      <span class="review-value">Sajid Ahmed</span>
+    </div>
+    <div class="review-row">
+      <span class="review-key">Est. Cost</span>
+      <span class="review-value highlight">৳ 2,800</span>
+    </div>
+  </div>
+
+  <!-- Summary -->
+  <div class="summary-box">
+    <div class="summary-title">Job Summary</div>
+    <div class="summary-row">
+      <span class="summary-key">Type</span>
+      <span class="summary-value">Full TV</span>
+    </div>
+    <div class="summary-row">
+      <span class="summary-key">Customer</span>
+      <span class="summary-value">Mahfuz Hasan</span>
+    </div>
+    <div class="summary-row">
+      <span class="summary-key">Device</span>
+      <span class="summary-value">LG 43" WebOS</span>
+    </div>
+    <div class="summary-row">
+      <span class="summary-key">Technician</span>
+      <span class="summary-value">Sajid Ahmed</span>
+    </div>
+    <div class="summary-row">
+      <span class="summary-key">Cost</span>
+      <span class="summary-value" style="color:#34d399;font-weight:700">৳ 2,800</span>
+    </div>
+  </div>
+</div>
+
+<div class="bottom-bar">
+  <button class="back-btn">Back</button>
+  <button class="submit-btn">
+    <svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/></svg>
+    Create Job
+  </button>
+</div>
+
+</body>
+</html>

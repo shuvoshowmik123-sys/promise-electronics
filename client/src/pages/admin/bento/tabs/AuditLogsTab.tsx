@@ -43,7 +43,7 @@ function StatCard({ title, value, subtitle, icon, gradient }: {
     icon: React.ReactNode; gradient: string;
 }) {
     return (
-        <div className={cn("rounded-3xl p-6 text-white flex flex-col gap-3 shadow-lg", gradient)}>
+        <div className={cn("rounded-2xl md:rounded-3xl p-4 md:p-6 text-white flex flex-col gap-3 shadow-lg", gradient)}>
             <div className="flex items-start justify-between">
                 <div className="p-2.5 rounded-2xl bg-white/20 backdrop-blur-sm">
                     {icon}
@@ -109,7 +109,7 @@ export default function AuditLogsTab() {
     if (isLoading) return <DashboardSkeleton />;
 
     return (
-        <div className="space-y-6 pb-24 md:pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
 
             {/* ── KPI Header Cards (fixed: use lg:grid-cols-3 proper layout) ── */}
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">

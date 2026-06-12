@@ -53,6 +53,7 @@ import { DashboardSkeleton, BentoCard, containerVariants, itemVariants, tableRow
 
 interface CorporateRepairsTabProps {
     initialClientId?: string | null;
+    initialJobId?: string | null;
     initialSearchQuery?: string;
     onSearchConsumed?: () => void;
     onBack?: () => void;
@@ -114,7 +115,7 @@ const workTypeOptions = [
     { value: "crr", label: "CRR / Re-service" },
 ];
 
-export default function CorporateRepairsTab({ initialClientId, initialSearchQuery, onSearchConsumed, onBack }: CorporateRepairsTabProps) {
+export default function CorporateRepairsTab({ initialClientId, initialJobId, initialSearchQuery, onSearchConsumed, onBack }: CorporateRepairsTabProps) {
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const { user } = useAdminAuth();
@@ -242,6 +243,16 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
 
     const jobs = jobData?.jobs || [];
     const pagination = jobData?.pagination;
+
+    useEffect(() => {
+        if (!initialJobId || !jobs.length) return;
+        const match = jobs.find((job: any) => job.id === initialJobId || job.corporateJobNumber === initialJobId);
+        if (!match) return;
+        setActiveTab("work");
+        setSearch(match.corporateJobNumber || match.id);
+        setSelectedJobForDetails(match);
+        setIsDetailsOpen(true);
+    }, [initialJobId, jobs]);
 
     useEffect(() => {
         if (!client || !isRulesOpen) return;
@@ -821,13 +832,13 @@ export default function CorporateRepairsTab({ initialClientId, initialSearchQuer
                         </div>
 
                         <Tabs value={activeTab} onValueChange={setActiveTab} className="shrink-0">
-                            <TabsList className="h-auto gap-1 rounded-2xl bg-slate-100 p-1">
-                                <TabsTrigger value="work" className="rounded-xl px-3 py-1 text-xs font-bold">Work</TabsTrigger>
-                                <TabsTrigger value="dashboard" className="rounded-xl px-3 py-1 text-xs font-bold">Batch</TabsTrigger>
-                                <TabsTrigger value="billing" className="rounded-xl px-3 py-1 text-xs font-bold">Billing</TabsTrigger>
-                                <TabsTrigger value="portal-access" className="rounded-xl px-3 py-1 text-xs font-bold">Portal Access</TabsTrigger>
-                                <TabsTrigger value="service-warranty" className="rounded-xl px-3 py-1 text-xs font-bold">CRR</TabsTrigger>
-                                <TabsTrigger value="history" className="rounded-xl px-3 py-1 text-xs font-bold">History</TabsTrigger>
+                            <TabsList className="flex h-auto w-full gap-1 overflow-x-auto hide-scrollbar rounded-2xl bg-slate-100 p-1 md:w-auto md:overflow-visible">
+                                <TabsTrigger value="work" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">Work</TabsTrigger>
+                                <TabsTrigger value="dashboard" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">Batch</TabsTrigger>
+                                <TabsTrigger value="billing" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">Billing</TabsTrigger>
+                                <TabsTrigger value="portal-access" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">Portal Access</TabsTrigger>
+                                <TabsTrigger value="service-warranty" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">CRR</TabsTrigger>
+                                <TabsTrigger value="history" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">History</TabsTrigger>
                             </TabsList>
                         </Tabs>
 

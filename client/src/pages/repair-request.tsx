@@ -7,7 +7,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, lazy, Suspense } from "react";
 import { Upload, CheckCircle, Loader2, X, Film, Image, UserPlus, Calendar } from "lucide-react";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -17,11 +17,11 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { publicSettingsApi, serviceRequestsApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
-import { CustomerAuthModal } from "@/components/auth/CustomerAuthModal";
+const CustomerAuthModal = lazy(() => import("@/components/auth/CustomerAuthModal").then(m => ({ default: m.CustomerAuthModal })));
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { getApiUrl } from "@/lib/config";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { MobileServiceWizard } from "@/components/mobile/MobileServiceWizard";
+const MobileServiceWizard = lazy(() => import("@/components/mobile/MobileServiceWizard").then(m => ({ default: m.MobileServiceWizard })));
 
 interface ImageKitMedia {
   url: string;
@@ -456,7 +456,7 @@ export default function RepairRequestPage() {
   const isVideo = (type: string) => type.startsWith("video/");
 
   if (isMobile) {
-    return <MobileServiceWizard mode="repair" />;
+    return <Suspense fallback={null}><MobileServiceWizard mode="repair" /></Suspense>;
   }
 
   return (
@@ -1040,7 +1040,7 @@ export default function RepairRequestPage() {
         </div>
       </div>
 
-      <CustomerAuthModal
+      <Suspense fallback={null}><CustomerAuthModal
         open={showAuthModal}
         onOpenChange={setShowAuthModal}
         defaultTab="register"
@@ -1052,7 +1052,7 @@ export default function RepairRequestPage() {
           setShowAuthModal(false);
           toast.success("Account created! Your order has been linked.");
         }}
-      />
+      /></Suspense>
     </>
   );
 }

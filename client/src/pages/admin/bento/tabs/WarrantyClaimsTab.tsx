@@ -5,10 +5,10 @@ import { ShieldCheck } from 'lucide-react';
 
 export default function WarrantyClaimsTab() {
     return (
-        <div className="space-y-6 pb-24 md:pb-0">
+        <div className="space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8">
             <div className="flex items-center justify-between">
                 <div>
-                    <h2 className="text-3xl font-bold tracking-tight">Warranty Claims</h2>
+                    <h2 className="text-2xl md:text-3xl font-bold tracking-tight">Warranty Claims</h2>
                     <p className="text-muted-foreground">
                         Review and manage client warranty claims and approve warranty jobs.
                     </p>

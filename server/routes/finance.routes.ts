@@ -8,18 +8,60 @@ import { Router, Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import { and, desc, eq } from 'drizzle-orm';
 import { storage } from '../storage.js';
-import { financeRepo, posRepo, userRepo } from '../repositories/index.js';
+import { financeRepo, notificationRepo, posRepo, serviceRequestRepo, userRepo } from '../repositories/index.js';
 import { insertManualPaymentSchema, insertPettyCashRecordSchema, manualPayments } from '../../shared/schema.js';
 import { requireAdminAuth, requirePermission } from './middleware/auth.js';
 import { financeService } from '../services/finance.service.js';
 import { jobService } from '../services/job.service.js';
 import { db } from '../db.js';
+import { notifyCustomerUpdate } from './middleware/sse-broker.js';
 
 const router = Router();
 const MANUAL_PAYMENT_STATUSES = ['pending', 'staff_verified', 'rejected', 'applied_to_invoice'] as const;
 
 function canApplyManualPayment(payment: typeof manualPayments.$inferSelect) {
     return payment.jobTicketId || payment.dueRecordId;
+}
+
+async function notifyCustomerPaymentDecision(payment: typeof manualPayments.$inferSelect, decision: 'accepted' | 'rejected', reason?: string) {
+    if (payment.source !== 'customer_submission') return;
+
+    const request = payment.serviceRequestId
+        ? await serviceRequestRepo.getServiceRequest(payment.serviceRequestId)
+        : undefined;
+    const customer = request?.customerId
+        ? await userRepo.getUser(request.customerId)
+        : payment.customerPhone
+            ? await userRepo.getUserByPhoneNormalized(payment.customerPhone)
+            : undefined;
+    if (!customer) return;
+
+    const ticketLabel = request?.ticketNumber ? ` #${request.ticketNumber}` : '';
+    const title = decision === 'accepted' ? 'Payment Verified' : 'Payment Rejected';
+    const message = decision === 'accepted'
+        ? `Your payment${ticketLabel} has been verified.`
+        : `Your payment${ticketLabel} was rejected.${reason ? ` Reason: ${reason}` : ''}`;
+
+    const notification = await notificationRepo.createNotification({
+        userId: customer.id,
+        title,
+        message,
+        type: decision === 'accepted' ? 'success' : 'warning',
+        link: request?.id ? `/track/${request.ticketNumber || request.id}` : null,
+        jobId: payment.jobTicketId || null,
+        contextType: 'customer_payment',
+    });
+
+    notifyCustomerUpdate(customer.id, {
+        type: decision === 'accepted' ? 'payment_verified' : 'payment_rejected',
+        paymentId: payment.id,
+        serviceRequestId: payment.serviceRequestId,
+        ticketNumber: request?.ticketNumber,
+        amount: payment.amount,
+        reason,
+        notification,
+        updatedAt: new Date().toISOString(),
+    });
 }
 
 // ============================================
@@ -278,6 +320,7 @@ router.post('/api/manual-payments/:id/verify', requireAdminAuth, requirePermissi
             .where(eq(manualPayments.id, payment.id))
             .returning();
 
+        await notifyCustomerPaymentDecision(updated, 'accepted');
         res.json({ payment: updated, job: appliedJob, dueRecord: appliedDue });
     } catch (error: any) {
         console.error('[ManualPayments] Verify failed:', error.message);
@@ -309,6 +352,7 @@ router.post('/api/manual-payments/:id/reject', requireAdminAuth, requirePermissi
             .where(eq(manualPayments.id, payment.id))
             .returning();
 
+        await notifyCustomerPaymentDecision(updated, 'rejected', reason);
         res.json(updated);
     } catch (error: any) {
         console.error('[ManualPayments] Reject failed:', error.message);

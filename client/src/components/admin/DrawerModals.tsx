@@ -1,15 +1,15 @@
-import { useState } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { motion, AnimatePresence, Variants } from "framer-motion";
 import {
-    Calculator, User, X, CheckCircle2, AlertTriangle,
-    LockKeyhole, Wallet, TrendingDown, TrendingUp, Equal
+    Calculator, User, CheckCircle2, AlertTriangle,
+    Wallet, TrendingDown, TrendingUp,
+    Minus, Plus, RefreshCcw
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import {
     Dialog,
     DialogContent,
@@ -18,17 +18,10 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/components/ui/dialog";
-import {
-    Form,
-    FormControl,
-    FormField,
-    FormItem,
-    FormLabel,
-    FormMessage,
-} from "@/components/ui/form";
 import { toast } from "sonner";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { drawerApi } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
 const modalVariants: Variants = {
     hidden: { opacity: 0, y: 20, scale: 0.95 },
@@ -48,6 +41,26 @@ interface DrawerModalsProps {
     currentUser: { id: string; name: string };
     currencySymbol: string;
 }
+
+const DENOMINATIONS = [1000, 500, 200, 100, 50, 20, 10, 5, 2, 1] as const;
+type Denomination = typeof DENOMINATIONS[number];
+type DenominationCounts = Record<Denomination, number>;
+
+const createEmptyCounts = (): DenominationCounts => ({
+    1000: 0,
+    500: 0,
+    200: 0,
+    100: 0,
+    50: 0,
+    20: 0,
+    10: 0,
+    5: 0,
+    2: 0,
+    1: 0,
+});
+
+const calculateDenominationTotal = (counts: DenominationCounts) =>
+    DENOMINATIONS.reduce((total, denomination) => total + denomination * counts[denomination], 0);
 
 // Validation Schemas
 const openDrawerSchema = z.object({
@@ -70,6 +83,10 @@ export function DrawerModals({ type, onClose, drawerSessionId, currentUser, curr
     const queryClient = useQueryClient();
     const isOpen = type !== null;
     const [dropResult, setDropResult] = useState<DropResult | null>(null);
+    const [openCounts, setOpenCounts] = useState<DenominationCounts>(() => createEmptyCounts());
+    const [dropCounts, setDropCounts] = useState<DenominationCounts>(() => createEmptyCounts());
+    const openingTotal = calculateDenominationTotal(openCounts);
+    const blindDropTotal = calculateDenominationTotal(dropCounts);
 
     // Open Drawer Mutation
     const openMutation = useMutation({
@@ -180,6 +197,8 @@ export function DrawerModals({ type, onClose, drawerSessionId, currentUser, curr
 
     const handleClose = () => {
         setDropResult(null);
+        setOpenCounts(createEmptyCounts());
+        setDropCounts(createEmptyCounts());
         onClose();
     };
 
@@ -195,20 +214,160 @@ export function DrawerModals({ type, onClose, drawerSessionId, currentUser, curr
         closeDayMutation.mutate({ mode, note });
     };
 
-    // Keep a single leading zero only when it is the whole number or decimal prefix (e.g., "0" or "0.5")
-    const normalizeMoneyInput = (rawValue: string) => {
-        if (rawValue === "") return "";
-        if (rawValue.startsWith(".")) return `0${rawValue}`;
+    const updateCount = (
+        setCounts: Dispatch<SetStateAction<DenominationCounts>>,
+        denomination: Denomination,
+        nextCount: number,
+    ) => {
+        setCounts((previous) => ({
+            ...previous,
+            [denomination]: Math.max(0, Math.min(999, Number.isFinite(nextCount) ? Math.floor(nextCount) : 0)),
+        }));
+    };
 
-        if (rawValue.includes(".")) {
-            const [integerPart, decimalPart] = rawValue.split(".", 2);
-            const normalizedInteger = integerPart.replace(/^0+(?=\d)/, "");
-            const safeInteger = normalizedInteger === "" ? "0" : normalizedInteger;
-            return `${safeInteger}.${decimalPart ?? ""}`;
-        }
+    const DenominationCounter = ({
+        counts,
+        setCounts,
+        mode,
+    }: {
+        counts: DenominationCounts;
+        setCounts: Dispatch<SetStateAction<DenominationCounts>>;
+        mode: "open" | "drop";
+    }) => {
+        const total = calculateDenominationTotal(counts);
+        const noteTotal = [1000, 500, 200, 100, 50, 20].reduce((sum, denomination) => sum + denomination * counts[denomination as Denomination], 0);
+        const smallCashTotal = total - noteTotal;
+        const activeCount = DENOMINATIONS.filter((denomination) => counts[denomination] > 0).length;
 
-        const normalizedInteger = rawValue.replace(/^0+(?=\d)/, "");
-        return normalizedInteger === "" ? "0" : normalizedInteger;
+        return (
+            <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_290px]">
+                <div className="flex min-h-0 flex-col rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="flex flex-none flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
+                        <div>
+                            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">
+                                {mode === "open" ? "Opening Cash Count" : "Blind Cash Count"}
+                            </p>
+                            <h3 className="mt-1 text-xl font-black text-slate-950">Cash counter pad</h3>
+                            <p className="mt-1 text-sm font-medium text-slate-500">
+                                Tap counts. Total is calculated automatically.
+                            </p>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-9 rounded-xl gap-2"
+                            onClick={() => setCounts(createEmptyCounts())}
+                        >
+                            <RefreshCcw className="h-4 w-4" />
+                            Clear
+                        </Button>
+                    </div>
+
+                    <div className="mt-4 grid min-h-0 grid-cols-2 gap-3 overflow-y-auto pr-1 xl:grid-cols-3">
+                        {DENOMINATIONS.map((denomination) => {
+                            const count = counts[denomination];
+                            const subtotal = count * denomination;
+                            const isActive = count > 0;
+                            const isSmallCash = denomination <= 10;
+
+                            return (
+                                <div
+                                    key={denomination}
+                                    className={cn(
+                                        "rounded-2xl border p-3 transition-colors",
+                                        isActive
+                                            ? "border-blue-200 bg-blue-50/80 shadow-sm"
+                                            : isSmallCash
+                                                ? "border-slate-200 bg-slate-50/70"
+                                                : "border-slate-200 bg-white",
+                                    )}
+                                >
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div>
+                                            <div className="text-lg font-black tabular-nums text-slate-950">
+                                                {currencySymbol}{denomination}
+                                            </div>
+                                            <div className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                                                {isSmallCash ? "Small cash" : "Note"}
+                                            </div>
+                                        </div>
+                                        <div className={cn(
+                                            "rounded-full px-2 py-1 text-[11px] font-black tabular-nums",
+                                            isActive ? "bg-white text-blue-700" : "bg-slate-100 text-slate-400",
+                                        )}>
+                                            {currencySymbol}{subtotal}
+                                        </div>
+                                    </div>
+
+                                    <div className="mt-3 grid grid-cols-[34px_1fr_34px] items-center gap-2">
+                                        <button
+                                            type="button"
+                                            className="flex h-9 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm active:scale-95"
+                                            onClick={() => updateCount(setCounts, denomination, count - 1)}
+                                        >
+                                            <Minus className="h-4 w-4" />
+                                        </button>
+                                        <Input
+                                            type="number"
+                                            inputMode="numeric"
+                                            min={0}
+                                            value={count}
+                                            onChange={(event) => updateCount(setCounts, denomination, Number(event.target.value))}
+                                            className="h-9 rounded-xl border-slate-200 bg-white text-center text-base font-black tabular-nums"
+                                        />
+                                        <button
+                                            type="button"
+                                            className={cn(
+                                                "flex h-9 items-center justify-center rounded-xl text-white shadow-sm active:scale-95",
+                                                mode === "drop" ? "bg-slate-900" : "bg-blue-600",
+                                            )}
+                                            onClick={() => updateCount(setCounts, denomination, count + 1)}
+                                        >
+                                            <Plus className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+
+                <div className="flex min-h-0 flex-col rounded-3xl border border-slate-200 bg-slate-950 p-5 text-white shadow-sm">
+                    <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/40">
+                        {mode === "open" ? "Total Opening Float" : "Total Counted Cash"}
+                    </p>
+                    <div className="mt-2 text-4xl font-black tabular-nums">
+                        {currencySymbol}{total.toLocaleString()}
+                    </div>
+                    <div className="mt-5 space-y-3 text-sm">
+                        <div className="flex items-center justify-between rounded-2xl bg-white/8 px-3 py-2">
+                            <span className="text-white/50">Notes total</span>
+                            <span className="font-black tabular-nums">{currencySymbol}{noteTotal.toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-2xl bg-white/8 px-3 py-2">
+                            <span className="text-white/50">Small cash</span>
+                            <span className="font-black tabular-nums">{currencySymbol}{smallCashTotal.toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center justify-between rounded-2xl bg-white/8 px-3 py-2">
+                            <span className="text-white/50">Rows used</span>
+                            <span className="font-black tabular-nums">{activeCount}</span>
+                        </div>
+                    </div>
+                    <div className="mt-auto pt-5">
+                        {mode === "drop" ? (
+                        <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-400/10 p-3 text-xs font-semibold leading-relaxed text-amber-100">
+                            Expected cash is hidden until submit. Any shortage or surplus moves to review.
+                        </div>
+                        ) : (
+                        <div className="mt-5 rounded-2xl border border-blue-300/20 bg-blue-400/10 p-3 text-xs font-semibold leading-relaxed text-blue-100">
+                            This amount becomes the starting float for the active POS session.
+                        </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
     };
 
     // Result card after blind drop
@@ -330,138 +489,104 @@ export function DrawerModals({ type, onClose, drawerSessionId, currentUser, curr
         <AnimatePresence>
             {isOpen && (
                 <Dialog open={isOpen} onOpenChange={(open) => !open && handleClose()}>
-                    <DialogContent className="sm:max-w-[425px] p-0 overflow-hidden bg-white/60 backdrop-blur-xl border-white/40 shadow-2xl">
+                    <DialogContent className={cn(
+                        "p-0 overflow-hidden bg-white/60 backdrop-blur-xl border-white/40 shadow-2xl [&>button]:right-3 [&>button]:top-3 [&>button]:z-30 [&>button]:h-10 [&>button]:w-10 [&>button]:rounded-full [&>button]:bg-white [&>button]:shadow-md [&>button]:ring-1 [&>button]:ring-slate-200",
+                        type === "drop" && dropResult
+                            ? "sm:max-w-[425px]"
+                            : "h-[calc(100vh-2rem)] max-h-[860px] w-[calc(100vw-2rem)] max-w-[1280px]",
+                    )}>
                         <motion.div
                             variants={modalVariants}
                             initial="hidden"
                             animate="visible"
                             exit="exit"
-                            className="bg-white/80"
+                            className="flex h-full min-h-0 flex-col bg-white/80"
                         >
                             {/* Show result card if blind drop is done */}
                             {type === 'drop' && dropResult ? (
                                 <DropResultCard />
                             ) : (
                                 <>
-                                    <DialogHeader className="p-6 pb-0">
+                                    <DialogHeader className="flex-none p-6 pb-0 pr-16">
                                         {type === 'open' ? (
                                             <>
-                                                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-100 mb-4">
-                                                    <Wallet className="h-8 w-8 text-blue-600" />
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div className="flex items-start gap-4">
+                                                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-100">
+                                                            <Wallet className="h-7 w-7 text-blue-600" />
+                                                        </div>
+                                                        <div>
+                                                            <DialogTitle className="text-2xl font-black text-slate-950">Open Register</DialogTitle>
+                                                            <DialogDescription className="mt-1 text-slate-500">
+                                                                Count the starting cash. The register opens with the calculated float.
+                                                            </DialogDescription>
+                                                        </div>
+                                                    </div>
+                                                    <span className="rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-rose-700">
+                                                        Closed
+                                                    </span>
                                                 </div>
-                                                <DialogTitle className="text-center text-2xl font-bold text-slate-900">Open Register</DialogTitle>
-                                                <DialogDescription className="text-center text-slate-500 mt-2">
-                                                    Count and enter the starting cash float for this shift.
-                                                </DialogDescription>
                                             </>
                                         ) : (
                                             <>
-                                                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-rose-100 mb-4">
-                                                    <Calculator className="h-8 w-8 text-rose-600" />
+                                                <div className="flex items-start justify-between gap-4">
+                                                    <div className="flex items-start gap-4">
+                                                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-rose-100">
+                                                            <Calculator className="h-7 w-7 text-rose-600" />
+                                                        </div>
+                                                        <div>
+                                                            <DialogTitle className="text-2xl font-black text-slate-950">Close Register</DialogTitle>
+                                                            <DialogDescription className="mt-1 text-slate-500">
+                                                                Submit a blind physical cash count. Expected cash stays hidden.
+                                                            </DialogDescription>
+                                                        </div>
+                                                    </div>
+                                                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-emerald-700">
+                                                        Live
+                                                    </span>
                                                 </div>
-                                                <DialogTitle className="text-center text-2xl font-bold text-slate-900">Blind Drop</DialogTitle>
-                                                <DialogDescription className="text-center text-slate-500 mt-2">
-                                                    Count all cash in the drawer and submit. <br />
-                                                    <span className="font-semibold text-rose-600">The expected amount is hidden.</span>
-                                                </DialogDescription>
                                             </>
                                         )}
                                     </DialogHeader>
 
-                                    <div className="p-6">
-                                        {/* Current User Badge */}
-                                        <div className="flex items-center justify-center gap-2 mb-6 px-4 py-2 bg-slate-100 rounded-full w-fit mx-auto border border-slate-200">
-                                            <User className="h-4 w-4 text-slate-500" />
-                                            <span className="text-sm font-medium text-slate-700">{currentUser.name}</span>
+                                    <div className="flex min-h-0 flex-1 flex-col p-6 pt-5">
+                                        <div className="mb-5 flex flex-wrap items-center gap-2">
+                                            <div className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-4 py-2">
+                                                <User className="h-4 w-4 text-slate-500" />
+                                                <span className="text-sm font-bold text-slate-700">{currentUser.name}</span>
+                                            </div>
+                                            {type === "drop" && (
+                                                <div className="flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-bold text-amber-800">
+                                                    <AlertTriangle className="h-4 w-4" />
+                                                    One submit only
+                                                </div>
+                                            )}
                                         </div>
 
                                         {type === 'open' ? (
-                                            <Form {...openForm}>
-                                                <form onSubmit={openForm.handleSubmit((d) => openMutation.mutate(d))} className="space-y-6">
-                                                    <FormField
-                                                        control={openForm.control}
-                                                        name="startingFloat"
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel className="text-slate-700">Starting Cash Float</FormLabel>
-                                                                <div className="relative">
-                                                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                                                        <span className="text-slate-500 font-medium sm:text-lg">{currencySymbol}</span>
-                                                                    </div>
-                                                                    <FormControl>
-                                                                        <Input
-                                                                            type="text"
-                                                                            inputMode="decimal"
-                                                                            className="pl-12 h-14 text-2xl font-bold text-slate-900 bg-white/50 border-slate-200"
-                                                                            placeholder="0.00"
-                                                                            value={field.value === undefined || field.value === null ? "" : String(field.value)}
-                                                                            onChange={(e) => field.onChange(normalizeMoneyInput(e.target.value))}
-                                                                            onBlur={field.onBlur}
-                                                                            name={field.name}
-                                                                            ref={field.ref}
-                                                                        />
-                                                                    </FormControl>
-                                                                </div>
-                                                                <FormMessage />
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                    <DialogFooter className="sm:justify-between pt-4 gap-3">
-                                                        <Button type="button" variant="outline" onClick={handleClose} className="w-full sm:w-auto">
-                                                            Cancel
-                                                        </Button>
-                                                        <Button type="submit" className="w-full sm:w-auto bg-blue-600 hover:bg-blue-700" disabled={openMutation.isPending}>
-                                                            {openMutation.isPending ? "Opening..." : "Confirm Float & Open"}
-                                                        </Button>
-                                                    </DialogFooter>
-                                                </form>
-                                            </Form>
+                                            <form onSubmit={openForm.handleSubmit(() => openMutation.mutate({ startingFloat: openingTotal }))} className="flex min-h-0 flex-1 flex-col gap-5">
+                                                <DenominationCounter counts={openCounts} setCounts={setOpenCounts} mode="open" />
+                                                <DialogFooter className="flex-none border-t border-slate-100 pt-5 gap-3">
+                                                    <Button type="button" variant="outline" onClick={handleClose} className="h-11 rounded-xl">
+                                                        Cancel
+                                                    </Button>
+                                                    <Button type="submit" className="h-11 rounded-xl bg-blue-600 px-6 font-black hover:bg-blue-700" disabled={openMutation.isPending}>
+                                                        {openMutation.isPending ? "Opening..." : "Confirm Float & Open"}
+                                                    </Button>
+                                                </DialogFooter>
+                                            </form>
                                         ) : (
-                                            <Form {...dropForm}>
-                                                <form onSubmit={dropForm.handleSubmit((d) => dropMutation.mutate(d))} className="space-y-6">
-                                                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3">
-                                                        <AlertTriangle className="h-5 w-5 text-amber-500 shrink-0 mt-0.5" />
-                                                        <div className="text-sm text-amber-800">
-                                                            <p className="font-semibold mb-1">Accountability Warning</p>
-                                                            <p>You cannot change this amount once submitted. Any discrepancies will require manager reconciliation.</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <FormField
-                                                        control={dropForm.control}
-                                                        name="declaredCash"
-                                                        render={({ field }) => (
-                                                            <FormItem>
-                                                                <FormLabel className="text-slate-700">Total Counted Cash</FormLabel>
-                                                                <div className="relative">
-                                                                    <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                                                                        <span className="text-slate-500 font-medium sm:text-lg">{currencySymbol}</span>
-                                                                    </div>
-                                                                    <FormControl>
-                                                                        <Input
-                                                                            type="number"
-                                                                            className="pl-12 h-14 text-2xl font-bold text-slate-900 bg-white/50 border-rose-200 focus-visible:ring-rose-500"
-                                                                            placeholder="0.00"
-                                                                            step="0.01"
-                                                                            min="0"
-                                                                            {...field}
-                                                                        />
-                                                                    </FormControl>
-                                                                </div>
-                                                                <FormMessage />
-                                                            </FormItem>
-                                                        )}
-                                                    />
-                                                    <DialogFooter className="sm:justify-between pt-4 gap-3">
-                                                        <Button type="button" variant="outline" onClick={handleClose} className="w-full sm:w-auto">
-                                                            Cancel
-                                                        </Button>
-                                                        <Button type="submit" className="w-full sm:w-auto bg-slate-900 hover:bg-slate-800" disabled={dropMutation.isPending}>
-                                                            {dropMutation.isPending ? "Submitting..." : "Submit Blind Count"}
-                                                        </Button>
-                                                    </DialogFooter>
-                                                </form>
-                                            </Form>
+                                            <form onSubmit={dropForm.handleSubmit(() => dropMutation.mutate({ declaredCash: blindDropTotal }))} className="flex min-h-0 flex-1 flex-col gap-5">
+                                                <DenominationCounter counts={dropCounts} setCounts={setDropCounts} mode="drop" />
+                                                <DialogFooter className="flex-none border-t border-slate-100 pt-5 gap-3">
+                                                    <Button type="button" variant="outline" onClick={handleClose} className="h-11 rounded-xl">
+                                                        Cancel
+                                                    </Button>
+                                                    <Button type="submit" className="h-11 rounded-xl bg-slate-900 px-6 font-black hover:bg-slate-800" disabled={dropMutation.isPending}>
+                                                        {dropMutation.isPending ? "Submitting..." : "Submit Blind Count"}
+                                                    </Button>
+                                                </DialogFooter>
+                                            </form>
                                         )}
                                     </div>
                                 </>

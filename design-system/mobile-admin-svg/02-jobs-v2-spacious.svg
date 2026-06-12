@@ -1,0 +1,251 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1200" viewBox="0 0 1800 1200" role="img" aria-labelledby="title desc">
+  <title id="title">Promise Admin Jobs Mobile UI Spacious Redesign</title>
+  <desc id="desc">A cleaner spacious mobile UI mockup for the Jobs tab. It shows a technician job queue and a focused job action sheet with large touch targets, calm cards, status color language, and minimum clutter.</desc>
+  <metadata>
+    {
+      "project": "Promise Electronics",
+      "screen": "Admin mobile Jobs tab",
+      "version": "v2 spacious",
+      "design_intent": "Authentic mobile operator UI, not compressed desktop",
+      "mobile_priority": ["job queue", "job identity", "primary next action", "quick contact", "status update"],
+      "avoid": ["dense table", "too many cards", "dashboard clutter", "small tap targets"]
+    }
+  </metadata>
+  <defs>
+    <filter id="shadowPhone" x="-25%" y="-20%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="28" stdDeviation="32" flood-color="#0f172a" flood-opacity="0.17"/>
+    </filter>
+    <filter id="shadowCard" x="-18%" y="-18%" width="136%" height="136%">
+      <feDropShadow dx="0" dy="9" stdDeviation="11" flood-color="#0f172a" flood-opacity="0.08"/>
+    </filter>
+    <linearGradient id="canvas" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f8fafc"/>
+      <stop offset="0.45" stop-color="#f1f5f9"/>
+      <stop offset="1" stop-color="#eef6ff"/>
+    </linearGradient>
+    <linearGradient id="phoneSurface" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#fbfdff"/>
+      <stop offset="1" stop-color="#f8fafc"/>
+    </linearGradient>
+    <linearGradient id="primaryBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2563eb"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+    <linearGradient id="darkPanel" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0f172a"/>
+      <stop offset="1" stop-color="#1e293b"/>
+    </linearGradient>
+    <style>
+      .board-title { font: 900 36px Inter, ui-sans-serif, system-ui, sans-serif; fill: #0f172a; letter-spacing: 0; }
+      .board-note { font: 600 17px Inter, ui-sans-serif, system-ui, sans-serif; fill: #64748b; letter-spacing: 0; }
+      .phone-title { font: 900 30px Inter, ui-sans-serif, system-ui, sans-serif; fill: #0f172a; letter-spacing: 0; }
+      .phone-sub { font: 700 13px Inter, ui-sans-serif, system-ui, sans-serif; fill: #64748b; letter-spacing: 0; }
+      .section-label { font: 900 10px Inter, ui-sans-serif, system-ui, sans-serif; fill: #94a3b8; letter-spacing: 1.7px; }
+      .card-title { font: 900 19px Inter, ui-sans-serif, system-ui, sans-serif; fill: #0f172a; letter-spacing: 0; }
+      .card-body { font: 700 14px Inter, ui-sans-serif, system-ui, sans-serif; fill: #475569; letter-spacing: 0; }
+      .card-muted { font: 650 12px Inter, ui-sans-serif, system-ui, sans-serif; fill: #64748b; letter-spacing: 0; }
+      .mono-blue { font: 900 13px "SFMono-Regular", Consolas, monospace; fill: #1d4ed8; letter-spacing: 0; }
+      .mono-dark { font: 900 13px "SFMono-Regular", Consolas, monospace; fill: #0f172a; letter-spacing: 0; }
+      .chip { font: 900 11px Inter, ui-sans-serif, system-ui, sans-serif; letter-spacing: 0; }
+      .button { font: 900 16px Inter, ui-sans-serif, system-ui, sans-serif; fill: #ffffff; letter-spacing: 0; }
+      .button-dark { font: 850 14px Inter, ui-sans-serif, system-ui, sans-serif; fill: #ffffff; letter-spacing: 0; }
+      .nav { font: 850 10px Inter, ui-sans-serif, system-ui, sans-serif; fill: #64748b; letter-spacing: 0; }
+      .nav-active { font: 900 10px Inter, ui-sans-serif, system-ui, sans-serif; fill: #2563eb; letter-spacing: 0; }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1200" fill="url(#canvas)"/>
+  <g transform="translate(118 82)">
+    <text x="0" y="0" class="board-title">Jobs Mobile UI - Spacious Operator Direction</text>
+    <text x="0" y="34" class="board-note">This version intentionally shows less. One queue, one focused action sheet, large tap targets, and calm spacing.</text>
+  </g>
+
+  <g transform="translate(118 176)">
+    <rect x="0" y="0" width="480" height="48" rx="18" fill="#ffffff" stroke="#e2e8f0"/>
+    <circle cx="26" cy="24" r="8" fill="#2563eb"/>
+    <text x="48" y="30" class="board-note">Queue cards should replace mobile tables. Desktop can remain table/grid.</text>
+  </g>
+  <g transform="translate(660 176)">
+    <rect x="0" y="0" width="480" height="48" rx="18" fill="#ffffff" stroke="#e2e8f0"/>
+    <circle cx="26" cy="24" r="8" fill="#10b981"/>
+    <text x="48" y="30" class="board-note">Only one primary action per job. Secondary actions stay quiet.</text>
+  </g>
+  <g transform="translate(1202 176)">
+    <rect x="0" y="0" width="480" height="48" rx="18" fill="#ffffff" stroke="#e2e8f0"/>
+    <circle cx="26" cy="24" r="8" fill="#f59e0b"/>
+    <text x="48" y="30" class="board-note">Sheets are thumb-safe and do not block the bottom navigation.</text>
+  </g>
+
+  <!-- Phone A -->
+  <g transform="translate(230 270)" filter="url(#shadowPhone)">
+    <rect width="444" height="846" rx="54" fill="#0f172a"/>
+    <rect x="16" y="16" width="412" height="814" rx="42" fill="url(#phoneSurface)"/>
+    <rect x="154" y="30" width="136" height="24" rx="12" fill="#0f172a"/>
+
+    <g transform="translate(42 78)">
+      <text x="0" y="0" class="phone-sub">Shop floor</text>
+      <text x="0" y="38" class="phone-title">Jobs</text>
+      <rect x="294" y="3" width="58" height="46" rx="23" fill="#ffffff" stroke="#e2e8f0"/>
+      <circle cx="320" cy="25" r="8" fill="none" stroke="#0f172a" stroke-width="2.4"/>
+      <path d="M326 31 L334 39" stroke="#0f172a" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+
+    <g transform="translate(42 156)">
+      <rect width="352" height="48" rx="24" fill="#edf2f7" stroke="#e2e8f0"/>
+      <circle cx="28" cy="24" r="8" fill="none" stroke="#64748b" stroke-width="2.2"/>
+      <path d="M34 30 L42 38" stroke="#64748b" stroke-width="2.2" stroke-linecap="round"/>
+      <text x="58" y="30" class="card-muted">Ticket, phone, customer</text>
+    </g>
+
+    <g transform="translate(42 226)">
+      <rect x="0" y="0" width="78" height="38" rx="15" fill="#dbeafe" stroke="#bfdbfe"/>
+      <text x="22" y="25" class="chip" fill="#1d4ed8">New</text>
+      <rect x="88" y="0" width="93" height="38" rx="15" fill="#ffffff" stroke="#e2e8f0"/>
+      <text x="110" y="25" class="chip" fill="#475569">Active</text>
+      <rect x="191" y="0" width="80" height="38" rx="15" fill="#ffffff" stroke="#e2e8f0"/>
+      <text x="212" y="25" class="chip" fill="#475569">Parts</text>
+      <rect x="281" y="0" width="71" height="38" rx="15" fill="#ffffff" stroke="#e2e8f0"/>
+      <text x="301" y="25" class="chip" fill="#475569">Ready</text>
+    </g>
+
+    <g transform="translate(42 292)" filter="url(#shadowCard)">
+      <rect width="352" height="216" rx="24" fill="#ffffff" stroke="#e2e8f0"/>
+      <rect x="18" y="18" width="88" height="28" rx="12" fill="#dbeafe"/>
+      <text x="31" y="37" class="mono-blue">PTV-1042</text>
+      <rect x="280" y="18" width="54" height="28" rx="12" fill="#fee2e2"/>
+      <text x="294" y="37" class="chip" fill="#b91c1c">High</text>
+
+      <text x="18" y="76" class="section-label">CUSTOMER</text>
+      <text x="18" y="104" class="card-title">Rahman</text>
+      <text x="236" y="104" class="mono-dark">01722...</text>
+
+      <text x="18" y="139" class="section-label">DEVICE</text>
+      <text x="18" y="166" class="card-title">Sony Bravia 43"</text>
+      <text x="210" y="166" class="card-muted">No display</text>
+
+      <rect x="18" y="184" width="316" height="50" rx="16" fill="url(#primaryBlue)"/>
+      <path d="M104 201 L118 209 L104 217 Z" fill="#ffffff"/>
+      <text x="138" y="216" class="button">Start Repair</text>
+    </g>
+
+    <g transform="translate(42 530)" filter="url(#shadowCard)">
+      <rect width="352" height="168" rx="24" fill="#ffffff" stroke="#e2e8f0"/>
+      <rect x="18" y="18" width="88" height="28" rx="12" fill="#eef2ff"/>
+      <text x="31" y="37" class="mono-blue" fill="#4338ca">PTV-1038</text>
+      <rect x="245" y="18" width="89" height="28" rx="12" fill="#eef2ff"/>
+      <text x="260" y="37" class="chip" fill="#4338ca">Active</text>
+      <text x="18" y="75" class="card-title">Samsung 55"</text>
+      <text x="18" y="101" class="card-body">Backlight repair running</text>
+      <rect x="18" y="118" width="316" height="46" rx="15" fill="url(#primaryBlue)"/>
+      <path d="M93 141 L103 151 L121 128" fill="none" stroke="#ffffff" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="140" y="147" class="button">Mark Ready</text>
+    </g>
+
+    <g transform="translate(16 742)">
+      <rect width="412" height="88" rx="0" fill="#ffffff" stroke="#e2e8f0"/>
+      <g transform="translate(45 15)">
+        <rect x="0" y="0" width="54" height="36" rx="18" fill="#dbeafe"/>
+        <circle cx="27" cy="17" r="9" fill="none" stroke="#2563eb" stroke-width="2.2"/>
+        <path d="M18 29 H36" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round"/>
+        <text x="14" y="58" class="nav-active">Jobs</text>
+      </g>
+      <text x="137" y="73" class="nav">POS</text>
+      <text x="206" y="73" class="nav">Stock</text>
+      <text x="280" y="73" class="nav">Finance</text>
+      <text x="354" y="73" class="nav">More</text>
+    </g>
+  </g>
+
+  <!-- Phone B -->
+  <g transform="translate(920 270)" filter="url(#shadowPhone)">
+    <rect width="444" height="846" rx="54" fill="#0f172a"/>
+    <rect x="16" y="16" width="412" height="814" rx="42" fill="url(#phoneSurface)"/>
+    <rect x="154" y="30" width="136" height="24" rx="12" fill="#0f172a"/>
+
+    <g transform="translate(42 78)">
+      <text x="0" y="0" class="phone-sub">PTV-1042</text>
+      <text x="0" y="38" class="phone-title">Start repair</text>
+      <rect x="304" y="4" width="48" height="44" rx="22" fill="#ffffff" stroke="#e2e8f0"/>
+      <path d="M318 20 L338 40 M338 20 L318 40" stroke="#0f172a" stroke-width="2.4" stroke-linecap="round"/>
+    </g>
+
+    <g transform="translate(16 150)">
+      <rect x="0" y="0" width="412" height="680" rx="38" fill="#ffffff" stroke="#e2e8f0"/>
+      <rect x="152" y="16" width="108" height="5" rx="3" fill="#cbd5e1"/>
+    </g>
+
+    <g transform="translate(42 196)">
+      <rect width="360" height="154" rx="26" fill="url(#darkPanel)"/>
+      <circle cx="314" cy="22" r="46" fill="#334155" opacity="0.26"/>
+      <circle cx="338" cy="83" r="72" fill="#334155" opacity="0.16"/>
+      <text x="24" y="40" font-family="Inter, ui-sans-serif, system-ui" font-size="10" font-weight="900" fill="#94a3b8" letter-spacing="1.8">JOB TICKET</text>
+      <text x="24" y="82" font-family="SFMono-Regular, Consolas, monospace" font-size="31" font-weight="900" fill="#bfdbfe">PTV-1042</text>
+      <text x="24" y="116" font-family="Inter, ui-sans-serif, system-ui" font-size="15" font-weight="800" fill="#ffffff">Sony Bravia 43 inch</text>
+      <rect x="244" y="102" width="88" height="30" rx="13" fill="#1d4ed8"/>
+      <text x="265" y="123" class="chip" fill="#ffffff">New</text>
+    </g>
+
+    <g transform="translate(42 378)" filter="url(#shadowCard)">
+      <rect width="360" height="88" rx="22" fill="#ffffff" stroke="#e2e8f0"/>
+      <text x="20" y="32" class="section-label">CUSTOMER</text>
+      <text x="20" y="62" class="card-title">Rahman</text>
+      <rect x="224" y="22" width="116" height="44" rx="16" fill="#eff6ff" stroke="#bfdbfe"/>
+      <text x="247" y="50" class="mono-blue">Call</text>
+    </g>
+
+    <g transform="translate(42 490)" filter="url(#shadowCard)">
+      <rect width="360" height="142" rx="22" fill="#ffffff" stroke="#e2e8f0"/>
+      <text x="20" y="35" class="section-label">REPORTED PROBLEM</text>
+      <text x="20" y="68" class="card-title">No display</text>
+      <text x="20" y="96" class="card-body">Received at counter. No visible panel crack.</text>
+      <rect x="20" y="112" width="126" height="24" rx="12" fill="#f8fafc" stroke="#e2e8f0"/>
+      <text x="39" y="129" class="card-muted">Photo optional</text>
+    </g>
+
+    <g transform="translate(42 658)" filter="url(#shadowCard)">
+      <rect width="360" height="66" rx="22" fill="#eef2ff" stroke="#c7d2fe"/>
+      <circle cx="34" cy="33" r="14" fill="#4f46e5"/>
+      <path d="M28 33 L33 38 L42 27" fill="none" stroke="#ffffff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      <text x="62" y="30" class="card-title" font-size="17">Next: In Progress</text>
+      <text x="62" y="50" class="card-muted">Customer status updates automatically</text>
+    </g>
+
+    <g transform="translate(42 748)">
+      <rect width="360" height="54" rx="17" fill="url(#primaryBlue)"/>
+      <path d="M86 270 L100 278 L86 286 Z" fill="#ffffff" transform="translate(0 -246)"/>
+      <text x="128" y="35" class="button">Confirm Start</text>
+    </g>
+  </g>
+
+  <g transform="translate(1432 316)">
+    <rect width="250" height="330" rx="30" fill="#ffffff" stroke="#e2e8f0" filter="url(#shadowCard)"/>
+    <text x="28" y="48" class="board-title" font-size="24">Design rules</text>
+    <circle cx="38" cy="88" r="6" fill="#2563eb"/>
+    <text x="58" y="94" class="board-note" font-size="14">2 cards visible max</text>
+    <circle cx="38" cy="132" r="6" fill="#2563eb"/>
+    <text x="58" y="138" class="board-note" font-size="14">Primary action full width</text>
+    <circle cx="38" cy="176" r="6" fill="#2563eb"/>
+    <text x="58" y="182" class="board-note" font-size="14">No mobile tables</text>
+    <circle cx="38" cy="220" r="6" fill="#2563eb"/>
+    <text x="58" y="226" class="board-note" font-size="14">Detail as bottom sheet</text>
+    <circle cx="38" cy="264" r="6" fill="#2563eb"/>
+    <text x="58" y="270" class="board-note" font-size="14">Optional proof only</text>
+  </g>
+
+  <g transform="translate(1432 690)">
+    <rect width="250" height="224" rx="30" fill="#0f172a" filter="url(#shadowCard)"/>
+    <text x="28" y="48" font-family="Inter, ui-sans-serif, system-ui" font-size="23" font-weight="900" fill="#ffffff">Status colors</text>
+    <rect x="28" y="76" width="78" height="28" rx="12" fill="#dbeafe"/>
+    <text x="46" y="95" class="chip" fill="#1d4ed8">New</text>
+    <rect x="122" y="76" width="100" height="28" rx="12" fill="#eef2ff"/>
+    <text x="141" y="95" class="chip" fill="#4338ca">Repairing</text>
+    <rect x="28" y="118" width="92" height="28" rx="12" fill="#fffbeb"/>
+    <text x="48" y="137" class="chip" fill="#b45309">Parts</text>
+    <rect x="136" y="118" width="86" height="28" rx="12" fill="#ecfdf5"/>
+    <text x="157" y="137" class="chip" fill="#047857">Ready</text>
+    <rect x="28" y="160" width="96" height="28" rx="12" fill="#f1f5f9"/>
+    <text x="47" y="179" class="chip" fill="#475569">Done</text>
+    <rect x="140" y="160" width="82" height="28" rx="12" fill="#fee2e2"/>
+    <text x="157" y="179" class="chip" fill="#b91c1c">Stop</text>
+  </g>
+</svg>

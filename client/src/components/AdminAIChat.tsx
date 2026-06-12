@@ -135,7 +135,9 @@ export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) 
     const [messages, setMessages] = useState<Message[]>([]);
     const [input, setInput] = useState("");
     const [isLoading, setIsLoading] = useState(false);
+    const [isSending, setIsSending] = useState(false);
     const [isListening, setIsListening] = useState(false);
+    const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.innerWidth < 768);
     const scrollRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
 
@@ -144,9 +146,16 @@ export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) 
     const [tempPosition, setTempPosition] = useState<{ x: number; y: number } | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const dragStartRef = useRef({ clientX: 0, clientY: 0 });
+    const suppressClickRef = useRef(false);
 
     // Web Speech API
     const recognitionRef = useRef<any>(null);
+
+    useEffect(() => {
+        const updateMobile = () => setIsMobile(window.innerWidth < 768);
+        window.addEventListener("resize", updateMobile);
+        return () => window.removeEventListener("resize", updateMobile);
+    }, []);
 
     useEffect(() => {
         if ("webkitSpeechRecognition" in window || "SpeechRecognition" in window) {
@@ -199,12 +208,13 @@ export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) 
     };
 
     const sendMessage = async () => {
-        if (!input.trim()) return;
+        if (!input.trim() || isSending) return;
 
         const userMsg = input;
         setInput("");
         setMessages(prev => [...prev, { role: "user", text: userMsg }]);
         setIsLoading(true);
+        setIsSending(true);
 
         try {
             // Convert messages to history format for API
@@ -227,6 +237,7 @@ export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) 
             toast({ title: "Error", description: "Failed to send message", variant: "destructive" });
         } finally {
             setIsLoading(false);
+            setIsSending(false);
         }
     };
 
@@ -240,6 +251,7 @@ export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) 
 
     // Drag handlers for floating button - snaps to corners
     const handleMouseDown = (e: React.MouseEvent) => {
+        if (isMobile) return;
         e.preventDefault();
         setIsDragging(true);
         dragStartRef.current = { clientX: e.clientX, clientY: e.clientY };
@@ -258,6 +270,7 @@ export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) 
 
     // Touch handlers for mobile devices
     const handleTouchStart = (e: React.TouchEvent) => {
+        if (isMobile) return;
         e.preventDefault();
         const touch = e.touches[0];
         setIsDragging(true);
@@ -279,8 +292,17 @@ export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) 
 
     // Common snap-to-corner logic
     const snapToCorner = (clientX: number, clientY: number) => {
+        const moved = Math.hypot(clientX - dragStartRef.current.clientX, clientY - dragStartRef.current.clientY);
+        suppressClickRef.current = moved > 8;
         setIsDragging(false);
         setTempPosition(null);
+
+        if (isOpen && Math.hypot(clientX - window.innerWidth / 2, clientY - window.innerHeight / 2) < 96) {
+            setIsOpen(false);
+            setCorner("bottom-right");
+            setTimeout(() => { suppressClickRef.current = false; }, 150);
+            return;
+        }
 
         const midX = window.innerWidth / 2;
         const midY = window.innerHeight / 2;
@@ -291,6 +313,7 @@ export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) 
         else if (!isRight && isBottom) setCorner('bottom-left');
         else if (isRight && !isBottom) setCorner('top-right');
         else setCorner('top-left');
+        setTimeout(() => { suppressClickRef.current = false; }, 150);
     };
 
     // Add/remove drag listeners (mouse + touch)
@@ -311,20 +334,26 @@ export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) 
 
     // Get button position style based on corner or temp position during drag
     const getButtonStyle = (): React.CSSProperties => {
-        const offset = 24;
+        const offset = isMobile ? 16 : 24;
+        const bottomOffset = isMobile ? 96 : offset;
+        const buttonHalf = isMobile ? 24 : 28;
         if (isDragging && tempPosition) {
             return {
-                left: tempPosition.x - 28,
-                top: tempPosition.y - 28,
+                left: tempPosition.x - buttonHalf,
+                top: tempPosition.y - buttonHalf,
                 transition: 'none',
             };
         }
 
+        if (isMobile && isOpen) {
+            return { right: offset, bottom: "calc(96px + min(68vh, 560px) - 24px)" };
+        }
+
         switch (corner) {
             case 'bottom-right':
-                return { right: offset, bottom: offset };
+                return { right: offset, bottom: bottomOffset };
             case 'bottom-left':
-                return { left: offset, bottom: offset };
+                return { left: offset, bottom: bottomOffset };
             case 'top-right':
                 return { right: offset, top: offset };
             case 'top-left':
@@ -334,6 +363,10 @@ export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) 
 
     // Get chat window position based on icon corner
     const getChatWindowStyle = (): React.CSSProperties => {
+        if (isMobile) {
+            return { left: 12, right: 12, bottom: 96 };
+        }
+
         const offset = 24;
         const buttonSize = 56; // h-14 = 56px
         const gap = 12; // Gap between button and chat
@@ -358,38 +391,75 @@ export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) 
         return 'animate-in slide-in-from-top-10 fade-in duration-300';
     };
 
+    const closeChat = () => {
+        setIsOpen(false);
+        if (isMobile) setCorner('bottom-right');
+    };
+
     return (
         <>
-            {/* Floating Button - Draggable, snaps to corners */}
-            <Button
-                onMouseDown={handleMouseDown}
-                onTouchStart={handleTouchStart}
-                onClick={() => !isDragging && setIsOpen(!isOpen)}
-                className={cn(
-                    "fixed h-14 w-14 rounded-full shadow-lg z-50 cursor-grab active:cursor-grabbing touch-none",
-                    isDragging ? "transition-none" : "transition-all duration-300",
-                    isOpen ? "rotate-90 bg-slate-800 hover:bg-slate-900" : "bg-violet-600 hover:bg-violet-700"
-                )}
-                style={getButtonStyle()}
-            >
-                {isOpen ? <X className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
-            </Button>
+            {(!isMobile || !isOpen) && (
+                <Button
+                    onMouseDown={handleMouseDown}
+                    onTouchStart={handleTouchStart}
+                    onClick={() => {
+                        if (!isDragging && !suppressClickRef.current) setIsOpen(!isOpen);
+                    }}
+                    className={cn(
+                        "fixed z-40 hidden h-12 w-12 rounded-full shadow-lg cursor-grab active:cursor-grabbing touch-none md:flex md:z-50 md:h-14 md:w-14",
+                        isDragging ? "transition-none" : "transition-all duration-300",
+                        isOpen ? "rotate-90 bg-slate-800 hover:bg-slate-900" : "bg-violet-600 hover:bg-violet-700"
+                    )}
+                    style={getButtonStyle()}
+                    aria-label={isOpen ? "Close admin co-pilot" : "Open admin co-pilot"}
+                >
+                    {isOpen ? <X className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
+                </Button>
+            )}
 
-            {/* Chat Window - positions relative to button corner */}
+            {isOpen && isDragging && (
+                <div className="fixed left-1/2 top-1/2 z-40 flex h-20 w-20 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-slate-200 bg-white/90 text-[10px] font-black uppercase text-slate-700 shadow-2xl backdrop-blur md:hidden">
+                    Minimize
+                </div>
+            )}
+
+            {isOpen && isMobile && (
+                <button
+                    type="button"
+                    className="fixed inset-0 z-40 bg-slate-950/30 md:hidden"
+                    aria-label="Close admin co-pilot"
+                    onClick={closeChat}
+                />
+            )}
+
             {isOpen && (
                 <Card
                     className={cn(
-                        "fixed w-[380px] h-[600px] shadow-2xl z-50 flex flex-col border-2 border-violet-100",
+                        "fixed z-50 flex h-[min(68vh,560px)] flex-col overflow-hidden rounded-2xl border-2 border-violet-100 shadow-2xl md:h-[600px] md:w-[380px] md:rounded-lg",
                         getChatAnimationClass()
                     )}
                     style={getChatWindowStyle()}
                 >
-                    <CardHeader className="bg-violet-600 text-white rounded-t-lg py-3 px-4">
-                        <CardTitle className="flex items-center gap-2 text-lg">
-                            <Sparkles className="h-5 w-5" />
-                            Admin Co-Pilot
-                        </CardTitle>
-                        <p className="text-xs text-violet-100">Business Intelligence & Support</p>
+                    <CardHeader className="bg-violet-600 text-white py-3 px-4">
+                        <div className="flex items-start justify-between gap-3">
+                            <div>
+                                <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+                                    <Sparkles className="h-5 w-5" />
+                                    Admin Co-Pilot
+                                </CardTitle>
+                                <p className="text-xs text-violet-100">Business Intelligence & Support</p>
+                            </div>
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 shrink-0 rounded-full px-3 text-xs font-semibold text-white hover:bg-white/15 hover:text-white md:hidden"
+                                onClick={closeChat}
+                            >
+                                <X className="mr-1 h-4 w-4" />
+                                Back
+                            </Button>
+                        </div>
                     </CardHeader>
 
                     <ScrollArea className="flex-1 p-4 bg-slate-50" ref={scrollRef}>
@@ -470,7 +540,7 @@ export function AdminAIChat({ initialOpen = false }: { initialOpen?: boolean }) 
                                 placeholder="Ask about your shop..."
                                 className="flex-1"
                             />
-                            <Button size="icon" onClick={sendMessage} disabled={isLoading || !input.trim()} className="bg-violet-600 hover:bg-violet-700">
+                            <Button size="icon" onClick={sendMessage} disabled={isLoading || isSending || !input.trim()} className="bg-violet-600 hover:bg-violet-700">
                                 <Send className="h-4 w-4" />
                             </Button>
                         </div>

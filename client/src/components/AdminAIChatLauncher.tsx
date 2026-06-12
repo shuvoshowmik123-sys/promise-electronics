@@ -26,7 +26,7 @@ export function AdminAIChatLauncher() {
                 });
             }}
             className={cn(
-                "fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-violet-600 shadow-lg transition-all duration-300 hover:bg-violet-700",
+                "fixed bottom-24 right-4 z-40 hidden h-12 w-12 rounded-full bg-violet-600 shadow-lg transition-all duration-300 hover:bg-violet-700 md:flex md:bottom-6 md:right-6 md:z-50 md:h-14 md:w-14",
                 "cursor-pointer"
             )}
             aria-label="Open admin AI chat"

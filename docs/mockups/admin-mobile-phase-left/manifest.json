@@ -1,0 +1,183 @@
+{
+  "generatedAt": "2026-06-09T12:28:31.042Z",
+  "viewport": "390x844",
+  "unfinishedTabs": [
+    "overview",
+    "reports",
+    "quality",
+    "system-health",
+    "challans",
+    "orders",
+    "b2b",
+    "corp-msg",
+    "purchasing",
+    "warranty",
+    "wastage",
+    "users",
+    "attendance",
+    "salary",
+    "cashier",
+    "technician",
+    "settings",
+    "audit-logs",
+    "brain"
+  ],
+  "selectedRedesignTab": "challans",
+  "files": [
+    {
+      "type": "unfinished-tab",
+      "tab": "Overview",
+      "file": "mobile-tab-overview.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Reports",
+      "file": "mobile-tab-reports.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Quality Analytics",
+      "file": "mobile-tab-quality.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "System Health",
+      "file": "mobile-tab-system-health.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Challans",
+      "file": "mobile-tab-challans.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Orders",
+      "file": "mobile-tab-orders.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "B2B Workspace",
+      "file": "mobile-tab-b2b.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Corporate Messages",
+      "file": "mobile-tab-corp-msg.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Purchasing",
+      "file": "mobile-tab-purchasing.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Warranty Claims",
+      "file": "mobile-tab-warranty.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Wastage",
+      "file": "mobile-tab-wastage.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Users",
+      "file": "mobile-tab-users.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Attendance",
+      "file": "mobile-tab-attendance.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Salary HR",
+      "file": "mobile-tab-salary.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Cashier",
+      "file": "mobile-tab-cashier.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Technician",
+      "file": "mobile-tab-technician.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Settings",
+      "file": "mobile-tab-settings.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "Audit Logs",
+      "file": "mobile-tab-audit-logs.png"
+    },
+    {
+      "type": "unfinished-tab",
+      "tab": "AI Brain",
+      "file": "mobile-tab-brain.png"
+    },
+    {
+      "type": "challans-detail",
+      "screen": "List / queue",
+      "file": "challans-01-list.png"
+    },
+    {
+      "type": "challans-detail",
+      "screen": "Filter sheet",
+      "file": "challans-02-filter-sheet.png"
+    },
+    {
+      "type": "challans-detail",
+      "screen": "Row actions",
+      "file": "challans-03-action-menu.png"
+    },
+    {
+      "type": "challans-detail",
+      "screen": "Step 1 General",
+      "file": "challans-04-create-general.png"
+    },
+    {
+      "type": "challans-detail",
+      "screen": "Step 2 Receiver",
+      "file": "challans-05-create-receiver.png"
+    },
+    {
+      "type": "challans-detail",
+      "screen": "Step 3 Transport",
+      "file": "challans-06-create-transport.png"
+    },
+    {
+      "type": "challans-detail",
+      "screen": "Step 4 Items",
+      "file": "challans-07-create-items.png"
+    },
+    {
+      "type": "challans-detail",
+      "screen": "Item status picker",
+      "file": "challans-08-item-status-picker.png"
+    },
+    {
+      "type": "challans-detail",
+      "screen": "Status confirm",
+      "file": "challans-09-status-confirm.png"
+    },
+    {
+      "type": "challans-detail",
+      "screen": "Detail sheet",
+      "file": "challans-10-detail-sheet.png"
+    },
+    {
+      "type": "challans-detail",
+      "screen": "A4 challan preview",
+      "file": "challans-11-print-preview.png"
+    },
+    {
+      "type": "challans-detail",
+      "screen": "Empty / no match",
+      "file": "challans-12-empty-state.png"
+    }
+  ]
+}

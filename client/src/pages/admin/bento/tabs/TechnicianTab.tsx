@@ -111,7 +111,7 @@ export default function TechnicianTab() {
 
     const { data: jobsData, isLoading: jobsLoading } = useQuery({
         queryKey: ["job-tickets-technician-view"],
-        queryFn: () => jobTicketsApi.getAll("all"),
+        queryFn: () => jobTicketsApi.getAll("walk-in"),
         refetchInterval: 30_000, // refresh every 30s to stay current
     });
 

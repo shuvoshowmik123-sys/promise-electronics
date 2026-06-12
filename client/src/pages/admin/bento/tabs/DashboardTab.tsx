@@ -2,14 +2,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
 import {
     Activity, Package, DollarSign, Users, Clock, AlertCircle,
-    TrendingUp, CheckCircle2, ChevronRight, X, ShoppingCart
+    TrendingUp, CheckCircle2, ChevronRight, X, ShoppingCart, ChevronDown
 } from "lucide-react";
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
 } from "recharts";
 import {
     BentoCard, containerVariants, itemVariants, DashboardSkeleton,
-    MobileActionList, MobileKpiGrid, MobileSectionHeader,
+    MobileActionList, MobileCommandRail, MobileKpiGrid, MobileMicroMetricGrid, MobileSegmentTabs,
     MobileTabLayout, MobileTabHeader, MobileScrollContent,
 } from "../shared";
 import { useState } from "react";
@@ -37,6 +37,8 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
     const { user } = useAdminAuth();
     const [selectedCard, setSelectedCard] = useState<string | null>(null);
     const [selectedActivity, setSelectedActivity] = useState<AdminDashboardJobSummary | null>(null);
+    const [kpiOpen, setKpiOpen] = useState(false);
+    const [mobileView, setMobileView] = useState<"overview" | "urgent" | "jobs">("overview");
 
     const navigateTo = (tab: string, searchQuery?: string) => {
         setSelectedCard(null);
@@ -255,11 +257,175 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
         tone: "blue" as const,
         onClick: () => setSelectedActivity(job),
     }));
+    const urgentMobileItems = [...pendingMobileItems, ...lowStockMobileItems];
+    const compactMoney = (value: number) => {
+        const abs = Math.abs(value);
+        if (abs >= 100000) return `BDT ${(value / 100000).toFixed(value % 100000 === 0 ? 0 : 1)}L`;
+        if (abs >= 1000) return `BDT ${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
+        return `BDT ${value.toLocaleString()}`;
+    };
 
     return (
         <MobileTabLayout>
-            {/* Mobile header — title stays pinned */}
             <MobileTabHeader>
+                <button
+                    type="button"
+                    onClick={() => setKpiOpen((value) => !value)}
+                    className="flex w-full items-center justify-between gap-2 -mx-3 px-3 py-2 active:bg-slate-50"
+                >
+                    <div className="flex min-w-0 items-center gap-3 overflow-hidden text-[11px] font-bold">
+                        <span className="truncate text-slate-900">Dashboard</span>
+                        <span className="text-emerald-700">Rev {compactMoney(data.totalRevenue ?? 0)}</span>
+                        <span className="text-blue-700">Jobs {data.activeCount ?? 0}</span>
+                        <span className="text-amber-700">Todo {data.pendingCount ?? 0}</span>
+                    </div>
+                    <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${kpiOpen ? "rotate-180" : ""}`} />
+                </button>
+                {kpiOpen && (
+                    <div className="px-3 pb-2">
+                        <MobileMicroMetricGrid
+                            items={[
+                                {
+                                    label: "Revenue",
+                                    value: compactMoney(data.totalRevenue ?? 0),
+                                    meta: "This month",
+                                    tone: "emerald",
+                                    onClick: () => setSelectedCard("revenue"),
+                                },
+                                {
+                                    label: "Active",
+                                    value: data.activeCount ?? 0,
+                                    meta: `${(data.activeJobsList ?? []).length} updates`,
+                                    tone: "blue",
+                                    onClick: () => setSelectedCard("active"),
+                                },
+                                {
+                                    label: "Pending",
+                                    value: data.pendingCount ?? 0,
+                                    meta: "Needs action",
+                                    tone: "amber",
+                                    onClick: () => setSelectedCard("pending"),
+                                },
+                                {
+                                    label: "Stock",
+                                    value: data.lowStockCount ?? 0,
+                                    meta: "Low parts",
+                                    tone: "rose",
+                                    onClick: () => setSelectedCard("parts"),
+                                },
+                            ]}
+                        />
+                    </div>
+                )}
+                <MobileCommandRail
+                    items={[
+                        {
+                            key: "finance",
+                            title: "Finance",
+                            badge: null,
+                            icon: <DollarSign className="h-3.5 w-3.5" />,
+                            tone: "emerald",
+                            onClick: () => navigateTo("finance"),
+                        },
+                        {
+                            key: "jobs",
+                            title: "Jobs",
+                            badge: data.activeCount ?? null,
+                            icon: <Activity className="h-3.5 w-3.5" />,
+                            tone: "blue",
+                            onClick: () => navigateTo("jobs"),
+                        },
+                        {
+                            key: "stock",
+                            title: "Stock",
+                            badge: data.lowStockCount ?? null,
+                            icon: <Package className="h-3.5 w-3.5" />,
+                            tone: (data.lowStockCount ?? 0) > 0 ? "rose" : "slate",
+                            onClick: () => navigateTo("inventory"),
+                        },
+                    ]}
+                />
+                <MobileSegmentTabs
+                    value={mobileView}
+                    onChange={setMobileView}
+                    tone={mobileView === "urgent" ? "amber" : mobileView === "jobs" ? "blue" : "slate"}
+                    items={[
+                        { value: "overview", label: "Overview", icon: <TrendingUp className="h-4 w-4" /> },
+                        {
+                            value: "urgent",
+                            label: "Urgent",
+                            icon: <AlertCircle className="h-4 w-4" />,
+                            badge: urgentMobileItems.length ? <span className="rounded-full bg-white/70 px-1.5 text-[10px]">{urgentMobileItems.length}</span> : null,
+                        },
+                        {
+                            value: "jobs",
+                            label: "Recent",
+                            icon: <Clock className="h-4 w-4" />,
+                            badge: recentMobileItems.length ? <span className="rounded-full bg-white/70 px-1.5 text-[10px]">{recentMobileItems.length}</span> : null,
+                        },
+                    ]}
+                />
+            </MobileTabHeader>
+
+            <MobileScrollContent className="pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:hidden">
+                {mobileView === "overview" && (
+                    <>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                            <div className="mb-3 flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                    <h2 className="truncate text-sm font-black uppercase tracking-wide text-slate-900">Today Pulse</h2>
+                                    <p className="truncate text-xs font-medium text-slate-500">{user?.role ?? "Staff"} dashboard</p>
+                                </div>
+                                <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500">Live</span>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2">
+                                <button type="button" onClick={() => setSelectedCard("revenue")} className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-3 text-left active:scale-[0.99]">
+                                    <div className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Revenue</div>
+                                    <div className="mt-1 truncate text-lg font-black text-slate-950">{compactMoney(data.totalRevenue ?? 0)}</div>
+                                </button>
+                                <button type="button" onClick={() => navigateTo("jobs")} className="rounded-xl border border-blue-100 bg-blue-50 px-3 py-3 text-left active:scale-[0.99]">
+                                    <div className="text-[10px] font-black uppercase tracking-wide text-blue-700">Active Jobs</div>
+                                    <div className="mt-1 text-lg font-black text-slate-950">{data.activeCount ?? 0}</div>
+                                </button>
+                                <button type="button" onClick={() => setMobileView("urgent")} className="rounded-xl border border-amber-100 bg-amber-50 px-3 py-3 text-left active:scale-[0.99]">
+                                    <div className="text-[10px] font-black uppercase tracking-wide text-amber-700">Pending</div>
+                                    <div className="mt-1 text-lg font-black text-slate-950">{data.pendingCount ?? 0}</div>
+                                </button>
+                                <button type="button" onClick={() => navigateTo("inventory")} className="rounded-xl border border-rose-100 bg-rose-50 px-3 py-3 text-left active:scale-[0.99]">
+                                    <div className="text-[10px] font-black uppercase tracking-wide text-rose-700">Parts Low</div>
+                                    <div className="mt-1 text-lg font-black text-slate-950">{data.lowStockCount ?? 0}</div>
+                                </button>
+                            </div>
+                        </div>
+                        <MobileActionList
+                            title="Needs attention"
+                            empty="No urgent work right now."
+                            items={urgentMobileItems.slice(0, 4)}
+                        />
+                        <MobileActionList
+                            title="Latest movement"
+                            empty="No recent job activity."
+                            items={recentMobileItems.slice(0, 3)}
+                        />
+                    </>
+                )}
+                {mobileView === "urgent" && (
+                    <MobileActionList
+                        title="Urgent Work"
+                        empty="No urgent work right now."
+                        items={urgentMobileItems}
+                    />
+                )}
+                {mobileView === "jobs" && (
+                    <MobileActionList
+                        title="Recent Jobs"
+                        empty="No recent job activity."
+                        items={recentMobileItems}
+                    />
+                )}
+            </MobileScrollContent>
+            {/* Mobile header — title stays pinned */}
+            <MobileTabHeader className="hidden">
                 <div className="flex items-center justify-between py-1.5">
                     <div className="min-w-0">
                         <p className="text-base font-black text-slate-900 truncate">
@@ -273,7 +439,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
             </MobileTabHeader>
 
             {/* Mobile scroll content */}
-            <MobileScrollContent className="md:hidden">
+            <MobileScrollContent className="hidden">
                 <MobileKpiGrid
                     items={[
                         {

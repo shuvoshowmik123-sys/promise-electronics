@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react";
 import type { ServiceRequest } from "@shared/schema";
 import {
     ADMIN_PIPELINE_FLOW, ADMIN_TERMINAL_STATES, ADMIN_STEP_CONFIG, ADMIN_OFFRAMP_CONFIG,
@@ -19,7 +19,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { JobTicketList } from "./jobs/JobTicketList";
-import { JobDetailsSheet } from "./jobs/JobDetailsSheet";
 
 const getCsrfToken = () => {
     if (typeof document === 'undefined') return undefined;
@@ -33,9 +32,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
-import { MediaViewer } from "@/components/MediaViewer";
-import { StatusStepper, WorkflowStepper } from "@/components/StatusStepper";
+const MediaViewer = lazy(() => import("@/components/MediaViewer").then(m => ({ default: m.MediaViewer })));
+const StatusStepper = lazy(() => import("@/components/StatusStepper").then(m => ({ default: m.StatusStepper })));
+const WorkflowStepper = lazy(() => import("@/components/StatusStepper").then(m => ({ default: m.WorkflowStepper })));
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
     Tooltip,
     TooltipContent,
@@ -198,6 +200,20 @@ const getStageColor = (stage: string): string => {
     const m: Record<string, string> = { intake: "bg-gray-100 text-gray-700", assessment: "bg-blue-50 text-blue-700", awaiting_customer: "bg-amber-50 text-amber-700", authorized: "bg-green-50 text-green-700", pickup_scheduled: "bg-purple-50 text-purple-700", picked_up: "bg-indigo-50 text-indigo-700", awaiting_dropoff: "bg-orange-50 text-orange-700", device_received: "bg-teal-50 text-teal-700", in_repair: "bg-cyan-50 text-cyan-700", ready: "bg-lime-50 text-lime-700", out_for_delivery: "bg-fuchsia-50 text-fuchsia-700", completed: "bg-green-100 text-green-800", closed: "bg-slate-100 text-slate-700" };
     return m[stage] || "bg-gray-100 text-gray-700";
 };
+const getJourneyGroup = (stage: string) => {
+    if (["intake", "assessment", "awaiting_customer", "authorized"].includes(stage)) return "Request";
+    if (["pickup_scheduled", "picked_up", "awaiting_dropoff", "device_received"].includes(stage)) return "Custody";
+    if (["in_repair", "ready"].includes(stage)) return "Repair";
+    if (["out_for_delivery", "completed", "closed"].includes(stage)) return "Return";
+    return "Request";
+};
+const normalizeTel = (phone?: string | null) => {
+    const digits = (phone || "").replace(/\D/g, "");
+    if (!digits) return "";
+    if (digits.startsWith("880")) return `+${digits}`;
+    if (digits.startsWith("0")) return `+88${digits}`;
+    return `+880${digits}`;
+};
 const getMediaUrls = (s: string | null): string[] => { if (!s) return []; try { const p = JSON.parse(s); return p.map((i: string | { url: string }) => typeof i === 'string' ? i : i.url); } catch { return []; } };
 const getSymptoms = (s: string | null): string[] => { if (!s) return []; try { return JSON.parse(s); } catch { return []; } };
 const isImage = (u: string) => u.startsWith("data:image/") || /\.(jpg|jpeg|png|gif|webp)$/i.test(u);
@@ -214,11 +230,13 @@ const BOARD_COLUMNS = [
 
 interface ServiceRequestsTabProps {
     initialSearchQuery?: string;
+    initialRequestId?: string;
     onSearchConsumed?: () => void;
 }
 
-export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsumed }: ServiceRequestsTabProps = {}) {
+export default function ServiceRequestsTab({ initialSearchQuery, initialRequestId, onSearchConsumed }: ServiceRequestsTabProps = {}) {
     const { hasPermission } = useAdminAuth();
+    const isMobile = useIsMobile();
     const [viewMode, setViewMode] = useState<"grid" | "list">("list");
     const [draggedRequestId, setDraggedRequestId] = useState<string | null>(null);
     const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
@@ -235,6 +253,8 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
             onSearchConsumed?.();
         }
     }, [initialSearchQuery]);
+
+
     const [srPage, setSrPage] = useState(1);
     const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(null);
     const [selectedCardIndex, setSelectedCardIndex] = useState(0);
@@ -261,6 +281,8 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
     // Rollback state
     const [showRollbackDialog, setShowRollbackDialog] = useState(false);
     const [rollbackReason, setRollbackReason] = useState("");
+    const [rollbackTarget, setRollbackTarget] = useState("");
+    const [showMobileMoreActions, setShowMobileMoreActions] = useState(false);
     const { addRollbackRequest } = useRollback();
     const [custodyOtp, setCustodyOtp] = useState<{ requestId: string; action: CustodyOtpAction; targetStage: string; phone?: string } | null>(null);
     const [custodyOtpCode, setCustodyOtpCode] = useState("");
@@ -320,6 +342,25 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
             }
         }
     }, [srSearchQuery, serviceRequests, selectedRequest]);
+
+    // Auto-open service request by initialRequestId (from Smart Search deep-link)
+    const initialRequestIdOpenedRef = useRef<string | null>(null);
+    useEffect(() => {
+        if (initialRequestId && serviceRequests.length > 0 && !selectedRequest) {
+            if (initialRequestIdOpenedRef.current === initialRequestId) return;
+            const match = serviceRequests.find((r: any) =>
+                r.id === initialRequestId ||
+                r.ticketNumber === initialRequestId ||
+                r.reference === initialRequestId
+            );
+            if (match) {
+                initialRequestIdOpenedRef.current = initialRequestId;
+                const index = serviceRequests.findIndex(r => r.id === match.id);
+                handleViewDetails(match, index > -1 ? index : 0);
+                setSrStatusFilter("all");
+            }
+        }
+    }, [initialRequestId, serviceRequests, selectedRequest]);
 
     // === MUTATIONS ===
     const deleteMutation = useMutation({
@@ -400,6 +441,8 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
     const transferToPickupMutation = useMutation({
         mutationFn: (id: string) => adminPickupsApi.transferFromServiceRequest(id),
         onSuccess: (res) => {
+            queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
+            if (selectedRequest?.id) queryClient.invalidateQueries({ queryKey: ["next-stages", selectedRequest.id] });
             queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
             toast.success(res.alreadyExisted ? "Already in Pickup & Delivery" : "Transferred to Pickup & Delivery");
         },
@@ -529,7 +572,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
             markInteractedMutation.mutate(request.id);
         }
     };
-    const handleCloseDialog = () => { setSelectedRequest(null); setPendingChanges(null); };
+    const handleCloseDialog = () => { setSelectedRequest(null); setPendingChanges(null); setShowMobileMoreActions(false); };
 
     const handleDragStart = (e: React.DragEvent, id: string) => {
         setDraggedRequestId(id);
@@ -616,6 +659,115 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
     const isTrackingBlocked = isClosedState || (!developerMode && quoteBlocked);
     const jobStatusBlocked = !canUseJobStatuses;
     const jobStatusHint = !isConverted ? " (Requires job)" : (!hasTechAssigned ? " (Assign tech)" : "");
+    const selectedStage = selectedRequest?.stage || "intake";
+    const selectedIsPickup = selectedRequest?.serviceMode === "pickup" || selectedRequest?.servicePreference === "pickup" || selectedRequest?.servicePreference === "home_pickup";
+    const selectedPaymentPaid = (selectedRequest?.paymentStatus || "").toLowerCase() === "paid";
+    const selectedValidNextStages = nextStagesData?.validNextStages || [];
+    const findNextStage = (...stages: string[]) => stages.find((stage) => selectedValidNextStages.includes(stage));
+    const mobileWizardAction = selectedRequest ? (() => {
+        const quoted = selectedRequest.isQuote && (!selectedRequest.quoteStatus || selectedRequest.quoteStatus === "Pending");
+        const waitingQuote = selectedRequest.isQuote && selectedRequest.quoteStatus === "Quoted";
+        if (quoted) {
+            return {
+                title: "Send customer quote",
+                body: "Price must be sent before this request can move forward.",
+                label: "Send Quote",
+                tone: "amber",
+                icon: <Send className="h-4 w-4" />,
+                onClick: () => { setQuoteAmount(selectedRequest.quoteAmount?.toString() || ""); setQuoteNotes(selectedRequest.quoteNotes || ""); setShowQuotePriceDialog(true); },
+                disabled: quotePriceMutation.isPending,
+            };
+        }
+        if (waitingQuote) {
+            return {
+                title: "Waiting for customer",
+                body: "The quote is already sent. Continue after the customer accepts.",
+                label: "View Request",
+                tone: "slate",
+                icon: <Clock className="h-4 w-4" />,
+                onClick: () => undefined,
+                disabled: true,
+            };
+        }
+        if (!selectedRequest.convertedJobId && ["picked_up", "device_received"].includes(selectedStage) && canVerifyAndConvert) {
+            return {
+                title: "Custody confirmed",
+                body: "Device is with the shop. Create the job ticket now.",
+                label: "Create Job",
+                tone: "emerald",
+                icon: <CheckCircle className="h-4 w-4" />,
+                onClick: () => { setRequestToVerify(selectedRequest); setVerificationNotes(selectedRequest.description || ""); setShowVerifyDialog(true); },
+                disabled: verifyMutation.isPending,
+            };
+        }
+        if (selectedRequest.convertedJobId && selectedStage === "ready" && selectedIsPickup) {
+            const nextStage = findNextStage("out_for_delivery");
+            return {
+                title: "Ready for return",
+                body: "Move this case to delivery before handover.",
+                label: "Start Return",
+                tone: "blue",
+                icon: <Truck className="h-4 w-4" />,
+                onClick: () => nextStage ? handleStageSelect(selectedRequest.id, nextStage) : (window.location.hash = "pickup"),
+                disabled: stageTransitionMutation.isPending,
+            };
+        }
+        if (selectedRequest.convertedJobId && (selectedStage === "out_for_delivery" || selectedStage === "ready")) {
+            return {
+                title: "Release to customer",
+                body: selectedPaymentPaid ? "Verify customer OTP before releasing the device." : "Open billing first, then verify OTP at handover.",
+                label: selectedPaymentPaid ? "Verify Release OTP" : "Open Bill",
+                tone: selectedPaymentPaid ? "emerald" : "amber",
+                icon: selectedPaymentPaid ? <CheckCircle className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />,
+                onClick: () => selectedPaymentPaid ? handleStageSelect(selectedRequest.id, "completed") : (window.location.hash = `pos?search=${encodeURIComponent(selectedRequest.convertedJobId || "")}`),
+                disabled: selectedPaymentPaid && (sendCustodyOtpMutation.isPending || stageTransitionMutation.isPending),
+            };
+        }
+        if (selectedRequest.convertedJobId) {
+            return {
+                title: "Job already created",
+                body: "Continue repair, billing, and technician work from the job ticket.",
+                label: "Open Job",
+                tone: "violet",
+                icon: <Tv className="h-4 w-4" />,
+                onClick: () => { window.location.hash = `jobs?search=${encodeURIComponent(selectedRequest.convertedJobId || "")}`; },
+                disabled: false,
+            };
+        }
+        const receiveStage = findNextStage(selectedIsPickup ? "picked_up" : "device_received");
+        if (receiveStage) {
+            return {
+                title: "Confirm custody",
+                body: "Customer OTP is required before this can become a job.",
+                label: selectedIsPickup ? "Receive Pickup OTP" : "Receive Device OTP",
+                tone: "emerald",
+                icon: <CheckCircle className="h-4 w-4" />,
+                onClick: () => handleStageSelect(selectedRequest.id, receiveStage),
+                disabled: sendCustodyOtpMutation.isPending,
+            };
+        }
+        if (selectedIsPickup && ["authorized", "assessment", "intake", "pickup_scheduled"].includes(selectedStage)) {
+            return {
+                title: "Move to pickup desk",
+                body: "Create or open the Pickup & Delivery work item for scheduling.",
+                label: selectedStage === "pickup_scheduled" ? "Open Pickup" : "Transfer Pickup",
+                tone: "blue",
+                icon: <Truck className="h-4 w-4" />,
+                onClick: () => selectedStage === "pickup_scheduled" ? (window.location.hash = "pickup") : transferToPickupMutation.mutate(selectedRequest.id),
+                disabled: transferToPickupMutation.isPending,
+            };
+        }
+        const nextStage = findNextStage("assessment", "authorized", "awaiting_dropoff", "in_repair", "ready", "closed") || selectedValidNextStages[0];
+        return {
+            title: nextStage ? `Next: ${formatStageName(nextStage)}` : "No next action",
+            body: nextStage ? "Move the case forward one step." : "This case has no available wizard action.",
+            label: nextStage ? `Move to ${formatStageName(nextStage)}` : "Done",
+            tone: nextStage ? "blue" : "slate",
+            icon: <ArrowRightCircle className="h-4 w-4" />,
+            onClick: () => nextStage && handleStageSelect(selectedRequest.id, nextStage),
+            disabled: !nextStage || stageTransitionMutation.isPending,
+        };
+    })() : null;
     const statusCounts = STATUS_FILTERS.reduce<Record<string, number>>((acc, status) => {
         acc[status] = status === "all" ? serviceRequests.length : serviceRequests.filter((request: any) => request.status === status).length;
         return acc;
@@ -654,7 +806,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                             <h2 className="truncate text-[17px] font-black text-slate-950">Service Requests</h2>
                             {unreadCount > 0 && <Badge className="h-5 rounded-full bg-rose-100 px-2 text-[10px] font-black text-rose-700 shadow-none">{unreadCount} new</Badge>}
                         </div>
-                        <p className="truncate text-[11px] font-medium text-slate-500">{filtered.length} showing from {serviceRequests.length}</p>
+                        <p className="truncate text-[11px] font-medium text-slate-500">{filtered.length} showing · follow wizard action first</p>
                     </div>
                     <Button
                         size="sm"
@@ -745,7 +897,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                                             <div className="truncate text-[11px] font-medium text-slate-500"><HighlightMatch text={request.primaryIssue || "No issue noted"} query={srSearchQuery} /></div>
                                         </div>
                                         <div className="text-right">
-                                            <div className="text-[10px] font-black uppercase text-slate-400">{modeLabel}</div>
+                                            <div className="text-[10px] font-black uppercase text-slate-400">{getJourneyGroup(request.stage || "intake")}</div>
                                             <div className="text-[10px] font-bold text-slate-500">{format(new Date(request.createdAt), 'MMM d')}</div>
                                         </div>
                                     </div>
@@ -754,7 +906,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                                             <Phone className="h-3 w-3 shrink-0" />
                                             <span className="truncate"><HighlightMatch text={request.phone || "No phone"} query={srSearchQuery} /></span>
                                         </div>
-                                        <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-black", getStageColor(request.stage || "intake"))}>{formatStageName(request.stage || "intake")}</span>
+                                        <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-black", getStageColor(request.stage || "intake"))}>{modeLabel} · {formatStageName(request.stage || "intake")}</span>
                                     </div>
                                 </button>
                             );
@@ -927,10 +1079,175 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                 </div>
             )}
 
+            {createPortal(
+                <AnimatePresence>
+                    {isMobile && selectedRequest && (
+                        <div className="fixed inset-0 z-50 md:hidden">
+                            <motion.div
+                                key="mobile-sr-backdrop"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+                                onClick={handleCloseDialog}
+                            />
+                            <MobileBottomSheetFrame
+                                key="mobile-sr-detail"
+                                onClose={handleCloseDialog}
+                                className="absolute inset-x-0 bottom-0 flex max-h-[92dvh] flex-col overflow-hidden rounded-t-[2rem] border-t border-slate-200 bg-white shadow-2xl"
+                            >
+                                <div className="flex-none px-4 pb-3 pt-3">
+                                    <MobileBottomSheetHandle />
+                                    <div className="mt-3 flex items-start justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <div className="flex items-center gap-2">
+                                                <span className="truncate font-mono text-xs font-black text-slate-400">#{selectedRequest.ticketNumber}</span>
+                                                <Badge className={cn("shrink-0 border px-1.5 py-0 text-[9px] font-black shadow-none", statusCardColors[selectedRequest.status]?.badge)}>{selectedRequest.status}</Badge>
+                                            </div>
+                                            <h2 className="mt-1 truncate text-lg font-black text-slate-950">{selectedRequest.customerName}</h2>
+                                            <p className="truncate text-xs font-semibold text-slate-500">{selectedRequest.phone || "No phone"} · {selectedRequest.servicePreference === "pickup" || selectedRequest.servicePreference === "home_pickup" ? "Pickup" : "Service center"}</p>
+                                        </div>
+                                        <button type="button" onClick={handleCloseDialog} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 space-y-2">
+                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                                        <div className="grid grid-cols-2 gap-2 text-sm">
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase text-slate-400">Device</p>
+                                                <p className="truncate font-black text-slate-900">{selectedRequest.brand || "Unknown"} {selectedRequest.screenSize ? `${selectedRequest.screenSize}"` : ""}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-[10px] font-black uppercase text-slate-400">Model</p>
+                                                <p className="truncate font-bold text-slate-700">{selectedRequest.modelNumber || "-"}</p>
+                                            </div>
+                                        </div>
+                                        <div className="mt-2 border-t border-slate-200 pt-2">
+                                            <p className="text-[10px] font-black uppercase text-slate-400">Issue</p>
+                                            <p className="text-sm font-bold text-slate-800">{selectedRequest.primaryIssue || "No issue noted"}</p>
+                                            {selectedRequest.description && <p className="mt-1 line-clamp-3 text-xs font-medium text-slate-500">{selectedRequest.description}</p>}
+                                        </div>
+                                    </div>
+
+                                    {getSymptoms(selectedRequest.symptoms).length > 0 && (
+                                        <div className="flex flex-wrap gap-1.5 rounded-2xl border border-slate-200 bg-white p-3">
+                                            {getSymptoms(selectedRequest.symptoms).map((symptom, index) => (
+                                                <Badge key={`${symptom}-${index}`} variant="secondary" className="rounded-lg text-[10px]">{symptom}</Badge>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {getMediaUrls(selectedRequest.mediaUrls).length > 0 && (
+                                        <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                                            <div className="mb-2 flex items-center justify-between">
+                                                <p className="text-xs font-black uppercase text-slate-500">Media</p>
+                                                <span className="text-[10px] font-bold text-slate-400">{getMediaUrls(selectedRequest.mediaUrls).length} files</span>
+                                            </div>
+                                            <div className="grid grid-cols-3 gap-2">
+                                                {getMediaUrls(selectedRequest.mediaUrls).slice(0, 6).map((url, index) => (
+                                                    <button key={`${url}-${index}`} type="button" className="relative h-20 overflow-hidden rounded-xl border border-slate-200 bg-slate-100" onClick={() => { setCurrentMediaUrls(getMediaUrls(selectedRequest.mediaUrls)); setMediaViewerIndex(index); setMediaViewerOpen(true); }}>
+                                                        {isImage(url) ? <img src={url} alt="" className="h-full w-full object-cover" /> : <Film className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-slate-400" />}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {sr && mobileWizardAction && (
+                                        <div className="rounded-3xl border border-blue-100 bg-gradient-to-br from-blue-50 to-white p-3 shadow-sm">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="min-w-0">
+                                                    <p className="text-[10px] font-black uppercase tracking-wide text-blue-600">Wizard next step</p>
+                                                    <h3 className="mt-1 text-base font-black leading-tight text-slate-950">{mobileWizardAction.title}</h3>
+                                                    <p className="mt-1 text-xs font-semibold leading-relaxed text-slate-500">{mobileWizardAction.body}</p>
+                                                </div>
+                                                <span className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl", mobileWizardAction.tone === "emerald" ? "bg-emerald-100 text-emerald-700" : mobileWizardAction.tone === "amber" ? "bg-amber-100 text-amber-700" : mobileWizardAction.tone === "violet" ? "bg-violet-100 text-violet-700" : mobileWizardAction.tone === "slate" ? "bg-slate-100 text-slate-600" : "bg-blue-100 text-blue-700")}>
+                                                    {mobileWizardAction.icon}
+                                                </span>
+                                            </div>
+                                            <Button
+                                                className={cn("mt-3 h-11 w-full rounded-2xl text-sm font-black", mobileWizardAction.tone === "emerald" ? "bg-emerald-600 hover:bg-emerald-700" : mobileWizardAction.tone === "amber" ? "bg-amber-600 hover:bg-amber-700" : mobileWizardAction.tone === "violet" ? "bg-violet-600 hover:bg-violet-700" : mobileWizardAction.tone === "slate" ? "bg-slate-500 hover:bg-slate-600" : "bg-blue-600 hover:bg-blue-700")}
+                                                onClick={mobileWizardAction.onClick}
+                                                disabled={mobileWizardAction.disabled}
+                                            >
+                                                {mobileWizardAction.label}
+                                            </Button>
+                                        </div>
+                                    )}
+
+                                    {sr && (
+                                        <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <p className="text-xs font-black uppercase text-slate-500">Case state</p>
+                                                {(selectedRequest.paymentStatus || "Due").toLowerCase() === "paid" ? <Badge className="bg-green-100 text-green-700">Paid</Badge> : <Badge variant="outline" className="bg-amber-50 text-amber-700">Due</Badge>}
+                                            </div>
+                                            <div className="mt-2 rounded-2xl bg-slate-950 p-3 text-white">
+                                                <p className="text-[10px] font-black uppercase tracking-wide text-white/55">Universal flow</p>
+                                                <div className="mt-2 grid grid-cols-4 gap-1 text-center text-[10px] font-black">
+                                                    {["Request", "Custody", "Repair", "Return"].map((step) => {
+                                                        const active = getJourneyGroup(selectedRequest.stage || "intake") === step;
+                                                        return (
+                                                            <span key={step} className={cn("rounded-lg px-1.5 py-1.5", active ? "bg-white text-slate-950" : "bg-white/10 text-white/65")}>
+                                                                {step}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                            <div className="mt-2 grid grid-cols-3 gap-1.5">
+                                                <div className="rounded-xl bg-slate-50 p-2">
+                                                    <p className="text-[9px] font-black uppercase text-slate-400">Stage</p>
+                                                    <p className="truncate text-[11px] font-black text-slate-800">{formatStageName(selectedRequest.stage || "intake")}</p>
+                                                </div>
+                                                <div className="rounded-xl bg-slate-50 p-2">
+                                                    <p className="text-[9px] font-black uppercase text-slate-400">Internal</p>
+                                                    <p className="truncate text-[11px] font-black text-slate-800">{selectedRequest.status}</p>
+                                                </div>
+                                                <div className="rounded-xl bg-slate-50 p-2">
+                                                    <p className="text-[9px] font-black uppercase text-slate-400">Mode</p>
+                                                    <p className="truncate text-[11px] font-black text-slate-800">{selectedIsPickup ? "Pickup" : "Center"}</p>
+                                                </div>
+                                            </div>
+                                            {nextStagesData?.stageFlow && (
+                                                <div className="mt-2 flex gap-1 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+                                                    {nextStagesData.stageFlow.map((stage: string) => {
+                                                        const currentIndex = nextStagesData.stageFlow.indexOf(sr.stage || "intake");
+                                                        const stageIndex = nextStagesData.stageFlow.indexOf(stage);
+                                                        return <span key={stage} className={cn("whitespace-nowrap rounded-lg px-2 py-1 text-[10px] font-black", stageIndex === currentIndex ? "bg-blue-600 text-white" : stageIndex < currentIndex ? "bg-emerald-100 text-emerald-700" : "bg-slate-50 text-slate-500")}>{formatStageName(stage)}</span>;
+                                                    })}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="flex-none border-t border-slate-100 bg-white p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+                                    <div className="grid grid-cols-3 gap-2">
+                                        <Button variant="outline" size="sm" className="h-10 rounded-xl text-xs font-black" disabled={!normalizeTel(selectedRequest.phone)} onClick={() => { const tel = normalizeTel(selectedRequest.phone); if (tel) window.location.href = `tel:${tel}`; }}>
+                                            Call
+                                        </Button>
+                                        <Button variant="outline" size="sm" className="h-10 rounded-xl text-xs font-black" onClick={() => { window.location.hash = selectedRequest.convertedJobId ? `jobs?search=${encodeURIComponent(selectedRequest.convertedJobId)}` : "pickup"; }}>
+                                            Open
+                                        </Button>
+                                        <Button variant="outline" size="sm" className="h-10 rounded-xl text-xs font-black" onClick={() => setShowMobileMoreActions(true)}>
+                                            More
+                                        </Button>
+                                    </div>
+                                </div>
+                            </MobileBottomSheetFrame>
+                        </div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
+
             {/* ========== POPUP DETAIL VIEW ========== */}
             {createPortal(
                 <AnimatePresence>
-                    {selectedRequest && (
+                    {selectedRequest && !isMobile && (
                         <>
                             <motion.div key="backdrop" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }} className="fixed inset-0 z-40 bg-black/40 backdrop-blur-md" onClick={handleCloseDialog} />
                             <motion.div key="panel" initial={{ opacity: 0, scale: 0.85, x: slideFrom.x, y: slideFrom.y }} animate={{ opacity: 1, scale: 1, x: 0, y: 0 }} exit={{ opacity: 0, scale: 0.9, x: slideFrom.x / 2, y: slideFrom.y / 2 }} transition={{ type: "spring", stiffness: 260, damping: 25 }}
@@ -1105,14 +1422,14 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                                                         )}
                                                     </div>
                                                 </div>
-                                                <StatusStepper
+                                                <Suspense fallback={null}><StatusStepper
                                                     steps={INTERNAL_STEPS}
                                                     currentStep={selectedRequest.status}
                                                     disabled={true}
                                                     formatStep={(s) => s}
                                                     stepConfig={ADMIN_STEP_CONFIG}
                                                     terminalState={ADMIN_TERMINAL_STATES.includes(selectedRequest.status as any) ? selectedRequest.status : null}
-                                                />
+                                                /></Suspense>
                                                 {selectedRequest.convertedJobId && (
                                                     <div className="mt-3 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[10px] text-emerald-700 flex items-center gap-1.5">
                                                         <CheckCircle className="w-3 h-3 shrink-0" />
@@ -1129,7 +1446,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                                                         {sr.serviceMode && <Badge variant="outline" className="text-[10px]">{isServiceCenter ? "🏪 Center" : "🚗 Pickup"}</Badge>}
                                                     </div>
                                                 </div>
-                                                <WorkflowStepper
+                                                <Suspense fallback={null}><WorkflowStepper
                                                     steps={isServiceCenter ? SC_TRACKING_STEPS : PICKUP_TRACKING_STEPS}
                                                     currentValue={selectedRequest.trackingStatus}
                                                     isBlocked={true} // Read Only
@@ -1137,7 +1454,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                                                     isJobCreated={selectedRequest.status === "Work Order" || !!selectedRequest.convertedJobId}
                                                     stepDetailConfig={isServiceCenter ? SC_STEP_CONFIG : PICKUP_STEP_CONFIG}
                                                     canRollback={false}
-                                                />
+                                                /></Suspense>
                                             </div>
 
                                             {/* Payment */}
@@ -1196,8 +1513,248 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
             )}
 
             {/* ========== DIALOGS ========== */}
+            {createPortal(
+                <AnimatePresence>
+                    {isMobile && showMobileMoreActions && selectedRequest && (
+                        <div className="fixed inset-0 z-[70] md:hidden">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setShowMobileMoreActions(false)} />
+                            <MobileBottomSheetFrame onClose={() => setShowMobileMoreActions(false)} className="absolute inset-x-0 bottom-0 rounded-t-[2rem] bg-white p-4 shadow-2xl">
+                                <MobileBottomSheetHandle />
+                                <div className="mt-4">
+                                    <h3 className="text-lg font-black text-slate-950">More Actions</h3>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">Manual controls for #{selectedRequest.ticketNumber}</p>
+                                </div>
+                                <div className="mt-4 space-y-2">
+                                    <button
+                                        type="button"
+                                        className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-left"
+                                        onClick={() => {
+                                            setShowMobileMoreActions(false);
+                                            window.location.hash = selectedRequest.convertedJobId ? `jobs?search=${encodeURIComponent(selectedRequest.convertedJobId)}` : "pickup";
+                                        }}
+                                    >
+                                        <span>
+                                            <span className="block text-sm font-black text-slate-900">{selectedRequest.convertedJobId ? "Open linked job" : "Open Pickup & Delivery"}</span>
+                                            <span className="block text-xs font-semibold text-slate-500">Jump to the connected workspace</span>
+                                        </span>
+                                        <ChevronRight className="h-4 w-4 text-slate-400" />
+                                    </button>
+
+                                    {(selectedRequest.servicePreference === "pickup" || selectedRequest.servicePreference === "home_pickup" || selectedRequest.serviceMode === "pickup") && (
+                                        <button
+                                            type="button"
+                                            className="flex w-full items-center justify-between rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3 text-left disabled:opacity-60"
+                                            disabled={transferToPickupMutation.isPending}
+                                            onClick={() => {
+                                                transferToPickupMutation.mutate(selectedRequest.id);
+                                                setShowMobileMoreActions(false);
+                                            }}
+                                        >
+                                            <span>
+                                                <span className="block text-sm font-black text-blue-900">Transfer to Pickup & Delivery</span>
+                                                <span className="block text-xs font-semibold text-blue-600">Use when this request needs logistics</span>
+                                            </span>
+                                            <Truck className="h-4 w-4 text-blue-600" />
+                                        </button>
+                                    )}
+
+                                    {selectedRequest.status !== "New" && !isClosedState && (
+                                        <button
+                                            type="button"
+                                            className="flex w-full items-center justify-between rounded-2xl border border-amber-100 bg-amber-50 px-3 py-3 text-left"
+                                            onClick={() => {
+                                                setRollbackTarget("");
+                                                setShowMobileMoreActions(false);
+                                                setShowRollbackDialog(true);
+                                            }}
+                                        >
+                                            <span>
+                                                <span className="block text-sm font-black text-amber-900">Adjust progress</span>
+                                                <span className="block text-xs font-semibold text-amber-700">Audited correction only</span>
+                                            </span>
+                                            <Undo2 className="h-4 w-4 text-amber-600" />
+                                        </button>
+                                    )}
+
+                                    <button
+                                        type="button"
+                                        className="flex w-full items-center justify-between rounded-2xl border border-rose-100 bg-rose-50 px-3 py-3 text-left"
+                                        onClick={() => {
+                                            setRequestToDelete(selectedRequest);
+                                            setShowMobileMoreActions(false);
+                                            setShowDeleteDialog(true);
+                                            handleCloseDialog();
+                                        }}
+                                    >
+                                        <span>
+                                            <span className="block text-sm font-black text-rose-900">Delete request</span>
+                                            <span className="block text-xs font-semibold text-rose-600">Permanent action, confirmation required</span>
+                                        </span>
+                                        <Trash2 className="h-4 w-4 text-rose-600" />
+                                    </button>
+                                </div>
+                                <Button variant="outline" className="mt-4 h-11 w-full rounded-2xl font-black" onClick={() => setShowMobileMoreActions(false)}>
+                                    Close
+                                </Button>
+                            </MobileBottomSheetFrame>
+                        </div>
+                    )}
+
+                    {isMobile && showDeleteDialog && requestToDelete && (
+                        <div className="fixed inset-0 z-[60] md:hidden">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setShowDeleteDialog(false)} />
+                            <MobileBottomSheetFrame onClose={() => setShowDeleteDialog(false)} className="absolute inset-x-0 bottom-0 rounded-t-[2rem] bg-white p-4 shadow-2xl">
+                                <MobileBottomSheetHandle />
+                                <h3 className="mt-4 text-lg font-black text-slate-950">Delete Service Request?</h3>
+                                <p className="mt-2 text-sm font-medium text-slate-500">This will permanently delete #{requestToDelete.ticketNumber}. This action cannot be undone.</p>
+                                <div className="mt-5 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
+                                    <Button variant="outline" className="h-11 rounded-xl" onClick={() => setShowDeleteDialog(false)}>Cancel</Button>
+                                    <Button variant="destructive" className="h-11 rounded-xl" onClick={() => deleteMutation.mutate(requestToDelete.id)} disabled={deleteMutation.isPending}>
+                                        {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                                    </Button>
+                                </div>
+                            </MobileBottomSheetFrame>
+                        </div>
+                    )}
+
+                    {isMobile && showStatusConfirmDialog && pendingStatusChange && (
+                        <div className="fixed inset-0 z-[60] md:hidden">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => { setShowStatusConfirmDialog(false); setPendingStatusChange(null); }} />
+                            <MobileBottomSheetFrame onClose={() => { setShowStatusConfirmDialog(false); setPendingStatusChange(null); }} className="absolute inset-x-0 bottom-0 rounded-t-[2rem] bg-white p-4 shadow-2xl">
+                                <MobileBottomSheetHandle />
+                                {(() => {
+                                    const warning = getStatusChangeWarning(pendingStatusChange.type, selectedRequest?.status || "", pendingStatusChange.newValue);
+                                    return (
+                                        <>
+                                            <h3 className="mt-4 flex items-center gap-2 text-lg font-black text-slate-950"><AlertTriangle className="h-5 w-5 text-amber-500" />{warning.title}</h3>
+                                            <div className="mt-3 flex items-center justify-center gap-3 rounded-2xl bg-slate-50 p-3">
+                                                <Badge variant="outline">{selectedRequest?.status || "-"}</Badge>
+                                                <ArrowRightCircle className="h-5 w-5 text-slate-400" />
+                                                <Badge className="bg-blue-600 text-white">{pendingStatusChange.newValue}</Badge>
+                                            </div>
+                                            <div className={cn("mt-3 rounded-xl border p-3 text-xs font-bold", warning.color)}>{warning.warning}</div>
+                                            <div className="mt-5 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
+                                                <Button variant="outline" className="h-11 rounded-xl" onClick={() => { setShowStatusConfirmDialog(false); setPendingStatusChange(null); }}>Cancel</Button>
+                                                <Button className="h-11 rounded-xl bg-slate-900 text-white" onClick={confirmStatusChange}>Confirm</Button>
+                                            </div>
+                                        </>
+                                    );
+                                })()}
+                            </MobileBottomSheetFrame>
+                        </div>
+                    )}
+
+                    {isMobile && custodyOtp && (
+                        <div className="fixed inset-0 z-[60] md:hidden">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => { setCustodyOtp(null); setCustodyOtpCode(""); }} />
+                            <MobileBottomSheetFrame onClose={() => { setCustodyOtp(null); setCustodyOtpCode(""); }} className="absolute inset-x-0 bottom-0 rounded-t-[2rem] bg-white p-4 shadow-2xl">
+                                <MobileBottomSheetHandle />
+                                <h3 className="mt-4 text-lg font-black text-slate-950">Customer OTP Required</h3>
+                                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
+                                    <div className="flex justify-between"><span className="font-bold text-slate-400">Stage</span><span className="font-black text-slate-800">{formatStageName(custodyOtp.targetStage || "")}</span></div>
+                                    <div className="mt-1 flex justify-between"><span className="font-bold text-slate-400">Phone</span><span className="font-black text-slate-800">{custodyOtp.phone || selectedRequest?.phone}</span></div>
+                                </div>
+                                <Input value={custodyOtpCode} onChange={(event) => setCustodyOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="6-digit code" className="mt-3 h-12 rounded-2xl text-center text-lg font-black tracking-[0.35em]" />
+                                <div className="mt-5 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
+                                    <Button variant="outline" className="h-11 rounded-xl" onClick={() => { setCustodyOtp(null); setCustodyOtpCode(""); }}>Cancel</Button>
+                                    <Button className="h-11 rounded-xl" onClick={() => confirmCustodyOtpMutation.mutate({ id: custodyOtp.requestId, action: custodyOtp.action, code: custodyOtpCode })} disabled={!custodyOtpCode.trim() || confirmCustodyOtpMutation.isPending}>
+                                        {confirmCustodyOtpMutation.isPending ? "Confirming..." : "Confirm"}
+                                    </Button>
+                                </div>
+                            </MobileBottomSheetFrame>
+                        </div>
+                    )}
+
+                    {isMobile && showQuotePriceDialog && selectedRequest && (
+                        <div className="fixed inset-0 z-[60] md:hidden">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setShowQuotePriceDialog(false)} />
+                            <MobileBottomSheetFrame onClose={() => setShowQuotePriceDialog(false)} className="absolute inset-x-0 bottom-0 flex max-h-[86dvh] flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl">
+                                <div className="flex-none p-4 pb-3">
+                                    <MobileBottomSheetHandle />
+                                    <h3 className="mt-4 text-lg font-black text-slate-950">Send Quote Price</h3>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">#{selectedRequest.ticketNumber} · {selectedRequest.customerName}</p>
+                                </div>
+                                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 space-y-3">
+                                    <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">Customer must approve before job creation.</div>
+                                    <div>
+                                        <Label>Amount ({getCurrencySymbol()}) *</Label>
+                                        <div className="relative mt-1">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">{getCurrencySymbol()}</span>
+                                            <Input type="number" value={quoteAmount} onChange={(event) => setQuoteAmount(event.target.value)} className="h-11 rounded-xl pl-8" />
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <Label>Notes</Label>
+                                        <Textarea value={quoteNotes} onChange={(event) => setQuoteNotes(event.target.value)} className="mt-1 min-h-24 rounded-xl" placeholder="Parts, service, warranty..." />
+                                    </div>
+                                </div>
+                                <div className="grid flex-none grid-cols-2 gap-2 border-t border-slate-100 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                    <Button variant="outline" className="h-11 rounded-xl" onClick={() => setShowQuotePriceDialog(false)}>Cancel</Button>
+                                    <Button className="h-11 rounded-xl bg-amber-600 hover:bg-amber-700" onClick={() => quoteAmount && quotePriceMutation.mutate({ id: selectedRequest.id, quoteAmount: parseFloat(quoteAmount), quoteNotes: quoteNotes || undefined })} disabled={!quoteAmount || quotePriceMutation.isPending}>{quotePriceMutation.isPending ? "Sending..." : "Send Quote"}</Button>
+                                </div>
+                            </MobileBottomSheetFrame>
+                        </div>
+                    )}
+
+                    {isMobile && showVerifyDialog && requestToVerify && (
+                        <div className="fixed inset-0 z-[60] md:hidden">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setShowVerifyDialog(false)} />
+                            <MobileBottomSheetFrame onClose={() => setShowVerifyDialog(false)} className="absolute inset-x-0 bottom-0 flex max-h-[86dvh] flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl">
+                                <div className="flex-none p-4 pb-3">
+                                    <MobileBottomSheetHandle />
+                                    <h3 className="mt-4 text-lg font-black text-slate-950">Confirm Device & Create Job</h3>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">#{requestToVerify.ticketNumber} · {requestToVerify.brand} {requestToVerify.screenSize ? `${requestToVerify.screenSize}"` : ""}</p>
+                                </div>
+                                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 space-y-3">
+                                    <div className="grid grid-cols-4 gap-1">
+                                        {["Low", "Medium", "High", "Urgent"].map((item) => (
+                                            <button key={item} type="button" onClick={() => setPriority(item)} className={cn("h-9 rounded-xl border text-[11px] font-black", priority === item ? "border-blue-600 bg-blue-600 text-white" : "border-slate-200 bg-white text-slate-600")}>{item}</button>
+                                        ))}
+                                    </div>
+                                    <Textarea value={verificationNotes} onChange={(event) => setVerificationNotes(event.target.value)} className="min-h-28 rounded-xl" placeholder="Verification notes..." />
+                                </div>
+                                <div className="grid flex-none grid-cols-2 gap-2 border-t border-slate-100 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                    <Button variant="outline" className="h-11 rounded-xl" onClick={() => setShowVerifyDialog(false)}>Cancel</Button>
+                                    <Button className="h-11 rounded-xl bg-green-600 hover:bg-green-700" onClick={() => verifyMutation.mutate({ id: requestToVerify.id, verificationNotes, priority })} disabled={verifyMutation.isPending}>{verifyMutation.isPending ? "Creating..." : "Create Job"}</Button>
+                                </div>
+                            </MobileBottomSheetFrame>
+                        </div>
+                    )}
+
+                    {isMobile && showRollbackDialog && selectedRequest && (
+                        <div className="fixed inset-0 z-[60] md:hidden">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setShowRollbackDialog(false)} />
+                            <MobileBottomSheetFrame onClose={() => setShowRollbackDialog(false)} className="absolute inset-x-0 bottom-0 flex max-h-[86dvh] flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl">
+                                <div className="flex-none p-4 pb-3">
+                                    <MobileBottomSheetHandle />
+                                    <h3 className="mt-4 text-lg font-black text-slate-950">Adjust Progress</h3>
+                                    <p className="mt-1 text-xs font-semibold text-amber-700">Audited change for #{selectedRequest.ticketNumber}</p>
+                                </div>
+                                <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 space-y-3">
+                                    <Select value={rollbackTarget} onValueChange={setRollbackTarget}>
+                                        <SelectTrigger className="h-11 rounded-xl"><SelectValue placeholder="Select target stage" /></SelectTrigger>
+                                        <SelectContent>
+                                            {INTERNAL_STEPS.slice(0, INTERNAL_STEPS.indexOf(selectedRequest.status as any)).map(step => <SelectItem key={step} value={step}>{step}</SelectItem>)}
+                                        </SelectContent>
+                                    </Select>
+                                    <Textarea value={rollbackReason} onChange={(event) => setRollbackReason(event.target.value)} className="min-h-28 rounded-xl" placeholder="Reason for adjustment..." />
+                                </div>
+                                <div className="grid flex-none grid-cols-2 gap-2 border-t border-slate-100 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                    <Button variant="outline" className="h-11 rounded-xl" onClick={() => setShowRollbackDialog(false)}>Cancel</Button>
+                                    <Button className="h-11 rounded-xl bg-amber-500 hover:bg-amber-600" onClick={() => {
+                                        if (rollbackTarget && rollbackReason.trim()) adjustProgressMutation.mutate({ id: selectedRequest.id, targetStatus: rollbackTarget, reason: rollbackReason });
+                                        else toast.error("Please select a target stage and provide a reason");
+                                    }} disabled={!rollbackTarget || !rollbackReason.trim() || adjustProgressMutation.isPending}>{adjustProgressMutation.isPending ? "Adjusting..." : "Adjust"}</Button>
+                                </div>
+                            </MobileBottomSheetFrame>
+                        </div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
+
             {/* Delete */}
-            <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+            <AlertDialog open={showDeleteDialog && !isMobile} onOpenChange={setShowDeleteDialog}>
                 <AlertDialogContent className="rounded-2xl">
                     <AlertDialogHeader><AlertDialogTitle>Delete Service Request?</AlertDialogTitle><AlertDialogDescription>This will permanently delete #{requestToDelete?.ticketNumber}. Cannot be undone.</AlertDialogDescription></AlertDialogHeader>
                     <AlertDialogFooter><AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel><AlertDialogAction onClick={() => requestToDelete && deleteMutation.mutate(requestToDelete.id)} className="bg-red-600 hover:bg-red-700 rounded-xl">{deleteMutation.isPending ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Deleting...</> : 'Delete'}</AlertDialogAction></AlertDialogFooter>
@@ -1205,7 +1762,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
             </AlertDialog>
 
             {/* Status Confirm — Enterprise Warning Dialog */}
-            <Dialog open={showStatusConfirmDialog} onOpenChange={(open) => { if (!open) { setShowStatusConfirmDialog(false); setPendingStatusChange(null); } }}>
+            <Dialog open={showStatusConfirmDialog && !isMobile} onOpenChange={(open) => { if (!open) { setShowStatusConfirmDialog(false); setPendingStatusChange(null); } }}>
                 <DialogContent className="sm:max-w-md rounded-2xl p-0 overflow-hidden border-0">
                     {(() => {
                         const warning = pendingStatusChange ? getStatusChangeWarning(
@@ -1256,7 +1813,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={!!custodyOtp} onOpenChange={(open) => { if (!open) { setCustodyOtp(null); setCustodyOtpCode(""); } }}>
+            <Dialog open={!!custodyOtp && !isMobile} onOpenChange={(open) => { if (!open) { setCustodyOtp(null); setCustodyOtpCode(""); } }}>
                 <DialogContent className="sm:max-w-[425px] rounded-2xl">
                     <DialogHeader>
                         <DialogTitle>Customer OTP Required</DialogTitle>
@@ -1292,7 +1849,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
             </Dialog>
 
             {/* Quote Price */}
-            <Dialog open={showQuotePriceDialog} onOpenChange={setShowQuotePriceDialog}>
+            <Dialog open={showQuotePriceDialog && !isMobile} onOpenChange={setShowQuotePriceDialog}>
                 <DialogContent className="rounded-2xl">
                     <DialogHeader><DialogTitle className="flex items-center gap-2"><DollarSign className="h-5 w-5 text-primary" />Send Quote Price</DialogTitle></DialogHeader>
                     {selectedRequest && (
@@ -1316,7 +1873,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
             </Dialog>
 
             {/* Confirm & Create Job */}
-            <Dialog open={showVerifyDialog} onOpenChange={setShowVerifyDialog}>
+            <Dialog open={showVerifyDialog && !isMobile} onOpenChange={setShowVerifyDialog}>
                 <DialogContent className="sm:max-w-[425px] rounded-2xl">
                     <DialogHeader><DialogTitle>Confirm Device & Create Job</DialogTitle></DialogHeader>
                     <div className="grid gap-4 py-4">
@@ -1333,7 +1890,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
             </Dialog>
 
             {/* Adjust Progress Dialog */}
-            <Dialog open={showRollbackDialog} onOpenChange={setShowRollbackDialog}>
+            <Dialog open={showRollbackDialog && !isMobile} onOpenChange={setShowRollbackDialog}>
                 <DialogContent className="sm:max-w-[425px] rounded-2xl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
@@ -1400,7 +1957,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, onSearchConsume
             </Dialog>
 
             {/* Media Viewer */}
-            <MediaViewer urls={currentMediaUrls} initialIndex={mediaViewerIndex} isOpen={mediaViewerOpen} onClose={() => setMediaViewerOpen(false)} />
+            <Suspense fallback={null}><MediaViewer urls={currentMediaUrls} initialIndex={mediaViewerIndex} isOpen={mediaViewerOpen} onClose={() => setMediaViewerOpen(false)} /></Suspense>
         </motion.div>
         </MobileTabLayout>
     );

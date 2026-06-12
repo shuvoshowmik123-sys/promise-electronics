@@ -40,6 +40,12 @@ export default defineConfig({
             if (id.includes('framer-motion')) return 'vendor-motion';
             if (id.includes('@tanstack/react-query')) return 'vendor-query';
             if (id.includes('@radix-ui')) return 'vendor-radix';
+            if (id.includes('lucide-react')) return 'vendor-icons';
+            // NOTE: do NOT add a catch-all `return 'vendor'` here — it forces
+            // lazy-tab-only deps into one eagerly-loaded chunk, bloating first
+            // load. Let Rollup keep unmatched deps in their importer's chunk so
+            // lazy tabs stay lazy. recharts/jspdf/html2canvas are already split
+            // out automatically because only lazy tabs import them.
           }
         },
       },

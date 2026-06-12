@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import type { MouseEvent } from "react";
-import { User } from "lucide-react";
+import { User, UserCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -44,6 +44,7 @@ export function JobCardMobile({
     const status = getStatusVisual(job.status);
     const action = getPrimaryAction(job, canEdit);
     const ActionIcon = action.Icon;
+    const actionLabel = action.label === "Assign Technician" ? "Assign" : action.label === "Print & Deliver" ? "Deliver" : action.label;
 
     const handlePrimaryAction = (event: MouseEvent) => {
         event.stopPropagation();
@@ -65,21 +66,21 @@ export function JobCardMobile({
         <motion.div
             variants={mobileCardVariants}
             onClick={() => onViewDetails(job)}
-            className="relative cursor-pointer overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm active:scale-[0.99] transition-transform"
+            className="relative cursor-pointer overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm active:scale-[0.99] transition-transform"
         >
             {/* status accent bar */}
-            <span className={cn("absolute left-0 top-0 h-full w-1.5", status.bar)} aria-hidden />
+            <span className={cn("absolute left-0 top-0 h-full w-1", status.bar)} aria-hidden />
 
-            <div className="p-4 pl-5 space-y-3">
+            <div className="p-2.5 pl-3.5 space-y-1.5">
                 {/* ticket + status */}
-                <div className="flex items-center justify-between gap-2">
-                    <div className="flex items-center gap-2 min-w-0">
-                        <span className="font-mono text-xs font-bold text-slate-400 truncate">
+                <div className="flex items-start justify-between gap-1.5">
+                    <div className="min-w-0 space-y-1">
+                        <span className="block font-mono text-[11px] font-bold text-slate-500 truncate">
                             #<HighlightMatch text={j.ticketNumber || job.id.slice(-6).toUpperCase()} query={searchQuery} />
                         </span>
                         <ClientClassBadge clientClass={j.clientClass} size="xs" />
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex flex-col items-end gap-1 shrink-0">
                         {isHotPriority && (
                             <Badge className={cn(
                                 "text-[9px] px-1.5 py-0 h-4 font-bold uppercase tracking-wider border-0",
@@ -88,7 +89,7 @@ export function JobCardMobile({
                                 {job.priority}
                             </Badge>
                         )}
-                        <Badge className={cn("text-[10px] px-2 py-0.5 font-bold uppercase tracking-wider border-0", status.badge)}>
+                        <Badge className={cn("text-[9px] px-1.5 py-0.5 font-bold uppercase tracking-wider border-0", status.badge)}>
                             {status.label}
                         </Badge>
                     </div>
@@ -96,43 +97,50 @@ export function JobCardMobile({
 
                 {/* device + issue */}
                 <div>
-                    <h3 className="text-lg font-bold text-slate-900 leading-tight line-clamp-1">
+                    <h3 className="text-[13px] font-bold text-slate-900 leading-tight line-clamp-2 min-h-[2rem]">
                         <HighlightMatch text={job.device} query={searchQuery} />
                     </h3>
-                    <p className="text-sm text-slate-500 mt-0.5 line-clamp-1">
+                    <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
                         {job.screenSize ? `${job.screenSize}" · ` : ""}
                         <HighlightMatch text={job.issue} query={searchQuery} />
                     </p>
                 </div>
 
-                {/* customer + est cost */}
-                <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100">
-                    <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700 min-w-0">
-                        <User className="w-4 h-4 text-slate-400 shrink-0" />
-                        <span className="truncate">
-                            <HighlightMatch text={customerLabel} query={searchQuery} />
+                <div className="space-y-1.5 pt-1.5 border-t border-slate-100">
+                    <div className="min-w-0 space-y-0.5">
+                        <span className="flex items-center gap-1 text-[11px] font-semibold text-slate-700 min-w-0">
+                            <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className="truncate">
+                                <HighlightMatch text={customerLabel} query={searchQuery} />
+                            </span>
                         </span>
-                    </span>
-                    {job.estimatedCost != null && (
-                        <span className="text-sm font-semibold text-slate-600 shrink-0 font-mono">
-                            Est: {currencySymbol}{Number(job.estimatedCost).toLocaleString()}
+                        <span className="flex items-center gap-1 text-[10px] font-semibold text-slate-500 min-w-0">
+                            <UserCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                            <span className={cn("truncate", (!job.technician || job.technician === "Unassigned") && "italic text-slate-400")}>
+                                {job.technician && job.technician !== "Unassigned" ? job.technician : "Unassigned"}
+                            </span>
                         </span>
-                    )}
+                    </div>
+                    <div className="flex items-center justify-between gap-1.5">
+                        {job.estimatedCost != null && (
+                            <span className="text-[10px] font-semibold text-slate-500 shrink-0 font-mono">
+                                {currencySymbol}{Number(job.estimatedCost).toLocaleString()}
+                            </span>
+                        )}
+                        <Button
+                            onClick={handlePrimaryAction}
+                            className={cn(
+                                "h-7 rounded-lg gap-1 px-2 font-bold text-[11px] shadow-sm ml-auto",
+                                action.type === "edit"
+                                    ? "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100"
+                                    : "bg-blue-600 hover:bg-blue-700 text-white",
+                            )}
+                        >
+                            <ActionIcon className="w-3 h-3" />
+                            {actionLabel}
+                        </Button>
+                    </div>
                 </div>
-
-                {/* contextual action */}
-                <Button
-                    onClick={handlePrimaryAction}
-                    className={cn(
-                        "w-full h-12 rounded-xl gap-2 font-bold text-base shadow-sm",
-                        action.type === "edit"
-                            ? "bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-100"
-                            : "bg-blue-600 hover:bg-blue-700 text-white",
-                    )}
-                >
-                    <ActionIcon className="w-5 h-5" />
-                    {action.label}
-                </Button>
             </div>
         </motion.div>
     );

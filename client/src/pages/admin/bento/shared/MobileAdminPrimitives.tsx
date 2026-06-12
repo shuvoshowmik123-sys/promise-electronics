@@ -1,4 +1,4 @@
-import { type ReactNode, useRef } from "react";
+import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -44,6 +44,12 @@ export function MobileTabHeader({ children, className }: { children: ReactNode; 
 export function MobileScrollContent({ children, className }: { children: ReactNode; className?: string }) {
     // rAF-throttle: coalesce many scroll events into one layout read per frame.
     const tickingRef = useRef(false);
+    const syncScrollPosition = (el: HTMLDivElement) => {
+        if (window.innerWidth >= 768) return;
+        window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {
+            detail: { scrollTop: el.scrollTop, syncOnly: true },
+        }));
+    };
     const onScroll = (e: { currentTarget: HTMLDivElement }) => {
         if (window.innerWidth >= 768 || tickingRef.current) return;
         const el = e.currentTarget;
@@ -57,10 +63,13 @@ export function MobileScrollContent({ children, className }: { children: ReactNo
     };
     return (
         <div
+            data-admin-mobile-scroll="true"
             className={cn(
                 "flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] px-3 pt-0 space-y-2 pb-4",
                 className,
             )}
+            onPointerDown={(e) => syncScrollPosition(e.currentTarget)}
+            onTouchStart={(e) => syncScrollPosition(e.currentTarget)}
             onScroll={onScroll}
         >
             {children}
@@ -87,6 +96,58 @@ const toneClasses: Record<NonNullable<MobileKpiItem["tone"]>, string> = {
     slate: "border-slate-100 bg-slate-50 text-slate-700",
 };
 
+export function MobileMarqueeText({
+    children,
+    className,
+    title,
+    speed = "normal",
+}: {
+    children: ReactNode;
+    className?: string;
+    title?: string;
+    speed?: "normal" | "slow";
+}) {
+    const outerRef = useRef<HTMLSpanElement>(null);
+    const innerRef = useRef<HTMLSpanElement>(null);
+    const [overflow, setOverflow] = useState(false);
+    const [distance, setDistance] = useState(0);
+    const seed = useMemo(() => Math.random(), []);
+
+    useEffect(() => {
+        const measure = () => {
+            const outer = outerRef.current;
+            const inner = innerRef.current;
+            if (!outer || !inner) return;
+            const nextDistance = Math.max(0, inner.scrollWidth - outer.clientWidth + 24);
+            setDistance(nextDistance);
+            setOverflow(nextDistance > 28);
+        };
+        measure();
+        const observer = new ResizeObserver(measure);
+        if (outerRef.current) observer.observe(outerRef.current);
+        if (innerRef.current) observer.observe(innerRef.current);
+        return () => observer.disconnect();
+    }, [children]);
+
+    return (
+        <span
+            ref={outerRef}
+            className={cn("mobile-marquee", className)}
+            data-overflow={overflow ? "true" : undefined}
+            title={title}
+            style={{
+                "--mobile-marquee-distance": `${distance}px`,
+                "--mobile-marquee-delay": `${0.35 + seed * 1.2}s`,
+                "--mobile-marquee-duration": speed === "slow" ? "10s" : "7.5s",
+            } as CSSProperties}
+        >
+            <span ref={innerRef} className="mobile-marquee__track">
+                {children}
+            </span>
+        </span>
+    );
+}
+
 export function MobileKpiGrid({ items, className }: { items: MobileKpiItem[]; className?: string }) {
     return (
         <div className={cn("grid grid-cols-2 gap-2 md:hidden", className)}>
@@ -101,8 +162,8 @@ export function MobileKpiGrid({ items, className }: { items: MobileKpiItem[]; cl
                                 </span>
                             )}
                         </div>
-                        <div className="mt-2 truncate text-[19px] font-black leading-tight tracking-tight text-slate-950">{item.value}</div>
-                        {item.meta && <div className="mt-1 truncate text-[11px] font-medium text-slate-500">{item.meta}</div>}
+                        <MobileMarqueeText className="mt-2 text-[19px] font-black leading-tight tracking-tight text-slate-950">{item.value}</MobileMarqueeText>
+                        {item.meta && <MobileMarqueeText className="mt-1 text-[11px] font-medium text-slate-500">{item.meta}</MobileMarqueeText>}
                     </>
                 );
 
@@ -132,11 +193,11 @@ export function MobileMicroMetricGrid({ items, className }: { items: MobileKpiIt
                 const content = (
                     <>
                         <div className="flex items-center justify-between gap-1">
-                            <span className="truncate text-[9px] font-black uppercase tracking-wide text-slate-500">{item.label}</span>
+                            <MobileMarqueeText className="text-[9px] font-black uppercase tracking-wide text-slate-500">{item.label}</MobileMarqueeText>
                             {item.icon && <span className={cn("shrink-0", toneClasses[item.tone || "slate"])}>{item.icon}</span>}
                         </div>
-                        <div className="truncate text-[14px] font-black leading-tight text-slate-950">{item.value}</div>
-                        {item.meta && <div className="truncate text-[10px] font-medium text-slate-500">{item.meta}</div>}
+                        <MobileMarqueeText className="text-[14px] font-black leading-tight text-slate-950">{item.value}</MobileMarqueeText>
+                        {item.meta && <MobileMarqueeText className="text-[10px] font-medium text-slate-500">{item.meta}</MobileMarqueeText>}
                     </>
                 );
 
@@ -163,8 +224,8 @@ export function MobileSectionHeader({ title, meta, action }: { title: string; me
     return (
         <div className="flex items-center justify-between gap-3 md:hidden">
             <div className="min-w-0">
-                <h2 className="truncate text-sm font-black uppercase tracking-wide text-slate-900">{title}</h2>
-                {meta && <p className="truncate text-xs text-slate-500">{meta}</p>}
+                <MobileMarqueeText className="text-sm font-black uppercase tracking-wide text-slate-900" title={title}>{title}</MobileMarqueeText>
+                {meta && <MobileMarqueeText className="text-xs text-slate-500">{meta}</MobileMarqueeText>}
             </div>
             {action && <div className="shrink-0">{action}</div>}
         </div>
@@ -200,8 +261,8 @@ export function MobileActionList({ title, empty, items, className }: { title: st
                                     </span>
                                 )}
                                 <span className="min-w-0 flex-1">
-                                    <span className="block truncate text-sm font-bold text-slate-900">{item.title}</span>
-                                    {item.meta && <span className="block truncate text-xs text-slate-500">{item.meta}</span>}
+                                    <MobileMarqueeText className="text-sm font-bold text-slate-900">{item.title}</MobileMarqueeText>
+                                    {item.meta && <MobileMarqueeText className="text-xs text-slate-500">{item.meta}</MobileMarqueeText>}
                                 </span>
                                 {item.onClick && <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />}
                             </>
@@ -239,7 +300,7 @@ export function MobileCommandRail({ items, className }: { items: Array<MobileAct
                     className="flex h-9 min-w-0 items-center justify-center gap-1 rounded-lg border border-slate-200 bg-white px-1.5 text-[11px] font-black text-slate-800 shadow-sm active:scale-[0.99]"
                 >
                     {item.icon}
-                    <span className="truncate">{item.title}</span>
+                    <MobileMarqueeText>{item.title}</MobileMarqueeText>
                     {item.badge && <span className={cn("rounded-full px-1.5 py-0.5 text-[10px]", toneClasses[item.tone || "slate"])}>{item.badge}</span>}
                 </button>
             ))}

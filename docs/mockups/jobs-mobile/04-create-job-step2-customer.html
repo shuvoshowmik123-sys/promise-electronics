@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Create Job - Step 2: Customer</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: #0f1117; color: #e4e4e7;
+  max-width: 390px; margin: 0 auto; min-height: 100dvh;
+  display: flex; flex-direction: column;
+}
+.top-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 12px 16px; position: sticky; top: 0; background: #0f1117; z-index: 10;
+}
+.nav-back {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: #1c1c24; border: 1px solid #27272a;
+  display: flex; align-items: center; justify-content: center; color: #a1a1aa;
+}
+.nav-title { font-size: 16px; font-weight: 600; color: #fff; }
+.nav-step { font-size: 13px; color: #52525b; }
+.progress-wrap { padding: 0 16px 20px; }
+.progress-bar { height: 4px; background: #27272a; border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; width: 33.3%; background: linear-gradient(90deg, #2563eb, #60a5fa); border-radius: 2px; }
+
+.content { flex: 1; padding: 0 16px; }
+.section-title { font-size: 24px; font-weight: 700; color: #fff; margin-bottom: 6px; }
+.section-subtitle { font-size: 14px; color: #71717a; margin-bottom: 24px; }
+
+/* Form */
+.form-group { margin-bottom: 20px; }
+.form-label { font-size: 12px; font-weight: 600; color: #71717a; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; display: block; }
+.form-input {
+  width: 100%; padding: 14px 16px; background: #1c1c24;
+  border: 1px solid #27272a; border-radius: 12px;
+  color: #e4e4e7; font-size: 15px; outline: none; transition: border-color 0.2s;
+}
+.form-input:focus { border-color: #3b82f6; }
+.form-input::placeholder { color: #3f3f46; }
+
+/* Phone Input with Country */
+.phone-wrap { display: flex; gap: 8px; }
+.phone-country {
+  flex-shrink: 0; padding: 14px 12px; background: #1c1c24;
+  border: 1px solid #27272a; border-radius: 12px;
+  color: #a1a1aa; font-size: 14px; display: flex; align-items: center; gap: 4px;
+}
+.phone-country .flag { font-size: 16px; }
+.phone-input { flex: 1; }
+
+/* Autocomplete Dropdown */
+.autocomplete {
+  margin-top: 8px; background: #1c1c24; border: 1px solid #27272a;
+  border-radius: 12px; overflow: hidden;
+}
+.ac-item {
+  padding: 12px 16px; display: flex; align-items: center; gap: 12px;
+  border-bottom: 1px solid #27272a; cursor: pointer; transition: background 0.15s;
+}
+.ac-item:last-child { border-bottom: none; }
+.ac-item:active { background: #27272a; }
+.ac-avatar {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: #27272a; display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600; color: #a1a1aa;
+}
+.ac-info { flex: 1; }
+.ac-name { font-size: 14px; font-weight: 500; color: #e4e4e7; }
+.ac-phone { font-size: 12px; color: #52525b; }
+.ac-badge {
+  font-size: 10px; padding: 3px 8px; border-radius: 6px;
+  background: #1e3a5f; color: #60a5fa; font-weight: 500;
+}
+
+/* Messenger Hint */
+.messenger-hint {
+  margin-top: 16px; padding: 12px 16px; border-radius: 12px;
+  background: #172554; border: 1px solid #1e3a5f;
+  display: flex; align-items: center; gap: 10px;
+}
+.messenger-icon {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: #2563eb; display: flex; align-items: center; justify-content: center;
+}
+.messenger-text { flex: 1; }
+.messenger-title { font-size: 13px; font-weight: 500; color: #93c5fd; }
+.messenger-sub { font-size: 11px; color: #3b82f6; }
+.messenger-btn {
+  padding: 6px 10px; border-radius: 6px; background: #2563eb;
+  color: #fff; font-size: 11px; font-weight: 600; border: none; cursor: pointer;
+}
+
+/* Bottom */
+.bottom-bar {
+  padding: 16px; padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  display: flex; gap: 10px;
+}
+.back-btn {
+  padding: 16px 20px; border-radius: 14px; background: #27272a;
+  color: #a1a1aa; font-size: 15px; font-weight: 600; border: none; cursor: pointer;
+}
+.next-btn {
+  flex: 1; padding: 16px; border-radius: 14px; background: #2563eb;
+  color: #fff; font-size: 16px; font-weight: 600; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+}
+.next-btn:active { transform: scale(0.97); }
+</style>
+</head>
+<body>
+
+<div class="top-nav">
+  <div class="nav-back"><svg width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M19 12H5M12 19l-7-7 7-7"/></svg></div>
+  <span class="nav-title">New Job</span>
+  <span class="nav-step">2 / 6</span>
+</div>
+
+<div class="progress-wrap">
+  <div class="progress-bar"><div class="progress-fill"></div></div>
+</div>
+
+<div class="content">
+  <h1 class="section-title">Customer Info</h1>
+  <p class="section-subtitle">Enter customer details or select from existing records.</p>
+
+  <div class="form-group">
+    <label class="form-label">Customer Name</label>
+    <input class="form-input" type="text" placeholder="Full name" value="Mahfuz">
+  </div>
+
+  <div class="form-group">
+    <label class="form-label">Phone Number</label>
+    <div class="phone-wrap">
+      <div class="phone-country"><span class="flag">🇧🇩</span> +88</div>
+      <input class="form-input phone-input" type="tel" placeholder="01XXX-XXXXXX" value="01712345">
+    </div>
+  </div>
+
+  <!-- Autocomplete Results -->
+  <div class="autocomplete">
+    <div class="ac-item">
+      <div class="ac-avatar">MH</div>
+      <div class="ac-info">
+        <div class="ac-name">Mahfuz Hasan</div>
+        <div class="ac-phone">01712-345-445</div>
+      </div>
+      <div class="ac-badge">3 jobs</div>
+    </div>
+    <div class="ac-item">
+      <div class="ac-avatar">MR</div>
+      <div class="ac-info">
+        <div class="ac-name">Mahfuzur Rahman</div>
+        <div class="ac-phone">01712-890-112</div>
+      </div>
+      <div class="ac-badge">1 job</div>
+    </div>
+  </div>
+
+  <!-- Messenger Session Match -->
+  <div class="messenger-hint">
+    <div class="messenger-icon">
+      <svg width="16" height="16" fill="#fff" viewBox="0 0 24 24"><path d="M12 2C6.477 2 2 6.145 2 11.243c0 2.904 1.434 5.495 3.682 7.19V22l3.47-1.903c.927.258 1.907.396 2.917.396 5.523 0 9.999-4.145 9.999-9.243S17.523 2 12.069 2H12z"/></svg>
+    </div>
+    <div class="messenger-text">
+      <div class="messenger-title">Handled by Sajid on Messenger</div>
+      <div class="messenger-sub">Add as ChatHandler for commission?</div>
+    </div>
+    <button class="messenger-btn">Add</button>
+  </div>
+</div>
+
+<div class="bottom-bar">
+  <button class="back-btn">Back</button>
+  <button class="next-btn">Next: Device <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg></button>
+</div>
+
+</body>
+</html>

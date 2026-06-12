@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
     Clock, Search, Plus, MoreVertical, Eye, Printer, Truck,
-    Activity, ScrollText, Trash2, Loader2, CheckCircle, CheckCircle2
+    Activity, ScrollText, Trash2, Loader2, CheckCircle, CheckCircle2, Download, FileText
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -44,22 +44,35 @@ import {
     TableRow,
 } from "@/components/ui/table";
 import { challansApi } from "@/lib/api";
-import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { BentoCard, DashboardSkeleton, HighlightMatch, smartMatch } from "../shared";
+import { useIsMobile } from "@/hooks/use-mobile";
+import {
+    BentoCard,
+    DashboardSkeleton,
+    HighlightMatch,
+    MobileCommandRail,
+    MobileMicroMetricGrid,
+    MobileScrollContent,
+    MobileSegmentTabs,
+    MobileTabHeader,
+    MobileTabLayout,
+    smartMatch
+} from "../shared";
+import { buildChallanPdf, getLineItems, type LineItem } from "./challan/helpers";
+import { MobileChallanCard } from "./challan/MobileChallanCard";
+import { MobileChallanDetailSheet } from "./challan/MobileChallanDetailSheet";
+import { MobileChallanPdfPreviewSheet } from "./challan/MobileChallanPdfPreviewSheet";
+import { ChallanStatusConfirmDialog, type ChallanStatusConfirmAction } from "./challan/ChallanStatusConfirmDialog";
 
-interface LineItem {
-    tvDetail?: string;
-    description?: string;
-    jobNo?: string;
-    serialNumber?: string;
-    status: string;
-    defect?: string;
-    remarks?: string;
+interface ChallanTabProps {
+    initialSearchQuery?: string;
+    initialChallanId?: string;
+    onSearchConsumed?: () => void;
 }
 
-export default function ChallanTab() {
+export default function ChallanTab({ initialSearchQuery, initialChallanId, onSearchConsumed }: ChallanTabProps = {}) {
     const queryClient = useQueryClient();
+    const isMobile = useIsMobile();
     const [challanSearchQuery, setChallanSearchQuery] = useState("");
     const [challanFilterStatus, setChallanFilterStatus] = useState("all");
     const [challanFilterType, setChallanFilterType] = useState("all");
@@ -68,6 +81,10 @@ export default function ChallanTab() {
     const [isChallanAddDialogOpen, setIsChallanAddDialogOpen] = useState(false);
     const [isChallanViewDialogOpen, setIsChallanViewDialogOpen] = useState(false);
     const [selectedChallan, setSelectedChallan] = useState<any>(null);
+    const [pdfPreviewChallan, setPdfPreviewChallan] = useState<any>(null);
+    const [pdfPreviewUrl, setPdfPreviewUrl] = useState("");
+    const [isPdfPreviewLoading, setIsPdfPreviewLoading] = useState(false);
+    const [statusConfirmAction, setStatusConfirmAction] = useState<ChallanStatusConfirmAction | null>(null);
 
     // Form States
     const [challanFormData, setChallanFormData] = useState({
@@ -86,10 +103,31 @@ export default function ChallanTab() {
         { tvDetail: "", jobNo: "", serialNumber: "", status: "OK", defect: "" }
     ]);
 
+    useEffect(() => {
+        return () => {
+            if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+        };
+    }, [pdfPreviewUrl]);
+
     const { data: challansData, isLoading } = useQuery({
         queryKey: ["challans"],
         queryFn: () => challansApi.getAll(),
     });
+
+    useEffect(() => {
+        if (!initialSearchQuery) return;
+        setChallanSearchQuery(initialSearchQuery);
+        onSearchConsumed?.();
+    }, [initialSearchQuery]);
+
+    useEffect(() => {
+        if (!initialChallanId || !challansData?.length) return;
+        const match = challansData.find((challan: any) => challan.id === initialChallanId);
+        if (!match) return;
+        setChallanSearchQuery(match.id);
+        setSelectedChallan(match);
+        setIsChallanViewDialogOpen(true);
+    }, [initialChallanId, challansData]);
 
     const createChallanMutation = useMutation({
         mutationFn: (data: any) => challansApi.create(data),
@@ -105,20 +143,39 @@ export default function ChallanTab() {
     });
 
     const updateStatusMutation = useMutation({
-        mutationFn: ({ id, status }: { id: string; status: string }) =>
-            challansApi.updateStatus(id, status),
+        mutationFn: ({ id, status }: { id: string; status: string }) => challansApi.updateStatus(id, status),
+        onMutate: async ({ id, status }) => {
+            await queryClient.cancelQueries({ queryKey: ["challans"] });
+            const previousChallans = queryClient.getQueryData<any[]>(["challans"]);
+
+            queryClient.setQueryData<any[]>(["challans"], (current) => {
+                if (!current) return current;
+                return current.map((challan) => (challan.id === id ? { ...challan, status } : challan));
+            });
+
+            return { previousChallans };
+        },
+        onError: (error: Error, _variables, context) => {
+            if (context?.previousChallans) {
+                queryClient.setQueryData(["challans"], context.previousChallans);
+            }
+            toast.error(error.message || "Failed to update status");
+        },
         onSuccess: () => {
             toast.success("Status updated successfully");
-            queryClient.invalidateQueries({ queryKey: ["challans"] });
         },
-        onError: (error: Error) => {
-            toast.error(error.message || "Failed to update status");
+        onSettled: () => {
+            queryClient.invalidateQueries({ queryKey: ["challans"] });
+            setStatusConfirmAction(null);
         },
     });
 
     if (isLoading) return <DashboardSkeleton />;
 
     const rawChallans = challansData || [];
+    const pendingCount = rawChallans.filter((c: any) => c.status === "Pending").length;
+    const deliveredCount = rawChallans.filter((c: any) => c.status === "Delivered").length;
+    const receivedCount = rawChallans.filter((c: any) => c.status === "Received").length;
     const challans = rawChallans.filter((challan: any) => {
         const matchesSearch = smartMatch(challanSearchQuery,
             challan.id,
@@ -177,6 +234,24 @@ export default function ChallanTab() {
         updateStatusMutation.mutate({ id, status });
     };
 
+    const requestChallanStatusUpdate = (challan: any, status: "Delivered" | "Received" | "Pending") => {
+        setStatusConfirmAction({
+            id: challan.id,
+            status,
+            receiver: challan.receiver,
+        });
+    };
+
+    const confirmChallanStatusUpdate = () => {
+        if (!statusConfirmAction) return;
+        handleChallanStatusUpdate(statusConfirmAction.id, statusConfirmAction.status);
+    };
+
+    const openChallanDetails = (challan: any) => {
+        setSelectedChallan(challan);
+        setIsChallanViewDialogOpen(true);
+    };
+
     const getChallanStatusBadge = (status: string) => {
         switch (status) {
             case "Pending":
@@ -191,7 +266,7 @@ export default function ChallanTab() {
     };
 
     const handlePrintChallan = (challan: any) => {
-        const itemsList: LineItem[] = challan.lineItems ? JSON.parse(challan.lineItems) : [];
+        const itemsList = getLineItems(challan);
 
         const printWindow = window.open("", "_blank");
         if (printWindow) {
@@ -322,28 +397,190 @@ export default function ChallanTab() {
         }
     };
 
+    const handleDownloadChallanPdf = async (challan: any) => {
+        const doc = await buildChallanPdf(challan);
+        doc.save(`${challan.id || "challan"}.pdf`);
+    };
+
+    const handleOpenChallanPdfPreview = async (challan: any) => {
+        setPdfPreviewChallan(challan);
+        setIsPdfPreviewLoading(true);
+        if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+        setPdfPreviewUrl("");
+        try {
+            const doc = await buildChallanPdf(challan);
+            const blob = doc.output("blob");
+            setPdfPreviewUrl(URL.createObjectURL(blob));
+        } catch (error: any) {
+            toast.error(error?.message || "Failed to generate PDF preview");
+            setPdfPreviewChallan(null);
+        } finally {
+            setIsPdfPreviewLoading(false);
+        }
+    };
+
+    const closePdfPreview = () => {
+        if (pdfPreviewUrl) URL.revokeObjectURL(pdfPreviewUrl);
+        setPdfPreviewUrl("");
+        setPdfPreviewChallan(null);
+        setIsPdfPreviewLoading(false);
+    };
+
     return (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 pb-24 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <>
+        <MobileTabLayout className="md:hidden animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <MobileTabHeader className="border-teal-100/70 bg-gradient-to-b from-teal-50 via-slate-50 to-[#f8fafc] pt-2">
+                <MobileMicroMetricGrid
+                    items={[
+                        { label: "Total", value: rawChallans.length, meta: "All challans", tone: "emerald" },
+                        { label: "Pending", value: pendingCount, meta: "Need delivery", tone: "amber" },
+                        { label: "Delivered", value: deliveredCount, meta: "Sent out", tone: "emerald" },
+                        { label: "Received", value: receivedCount, meta: "Closed", tone: "blue" },
+                    ]}
+                />
+                <MobileCommandRail
+                    items={[
+                        {
+                            key: "new",
+                            title: "New",
+                            icon: <Plus className="h-3.5 w-3.5" />,
+                            tone: "emerald",
+                            onClick: () => setIsChallanAddDialogOpen(true),
+                        },
+                        {
+                            key: "pending",
+                            title: "Pending",
+                            badge: pendingCount || null,
+                            icon: <Clock className="h-3.5 w-3.5" />,
+                            tone: pendingCount > 0 ? "amber" : "slate",
+                            onClick: () => setChallanFilterStatus("Pending"),
+                        },
+                        {
+                            key: "received",
+                            title: "Received",
+                            badge: receivedCount || null,
+                            icon: <CheckCircle2 className="h-3.5 w-3.5" />,
+                            tone: receivedCount > 0 ? "blue" : "slate",
+                            onClick: () => setChallanFilterStatus("Received"),
+                        },
+                    ]}
+                />
+                <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input
+                        placeholder="Search challan, receiver, driver..."
+                        className="h-10 rounded-xl border-slate-200 bg-white pl-9 text-sm shadow-sm"
+                        value={challanSearchQuery}
+                        onChange={(e) => setChallanSearchQuery(e.target.value)}
+                    />
+                </div>
+                <MobileSegmentTabs
+                    value={challanFilterStatus}
+                    onChange={setChallanFilterStatus}
+                    tone={challanFilterStatus === "Pending" ? "amber" : challanFilterStatus === "Delivered" ? "emerald" : challanFilterStatus === "Received" ? "blue" : "slate"}
+                    items={[
+                        { value: "all", label: "All", badge: <span className="rounded-full bg-white/70 px-1.5 text-[10px]">{rawChallans.length}</span> },
+                        { value: "Pending", label: "Pending", badge: pendingCount ? <span className="rounded-full bg-white/70 px-1.5 text-[10px]">{pendingCount}</span> : null },
+                        { value: "Delivered", label: "Delivered", badge: deliveredCount ? <span className="rounded-full bg-white/70 px-1.5 text-[10px]">{deliveredCount}</span> : null },
+                        { value: "Received", label: "Received", badge: receivedCount ? <span className="rounded-full bg-white/70 px-1.5 text-[10px]">{receivedCount}</span> : null },
+                    ]}
+                />
+                <MobileSegmentTabs
+                    value={challanFilterType}
+                    onChange={setChallanFilterType}
+                    tone="emerald"
+                    items={[
+                        { value: "all", label: "All Types" },
+                        { value: "Customer", label: "Customer" },
+                        { value: "Corporate", label: "Corporate" },
+                        { value: "Transfer", label: "Transfer" },
+                    ]}
+                />
+            </MobileTabHeader>
+
+            <MobileScrollContent className="space-y-2 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
+                {challans.length === 0 ? (
+                    <div className="flex min-h-[56vh] flex-col items-center justify-center rounded-3xl border border-dashed border-slate-200 bg-white px-6 text-center shadow-sm">
+                        <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-teal-50 text-teal-700">
+                            <ScrollText className="h-8 w-8" />
+                        </div>
+                        <h3 className="mt-4 text-lg font-black text-slate-950">No challans found</h3>
+                        <p className="mt-1 text-sm font-medium text-slate-500">Clear filters or create a new delivery challan.</p>
+                        <div className="mt-4 grid w-full grid-cols-2 gap-2">
+                            <Button
+                                variant="outline"
+                                className="h-11 rounded-2xl"
+                                onClick={() => {
+                                    setChallanFilterStatus("all");
+                                    setChallanFilterType("all");
+                                    setChallanSearchQuery("");
+                                }}
+                            >
+                                Clear
+                            </Button>
+                            <Button className="h-11 rounded-2xl bg-teal-600 font-black text-white hover:bg-teal-700" onClick={() => setIsChallanAddDialogOpen(true)}>
+                                New
+                            </Button>
+                        </div>
+                    </div>
+                ) : challans.map((challan: any) => (
+                    <MobileChallanCard
+                        key={challan.id}
+                        challan={challan}
+                        searchQuery={challanSearchQuery}
+                        onView={openChallanDetails}
+                        onPreviewPdf={handleOpenChallanPdfPreview}
+                        onSend={(item) => requestChallanStatusUpdate(item, "Delivered")}
+                        onReceive={(item) => requestChallanStatusUpdate(item, "Received")}
+                        onReset={(item) => requestChallanStatusUpdate(item, "Pending")}
+                    />
+                ))}
+            </MobileScrollContent>
+        </MobileTabLayout>
+
+        <ChallanStatusConfirmDialog
+            action={statusConfirmAction}
+            isPending={updateStatusMutation.isPending}
+            onCancel={() => setStatusConfirmAction(null)}
+            onConfirm={confirmChallanStatusUpdate}
+        />
+
+        <MobileChallanDetailSheet
+            open={isChallanViewDialogOpen}
+            challan={selectedChallan}
+            onClose={() => setIsChallanViewDialogOpen(false)}
+            onPreviewPdf={handleOpenChallanPdfPreview}
+        />
+
+        <MobileChallanPdfPreviewSheet
+            open={!!pdfPreviewChallan}
+            challan={pdfPreviewChallan}
+            isLoading={isPdfPreviewLoading}
+            onClose={closePdfPreview}
+            onDownload={() => pdfPreviewChallan && handleDownloadChallanPdf(pdfPreviewChallan)}
+        />
+
+        <div className="hidden md:grid md:grid-cols-4 gap-6 pb-24 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500">
             <BentoCard className="col-span-1 md:col-span-1 h-full min-h-[200px] bg-gradient-to-br from-teal-500 to-emerald-600" title="Total Challans" icon={<ScrollText size={24} className="text-white" />} variant="vibrant">
                 <div className="flex-1 flex flex-col justify-end">
-                    <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{challans.length}</div>
+                    <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{rawChallans.length}</div>
                     <div className="text-white/80 text-sm mt-2">All Time</div>
                 </div>
             </BentoCard>
             <BentoCard className="col-span-1 md:col-span-1 h-full min-h-[200px] bg-gradient-to-br from-amber-500 to-orange-600" title="Pending" icon={<Clock size={24} className="text-white" />} variant="vibrant">
                 <div className="flex-1 flex flex-col justify-end">
-                    <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{challans.filter((c: any) => c.status === 'Pending').length}</div>
+                    <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{pendingCount}</div>
                     <div className="text-white/80 text-sm mt-2">Delivery Pending</div>
                 </div>
             </BentoCard>
             <BentoCard className="col-span-1 md:col-span-2 h-full min-h-[200px] bg-gradient-to-br from-blue-500 to-indigo-600" title="Recent Activity" icon={<Activity size={24} className="text-white" />} variant="vibrant">
                 <div className="flex-1 flex justify-between items-end">
                     <div>
-                        <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{challans.filter((c: any) => c.status === 'Delivered').length}</div>
+                        <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{deliveredCount}</div>
                         <div className="text-white/80 text-sm mt-2">Delivered</div>
                     </div>
                     <div className="text-right">
-                        <div className="text-2xl font-bold text-white/90">{challans.filter((c: any) => c.status === 'Received').length}</div>
+                        <div className="text-2xl font-bold text-white/90">{receivedCount}</div>
                         <div className="text-white/60 text-xs">Received by Client</div>
                     </div>
                 </div>
@@ -426,7 +663,7 @@ export default function ChallanTab() {
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
                                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                            <DropdownMenuItem onClick={() => { setSelectedChallan(challan); setIsChallanViewDialogOpen(true); }}>
+                                            <DropdownMenuItem onClick={() => openChallanDetails(challan)}>
                                                 <Eye className="w-4 h-4 mr-2" /> View Details
                                             </DropdownMenuItem>
                                             <DropdownMenuItem onClick={() => handlePrintChallan(challan)}>
@@ -434,8 +671,8 @@ export default function ChallanTab() {
                                             </DropdownMenuItem>
                                             <DropdownMenuSeparator />
                                             <DropdownMenuItem onClick={() => handleChallanStatusUpdate(challan.id, "Pending")}>Mark Pending</DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleChallanStatusUpdate(challan.id, "Delivered")}>Mark Delivered</DropdownMenuItem>
-                                            <DropdownMenuItem onClick={() => handleChallanStatusUpdate(challan.id, "Received")}>Mark Received</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => requestChallanStatusUpdate(challan, "Delivered")}>Mark Delivered</DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => requestChallanStatusUpdate(challan, "Received")}>Mark Received</DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
                                 </div>
@@ -446,14 +683,14 @@ export default function ChallanTab() {
 
                 {/* Create Challan Dialog */}
                 <Dialog open={isChallanAddDialogOpen} onOpenChange={(open) => { setIsChallanAddDialogOpen(open); if (!open) resetChallanForm(); }}>
-                    <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+                    <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-3xl max-w-4xl max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:top-auto max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:rounded-b-none max-md:border-0 max-md:p-4">
                         <DialogHeader>
                             <DialogTitle>Create Delivery Challan</DialogTitle>
                             <DialogDescription>Fill in the details for the delivery challan.</DialogDescription>
                         </DialogHeader>
 
                         <Tabs defaultValue="general" className="w-full">
-                            <TabsList className="grid w-full grid-cols-4 bg-slate-100">
+                            <TabsList className="grid w-full grid-cols-4 bg-slate-100 max-md:h-auto max-md:rounded-2xl max-md:p-1">
                                 <TabsTrigger value="general">General</TabsTrigger>
                                 <TabsTrigger value="receiver">Receiver</TabsTrigger>
                                 <TabsTrigger value="transport">Transport</TabsTrigger>
@@ -461,7 +698,7 @@ export default function ChallanTab() {
                             </TabsList>
 
                             <TabsContent value="general" className="space-y-4 pt-4">
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                     <div className="space-y-2">
                                         <Label>Challan ID</Label>
                                         <Input placeholder="Auto-generated if empty" value={challanFormData.id} onChange={(e) => setChallanFormData({ ...challanFormData, id: e.target.value })} />
@@ -506,7 +743,7 @@ export default function ChallanTab() {
                             </TabsContent>
 
                             <TabsContent value="transport" className="space-y-4 pt-4">
-                                <div className="grid grid-cols-2 gap-4">
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                                     <div className="space-y-2">
                                         <Label>Vehicle No</Label>
                                         <Input placeholder="e.g. DHAKA METRO-T-11-2233" value={challanFormData.vehicleNo} onChange={(e) => setChallanFormData({ ...challanFormData, vehicleNo: e.target.value })} />
@@ -526,26 +763,26 @@ export default function ChallanTab() {
                                 <div className="space-y-4">
                                     {lineItems.map((item, index) => (
                                         <Card key={index} className="relative border-slate-200">
-                                            <Button variant="ghost" size="icon" className="absolute right-2 top-2 text-red-500 hover:text-red-700 hover:bg-red-50 h-6 w-6" onClick={() => removeLineItem(index)} disabled={lineItems.length === 1}>
+                                            <Button variant="ghost" size="icon" className="absolute right-2 top-2 text-red-500 hover:text-red-700 hover:bg-red-50 h-9 w-9 md:h-6 md:w-6" onClick={() => removeLineItem(index)} disabled={lineItems.length === 1}>
                                                 <Trash2 className="h-3 w-3" />
                                             </Button>
                                             <CardContent className="p-4 grid gap-4">
-                                                <div className="grid grid-cols-12 gap-4">
-                                                    <div className="col-span-6">
+                                                <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
+                                                    <div className="md:col-span-6">
                                                         <Label className="text-xs">TV Detail</Label>
                                                         <Input value={item.tvDetail} onChange={(e) => updateLineItem(index, "tvDetail", e.target.value)} placeholder="e.g. 43'' SAMSUNG" className="h-8 text-sm" />
                                                     </div>
-                                                    <div className="col-span-3">
+                                                    <div className="md:col-span-3">
                                                         <Label className="text-xs">Job No</Label>
                                                         <Input value={item.jobNo} onChange={(e) => updateLineItem(index, "jobNo", e.target.value)} placeholder="Job ID" className="h-8 text-sm" />
                                                     </div>
-                                                    <div className="col-span-3">
+                                                    <div className="md:col-span-3">
                                                         <Label className="text-xs">Serial (Device)</Label>
                                                         <Input value={item.serialNumber} onChange={(e) => updateLineItem(index, "serialNumber", e.target.value)} placeholder="Serial No" className="h-8 text-sm" />
                                                     </div>
                                                 </div>
-                                                <div className="grid grid-cols-12 gap-4">
-                                                    <div className="col-span-3">
+                                                <div className="grid grid-cols-1 gap-4 md:grid-cols-12">
+                                                    <div className="md:col-span-3">
                                                         <Label className="text-xs">Status</Label>
                                                         <Select value={item.status} onValueChange={(value) => updateLineItem(index, "status", value)}>
                                                             <SelectTrigger className="h-8 text-sm">
@@ -557,7 +794,7 @@ export default function ChallanTab() {
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
-                                                    <div className="col-span-9">
+                                                    <div className="md:col-span-9">
                                                         <Label className="text-xs">Defect / Remarks</Label>
                                                         <Input value={item.defect} onChange={(e) => updateLineItem(index, "defect", e.target.value)} placeholder="Defect description..." className="h-8 text-sm" />
                                                     </div>
@@ -571,9 +808,9 @@ export default function ChallanTab() {
                                 </div>
                             </TabsContent>
                         </Tabs>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsChallanAddDialogOpen(false)}>Cancel</Button>
-                            <Button onClick={handleChallanSubmit} disabled={createChallanMutation.isPending}>
+                        <DialogFooter className="max-md:grid max-md:grid-cols-2 max-md:gap-2 max-md:border-t max-md:border-slate-100 max-md:bg-white max-md:pt-3">
+                            <Button variant="outline" className="max-md:h-11 max-md:rounded-2xl" onClick={() => setIsChallanAddDialogOpen(false)}>Cancel</Button>
+                            <Button className="max-md:h-11 max-md:rounded-2xl max-md:bg-teal-600 max-md:font-black max-md:hover:bg-teal-700" onClick={handleChallanSubmit} disabled={createChallanMutation.isPending}>
                                 {createChallanMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                                 Create Challan
                             </Button>
@@ -582,24 +819,27 @@ export default function ChallanTab() {
                 </Dialog>
 
                 {/* View Challan Dialog */}
-                <Dialog open={isChallanViewDialogOpen} onOpenChange={setIsChallanViewDialogOpen}>
-                    <DialogContent className="max-w-3xl">
-                        <DialogHeader>
-                            <DialogTitle>Challan Details: {selectedChallan?.id}</DialogTitle>
+                {!isMobile && <Dialog open={isChallanViewDialogOpen} onOpenChange={setIsChallanViewDialogOpen}>
+                    <DialogContent className="max-h-[90dvh] overflow-y-auto rounded-3xl max-w-3xl max-md:fixed max-md:inset-x-0 max-md:bottom-0 max-md:top-auto max-md:w-full max-md:max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:overflow-hidden max-md:rounded-b-none max-md:border-0 max-md:p-0">
+                        <DialogHeader className="max-md:border-b max-md:border-slate-100 max-md:p-4 max-md:pr-14">
+                            <DialogTitle className="max-md:text-base max-md:leading-tight">
+                                <span className="max-md:block">Challan Details</span>
+                                <span className="font-mono text-teal-700 max-md:block max-md:break-all max-md:text-sm">{selectedChallan?.id}</span>
+                            </DialogTitle>
                         </DialogHeader>
                         {selectedChallan && (
-                            <div className="space-y-6">
-                                <div className="grid grid-cols-2 gap-8">
-                                    <div>
-                                        <h3 className="font-semibold text-slate-900 mb-2">Receiver Details</h3>
+                            <div className="space-y-6 max-md:max-h-[calc(90dvh-8rem)] max-md:overflow-y-auto max-md:p-4">
+                                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-8">
+                                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 md:rounded-none md:border-0 md:bg-transparent md:p-0">
+                                        <h3 className="font-black text-slate-900 mb-2 md:font-semibold">Receiver Details</h3>
                                         <div className="space-y-1 text-sm text-slate-600">
                                             <p><span className="font-medium text-slate-700">Name:</span> {selectedChallan.receiver}</p>
                                             <p><span className="font-medium text-slate-700">Phone:</span> {selectedChallan.receiverPhone}</p>
                                             <p><span className="font-medium text-slate-700">Address:</span> {selectedChallan.receiverAddress}</p>
                                         </div>
                                     </div>
-                                    <div>
-                                        <h3 className="font-semibold text-slate-900 mb-2">Transport Details</h3>
+                                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 md:rounded-none md:border-0 md:bg-transparent md:p-0">
+                                        <h3 className="font-black text-slate-900 mb-2 md:font-semibold">Transport Details</h3>
                                         <div className="space-y-1 text-sm text-slate-600">
                                             <p><span className="font-medium text-slate-700">Vehicle:</span> {selectedChallan.vehicleNo}</p>
                                             <p><span className="font-medium text-slate-700">Driver:</span> {selectedChallan.driverName}</p>
@@ -610,7 +850,32 @@ export default function ChallanTab() {
 
                                 <div>
                                     <h3 className="font-semibold text-slate-900 mb-2">Items</h3>
-                                    <div className="border rounded-lg overflow-hidden">
+                                    <div className="space-y-2 md:hidden">
+                                        {getLineItems(selectedChallan).length === 0 ? (
+                                            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-sm font-medium text-slate-500">No items listed</div>
+                                        ) : getLineItems(selectedChallan).map((item: any, i: number) => (
+                                            <div key={i} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <p className="truncate text-sm font-black text-slate-950">{item.tvDetail || item.description || "Item detail not set"}</p>
+                                                        <p className="mt-1 truncate font-mono text-xs font-bold text-teal-700">{item.jobNo || "No job no"}</p>
+                                                    </div>
+                                                    <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-600">{item.status || "OK"}</span>
+                                                </div>
+                                                <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                                                    <div className="rounded-xl bg-slate-50 px-2 py-2">
+                                                        <p className="font-black uppercase text-slate-400">Serial</p>
+                                                        <p className="mt-1 truncate font-semibold text-slate-700">{item.serialNumber || "-"}</p>
+                                                    </div>
+                                                    <div className="rounded-xl bg-slate-50 px-2 py-2">
+                                                        <p className="font-black uppercase text-slate-400">Defect</p>
+                                                        <p className="mt-1 truncate font-semibold text-slate-700">{item.defect || item.remarks || "-"}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="hidden border rounded-lg overflow-hidden md:block">
                                         <Table>
                                             <TableHeader className="bg-slate-50">
                                                 <TableRow>
@@ -621,7 +886,7 @@ export default function ChallanTab() {
                                                 </TableRow>
                                             </TableHeader>
                                             <TableBody>
-                                                {(selectedChallan.lineItems ? JSON.parse(selectedChallan.lineItems) : []).map((item: any, i: number) => (
+                                                {getLineItems(selectedChallan).map((item: any, i: number) => (
                                                     <TableRow key={i}>
                                                         <TableCell>{item.tvDetail || item.description}</TableCell>
                                                         <TableCell>{item.jobNo}</TableCell>
@@ -635,15 +900,19 @@ export default function ChallanTab() {
                                 </div>
                             </div>
                         )}
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setIsChallanViewDialogOpen(false)}>Close</Button>
-                            <Button onClick={() => { setIsChallanViewDialogOpen(false); handlePrintChallan(selectedChallan); }}>
+                        <DialogFooter className="max-md:grid max-md:grid-cols-2 max-md:gap-2 max-md:border-t max-md:border-slate-100 max-md:bg-white max-md:p-4">
+                            <Button variant="outline" className="max-md:h-11 max-md:rounded-2xl" onClick={() => setIsChallanViewDialogOpen(false)}>Close</Button>
+                            <Button className="hidden md:inline-flex" onClick={() => { setIsChallanViewDialogOpen(false); handlePrintChallan(selectedChallan); }}>
                                 <Printer className="w-4 h-4 mr-2" /> Print
+                            </Button>
+                            <Button className="h-11 rounded-2xl bg-teal-600 font-black hover:bg-teal-700 md:hidden" onClick={() => handleOpenChallanPdfPreview(selectedChallan)}>
+                                <Download className="w-4 h-4 mr-2" /> Save (PDF)
                             </Button>
                         </DialogFooter>
                     </DialogContent>
-                </Dialog>
+                </Dialog>}
             </BentoCard>
         </div>
+        </>
     );
 }

@@ -2,7 +2,7 @@ import React from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bell, Package, AlertTriangle, MessageSquare, CheckCircle2, AlertCircle, ShieldCheck, XCircle, Check, Undo2 } from "lucide-react";
+import { Bell, Package, AlertTriangle, MessageSquare, CheckCircle2, AlertCircle, ShieldCheck, XCircle, Check, Undo2, ChevronLeft } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminNotificationsApi, serviceRequestsApi } from "@/lib/api";
 import { toast } from "sonner";
@@ -93,23 +93,44 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
     };
 
     return (
+        <>
         <Sheet open={open} onOpenChange={onOpenChange}>
-            <SheetContent className="w-full sm:max-w-md p-0 flex flex-col">
-                <SheetHeader className="p-4 border-b border-slate-100">
-                    <SheetTitle className="flex items-center gap-2">
-                        <Bell className="h-5 w-5 text-slate-500" />
-                        Notifications
-                        {unreadNotificationCount > 0 && (
-                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-rose-500 text-[10px] text-white">
-                                {unreadNotificationCount}
-                            </span>
-                        )}
-                    </SheetTitle>
+            <SheetContent
+                className="right-0 h-[100dvh] max-h-[100dvh] w-full translate-x-0 border-l-0 p-0 flex flex-col data-[state=open]:translate-x-0 sm:max-w-md sm:border-l"
+                style={open ? { animation: "none", transform: "translateX(0)" } : undefined}
+            >
+                <SheetHeader className="border-b border-slate-100 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] text-left">
+                    <div className="flex items-center gap-3 pr-9">
+                        <button
+                            type="button"
+                            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-700 active:scale-95 md:hidden"
+                            onClick={() => onOpenChange(false)}
+                            aria-label="Back from notifications"
+                        >
+                            <ChevronLeft className="h-5 w-5" />
+                        </button>
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                            <div className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 md:flex">
+                                <Bell className="h-5 w-5" />
+                            </div>
+                            <div className="min-w-0">
+                                <SheetTitle className="flex items-center gap-2 text-lg font-black text-slate-950">
+                                    Notifications
+                                    {unreadNotificationCount > 0 && (
+                                        <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] text-white">
+                                            {unreadNotificationCount}
+                                        </span>
+                                    )}
+                                </SheetTitle>
+                                <p className="mt-0.5 text-xs font-semibold text-slate-500">Review alerts and approval requests.</p>
+                            </div>
+                        </div>
+                    </div>
                 </SheetHeader>
 
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
-                    <TabsList className="mx-4 mt-2 grid grid-cols-2">
-                        <TabsTrigger value="notifications" className="flex items-center gap-2">
+                    <TabsList className="mx-4 mt-3 grid h-11 grid-cols-2 rounded-2xl bg-slate-100 p-1">
+                        <TabsTrigger value="notifications" className="flex h-9 items-center gap-2 rounded-xl text-xs font-black data-[state=active]:bg-white data-[state=active]:shadow-sm">
                             <Bell size={14} />
                             Notifications
                             {unreadNotificationCount > 0 && (
@@ -118,7 +139,7 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
                                 </span>
                             )}
                         </TabsTrigger>
-                        <TabsTrigger value="approvals" className="flex items-center gap-2">
+                        <TabsTrigger value="approvals" className="flex h-9 items-center gap-2 rounded-xl text-xs font-black data-[state=active]:bg-white data-[state=active]:shadow-sm">
                             <ShieldCheck size={14} />
                             Approvals
                             {totalApprovals > 0 && (
@@ -168,7 +189,7 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
                                             key={n.id}
                                             onClick={() => handleNavigate(n)}
                                             className={cn(
-                                                "flex items-start gap-4 p-4 transition-colors border-b border-slate-50 text-left w-full",
+                                                "flex min-h-[76px] items-start gap-3 border-b border-slate-50 p-4 text-left transition-colors w-full active:scale-[0.995]",
                                                 n.read ? "hover:bg-slate-50" : "bg-rose-50/40 hover:bg-rose-50/70"
                                             )}
                                         >
@@ -339,7 +360,13 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
                     </ScrollArea>
                 </Tabs>
 
-                <div className="p-4 border-t border-slate-100 bg-slate-50/50">
+                <div className="space-y-2 border-t border-slate-100 bg-slate-50/50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                    <button
+                        className="w-full rounded-2xl bg-slate-900 py-3 text-sm font-black text-white active:scale-[0.99] md:hidden"
+                        onClick={() => onOpenChange(false)}
+                    >
+                        Back to Admin
+                    </button>
                     <button
                         className="w-full py-2 text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors disabled:cursor-not-allowed disabled:text-slate-400"
                         disabled
@@ -349,5 +376,6 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
                 </div>
             </SheetContent>
         </Sheet>
+        </>
     );
 }

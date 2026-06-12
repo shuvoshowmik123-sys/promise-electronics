@@ -20,6 +20,7 @@ import { initNightlyJobs } from "./services/nightly-jobs.service.js";
 import { brainService } from "./brain/brain.service.js";
 import { migrateB2BRuleProfileTables } from "./services/b2b-rule-profile.service.js";
 import { migrateManualPaymentTables } from "./services/manual-payment-migration.service.js";
+import { markMigrationsComplete, startReadinessChecks } from "./services/db-readiness.js";
 
 // ── Crash guards ────────────────────────────────────────────────────────────
 // Keep the server alive through transient failures (esp. Neon DB connection
@@ -36,55 +37,91 @@ process.on("uncaughtException", (err: any) => {
   console.error("[uncaughtException] (kept alive):", err?.message || err, err?.stack?.split("\n")[1]?.trim());
 });
 
-(async () => {
-  // Seed super admin if not exists
-  await seedSuperAdmin();
+async function runStartupTask(name: string, task: () => Promise<any>, retries = 3): Promise<boolean> {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      await task();
+      return true;
+    } catch (e: any) {
+      const message = e?.message || String(e);
+      if (attempt === retries) {
+        console.warn(`[Startup] ${name} skipped after ${retries} attempts: ${message.slice(0, 120)}`);
+        return false;
+      }
+      console.warn(`[Startup] ${name} retry ${attempt}/${retries}: ${message.slice(0, 100)}`);
+      await new Promise((resolve) => setTimeout(resolve, attempt * 1500));
+    }
+  }
+  return false;
+}
 
+// Seeds + idempotent schema migrations. Historically these ran BEFORE
+// httpServer.listen(), so on a cold Render boot the server refused all
+// connections (incl. /health) until ~10 serial round-trips to a cold Neon DB
+// finished — adding many seconds to every cold start. They now run in the
+// background AFTER the server is listening. Set SKIP_STARTUP_MIGRATIONS=true to
+// disable entirely (e.g. once they are moved to a dedicated deploy/release step).
+async function runStartupMigrations(): Promise<boolean> {
+  if (process.env.SKIP_STARTUP_MIGRATIONS === "true") {
+    console.log("[Startup] SKIP_STARTUP_MIGRATIONS=true — skipping background seeds/migrations.");
+    return true;
+  }
+
+  // Super admin seed first — admin login depends on it. Idempotent.
+  const superAdminReady = await runStartupTask("super admin seed", seedSuperAdmin);
+
+  // The rest are independent + idempotent — run concurrently to cut total time.
+  const results = await Promise.all([
+    runStartupTask("commission rule seed", seedDefaultCommissionRules),
+    runStartupTask("Brain Phase 6 migration", () => brainService.migratePhase6Columns(), 2),
+    runStartupTask("Brain KG migration", () => brainService.migrateKGTables(), 2),
+    runStartupTask("Brain seed conversations", () => brainService.seedConversationsIfEmpty(), 2),
+    runStartupTask("Brain phase 2 seed", () => brainService.seedPhase2ConversationsIfNeeded(), 2),
+    runStartupTask("B2B rule profile migration", migrateB2BRuleProfileTables, 2),
+    runStartupTask("manual payment migration", migrateManualPaymentTables, 2),
+    runStartupTask("firebase_uid migration", async () => {
+      const { db } = await import("./db.js");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid TEXT UNIQUE`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users (firebase_uid)`);
+    }, 2),
+    runStartupTask("payment_blacklist migration", async () => {
+      const { db } = await import("./db.js");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`CREATE TABLE IF NOT EXISTS payment_blacklist (
+        id TEXT PRIMARY KEY,
+        phone TEXT NOT NULL,
+        reason TEXT,
+        added_by TEXT,
+        added_by_name TEXT,
+        service_request_id TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT now()
+      )`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_payment_blacklist_phone ON payment_blacklist (phone)`);
+    }, 2),
+  ]);
+  const complete = superAdminReady && results.every(Boolean);
+  console.log(complete ? "[Startup] Background seeds/migrations complete." : "[Startup] Background seeds/migrations incomplete.");
+  return complete;
+}
+
+(async () => {
   const app = await createApp();
   const httpServer = getHttpServer();
-  startDrawerDayCloseScheduler();
-  startAbandonmentScheduler();
-  startReminderScheduler();
-  startBackupScheduler();
-  initNightlyJobs(); // SLA breach check + acceptance ratio (Phase I)
-  await seedDefaultCommissionRules();
-  await brainService.migratePhase6Columns().catch(() => {}); // no-op if Brain DB not configured
-  await brainService.migrateKGTables().catch(() => {});      // Knowledge Graph tables
-  await brainService.seedConversationsIfEmpty().catch(() => {}); // seed real chat examples once
-  await brainService.seedPhase2ConversationsIfNeeded().catch(() => {}); // import batch 2 (Facebook chats)
-  await migrateB2BRuleProfileTables().catch((e) => console.warn("[Startup] B2B rule profile migration skipped:", e.message?.slice(0, 80)));
-  await migrateManualPaymentTables().catch((e) => console.warn("[Startup] manual payment migration skipped:", e.message?.slice(0, 80)));
-
-  // Firebase UID column — idempotent, safe to run on every start
-  try {
-    const { db } = await import("./db.js");
-    const { sql } = await import("drizzle-orm");
-    await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid TEXT UNIQUE`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users (firebase_uid)`);
-  } catch (e: any) {
-    console.warn("[Startup] firebase_uid migration skipped:", e.message?.slice(0, 80));
+  const runBackgroundJobs = process.env.NODE_ENV === "production" || process.env.RUN_BACKGROUND_JOBS === "true";
+  if (runBackgroundJobs) {
+    startDrawerDayCloseScheduler();
+    startAbandonmentScheduler();
+    startReminderScheduler();
+    startBackupScheduler();
+    initNightlyJobs();
+  } else {
+    console.log("[Startup] Background schedulers disabled in local dev. Set RUN_BACKGROUND_JOBS=true to enable.");
   }
 
-  // Payment-submission blacklist table — idempotent create on every boot.
-  try {
-    const { db } = await import("./db.js");
-    const { sql } = await import("drizzle-orm");
-    await db.execute(sql`CREATE TABLE IF NOT EXISTS payment_blacklist (
-      id TEXT PRIMARY KEY,
-      phone TEXT NOT NULL,
-      reason TEXT,
-      added_by TEXT,
-      added_by_name TEXT,
-      service_request_id TEXT,
-      created_at TIMESTAMP NOT NULL DEFAULT now()
-    )`);
-    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_payment_blacklist_phone ON payment_blacklist (phone)`);
-  } catch (e: any) {
-    console.warn("[Startup] payment_blacklist migration skipped:", e.message?.slice(0, 80));
+  if (process.env.NODE_ENV === "production" && process.env.GROQ_API_KEY) {
+    app.use(aiErrorHandler);
   }
-
-  // AI Error Handler (Module C)
-  app.use(aiErrorHandler);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
@@ -124,6 +161,13 @@ process.on("uncaughtException", (err: any) => {
     },
     () => {
       log(`serving on port ${port}`);
+      // Fire seeds/migrations AFTER the server is accepting connections so they
+      // never block cold-start /health checks or the first request.
+      startReadinessChecks();
+      void runStartupMigrations().then((complete) => {
+        if (complete) markMigrationsComplete();
+        startReadinessChecks();
+      });
     },
   );
 
