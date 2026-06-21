@@ -1,12 +1,11 @@
 {
     "version": 2,
-    "rewrites": [
-        {
-            "source": "/((?!_next/).*)",
-            "destination": "/index.html"
-        }
-    ],
     "buildCommand": "npx vite build",
     "outputDirectory": "dist/public",
-    "framework": "vite"
+    "rewrites": [
+        {
+            "source": "/((?!assets/).*)",
+            "destination": "/index.html"
+        }
+    ]
 }
