@@ -90,6 +90,27 @@ const TAB_PRELOADERS: Record<string, () => Promise<unknown>> = {
     finance: () => import("./bento/tabs/FinancesTab"),
 };
 
+const FIXED_ADMIN_TABS = new Set([
+    "dashboard",
+    "service-requests",
+    "repair-journeys",
+    "jobs",
+    "challans",
+    "pos",
+    "orders",
+    "finance",
+    "customers",
+    "inquiries",
+    "b2b",
+    "corp-msg",
+    "inventory",
+    "warranty",
+    "refunds",
+    "wastage",
+    "users",
+    "audit-logs",
+]);
+
 /** Warm a single tab's chunk (call on nav hover/touchstart). */
 export function preloadTab(id: string) {
     TAB_PRELOADERS[id]?.();
@@ -121,6 +142,7 @@ export default function DesignConcept() {
 
     const activeTabRef = useRef(activeTab);
     useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+    const isFixed = FIXED_ADMIN_TABS.has(activeTab);
 
     // Warm the most-used tab chunks during idle (after first paint) so the first
     // switch to Jobs/POS/Finance/etc has no lazy-chunk download wait.
@@ -141,6 +163,7 @@ export default function DesignConcept() {
     }, []);
     const { containerRef: pullContainerRef, pullDistance, isRefreshing, triggered } = usePullToRefresh({
         onRefresh: handlePullRefresh,
+        disabled: isFixed,
     });
 
     const [globalSearchQuery, setGlobalSearchQuery] = useState(() => {
@@ -441,12 +464,6 @@ export default function DesignConcept() {
         { label: "Finance", id: "finance", icon: Banknote },
         { label: "More", id: "menu", icon: Menu },
     ];
-
-    // Derive isFixed from sidebar config
-    const currentTabConfig = filteredSidebarGroups
-        .flatMap(g => g.items)
-        .find(item => item.id === activeTab);
-    const isFixed = currentTabConfig?.layout === 'fixed';
 
     useEffect(() => {
         setVisitedTabs((tabs) => {
@@ -960,11 +977,11 @@ export default function DesignConcept() {
 
 // Reusable Layout Wrapper
 function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }: { children: React.ReactNode, isFixed: boolean, activeTab: string, mobileChromeHidden: boolean }) {
-    const mobileTopPadding = mobileChromeHidden ? "pt-0" : "pt-16";
+    const mobileTopPad = mobileChromeHidden ? "pt-0" : "pt-16";
 
     if (isFixed) {
         return (
-            <div className={cn("h-full md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col transition-[padding] duration-200 ease-out", mobileTopPadding)}>
+            <div className={cn("h-full md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col", mobileTopPad)}>
                 <div className="max-w-[1600px] mx-auto w-full h-full flex flex-col min-h-0">
                     {children}
                 </div>
@@ -972,7 +989,7 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
         );
     }
     return (
-        <div className={cn("min-h-full md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col transition-[padding] duration-200 ease-out", mobileTopPadding)}>
+        <div className={cn("min-h-full md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col", mobileTopPad)}>
             <div className="max-w-[1600px] mx-auto w-full flex-1">
                 {children}
             </div>

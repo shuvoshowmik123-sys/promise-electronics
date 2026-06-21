@@ -60,8 +60,6 @@ function BottomSheetDragWrapper({ children, onClose }: { children: React.ReactNo
   const dragging = React.useRef(false);
 
   const handlePointerDown = (e: React.PointerEvent) => {
-    const target = e.target as HTMLElement;
-    if (target.closest('button, a, input, [role="button"]')) return;
     startY.current = e.clientY;
     currentY.current = e.clientY;
     dragging.current = true;
@@ -87,12 +85,14 @@ function BottomSheetDragWrapper({ children, onClose }: { children: React.ReactNo
   return (
     <div
       ref={sheetRef}
-      onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
-      className="h-full touch-none"
+      className="h-full"
     >
-      <div className="flex justify-center pt-2 pb-1">
+      <div
+        className="flex justify-center pt-2 pb-3 touch-none cursor-grab active:cursor-grabbing"
+        onPointerDown={handlePointerDown}
+      >
         <div className="w-10 h-1 rounded-full bg-slate-300" />
       </div>
       {children}
