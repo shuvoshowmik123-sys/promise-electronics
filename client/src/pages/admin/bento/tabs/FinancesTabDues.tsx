@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { format } from "date-fns";
 import { motion } from "framer-motion";
-import { Plus, Search, X, Download, FileText, Loader2, AlertCircle, DollarSign, Calendar as CalendarIcon, SlidersHorizontal } from "lucide-react";
+import { Plus, Search, X, Download, FileText, Loader2, AlertCircle, DollarSign, Calendar as CalendarIcon, SlidersHorizontal, Upload, ClipboardList } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -9,15 +9,17 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { DateRange } from "react-day-picker";
 import { InsertDueRecord } from "@shared/schema";
 import { BentoCard, containerVariants, itemVariants } from "../shared";
 import { cn } from "@/lib/utils";
-import { useQuery } from "@tanstack/react-query";
-import { dueRecordsApi } from "@/lib/api";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { dueRecordsApi, fetchApi } from "@/lib/api";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
+import { toast } from "sonner";
 
 export function DuesTab({
     getCurrencySymbol,
@@ -32,6 +34,7 @@ export function DuesTab({
     exportToCSV: (data: any[], filename: string, columns: any[]) => void;
     initialSearchQuery?: string;
 }) {
+    const queryClient = useQueryClient();
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
@@ -40,17 +43,22 @@ export function DuesTab({
     const limit = 25;
 
     const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [entryMode, setEntryMode] = useState<"single" | "bulk">("single");
     const [isSettleDialogOpen, setIsSettleDialogOpen] = useState(false);
     const [isFilterDialogOpen, setIsFilterDialogOpen] = useState(false);
     const [selectedRecord, setSelectedRecord] = useState<any>(null);
     const [paymentAmount, setPaymentAmount] = useState("");
     const [paymentMethod, setPaymentMethod] = useState("Cash");
+    const [bulkText, setBulkText] = useState("");
 
     const [form, setForm] = useState({
         invoice: "",
         customer: "",
         amount: "",
         dueDate: new Date(),
+        phone: "",
+        device: "",
+        note: "",
     });
 
     // Apply initial search query from Smart Search
@@ -105,16 +113,117 @@ export function DuesTab({
         pages: duesData.pagination.pages
     } : undefined;
 
+    const legacyInvoice = (value: string) => value.trim() || `OPENING-${Date.now().toString().slice(-6)}`;
+    const normalizePhone = (value: string) => value.replace(/\D/g, "");
+    const parseBulkRows = () => {
+        return bulkText
+            .split(/\r?\n/)
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .map((line, index) => {
+                const [customer = "", phone = "", amount = "", device = "", dueDate = "", note = "", oldReference = ""] = line.split(",").map((part) => part.trim());
+                const invoice = legacyInvoice(oldReference || `OPENING-${index + 1}`);
+                const duplicate = transactions.some((record: any) => {
+                    const sameInvoice = String(record.invoice || "").toLowerCase() === invoice.toLowerCase();
+                    const sameCustomer = String(record.customer || "").toLowerCase() === customer.toLowerCase();
+                    const sameAmount = Number(record.amount) === Number(amount);
+                    return sameInvoice || (sameCustomer && sameAmount && customer.length > 0);
+                });
+
+                return {
+                    customer,
+                    phone,
+                    amount,
+                    device,
+                    dueDate,
+                    note,
+                    invoice,
+                    duplicate,
+                    valid: Boolean(customer && Number(amount) > 0),
+                };
+            });
+    };
+
+    const bulkRows = parseBulkRows();
+    const validBulkRows = bulkRows.filter((row) => row.valid && !row.duplicate);
+    const invalidBulkRows = bulkRows.filter((row) => !row.valid || row.duplicate);
+
+    const invalidateDueViews = () => {
+        queryClient.invalidateQueries({ queryKey: ["dueRecords"] });
+        queryClient.invalidateQueries({ queryKey: ["dueRecords-paginated"] });
+        queryClient.invalidateQueries({ queryKey: ["dueRecords-summary"] });
+        queryClient.invalidateQueries({ queryKey: ["due-summary-global"] });
+    };
+
+    const toLegacyPayload = (row: {
+        customer: string;
+        phone?: string;
+        amount: string | number;
+        device?: string;
+        dueDate?: string;
+        note?: string;
+        invoice?: string;
+    }, source: "opening_balance" | "legacy_import") => ({
+        customerName: row.customer,
+        customerPhone: normalizePhone(row.phone || ""),
+        amount: Number(row.amount),
+        deviceName: row.device || "",
+        dueDate: row.dueDate || undefined,
+        note: row.note || "",
+        oldReference: row.invoice || "",
+        source,
+    });
+
+    const createLegacyDueMutation = useMutation({
+        mutationFn: async () => {
+            return fetchApi("/admin/finance/legacy-dues", {
+                method: "POST",
+                body: JSON.stringify(toLegacyPayload({
+                    customer: form.customer.trim(),
+                    phone: form.phone,
+                    amount: form.amount,
+                    device: form.device,
+                    dueDate: form.dueDate instanceof Date ? form.dueDate.toISOString() : undefined,
+                    note: form.note,
+                    invoice: legacyInvoice(form.invoice),
+                }, "opening_balance")),
+            });
+        },
+        onSuccess: () => {
+            invalidateDueViews();
+            setIsDialogOpen(false);
+            setForm({ invoice: "", customer: "", amount: "", dueDate: new Date(), phone: "", device: "", note: "" });
+            toast.success("Opening due saved");
+        },
+        onError: (error: Error) => {
+            toast.error(error.message || "Failed to save opening due");
+        },
+    });
+
+    const bulkImportMutation = useMutation({
+        mutationFn: async () => {
+            return fetchApi<{ created: number; skipped: number }>("/admin/finance/legacy-dues/bulk", {
+                method: "POST",
+                body: JSON.stringify({
+                    rows: validBulkRows.map((row) => toLegacyPayload(row, "legacy_import")),
+                }),
+            });
+        },
+        onSuccess: (result) => {
+            invalidateDueViews();
+            setBulkText("");
+            setIsDialogOpen(false);
+            setEntryMode("single");
+            setPage(1);
+            toast.success("Imported " + result.created + " legacy due records" + (result.skipped ? ", skipped " + result.skipped : ""));
+        },
+        onError: (error: Error) => {
+            toast.error(error.message || "Failed to import dues");
+        },
+    });
+
     const handleSubmit = () => {
-        createDueMutation.mutate({
-            ...form,
-            amount: Number(form.amount) || 0
-        } as InsertDueRecord, {
-            onSuccess: () => {
-                setIsDialogOpen(false);
-                setForm({ invoice: "", customer: "", amount: "", dueDate: new Date() });
-            }
-        });
+        createLegacyDueMutation.mutate();
     };
 
     const handleSettlePayment = () => {
@@ -304,69 +413,132 @@ export function DuesTab({
             </div>
 
             {/* Header & Add Button */}
-            <div className="flex justify-between items-center">
-                <h2 className="text-lg font-bold">Due Records</h2>
+            <div className="flex flex-col gap-3 rounded-2xl border border-orange-100 bg-orange-50/50 p-3 md:flex-row md:items-center md:justify-between md:bg-transparent md:p-0 md:border-0">
+                <div>
+                    <h2 className="text-lg font-bold">Due Records</h2>
+                    <p className="text-xs text-slate-500">Use opening dues only for old balances before daily software use.</p>
+                </div>
                 <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                     <DialogTrigger asChild>
-                        <Button size="sm">
-                            <Plus className="w-4 h-4 mr-2" /> Record New Due
+                        <Button size="sm" className="h-11 rounded-xl bg-orange-600 hover:bg-orange-700 md:h-9">
+                            <Plus className="w-4 h-4 mr-2" /> Opening Due Entry
                         </Button>
                     </DialogTrigger>
-                    <DialogContent>
+                    <DialogContent className="max-h-[92vh] overflow-y-auto rounded-3xl sm:max-w-2xl">
                         <DialogHeader>
-                            <DialogTitle>Record New Due</DialogTitle>
-                            <DialogDescription>Add a new outstanding payment record.</DialogDescription>
+                            <DialogTitle>Opening Due Entry</DialogTitle>
+                            <DialogDescription>Add old due balances without creating fake jobs or POS invoices.</DialogDescription>
                         </DialogHeader>
-                        <div className="space-y-4">
-                            <div className="space-y-2">
-                                <Label htmlFor="invoice">Invoice Number</Label>
-                                <Input
-                                    id="invoice"
-                                    placeholder="INV-2025-001"
-                                    value={form.invoice}
-                                    onChange={(e) => setForm({ ...form, invoice: e.target.value })}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="customer">Customer Name</Label>
-                                <Input
-                                    id="customer"
-                                    placeholder="John Doe"
-                                    value={form.customer}
-                                    onChange={(e) => setForm({ ...form, customer: e.target.value })}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="amount">Amount ({getCurrencySymbol()})</Label>
-                                <Input
-                                    id="amount"
-                                    type="number"
-                                    placeholder="5000"
-                                    value={form.amount}
-                                    onChange={(e) => setForm({ ...form, amount: e.target.value })}
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label htmlFor="dueDate">Due Date</Label>
-                                <Input
-                                    id="dueDate"
-                                    type="date"
-                                    value={form.dueDate instanceof Date ? form.dueDate.toISOString().split('T')[0] : ""}
-                                    onChange={(e) => setForm({ ...form, dueDate: new Date(e.target.value) })}
-                                />
-                            </div>
+                        <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-100 p-1">
+                            <button
+                                type="button"
+                                onClick={() => setEntryMode("single")}
+                                className={cn("rounded-xl px-3 py-2 text-sm font-bold transition-all", entryMode === "single" ? "bg-white text-orange-700 shadow-sm" : "text-slate-500")}
+                            >
+                                Single entry
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setEntryMode("bulk")}
+                                className={cn("rounded-xl px-3 py-2 text-sm font-bold transition-all", entryMode === "bulk" ? "bg-white text-orange-700 shadow-sm" : "text-slate-500")}
+                            >
+                                Bulk paste
+                            </button>
                         </div>
+                        {entryMode === "single" ? (
+                            <div className="space-y-4">
+                                <div className="rounded-2xl border border-orange-100 bg-orange-50 p-3 text-sm text-orange-900">
+                                    This is for migration only. Future dues should come from job billing/POS automatically.
+                                </div>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="customer">Customer Name</Label>
+                                        <Input id="customer" placeholder="Customer name" value={form.customer} onChange={(e) => setForm({ ...form, customer: e.target.value })} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="phone">Phone</Label>
+                                        <Input id="phone" inputMode="tel" placeholder="01XXXXXXXXX" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="amount">Amount ({getCurrencySymbol()})</Label>
+                                        <Input id="amount" type="number" placeholder="5000" value={form.amount} onChange={(e) => setForm({ ...form, amount: e.target.value })} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="dueDate">Due Date</Label>
+                                        <Input id="dueDate" type="date" value={form.dueDate instanceof Date ? form.dueDate.toISOString().split('T')[0] : ""} onChange={(e) => setForm({ ...form, dueDate: new Date(e.target.value) })} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="device">Device / Reference</Label>
+                                        <Input id="device" placeholder="Samsung 43 panel" value={form.device} onChange={(e) => setForm({ ...form, device: e.target.value })} />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="invoice">Old Reference</Label>
+                                        <Input id="invoice" placeholder="Old invoice or notebook ref" value={form.invoice} onChange={(e) => setForm({ ...form, invoice: e.target.value })} />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="note">Note</Label>
+                                    <Textarea id="note" placeholder="Opening balance note..." value={form.note} onChange={(e) => setForm({ ...form, note: e.target.value })} />
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="space-y-4">
+                                <div className="rounded-2xl border border-sky-100 bg-sky-50 p-3 text-sm text-sky-900">
+                                    Paste rows as: customer, phone, amount, device, due date, note, old reference
+                                </div>
+                                <Textarea
+                                    value={bulkText}
+                                    onChange={(e) => setBulkText(e.target.value)}
+                                    className="min-h-40 font-mono text-xs"
+                                    placeholder={"Rahim Uddin,01700000000,2500,Samsung 32,2026-06-21,Old due,OLD-001\nKarim Ahmed,01800000000,4200,LG 43,2026-06-21,Panel due,OLD-002"}
+                                />
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div className="rounded-xl bg-emerald-50 p-3 text-center">
+                                        <p className="text-xl font-black text-emerald-700">{validBulkRows.length}</p>
+                                        <p className="text-[10px] font-bold uppercase text-emerald-600">Ready</p>
+                                    </div>
+                                    <div className="rounded-xl bg-amber-50 p-3 text-center">
+                                        <p className="text-xl font-black text-amber-700">{invalidBulkRows.length}</p>
+                                        <p className="text-[10px] font-bold uppercase text-amber-600">Needs check</p>
+                                    </div>
+                                    <div className="rounded-xl bg-slate-50 p-3 text-center">
+                                        <p className="text-xl font-black text-slate-700">{bulkRows.length}</p>
+                                        <p className="text-[10px] font-bold uppercase text-slate-500">Rows</p>
+                                    </div>
+                                </div>
+                                {bulkRows.length > 0 && (
+                                    <div className="max-h-48 overflow-auto rounded-2xl border border-slate-200">
+                                        {bulkRows.map((row, index) => (
+                                            <div key={row.invoice + "-" + index} className={cn("grid grid-cols-[1fr_auto] gap-2 border-b border-slate-100 p-3 text-sm last:border-0", (!row.valid || row.duplicate) && "bg-amber-50")}>
+                                                <div className="min-w-0">
+                                                    <p className="truncate font-bold text-slate-900">{row.customer || "Missing customer"}</p>
+                                                    <p className="truncate text-xs text-slate-500">{row.phone || "No phone"} · {row.device || "No device"} · {row.invoice}</p>
+                                                </div>
+                                                <Badge variant={row.valid && !row.duplicate ? "default" : "secondary"}>
+                                                    {row.duplicate ? "Duplicate" : row.valid ? getCurrencySymbol() + Number(row.amount).toLocaleString() : "Invalid"}
+                                                </Badge>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         <DialogFooter>
                             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
                                 Cancel
                             </Button>
-                            <Button
-                                onClick={handleSubmit}
-                                disabled={createDueMutation.isPending}
-                            >
-                                {createDueMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                Record Due
-                            </Button>
+                            {entryMode === "single" ? (
+                                <Button onClick={handleSubmit} disabled={createDueMutation.isPending || !form.customer || !form.amount}>
+                                    {createDueMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                    <ClipboardList className="mr-2 h-4 w-4" />
+                                    Save Opening Due
+                                </Button>
+                            ) : (
+                                <Button onClick={() => bulkImportMutation.mutate()} disabled={bulkImportMutation.isPending || validBulkRows.length === 0}>
+                                    {bulkImportMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
+                                    Import {validBulkRows.length} Rows
+                                </Button>
+                            )}
                         </DialogFooter>
                     </DialogContent>
                 </Dialog>

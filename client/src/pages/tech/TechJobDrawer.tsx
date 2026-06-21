@@ -47,6 +47,7 @@ export function TechJobDrawer({ job, open, onOpenChange }: TechJobDrawerProps) {
             return jobTicketsApi.update(job.id, updates);
         },
         onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["technician-jobs"] });
             queryClient.invalidateQueries({ queryKey: ["tech-active-jobs"] });
             toast.success("Job notes updated");
             onOpenChange(false);
@@ -62,6 +63,7 @@ export function TechJobDrawer({ job, open, onOpenChange }: TechJobDrawerProps) {
             return jobTicketsApi.advanceStatus(job.id);
         },
         onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["technician-jobs"] });
             queryClient.invalidateQueries({ queryKey: ["tech-active-jobs"] });
             toast.success("Job advanced to next step");
             onOpenChange(false);

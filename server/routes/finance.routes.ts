@@ -360,4 +360,151 @@ router.post('/api/manual-payments/:id/reject', requireAdminAuth, requirePermissi
     }
 });
 
+// ============================================
+// Legacy Due Entry (Opening Balance / Bulk Import)
+// ============================================
+
+const LEGACY_SOURCES = ['opening_balance', 'legacy_import'] as const;
+
+/**
+ * POST /api/admin/finance/legacy-dues - Create a single legacy due entry
+ */
+router.post('/api/admin/finance/legacy-dues', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+    try {
+        const { customerName, customerPhone, amount, deviceName, dueDate, note, oldReference, source } = req.body;
+
+        if (!customerName || amount == null || Number(amount) <= 0) {
+            return res.status(400).json({ error: 'customerName and a positive amount are required' });
+        }
+        const entrySource = LEGACY_SOURCES.includes(source) ? source : 'opening_balance';
+
+        if (oldReference) {
+            const existing = await financeRepo.getAllDueRecords({ search: oldReference });
+            const dup = existing.items.find((d: any) =>
+                d.oldReference === oldReference && d.customerPhone === (customerPhone || null) && d.amount === Number(amount)
+            );
+            if (dup) {
+                return res.status(409).json({ error: 'Duplicate legacy due', existingId: dup.id });
+            }
+        }
+
+        const record = await financeRepo.createDueRecord({
+            customer: customerName,
+            invoice: oldReference || `LEGACY-${Date.now()}`,
+            amount: Number(amount),
+            dueDate: dueDate ? new Date(dueDate) : new Date(),
+            status: 'Pending',
+            source: entrySource,
+            customerPhone: customerPhone || null,
+            deviceName: deviceName || null,
+            oldReference: oldReference || null,
+            note: note || null,
+            createdBy: req.session?.adminUserId || 'system',
+        } as any);
+
+        console.log(`[LegacyDue] Created opening due ${record.id} for ${customerName}`);
+        res.status(201).json({ id: record.id, customer: record.customer, amount: record.amount, source: entrySource });
+    } catch (error: any) {
+        console.error('[LegacyDue] Create failed:', error.message);
+        res.status(400).json({ error: 'Failed to create legacy due record' });
+    }
+});
+
+/**
+ * POST /api/admin/finance/legacy-dues/preview - Preview bulk rows before import
+ */
+router.post('/api/admin/finance/legacy-dues/preview', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+    try {
+        const { rows } = req.body;
+        if (!Array.isArray(rows) || rows.length === 0) {
+            return res.status(400).json({ error: 'rows array is required' });
+        }
+        if (rows.length > 200) {
+            return res.status(400).json({ error: 'Maximum 200 rows per batch' });
+        }
+
+        const preview = rows.map((row: any, idx: number) => {
+            const errors: string[] = [];
+            if (!row.customerName) errors.push('customerName required');
+            if (!row.amount || Number(row.amount) <= 0) errors.push('positive amount required');
+            return {
+                row: idx + 1,
+                customerName: row.customerName || '',
+                customerPhone: row.customerPhone || '',
+                amount: Number(row.amount) || 0,
+                deviceName: row.deviceName || '',
+                oldReference: row.oldReference || '',
+                valid: errors.length === 0,
+                errors,
+            };
+        });
+
+        const valid = preview.filter(r => r.valid).length;
+        const invalid = preview.filter(r => !r.valid).length;
+        res.json({ total: rows.length, valid, invalid, preview });
+    } catch (error: any) {
+        console.error('[LegacyDue] Preview failed:', error.message);
+        res.status(400).json({ error: 'Failed to preview rows' });
+    }
+});
+
+/**
+ * POST /api/admin/finance/legacy-dues/bulk - Bulk import legacy dues
+ */
+router.post('/api/admin/finance/legacy-dues/bulk', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+    try {
+        const { rows } = req.body;
+        if (!Array.isArray(rows) || rows.length === 0) {
+            return res.status(400).json({ error: 'rows array is required' });
+        }
+        if (rows.length > 200) {
+            return res.status(400).json({ error: 'Maximum 200 rows per batch' });
+        }
+
+        const created: { id: string; customer: string; amount: number }[] = [];
+        const skipped: { row: number; reason: string }[] = [];
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = rows[i];
+            if (!row.customerName || !row.amount || Number(row.amount) <= 0) {
+                skipped.push({ row: i + 1, reason: 'Missing customerName or invalid amount' });
+                continue;
+            }
+
+            if (row.oldReference) {
+                const existing = await financeRepo.getAllDueRecords({ search: row.oldReference });
+                const dup = existing.items.find((d: any) =>
+                    d.oldReference === row.oldReference && d.customerPhone === (row.customerPhone || null) && d.amount === Number(row.amount)
+                );
+                if (dup) {
+                    skipped.push({ row: i + 1, reason: `Duplicate (existing: ${dup.id})` });
+                    continue;
+                }
+            }
+
+            const record = await financeRepo.createDueRecord({
+                customer: row.customerName,
+                invoice: row.oldReference || `LEGACY-${Date.now()}-${i}`,
+                amount: Number(row.amount),
+                dueDate: row.dueDate ? new Date(row.dueDate) : new Date(),
+                status: 'Pending',
+                source: 'legacy_import',
+                customerPhone: row.customerPhone || null,
+                deviceName: row.deviceName || null,
+                oldReference: row.oldReference || null,
+                note: row.note || null,
+                createdBy: req.session?.adminUserId || 'system',
+            } as any);
+
+            created.push({ id: record.id, customer: record.customer, amount: record.amount });
+        }
+
+        console.log(`[LegacyDue] Bulk import: ${created.length} created, ${skipped.length} skipped`);
+        res.status(201).json({ created: created.length, skipped: skipped.length, details: { created, skipped } });
+    } catch (error: any) {
+        console.error('[LegacyDue] Bulk import failed:', error.message);
+        res.status(400).json({ error: 'Failed to process bulk import' });
+    }
+});
+
 export default router;

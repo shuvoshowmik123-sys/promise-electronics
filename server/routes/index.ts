@@ -67,6 +67,7 @@ import teamChatRoutes from './team-chat.routes.js'; // Phase 3: Internal Team Ch
 import remindersRoutes from './reminders.routes.js'; // Phase 3: Reminders
 import kgRoutes from './kg.routes.js'; // KG: Knowledge Graph admin
 import firebaseAuthRoutes from './firebase-auth.routes.js'; // Firebase Auth
+import technicianWorkbenchRoutes from './technician-workbench.routes.js';
 import customerRepairJourneyRoutes from './customer-repair-journey.routes.js';
 import adminRepairJourneyRoutes from './admin-repair-journey.routes.js';
 
@@ -161,6 +162,9 @@ export async function registerRoutes(
 
     app.use(financeRoutes);
     routeLog('[Routes] ✓ Finance routes registered');
+
+    app.use(technicianWorkbenchRoutes);
+    routeLog('[Routes] ✓ Technician workbench routes registered');
 
     app.use(blacklistRoutes);
     routeLog('[Routes] ✓ Payment blacklist routes registered');

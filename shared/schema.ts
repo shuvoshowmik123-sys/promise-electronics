@@ -262,6 +262,12 @@ export const jobTickets = pgTable("job_tickets", {
   missingParts: jsonb("missing_parts").default([]),       // incomplete-TV capture: string[]
   partsLineitems: jsonb("parts_lineitems").default([]),   // Mode-3 multi-part: [{name,qty,charge,source,notes}]
   source: text("source"),                       // 'corporate_portal' | 'whatsapp' | 'messenger' | 'walk_in' | null
+
+  // Technician inspection (Part 2 — operational shortcut)
+  inspectionResult: text("inspection_result").default("pending"), // 'pending' | 'ok' | 'ng' | 'rework'
+  inspectionNote: text("inspection_note"),
+  inspectedBy: text("inspected_by"),
+  inspectedAt: timestamp("inspected_at"),
 }, (table) => {
   return {
     statusIdx: index("idx_job_tickets_status").on(table.status),
@@ -516,6 +522,12 @@ export const dueRecords = pgTable("due_records", {
   dueDate: timestamp("due_date").notNull(),
   paidAt: timestamp("paid_at"),
   paidAmount: real("paid_amount").default(0),
+  source: text("source").default("manual"),
+  customerPhone: text("customer_phone"),
+  deviceName: text("device_name"),
+  oldReference: text("old_reference"),
+  note: text("note"),
+  createdBy: text("created_by"),
 }, (table) => {
   return {
     createdAtIdx: index("idx_due_records_created_at").on(table.createdAt),
