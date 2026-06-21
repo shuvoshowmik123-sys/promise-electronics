@@ -602,7 +602,11 @@ export default function DesignConcept() {
                                         <span className="text-[9px] font-black uppercase leading-none tracking-tight">{item.label}</span>
                                     </button>
                                 </SheetTrigger>
-                                <SheetContent side="bottom" className="h-[92dvh] w-full bg-[#f8fafc] border-0 p-0 rounded-t-3xl overflow-hidden [&>button]:hidden">
+                                <SheetContent
+                                    side="bottom"
+                                    onOpenAutoFocus={(event) => event.preventDefault()}
+                                    className="h-[92dvh] w-full bg-[#f8fafc] border-0 p-0 rounded-t-3xl overflow-hidden [&>button]:hidden"
+                                >
                                     {status === "pending" ? (
                                         <div className="p-6"><SidebarSkeleton /></div>
                                     ) : (

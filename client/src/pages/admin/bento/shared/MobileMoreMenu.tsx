@@ -57,7 +57,6 @@ export function MobileMoreMenu({
     }, [groups, query]);
 
     const name = user?.name || user?.username || "Admin User";
-    const role = user?.role || "Staff";
     const initials = name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();
 
     return (
@@ -71,26 +70,11 @@ export function MobileMoreMenu({
                     </div>
                 </div>
 
-                {/* Profile card */}
-                <div className="relative mt-3 rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                    <div className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald-500" />
-                    <div className="flex items-center gap-3 pl-4 pr-3 py-3">
-                        <div className="relative h-14 w-14 rounded-full bg-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
-                            {user?.avatar ? <img src={user.avatar} alt={name} className="w-full h-full object-cover" /> : <span className="font-black text-slate-500">{initials}</span>}
-                            {isOnline && <span className="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-white" />}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                            <p className="font-black text-slate-900 text-lg leading-tight truncate">{name}</p>
-                            {user?.id && <p className="text-xs text-slate-400 mt-0.5">ID: {user.id.slice(0, 12)}</p>}
-                        </div>
-                        <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[11px] font-bold text-blue-700">{role}</span>
-                    </div>
-                </div>
-
                 {/* Search */}
                 <div className="relative mt-3">
                     <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                     <input
+                        autoFocus={false}
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
                         placeholder="Search modules…"
@@ -100,12 +84,12 @@ export function MobileMoreMenu({
             </div>
 
             {/* Scrollable groups */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 pt-2 space-y-5">
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 pt-2 space-y-3">
                 {visibleGroups.length === 0 ? (
                     <p className="text-center text-sm text-slate-400 py-10">No modules found</p>
                 ) : visibleGroups.map((group) => (
                     <div key={group.title}>
-                        <p className="px-1 mb-2 text-[11px] font-black uppercase tracking-wider text-slate-400">{group.title}</p>
+                        <p className="px-1 mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-300">{group.title}</p>
                         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                             {group.items.map((item, i) => {
                                 const label = item.id === "service-requests" ? "Service Requests" : item.label;
@@ -115,7 +99,7 @@ export function MobileMoreMenu({
                                     type="button"
                                     onClick={() => onSelect(item.id)}
                                     className={cn(
-                                        "w-full flex items-center gap-3 px-3 py-3.5 text-left active:bg-slate-50 transition-colors",
+                                        "w-full flex items-center gap-3 px-3 py-2.5 text-left active:bg-slate-50 transition-colors",
                                         i !== group.items.length - 1 && "border-b border-slate-100",
                                     )}
                                 >

@@ -63,7 +63,8 @@ function BottomSheetDragWrapper({ children, onClose }: { children: React.ReactNo
     startY.current = e.clientY;
     currentY.current = e.clientY;
     dragging.current = true;
-    sheetRef.current?.setPointerCapture(e.pointerId);
+    if (sheetRef.current) sheetRef.current.style.transition = "none";
+    e.currentTarget.setPointerCapture(e.pointerId);
   };
   const handlePointerMove = (e: React.PointerEvent) => {
     if (!dragging.current) return;
@@ -75,23 +76,35 @@ function BottomSheetDragWrapper({ children, onClose }: { children: React.ReactNo
     if (!dragging.current) return;
     dragging.current = false;
     const delta = currentY.current - startY.current;
-    if (sheetRef.current) {
-      sheetRef.current.style.transform = '';
-      sheetRef.current.releasePointerCapture(e.pointerId);
+    if (e.currentTarget.hasPointerCapture(e.pointerId)) {
+      e.currentTarget.releasePointerCapture(e.pointerId);
     }
-    if (delta > 80) onClose();
+    if (sheetRef.current) {
+      sheetRef.current.style.transition = "transform 180ms ease-out";
+      sheetRef.current.style.transform = delta > 80 ? "translateY(100%)" : "translateY(0)";
+    }
+    if (delta > 80) {
+      window.setTimeout(onClose, 120);
+      return;
+    }
+    window.setTimeout(() => {
+      if (!sheetRef.current || dragging.current) return;
+      sheetRef.current.style.transition = "";
+      sheetRef.current.style.transform = "";
+    }, 190);
   };
 
   return (
     <div
       ref={sheetRef}
-      onPointerMove={handlePointerMove}
-      onPointerUp={handlePointerUp}
       className="h-full"
     >
       <div
         className="flex justify-center pt-2 pb-3 touch-none cursor-grab active:cursor-grabbing"
         onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerCancel={handlePointerUp}
       >
         <div className="w-10 h-1 rounded-full bg-slate-300" />
       </div>
