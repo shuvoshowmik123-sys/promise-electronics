@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Building2, Loader2, ShieldCheck, Mail, Lock, ArrowRight, KeyRound } from "lucide-react";
+import { Building2, Loader2, ShieldCheck, Mail, Lock, ArrowRight, KeyRound, Eye, EyeOff } from "lucide-react";
 import { useCorporateAuth } from "@/contexts/CorporateAuthContext";
 import { useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -13,6 +13,7 @@ export default function CorporateLoginPage() {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     const [trustDevice, setTrustDevice] = useState(false);
+    const [showPassword, setShowPassword] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [showReset, setShowReset] = useState(false);
     const [resetUsername, setResetUsername] = useState("");
@@ -191,13 +192,21 @@ export default function CorporateLoginPage() {
                                         <Lock className="h-5 w-5" />
                                     </div>
                                     <Input
-                                        type="password"
+                                        type={showPassword ? "text" : "password"}
                                         value={password}
                                         onChange={(e) => setPassword(e.target.value)}
                                         placeholder="••••••••"
-                                        className="h-14 pl-12 rounded-2xl bg-white border-slate-100 shadow-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all font-medium"
+                                        className="h-14 pl-12 pr-12 rounded-2xl bg-white border-slate-100 shadow-sm focus:border-blue-500 focus:ring-4 focus:ring-blue-500/5 transition-all font-medium"
                                         required
                                     />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-300 hover:text-slate-500 transition-colors"
+                                        tabIndex={-1}
+                                    >
+                                        {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                                    </button>
                                 </div>
                             </div>
                         </div>

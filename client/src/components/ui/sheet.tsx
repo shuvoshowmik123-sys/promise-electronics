@@ -53,25 +53,82 @@ interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
     VariantProps<typeof sheetVariants> {}
 
+function BottomSheetDragWrapper({ children, onClose }: { children: React.ReactNode, onClose: () => void }) {
+  const startY = React.useRef(0);
+  const currentY = React.useRef(0);
+  const sheetRef = React.useRef<HTMLDivElement>(null);
+  const dragging = React.useRef(false);
+
+  const handlePointerDown = (e: React.PointerEvent) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('button, a, input, [role="button"]')) return;
+    startY.current = e.clientY;
+    currentY.current = e.clientY;
+    dragging.current = true;
+    sheetRef.current?.setPointerCapture(e.pointerId);
+  };
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    currentY.current = e.clientY;
+    const delta = Math.max(0, currentY.current - startY.current);
+    if (sheetRef.current) sheetRef.current.style.transform = `translateY(${delta}px)`;
+  };
+  const handlePointerUp = (e: React.PointerEvent) => {
+    if (!dragging.current) return;
+    dragging.current = false;
+    const delta = currentY.current - startY.current;
+    if (sheetRef.current) {
+      sheetRef.current.style.transform = '';
+      sheetRef.current.releasePointerCapture(e.pointerId);
+    }
+    if (delta > 80) onClose();
+  };
+
+  return (
+    <div
+      ref={sheetRef}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      className="h-full touch-none"
+    >
+      <div className="flex justify-center pt-2 pb-1">
+        <div className="w-10 h-1 rounded-full bg-slate-300" />
+      </div>
+      {children}
+    </div>
+  );
+}
+
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content
-      ref={ref}
-      className={cn(sheetVariants({ side }), className)}
-      {...props}
-    >
-      <SheetPrimitive.Close className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
-        <X className="h-4 w-4" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
-      {children}
-    </SheetPrimitive.Content>
-  </SheetPortal>
-))
+>(({ side = "right", className, children, ...props }, ref) => {
+  const closeRef = React.useRef<HTMLButtonElement>(null);
+
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        ref={ref}
+        className={cn(sheetVariants({ side }), className)}
+        {...props}
+      >
+        <SheetPrimitive.Close ref={closeRef} className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none data-[state=open]:bg-secondary">
+          <X className="h-4 w-4" />
+          <span className="sr-only">Close</span>
+        </SheetPrimitive.Close>
+        {side === "bottom" ? (
+          <BottomSheetDragWrapper onClose={() => closeRef.current?.click()}>
+            {children}
+          </BottomSheetDragWrapper>
+        ) : (
+          children
+        )}
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  );
+})
 SheetContent.displayName = SheetPrimitive.Content.displayName
 
 const SheetHeader = ({
