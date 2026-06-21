@@ -4,16 +4,17 @@ import {
     Users, Search, Plus, Phone, Mail,
     Loader2, Trash2, Activity, ShoppingBag,
     Wrench, CheckCircle, Clock, ExternalLink, RefreshCw,
-    LayoutGrid, List, FileText, SlidersHorizontal
+    LayoutGrid, List, FileText, SlidersHorizontal, KeyRound, Copy, ShieldAlert
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 
 import { adminCustomersApi } from "@/lib/api";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -38,6 +39,7 @@ interface CustomersTabProps {
 
 export default function CustomersTab({ initialSearchQuery, initialCustomerId, onSearchConsumed }: CustomersTabProps = {}) {
     const queryClient = useQueryClient();
+    const { user: currentUser } = useAdminAuth();
     const [searchTerm, setSearchTerm] = useState(initialSearchQuery || "");
     const [viewMode, setViewMode] = useState<"list" | "grid">("list");
     const [mobileFilters, setMobileFilters] = useState<CustomerMobileFilters>({ status: "all", activity: "all", history: "all" });
@@ -46,6 +48,15 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isMobileAddSheetOpen, setIsMobileAddSheetOpen] = useState(false);
     const [formData, setFormData] = useState({ name: "", phone: "", email: "", address: "" });
+    const [resetCodeTarget, setResetCodeTarget] = useState<any | null>(null);
+    const [resetCodeResult, setResetCodeResult] = useState<{
+        code: string;
+        expiresInMinutes: number;
+        customerPhone: string;
+        message: string;
+        customerName?: string;
+    } | null>(null);
+    const isSuperAdmin = currentUser?.role === "Super Admin";
 
     const { data: customers = [], isLoading } = useQuery({
         queryKey: ["customers"],
@@ -75,6 +86,21 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["customers"] });
             toast.success("Customer deleted");
+        },
+    });
+
+    const resetCodeMutation = useMutation({
+        mutationFn: (customerId: string) => adminCustomersApi.generateResetCode(customerId),
+        onSuccess: (result) => {
+            setResetCodeResult({
+                ...result,
+                customerName: resetCodeTarget?.name,
+            });
+            setResetCodeTarget(null);
+            toast.success("Reset code generated");
+        },
+        onError: (error: any) => {
+            toast.error(error.message || "Failed to generate reset code");
         },
     });
 
@@ -192,6 +218,12 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                 window.location.hash = `#jobs?search=${interaction.reference}`;
             }
         }, 100);
+    };
+
+    const copyResetCode = async () => {
+        if (!resetCodeResult?.code) return;
+        await navigator.clipboard.writeText(resetCodeResult.code);
+        toast.success("Reset code copied");
     };
 
     return (
@@ -708,7 +740,7 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                         </div>
 
                                         {/* Actions */}
-                                        <div className="flex gap-3">
+                                        <div className="flex flex-wrap gap-3">
                                             <Button
                                                 variant="outline"
                                                 className="text-blue-600 border-blue-200 bg-blue-50 hover:bg-blue-100 font-semibold"
@@ -722,6 +754,16 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                                 <FileText className="h-4 w-4 mr-2" />
                                                 Create Quotation
                                             </Button>
+                                            {isSuperAdmin && (
+                                                <Button
+                                                    variant="outline"
+                                                    className="border-amber-200 bg-amber-50 font-semibold text-amber-700 hover:bg-amber-100"
+                                                    onClick={() => setResetCodeTarget(activitySheet.customer)}
+                                                >
+                                                    <KeyRound className="mr-2 h-4 w-4" />
+                                                    Generate Reset Code
+                                                </Button>
+                                            )}
                                         </div>
 
                                         {/* Interaction Timeline */}
@@ -800,6 +842,74 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                 )}
             </AnimatePresence>
             </motion.div>
+
+            <Dialog open={!!resetCodeTarget} onOpenChange={(open) => !open && setResetCodeTarget(null)}>
+                <DialogContent className="rounded-2xl border-amber-100 sm:max-w-md">
+                    <DialogHeader>
+                        <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-700">
+                            <ShieldAlert className="h-6 w-6" />
+                        </div>
+                        <DialogTitle>Generate reset code?</DialogTitle>
+                        <DialogDescription>
+                            Generate a one-time password reset code only after verifying this customer by phone, ticket, or repair details.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                        <div className="text-sm font-black text-slate-900">{resetCodeTarget?.name}</div>
+                        <div className="mt-1 text-xs font-semibold text-slate-500">{formatBdPhone(resetCodeTarget?.phone)}</div>
+                    </div>
+                    <DialogFooter className="gap-2 sm:gap-2">
+                        <Button variant="outline" onClick={() => setResetCodeTarget(null)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            className="bg-amber-600 text-white hover:bg-amber-700"
+                            disabled={!resetCodeTarget || resetCodeMutation.isPending}
+                            onClick={() => resetCodeTarget && resetCodeMutation.mutate(resetCodeTarget.id)}
+                        >
+                            {resetCodeMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                            Generate Code
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={!!resetCodeResult} onOpenChange={(open) => !open && setResetCodeResult(null)}>
+                <DialogContent className="rounded-2xl border-emerald-100 sm:max-w-md">
+                    <DialogHeader>
+                        <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                            <KeyRound className="h-6 w-6" />
+                        </div>
+                        <DialogTitle>Reset code generated</DialogTitle>
+                        <DialogDescription>
+                            Show this code only to the verified customer. It will not be visible again after this dialog closes.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-center">
+                            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-700">
+                                One-time code
+                            </div>
+                            <div className="mt-2 font-mono text-4xl font-black tracking-[0.25em] text-slate-950">
+                                {resetCodeResult?.code}
+                            </div>
+                        </div>
+                        <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+                            Give this code to {resetCodeResult?.customerName || "the verified customer"} only. It expires in {resetCodeResult?.expiresInMinutes || 10} minutes and works once.
+                            <div className="mt-1 text-amber-800">Phone check: {resetCodeResult?.customerPhone}</div>
+                        </div>
+                    </div>
+                    <DialogFooter className="gap-2 sm:gap-2">
+                        <Button variant="outline" onClick={() => setResetCodeResult(null)}>
+                            Close
+                        </Button>
+                        <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={copyResetCode}>
+                            <Copy className="mr-2 h-4 w-4" />
+                            Copy Code
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <AnimatePresence>
                 {isMobileFilterSheetOpen && (

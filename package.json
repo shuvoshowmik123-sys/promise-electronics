@@ -16,6 +16,13 @@
     "lint": "eslint .",
     "test": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:smoke": "TEST_LEVEL=1 playwright test e2e/customer/smoke.spec.ts e2e/admin/smoke.spec.ts",
+    "test:e2e:headed": "cross-env HEADED=1 TEST_LEVEL=3 playwright test --headed",
+    "test:e2e:mobile-headed": "cross-env HEADED=1 SLOW_MO=200 TEST_LEVEL=3 playwright test e2e/mobile --project=mobile-chrome --headed",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:update-snapshots": "playwright test e2e/visual --update-snapshots",
     "db:push": "drizzle-kit push",
     "schema:check:prod": "tsx scripts/check-production-schema.ts"
   },
@@ -155,8 +162,10 @@
     "zod-validation-error": "^3.4.0"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
     "@eslint/js": "^10.0.1",
     "@playwright/mcp": "^0.0.75",
+    "@playwright/test": "^1.61.0",
     "@replit/vite-plugin-cartographer": "^0.4.4",
     "@replit/vite-plugin-dev-banner": "^0.1.1",
     "@replit/vite-plugin-runtime-error-modal": "^0.0.3",

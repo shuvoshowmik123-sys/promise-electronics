@@ -135,8 +135,8 @@ router.post('/api/orders', requireCustomerAuth, async (req: Request, res: Respon
 
         res.status(201).json(order);
     } catch (error: any) {
-        console.error('Order creation error:', error);
-        res.status(500).json({ error: 'Failed to create order', details: error.message });
+        console.error('[Orders] Creation failed:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to create order' });
     }
 });
 

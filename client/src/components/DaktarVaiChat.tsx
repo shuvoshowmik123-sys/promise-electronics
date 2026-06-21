@@ -22,7 +22,7 @@ export function DaktarVaiChat() {
     const [isListening, setIsListening] = useState(false);
     const scrollRef = useRef<HTMLDivElement>(null);
     const { toast } = useToast();
-    const [, setLocation] = useLocation();
+    const [location, setLocation] = useLocation();
 
     // Web Speech API
     const recognitionRef = useRef<any>(null);
@@ -146,6 +146,8 @@ export function DaktarVaiChat() {
             document.removeEventListener("mousedown", handleClickOutside);
         };
     }, [isOpen]);
+
+    if (location.split("?")[0] === "/login") return null;
 
     return (
         <>

@@ -26,6 +26,8 @@ const TrackJobPage = lazy(() => import("@/pages/track-job"));
 const SupportPage = lazy(() => import("@/pages/support"));
 const MyProfilePage = lazy(() => import("@/pages/my-profile"));
 const MyWarrantiesPage = lazy(() => import("@/pages/my-warranties"));
+const MyRepairsPage = lazy(() => import("@/pages/my-repairs"));
+const MyRepairDetailPage = lazy(() => import("@/pages/my-repair-detail"));
 const LoginPage = lazy(() => import("@/pages/login"));
 const AboutPage = lazy(() => import("@/pages/about"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy"));
@@ -150,6 +152,16 @@ export function CustomerRouter() {
                                 <Route path="/my-profile">
                                     <CustomerErrorBoundary fallbackTitle="Profile Error">
                                         <CustomerProtectedRoute><MyProfilePage /></CustomerProtectedRoute>
+                                    </CustomerErrorBoundary>
+                                </Route>
+                                <Route path="/my-repairs">
+                                    <CustomerErrorBoundary fallbackTitle="Repairs Error">
+                                        <CustomerProtectedRoute><MyRepairsPage /></CustomerProtectedRoute>
+                                    </CustomerErrorBoundary>
+                                </Route>
+                                <Route path="/my-repairs/:id">
+                                    <CustomerErrorBoundary fallbackTitle="Repair Journey Error">
+                                        <CustomerProtectedRoute><MyRepairDetailPage /></CustomerProtectedRoute>
                                     </CustomerErrorBoundary>
                                 </Route>
                                 <Route path="/my-warranties">

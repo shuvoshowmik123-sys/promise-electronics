@@ -115,6 +115,20 @@ export const registrationLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for account recovery / password reset
+ * Prevents abuse of the recovery flow
+ * Allows 5 requests per hour per IP
+ */
+export const accountRecoveryLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000,
+    max: 5,
+    statusCode: 200,
+    message: { message: 'If the details match an account, support will contact you.' },
+    standardHeaders: false,
+    legacyHeaders: false,
+});
+
+/**
  * Rate limiter for ImageKit auth endpoint
  * Allows guest uploads but prevents token farming
  * Allows 5 auth requests per 10 minutes per IP

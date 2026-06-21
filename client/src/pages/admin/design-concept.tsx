@@ -11,7 +11,7 @@ import {
     Banknote, UserCheck, UserCog, HardHat, Building2,
     FileText, HelpCircle, Settings, Bell, Search, User, Zap,
     PieChart, Users, LineChart, Menu, LogOut,
-    ShieldCheck, RotateCcw, FileWarning, Brain, WifiOff
+    ShieldCheck, RotateCcw, FileWarning, Brain, WifiOff, Wrench
 } from "lucide-react";
 
 // Contexts
@@ -50,6 +50,7 @@ const JobTicketsTab = lazy(() => import("./bento/tabs/JobTicketsTab"));
 const PickupTab = lazy(() => import("./bento/tabs/PickupTab"));
 const ChallanTab = lazy(() => import("./bento/tabs/ChallanTab"));
 const ServiceRequestsTab = lazy(() => import("./bento/tabs/ServiceRequestsTab"));
+const CustomerRepairJourneysTab = lazy(() => import("./bento/tabs/CustomerRepairJourneysTab"));
 
 const SystemHealthTab = lazy(() => import("./bento/tabs/SystemHealthTab"));
 const FinancesTab = lazy(() => import("./bento/tabs/FinancesTab"));
@@ -90,6 +91,7 @@ const TAB_PRELOADERS: Record<string, () => Promise<unknown>> = {
     finance: () => import("./bento/tabs/FinancesTab"),
     customers: () => import("./bento/tabs/CustomersTab"),
     "service-requests": () => import("./bento/tabs/ServiceRequestsTab"),
+    "repair-journeys": () => import("./bento/tabs/CustomerRepairJourneysTab"),
     pickup: () => import("./bento/tabs/PickupTab"),
     inquiries: () => import("./bento/tabs/InquiriesTab"),
 };
@@ -256,6 +258,7 @@ export default function DesignConcept() {
         'overview': 'dashboard',
         'jobs': 'jobs',
         'service-requests': 'service_requests',
+        'repair-journeys': 'service_requests',
         'pos': 'pos',
         'inventory': 'inventory',
         'customers': 'customers',
@@ -291,6 +294,7 @@ export default function DesignConcept() {
         'overview': 'dashboard',
         'jobs': 'jobs',
         'service-requests': 'serviceRequests',
+        'repair-journeys': 'serviceRequests',
         'pos': 'pos',
         'inventory': 'inventory',
         'customers': 'users',        // viewing customers requires users perm
@@ -342,7 +346,7 @@ export default function DesignConcept() {
     // Display names for breadcrumb
     const TAB_DISPLAY_NAMES: Record<string, string> = {
         'dashboard': 'Dashboard', 'overview': 'Overview',
-        'system-health': 'System Health', 'service-requests': 'Service Requests',
+        'system-health': 'System Health', 'service-requests': 'Service Requests', 'repair-journeys': 'Repair Journeys',
         'jobs': 'Job Tickets', 'pickup': 'Pickups', 'challans': 'Challans',
         'pos': 'Point of Sale', 'orders': 'Orders', 'inventory': 'Inventory',
         'finance': 'Finance', 'b2b': 'B2B Workspace', 'corp-msg': 'Corp. Messages',
@@ -372,6 +376,7 @@ export default function DesignConcept() {
             title: "Operations",
             items: [
                 { label: "Requests", id: "service-requests", icon: MessageSquare, color: "orange", layout: "fixed" },
+                { label: "Repair Journeys", id: "repair-journeys", icon: Wrench, color: "emerald", layout: "fixed" },
                 { label: "Jobs", id: "jobs", icon: ClipboardList, color: "violet", layout: "fixed" },
                 { label: "Pickups", id: "pickup", icon: Truck, color: "cyan", layout: "scroll" },
                 { label: "Challans", id: "challans", icon: ScrollText, color: "teal", layout: "fixed" },
@@ -814,6 +819,7 @@ export default function DesignConcept() {
                                                     initialRequestId={selectedServiceRequestId ?? undefined}
                                                     onSearchConsumed={() => setGlobalSearchQuery('')}
                                                 />}
+                                                {tabId === 'repair-journeys' && <CustomerRepairJourneysTab />}
 
                                                 {tabId === 'jobs' && <JobTicketsTab
                                                     initialSearchQuery={globalSearchQuery}
@@ -895,7 +901,7 @@ export default function DesignConcept() {
                                                 {tabId === 'workflow-demo' && <Suspense fallback={<DashboardSkeleton />}><PlaceholderTab tabName={tabId} /></Suspense>}
                                                 {tabId === 'audit-logs' && <Suspense fallback={<DashboardSkeleton />}><AuditLogsTab /></Suspense>}
 
-                                                {!['dashboard', 'overview', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'customers', 'quotations', 'inquiries', 'workflow-demo', 'salary', 'cashier', 'technician', 'purchasing', 'warranty', 'refunds', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain'].includes(tabId) && (
+                                                {!['dashboard', 'overview', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'customers', 'quotations', 'inquiries', 'workflow-demo', 'salary', 'cashier', 'technician', 'purchasing', 'warranty', 'refunds', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain'].includes(tabId) && (
                                                     <Suspense fallback={<DashboardSkeleton />}>
                                                         <PlaceholderTab tabName={tabId} />
                                                     </Suspense>

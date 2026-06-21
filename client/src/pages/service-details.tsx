@@ -5,8 +5,27 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { serviceCatalogApi } from "@/lib/api";
-import { Tv, Monitor, Smartphone, LayoutGrid, Cpu, Zap, Volume2, Gamepad2, Wrench, Clock, ArrowRight, ArrowLeft, CheckCircle, ChevronLeft, ChevronRight } from "lucide-react";
-import { useState } from "react";
+import { cn } from "@/lib/utils";
+import { PillButton, StatusChip } from "@/components/customer/mobile-kit";
+import {
+  Tv,
+  Monitor,
+  Smartphone,
+  LayoutGrid,
+  Cpu,
+  Zap,
+  Volume2,
+  Gamepad2,
+  Wrench,
+  Clock,
+  ArrowRight,
+  ArrowLeft,
+  CheckCircle,
+  ChevronLeft,
+  ChevronRight,
+  Share2,
+} from "lucide-react";
+import React, { useState } from "react";
 import { QueryErrorState } from "@/components/customer/QueryErrorState";
 
 interface ServiceWithImages {
@@ -23,16 +42,21 @@ interface ServiceWithImages {
   images?: string | null;
 }
 
-const iconMap: Record<string, React.ReactNode> = {
-  Tv: <Tv className="h-12 w-12" />,
-  Monitor: <Monitor className="h-12 w-12" />,
-  Smartphone: <Smartphone className="h-12 w-12" />,
-  LayoutGrid: <LayoutGrid className="h-12 w-12" />,
-  Cpu: <Cpu className="h-12 w-12" />,
-  Zap: <Zap className="h-12 w-12" />,
-  Volume2: <Volume2 className="h-12 w-12" />,
-  Gamepad2: <Gamepad2 className="h-12 w-12" />,
+const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
+  Tv: ({ className }) => <Tv className={cn("h-12 w-12", className)} />,
+  Monitor: ({ className }) => <Monitor className={cn("h-12 w-12", className)} />,
+  Smartphone: ({ className }) => <Smartphone className={cn("h-12 w-12", className)} />,
+  LayoutGrid: ({ className }) => <LayoutGrid className={cn("h-12 w-12", className)} />,
+  Cpu: ({ className }) => <Cpu className={cn("h-12 w-12", className)} />,
+  Zap: ({ className }) => <Zap className={cn("h-12 w-12", className)} />,
+  Volume2: ({ className }) => <Volume2 className={cn("h-12 w-12", className)} />,
+  Gamepad2: ({ className }) => <Gamepad2 className={cn("h-12 w-12", className)} />,
 };
+
+function ServiceIcon({ name, className }: { name: string | null | undefined; className?: string }) {
+  const IconComponent = iconMap[name || ""] || ((props: { className?: string }) => <Wrench className={cn("h-12 w-12", props.className)} />);
+  return <IconComponent className={className} />;
+}
 
 function formatPrice(price: number | string | null | undefined): string | null {
   if (price === null || price === undefined) return null;
@@ -128,6 +152,45 @@ function ImageGallery({ images }: { images: string[] }) {
   );
 }
 
+function MobileImageGallery({ images }: { images: string[] }) {
+  const [currentIndex, setCurrentIndex] = useState(0);
+
+  if (images.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="relative aspect-[4/3] w-full overflow-hidden bg-slate-100">
+      <img
+        src={images[currentIndex]}
+        alt={`Service image ${currentIndex + 1}`}
+        className="w-full h-full object-cover"
+        data-testid="mobile-service-image"
+      />
+      {images.length > 1 && (
+        <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+          {images.map((_, index) => (
+            <button
+              key={index}
+              type="button"
+              onClick={() => setCurrentIndex(index)}
+              className={`h-2 w-2 rounded-full transition-colors ${index === currentIndex ? 'bg-blue-600' : 'bg-slate-300'}`}
+              data-testid={`mobile-gallery-dot-${index}`}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const features = [
+  "Free diagnostic assessment",
+  "90-day warranty on repairs",
+  "Pickup & delivery available",
+  "Genuine replacement parts",
+];
+
 export default function ServiceDetailsPage() {
   const [, params] = useRoute("/services/:id");
   const [, setLocation] = useLocation();
@@ -143,7 +206,6 @@ export default function ServiceDetailsPage() {
 
   usePageTitle(service ? `${service.name} - Promise Electronics` : "Service Details");
 
-  const icon = service ? (iconMap[service.icon || ""] || <Wrench className="h-12 w-12" />) : null;
   const images = service ? parseImages(service.images ?? null) : [];
 
   const handleGetQuote = () => {
@@ -152,10 +214,37 @@ export default function ServiceDetailsPage() {
     }
   };
 
+  const handleShare = async () => {
+    if (!service) return;
+    const shareData = {
+      title: service.name,
+      text: `${service.name} - Promise Electronics`,
+      url: window.location.href,
+    };
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch {
+        // share cancelled or failed
+      }
+    }
+  };
+
   if (isLoading) {
     return (
       <>
-        <main className="flex-1 py-12">
+        <main className="md:hidden flex min-h-[calc(100dvh-8rem-env(safe-area-inset-bottom))] flex-1 items-center justify-center p-4" data-testid="mobile-loading-state">
+          <div className="w-full max-w-sm space-y-4 rounded-3xl bg-white p-6 shadow-sm border border-slate-100">
+            <Skeleton className="aspect-[4/3] w-full rounded-2xl" />
+            <Skeleton className="h-8 w-3/4" />
+            <Skeleton className="h-4 w-full" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-24 w-full rounded-2xl" />
+            <Skeleton className="h-14 w-full rounded-full" />
+          </div>
+        </main>
+
+        <main className="hidden md:block flex-1 py-12">
           <div className="container mx-auto px-4">
             <Skeleton className="h-8 w-32 mb-8" />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
@@ -177,7 +266,28 @@ export default function ServiceDetailsPage() {
   if (isError) {
     return (
       <>
-        <main className="flex-1 py-12">
+        <main className="md:hidden flex min-h-[calc(100dvh-8rem-env(safe-area-inset-bottom))] flex-1 items-center justify-center p-4" data-testid="mobile-error-state">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-sm border border-slate-100 text-center">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-rose-50 text-rose-600">
+              <Wrench className="h-8 w-8" />
+            </div>
+            <h1 className="text-xl font-bold mb-2">Failed to load service details</h1>
+            <p className="text-sm text-muted-foreground mb-6">
+              Something went wrong while loading the service. Please try again.
+            </p>
+            <div className="flex flex-col gap-3">
+              <Button onClick={() => refetch()} className="w-full rounded-full" data-testid="mobile-error-retry-button">
+                Try Again
+              </Button>
+              <Button variant="outline" onClick={() => setLocation('/services')} className="w-full rounded-full" data-testid="mobile-error-back-button">
+                <ArrowLeft className="mr-2 h-4 w-4" />
+                Back to Services
+              </Button>
+            </div>
+          </div>
+        </main>
+
+        <main className="hidden md:block flex-1 py-12">
           <div className="container mx-auto px-4">
             <QueryErrorState
               message="Failed to load service details"
@@ -193,7 +303,21 @@ export default function ServiceDetailsPage() {
   if (!service) {
     return (
       <>
-        <main className="flex-1 py-12">
+        <main className="md:hidden flex min-h-[calc(100dvh-8rem-env(safe-area-inset-bottom))] flex-1 items-center justify-center p-4" data-testid="mobile-not-found-state">
+          <div className="w-full max-w-sm rounded-3xl bg-white p-8 shadow-sm border border-slate-100 text-center">
+            <Wrench className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
+            <h1 className="text-xl font-bold mb-2">Service Not Found</h1>
+            <p className="text-sm text-muted-foreground mb-6">
+              The service you're looking for doesn't exist or has been removed.
+            </p>
+            <Button onClick={() => setLocation('/services')} className="w-full rounded-full" data-testid="mobile-not-found-back-button">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Services
+            </Button>
+          </div>
+        </main>
+
+        <main className="hidden md:block flex-1 py-12">
           <div className="container mx-auto px-4 text-center">
             <Wrench className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h1 className="text-2xl font-bold mb-2">Service Not Found</h1>
@@ -212,7 +336,112 @@ export default function ServiceDetailsPage() {
 
   return (
     <>
-      <main className="flex-1">
+      <main className="md:hidden flex-1 bg-slate-50" data-testid="mobile-service-details">
+        <div className="pb-24">
+          <div className="sticky top-0 z-20 flex items-center justify-between bg-white/85 px-4 py-3 pt-[env(safe-area-inset-top)] backdrop-blur-xl">
+            <button
+              type="button"
+              onClick={() => setLocation('/services')}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition active:scale-95"
+              data-testid="mobile-back-button"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={handleShare}
+              className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-100 text-slate-700 transition active:scale-95"
+              data-testid="mobile-share-button"
+            >
+              <Share2 className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="px-4 pt-3 pb-6 space-y-5">
+            {images.length > 0 ? (
+              <div className="overflow-hidden rounded-3xl bg-white shadow-sm" data-testid="mobile-gallery-card">
+                <MobileImageGallery images={images} />
+              </div>
+            ) : (
+              <div className="flex aspect-[4/3] items-center justify-center rounded-3xl bg-blue-50 text-blue-600" data-testid="mobile-icon-placeholder">
+                <ServiceIcon name={service.icon} className="h-24 w-24" />
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <h1 className="text-2xl font-bold text-slate-900" data-testid="mobile-service-name">
+                {service.name}
+              </h1>
+              <div className="flex flex-wrap items-center gap-2">
+                {service.category && (
+                  <Badge variant="outline" data-testid="mobile-service-category">
+                    {service.category}
+                  </Badge>
+                )}
+                {service.estimatedDays && (
+                  <StatusChip tone="neutral" className="text-xs" data-testid="mobile-service-estimated-days">
+                    <Clock className="h-3 w-3" />
+                    {service.estimatedDays}
+                  </StatusChip>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-3xl bg-gradient-to-br from-blue-50 to-white p-6 border border-blue-100">
+              <p className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-2">Estimated Price Range</p>
+              <p className="text-3xl font-bold text-blue-700" data-testid="mobile-service-price">
+                {formatPrice(service.minPrice) && formatPrice(service.maxPrice)
+                  ? `${formatPrice(service.minPrice)} - ${formatPrice(service.maxPrice)}`
+                  : formatPrice(service.minPrice) || formatPrice(service.maxPrice) || 'Contact for pricing'}
+              </p>
+              <p className="text-xs text-slate-500 mt-2">
+                Final price will be determined after inspection of your device
+              </p>
+            </div>
+
+            <p className="text-base text-slate-600 leading-relaxed" data-testid="mobile-service-description">
+              {service.description}
+            </p>
+
+            <div className="rounded-3xl bg-white p-5 shadow-sm border border-slate-100 space-y-3">
+              {features.map((feature, index) => (
+                <div key={feature} className="flex items-center gap-3" data-testid={`mobile-feature-${index}`}>
+                  <CheckCircle className="h-5 w-5 text-green-500 shrink-0" />
+                  <span className="text-sm font-medium text-slate-700">{feature}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="rounded-3xl bg-white p-5 shadow-sm border border-slate-100">
+              <p className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-3">How It Works</p>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { step: "1", title: "Request Quote", desc: "Tell us about your device issue" },
+                  { step: "2", title: "Get Quote", desc: "We'll send you an estimate" },
+                  { step: "3", title: "Schedule", desc: "Pick a convenient time" },
+                  { step: "4", title: "Get Repaired", desc: "We fix & deliver back" },
+                ].map((item) => (
+                  <div key={item.step} className="rounded-2xl bg-slate-50 p-3">
+                    <div className="mb-2 flex h-6 w-6 items-center justify-center rounded-full bg-blue-600 text-xs font-bold text-white">
+                      {item.step}
+                    </div>
+                    <h3 className="text-sm font-semibold text-slate-900">{item.title}</h3>
+                    <p className="text-xs text-slate-500">{item.desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="fixed bottom-0 left-0 right-0 z-30 border-t border-slate-100 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+          <PillButton onClick={handleGetQuote} data-testid="mobile-get-quote-button">
+            Get a Quote
+          </PillButton>
+        </div>
+      </main>
+
+      <main className="hidden md:block flex-1">
         <section className="py-8 md:py-12">
           <div className="container mx-auto px-4">
             <Button
@@ -231,7 +460,9 @@ export default function ServiceDetailsPage() {
                   <ImageGallery images={images} />
                 ) : (
                   <div className="aspect-video w-full rounded-xl bg-gradient-to-br from-primary/10 to-primary/5 flex items-center justify-center">
-                    <div className="text-primary">{icon}</div>
+                    <div className="text-primary">
+                      <ServiceIcon name={service.icon} />
+                    </div>
                   </div>
                 )}
               </div>
@@ -240,7 +471,7 @@ export default function ServiceDetailsPage() {
                 <div>
                   <div className="flex items-center gap-3 mb-2">
                     <div className="w-14 h-14 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                      {icon}
+                      <ServiceIcon name={service.icon} />
                     </div>
                     {service.estimatedDays && (
                       <Badge variant="secondary">
@@ -274,22 +505,12 @@ export default function ServiceDetailsPage() {
                 </div>
 
                 <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                    <span>Free diagnostic assessment</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                    <span>90-day warranty on repairs</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                    <span>Pickup & delivery available</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <CheckCircle className="h-5 w-5 text-green-500" />
-                    <span>Genuine replacement parts</span>
-                  </div>
+                  {features.map((feature) => (
+                    <div key={feature} className="flex items-center gap-3">
+                      <CheckCircle className="h-5 w-5 text-green-500" />
+                      <span>{feature}</span>
+                    </div>
+                  ))}
                 </div>
 
                 <Button

@@ -18,6 +18,7 @@ import { logModelCase } from '../brain/kg.service.js';
 import { bindCustomerToJob, recordJobClosed } from '../services/canonical-customer.service.js';
 import { db } from '../db.js';
 import { localPurchases } from '../../shared/schema.js';
+import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 import { eq } from 'drizzle-orm';
 
 const router = Router();
@@ -32,7 +33,7 @@ const ROLLBACK_REALTIME_TAGS = ["pendingRollbacks", "adminNotifications", "admin
 /**
  * GET /api/job-tickets/list - Lightweight list for tables (no heavy logs)
  */
-router.get('/api/job-tickets/list', async (req: Request, res: Response) => {
+router.get('/api/job-tickets/list', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
     try {
         const limit = parseInt(req.query.limit as string) || 50;
         const page = parseInt(req.query.page as string) || 1;
@@ -48,7 +49,7 @@ router.get('/api/job-tickets/list', async (req: Request, res: Response) => {
 /**
  * GET /api/job-tickets - Get all job tickets
  */
-router.get('/api/job-tickets', async (req: Request, res: Response) => {
+router.get('/api/job-tickets', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 50;
@@ -92,7 +93,7 @@ router.get('/api/job-tickets', async (req: Request, res: Response) => {
 /**
  * GET /api/job-tickets/next-number - Get next auto-generated job number
  */
-router.get('/api/job-tickets/next-number', async (req: Request, res: Response) => {
+router.get('/api/job-tickets/next-number', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
     try {
         const nextNumber = await jobRepo.getNextJobNumber();
         res.json({ nextNumber });
@@ -104,7 +105,7 @@ router.get('/api/job-tickets/next-number', async (req: Request, res: Response) =
 /**
  * GET /api/job-tickets/ready-for-billing - Get jobs ready for billing
  */
-router.get('/api/job-tickets/ready-for-billing', async (req: Request, res: Response) => {
+router.get('/api/job-tickets/ready-for-billing', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
     try {
         const allJobs = jobRepo.filterJobTicketsByLane(await jobRepo.getAllJobTickets(), "walk-in");
         // Filter for jobs that are completed but not yet delivered/closed
@@ -132,7 +133,7 @@ router.get('/api/job-tickets/pending-rollbacks', requireAdminAuth, requirePermis
 /**
  * GET /api/job-tickets/:id - Get job ticket by ID
  */
-router.get('/api/job-tickets/:id', async (req: Request, res: Response) => {
+router.get('/api/job-tickets/:id', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
     try {
         const job = await jobRepo.getJobTicket(req.params.id);
         if (!job) {
@@ -373,8 +374,14 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requirePerm
                 });
             }
         } catch (syncErr) {
-            console.error('[Projection] Failed to project SR from advance-status:', syncErr);
+            console.error('[Projection] Failed to project SR from advance-status:', (syncErr as Error).message);
         }
+
+        repairJourneyService.syncJobStatusToJourney(jobId, nextStatus, {
+            device: (updatedJob as any)?.device,
+            warrantyDays: (updatedJob as any)?.warrantyDays,
+            warrantyExpiryDate: (updatedJob as any)?.warrantyExpiryDate,
+        }).catch((err) => console.error('[RepairJourney] Job sync failed:', (err as Error).message));
 
         res.json(updatedJob);
     } catch (error: any) {

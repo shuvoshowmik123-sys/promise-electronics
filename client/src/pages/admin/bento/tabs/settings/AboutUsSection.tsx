@@ -19,27 +19,43 @@ export interface TeamMember {
 
 interface AboutUsSectionProps {
     aboutTitle: string; setAboutTitle: (v: string) => void;
+    aboutTitleBn: string; setAboutTitleBn: (v: string) => void;
     aboutDescription: string; setAboutDescription: (v: string) => void;
+    aboutDescriptionBn: string; setAboutDescriptionBn: (v: string) => void;
     aboutMission: string; setAboutMission: (v: string) => void;
+    aboutMissionBn: string; setAboutMissionBn: (v: string) => void;
     aboutVision: string; setAboutVision: (v: string) => void;
+    aboutVisionBn: string; setAboutVisionBn: (v: string) => void;
     aboutCapabilities: string[]; setAboutCapabilities: (v: string[]) => void;
+    aboutCapabilitiesBn: string[]; setAboutCapabilitiesBn: (v: string[]) => void;
     aboutTeam: string; setAboutTeam: (v: string) => void;
+    aboutTeamBn: string; setAboutTeamBn: (v: string) => void;
     aboutAddress: string; setAboutAddress: (v: string) => void;
+    aboutAddressBn: string; setAboutAddressBn: (v: string) => void;
     aboutEmail: string; setAboutEmail: (v: string) => void;
     aboutWorkingHours: string; setAboutWorkingHours: (v: string) => void;
+    aboutWorkingHoursBn: string; setAboutWorkingHoursBn: (v: string) => void;
     teamMembers: TeamMember[]; setTeamMembers: (v: TeamMember[]) => void;
 }
 
 export default function AboutUsSection({
     aboutTitle, setAboutTitle,
+    aboutTitleBn, setAboutTitleBn,
     aboutDescription, setAboutDescription,
+    aboutDescriptionBn, setAboutDescriptionBn,
     aboutMission, setAboutMission,
+    aboutMissionBn, setAboutMissionBn,
     aboutVision, setAboutVision,
+    aboutVisionBn, setAboutVisionBn,
     aboutCapabilities, setAboutCapabilities,
+    aboutCapabilitiesBn, setAboutCapabilitiesBn,
     aboutTeam, setAboutTeam,
+    aboutTeamBn, setAboutTeamBn,
     aboutAddress, setAboutAddress,
+    aboutAddressBn, setAboutAddressBn,
     aboutEmail, setAboutEmail,
     aboutWorkingHours, setAboutWorkingHours,
+    aboutWorkingHoursBn, setAboutWorkingHoursBn,
     teamMembers, setTeamMembers
 }: AboutUsSectionProps) {
 
@@ -84,11 +100,29 @@ export default function AboutUsSection({
                         />
                     </div>
                     <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Page Title (Bangla)</Label>
+                        <Input
+                            value={aboutTitleBn}
+                            onChange={(e) => setAboutTitleBn(e.target.value)}
+                            placeholder="বাংলা শিরোনাম লিখুন"
+                            className="bg-white/50"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
                         <Label className="text-xs text-muted-foreground">Company Description</Label>
                         <Textarea
                             value={aboutDescription}
                             onChange={(e) => setAboutDescription(e.target.value)}
                             placeholder="Tell visitors about your company..."
+                            className="bg-white/50 min-h-[100px]"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Company Description (Bangla)</Label>
+                        <Textarea
+                            value={aboutDescriptionBn}
+                            onChange={(e) => setAboutDescriptionBn(e.target.value)}
+                            placeholder="বাংলা বর্ণনা লিখুন"
                             className="bg-white/50 min-h-[100px]"
                         />
                     </div>
@@ -108,11 +142,29 @@ export default function AboutUsSection({
                         />
                     </div>
                     <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Mission Statement (Bangla)</Label>
+                        <Textarea
+                            value={aboutMissionBn}
+                            onChange={(e) => setAboutMissionBn(e.target.value)}
+                            placeholder="বাংলা মিশন লিখুন"
+                            className="bg-white/50 min-h-[80px]"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
                         <Label className="text-xs text-muted-foreground">Vision Statement</Label>
                         <Textarea
                             value={aboutVision}
                             onChange={(e) => setAboutVision(e.target.value)}
                             placeholder="Our vision is to..."
+                            className="bg-white/50 min-h-[80px]"
+                        />
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Vision Statement (Bangla)</Label>
+                        <Textarea
+                            value={aboutVisionBn}
+                            onChange={(e) => setAboutVisionBn(e.target.value)}
+                            placeholder="বাংলা ভিশন লিখুন"
                             className="bg-white/50 min-h-[80px]"
                         />
                     </div>
@@ -130,6 +182,16 @@ export default function AboutUsSection({
                     accentColor="amber"
                 />
             </div>
+            <div className="md:col-span-2">
+                <TagListCard
+                    title="Our Capabilities (Bangla)"
+                    icon={<Lightbulb className="w-5 h-5 text-amber-500" />}
+                    items={aboutCapabilitiesBn}
+                    setItems={setAboutCapabilitiesBn}
+                    placeholder="বাংলা সক্ষমতা যোগ করুন"
+                    accentColor="amber"
+                />
+            </div>
 
             {/* 4. Team Description */}
             <BentoCard title="Team Overview" icon={<Users className="w-5 h-5 text-indigo-500" />} variant="glass">
@@ -139,6 +201,13 @@ export default function AboutUsSection({
                         value={aboutTeam}
                         onChange={(e) => setAboutTeam(e.target.value)}
                         placeholder="Describe your team..."
+                        className="bg-white/50 min-h-[120px]"
+                    />
+                    <Label className="text-xs text-muted-foreground">Team Bio (Bangla)</Label>
+                    <Textarea
+                        value={aboutTeamBn}
+                        onChange={(e) => setAboutTeamBn(e.target.value)}
+                        placeholder="বাংলায় টিমের পরিচিতি লিখুন"
                         className="bg-white/50 min-h-[120px]"
                     />
                 </div>
@@ -157,6 +226,15 @@ export default function AboutUsSection({
                         />
                     </div>
                     <div className="flex items-center gap-3">
+                        <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <Input
+                            value={aboutAddressBn}
+                            onChange={(e) => setAboutAddressBn(e.target.value)}
+                            placeholder="ব্যবসার ঠিকানা বাংলায়"
+                            className="bg-white/50"
+                        />
+                    </div>
+                    <div className="flex items-center gap-3">
                         <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
                         <Input
                             value={aboutEmail}
@@ -171,6 +249,15 @@ export default function AboutUsSection({
                             value={aboutWorkingHours}
                             onChange={(e) => setAboutWorkingHours(e.target.value)}
                             placeholder="Working Hours"
+                            className="bg-white/50"
+                        />
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
+                        <Input
+                            value={aboutWorkingHoursBn}
+                            onChange={(e) => setAboutWorkingHoursBn(e.target.value)}
+                            placeholder="কাজের সময় বাংলায়"
                             className="bg-white/50"
                         />
                     </div>

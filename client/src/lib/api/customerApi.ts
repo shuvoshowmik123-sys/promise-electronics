@@ -2,6 +2,99 @@ import type { ServiceRequest, ServiceRequestEvent, PickupSchedule } from "@share
 import { fetchApi } from "./httpClient";
 import { CustomerSession, OrderWithTimeline, Order } from "./types";
 
+export type CustomerJourneyStage =
+    | "draft"
+    | "quote_requested"
+    | "quote_sent"
+    | "quote_accepted"
+    | "schedule_requested"
+    | "schedule_confirmed"
+    | "device_waiting"
+    | "device_received"
+    | "inspection_waiting"
+    | "inspection_started"
+    | "diagnosis_ready"
+    | "repair_approval_required"
+    | "repair_approved"
+    | "repair_in_progress"
+    | "repair_completed"
+    | "delivery_scheduled"
+    | "delivered"
+    | "cancelled";
+
+export interface CustomerRepairJourney {
+    id: string;
+    customerId: string | null;
+    serviceRequestId: string | null;
+    quoteRequestId: string | null;
+    jobTicketId: string | null;
+    currentStage: CustomerJourneyStage;
+    currentStatus: string;
+    customerFriendlyStatus: string;
+    nextAction: string | null;
+    nextActionLabel: string | null;
+    nextUpdateEta: string | null;
+    serviceMode: string;
+    pickupRequired: boolean;
+    dropoffRequired: boolean;
+    customerNote: string | null;
+    adminNote?: string | null;
+    warrantyClaimId?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CustomerRepairJourneyEvent {
+    id: string;
+    journeyId: string;
+    eventType: string;
+    title: string;
+    message: string | null;
+    actorType: string;
+    actorId?: string;
+    metadata?: unknown;
+    createdAt: string;
+}
+
+export interface CustomerRepairSchedule {
+    id: string;
+    journeyId: string;
+    scheduleType: string;
+    requestedDate: string | null;
+    requestedTimeWindow: string | null;
+    confirmedDate: string | null;
+    confirmedTimeWindow: string | null;
+    status: string;
+    customerNote: string | null;
+    adminNote?: string | null;
+    assignedDriverId?: string | null;
+    zone?: string | null;
+    routeOrder?: number | null;
+    customerConfirmedAt?: string | null;
+    pickupScheduleId?: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+
+export interface CustomerRepairJourneyDetail extends CustomerRepairJourney {
+    events: CustomerRepairJourneyEvent[];
+    schedules: CustomerRepairSchedule[];
+}
+
+export interface AcceptJourneyQuotePayload {
+    servicePreference: "home_pickup" | "service_center";
+    pickupTier?: "Regular" | "Priority" | "Emergency";
+    address?: string;
+    scheduledVisitDate?: string | null;
+}
+
+export interface JourneySchedulePayload {
+    scheduleType: "pickup" | "drop_off" | "home_visit" | "delivery" | "service_center_visit";
+    requestedDate?: string;
+    requestedTimeWindow?: string;
+    customerNote?: string;
+}
+
 // Customer Portal Authentication API
 export const customerAuthApi = {
     register: (data: { name: string; phone: string; email?: string; address?: string; password: string }) =>
@@ -67,6 +160,31 @@ export const customerServiceRequestsApi = {
 // Customer Order Tracking API (for backwards compatibility)
 export const customerOrdersApi = customerServiceRequestsApi;
 
+export const customerRepairJourneysApi = {
+    getAll: () => fetchApi<CustomerRepairJourney[]>("/customer/repair-journeys"),
+    getOne: (id: string) => fetchApi<CustomerRepairJourneyDetail>(`/customer/repair-journeys/${id}`),
+    requestSchedule: (id: string, data: JourneySchedulePayload) =>
+        fetchApi<{ scheduleId: string; status: string }>(`/customer/repair-journeys/${id}/schedule`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    requestReschedule: (id: string, data: { scheduleId: string; newDate: string; newTimeWindow?: string; customerNote?: string }) =>
+        fetchApi<{ status: string }>(`/customer/repair-journeys/${id}/reschedule`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    acceptQuote: (id: string, data: AcceptJourneyQuotePayload) =>
+        fetchApi<ServiceRequest>(`/customer/repair-journeys/${id}/accept-quote`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    askQuestion: (id: string, question: string) =>
+        fetchApi<{ eventId: string }>(`/customer/repair-journeys/${id}/ask-question`, {
+            method: "POST",
+            body: JSON.stringify({ question }),
+        }),
+};
+
 // Customer Warranties API
 export type WarrantyInfo = {
     jobId: string;
@@ -89,6 +207,11 @@ export type WarrantyInfo = {
 
 export const customerWarrantiesApi = {
     getAll: () => fetchApi<WarrantyInfo[]>("/customer/warranties"),
+    claim: (jobId: string, data: { claimType: "service" | "parts"; issueDescription: string }) =>
+        fetchApi<{ claimId: string; message: string }>(`/customer/warranties/${jobId}/claim`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
 };
 
 // Customer Shop Orders API

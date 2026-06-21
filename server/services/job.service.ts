@@ -11,6 +11,7 @@ import { eq, and } from 'drizzle-orm';
 import { jobRepo, serviceRequestRepo, inventoryRepo } from '../repositories/index.js';
 import { nanoid } from 'nanoid';
 import type { JobTicket, ServiceRequest } from '../../shared/schema.js';
+import { repairJourneyService } from './customer-repair-journey.service.js';
 
 function isPickupRequest(request: ServiceRequest): boolean {
     return request.servicePreference === "pickup"
@@ -127,6 +128,12 @@ export class JobService {
             .set(updates)
             .where(eq(schema.jobTickets.id, id))
             .returning();
+
+        repairJourneyService.syncPaymentToJourney({
+            jobId: id,
+            paymentStatus,
+            amount: payment.amount,
+        }).catch(err => console.error('[RepairJourney] Payment sync failed:', (err as Error).message));
 
         return updatedJob;
     }

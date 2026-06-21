@@ -21,6 +21,7 @@ import { logRouteError } from '../utils/route-error.js';
 import { smsService } from '../services/sms.service.js';
 import { db } from '../db.js';
 import { and, desc, eq, gt } from 'drizzle-orm';
+import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 
 const router = Router();
 const SERVICE_REQUEST_REALTIME_TAGS = ["serviceRequests", "dashboardStats"] as const;
@@ -286,10 +287,20 @@ router.post('/api/service-requests', serviceRequestLimiter, async (req: Request,
             },
         });
 
+        const srServiceMode = validated.servicePreference === 'home_pickup' ? 'pickup' as const
+            : validated.servicePreference === 'service_center' ? 'drop_off' as const
+            : 'drop_off' as const;
+        repairJourneyService.createJourneyFromServiceRequest({
+            serviceRequestId: request.id,
+            customerId: customerIdToLink || null,
+            serviceMode: srServiceMode,
+            customerNote: validated.description || undefined,
+        }).catch(err => console.error('[RepairJourney] Failed to create journey from service request:', err));
+
         res.status(201).json(request);
     } catch (error: any) {
-        console.error('Service request validation error:', error.message);
-        res.status(400).json({ error: 'Invalid service request data', details: error.message });
+        console.error('[ServiceRequests] Validation error:', (error as Error).message);
+        res.status(400).json({ error: 'Invalid service request data' });
     }
 });
 
@@ -774,11 +785,12 @@ router.post(
                 },
             });
 
-            // Notify technician if auto-assigned (future enhancement)
+            repairJourneyService.syncJobConversionToJourney(req.params.id, result.jobTicket.id)
+                .catch((err) => console.error('[RepairJourney] Job conversion sync failed:', (err as Error).message));
 
             res.json(result);
         } catch (error: any) {
-            console.error('Failed to verify and convert:', error);
+            console.error('[ServiceRequests] Failed to verify and convert:', (error as Error).message);
             res.status(400).json({ error: error.message || 'Failed to verify and convert request' });
         }
     });

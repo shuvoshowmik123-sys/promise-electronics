@@ -29,6 +29,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { publicSettingsApi, quoteRequestsApi, serviceCatalogApi, serviceRequestsApi } from "@/lib/api";
 import { getApiUrl } from "@/lib/config";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 import { toast } from "sonner";
 
 type WizardMode = "repair" | "quote";
@@ -129,6 +130,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { customer } = useCustomerAuth();
+  const { language, t } = useCustomerLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [step, setStep] = useState(1);
@@ -159,6 +161,17 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
     staleTime: 5 * 60 * 1000,
     enabled: mode === "quote",
   });
+
+  const getTvTypeLabel = (type: string) => {
+    switch (type) {
+      case "LED": return t("wizard.tvLed");
+      case "Smart TV": return t("wizard.tvSmart");
+      case "Android TV": return t("wizard.tvAndroid");
+      case "OLED/QLED": return t("wizard.tvOled");
+      case "Not sure": return t("wizard.notSure");
+      default: return type;
+    }
+  };
 
   const tvBrands = getSettingArray(settings, "tv_brands", ["Samsung", "Sony", "LG", "Walton", "Vision", "Other"]);
   const selectedProblem = problemOptions.find((item) => item.id === primaryIssue);
@@ -353,21 +366,21 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
             <div className="mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
               <CheckCircle2 className="h-10 w-10" />
             </div>
-            <p className="text-sm font-semibold text-emerald-700">Request received</p>
-            <h1 className="mt-1 text-2xl font-bold text-slate-950">আমরা আপনাকে কল করব</h1>
+            <p className="text-sm font-semibold text-emerald-700">{t("wizard.received")}</p>
+            <h1 className="mt-1 text-2xl font-bold text-slate-950">{t("wizard.willCall")}</h1>
             <p className="mt-3 text-sm leading-6 text-slate-600">
-              Your {mode === "quote" ? "quote" : "service"} request is submitted. Keep this ticket number.
+              {t("wizard.submitted")}
             </p>
             <div className="mt-5 rounded-2xl bg-emerald-50 px-4 py-3">
-              <p className="text-xs font-medium text-emerald-700">Ticket number</p>
+              <p className="text-xs font-medium text-emerald-700">{t("wizard.ticketNumber")}</p>
               <p className="mt-1 font-mono text-xl font-bold text-slate-950">#{ticketNumber}</p>
             </div>
             <div className="mt-6 grid grid-cols-2 gap-3">
               <Button variant="outline" className="h-12 rounded-2xl border-emerald-200" asChild>
-                <Link href="/home">Home</Link>
+                <Link href="/home">{t("dock.home")}</Link>
               </Button>
               <Button className="h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700" asChild>
-                <Link href={`/track-order?order=${encodeURIComponent(ticketNumber)}&type=service`}>Track</Link>
+                <Link href={`/track-order?order=${encodeURIComponent(ticketNumber)}&type=service`}>{t("dock.track")}</Link>
               </Button>
             </div>
           </div>
@@ -390,7 +403,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
           </button>
           <div className="min-w-0 flex-1">
             <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">
-              Step {step} of {totalSteps - 1}
+              {t("wizard.step")} {step} {t("wizard.of")} {totalSteps - 1}
             </p>
             <div className="mt-2 h-2 overflow-hidden rounded-full bg-emerald-100">
               <div className="h-full rounded-full bg-emerald-600 transition-all" style={{ width: `${(step / (totalSteps - 1)) * 100}%` }} />
@@ -403,9 +416,9 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
         {step === 1 && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
             <div>
-              <p className="text-sm font-semibold text-emerald-700">Promise Electronics</p>
-              <h1 className="mt-2 text-2xl font-bold text-slate-950">আপনার TV-তে কী সমস্যা?</h1>
-              <p className="mt-2 text-sm text-slate-600">Tap one option. We will ask only what is needed.</p>
+              <p className="text-sm font-semibold text-emerald-700">{t("common.promiseElectronics")}</p>
+              <h1 className="mt-2 text-2xl font-bold text-slate-950">{t("wizard.whatProblem")}</h1>
+              <p className="mt-2 text-sm text-slate-600">{t("wizard.tapOption")}</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               {problemOptions.map((problem) => {
@@ -422,8 +435,8 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                     className={`min-h-[104px] rounded-3xl border p-4 text-left transition active:scale-[0.98] ${selected ? "border-emerald-500 bg-emerald-600 text-white shadow-lg shadow-emerald-200" : "border-emerald-100 bg-white text-slate-800 shadow-sm"}`}
                   >
                     <Icon className="mb-3 h-6 w-6" />
-                    <span className="block text-sm font-bold">{problem.bn}</span>
-                    <span className={`mt-1 block text-xs ${selected ? "text-emerald-50" : "text-slate-500"}`}>{problem.en}</span>
+                    <span className="block text-sm font-bold">{language === "bn" ? problem.bn : problem.en}</span>
+                    <span className={`mt-1 block text-xs ${selected ? "text-emerald-50" : "text-slate-500"}`}>{language === "bn" ? problem.en : problem.bn}</span>
                   </button>
                 );
               })}
@@ -449,7 +462,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                     value={description}
                     onChange={(event) => setDescription(event.target.value)}
                     className="mt-3 min-h-24 rounded-2xl border-emerald-100"
-                    placeholder="সমস্যাটা লিখুন..."
+                    placeholder={t("wizard.writeIssue")}
                   />
                 )}
               </div>
@@ -460,11 +473,11 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
         {step === 2 && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
             <div>
-              <h1 className="text-2xl font-bold text-slate-950">আপনার TV সম্পর্কে বলুন</h1>
-              <p className="mt-2 text-sm text-slate-600">Brand and size help us prepare the right technician.</p>
+              <h1 className="text-2xl font-bold text-slate-950">{t("wizard.aboutTv")}</h1>
+              <p className="mt-2 text-sm text-slate-600">{t("wizard.aboutTvDesc")}</p>
             </div>
             <div className="rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
-              <Label>TV type</Label>
+              <Label>{t("wizard.tvType")}</Label>
               <div className="mt-3 flex flex-wrap gap-2">
                 {tvTypes.map((type) => (
                   <button
@@ -473,17 +486,17 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                     onClick={() => setTvType(type)}
                     className={`min-h-11 rounded-full border px-4 text-sm font-semibold ${tvType === type ? "border-emerald-600 bg-emerald-50 text-emerald-700" : "border-slate-200 bg-white text-slate-600"}`}
                   >
-                    {type}
+                    {getTvTypeLabel(type)}
                   </button>
                 ))}
               </div>
             </div>
             <div className="space-y-4 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
               <div className="space-y-2">
-                <Label>Brand *</Label>
+                <Label>{t("wizard.brand")}</Label>
                 <Select value={brand} onValueChange={setBrand}>
                   <SelectTrigger className="h-12 rounded-2xl border-emerald-100">
-                    <SelectValue placeholder="Select brand" />
+                    <SelectValue placeholder={t("wizard.selectBrand")} />
                   </SelectTrigger>
                   <SelectContent>
                     {tvBrands.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
@@ -492,10 +505,10 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-2">
-                  <Label>Size</Label>
+                  <Label>{t("wizard.size")}</Label>
                   <Select value={screenSize} onValueChange={setScreenSize}>
                     <SelectTrigger className="h-12 rounded-2xl border-emerald-100">
-                      <SelectValue placeholder="Size" />
+                      <SelectValue placeholder={t("wizard.size")} />
                     </SelectTrigger>
                     <SelectContent>
                       {screenSizes.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
@@ -503,8 +516,8 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label>Model</Label>
-                  <Input value={modelNumber} onChange={(event) => setModelNumber(event.target.value)} className="h-12 rounded-2xl border-emerald-100" placeholder="Optional" />
+                  <Label>{t("wizard.model")}</Label>
+                  <Input value={modelNumber} onChange={(event) => setModelNumber(event.target.value)} className="h-12 rounded-2xl border-emerald-100" placeholder={t("wizard.optional")} />
                 </div>
               </div>
             </div>
@@ -514,8 +527,8 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
         {step === 3 && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
             <div>
-              <h1 className="text-2xl font-bold text-slate-950">ছবি দিলে দ্রুত বুঝব</h1>
-              <p className="mt-2 text-sm text-slate-600">{mode === "repair" ? "Optional. Add a screen photo or short video." : "Optional. You can describe the issue now; our team may ask for photos later."}</p>
+              <h1 className="text-2xl font-bold text-slate-950">{t("wizard.photoTitle")}</h1>
+              <p className="mt-2 text-sm text-slate-600">{mode === "repair" ? t("wizard.photoDesc") : t("wizard.quotePhotoDesc")}</p>
             </div>
             {mode === "repair" ? (
               <div className="rounded-3xl border border-dashed border-emerald-300 bg-white p-5 text-center shadow-sm">
@@ -527,8 +540,8 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                   className="mx-auto flex min-h-[132px] w-full flex-col items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700"
                 >
                   {isUploadingFiles ? <Loader2 className="h-8 w-8 animate-spin" /> : <Upload className="h-8 w-8" />}
-                  <span className="mt-3 text-sm font-bold">{isUploadingFiles ? "Uploading..." : "Add photo/video"}</span>
-                  <span className="mt-1 text-xs text-emerald-700/80">You can skip this step</span>
+                  <span className="mt-3 text-sm font-bold">{isUploadingFiles ? t("wizard.uploading") : t("wizard.addPhoto")}</span>
+                  <span className="mt-1 text-xs text-emerald-700/80">{t("wizard.skipStep")}</span>
                 </button>
                 {files.length > 0 && (
                   <div className="mt-4 grid grid-cols-3 gap-2">
@@ -546,7 +559,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
               </div>
             ) : null}
             <div className="space-y-2 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
-              <Label>Extra details</Label>
+              <Label>{t("wizard.extraDetails")}</Label>
               <Textarea
                 value={description}
                 onChange={(event) => setDescription(event.target.value)}
@@ -560,14 +573,14 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
         {step === 4 && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
             <div>
-              <h1 className="text-2xl font-bold text-slate-950">আপনি কীভাবে সার্ভিস চান?</h1>
-              <p className="mt-2 text-sm text-slate-600">Choose the easiest option for you.</p>
+              <h1 className="text-2xl font-bold text-slate-950">{t("wizard.serviceTitle")}</h1>
+              <p className="mt-2 text-sm text-slate-600">{t("wizard.serviceDesc")}</p>
             </div>
             <div className="space-y-3">
               {[
-                { id: "home_pickup", title: "Home visit", bn: "বাসা থেকে সার্ভিস", icon: Home },
+                { id: "home_pickup", title: t("wizard.homeVisit"), icon: Home },
                 { id: "service_center", title: "Drop-off", bn: "শপে নিয়ে আসব", icon: MapPin },
-                { id: "both", title: "Call me first", bn: "আগে আমাকে কল করুন", icon: Phone },
+                { id: "both", title: t("wizard.callFirst"), icon: Phone },
               ].map((option) => {
                 const Icon = option.icon;
                 const selected = servicePreference === option.id;
@@ -582,8 +595,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                       <Icon className="h-6 w-6" />
                     </span>
                     <span>
-                      <span className="block font-bold">{option.bn}</span>
-                      <span className={`mt-1 block text-sm ${selected ? "text-emerald-50" : "text-slate-500"}`}>{option.title}</span>
+                      <span className="block font-bold">{option.title}</span>
                     </span>
                   </button>
                 );
@@ -591,7 +603,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
             </div>
             {servicePreference === "home_pickup" && (
               <div className="space-y-2 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
-                <Label>Pickup address</Label>
+                <Label>{t("wizard.pickupAddress")}</Label>
                 <Textarea value={address} onChange={(event) => setAddress(event.target.value)} className="min-h-24 rounded-2xl border-emerald-100" placeholder="Area, road, house..." />
               </div>
             )}
@@ -601,23 +613,23 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
         {step === 5 && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="space-y-5">
             <div>
-              <h1 className="text-2xl font-bold text-slate-950">শেষ ধাপ</h1>
-              <p className="mt-2 text-sm text-slate-600">We need only your name and phone number.</p>
+              <h1 className="text-2xl font-bold text-slate-950">{t("wizard.finalStep")}</h1>
+              <p className="mt-2 text-sm text-slate-600">{t("wizard.finalDesc")}</p>
             </div>
             <div className="space-y-4 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
               <div className="space-y-2">
-                <Label>Name *</Label>
+                <Label>{t("wizard.name")}</Label>
                 <Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} className="h-12 rounded-2xl border-emerald-100" placeholder="Your name" />
               </div>
               <div className="space-y-2">
-                <Label>Phone *</Label>
+                <Label>{t("wizard.phone")}</Label>
                 <PhoneInput value={phone} onChange={(event) => setPhone(event.target.value)} className="h-12 rounded-2xl border-emerald-100" placeholder="1XXXXXXXXX" />
               </div>
             </div>
             <div className="rounded-3xl bg-emerald-50 p-4 text-sm text-slate-700">
-              <p className="font-bold text-slate-950">Summary</p>
+              <p className="font-bold text-slate-950">{t("wizard.summary")}</p>
               <p className="mt-2">{brand || "TV"} {screenSize} - {selectedProblem?.en || primaryIssue}</p>
-              <p>{servicePreference === "home_pickup" ? "Home visit" : servicePreference === "service_center" ? "Drop-off" : "Call me first"}</p>
+              <p>{servicePreference === "home_pickup" ? t("wizard.homeVisit") : servicePreference === "service_center" ? t("wizard.dropOff") : t("wizard.callFirst")}</p>
             </div>
           </motion.div>
         )}
@@ -631,7 +643,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
             onClick={() => (step === 1 ? setLocation("/home") : setStep((current) => current - 1))}
             className="h-12 min-w-12 rounded-2xl border-emerald-200 px-4"
           >
-            {step === 1 ? <ArrowLeft className="h-5 w-5" /> : "Back"}
+            {step === 1 ? <ArrowLeft className="h-5 w-5" /> : t("wizard.back")}
           </Button>
           <Button
             type="button"
@@ -642,10 +654,10 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
             {isSubmitting ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : step === 5 ? (
-              mode === "quote" ? "Get Quote" : "Request Service"
+              mode === "quote" ? t("wizard.getQuote") : t("wizard.requestService")
             ) : (
               <>
-                Continue <ArrowRight className="ml-2 h-5 w-5" />
+                {t("wizard.continue")} <ArrowRight className="ml-2 h-5 w-5" />
               </>
             )}
           </Button>

@@ -74,6 +74,14 @@ opencode.json
 .codex-video-frames/
 mobile-qa/
 
+# Playwright test artifacts
+playwright-report/
+test-results/
+blob-report/
+
+# QA simulation artifacts (screenshots, logs, worker results)
+.qa/
+
 # Misc
 vite.config.ts.*
 attached_assets/

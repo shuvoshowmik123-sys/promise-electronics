@@ -155,7 +155,7 @@ export default function CorporateLoginPage() {
                             <span className="text-blue-600">{showReset ? "Password" : "Access"}</span>
                         </h2>
                         <p className="text-slate-500 font-medium">
-                            {showReset ? "Request a code from Promise admin and set a new password." : "Verify your credentials to enter the workspace."}
+                            {showReset ? "Ask Promise support for a reset code, then set a new password." : "Sign in to view jobs, messages, and account updates."}
                         </p>
                     </div>
 
@@ -163,7 +163,7 @@ export default function CorporateLoginPage() {
                     <form onSubmit={handleLogin} className="space-y-6">
                         <div className="space-y-4">
                             <div className="space-y-2">
-                                <Label className="text-xs font-black uppercase tracking-widest text-slate-400">Internal Identifier</Label>
+                                <Label className="text-xs font-black uppercase tracking-widest text-slate-400">Username or Email</Label>
                                 <div className="relative group">
                                     <div className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 group-focus-within:text-blue-500 transition-colors">
                                         <Mail className="h-5 w-5" />
@@ -180,7 +180,7 @@ export default function CorporateLoginPage() {
 
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
-                                    <Label className="text-xs font-black uppercase tracking-widest text-slate-400">Security Key</Label>
+                                    <Label className="text-xs font-black uppercase tracking-widest text-slate-400">Password</Label>
                                     <button type="button" onClick={() => {
                                         setResetUsername(username);
                                         setShowReset(true);
@@ -225,7 +225,7 @@ export default function CorporateLoginPage() {
                                 <Loader2 className="h-6 w-6 animate-spin" />
                             ) : (
                                 <>
-                                    Verify & Access <ArrowRight className="h-5 w-5" />
+                                    Sign In <ArrowRight className="h-5 w-5" />
                                 </>
                             )}
                         </Button>
@@ -254,7 +254,7 @@ export default function CorporateLoginPage() {
                                 className="w-full h-12 rounded-2xl border-blue-100 bg-blue-50 text-blue-700 hover:bg-blue-100 font-black"
                                 disabled={isResetLoading || !resetUsername}
                             >
-                                {isResetLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Ask Admin For Code"}
+                                {isResetLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Request Reset Code"}
                             </Button>
                             {resetRequestSent && (
                                 <div className="rounded-2xl bg-emerald-50 px-4 py-3 text-xs font-bold text-emerald-700">

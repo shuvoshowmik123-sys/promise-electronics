@@ -109,14 +109,22 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
     // --- About Us State ---
     const [aboutTitle, setAboutTitle] = useState("");
+    const [aboutTitleBn, setAboutTitleBn] = useState("");
     const [aboutDescription, setAboutDescription] = useState("");
+    const [aboutDescriptionBn, setAboutDescriptionBn] = useState("");
     const [aboutMission, setAboutMission] = useState("");
+    const [aboutMissionBn, setAboutMissionBn] = useState("");
     const [aboutVision, setAboutVision] = useState("");
+    const [aboutVisionBn, setAboutVisionBn] = useState("");
     const [aboutCapabilities, setAboutCapabilities] = useState<string[]>([]);
+    const [aboutCapabilitiesBn, setAboutCapabilitiesBn] = useState<string[]>([]);
     const [aboutTeam, setAboutTeam] = useState("");
+    const [aboutTeamBn, setAboutTeamBn] = useState("");
     const [aboutAddress, setAboutAddress] = useState("");
+    const [aboutAddressBn, setAboutAddressBn] = useState("");
     const [aboutEmail, setAboutEmail] = useState("");
     const [aboutWorkingHours, setAboutWorkingHours] = useState("");
+    const [aboutWorkingHoursBn, setAboutWorkingHoursBn] = useState("");
     const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
 
     // --- Load Settings ---
@@ -187,14 +195,22 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
                         // About Us
                         case "about_title": setAboutTitle(val); break;
+                        case "about_title_bn": setAboutTitleBn(val); break;
                         case "about_description": setAboutDescription(val); break;
+                        case "about_description_bn": setAboutDescriptionBn(val); break;
                         case "about_mission": setAboutMission(val); break;
+                        case "about_mission_bn": setAboutMissionBn(val); break;
                         case "about_vision": setAboutVision(val); break;
+                        case "about_vision_bn": setAboutVisionBn(val); break;
                         case "about_capabilities": setAboutCapabilities(parse(val, [])); break;
+                        case "about_capabilities_bn": setAboutCapabilitiesBn(parse(val, [])); break;
                         case "about_team": setAboutTeam(val); break;
+                        case "about_team_bn": setAboutTeamBn(val); break;
                         case "about_address": setAboutAddress(val); break;
+                        case "about_address_bn": setAboutAddressBn(val); break;
                         case "about_email": setAboutEmail(val); break;
                         case "about_working_hours": setAboutWorkingHours(val); break;
+                        case "about_working_hours_bn": setAboutWorkingHoursBn(val); break;
                         case "team_members": setTeamMembers(parse(val, [])); break;
                     }
                 } catch (err) {
@@ -262,14 +278,22 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
                 // About Us
                 about_title: aboutTitle,
+                about_title_bn: aboutTitleBn,
                 about_description: aboutDescription,
+                about_description_bn: aboutDescriptionBn,
                 about_mission: aboutMission,
+                about_mission_bn: aboutMissionBn,
                 about_vision: aboutVision,
+                about_vision_bn: aboutVisionBn,
                 about_capabilities: JSON.stringify(aboutCapabilities),
+                about_capabilities_bn: JSON.stringify(aboutCapabilitiesBn),
                 about_team: aboutTeam,
+                about_team_bn: aboutTeamBn,
                 about_address: aboutAddress,
+                about_address_bn: aboutAddressBn,
                 about_email: aboutEmail,
                 about_working_hours: aboutWorkingHours,
+                about_working_hours_bn: aboutWorkingHoursBn,
                 team_members: JSON.stringify(teamMembers),
             };
 
@@ -599,14 +623,22 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 {selectedPanel === "about" && (
                                     <Suspense fallback={null}><AboutUsSection
                                         aboutTitle={aboutTitle} setAboutTitle={setAboutTitle}
+                                        aboutTitleBn={aboutTitleBn} setAboutTitleBn={setAboutTitleBn}
                                         aboutDescription={aboutDescription} setAboutDescription={setAboutDescription}
+                                        aboutDescriptionBn={aboutDescriptionBn} setAboutDescriptionBn={setAboutDescriptionBn}
                                         aboutMission={aboutMission} setAboutMission={setAboutMission}
+                                        aboutMissionBn={aboutMissionBn} setAboutMissionBn={setAboutMissionBn}
                                         aboutVision={aboutVision} setAboutVision={setAboutVision}
+                                        aboutVisionBn={aboutVisionBn} setAboutVisionBn={setAboutVisionBn}
                                         aboutCapabilities={aboutCapabilities} setAboutCapabilities={setAboutCapabilities}
+                                        aboutCapabilitiesBn={aboutCapabilitiesBn} setAboutCapabilitiesBn={setAboutCapabilitiesBn}
                                         aboutTeam={aboutTeam} setAboutTeam={setAboutTeam}
+                                        aboutTeamBn={aboutTeamBn} setAboutTeamBn={setAboutTeamBn}
                                         aboutAddress={aboutAddress} setAboutAddress={setAboutAddress}
+                                        aboutAddressBn={aboutAddressBn} setAboutAddressBn={setAboutAddressBn}
                                         aboutEmail={aboutEmail} setAboutEmail={setAboutEmail}
                                         aboutWorkingHours={aboutWorkingHours} setAboutWorkingHours={setAboutWorkingHours}
+                                        aboutWorkingHoursBn={aboutWorkingHoursBn} setAboutWorkingHoursBn={setAboutWorkingHoursBn}
                                         teamMembers={teamMembers} setTeamMembers={setTeamMembers}
                                     /></Suspense>
                                 )}

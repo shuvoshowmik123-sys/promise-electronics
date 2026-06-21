@@ -88,14 +88,22 @@ const ALLOWED_SETTING_KEYS = [
 
     // About Us
     'about_title',
+    'about_title_bn',
     'about_description',
+    'about_description_bn',
     'about_mission',
+    'about_mission_bn',
     'about_vision',
+    'about_vision_bn',
     'about_capabilities',
+    'about_capabilities_bn',
     'about_team',
+    'about_team_bn',
     'about_address',
+    'about_address_bn',
     'about_email',
     'about_working_hours',
+    'about_working_hours_bn',
     'team_members',
 
     // Mobile Specific
@@ -152,7 +160,9 @@ const PUBLIC_SETTING_KEYS = [
     // About
     'about_title', 'about_description', 'about_mission', 'about_vision',
     'about_capabilities', 'about_team', 'about_address', 'about_email',
-    'about_working_hours', 'team_members',
+    'about_working_hours', 'about_title_bn', 'about_description_bn',
+    'about_mission_bn', 'about_vision_bn', 'about_capabilities_bn',
+    'about_team_bn', 'about_address_bn', 'about_working_hours_bn', 'team_members',
     // Social
     'social_facebook', 'social_instagram', 'social_youtube',
     // Contact

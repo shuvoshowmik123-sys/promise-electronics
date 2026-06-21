@@ -7,7 +7,7 @@ import { images } from "@/lib/mock-data";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence, useInView, useMotionValue, useTransform, animate } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { settingsApi, inventoryApi, reviewsApi, customerServiceRequestsApi, shopOrdersApi } from "@/lib/api";
+import { publicSettingsApi, inventoryApi, reviewsApi, customerServiceRequestsApi, shopOrdersApi } from "@/lib/api";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { formatDistanceToNow } from "date-fns";
@@ -20,6 +20,7 @@ import { ActiveRepairCard } from "@/components/mobile/ActiveRepairCard";
 import { QuickActionsGrid } from "@/components/mobile/QuickActionsGrid";
 import { ScrollableList } from "@/components/ui/ScrollableList";
 import { MobileHero } from "@/components/mobile/MobileHero";
+import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 
 function AnimatedCounter({ value, suffix = "" }: { value: number; suffix?: string }) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -65,20 +66,23 @@ export default function HomePage() {
   const [trackTicket, setTrackTicket] = useState("");
   const [, setLocation] = useLocation();
   const { customer } = useCustomerAuth();
+  const { language, t } = useCustomerLanguage();
 
   const { data: serviceRequests = [] } = useQuery({
-    queryKey: ["customer-service-requests"],
+    queryKey: ["customer-service-requests", customer?.id],
     queryFn: () => customerServiceRequestsApi.getAll(),
     enabled: !!customer,
   });
 
   const { data: customerOrders = [] } = useQuery({
-    queryKey: ["customer-orders"],
+    queryKey: ["customer-orders", customer?.id],
     queryFn: () => shopOrdersApi.getAll(),
     enabled: !!customer,
   });
 
   const recentActivities = useMemo(() => {
+    if (!customer) return [];
+
     const activities: {
       id: string;
       type: 'order' | 'repair';
@@ -117,9 +121,10 @@ export default function HomePage() {
 
     // Sort by Date Descending
     return activities.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10);
-  }, [serviceRequests, customerOrders]);
+  }, [customer, serviceRequests, customerOrders]);
 
   const activeTicket = useMemo(() => {
+    if (!customer) return null;
     if (!serviceRequests.length) return null;
     // Prioritize active statuses
     const active = serviceRequests.find(req =>
@@ -128,7 +133,7 @@ export default function HomePage() {
     );
     // If no active, maybe show the most recent one? For now, let's show the most recent active one.
     return active || null;
-  }, [serviceRequests]);
+  }, [customer, serviceRequests]);
 
   const mapStatusToCardStatus = (status: string): "received" | "diagnosing" | "repairing" | "ready" => {
     const s = status.toLowerCase();
@@ -173,8 +178,8 @@ export default function HomePage() {
   };
 
   const { data: settings = [], isLoading: isSettingsLoading } = useQuery({
-    queryKey: ["settings"],
-    queryFn: settingsApi.getAll,
+    queryKey: ["public-settings"],
+    queryFn: publicSettingsApi.getAll,
     staleTime: 0,
     refetchOnMount: "always" as const,
   });
@@ -276,8 +281,8 @@ export default function HomePage() {
             return validImages;
           }
         }
-      } catch (e) {
-        console.error("Failed to parse hero images setting");
+      } catch {
+        // hero_images invalid — fall back to defaults below
       }
     }
     return defaultHeroSlides;
@@ -294,8 +299,8 @@ export default function HomePage() {
             return validImages;
           }
         }
-      } catch (e) {
-        console.error("Failed to parse mobile hero images setting");
+      } catch {
+        // mobile_hero_images invalid — fall back to defaults
       }
     }
     return [];
@@ -324,8 +329,8 @@ export default function HomePage() {
         if (Array.isArray(parsed)) {
           return parsed;
         }
-      } catch (e) {
-        console.error("Failed to parse team members setting");
+      } catch {
+        // team_members invalid — fall back to empty
       }
     }
     return [];
@@ -355,7 +360,9 @@ export default function HomePage() {
   const problemNavItems = useMemo(() => {
     const setting = settings.find(s => s.key === "home_problems_list");
     if (setting?.value) {
-      try { return JSON.parse(setting.value); } catch (e) { console.error("Failed to parse problems list"); }
+      try { return JSON.parse(setting.value); } catch {
+        // home_problems_list invalid — fall back
+      }
     }
     return [
       { id: "1", title: "No Power", icon: "Power" },
@@ -370,7 +377,9 @@ export default function HomePage() {
   const beforeAfterGallery = useMemo(() => {
     const setting = settings.find(s => s.key === "home_before_after_gallery");
     if (setting?.value) {
-      try { return JSON.parse(setting.value); } catch (e) { console.error("Failed to parse gallery"); }
+      try { return JSON.parse(setting.value); } catch {
+        // home_before_after_gallery invalid — fall back
+      }
     }
     return [];
   }, [settings]);
@@ -378,7 +387,9 @@ export default function HomePage() {
   const pricingTable = useMemo(() => {
     const setting = settings.find(s => s.key === "home_pricing_table");
     if (setting?.value) {
-      try { return JSON.parse(setting.value); } catch (e) { console.error("Failed to parse pricing"); }
+      try { return JSON.parse(setting.value); } catch {
+        // home_pricing_table invalid — fall back
+      }
     }
     return [
       { id: "1", service: "General Diagnosis", price: "Free", note: "If service is taken" },
@@ -413,8 +424,8 @@ export default function HomePage() {
         if (Array.isArray(parsed)) {
           return parsed;
         }
-      } catch (e) {
-        console.error("Failed to parse homepage stats setting");
+      } catch {
+        // homepage_stats invalid — fall back
       }
     }
     return defaultStats;
@@ -443,8 +454,8 @@ export default function HomePage() {
         if (Array.isArray(parsed)) {
           return parsed;
         }
-      } catch (e) {
-        console.error("Failed to parse FAQ items setting");
+      } catch {
+        // faq_items invalid — fall back
       }
     }
     return defaultFAQs;
@@ -474,8 +485,8 @@ export default function HomePage() {
         if (parsed && typeof parsed === "object") {
           return { ...defaultContactInfo, ...parsed };
         }
-      } catch (e) {
-        console.error("Failed to parse contact info setting");
+      } catch {
+        // homepage_contact_info invalid — fall back
       }
     }
     return defaultContactInfo;
@@ -495,8 +506,8 @@ export default function HomePage() {
         if (Array.isArray(parsed)) {
           return parsed;
         }
-      } catch (e) {
-        console.error("Failed to parse service areas setting");
+      } catch {
+        // service_areas invalid — fall back
       }
     }
     return defaultServiceAreas;
@@ -527,8 +538,8 @@ export default function HomePage() {
         if (Array.isArray(parsed)) {
           return parsed;
         }
-      } catch (e) {
-        console.error("Failed to parse homepage brands setting");
+      } catch {
+        // homepage_brands invalid — fall back
       }
     }
     return defaultBrands;
@@ -545,13 +556,54 @@ export default function HomePage() {
     setCurrentSlide(0);
   }, [isMobile]);
 
+  const mobileCopy = language === "bn"
+    ? {
+      hello: "হ্যালো",
+      guest: "অতিথি",
+      help: "কীভাবে সাহায্য করতে পারি?",
+      recentUpdates: "সাম্প্রতিক আপডেট",
+      noActivity: "কোনো সাম্প্রতিক কার্যক্রম নেই",
+      whatsWrong: "কী সমস্যা হচ্ছে?",
+      whyChoose: "কেন আমাদের বেছে নেবেন?",
+      certifiedExperts: "সার্টিফাইড বিশেষজ্ঞ",
+      certifiedExpertsDesc: "প্রশিক্ষিত টেকনিশিয়ান",
+      fastService: "দ্রুত সার্ভিস",
+      fastServiceDesc: "২৪-৪৮ ঘন্টার মধ্যে কাজ",
+      genuineParts: "জেনুইন পার্টস",
+      genuinePartsDesc: "আসল পার্টস ও ওয়ারেন্টি",
+    }
+    : {
+      hello: "Hello",
+      guest: "Guest",
+      help: "How can we help?",
+      recentUpdates: "Recent Updates",
+      noActivity: "No recent activity",
+      whatsWrong: "What's Wrong?",
+      whyChoose: "Why Choose Us?",
+      certifiedExperts: "Certified Experts",
+      certifiedExpertsDesc: "Factory-trained technicians",
+      fastService: "Fast Service",
+      fastServiceDesc: "24-48 hour turnaround",
+      genuineParts: "Genuine Parts",
+      genuinePartsDesc: "Authentic parts warranty",
+    };
+
+  const problemTitleBn: Record<string, string> = {
+    "No Power": "পাওয়ার নেই",
+    "No Picture": "ছবি নেই",
+    "Broken Screen": "স্ক্রিন ভাঙা",
+    "Sound Issue": "সাউন্ড সমস্যা",
+    "WiFi Issue": "WiFi সমস্যা",
+    "Lines on Screen": "স্ক্রিনে লাইন",
+  };
+
   // Mobile Dashboard Logic
   if (isMobile) {
     return (
       <>
-        <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white pb-24 px-4">
+        <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white pb-28 px-4">
           {/* Mobile Hero */}
-          <div className="-mx-4 mb-6">
+          <div className="-mx-4 mb-6 pt-[env(safe-area-inset-top)]">
             {activeHeroSlides.length > 0 ? (
               <MobileHero heroImage={activeHeroSlides[0]} />
             ) : (
@@ -573,9 +625,9 @@ export default function HomePage() {
           <div className="mb-6 flex items-center justify-between">
             <div>
               <h1 className="font-heading text-2xl font-bold text-slate-950">
-                Hello, {customer?.name ? customer.name.split(' ')[0] : 'Guest'}
+                {mobileCopy.hello}, {customer?.name ? customer.name.split(' ')[0] : mobileCopy.guest}
               </h1>
-              <p className="text-sm text-emerald-700">কীভাবে সাহায্য করতে পারি?</p>
+              <p className="text-sm text-emerald-700">{mobileCopy.help}</p>
             </div>
             <Link href="/my-profile">
               <div className="relative cursor-pointer">
@@ -618,7 +670,7 @@ export default function HomePage() {
           {/* Recent Activity / Promo */}
           <div className="mb-6">
 
-            <h3 className="text-lg font-bold text-slate-800 mb-3">Recent Updates</h3>
+            <h3 className="text-lg font-bold text-slate-800 mb-3">{mobileCopy.recentUpdates}</h3>
             {recentActivities.length > 0 ? (
               <ScrollableList className="flex gap-4 pb-4 -mx-4 px-4">
                 {recentActivities.map((activity) => (
@@ -643,28 +695,29 @@ export default function HomePage() {
               </ScrollableList>
             ) : (
               <div className="rounded-3xl border border-dashed border-emerald-200 bg-white py-8 text-center">
-                <p className="text-slate-500 text-sm">No recent activity</p>
+                <p className="text-slate-500 text-sm">{mobileCopy.noActivity}</p>
               </div>
             )}
           </div>
 
           {/* Problem-Based Navigation (Mobile) */}
           <div className="mb-8">
-            <h3 className="mb-4 text-lg font-bold text-slate-950">What's Wrong?</h3>
+            <h3 className="mb-4 text-lg font-bold text-slate-950">{mobileCopy.whatsWrong}</h3>
             <div className="grid grid-cols-3 gap-3">
               {problemNavItems.slice(0, 6).map((item: any) => {
                 const Icon = iconMap[item.icon] || HelpCircle;
+                const title = language === "bn" ? item.titleBn || problemTitleBn[item.title] || item.title : item.title;
                 return (
                   <Link key={item.id} href="/repair">
                     <div className="flex aspect-square flex-col items-center justify-center gap-2 rounded-3xl border border-emerald-100 bg-white p-3 text-center shadow-sm active:bg-emerald-50">
                       <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
                         {item.iconUrl ? (
-                          <img src={item.iconUrl} alt={item.title} className="w-5 h-5 object-contain" />
+                          <img src={item.iconUrl} alt={title} className="w-5 h-5 object-contain" />
                         ) : (
                           <Icon className="w-5 h-5" />
                         )}
                       </div>
-                      <span className="text-[10px] font-bold leading-tight text-slate-700">{item.title}</span>
+                      <span className="text-[10px] font-bold leading-tight text-slate-700">{title}</span>
                     </div>
                   </Link>
                 );
@@ -674,12 +727,12 @@ export default function HomePage() {
 
           {/* Why Choose Us (Mobile) */}
           <div className="mb-8">
-            <h3 className="mb-4 text-lg font-bold text-slate-950">Why Choose Us?</h3>
+            <h3 className="mb-4 text-lg font-bold text-slate-950">{mobileCopy.whyChoose}</h3>
             <div className="space-y-3">
               {[
-                { icon: ShieldCheck, title: "Certified Experts", desc: "Factory-trained technicians" },
-                { icon: Clock, title: "Fast Service", desc: "24-48 hour turnaround" },
-                { icon: CheckCircle2, title: "Genuine Parts", desc: "Authentic parts warranty" }
+                { icon: ShieldCheck, title: mobileCopy.certifiedExperts, desc: mobileCopy.certifiedExpertsDesc },
+                { icon: Clock, title: mobileCopy.fastService, desc: mobileCopy.fastServiceDesc },
+                { icon: CheckCircle2, title: mobileCopy.genuineParts, desc: mobileCopy.genuinePartsDesc }
               ].map((feature, i) => (
                 <div key={i} className="flex items-center gap-4 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
                   <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">

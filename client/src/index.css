@@ -43,6 +43,22 @@ html.native-app-mode #root {
   /* Prevents pull-to-refresh 'glow' */
 }
 
+/* Bangla font scoped to customer portal shell only */
+html[data-customer-lang="bn"] .customer-portal-shell {
+  font-family: 'Noto Sans Bengali', 'Inter', sans-serif;
+  line-height: 1.4;
+}
+html[data-customer-lang="bn"] .customer-portal-shell .font-heading {
+  font-family: 'Noto Sans Bengali', 'Barlow', sans-serif;
+}
+
+.customer-portal-shell input,
+.customer-portal-shell textarea,
+.customer-portal-shell select {
+  scroll-margin-top: calc(env(safe-area-inset-top) + 5rem);
+  scroll-margin-bottom: calc(env(safe-area-inset-bottom) + 9rem);
+}
+
 @theme inline {
   /* Fonts */
   --font-sans: 'Inter', sans-serif;

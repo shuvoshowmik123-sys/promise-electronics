@@ -1,3 +1,4 @@
+import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -40,6 +41,7 @@ interface UploadedFile {
 
 export default function RepairRequestPage() {
   usePageTitle("Request TV Repair Service");
+  const { t } = useCustomerLanguage();
   const isMobile = useIsMobile();
   const [step, setStep] = useState(1);
   const queryClient = useQueryClient();

@@ -19,6 +19,7 @@ declare module 'express-session' {
   interface SessionData {
     customerId?: string;
     authMethod?: 'google' | 'phone';
+    authenticatedAt?: number;
   }
 }
 
@@ -31,15 +32,14 @@ export function getCustomerSession() {
 
   const sessionSecret = process.env.SESSION_SECRET;
   if (!sessionSecret) {
-    console.warn("WARNING: SESSION_SECRET is not set. Using a default secret. This is insecure for production!");
+    console.warn("[CustomerAuth] SESSION_SECRET is not set — using fallback. Insecure for production.");
   }
 
-  // Detect if running behind HTTPS proxy (Replit)
   const isProduction = process.env.NODE_ENV === "production";
   const isReplit = !!process.env.REPLIT_DEV_DOMAIN;
   const useSecureCookie = isProduction || isReplit;
 
-  console.log("Session config:", { isProduction, isReplit, useSecureCookie });
+  console.log(`[CustomerAuth] Session config: production=${isProduction}, secureCookie=${useSecureCookie}`);
 
   return session({
     secret: sessionSecret || "promise-electronics-fallback-secret-2025",
@@ -83,31 +83,25 @@ export async function setupCustomerAuth(app: Express) {
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
   if (!clientID || !clientSecret) {
-    console.warn("Google OAuth credentials not configured. Google Sign-In will be disabled.");
+    console.warn("[CustomerAuth] Google OAuth credentials not configured — Sign-In disabled");
     return;
   }
 
-  // Construct absolute callback URL for Google OAuth
-  // In Replit, we use REPLIT_DEV_DOMAIN for dev and custom domains in production
   const getCallbackUrl = () => {
-    // For production with custom domain
     if (process.env.CUSTOM_DOMAIN) {
       return `https://${process.env.CUSTOM_DOMAIN}/api/customer/callback`;
     }
-    // For Vercel deployments
     if (process.env.VERCEL_URL) {
       return `https://${process.env.VERCEL_URL}/api/customer/callback`;
     }
-    // For Replit dev environment
     if (process.env.REPLIT_DEV_DOMAIN) {
       return `https://${process.env.REPLIT_DEV_DOMAIN}/api/customer/callback`;
     }
-    // Fallback to relative URL (less reliable in proxied environments)
     return "/api/customer/callback";
   };
 
   const callbackURL = getCallbackUrl();
-  console.log("Google OAuth callback URL:", callbackURL);
+  console.log("[CustomerAuth] Google OAuth callback URL configured");
 
   passport.use(
     new GoogleStrategy(
@@ -116,14 +110,14 @@ export async function setupCustomerAuth(app: Express) {
         clientSecret,
         callbackURL,
         scope: ["profile", "email"],
-        proxy: true, // Enable proxy support for Replit
+        proxy: true,
       },
       async (accessToken, refreshToken, profile, done) => {
         try {
           const user = await upsertCustomerFromGoogle(profile);
           done(null, { customerId: user.id, authMethod: 'google' } as Express.User);
         } catch (error) {
-          console.error("Error in Google OAuth callback:", error);
+          console.error("[CustomerAuth] Google strategy error:", (error as Error).message);
           done(error as Error);
         }
       }
@@ -146,49 +140,47 @@ export async function setupCustomerAuth(app: Express) {
   );
 
   app.get("/api/customer/callback", (req, res, next) => {
-    console.log("Google OAuth callback received, query:", JSON.stringify(req.query));
-
-    // Check for OAuth error in query params
     if (req.query.error) {
-      console.error("OAuth error in query params:", req.query.error, req.query.error_description);
+      console.error("[CustomerAuth] OAuth error:", req.query.error);
       return res.redirect(`/?error=${req.query.error}`);
     }
 
     try {
-      passport.authenticate("google", { failureRedirect: "/?error=auth_failed" }, (err: any, user: Express.User | false, info: any) => {
-        console.log("Passport authenticate callback reached");
-        console.log("Passport authenticate result:", { err: err ? err.message || err : null, user: !!user, info });
-
+      passport.authenticate("google", { failureRedirect: "/?error=auth_failed" }, (err: any, user: Express.User | false, _info: any) => {
         if (err) {
-          console.error("Google OAuth error:", err);
+          console.error("[CustomerAuth] Google OAuth error:", (err as Error).message);
           return res.redirect("/?error=auth_failed");
         }
         if (!user) {
-          console.error("No user returned from Google OAuth, info:", info);
+          console.error("[CustomerAuth] No user returned from Google OAuth");
           return res.redirect("/?error=auth_failed");
         }
 
-        req.logIn(user, (loginErr) => {
-          if (loginErr) {
-            console.error("Login error:", loginErr);
-            return res.redirect("/?error=auth_failed");
+        req.session.regenerate((regenErr) => {
+          if (regenErr) {
+            console.error("[CustomerAuth] Session regenerate failed:", (regenErr as Error).message);
+            return res.redirect("/?error=session_failed");
           }
-          console.log("User logged in successfully:", user);
 
-          // Explicitly save session
-          req.session.save((saveErr) => {
-            if (saveErr) {
-              console.error("Session save error:", saveErr);
-              return res.redirect("/?error=session_failed");
+          req.logIn(user, (loginErr) => {
+            if (loginErr) {
+              console.error("[CustomerAuth] Passport login failed:", (loginErr as Error).message);
+              return res.redirect("/?error=auth_failed");
             }
-            console.log("Session saved successfully, session ID:", req.sessionID);
-            console.log("Session data:", JSON.stringify(req.session));
-            res.redirect("/");
+
+            req.session.authenticatedAt = Date.now();
+            req.session.save((saveErr) => {
+              if (saveErr) {
+                console.error("[CustomerAuth] Session save failed:", (saveErr as Error).message);
+                return res.redirect("/?error=session_failed");
+              }
+              res.redirect("/");
+            });
           });
         });
       })(req, res, next);
     } catch (error) {
-      console.error("Exception in OAuth callback:", error);
+      console.error("[CustomerAuth] OAuth callback exception:", (error as Error).message);
       res.redirect("/?error=exception");
     }
   });
@@ -196,12 +188,13 @@ export async function setupCustomerAuth(app: Express) {
   app.get("/api/customer/google/logout", (req, res) => {
     req.logout((err) => {
       if (err) {
-        console.error("Logout error:", err);
+        console.error("[CustomerAuth] Passport logout error:", (err as Error).message);
       }
-      req.session.destroy((err) => {
-        if (err) {
-          console.error("Session destroy error:", err);
+      req.session.destroy((destroyErr) => {
+        if (destroyErr) {
+          console.error("[CustomerAuth] Session destroy error:", (destroyErr as Error).message);
         }
+        res.clearCookie("customer.sid");
         res.clearCookie("connect.sid");
 
         if (req.headers.accept?.includes("application/json") || req.query.json === "true") {
@@ -247,7 +240,7 @@ export async function setupCustomerAuth(app: Express) {
 
       res.status(401).json({ message: "Not authenticated" });
     } catch (error) {
-      console.error("Error fetching customer auth:", error);
+      console.error("[CustomerAuth] Failed to fetch auth state:", (error as Error).message);
       res.status(500).json({ message: "Failed to fetch customer" });
     }
   });
@@ -282,10 +275,10 @@ export async function setupCustomerAuth(app: Express) {
           email,
           profileImageUrl
         });
-        return res.json({ message: "Account linked successfully", user });
+        const { password: _p, passwordHash: _ph, temporaryPassword: _tp, resetSecret: _rs, otpSecret: _os, ...safeLinkedUser } = user as any;
+        return res.json({ message: "Account linked successfully", user: safeLinkedUser });
       }
 
-      // Login/Signup Flow (Native)
       const user = await storage.upsertUserFromGoogle({
         googleSub,
         name,
@@ -293,19 +286,28 @@ export async function setupCustomerAuth(app: Express) {
         profileImageUrl
       });
 
-      // Create Session
-      req.session.customerId = user.id;
-      req.session.authMethod = 'google';
-      req.session.save((err) => {
-        if (err) {
-          console.error("Session save error:", err);
+      const oldCsrf = req.session?.csrfToken;
+      req.session.regenerate((regenErr) => {
+        if (regenErr) {
+          console.error("[CustomerAuth] Native Google session regenerate failed:", (regenErr as Error).message);
           return res.status(500).json({ message: "Session creation failed" });
         }
-        res.json({ message: "Logged in successfully", user });
+        if (oldCsrf) req.session.csrfToken = oldCsrf;
+        req.session.customerId = user.id;
+        req.session.authMethod = 'google';
+        req.session.authenticatedAt = Date.now();
+        req.session.save((err) => {
+          if (err) {
+            console.error("[CustomerAuth] Native Google session save failed:", (err as Error).message);
+            return res.status(500).json({ message: "Session creation failed" });
+          }
+          const { password: _, ...safeUser } = user;
+          res.json({ message: "Logged in successfully", user: safeUser });
+        });
       });
 
     } catch (error) {
-      console.error("Native Google Auth Error:", error);
+      console.error("[CustomerAuth] Native Google auth failed:", (error as Error).message);
       res.status(500).json({ message: "Authentication failed" });
     }
   });

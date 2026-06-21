@@ -14,6 +14,9 @@ import { pushService } from '../pushService.js';
 import { jobService } from '../services/job.service.js';
 
 import { serviceRequestLimiter } from './middleware/rate-limit.js';
+import { repairJourneyService } from '../services/customer-repair-journey.service.js';
+import { db } from '../db.js';
+import { sql } from 'drizzle-orm';
 
 const router = Router();
 const PICKUP_SCHEDULEABLE_STAGES = ['intake', 'assessment', 'authorized', 'pickup_scheduled'];
@@ -60,10 +63,17 @@ router.post('/api/quotes', serviceRequestLimiter, async (req: Request, res: Resp
             createdAt: new Date().toISOString()
         });
 
+        repairJourneyService.createJourneyFromQuote({
+            quoteRequestId: quoteRequest.id,
+            customerId: customerId || null,
+            customerNote: validated.description || undefined,
+            serviceMode: (validated.serviceMode as any) || undefined,
+        }).catch(err => console.error('[RepairJourney] Failed to create journey from quote:', (err as Error).message));
+
         res.status(201).json(quoteRequest);
     } catch (error: any) {
-        console.error('Quote request error:', error);
-        res.status(400).json({ error: 'Invalid quote request', details: error.message });
+        console.error('[Quotes] Quote request failed:', (error as Error).message);
+        res.status(400).json({ error: 'Invalid quote request' });
     }
 });
 
@@ -103,9 +113,15 @@ router.patch('/api/admin/quotes/:id/price', requireAdminAuth, async (req: Reques
 
             // Send push notification: Quote Ready
             pushService.notifyQuoteReady(updated.customerId, updated.id, quoteAmount)
-                .then(() => console.log(`[Push] Sent quote ready notification for quote ${updated.id}`))
-                .catch(err => console.error('[Push] Failed to send quote ready notification:', err));
+                .catch(err => console.error('[Push] Failed to send quote ready notification:', (err as Error).message));
         }
+
+        repairJourneyService.findJourneyByQuoteRequest(req.params.id).then(journeyId => {
+            if (journeyId) {
+                repairJourneyService.updateJourneyStage(journeyId, 'quote_sent')
+                    .catch(err => console.error('[RepairJourney] Failed to update journey to quote_sent:', (err as Error).message));
+            }
+        }).catch(err => console.error('[RepairJourney] Lookup error:', (err as Error).message));
 
         res.json(updated);
     } catch (error) {
@@ -191,12 +207,47 @@ router.post('/api/quotes/:id/accept', requireCustomerAuth, async (req: Request, 
         // Send push notification: Quote Accepted confirmation
         if (updated.customerId) {
             pushService.notifyQuoteAccepted(updated.customerId, updated.ticketNumber || updated.id)
-                .catch(err => console.error('[Push] Failed to send quote accepted notification:', err));
+                .catch(err => console.error('[Push] Failed to send quote accepted notification:', (err as Error).message));
         }
+
+        repairJourneyService.findJourneyByQuoteRequest(req.params.id).then(async (journeyId) => {
+            if (!journeyId) return;
+            const schedType = servicePreference === 'home_pickup' ? 'pickup' : 'service_center_visit';
+            const journeyMode = servicePreference === 'home_pickup' ? 'pickup' : 'drop_off';
+            const isPickup = servicePreference === 'home_pickup';
+
+            await db.execute(sql`
+                UPDATE customer_repair_journeys
+                SET current_stage = 'quote_accepted',
+                    customer_friendly_status = 'Quote accepted! We will schedule your service shortly.',
+                    next_action = 'schedule_service',
+                    next_action_label = 'Schedule Pickup or Visit',
+                    service_mode = ${journeyMode},
+                    pickup_required = ${isPickup},
+                    dropoff_required = ${!isPickup},
+                    updated_at = NOW()
+                WHERE id = ${journeyId}
+            `);
+
+            await repairJourneyService.addJourneyEvent({
+                journeyId,
+                eventType: 'stage_quote_accepted',
+                title: 'Quote Accepted',
+                message: 'Quote accepted! We will schedule your service shortly.',
+                actorType: 'system',
+            });
+
+            await repairJourneyService.insertScheduleRow({
+                journeyId,
+                scheduleType: schedType,
+                requestedDate: parsedScheduledVisitDate?.toISOString().split('T')[0] || undefined,
+                customerNote: address || undefined,
+            });
+        }).catch(err => console.error('[RepairJourney] Quote accept sync failed:', (err as Error).message));
 
         res.json({ ...updated, servicePreference, trackingStatus, scheduledPickupDate: parsedScheduledVisitDate });
     } catch (error) {
-        console.error('Error accepting quote:', error);
+        console.error('[Quotes] Error accepting quote:', (error as Error).message);
         res.status(500).json({ error: 'Failed to accept quote' });
     }
 });
@@ -495,6 +546,9 @@ router.patch('/api/admin/pickups/:id/status', requireAdminAuth, async (req: Requ
                 trackingStatus: 'Delivered'
             } as any);
         }
+
+        repairJourneyService.syncPickupStatusToJourney(pickup.serviceRequestId, status)
+            .catch((err) => console.error('[RepairJourney] Pickup sync failed:', (err as Error).message));
 
         res.json(pickup);
     } catch (error) {

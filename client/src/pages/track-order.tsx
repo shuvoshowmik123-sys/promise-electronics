@@ -1,4 +1,5 @@
 ﻿import { useLocation } from "wouter";
+import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -190,6 +191,7 @@ function ProductOrderCard({ order, onClick }: { order: Order; onClick: () => voi
 }
 
 export default function TrackOrderPage() {
+  const { t } = useCustomerLanguage();
   const [isMobile, setIsMobile] = useState(false);
   const [mobileTicketSearch, setMobileTicketSearch] = useState("");
 
@@ -248,7 +250,7 @@ export default function TrackOrderPage() {
     refetchInterval: sseSupported ? false : 15000,
   });
 
-  const { data: serviceRequestDetails, isError: serviceRequestError, refetch: refetchServiceDetails } = useQuery({
+  const { data: serviceRequestDetails, isLoading: serviceRequestDetailLoading, isError: serviceRequestError, refetch: refetchServiceDetails } = useQuery({
     queryKey: ["/customer/service-requests", selectedOrderId],
     queryFn: () => customerServiceRequestsApi.getOne(selectedOrderId!),
     enabled: !!selectedOrderId && selectedOrderType === "service" && isAuthenticated,
@@ -264,7 +266,7 @@ export default function TrackOrderPage() {
     retry: 1,
   });
 
-  const { data: productOrderDetails, isError: productOrderError, refetch: refetchProductDetails } = useQuery({
+  const { data: productOrderDetails, isLoading: productOrderDetailLoading, isError: productOrderError, refetch: refetchProductDetails } = useQuery({
     queryKey: ["/customer/orders/detail", selectedOrderId],
     queryFn: () => shopOrdersApi.getOne(selectedOrderId!),
     enabled: !!selectedOrderId && selectedOrderType === "product" && isAuthenticated,
@@ -347,7 +349,6 @@ export default function TrackOrderPage() {
 
         connectionTimeout = setTimeout(() => {
           if (!sseConnectedRef.current && mounted) {
-            console.log("SSE connection timeout, falling back to polling");
             eventSource.close();
             setSseSupported(false);
           }
@@ -410,7 +411,7 @@ export default function TrackOrderPage() {
               let statusMessage = "";
 
               if (data.type === "order_created") {
-                toastTitle = "Order Placed!";
+                toastTitle = t("order.placed");
                 statusMessage = `Order #${data.data?.orderNumber} has been submitted`;
               } else if (data.type === "order_accepted") {
                 toastTitle = "Order Accepted!";
@@ -427,8 +428,7 @@ export default function TrackOrderPage() {
                 description: statusMessage,
               });
             }
-          } catch (e) {
-            console.error("SSE message parse error:", e);
+          } catch {
           }
         };
 
@@ -438,12 +438,10 @@ export default function TrackOrderPage() {
           sseConnectedRef.current = false;
 
           if (mounted) {
-            console.log("SSE error, using polling mode");
             setSseSupported(false);
           }
         };
-      } catch (e) {
-        console.error("Failed to create EventSource:", e);
+      } catch {
         setSseSupported(false);
       }
     };
@@ -462,12 +460,6 @@ export default function TrackOrderPage() {
       }
     };
   }, [isAuthenticated, selectedOrderId, queryClient, toast]);
-
-  useEffect(() => {
-    if (!authLoading && !isAuthenticated && !selectedOrderId) {
-      setShowAuthModal(true);
-    }
-  }, [authLoading, isAuthenticated, selectedOrderId]);
 
   const handleLogout = async () => {
     await logout();
@@ -517,18 +509,18 @@ export default function TrackOrderPage() {
   if (isMobile && !selectedOrderId) {
     return (
       <>
-        <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white px-4 pb-28 pt-5">
-          <div className="mx-auto max-w-md space-y-5">
+        <div className="min-h-[100dvh] overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white px-4 pb-[calc(7.25rem+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+16px)]">
+          <div className="mx-auto w-full max-w-[520px] sm:max-w-[560px] space-y-5">
             <div className="rounded-[28px] bg-emerald-600 p-5 text-white shadow-lg shadow-emerald-200">
-              <p className="text-sm font-bold text-emerald-50">Promise Electronics</p>
-              <h1 className="mt-2 text-2xl font-bold">আপনার repair track করুন</h1>
+              <p className="text-sm font-bold text-emerald-50">{t("common.promiseElectronics")}</p>
+              <h1 className="mt-2 text-2xl font-bold">{t("track.heroTitle")}</h1>
               <p className="mt-2 text-sm leading-6 text-emerald-50">
-                Ticket number লিখে status দেখুন, অথবা account থাকলে sign in করুন।
+                {t("track.heroSubtitle")}
               </p>
             </div>
 
             <div className="rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
-              <Label className="text-sm font-bold text-slate-900">Ticket number</Label>
+              <Label className="text-sm font-bold text-slate-900">{t("track.ticketLabel")}</Label>
               <div className="mt-3 flex gap-2">
                 <Input
                   value={mobileTicketSearch}
@@ -536,23 +528,24 @@ export default function TrackOrderPage() {
                   onKeyDown={(event) => {
                     if (event.key === "Enter") handleMobileTicketSearch();
                   }}
-                  placeholder="Example: SR-000123"
+                  placeholder={t("track.ticketPlaceholder")}
                   className="h-12 rounded-2xl border-emerald-100"
                 />
                 <Button
                   type="button"
                   onClick={handleMobileTicketSearch}
-                  className="h-12 rounded-2xl bg-emerald-600 px-4 hover:bg-emerald-700"
-                  aria-label="Track ticket"
+                  className="flex h-12 min-w-[104px] items-center justify-center gap-2 rounded-2xl bg-emerald-600 px-4 font-black hover:bg-emerald-700"
+                  aria-label={t("track.trackTicket")}
                 >
                   <Search className="h-5 w-5" />
+                  <span className="text-sm">{t("dock.track")}</span>
                 </Button>
               </div>
             </div>
 
             {isAuthenticated && totalOrders > 0 && (
               <div>
-                <h2 className="mb-3 text-lg font-bold text-slate-950">Your recent repairs</h2>
+                <h2 className="mb-3 text-lg font-bold text-slate-950">{t("track.recentRepairs")}</h2>
                 <div className="space-y-3">
                   {allServiceRequests.slice(0, 4).map((order) => (
                     <button
@@ -577,11 +570,11 @@ export default function TrackOrderPage() {
             <div className="grid grid-cols-2 gap-3">
               <Button variant="outline" className="h-12 rounded-2xl border-emerald-200 bg-white text-emerald-700" onClick={() => setLocation("/repair")}>
                 <Wrench className="mr-2 h-4 w-4" />
-                Book Repair
+                {t("track.bookRepair")}
               </Button>
-              <Button className="h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700" onClick={() => setShowAuthModal(true)}>
+              <Button className="h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700" onClick={() => isAuthenticated ? setLocation("/my-repairs") : setLocation("/login")}>
                 <User className="mr-2 h-4 w-4" />
-                Sign In
+                {isAuthenticated ? t("journey.viewMyRepairs") : t("track.signIn")}
               </Button>
             </div>
           </div>
@@ -598,10 +591,139 @@ export default function TrackOrderPage() {
     );
   }
 
+  if (isMobile && selectedOrderId && !isAuthenticated && !authLoading) {
+    const hasLookup = !!anonymousLookup && !anonymousError;
+
+    return (
+      <>
+        <div className="min-h-[100dvh] overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white px-4 pb-[calc(7.25rem+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+20px)]">
+          <div className="mx-auto max-w-[520px] space-y-5 sm:max-w-[560px]">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" onClick={handleBackToList} className="rounded-full text-emerald-700">
+                <ChevronRight className="h-6 w-6 rotate-180" />
+              </Button>
+              <h1 className="text-xl font-black text-slate-950">Track Repair</h1>
+            </div>
+
+            <div className="rounded-[2rem] border border-emerald-100 bg-white p-5 shadow-sm">
+              {anonymousLoading ? (
+                <div className="flex min-h-40 flex-col items-center justify-center text-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-emerald-600" />
+                  <p className="mt-3 text-sm font-bold text-slate-700">Checking ticket...</p>
+                </div>
+              ) : hasLookup ? (
+                <div className="space-y-4">
+                  <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+                    Ticket found
+                  </Badge>
+                  <div>
+                    <p className="text-sm font-bold uppercase tracking-wide text-slate-400">Reference</p>
+                    <h2 className="mt-1 text-2xl font-black text-slate-950">#{anonymousLookup.ticketNumber || selectedOrderId}</h2>
+                  </div>
+                  <p className="text-sm leading-6 text-slate-600">
+                    Sign in to see the full timeline, service notes, warranty, and private repair details.
+                  </p>
+                  <Button className="h-12 w-full rounded-2xl bg-emerald-600 font-black hover:bg-emerald-700" onClick={() => setLocation("/login")}>
+                    Sign In for Full Details
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4 text-center">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                    <Search className="h-6 w-6" />
+                  </div>
+                  <div>
+                    <h2 className="text-xl font-black text-slate-950">Ticket not found</h2>
+                    <p className="mt-2 text-sm leading-6 text-slate-500">
+                      Check the ticket number or sign in if this repair is linked to your account.
+                    </p>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button variant="outline" className="h-12 rounded-2xl border-emerald-200 text-emerald-700" onClick={handleBackToList}>
+                      Try Again
+                    </Button>
+                    <Button className="h-12 rounded-2xl bg-emerald-600 font-black hover:bg-emerald-700" onClick={() => setLocation("/login")}>
+                      Sign In
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+        <CustomerAuthModal
+          open={showAuthModal}
+          onOpenChange={setShowAuthModal}
+          defaultTab="login"
+          onSuccess={() => setShowAuthModal(false)}
+          title="Track Your Order"
+          description="Sign in or create an account to track repair orders."
+        />
+      </>
+    );
+  }
+
+  if (
+    isMobile &&
+    selectedOrderId &&
+    selectedOrderType &&
+    isAuthenticated &&
+    (
+      serviceRequestDetailLoading ||
+      productOrderDetailLoading ||
+      serviceRequestError ||
+      productOrderError ||
+      (selectedOrderType === "service" && !serviceRequestDetails) ||
+      (selectedOrderType === "product" && !productOrderDetails)
+    )
+  ) {
+    const isLoadingDetail = serviceRequestDetailLoading || productOrderDetailLoading;
+    const hasError = serviceRequestError || productOrderError;
+
+    return (
+      <div className="min-h-[100dvh] overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white px-4 pb-[calc(7.25rem+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+20px)]">
+        <div className="mx-auto max-w-[520px] space-y-5 sm:max-w-[560px]">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={handleBackToList} className="rounded-full text-emerald-700">
+              <ChevronRight className="h-6 w-6 rotate-180" />
+            </Button>
+            <h1 className="text-xl font-black text-slate-950">Tracking Details</h1>
+          </div>
+
+          <div className="rounded-[2rem] border border-emerald-100 bg-white p-6 text-center shadow-sm">
+            {isLoadingDetail ? (
+              <>
+                <Loader2 className="mx-auto h-8 w-8 animate-spin text-emerald-600" />
+                <h2 className="mt-4 text-lg font-black text-slate-950">Loading latest status</h2>
+                <p className="mt-2 text-sm text-slate-500">Please wait a moment.</p>
+              </>
+            ) : (
+              <>
+                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
+                  <Search className="h-6 w-6" />
+                </div>
+                <h2 className="mt-4 text-lg font-black text-slate-950">
+                  {hasError ? "Tracking unavailable" : "No tracking detail yet"}
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  We could not show this order right now. Go back and choose another ticket or try again shortly.
+                </p>
+                <Button className="mt-5 h-12 w-full rounded-2xl bg-emerald-600 font-black hover:bg-emerald-700" onClick={handleBackToList}>
+                  Back to Orders
+                </Button>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (isMobile && selectedOrderId && selectedOrderType === "service" && serviceRequestDetails) {
     return (
       <>
-        <div className="min-h-screen overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white pb-24 pt-4 px-4">
+        <div className="min-h-[100dvh] overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white px-4 pb-[calc(7.25rem+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+16px)]">
+          <div className="mx-auto max-w-[520px] sm:max-w-[560px]">
           <div className="flex items-center gap-2 mb-6">
             <Button variant="ghost" size="icon" onClick={handleBackToList} className="rounded-full text-emerald-700">
               <ChevronRight className="w-6 h-6 rotate-180" />
@@ -626,10 +748,10 @@ export default function TrackOrderPage() {
             <div className="mt-4 grid grid-cols-2 gap-3">
               <a href="tel:+8801700000000" className="flex min-h-11 items-center justify-center rounded-2xl bg-emerald-50 text-sm font-bold text-emerald-700">
                 <Phone className="mr-2 h-4 w-4" />
-                Call
+                {t("order.call")}
               </a>
               <a href="/support" className="flex min-h-11 items-center justify-center rounded-2xl bg-emerald-600 text-sm font-bold text-white">
-                Support
+                {t("common.support")}
               </a>
             </div>
           </div>
@@ -637,8 +759,39 @@ export default function TrackOrderPage() {
           {/* Timeline */}
           <h3 className="text-lg font-bold text-slate-950 px-2 mb-2">Repair Progress</h3>
           <TrackingTimeline order={serviceRequestDetails} />
+          </div>
         </div>
       </>
+    );
+  }
+
+  if (isMobile && selectedOrderId && selectedOrderType === "product" && productOrderDetails) {
+    return (
+      <div className="min-h-[100dvh] overflow-x-hidden bg-gradient-to-b from-emerald-50 via-white to-white px-4 pb-[calc(7.25rem+env(safe-area-inset-bottom))] pt-[calc(env(safe-area-inset-top)+20px)]">
+        <div className="mx-auto max-w-[520px] space-y-5 sm:max-w-[560px]">
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="icon" onClick={handleBackToList} className="rounded-full text-emerald-700">
+              <ChevronRight className="h-6 w-6 rotate-180" />
+            </Button>
+            <h1 className="text-xl font-black text-slate-950">Order Details</h1>
+          </div>
+          <div className="rounded-[2rem] border border-emerald-100 bg-white p-5 shadow-sm">
+            <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-700">
+              {productOrderDetails.status}
+            </Badge>
+            <h2 className="mt-4 text-2xl font-black text-slate-950">#{productOrderDetails.orderNumber}</h2>
+            <p className="mt-2 text-sm text-slate-500">Total ৳{Number(productOrderDetails.total).toLocaleString()}</p>
+            <div className="mt-5 grid grid-cols-2 gap-3">
+              <Button variant="outline" className="h-12 rounded-2xl border-emerald-200 text-emerald-700" onClick={handleBackToList}>
+                {t("order.orders")}
+              </Button>
+              <Button className="h-12 rounded-2xl bg-emerald-600 font-black hover:bg-emerald-700" onClick={() => setLocation("/support")}>
+                {t("common.support")}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -719,12 +872,12 @@ export default function TrackOrderPage() {
           ) : (
             <div className="max-w-md mx-auto text-center py-12">
               <Package className="w-20 h-20 mx-auto mb-6 text-primary/30" />
-              <h2 className="text-2xl font-bold mb-3">Sign In to Track Orders</h2>
+              <h2 className="text-2xl font-bold mb-3">{t("track.signInToTrack")}</h2>
               <p className="text-muted-foreground mb-6">
                 Login or create an account to view and track your orders in real-time.
               </p>
               <Button size="lg" onClick={() => setShowAuthModal(true)} data-testid="button-open-auth">
-                Sign In / Register
+                {t("auth.signInRegister")}
               </Button>
             </div>
           )

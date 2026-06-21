@@ -19,6 +19,7 @@ import { errorHandler } from "./routes/middleware/error-handler.js";
 import { apiLimiter } from "./routes/middleware/rate-limit.js";
 import { coldStartCacheMiddleware, getColdStartCacheState } from "./middleware/cold-start-cache.js";
 import { getReadinessState, isDbReady } from "./services/db-readiness.js";
+import { requireAdminAuth } from "./routes/middleware/auth.js";
 
 // Load environment variables early - required for local dev and module-level repository evaluation
 const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
@@ -227,19 +228,25 @@ export async function createApp(): Promise<Express> {
         });
     });
 
-    const readinessHandler = (_req: Request, res: Response) => {
-        const readiness = getReadinessState();
+    app.get('/ready', (_req: Request, res: Response) => {
         const ready = isDbReady();
-        res.status(ready ? 200 : 503).json({
-            ready,
-            ...readiness,
+        res.status(ready ? 200 : 503).json(
+            ready ? { ready: true } : { ready: false, message: 'Service warming up' }
+        );
+    });
+    app.get('/api/ready', (_req: Request, res: Response) => {
+        const ready = isDbReady();
+        res.status(ready ? 200 : 503).json(
+            ready ? { ready: true } : { ready: false, message: 'Service warming up' }
+        );
+    });
+    app.get('/api/admin/readiness', requireAdminAuth, (_req: Request, res: Response) => {
+        res.json({
+            ...getReadinessState(),
             cache: getColdStartCacheState(),
             ts: new Date().toISOString(),
         });
-    };
-
-    app.get('/ready', readinessHandler);
-    app.get('/api/ready', readinessHandler);
+    });
 
     // ─── 8. Global API rate limiter (non-admin IPs: 100 req/min) ────────────
     // Skips authenticated admin sessions (see rate-limit.ts skip logic)

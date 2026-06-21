@@ -20,6 +20,9 @@ import { initNightlyJobs } from "./services/nightly-jobs.service.js";
 import { brainService } from "./brain/brain.service.js";
 import { migrateB2BRuleProfileTables } from "./services/b2b-rule-profile.service.js";
 import { migrateManualPaymentTables } from "./services/manual-payment-migration.service.js";
+import { migrateCustomerRepairJourneyTables } from "./services/customer-repair-journey-migration.service.js";
+import { migrateStaffResetCodes } from "./services/staff-reset-migration.service.js";
+import { migratePasswordChangedAt } from "./services/password-changed-at-migration.service.js";
 import { markMigrationsComplete, startReadinessChecks } from "./services/db-readiness.js";
 
 // ── Crash guards ────────────────────────────────────────────────────────────
@@ -79,6 +82,9 @@ async function runStartupMigrations(): Promise<boolean> {
     runStartupTask("Brain phase 2 seed", () => brainService.seedPhase2ConversationsIfNeeded(), 2),
     runStartupTask("B2B rule profile migration", migrateB2BRuleProfileTables, 2),
     runStartupTask("manual payment migration", migrateManualPaymentTables, 2),
+    runStartupTask("customer repair journey migration", migrateCustomerRepairJourneyTables, 2),
+    runStartupTask("staff reset codes migration", migrateStaffResetCodes, 2),
+    runStartupTask("password_changed_at migration", migratePasswordChangedAt, 2),
     runStartupTask("firebase_uid migration", async () => {
       const { db } = await import("./db.js");
       const { sql } = await import("drizzle-orm");

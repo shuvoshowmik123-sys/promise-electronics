@@ -7,7 +7,7 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
-import { and, desc, eq, or, ne } from 'drizzle-orm';
+import { and, desc, eq, or, ne, sql } from 'drizzle-orm';
 import { storage } from '../storage.js';
 import { userRepo, customerRepo, orderRepo, corporateRepo, notificationRepo } from '../repositories/index.js';
 import {
@@ -25,12 +25,24 @@ import {
     notifyCustomerUpdate
 } from './middleware/sse-broker.js';
 import { firebaseAdmin } from '../services/firebase.js';
-import { authLimiter, registrationLimiter, serviceRequestLimiter } from './middleware/rate-limit.js';
+import { authLimiter, registrationLimiter, serviceRequestLimiter, accountRecoveryLimiter } from './middleware/rate-limit.js';
 import { isPhoneBlacklisted } from './blacklist.routes.js';
 import { z } from 'zod';
 import { customerService } from '../services/customer.service.js';
 
 const router = Router();
+
+function regenerateSession(req: Request): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const oldData = { csrfToken: req.session?.csrfToken };
+        req.session.regenerate((err) => {
+            if (err) return reject(err);
+            if (oldData.csrfToken) req.session.csrfToken = oldData.csrfToken;
+            resolve();
+        });
+    });
+}
+
 const customerPaymentSubmissionSchema = insertManualPaymentSchema.pick({
     method: true,
     amount: true,
@@ -101,8 +113,10 @@ router.post('/api/customer/register', registrationLimiter, async (req: Request, 
 
         await customerService.linkServiceRequestsByPhone(validated.phone, user.id);
 
+        await regenerateSession(req);
         req.session.customerId = user.id;
         req.session.authMethod = 'phone';
+        req.session.authenticatedAt = Date.now();
 
         const { password: _, ...safeUser } = user;
 
@@ -115,9 +129,9 @@ router.post('/api/customer/register', registrationLimiter, async (req: Request, 
         res.status(201).json(safeUser);
     } catch (error: any) {
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Invalid registration data', details: error.errors });
+            return res.status(400).json({ error: 'Invalid registration data' });
         }
-        console.error('Registration error:', error);
+        console.error('[CustomerAuth] Registration failed:', (error as Error).message);
         res.status(500).json({ error: 'Failed to register. Please try again.' });
     }
 });
@@ -131,11 +145,11 @@ router.post('/api/customer/login', authLimiter, async (req: Request, res: Respon
 
         const user = await userRepo.getUserByPhoneNormalized(validated.phone);
         if (!user) {
-            return res.status(401).json({ error: 'Number is not registered' });
+            return res.status(401).json({ error: 'Invalid phone number or password' });
         }
 
         if (!user.password) {
-            return res.status(401).json({ error: 'Please register with a password first' });
+            return res.status(401).json({ error: 'Invalid phone number or password' });
         }
 
         const isValid = await bcrypt.compare(validated.password, user.password);
@@ -145,8 +159,10 @@ router.post('/api/customer/login', authLimiter, async (req: Request, res: Respon
 
         await userRepo.updateUserLastLogin(user.id);
 
+        await regenerateSession(req);
         req.session.customerId = user.id;
         req.session.authMethod = 'phone';
+        req.session.authenticatedAt = Date.now();
 
         if (user.phone) {
             await customerService.linkServiceRequestsByPhone(user.phone, user.id);
@@ -156,9 +172,9 @@ router.post('/api/customer/login', authLimiter, async (req: Request, res: Respon
         res.json(safeUser);
     } catch (error: any) {
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Invalid login data', details: error.errors });
+            return res.status(400).json({ error: 'Invalid login data' });
         }
-        console.error('Login error:', error);
+        console.error('[CustomerAuth] Login failed:', (error as Error).message);
         res.status(500).json({ error: 'Failed to login. Please try again.' });
     }
 });
@@ -177,7 +193,7 @@ router.post('/api/customer/google-auth', authLimiter, async (req: Request, res: 
         try {
             decodedToken = await firebaseAdmin.auth().verifyIdToken(token);
         } catch (e) {
-            console.error('Token verification failed:', e);
+            console.error('[CustomerAuth] Token verification failed:', (e as Error).message);
             return res.status(401).json({ error: 'Invalid token' });
         }
 
@@ -190,13 +206,13 @@ router.post('/api/customer/google-auth', authLimiter, async (req: Request, res: 
             profileImageUrl: picture || null,
         });
 
-        // Update last login
         await userRepo.updateUserLastLogin(user.id);
 
+        await regenerateSession(req);
         req.session.customerId = user.id;
         req.session.authMethod = 'google';
+        req.session.authenticatedAt = Date.now();
 
-        // If the user has a phone number, link any service requests
         if (user.phone) {
             await customerService.linkServiceRequestsByPhone(user.phone, user.id);
         }
@@ -205,7 +221,7 @@ router.post('/api/customer/google-auth', authLimiter, async (req: Request, res: 
         res.json(safeUser);
 
     } catch (error) {
-        console.error('Google Auth Error:', error);
+        console.error('[CustomerAuth] Google auth failed:', (error as Error).message);
         res.status(500).json({ error: 'Authentication failed' });
     }
 });
@@ -226,7 +242,7 @@ router.post('/api/customer/link-google', requireCustomerAuth, async (req: Reques
         try {
             decodedToken = await firebaseAdmin.auth().verifyIdToken(token);
         } catch (e) {
-            console.error('Token verification failed:', e);
+            console.error('[CustomerAuth] Token verification failed:', (e as Error).message);
             return res.status(401).json({ error: 'Invalid Google token' });
         }
 
@@ -268,7 +284,7 @@ router.post('/api/customer/link-google', requireCustomerAuth, async (req: Reques
         res.json(safeUser);
 
     } catch (error) {
-        console.error('Link Google Error:', error);
+        console.error('[CustomerAuth] Link Google failed:', (error as Error).message);
         res.status(500).json({ error: 'Failed to link Google account' });
     }
 });
@@ -279,11 +295,170 @@ router.post('/api/customer/link-google', requireCustomerAuth, async (req: Reques
 router.post('/api/customer/logout', (req: Request, res: Response) => {
     req.session.destroy((err) => {
         if (err) {
+            console.error('[CustomerAuth] Logout session destroy failed:', (err as Error).message);
             return res.status(500).json({ error: 'Failed to logout' });
         }
+        res.clearCookie('customer.sid');
         res.clearCookie('connect.sid');
         res.json({ message: 'Logged out successfully' });
     });
+});
+
+// ============================================
+// Account Recovery & Password Reset
+// ============================================
+
+const recoveryRequestSchema = z.object({
+    phone: z.string().min(6).optional(),
+    ticketNumber: z.string().optional(),
+    name: z.string().optional(),
+    message: z.string().optional(),
+});
+const staffResetCompleteSchema = z.object({
+    phone: z.string().min(6),
+    code: z.string().min(4).max(8),
+    newPassword: z.string().min(6),
+});
+const changePasswordSchema = z.object({
+    currentPassword: z.string().min(1),
+    newPassword: z.string().min(6),
+});
+
+/**
+ * POST /api/customer/account-recovery/request
+ * Submits a support-assisted recovery request via the inquiries system.
+ */
+router.post('/api/customer/account-recovery/request', accountRecoveryLimiter, async (req: Request, res: Response) => {
+    try {
+        const data = recoveryRequestSchema.parse(req.body);
+        const genericOk = { message: 'If the details match an account, support will contact you.' };
+
+        const phone = data.phone || 'not provided';
+        const parts = [
+            '[ACCOUNT_RECOVERY]',
+            data.ticketNumber ? `Ticket: ${data.ticketNumber}` : null,
+            data.message || null,
+        ].filter(Boolean);
+
+        await storage.createInquiry({
+            name: data.name || 'Account Recovery Request',
+            phone,
+            message: parts.join(' — '),
+        });
+
+        notifyAdminUpdate({
+            type: 'account_recovery_request',
+            data: { phone: phone.slice(-4) },
+            createdAt: new Date().toISOString(),
+        });
+
+        console.log('[AccountRecovery] Recovery request submitted');
+
+        res.json(genericOk);
+    } catch (error: any) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: 'Invalid request' });
+        }
+        console.error('[AccountRecovery] Request failed:', (error as Error).message);
+        res.status(500).json({ error: 'Something went wrong. Please try again.' });
+    }
+});
+
+/**
+ * POST /api/customer/password-reset/complete
+ * Validates a staff-created reset code (stored in DB, not memory).
+ */
+router.post('/api/customer/password-reset/complete', accountRecoveryLimiter, async (req: Request, res: Response) => {
+    try {
+        const { phone, code, newPassword } = staffResetCompleteSchema.parse(req.body);
+        const genericFail = { error: 'Invalid or expired reset code' };
+
+        const user = await userRepo.getUserByPhoneNormalized(phone);
+        if (!user) {
+            return res.status(400).json(genericFail);
+        }
+
+        const rows = await db.execute(
+            sql`SELECT id, code_hash, expires_at, attempts, used
+                FROM staff_reset_codes
+                WHERE user_id = ${user.id} AND used = FALSE
+                ORDER BY created_at DESC LIMIT 1`
+        );
+        const entry = rows.rows[0] as { id: string; code_hash: string; expires_at: string; attempts: number; used: boolean } | undefined;
+        if (!entry) {
+            return res.status(400).json(genericFail);
+        }
+
+        if (new Date(entry.expires_at) < new Date()) {
+            await db.execute(sql`UPDATE staff_reset_codes SET used = TRUE WHERE id = ${entry.id}`);
+            return res.status(400).json(genericFail);
+        }
+
+        if (entry.attempts >= 5) {
+            await db.execute(sql`UPDATE staff_reset_codes SET used = TRUE WHERE id = ${entry.id}`);
+            return res.status(429).json({ error: 'Too many failed attempts. Please contact support again.' });
+        }
+
+        const valid = await bcrypt.compare(code, entry.code_hash);
+        if (!valid) {
+            await db.execute(sql`UPDATE staff_reset_codes SET attempts = attempts + 1 WHERE id = ${entry.id}`);
+            return res.status(400).json(genericFail);
+        }
+
+        await db.execute(sql`UPDATE staff_reset_codes SET used = TRUE WHERE id = ${entry.id}`);
+
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+        await userRepo.updateUser(user.id, { password: hashedPassword } as any);
+        await db.execute(sql`UPDATE users SET password_changed_at = NOW() WHERE id = ${user.id}`);
+
+        console.log(`[AccountRecovery] Staff-assisted password reset completed for user ${user.id}`);
+
+        res.json({ message: 'Password has been reset. Please sign in with your new password.' });
+    } catch (error: any) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: 'Invalid request' });
+        }
+        console.error('[AccountRecovery] Reset complete failed:', (error as Error).message);
+        res.status(500).json({ error: 'Something went wrong. Please try again.' });
+    }
+});
+
+/**
+ * POST /api/customer/change-password - Change password (authenticated)
+ */
+router.post('/api/customer/change-password', requireCustomerAuth, async (req: Request, res: Response) => {
+    try {
+        const customerId = getCustomerId(req);
+        if (!customerId) {
+            return res.status(401).json({ error: 'Not authenticated', code: 'NOT_AUTHENTICATED' });
+        }
+
+        const { currentPassword, newPassword } = changePasswordSchema.parse(req.body);
+
+        const user = await storage.getCustomer(customerId);
+        if (!user || !user.password) {
+            return res.status(400).json({ error: 'Password change is not available for this account' });
+        }
+
+        const isValid = await bcrypt.compare(currentPassword, user.password);
+        if (!isValid) {
+            return res.status(400).json({ error: 'Current password is incorrect' });
+        }
+
+        const hashedPassword = await bcrypt.hash(newPassword, 12);
+        await userRepo.updateUser(customerId, { password: hashedPassword } as any);
+        await db.execute(sql`UPDATE users SET password_changed_at = NOW() WHERE id = ${customerId}`);
+
+        console.log(`[CustomerAuth] Password changed for user ${customerId}`);
+
+        res.json({ message: 'Password changed successfully' });
+    } catch (error: any) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: 'Invalid request' });
+        }
+        console.error('[CustomerAuth] Change password failed:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to change password' });
+    }
 });
 
 /**
@@ -322,12 +497,6 @@ router.put('/api/customer/profile', requireCustomerAuth, async (req: Request, re
 
         const { phone, address, name, email, avatar, profileImageUrl } = req.body;
 
-        console.log(`[Profile Update] Received update for customer ${customerId}`);
-        console.log(`[Profile Update] Payload keys: ${Object.keys(req.body).join(', ')}`);
-        if (profileImageUrl) {
-            console.log(`[Profile Update] profileImageUrl length: ${profileImageUrl.length}`);
-        }
-
         const updates: any = {};
         if (phone !== undefined) updates.phone = phone;
         if (address !== undefined) updates.address = address;
@@ -335,8 +504,6 @@ router.put('/api/customer/profile', requireCustomerAuth, async (req: Request, re
         if (email !== undefined) updates.email = email;
         if (avatar !== undefined) updates.avatar = avatar;
         if (profileImageUrl !== undefined) updates.profileImageUrl = profileImageUrl;
-
-        console.log(`[Profile Update] Updates object keys: ${Object.keys(updates).join(', ')}`);
 
         const oldCustomer = await storage.getCustomer(customerId);
         const isAddingPhone = phone && !oldCustomer?.phone;
@@ -346,19 +513,17 @@ router.put('/api/customer/profile', requireCustomerAuth, async (req: Request, re
             return res.status(404).json({ error: 'Customer not found' });
         }
 
-        console.log(`[Profile Update] Updated customer. profileImageUrl length: ${customer.profileImageUrl?.length}`);
-
         if (isAddingPhone && customer.phone) {
             const linkedCount = await customerService.linkServiceRequestsByPhone(customer.phone, customer.id);
             if (linkedCount > 0) {
-                console.log(`Linked ${linkedCount} service request(s) to customer ${customer.id} by phone ${customer.phone}`);
+                console.log(`[CustomerProfile] Linked ${linkedCount} service request(s) to customer ${customer.id}`);
             }
         }
 
         const { password: _, ...safeCustomer } = customer;
         res.json(safeCustomer);
     } catch (error: any) {
-        console.error('Profile update error:', error);
+        console.error('[CustomerProfile] Update failed:', (error as Error).message);
 
         if (error?.code === '23505' && error?.constraint === 'customers_phone_key') {
             return res.status(409).json({
@@ -367,7 +532,7 @@ router.put('/api/customer/profile', requireCustomerAuth, async (req: Request, re
             });
         }
 
-        res.status(500).json({ error: 'Failed to update profile', details: error.message });
+        res.status(500).json({ error: 'Failed to update profile' });
     }
 });
 
@@ -504,9 +669,10 @@ router.post('/api/customer/service-requests/:id/payment-submissions', serviceReq
         res.status(201).json(payment);
     } catch (error: any) {
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Invalid payment submission', details: error.errors });
+            return res.status(400).json({ error: 'Invalid payment submission' });
         }
-        res.status(400).json({ error: error.message || 'Failed to submit payment verification' });
+        console.error('[CustomerPayment] Submission failed:', (error as Error).message);
+        res.status(400).json({ error: 'Failed to submit payment verification' });
     }
 });
 
@@ -618,7 +784,7 @@ router.get('/api/customer/warranties', requireCustomerAuth, async (req: Request,
 
         res.json(warranties);
     } catch (error) {
-        console.error('Error fetching warranties:', error);
+        console.error('[CustomerWarranty] Fetch failed:', (error as Error).message);
         res.status(500).json({ error: 'Failed to fetch warranties' });
     }
 });
@@ -639,7 +805,7 @@ router.get('/api/customer/addresses', requireCustomerAuth, async (req: Request, 
         const addresses = await customerRepo.getCustomerAddresses(customerId);
         res.json(addresses);
     } catch (error) {
-        console.error('Error fetching addresses:', error);
+        console.error('[CustomerAddress] Fetch failed:', (error as Error).message);
         res.status(500).json({ error: 'Failed to fetch addresses' });
     }
 });
@@ -667,7 +833,7 @@ router.post('/api/customer/addresses', requireCustomerAuth, async (req: Request,
         });
         res.status(200).json(newAddress);
     } catch (error) {
-        console.error('Error creating address:', error);
+        console.error('[CustomerAddress] Create failed:', (error as Error).message);
         res.status(500).json({ error: 'Failed to create address' });
     }
 });
@@ -696,7 +862,7 @@ router.patch('/api/customer/addresses/:id', requireCustomerAuth, async (req: Req
         }
         res.json(updated);
     } catch (error) {
-        console.error('Error updating address:', error);
+        console.error('[CustomerAddress] Update failed:', (error as Error).message);
         res.status(500).json({ error: 'Failed to update address' });
     }
 });
@@ -718,7 +884,7 @@ router.delete('/api/customer/addresses/:id', requireCustomerAuth, async (req: Re
         }
         res.json({ success: true });
     } catch (error) {
-        console.error('Error deleting address:', error);
+        console.error('[CustomerAddress] Delete failed:', (error as Error).message);
         res.status(500).json({ error: 'Failed to delete address' });
     }
 });

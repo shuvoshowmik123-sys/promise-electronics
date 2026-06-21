@@ -1,16 +1,19 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { PillButton, SectionEyebrow } from "@/components/customer/mobile-kit";
 import { useQuery } from "@tanstack/react-query";
-import { settingsApi } from "@/lib/api";
-import { Tv, Wrench, Users, Award, MapPin, Phone, Mail, Clock } from "lucide-react";
+import { publicSettingsApi } from "@/lib/api";
 import { images } from "@/lib/mock-data";
 import { usePageTitle } from "@/hooks/usePageTitle";
-import { motion } from "framer-motion";
+import { Award, CheckCircle, Clock, Mail, MapPin, Phone, ShieldCheck, Tv, Users, Wrench } from "lucide-react";
+import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 
 export default function AboutPage() {
   usePageTitle("About Us");
+  const { t, language } = useCustomerLanguage();
   const { data: settings = [] } = useQuery({
-    queryKey: ["settings"],
-    queryFn: settingsApi.getAll,
+    queryKey: ["public-settings"],
+    queryFn: publicSettingsApi.getAll,
+    staleTime: 5 * 60 * 1000,
   });
 
   const getSetting = (key: string, defaultValue: string): string => {
@@ -18,258 +21,176 @@ export default function AboutPage() {
     return setting?.value || defaultValue;
   };
 
+  const getLocalizedSetting = (key: string, defaultValue: string): string => {
+    if (language === "bn") {
+      const banglaValue = getSetting(key + "_bn", "");
+      if (banglaValue.trim()) return banglaValue;
+    }
+    return getSetting(key, defaultValue);
+  };
+
   const getSettingArray = (key: string, defaultValue: string[]): string[] => {
     const setting = settings.find((s) => s.key === key);
-    if (setting?.value) {
-      try {
-        return JSON.parse(setting.value);
-      } catch {
-        return defaultValue;
-      }
+    if (!setting?.value) return defaultValue;
+    try {
+      const parsed = JSON.parse(setting.value);
+      return Array.isArray(parsed) ? parsed : defaultValue;
+    } catch {
+      return defaultValue;
     }
-    return defaultValue;
+  };
+
+  const getLocalizedSettingArray = (key: string, defaultValue: string[]): string[] => {
+    if (language === "bn") {
+      const banglaValue = getSettingArray(key + "_bn", []);
+      if (banglaValue.length > 0) return banglaValue;
+    }
+    return getSettingArray(key, defaultValue);
   };
 
   const siteName = getSetting("site_name", "Promise Electronics");
   const supportPhone = getSetting("support_phone", "+880 1700-000000");
   const logoUrl = getSetting("logo_url", "");
-  const aboutTitle = getSetting("about_title", "Your Trusted Electronics Partner in Bangladesh");
-  const aboutDescription = getSetting("about_description", "Promise Electronics has been serving Bangladesh since 2010, providing expert TV repair services and genuine electronic parts. We are committed to delivering quality service with transparency and trust.");
-  const aboutMission = getSetting("about_mission", "To provide affordable, reliable, and expert electronics repair services while offering genuine spare parts to every household in Bangladesh.");
-  const aboutVision = getSetting("about_vision", "To become the most trusted electronics service provider in Bangladesh, known for quality, integrity, and customer satisfaction.");
-  const capabilities = getSettingArray("about_capabilities", [
-    "Expert TV Repair for all major brands",
+  const aboutTitle = getLocalizedSetting("about_title", "Your trusted electronics partner in Bangladesh");
+  const aboutDescription = getLocalizedSetting("about_description", "Promise Electronics provides expert TV repair, genuine parts, and transparent service for families and businesses across Dhaka.");
+  const aboutMission = getLocalizedSetting("about_mission", "To make electronics repair reliable, understandable, and fair for every customer.");
+  const aboutVision = getLocalizedSetting("about_vision", "To become Bangladesh's most trusted electronics service network.");
+  const capabilities = getLocalizedSettingArray("about_capabilities", [
+    "Expert TV repair for major brands",
     "Genuine spare parts and accessories",
-    "Home service across Dhaka",
-    "Corporate maintenance contracts",
-    "24/7 customer support",
-    "90-day service warranty"
+    "Home pickup and delivery in Dhaka",
+    "Corporate repair support",
+    "Clear repair tracking",
+    "Service warranty support",
   ]);
-  const teamDescription = getSetting("about_team", "Our team consists of certified technicians with over 10 years of experience in electronics repair. Each technician undergoes rigorous training to stay updated with the latest technologies.");
-  const address = getSetting("about_address", "House 123, Road 45, Gulshan-2, Dhaka 1212, Bangladesh");
+  const teamDescription = getLocalizedSetting("about_team", "Our technicians combine field experience with careful diagnosis, so customers understand what is happening before repair work begins.");
+  const address = getLocalizedSetting("about_address", "Dhaka, Bangladesh");
   const email = getSetting("about_email", "support@promise-electronics.com");
-  const workingHours = getSetting("about_working_hours", "Saturday - Thursday: 9:00 AM - 8:00 PM");
+  const workingHours = getLocalizedSetting("about_working_hours", "Saturday - Thursday: 9:00 AM - 8:00 PM");
+
+  const stats = [
+    { label: t("about.years"), value: "10+", icon: Clock },
+    { label: t("about.repairs"), value: "5K+", icon: Wrench },
+    { label: t("about.warranty"), value: "90d", icon: ShieldCheck },
+  ];
 
   return (
-    <>
-      <div className="min-h-screen bg-gradient-to-b from-slate-100 via-slate-50 to-slate-100">
-        {/* Neumorphic Hero Section */}
-        <section className="relative py-24 overflow-hidden bg-gradient-to-br from-slate-100 via-slate-200 to-slate-100">
-          {/* Subtle Background Orbs */}
-          <div className="absolute inset-0 pointer-events-none overflow-hidden">
-            <div className="absolute -top-32 -left-32 w-96 h-96 bg-primary/5 rounded-full blur-3xl"></div>
-            <div className="absolute -bottom-32 -right-32 w-96 h-96 bg-teal-500/5 rounded-full blur-3xl"></div>
-          </div>
-          
-          {/* Subtle Logo Pattern */}
-          <div className="absolute inset-0 pointer-events-none">
-            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] opacity-[0.03]">
-              <img src={logoUrl || images.logo} alt="" className="w-full h-full object-contain" />
+    <div className="min-h-screen bg-emerald-50/40 pb-32 md:pb-0">
+      <section className="md:hidden mx-auto max-w-[520px] px-4 pt-4 sm:max-w-[560px]">
+        <div className="rounded-[2rem] bg-white border border-emerald-100 p-5 shadow-sm">
+          <div className="flex items-center gap-4">
+            <div className="h-16 w-16 rounded-3xl bg-blue-50 p-2 flex items-center justify-center">
+              <img src={logoUrl || images.logo} alt={siteName + " logo"} className="h-full w-full object-contain" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <SectionEyebrow>{t("about.title")}</SectionEyebrow>
+              <h1 className="mt-2 text-2xl font-black tracking-tight text-slate-950">{t("about.heading")}</h1>
+              <p className="mt-1 text-sm leading-6 text-slate-500">{aboutTitle}</p>
             </div>
           </div>
-          
-          {/* Neumorphic Card Container */}
-          <div className="container mx-auto px-4 relative z-10">
-            <motion.div 
-              className="max-w-3xl mx-auto"
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.6 }}
-            >
-              {/* Neumorphic Card */}
-              <div className="bg-slate-100 rounded-2xl md:rounded-3xl shadow-neumorph-lg p-5 md:p-12">
-                <div className="flex flex-col items-center text-center">
-                  {/* Logo in Neumorphic Circle */}
-                  <div className="w-20 h-20 md:w-28 md:h-28 bg-slate-100 shadow-neumorph rounded-full flex items-center justify-center p-3 md:p-4 mb-4 md:mb-8">
-                    <img src={logoUrl || images.logo} alt="Promise Electronics Logo" className="w-full h-full object-contain" />
+          <div className="mt-5 grid grid-cols-3 gap-2">
+            {stats.map((stat) => {
+              const Icon = stat.icon;
+              return (
+                <div key={stat.label} className="rounded-2xl bg-slate-50 p-3 text-center">
+                  <Icon className="mx-auto mb-1 h-4 w-4 text-emerald-600" />
+                  <div className="text-lg font-black text-slate-950">{stat.value}</div>
+                  <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">{stat.label}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="hidden md:block bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 py-20">
+        <div className="container mx-auto px-4">
+          <div className="mx-auto max-w-3xl rounded-3xl bg-slate-100 p-12 text-center shadow-neumorph-lg">
+            <div className="mx-auto mb-8 flex h-28 w-28 items-center justify-center rounded-full bg-slate-100 p-4 shadow-neumorph">
+              <img src={logoUrl || images.logo} alt={siteName + " logo"} className="h-full w-full object-contain" />
+            </div>
+            <h1 className="text-5xl font-bold text-slate-800">About {siteName}</h1>
+            <p className="mx-auto mt-4 max-w-2xl text-xl text-muted-foreground">{aboutTitle}</p>
+            <div className="mx-auto mt-8 h-1 w-24 rounded-full bg-gradient-to-r from-primary to-teal-500" />
+          </div>
+        </div>
+      </section>
+
+      <main className="container mx-auto px-4 py-6 md:py-12">
+        <div className="mx-auto max-w-[520px] space-y-5 sm:max-w-[560px] md:max-w-5xl md:space-y-8">
+          <Card className="rounded-[1.75rem] border-none bg-white shadow-sm md:shadow-neumorph">
+            <CardContent className="p-5 md:p-8">
+              <SectionEyebrow>{t("about.who")}</SectionEyebrow>
+              <h2 className="mt-3 text-xl md:text-2xl font-black text-slate-950">{t("about.guidance")}</h2>
+              <p className="mt-3 text-sm md:text-lg leading-7 text-slate-600">{aboutDescription}</p>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <Card className="rounded-[1.75rem] border-none bg-white shadow-sm md:shadow-neumorph">
+              <CardContent className="p-5 md:p-8">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                  <Tv className="h-6 w-6" />
+                </div>
+                <h3 className="text-lg font-black text-slate-950">{t("about.mission")}</h3>
+                <p className="mt-2 text-sm leading-7 text-slate-600">{aboutMission}</p>
+              </CardContent>
+            </Card>
+            <Card className="rounded-[1.75rem] border-none bg-white shadow-sm md:shadow-neumorph">
+              <CardContent className="p-5 md:p-8">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-teal-50 text-teal-600">
+                  <Award className="h-6 w-6" />
+                </div>
+                <h3 className="text-lg font-black text-slate-950">{t("about.vision")}</h3>
+                <p className="mt-2 text-sm leading-7 text-slate-600">{aboutVision}</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="rounded-[1.75rem] border-none bg-white shadow-sm md:shadow-neumorph">
+            <CardContent className="p-5 md:p-8">
+              <SectionEyebrow>{t("about.offer")}</SectionEyebrow>
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {capabilities.map((capability) => (
+                  <div key={capability} className="flex items-start gap-3 rounded-2xl bg-slate-50 p-3">
+                    <CheckCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-teal-600" />
+                    <span className="text-sm font-semibold leading-6 text-slate-700">{capability}</span>
                   </div>
-                  
-                  <h1 className="text-2xl md:text-5xl font-bold mb-3 md:mb-4 text-slate-800" data-testid="text-about-title">
-                    About {siteName}
-                  </h1>
-                  <p className="text-xl text-muted-foreground max-w-2xl" data-testid="text-about-subtitle">
-                    {aboutTitle}
-                  </p>
-                  
-                  {/* Decorative Line */}
-                  <div className="mt-8 w-24 h-1 bg-gradient-to-r from-primary to-teal-500 rounded-full shadow-neumorph-sm"></div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-[1.75rem] border-none bg-white shadow-sm md:shadow-neumorph">
+            <CardContent className="p-5 md:p-8">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-600">
+                  <Users className="h-6 w-6" />
+                </div>
+                <div>
+                  <SectionEyebrow>{t("about.team")}</SectionEyebrow>
+                  <p className="mt-3 text-sm md:text-base leading-7 text-slate-600">{teamDescription}</p>
                 </div>
               </div>
-            </motion.div>
-          </div>
-        </section>
+            </CardContent>
+          </Card>
 
-        {/* About Description - Neumorphic */}
-        <motion.section 
-          className="py-12"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.5 }}
-        >
-          <div className="container mx-auto px-4">
-            <div className="max-w-4xl mx-auto">
-              <Card className="bg-slate-100 shadow-neumorph border-none rounded-2xl">
-                <CardContent className="p-4 md:p-8">
-                  <h2 className="text-xl md:text-2xl font-bold mb-3 md:mb-4 text-primary">Who We Are</h2>
-                  <p className="text-lg text-muted-foreground leading-relaxed" data-testid="text-about-description">
-                    {aboutDescription}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          </div>
-        </motion.section>
-
-        {/* Mission & Vision - Neumorphic */}
-        <section className="py-12 bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50">
-          <div className="container mx-auto px-4">
-            <div className="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true, margin: "-100px" }}
-                transition={{ duration: 0.5 }}
-              >
-                <Card className="bg-slate-100 shadow-neumorph border-none rounded-2xl h-full">
-                  <CardContent className="p-4 md:p-6">
-                    <div className="flex items-center gap-2 md:gap-3 mb-3 md:mb-4">
-                      <div className="w-10 h-10 md:w-12 md:h-12 bg-white shadow-neumorph-inset rounded-lg md:rounded-xl flex items-center justify-center">
-                        <Award className="w-5 h-5 md:w-6 md:h-6 text-primary" />
-                      </div>
-                      <h3 className="text-lg md:text-xl font-bold">Our Mission</h3>
-                    </div>
-                    <p className="text-muted-foreground" data-testid="text-about-mission">
-                      {aboutMission}
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true, margin: "-100px" }}
-                transition={{ duration: 0.5, delay: 0.1 }}
-              >
-                <Card className="bg-slate-100 shadow-neumorph border-none rounded-2xl h-full">
-                  <CardContent className="p-4 md:p-6">
-                    <div className="flex items-center gap-2 md:gap-3 mb-3 md:mb-4">
-                      <div className="w-10 h-10 md:w-12 md:h-12 bg-white shadow-neumorph-inset rounded-lg md:rounded-xl flex items-center justify-center">
-                        <Tv className="w-5 h-5 md:w-6 md:h-6 text-teal-500" />
-                      </div>
-                      <h3 className="text-lg md:text-xl font-bold">Our Vision</h3>
-                    </div>
-                    <p className="text-muted-foreground" data-testid="text-about-vision">
-                      {aboutVision}
-                    </p>
-                  </CardContent>
-                </Card>
-              </motion.div>
-            </div>
-          </div>
-        </section>
-
-        {/* Capabilities - Neumorphic */}
-        <motion.section 
-          className="py-12"
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.5 }}
-        >
-          <div className="container mx-auto px-4">
-            <div className="max-w-4xl mx-auto">
-              <h2 className="text-3xl font-bold text-center mb-8">What We Offer</h2>
-              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {capabilities.map((capability, index) => (
-                  <motion.div
-                    key={index}
-                    initial={{ opacity: 0, y: 15 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.3, delay: index * 0.05 }}
-                  >
-                    <Card className="bg-slate-100 shadow-neumorph border-none rounded-xl hover:shadow-neumorph-lg transition-shadow">
-                      <CardContent className="p-4 flex items-center gap-3">
-                        <div className="w-10 h-10 bg-white shadow-neumorph-inset rounded-lg flex items-center justify-center flex-shrink-0">
-                          <Wrench className="w-5 h-5 text-green-600" />
-                        </div>
-                        <span className="text-sm font-medium" data-testid={`text-capability-${index}`}>
-                          {capability}
-                        </span>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
+          <Card className="rounded-[1.75rem] border-none bg-slate-900 text-white shadow-sm">
+            <CardContent className="p-5 md:p-8">
+              <SectionEyebrow className="text-emerald-200">{t("about.contact")}</SectionEyebrow>
+              <div className="mt-5 space-y-4 text-sm text-slate-200">
+                <div className="flex gap-3"><MapPin className="h-5 w-5 text-blue-300" /><span>{address}</span></div>
+                <div className="flex gap-3"><Phone className="h-5 w-5 text-blue-300" /><span>{supportPhone}</span></div>
+                <div className="flex gap-3"><Mail className="h-5 w-5 text-blue-300" /><span>{email}</span></div>
+                <div className="flex gap-3"><Clock className="h-5 w-5 text-blue-300" /><span>{workingHours}</span></div>
               </div>
-            </div>
-          </div>
-        </motion.section>
-
-        {/* Team Section - Neumorphic */}
-        <motion.section 
-          className="py-12 bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50"
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.5 }}
-        >
-          <div className="container mx-auto px-4">
-            <div className="max-w-4xl mx-auto text-center">
-              <div className="w-16 h-16 bg-slate-100 shadow-neumorph rounded-full flex items-center justify-center mx-auto mb-4">
-                <Users className="w-8 h-8 text-primary" />
-              </div>
-              <h2 className="text-3xl font-bold mb-4">Our Expert Team</h2>
-              <p className="text-lg text-muted-foreground max-w-2xl mx-auto" data-testid="text-about-team">
-                {teamDescription}
-              </p>
-            </div>
-          </div>
-        </motion.section>
-
-        {/* Contact Info - Neumorphic */}
-        <motion.section 
-          className="py-12"
-          initial={{ opacity: 0 }}
-          whileInView={{ opacity: 1 }}
-          viewport={{ once: true, margin: "-100px" }}
-          transition={{ duration: 0.5 }}
-        >
-          <div className="container mx-auto px-4">
-            <div className="max-w-4xl mx-auto">
-              <h2 className="text-3xl font-bold text-center mb-8">Contact Us</h2>
-              <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {[
-                  { icon: MapPin, title: "Address", value: address, testId: "text-about-address" },
-                  { icon: Phone, title: "Phone", value: supportPhone, testId: "text-about-phone" },
-                  { icon: Mail, title: "Email", value: email, testId: "text-about-email" },
-                  { icon: Clock, title: "Working Hours", value: workingHours, testId: "text-about-hours" }
-                ].map((item, index) => (
-                  <motion.div
-                    key={item.title}
-                    initial={{ opacity: 0, y: 15 }}
-                    whileInView={{ opacity: 1, y: 0 }}
-                    viewport={{ once: true }}
-                    transition={{ duration: 0.3, delay: index * 0.1 }}
-                  >
-                    <Card className="text-center bg-slate-100 shadow-neumorph border-none rounded-2xl hover:shadow-neumorph-lg transition-shadow">
-                      <CardContent className="p-6">
-                        <div className="w-14 h-14 bg-white shadow-neumorph-inset rounded-xl flex items-center justify-center mx-auto mb-3">
-                          <item.icon className="w-7 h-7 text-primary" />
-                        </div>
-                        <h4 className="font-semibold mb-2">{item.title}</h4>
-                        <p className="text-sm text-muted-foreground" data-testid={item.testId}>
-                          {item.value}
-                        </p>
-                      </CardContent>
-                    </Card>
-                  </motion.div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </motion.section>
-      </div>
-    </>
+              <PillButton className="mt-6 md:max-w-xs" onClick={() => { window.location.href = "tel:" + supportPhone.replace(/\s/g, ""); }}>
+                {t("about.callSupport")}
+              </PillButton>
+            </CardContent>
+          </Card>
+        </div>
+      </main>
+    </div>
   );
 }

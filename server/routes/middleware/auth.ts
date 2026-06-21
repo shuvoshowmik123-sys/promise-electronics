@@ -10,7 +10,9 @@
 
 import type { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
+import { sql } from 'drizzle-orm';
 import { storage } from '../../storage.js';
+import { db } from '../../db.js';
 import { requireCsrf } from './csrf.js';
 import { getDefaultPermissionsForRole } from '../../../shared/admin-permissions.js';
 
@@ -134,7 +136,7 @@ export function getEffectivePermissionsForUser(user: { role: string; permissions
             return parsed;
         }
     } catch (error) {
-        console.warn('Failed to parse user permissions, falling back to role defaults:', error);
+        console.warn('[Auth] Failed to parse user permissions, using role defaults:', (error as Error).message);
     }
 
     return getDefaultPermissions(user.role);
@@ -162,7 +164,7 @@ export const requirePermission = (permission: string) => async (req: Request, re
         }
         next();
     } catch (error) {
-        console.error('Permission check error:', error);
+        console.error('[Auth] Permission check error:', (error as Error).message);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -191,7 +193,7 @@ export const requireAnyPermission = (permissionsToCheck: string[]) => async (req
         }
         next();
     } catch (error) {
-        console.error('Permission check error:', error);
+        console.error('[Auth] Permission check error:', (error as Error).message);
         res.status(500).json({ error: 'Internal server error' });
     }
 };
@@ -200,21 +202,52 @@ export const requireAnyPermission = (permissionsToCheck: string[]) => async (req
 /**
  * Middleware to require customer authentication.
  * Supports both session-based and Google OAuth authentication.
+ * Rejects sessions that were created before the customer's last password change.
  */
 export function requireCustomerAuth(req: any, res: Response, next: NextFunction) {
-    // Check Google Auth (Passport)
+    let customerId: string | undefined;
+
     if (req.isAuthenticated && req.isAuthenticated() && req.user?.customerId) {
-        req.session.customerId = req.user.customerId;
+        customerId = req.user.customerId;
+        req.session.customerId = customerId;
+    } else if (req.session?.customerId) {
+        customerId = req.session.customerId;
+    }
+
+    if (!customerId) {
+        return res.status(401).json({
+            error: 'Please login to continue',
+            code: 'NOT_AUTHENTICATED'
+        });
+    }
+
+    const authenticatedAt = req.session?.authenticatedAt as number | undefined;
+    if (authenticatedAt) {
+        db.execute(sql`SELECT password_changed_at FROM users WHERE id = ${customerId}`)
+            .then((rows) => {
+                const pca = (rows.rows[0] as any)?.password_changed_at;
+                if (pca && new Date(pca).getTime() > authenticatedAt) {
+                    console.log(`[CustomerAuth] Stale session rejected for user ${customerId}`);
+                    req.session.destroy(() => {});
+                    res.clearCookie('customer.sid');
+                    res.clearCookie('connect.sid');
+                    return res.status(401).json({
+                        error: 'Your password was changed. Please sign in again.',
+                        code: 'SESSION_REVOKED'
+                    });
+                }
+                return requireCsrf(req, res, next);
+            })
+            .catch((err: Error) => {
+                console.error('[CustomerAuth] Password change check failed:', err.message);
+                return res.status(503).json({
+                    error: 'Please try again shortly',
+                    code: 'AUTH_CHECK_UNAVAILABLE'
+                });
+            });
+    } else {
         return requireCsrf(req, res, next);
     }
-    // Check session-based auth
-    if (req.session?.customerId) {
-        return requireCsrf(req, res, next);
-    }
-    return res.status(401).json({
-        error: 'Please login to continue',
-        code: 'NOT_AUTHENTICATED'
-    });
 }
 
 /**
@@ -236,7 +269,7 @@ export async function requireCorporateAuth(req: Request, res: Response, next: Ne
         (req as any).user = user;
         requireCsrf(req, res, next);
     } catch (error) {
-        console.error('Corporate auth check error:', error);
+        console.error('[Auth] Corporate auth check error:', (error as Error).message);
         res.status(500).json({ error: 'Internal server error' });
     }
 }

@@ -39,6 +39,16 @@ import { eq as drizzleEq, desc as drizzleDesc } from 'drizzle-orm';
 
 const router = Router();
 
+const SENSITIVE_USER_FIELDS = ['password', 'passwordHash', 'temporaryPassword', 'resetSecret', 'otpSecret'] as const;
+
+function stripSensitiveFields<T extends Record<string, any>>(user: T): Omit<T, typeof SENSITIVE_USER_FIELDS[number]> {
+    const safe = { ...user };
+    for (const field of SENSITIVE_USER_FIELDS) {
+        delete (safe as any)[field];
+    }
+    return safe;
+}
+
 // ============================================
 // Admin Dashboard & SSE
 // ============================================
@@ -143,7 +153,7 @@ router.get('/api/users', requirePermission('users'), async (req: Request, res: R
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 50;
         const result = await userRepo.getAllUsers(page, limit);
-        res.json(result);
+        res.json({ ...result, items: result.items.map(stripSensitiveFields) });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch users' });
     }
@@ -186,7 +196,7 @@ router.get('/api/users/technicians/workload', requireAdminAuth, requireAnyPermis
 
         res.json(response);
     } catch (error) {
-        console.error('Workload fetch error:', error);
+        console.error('[UsersRoutes] Workload fetch error:', (error as Error).message);
         res.status(500).json({ error: 'Failed to fetch technician workload' });
     }
 });
@@ -200,7 +210,7 @@ router.get('/api/users/:id', requireAdminAuth, requirePermission('users'), async
         if (!user) {
             return res.status(404).json({ error: 'User not found' });
         }
-        res.json(user);
+        res.json(stripSensitiveFields(user));
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch user' });
     }
@@ -388,14 +398,14 @@ router.post('/api/admin/users', requirePermission('canCreate'), async (req: Requ
             entityId: user.id,
             details: `Created staff user '${user.name}' (${user.role}) - new: ${JSON.stringify({ name: user.name, email: user.email, role: user.role })}`,
             severity: 'info',
-        }).catch(console.error);
+        }).catch(() => {});
 
         res.status(201).json(safeUser);
     } catch (error: any) {
         if (error.name === 'ZodError') {
             return res.status(400).json({ error: 'Invalid user data', details: error.errors });
         }
-        console.error('Create user error:', error);
+        console.error('[UsersRoutes] Create user error:', (error as Error).message);
         res.status(500).json({ error: 'Failed to create user' });
     }
 });
@@ -476,7 +486,7 @@ router.patch('/api/admin/users/:id', requireAdminAuth, async (req: Request, res:
 
         // If credentials, role, or status changed, revoke existing trusted devices
         if (validated.password || (validated.role && validated.role !== targetUser.role)) {
-            await authService.revokeAllCorporateTrustedDevicesForUser(targetUserId, 'security_reset_or_role_change').catch(console.error);
+            await authService.revokeAllCorporateTrustedDevicesForUser(targetUserId, 'security_reset_or_role_change').catch(() => {});
         }
 
         const { password: _, ...safeUser } = updatedUser;
@@ -490,7 +500,7 @@ router.patch('/api/admin/users/:id', requireAdminAuth, async (req: Request, res:
             entityId: targetUserId,
             details: `Updated user '${targetUser.name}': [${changedFields.join(', ')}] - old: ${JSON.stringify({ name: targetUser.name, role: targetUser.role, status: targetUser.status })} new: ${JSON.stringify({ name: safeUser.name, role: safeUser.role, status: safeUser.status })}`,
             severity: validated.role && validated.role !== targetUser.role ? 'warning' : 'info',
-        }).catch(console.error);
+        }).catch(() => {});
 
         // Notify the user to refresh their permissions instantly
         notifySpecificAdmin(targetUserId, { type: 'force_refresh_user' });
@@ -500,7 +510,7 @@ router.patch('/api/admin/users/:id', requireAdminAuth, async (req: Request, res:
         if (error.name === 'ZodError') {
             return res.status(400).json({ error: 'Invalid user data', details: error.errors });
         }
-        console.error('Update user error:', error);
+        console.error('[UsersRoutes] Update user error:', (error as Error).message);
         res.status(500).json({ error: 'Failed to update user' });
     }
 });
@@ -531,10 +541,10 @@ router.delete('/api/admin/users/:id', requirePermission('canDelete'), async (req
             entityId: req.params.id,
             details: `Deleted staff user '${targetUser?.name || req.params.id}' (${targetUser?.role || 'unknown role'})`,
             severity: 'critical',
-        }).catch(console.error);
+        }).catch(() => {});
 
         // Revoke trusted devices for the deleted user
-        await authService.revokeAllCorporateTrustedDevicesForUser(req.params.id, 'account_deleted').catch(console.error);
+        await authService.revokeAllCorporateTrustedDevicesForUser(req.params.id, 'account_deleted').catch(() => {});
 
         // Notify the user (if they are online) that they are deleted
         notifySpecificAdmin(req.params.id, { type: 'force_logout', reason: 'Account deleted' });
@@ -605,7 +615,7 @@ router.post('/api/admin/corporate-users', requirePermission('canCreate'), async 
         if (error.name === 'ZodError') {
             return res.status(400).json({ error: 'Invalid data', details: error.errors });
         }
-        console.error('Create corporate user error:', error);
+        console.error('[UsersRoutes] Create corporate user error:', (error as Error).message);
         res.status(500).json({ error: 'Failed to create corporate user' });
     }
 });
@@ -621,7 +631,7 @@ router.post('/api/admin/corporate-users/:id/reset-password', requirePermission('
         const hashedPassword = await bcrypt.hash(generatedPassword, 12);
         const updatedUser = await userRepo.updateUser(targetUser.id, { password: hashedPassword } as any);
 
-        await authService.revokeAllCorporateTrustedDevicesForUser(targetUser.id, 'corporate_password_reset').catch(console.error);
+        await authService.revokeAllCorporateTrustedDevicesForUser(targetUser.id, 'corporate_password_reset').catch(() => {});
 
         AuditLogger.log({
             userId: req.session.adminUserId!,
@@ -630,7 +640,7 @@ router.post('/api/admin/corporate-users/:id/reset-password', requirePermission('
             entityId: targetUser.id,
             details: `Reset corporate portal password for '${targetUser.name}' (${targetUser.username})`,
             severity: 'warning',
-        }).catch(console.error);
+        }).catch(() => {});
 
         res.json({
             user: {
@@ -641,7 +651,7 @@ router.post('/api/admin/corporate-users/:id/reset-password', requirePermission('
             temporaryPassword: generatedPassword,
         });
     } catch (error) {
-        console.error('[UsersRoutes] Corporate password reset error:', error);
+        console.error('[UsersRoutes] Corporate password reset error:', (error as Error).message);
         res.status(500).json({ error: 'Failed to reset corporate user password' });
     }
 });
@@ -657,7 +667,7 @@ router.post('/api/admin/corporate-users/:id/reset-otp', requirePermission('canEd
             entityId: result.request.id,
             details: `Issued corporate portal OTP reset code for '${result.request.name}' (${result.request.username})`,
             severity: 'warning',
-        }).catch(console.error);
+        }).catch(() => {});
 
         res.json(result);
     } catch (error: any) {
@@ -675,7 +685,7 @@ router.get('/api/admin/corporate-users/reset-requests', requirePermission('canEd
         const requests = await corporatePasswordResetService.getClientResetRequests(corporateClientId);
         res.json(requests);
     } catch (error) {
-        console.error('[UsersRoutes] Corporate reset requests error:', error);
+        console.error('[UsersRoutes] Corporate reset requests error:', (error as Error).message);
         res.status(500).json({ error: 'Failed to load reset requests' });
     }
 });
@@ -755,8 +765,7 @@ router.get('/api/admin/customers', requireAdminAuth, requirePermission('users'),
                     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
                 return {
-                    ...customer,
-                    password: undefined,
+                    ...stripSensitiveFields(customer),
                     totalOrders: orders.length,
                     totalServiceRequests: serviceRequests.length,
                     totalJobTickets: jobTickets.length,
@@ -768,7 +777,7 @@ router.get('/api/admin/customers', requireAdminAuth, requirePermission('users'),
         );
         res.json(customersWithStats);
     } catch (error) {
-        console.error('Failed to fetch customers:', error);
+        console.error('[UsersRoutes] Failed to fetch customers:', (error as Error).message);
         res.status(500).json({ error: 'Failed to fetch customers' });
     }
 });
@@ -813,7 +822,7 @@ router.post('/api/admin/customers', requireAdminAuth, requirePermission('users')
         const { password: _, ...safeCustomer } = newCustomer;
         res.status(201).json(safeCustomer);
     } catch (error) {
-        console.error('Failed to create customer:', error);
+        console.error('[UsersRoutes] Failed to create customer:', (error as Error).message);
         res.status(500).json({ error: 'Failed to create customer' });
     }
 });
@@ -851,8 +860,7 @@ router.get('/api/admin/customers/:id', requireAdminAuth, requirePermission('user
         );
 
         res.json({
-            ...user,
-            password: undefined,
+            ...stripSensitiveFields(user),
             orders: ordersWithItems,
             serviceRequests,
             jobTickets,
@@ -881,7 +889,7 @@ router.patch('/api/admin/customers/:id', requireAdminAuth, requirePermission('us
             return res.status(404).json({ error: 'User not found' });
         }
 
-        res.json({ ...updated, password: undefined });
+        res.json(stripSensitiveFields(updated));
     } catch (error: any) {
         // Duplicate phone hits a DB unique violation — surface a friendly 409
         // instead of a generic 500 (mirrors the customer profile route).
@@ -924,6 +932,56 @@ router.delete('/api/admin/customers/:id', requireAdminAuth, requirePermission('u
         res.json({ success: true });
     } catch (error) {
         res.status(500).json({ error: 'Failed to delete customer' });
+    }
+});
+
+/**
+ * POST /api/admin/customers/:id/reset-code - Generate a staff-assisted reset code
+ * Super Admin only. Verifies customer identity manually, then creates a one-time code
+ * the customer can use at POST /api/customer/password-reset/complete.
+ */
+router.post('/api/admin/customers/:id/reset-code', requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+        const customer = await userRepo.getUser(req.params.id);
+        if (!customer || customer.role !== 'Customer') {
+            return res.status(404).json({ error: 'Customer not found' });
+        }
+
+        const adminId = req.session.adminUserId || 'unknown';
+        const code = String(100000 + Math.floor(Math.random() * 900000));
+        const codeHash = await bcrypt.hash(code, 10);
+        const id = crypto.randomUUID();
+
+        const { sql } = await import('drizzle-orm');
+
+        await db.execute(sql`UPDATE staff_reset_codes SET used = TRUE WHERE user_id = ${customer.id} AND used = FALSE`);
+
+        await db.execute(sql`
+            INSERT INTO staff_reset_codes (id, user_id, code_hash, expires_at, created_by, created_at)
+            VALUES (${id}, ${customer.id}, ${codeHash}, ${new Date(Date.now() + 10 * 60 * 1000).toISOString()}::timestamp, ${adminId}, NOW())
+        `);
+
+        auditLogger.log({
+            userId: adminId,
+            action: 'CREATE',
+            entity: 'StaffResetCode',
+            entityId: customer.id,
+            details: `Staff-assisted password reset code generated for customer ${customer.id}`,
+            req,
+            severity: 'warning',
+        }).catch(() => {});
+
+        console.log(`[StaffReset] Reset code created for customer ${customer.id} by admin ${adminId}`);
+
+        res.json({
+            code,
+            expiresInMinutes: 10,
+            customerPhone: customer.phone?.slice(-4) ? `****${customer.phone.slice(-4)}` : 'no phone',
+            message: 'Give this code to the customer. It expires in 10 minutes and can only be used once.',
+        });
+    } catch (error: any) {
+        console.error('[StaffReset] Failed to create reset code:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to create reset code' });
     }
 });
 
@@ -971,7 +1029,7 @@ router.get('/api/admin/reports', requireAdminAuth, requirePermission('reports'),
         const reportData = await analyticsRepo.getReportData(startDate, endDate);
         res.json(reportData);
     } catch (error) {
-        console.error('Failed to fetch report data:', error);
+        console.error('[UsersRoutes] Failed to fetch report data:', (error as Error).message);
         res.status(500).json({ error: 'Failed to fetch report data' });
     }
 });

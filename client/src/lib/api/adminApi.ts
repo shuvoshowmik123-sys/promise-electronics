@@ -13,6 +13,7 @@ import type {
 import type { AdminNotificationItem } from "@shared/types/admin-notifications";
 import { fetchApi } from "./httpClient";
 import { PaginationResult, Order, ProductVariant, AdminCustomer, CustomerDetails, SafeUser } from "./types";
+import type { CustomerRepairJourney, CustomerRepairJourneyDetail, CustomerJourneyStage } from "./customerApi";
 
 // Audit Logs API
 export const auditLogsApi = {
@@ -497,6 +498,33 @@ export const serviceRequestsApi = {
         }),
 };
 
+export const adminRepairJourneysApi = {
+    getAll: (filters?: { stage?: string; status?: string; limit?: number }) => {
+        const params = new URLSearchParams();
+        if (filters?.stage && filters.stage !== "all") params.set("stage", filters.stage);
+        if (filters?.status && filters.status !== "all") params.set("status", filters.status);
+        if (filters?.limit) params.set("limit", String(filters.limit));
+        const query = params.toString();
+        return fetchApi<(CustomerRepairJourney & { adminNote?: string | null })[]>(`/admin/customer-repair-journeys${query ? `?${query}` : ""}`);
+    },
+    getOne: (id: string) => fetchApi<CustomerRepairJourneyDetail & { adminNote?: string | null }>(`/admin/customer-repair-journeys/${id}`),
+    updateStage: (id: string, data: { stage: CustomerJourneyStage; adminNote?: string; customerFriendlyStatus?: string }) =>
+        fetchApi<{ status: string; stage: CustomerJourneyStage }>(`/admin/customer-repair-journeys/${id}/stage`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    confirmSchedule: (id: string, data: { scheduleId: string; confirmedDate: string; confirmedTimeWindow: string; adminNote?: string }) =>
+        fetchApi<{ status: string }>(`/admin/customer-repair-journeys/${id}/schedule/confirm`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    addEvent: (id: string, data: { eventType: string; title: string; message?: string; isCustomerVisible?: boolean; metadata?: unknown }) =>
+        fetchApi<{ eventId: string }>(`/admin/customer-repair-journeys/${id}/event`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+};
+
 export interface AdminDashboardRevenuePoint {
     name: string;
     value: number;
@@ -686,6 +714,10 @@ export const adminCustomersApi = {
     delete: (id: string) =>
         fetchApi<void>(`/admin/customers/${id}`, {
             method: "DELETE",
+        }),
+    generateResetCode: (id: string) =>
+        fetchApi<{ code: string; expiresInMinutes: number; customerPhone: string; message: string }>(`/admin/customers/${id}/reset-code`, {
+            method: "POST",
         }),
 };
 

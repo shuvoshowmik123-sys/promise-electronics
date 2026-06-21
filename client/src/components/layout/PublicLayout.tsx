@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { navItems, images } from "@/lib/mock-data";
+import { CustomerLanguageProvider } from "@/contexts/CustomerLanguageContext";
 import { Search, ShoppingCart, User, Menu, LogOut, UserCircle, Globe, Shield, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,7 +76,11 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
   const businessHours = getSettingValue("business_hours", "9:00 AM - 9:00 PM");
   const siteName = getSettingValue("site_name", "Promise Electronics");
   const logoUrl = getSettingValue("logo_url", "");
-  const isImmersiveMobileRoute = location === "/repair" || location === "/get-quote";
+  const currentPath = location.split("?")[0].split("#")[0];
+
+  const isImmersiveMobileRoute = true;
+  const hideBottomNavRoutes = ["/repair", "/get-quote"];
+  const hideBottomNav = hideBottomNavRoutes.includes(currentPath);
 
   const handleLogout = async () => {
     await logout();
@@ -83,7 +88,8 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50">
+    <CustomerLanguageProvider>
+    <div className="customer-portal-shell min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50">
       <ScrollProgressBar />
       <NetworkOfflineBanner />
       {/* Top Bar */}
@@ -98,7 +104,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Main Header - Neumorphic */}
-      <header className="bg-slate-100 sticky top-0 z-50 shadow-neumorph-sm border-b border-slate-200/50 pt-[env(safe-area-inset-top)]">
+      <header className={`${isImmersiveMobileRoute ? "hidden md:block" : ""} bg-slate-100 sticky top-0 z-50 shadow-neumorph-sm border-b border-slate-200/50 pt-[env(safe-area-inset-top)]`}>
         <div className="container mx-auto px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between gap-4 sm:gap-8">
             {/* Logo */}
@@ -272,15 +278,15 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
         </div>
       )}
 
-      <main className={`flex-1 ${isImmersiveMobileRoute ? "pb-0 md:pb-0" : "pb-20 md:pb-0"}`}>
+      <main className={`flex-1 ${currentPath === "/login" ? "pb-0" : isImmersiveMobileRoute ? "pb-28 md:pb-0" : "pb-20 md:pb-0"}`}>
         {children}
       </main>
 
       {/* Mobile Bottom Navigation */}
-      {!isImmersiveMobileRoute && <MobileBottomNav />}
+      {!hideBottomNav && <MobileBottomNav />}
 
       {/* Neumorphic Footer */}
-      <footer className={`${isImmersiveMobileRoute ? "hidden md:block" : ""} bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 text-slate-300 py-12 pb-24 md:pb-12 relative overflow-hidden`}>
+      <footer className="hidden md:block bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 text-slate-300 py-12 md:pb-12 relative overflow-hidden">
         <div className="container mx-auto px-4 grid md:grid-cols-4 gap-8">
           <div>
             <h3 className="text-white text-xl font-heading font-bold mb-4">PROMISE ELECTRONICS</h3>
@@ -349,5 +355,6 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
         onSkip={handleSkipProfile}
       />
     </div>
+    </CustomerLanguageProvider>
   );
 }

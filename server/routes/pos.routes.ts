@@ -10,6 +10,9 @@ import { financeRepo, posRepo, userRepo, inventoryRepo } from '../repositories/i
 import { insertPosTransactionSchema } from '../../shared/schema.js';
 import { requireAdminAuth, requirePermission } from './middleware/auth.js';
 import { auditLogger } from '../utils/auditLogger.js';
+import { repairJourneyService } from '../services/customer-repair-journey.service.js';
+import { jobService } from '../services/job.service.js';
+import { jobRepo } from '../repositories/index.js';
 
 const router = Router();
 
@@ -162,26 +165,72 @@ router.post('/api/pos-transactions', requireAdminAuth, requirePermission('proces
             }
         }
 
-        // Handle Linked Jobs
+        // Handle Linked Jobs — sync billing, payment, job status, and journey
         if (linkedJobs.length > 0) {
-            for (const job of linkedJobs) {
-                if (job.jobId) {
-                    const existingJob = await storage.getJobTicket(job.jobId);
-                    if (existingJob && existingJob.status !== 'Completed') {
-                        await storage.updateJobTicket(job.jobId, { status: 'Completed' });
+            const isPaid = ['Cash', 'Bank', 'bKash', 'Nagad'].includes(paymentMethod);
 
-                        // Audit Log for job completion via POS
-                        await auditLogger.log({
-                            userId: req.session?.adminUserId || 'system',
-                            action: 'STATUS_CHANGE_TO_COMPLETED',
-                            entity: 'JobTicket',
-                            entityId: job.jobId,
-                            details: `Job marked as completed via POS transaction ${transaction.invoiceNumber || transaction.id}`,
-                            oldValue: { status: existingJob.status },
-                            newValue: { status: 'Completed' },
-                            req: req
+            for (const job of linkedJobs) {
+                if (!job.jobId) continue;
+
+                const existingJob = await storage.getJobTicket(job.jobId);
+                if (!existingJob) continue;
+
+                // 1. Bill Ready journey event (always, dedup-safe)
+                repairJourneyService.syncBillToJourney({
+                    jobId: job.jobId,
+                    invoiceNumber: transaction.invoiceNumber || undefined,
+                    transactionId: transaction.id,
+                    amount: validated.total,
+                    paymentMethod,
+                }).catch(err => console.error('[RepairJourney] Bill sync failed:', (err as Error).message));
+
+                // 2. Record payment on job for paid methods
+                if (isPaid) {
+                    try {
+                        await jobService.recordJobPayment(job.jobId, {
+                            paymentId: transaction.id,
+                            amount: validated.total,
+                            method: paymentMethod,
                         });
+                    } catch (payErr) {
+                        console.error('[POS] Job payment recording failed:', (payErr as Error).message);
                     }
+                }
+
+                // 3. Mark job Completed if not already + sync journey
+                if (existingJob.status !== 'Completed') {
+                    const warrantyDays = (existingJob as any).warrantyDays ?? 30;
+                    const completionPatch: any = {
+                        status: 'Completed',
+                        completedAt: new Date(),
+                    };
+                    if (warrantyDays > 0 && !(existingJob as any).warrantyExpiryDate) {
+                        const expiry = new Date();
+                        expiry.setDate(expiry.getDate() + warrantyDays);
+                        completionPatch.warrantyExpiryDate = expiry;
+                    }
+                    if (isPaid) {
+                        completionPatch.billingStatus = 'invoiced';
+                    }
+
+                    await jobRepo.updateJobTicket(job.jobId, completionPatch);
+
+                    await auditLogger.log({
+                        userId: req.session?.adminUserId || 'system',
+                        action: 'STATUS_CHANGE_TO_COMPLETED',
+                        entity: 'JobTicket',
+                        entityId: job.jobId,
+                        details: `Job marked as completed via POS transaction ${transaction.invoiceNumber || transaction.id}`,
+                        oldValue: { status: existingJob.status },
+                        newValue: { status: 'Completed' },
+                        req,
+                    });
+
+                    repairJourneyService.syncJobStatusToJourney(job.jobId, 'Completed', {
+                        device: (existingJob as any).device,
+                        warrantyDays,
+                        warrantyExpiryDate: completionPatch.warrantyExpiryDate || (existingJob as any).warrantyExpiryDate,
+                    }).catch(err => console.error('[RepairJourney] POS job status sync failed:', (err as Error).message));
                 }
             }
         }

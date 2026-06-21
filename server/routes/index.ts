@@ -67,6 +67,8 @@ import teamChatRoutes from './team-chat.routes.js'; // Phase 3: Internal Team Ch
 import remindersRoutes from './reminders.routes.js'; // Phase 3: Reminders
 import kgRoutes from './kg.routes.js'; // KG: Knowledge Graph admin
 import firebaseAuthRoutes from './firebase-auth.routes.js'; // Firebase Auth
+import customerRepairJourneyRoutes from './customer-repair-journey.routes.js';
+import adminRepairJourneyRoutes from './admin-repair-journey.routes.js';
 
 /**
  * Register all routes with the Express application.
@@ -109,28 +111,15 @@ export async function registerRoutes(
     // ============================================
     app.get('/api/health', async (req, res) => {
         try {
-            const start = Date.now();
             await db.execute(sql`SELECT 1`);
-            const latency = Date.now() - start;
             res.json({
                 status: 'ok',
-                database: 'connected',
-                latency: `${latency}ms`,
-                uptime: process.uptime(),
-                memory: process.memoryUsage(),
-                connections: {
-                    customers: sseBroker.getCustomerConnectionCount(),
-                    admins: sseBroker.getAdminConnectionCount(),
-                    corporate: sseBroker.getCorporateConnectionCount(),
-                },
                 timestamp: new Date().toISOString(),
             });
         } catch (error: any) {
-            console.error('Health check failed:', error);
+            console.error('[Health] Check failed:', (error as Error).message);
             res.status(500).json({
                 status: 'error',
-                database: 'disconnected',
-                error: error.message,
             });
         }
     });
@@ -258,6 +247,11 @@ export async function registerRoutes(
 
     app.use(quotesRoutes);
     routeLog('[Routes] ✓ Quotes routes registered');
+
+    // Customer Repair Journey
+    app.use(customerRepairJourneyRoutes);
+    app.use(adminRepairJourneyRoutes);
+    routeLog('[Routes] ✓ Customer repair journey routes registered');
 
     app.use(reviewsRoutes);
     routeLog('[Routes] ✓ Reviews routes registered');
