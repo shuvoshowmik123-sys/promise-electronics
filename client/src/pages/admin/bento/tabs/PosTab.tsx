@@ -590,10 +590,6 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                 type="button"
                                 className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm active:scale-95"
                                 onClick={() => {
-                                    if (window.history.length > 1) {
-                                        window.history.back();
-                                        return;
-                                    }
                                     window.location.hash = "dashboard";
                                 }}
                                 aria-label="Back"
