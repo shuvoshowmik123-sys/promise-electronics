@@ -1,5 +1,5 @@
 import { type CSSProperties, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // ─── LAYOUT PRIMITIVES ────────────────────────────────────────────────────────
@@ -148,9 +148,9 @@ export function MobileMarqueeText({
     );
 }
 
-export function MobileKpiGrid({ items, className }: { items: MobileKpiItem[]; className?: string }) {
+function MobileKpiCards({ items, className }: { items: MobileKpiItem[]; className?: string }) {
     return (
-        <div className={cn("grid grid-cols-2 gap-2 md:hidden", className)}>
+        <div className={cn("grid grid-cols-2 gap-2", className)}>
             {items.map((item) => {
                 const content = (
                     <>
@@ -182,6 +182,50 @@ export function MobileKpiGrid({ items, className }: { items: MobileKpiItem[]; cl
                     </div>
                 );
             })}
+        </div>
+    );
+}
+
+export function MobileKpiGrid({
+    items,
+    className,
+    collapsible = false,
+    defaultOpen = false,
+    summaryLabel = "Metrics",
+}: {
+    items: MobileKpiItem[];
+    className?: string;
+    collapsible?: boolean;
+    defaultOpen?: boolean;
+    summaryLabel?: string;
+}) {
+    const [open, setOpen] = useState(defaultOpen);
+
+    if (!collapsible) {
+        return <MobileKpiCards items={items} className={cn("md:hidden", className)} />;
+    }
+
+    return (
+        <div className="space-y-2 md:hidden">
+            <button
+                type="button"
+                onClick={() => setOpen((value) => !value)}
+                className="flex w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-left shadow-sm active:scale-[0.99]"
+                aria-expanded={open}
+            >
+                <div className="min-w-0">
+                    <MobileMarqueeText className="text-[10px] font-black uppercase tracking-wide text-slate-500">{summaryLabel}</MobileMarqueeText>
+                    <div className="mt-1 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-[11px] font-black">
+                        {items.slice(0, 3).map((item) => (
+                            <span key={item.label} className={cn("min-w-0", toneClasses[item.tone || "slate"].split(" ").slice(-1)[0])}>
+                                {item.label} <span className="text-slate-950">{item.value}</span>
+                            </span>
+                        ))}
+                    </div>
+                </div>
+                <ChevronDown className={cn("h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200", open && "rotate-180")} />
+            </button>
+            {open && <MobileKpiCards items={items} className={className} />}
         </div>
     );
 }

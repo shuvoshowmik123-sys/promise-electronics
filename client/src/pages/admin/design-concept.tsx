@@ -90,26 +90,77 @@ const TAB_PRELOADERS: Record<string, () => Promise<unknown>> = {
     finance: () => import("./bento/tabs/FinancesTab"),
 };
 
-const FIXED_ADMIN_TABS = new Set([
-    "dashboard",
-    "service-requests",
-    "repair-journeys",
-    "jobs",
-    "challans",
-    "pos",
-    "orders",
-    "finance",
-    "customers",
-    "inquiries",
-    "b2b",
-    "corp-msg",
-    "inventory",
-    "warranty",
-    "refunds",
-    "wastage",
-    "users",
-    "audit-logs",
-]);
+const ADMIN_SIDEBAR_NAV_GROUPS: SidebarGroup[] = [
+    {
+        title: "Overview",
+        items: [
+            { label: "Dashboard", id: "dashboard", icon: BarChart3, color: "blue", layout: "fixed" },
+            { label: "Overview", id: "overview", icon: Activity, color: "indigo", layout: "scroll" },
+            { label: "Reports", id: "reports", icon: PieChart, color: "violet", layout: "scroll" },
+            { label: "Quality", id: "quality", icon: LineChart, color: "rose", layout: "scroll" },
+            { label: "Health", id: "system-health", icon: ShieldAlert, color: "emerald", layout: "scroll" },
+        ]
+    },
+    {
+        title: "Operations",
+        items: [
+            { label: "Requests", id: "service-requests", icon: MessageSquare, color: "orange", layout: "fixed" },
+            { label: "Repair Journeys", id: "repair-journeys", icon: Wrench, color: "emerald", layout: "fixed" },
+            { label: "Jobs", id: "jobs", icon: ClipboardList, color: "violet", layout: "fixed" },
+            { label: "Pickups", id: "pickup", icon: Truck, color: "cyan", layout: "scroll" },
+            { label: "Challans", id: "challans", icon: ScrollText, color: "teal", layout: "fixed" },
+        ]
+    },
+    {
+        title: "Sales & CRM",
+        items: [
+            { label: "POS", id: "pos", icon: ShoppingCart, color: "pink", layout: "fixed" },
+            { label: "Orders", id: "orders", icon: ShoppingBag, color: "rose", layout: "fixed" },
+            { label: "Finance", id: "finance", icon: Banknote, color: "emerald", layout: "fixed" },
+            { label: "Quotations", id: "quotations", icon: FileText, color: "blue", layout: "scroll" },
+            { label: "Customers", id: "customers", icon: Users, color: "blue", layout: "fixed" },
+            { label: "Inquiries", id: "inquiries", icon: HelpCircle, color: "sky", layout: "fixed" },
+        ]
+    },
+    {
+        title: "B2B",
+        items: [
+            { label: "B2B Area", id: "b2b", icon: Building2, color: "sky", layout: "fixed" },
+            { label: "Corp. Messages", id: "corp-msg", icon: MessageSquare, color: "indigo", layout: "fixed" }
+        ]
+    },
+    {
+        title: "Warehouse",
+        items: [
+            { label: "Stock Manager", id: "inventory", icon: Package, color: "amber", layout: "fixed" },
+            { label: "Purchasing (POs)", id: "purchasing", icon: ShoppingCart, color: "pink", layout: "scroll" },
+            { label: "Warranty Claims", id: "warranty", icon: ShieldCheck, color: "green", layout: "fixed" },
+            { label: "Refunds", id: "refunds", icon: RotateCcw, color: "rose", layout: "fixed" },
+            { label: "Wastage", id: "wastage", icon: FileWarning, color: "orange", layout: "fixed" },
+        ]
+    },
+    {
+        title: "People & Staff",
+        items: [
+            { label: "Users", id: "users", icon: UserCog, color: "indigo", layout: "fixed" },
+            { label: "Attendance", id: "attendance", icon: UserCheck, color: "green", layout: "scroll" },
+            { label: "Salary & HR", id: "salary", icon: Banknote, color: "emerald", layout: "scroll" },
+            { label: "Cashier", id: "cashier", icon: ShoppingCart, color: "blue", layout: "scroll" },
+            { label: "Technician", id: "technician", icon: HardHat, color: "orange", layout: "scroll" },
+        ]
+    },
+    {
+        title: "System",
+        items: [
+            { label: "Settings", id: "settings", icon: Settings, color: "slate", layout: "scroll" },
+            { label: "Audit Logs", id: "audit-logs", icon: ShieldAlert, color: "rose", layout: "fixed" },
+            { label: "AI Brain", id: "brain", icon: Brain, color: "fuchsia", layout: "scroll" },
+        ]
+    }
+];
+
+const getAdminTabLayout = (tabId: string) =>
+    ADMIN_SIDEBAR_NAV_GROUPS.flatMap((group) => group.items).find((item) => item.id === tabId)?.layout || "scroll";
 
 /** Warm a single tab's chunk (call on nav hover/touchstart). */
 export function preloadTab(id: string) {
@@ -142,7 +193,7 @@ export default function DesignConcept() {
 
     const activeTabRef = useRef(activeTab);
     useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
-    const isFixed = FIXED_ADMIN_TABS.has(activeTab);
+    const isFixed = getAdminTabLayout(activeTab) === "fixed";
 
     // Warm the most-used tab chunks during idle (after first paint) so the first
     // switch to Jobs/POS/Finance/etc has no lazy-chunk download wait.
@@ -377,77 +428,7 @@ export default function DesignConcept() {
         'audit-logs': 'Audit Logs', 'brain': 'AI Brain'
     };
 
-    // Sidebar Structure
-    const sidebarNavGroups = [
-        {
-            title: "Overview",
-            items: [
-                { label: "Dashboard", id: "dashboard", icon: BarChart3, color: "blue", layout: "fixed" },
-                { label: "Overview", id: "overview", icon: Activity, color: "indigo", layout: "scroll" },
-                { label: "Reports", id: "reports", icon: PieChart, color: "violet", layout: "scroll" },
-                { label: "Quality", id: "quality", icon: LineChart, color: "rose", layout: "scroll" },
-                { label: "Health", id: "system-health", icon: ShieldAlert, color: "emerald", layout: "scroll" },
-            ]
-        },
-        {
-            title: "Operations",
-            items: [
-                { label: "Requests", id: "service-requests", icon: MessageSquare, color: "orange", layout: "fixed" },
-                { label: "Repair Journeys", id: "repair-journeys", icon: Wrench, color: "emerald", layout: "fixed" },
-                { label: "Jobs", id: "jobs", icon: ClipboardList, color: "violet", layout: "fixed" },
-                { label: "Pickups", id: "pickup", icon: Truck, color: "cyan", layout: "scroll" },
-                { label: "Challans", id: "challans", icon: ScrollText, color: "teal", layout: "fixed" },
-            ]
-        },
-        {
-            title: "Sales & CRM",
-            items: [
-                { label: "POS", id: "pos", icon: ShoppingCart, color: "pink", layout: "fixed" },
-                { label: "Orders", id: "orders", icon: ShoppingBag, color: "rose", layout: "fixed" },
-                { label: "Finance", id: "finance", icon: Banknote, color: "emerald", layout: "fixed" },
-                { label: "Quotations", id: "quotations", icon: FileText, color: "blue", layout: "scroll" },
-                { label: "Customers", id: "customers", icon: Users, color: "blue", layout: "fixed" },
-                { label: "Inquiries", id: "inquiries", icon: HelpCircle, color: "sky", layout: "fixed" },
-            ]
-        },
-        {
-            title: "B2B",
-            items: [
-                { label: "B2B Area", id: "b2b", icon: Building2, color: "sky", layout: "fixed" },
-                { label: "Corp. Messages", id: "corp-msg", icon: MessageSquare, color: "indigo", layout: "fixed" }
-            ]
-        },
-        {
-            title: "Warehouse",
-            items: [
-                // { id: 'shipments', label: 'Shipments', icon: Truck },
-                // { id: 'procurement', label: 'Procurement', icon: Building2 },
-                { label: "Stock Manager", id: "inventory", icon: Package, color: "amber", layout: "fixed" },
-                { label: "Purchasing (POs)", id: "purchasing", icon: ShoppingCart, color: "pink", layout: "scroll" },
-                { label: "Warranty Claims", id: "warranty", icon: ShieldCheck, color: "green", layout: "fixed" },
-                { label: "Refunds", id: "refunds", icon: RotateCcw, color: "rose", layout: "fixed" },
-                { label: "Wastage", id: "wastage", icon: FileWarning, color: "orange", layout: "fixed" },
-            ]
-        },
-        {
-            title: "People & Staff",
-            items: [
-                { label: "Users", id: "users", icon: UserCog, color: "indigo", layout: "fixed" },
-                { label: "Attendance", id: "attendance", icon: UserCheck, color: "green", layout: "scroll" },
-                { label: "Salary & HR", id: "salary", icon: Banknote, color: "emerald", layout: "scroll" },
-                { label: "Cashier", id: "cashier", icon: ShoppingCart, color: "blue", layout: "scroll" },
-                { label: "Technician", id: "technician", icon: HardHat, color: "orange", layout: "scroll" },
-            ]
-        },
-        {
-            title: "System",
-            items: [
-                { label: "Settings", id: "settings", icon: Settings, color: "slate", layout: "scroll" },
-                { label: "Audit Logs", id: "audit-logs", icon: ShieldAlert, color: "rose", layout: "fixed" },
-                { label: "AI Brain", id: "brain", icon: Brain, color: "fuchsia", layout: "scroll" },
-            ]
-        }
-    ];
+    const sidebarNavGroups = ADMIN_SIDEBAR_NAV_GROUPS;
 
     // Filter sidebar groups based on enabled modules
     const filteredSidebarGroups = sidebarNavGroups.map(group => ({
@@ -981,20 +962,20 @@ export default function DesignConcept() {
 
 // Reusable Layout Wrapper
 function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }: { children: React.ReactNode, isFixed: boolean, activeTab: string, mobileChromeHidden: boolean }) {
-    const mobileTopPad = mobileChromeHidden ? "pt-0" : "pt-16";
+    const mobileChromeOffset = mobileChromeHidden ? "-translate-y-16" : "translate-y-0";
 
     if (isFixed) {
         return (
-            <div className={cn("h-full md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col", mobileTopPad)}>
-                <div className="max-w-[1600px] mx-auto w-full h-full flex flex-col min-h-0">
+            <div className="h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col md:overflow-y-auto">
+                <div className={cn("max-w-[1600px] mx-auto w-full h-full flex flex-col min-h-0 transition-transform duration-200 md:translate-y-0", mobileChromeOffset)}>
                     {children}
                 </div>
             </div>
         );
     }
     return (
-        <div className={cn("min-h-full md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col", mobileTopPad)}>
-            <div className="max-w-[1600px] mx-auto w-full flex-1">
+        <div className="min-h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col">
+            <div className={cn("max-w-[1600px] mx-auto w-full flex-1 transition-transform duration-200 md:translate-y-0", mobileChromeOffset)}>
                 {children}
             </div>
         </div>

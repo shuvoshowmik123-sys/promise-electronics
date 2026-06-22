@@ -123,7 +123,7 @@ import {
     MobileTabLayout,
     MobileTabHeader,
     MobileScrollContent,
-    MobileMicroMetricGrid,
+    MobileKpiGrid,
     MobileCommandRail,
     MobileSegmentTabs,
 } from "../shared";
@@ -817,7 +817,9 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                     </Button>
                 </div>
 
-                <MobileMicroMetricGrid
+                <MobileKpiGrid
+                    collapsible
+                    summaryLabel="Request pulse"
                     items={[
                         { label: "All", value: serviceRequests.length, meta: "total", tone: "slate", onClick: () => selectStatusFilter("all") },
                         { label: "New", value: statusCounts.New || 0, meta: "unread queue", tone: "blue", onClick: () => selectStatusFilter("New") },

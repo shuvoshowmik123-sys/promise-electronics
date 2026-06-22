@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PrintStyles } from "@/components/print";
-import { Search, UserPlus, Trash2, CreditCard, Plus, ShoppingCart, Package, Loader2, Minus, FileText, Banknote, Smartphone, Clock, Shield, ChevronDown, Link, ListPlus, X, Landmark, ScanBarcode, LockKeyhole, AlertTriangle, TrendingDown, TrendingUp, Equal, Ban, RefreshCcw, Wallet } from "lucide-react";
+import { Search, UserPlus, Trash2, CreditCard, Plus, ShoppingCart, Package, Loader2, Minus, FileText, Banknote, Smartphone, Clock, Shield, ChevronDown, Link, ListPlus, X, Landmark, ScanBarcode, LockKeyhole, AlertTriangle, TrendingUp, Equal, Ban, RefreshCcw, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { inventoryApi, jobTicketsApi, posTransactionsApi, settingsApi, adminCustomersApi, drawerApi } from "@/lib/api";
@@ -145,7 +145,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
 
     // ── Effects ──
     useEffect(() => {
-        const check = () => setIsMobile(window.innerWidth < 1024);
+        const check = () => setIsMobile(window.innerWidth < 768);
         check(); window.addEventListener("resize", check);
         return () => window.removeEventListener("resize", check);
     }, []);
@@ -562,15 +562,15 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
         badgeClass: 'bg-amber-100 text-amber-700 border-amber-200',
         Icon: TrendingUp,
     } : {
-        label: 'Shortage',
-        description: 'Cash is below expected. Awaiting Super Admin review.',
+        label: 'Cash Shortage',
+        description: 'Cash is below expected. This is flagged for Super Admin review.',
         amountPrefix: '-',
-        amountClass: 'text-rose-700',
-        cardClass: 'from-rose-50 via-red-50 to-orange-50 border-rose-200/70',
-        iconWrapClass: 'bg-rose-100',
-        iconClass: 'text-rose-600',
-        badgeClass: 'bg-rose-100 text-rose-700 border-rose-200',
-        Icon: TrendingDown,
+        amountClass: 'text-orange-700',
+        cardClass: 'from-orange-50 via-amber-50 to-yellow-50 border-orange-200/70',
+        iconWrapClass: 'bg-orange-100',
+        iconClass: 'text-orange-600',
+        badgeClass: 'bg-orange-100 text-orange-700 border-orange-200',
+        Icon: AlertTriangle,
     };
 
     return (

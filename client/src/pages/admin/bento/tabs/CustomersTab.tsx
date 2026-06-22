@@ -22,7 +22,7 @@ import { Badge } from "@/components/ui/badge";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 
 import { BentoCard } from "../shared/BentoCard";
-import { MobileMarqueeText, MobileScrollContent, MobileTabHeader, MobileTabLayout } from "../shared";
+import { MobileKpiGrid, MobileMarqueeText, MobileScrollContent, MobileTabHeader, MobileTabLayout } from "../shared";
 import { containerVariants, itemVariants, tableRowVariants } from "../shared/animations";
 
 type CustomerMobileFilters = {
@@ -246,19 +246,16 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                     </Button>
                 </div>
 
-                <div className="grid grid-cols-4 gap-1 rounded-2xl border border-white/80 bg-white/90 p-1 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
-                    {[
-                        { label: "Total", value: customers.length, tone: "text-blue-700" },
-                        { label: "Active", value: activeCustomers.length, tone: "text-emerald-700" },
-                        { label: "Recent", value: recentCustomers.length, tone: "text-violet-700" },
-                        { label: "Repairs", value: totalRepairs, tone: "text-amber-700" },
-                    ].map(item => (
-                        <div key={item.label} className="min-w-0 rounded-xl bg-slate-50/80 px-1.5 py-1.5 text-center">
-                            <div className={`truncate text-sm font-black leading-tight ${item.tone}`}>{item.value}</div>
-                            <div className="truncate text-[9px] font-black uppercase text-slate-500">{item.label}</div>
-                        </div>
-                    ))}
-                </div>
+                <MobileKpiGrid
+                    collapsible
+                    summaryLabel="Customer pulse"
+                    items={[
+                        { label: "Total", value: customers.length, meta: "All records", icon: <Users className="h-4 w-4" />, tone: "blue" },
+                        { label: "Active", value: activeCustomers.length, meta: "Available", icon: <CheckCircle className="h-4 w-4" />, tone: "emerald" },
+                        { label: "Recent", value: recentCustomers.length, meta: "30 days", icon: <Clock className="h-4 w-4" />, tone: "violet" },
+                        { label: "Repairs", value: totalRepairs, meta: "Service history", icon: <Wrench className="h-4 w-4" />, tone: "amber" },
+                    ]}
+                />
 
                 <div className="flex items-center gap-2">
                     <div className="relative min-w-0 flex-1">

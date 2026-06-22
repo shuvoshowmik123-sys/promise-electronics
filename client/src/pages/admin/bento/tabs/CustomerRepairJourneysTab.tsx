@@ -250,7 +250,7 @@ export default function CustomerRepairJourneysTab() {
               </div>
               <Button size="icon" variant="outline" className="rounded-2xl" onClick={() => listQuery.refetch()}><RefreshCw className="h-4 w-4" /></Button>
             </div>
-            <MobileKpiGrid items={kpis} />
+            <MobileKpiGrid items={kpis} collapsible summaryLabel="Journey pulse" />
             <MobileSegmentTabs value={filter} onChange={(value) => setFilter(value as Filter)} items={[
               { label: "Active", value: "active" },
               { label: "Quotes", value: "quotes" },

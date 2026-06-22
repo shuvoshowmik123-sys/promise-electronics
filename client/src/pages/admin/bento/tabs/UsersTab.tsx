@@ -18,6 +18,7 @@ import { BentoCard } from "../shared/BentoCard";
 import { StatusBadge } from "../shared/StatusBadge";
 import { containerVariants, itemVariants } from "../shared/animations";
 import { DashboardSkeleton } from "../shared/DashboardSkeleton";
+import { MobileKpiGrid } from "../shared";
 
 // UI Components
 import { Button } from "@/components/ui/button";
@@ -355,8 +356,19 @@ export default function UsersTab() {
             animate="visible"
             className="space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8"
         >
+            <MobileKpiGrid
+                collapsible
+                summaryLabel="Staff pulse"
+                items={[
+                    { label: "Total", value: users.length, meta: "System accounts", icon: <Users className="h-4 w-4" />, tone: "blue" },
+                    { label: "Active", value: users.filter(u => (u.employmentStatus === "active" || (!u.employmentStatus && u.status === "Active"))).length, meta: "Available", icon: <UserCheck className="h-4 w-4" />, tone: "emerald" },
+                    { label: "Admins", value: users.filter(u => u.role === "Super Admin").length, meta: "Full access", icon: <UserCog className="h-4 w-4" />, tone: "violet" },
+                    { label: "Techs", value: users.filter(u => u.role === "Technician").length, meta: "Repair staff", icon: <HardHat className="h-4 w-4" />, tone: "amber" },
+                ]}
+            />
+
             {/* KPI ROW */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
                 <motion.div variants={itemVariants}>
                     <BentoCard
                         variant="vibrant"
