@@ -978,7 +978,7 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
     const fixedCompensationStyle = mobileChromeHidden ? { height: "calc(100dvh + 4.25rem)" } : undefined;
     const scrollCompensationStyle = mobileChromeHidden ? { minHeight: "calc(100dvh + 4.25rem)" } : undefined;
   const mobileShellStyle = {
-    "--admin-mobile-bottom-clearance": mobileChromeHidden ? "0px" : "calc(5.5rem + env(safe-area-inset-bottom))",
+    "--admin-mobile-bottom-clearance": "calc(5.5rem + env(safe-area-inset-bottom))",
   } as CSSProperties;
 
     if (isFixed) {
