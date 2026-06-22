@@ -696,7 +696,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
     if (isLoading) return <DashboardSkeleton />;
 
     return (
-        <div className="flex flex-col h-full min-h-0 gap-0 md:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden relative">
+        <div className="flex flex-col h-full min-h-0 gap-0 md:gap-4 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-hidden md:overflow-auto relative">
             <div className="flex-1 min-h-0 flex flex-col">
                 <BentoCard className="flex-1 min-h-0 flex flex-col bg-[#f8fafc] md:bg-white border-0 md:border-slate-200 shadow-none md:shadow-sm rounded-none md:rounded-[2rem] overflow-hidden p-0" variant="ghost" disableHover>
 

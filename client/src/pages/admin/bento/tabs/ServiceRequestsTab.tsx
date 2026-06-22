@@ -798,7 +798,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
 
     return (
         <MobileTabLayout>
-        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="flex flex-col h-full overflow-hidden md:gap-6">
+        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="flex flex-col h-full overflow-hidden md:overflow-auto md:gap-6">
             <MobileTabHeader>
                 <div className="flex items-center justify-between gap-2 pt-1">
                     <div className="min-w-0">

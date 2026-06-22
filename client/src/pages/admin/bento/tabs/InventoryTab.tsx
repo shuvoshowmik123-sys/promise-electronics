@@ -476,7 +476,7 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
     if (isLoading) return <DashboardSkeleton />;
 
     return (
-        <div className="flex h-full flex-col overflow-hidden">
+        <div className="flex h-full flex-col overflow-hidden md:overflow-auto">
             <MobileTabHeader className="border-violet-100/70 bg-gradient-to-b from-violet-50 via-slate-50 to-[#f8fafc] pt-2">
                 <div className="flex items-center justify-between gap-3">
                     <div>

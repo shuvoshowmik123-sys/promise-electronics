@@ -245,7 +245,7 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
 
     return (
         <motion.div
-            className="flex flex-col h-full w-full overflow-hidden"
+            className="flex flex-col h-full w-full overflow-hidden md:overflow-auto"
             variants={containerVariants}
             initial="hidden"
             animate="visible"
