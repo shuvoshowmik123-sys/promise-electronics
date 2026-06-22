@@ -28,7 +28,7 @@ export function MobileTabLayout({ children, className }: { children: ReactNode; 
 export function MobileTabHeader({ children, className }: { children: ReactNode; className?: string }) {
     return (
         <div className={cn(
-            "md:hidden flex-none bg-[#f8fafc] border-b border-slate-100/80 z-30 px-3 space-y-1 pb-1.5",
+            "md:hidden flex-none bg-[#f8fafc] z-30 px-3 space-y-1 pb-1.5",
             className,
         )}>
             {children}
@@ -72,6 +72,7 @@ export function MobileScrollContent({ children, className }: { children: ReactNo
             onPointerDown={(e) => syncScrollPosition(e.currentTarget)}
             onTouchStart={(e) => syncScrollPosition(e.currentTarget)}
             onScroll={onScroll}
+            style={{ paddingBottom: "var(--admin-mobile-bottom-clearance, calc(5.5rem + env(safe-area-inset-bottom)))" } as CSSProperties}
         >
             {children}
         </div>

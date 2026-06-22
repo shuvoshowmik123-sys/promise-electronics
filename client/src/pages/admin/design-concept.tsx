@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense, useEffect, useRef, useCallback, type UIEvent } from "react";
+import { useState, lazy, Suspense, useEffect, useRef, useCallback, type CSSProperties, type UIEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
@@ -477,18 +477,30 @@ export default function DesignConcept() {
                 const cur = detail.scrollTop;
                 if (detail.syncOnly) {
                     mobileChromeScrollTopRef.current = cur;
+                    const shouldHide = cur > 24;
+                    if (mobileChromeHiddenRef.current !== shouldHide) {
+                        mobileChromeHiddenRef.current = shouldHide;
+                        setMobileChromeHidden(shouldHide);
+                    }
                     return;
                 }
                 const delta = cur - prev;
                 // Ignore momentum micro-jitter (iOS rubber-band, sub-pixel settle).
-                if (Math.abs(delta) < 6) return;
+                if (Math.abs(delta) < 6) {
+                    mobileChromeScrollTopRef.current = cur;
+                    const shouldHide = cur > 24 ? true : cur < 16 ? false : mobileChromeHiddenRef.current;
+                    if (mobileChromeHiddenRef.current !== shouldHide) {
+                        mobileChromeHiddenRef.current = shouldHide;
+                        setMobileChromeHidden(shouldHide);
+                    }
+                    return;
+                }
                 mobileChromeScrollTopRef.current = cur;
 
-                // Hysteresis: hide only when scrolling DOWN past the first touch pull (24px),
-                // reveal on ANY upward scroll, always show near the very top.
+                // Hysteresis: hide after the list is meaningfully scrolled, reveal on upward motion.
                 let shouldHide = mobileChromeHiddenRef.current;
-                if (delta > 0 && cur > 24) shouldHide = true;
-                else if (delta < 0) shouldHide = false;
+                if (delta < 0) shouldHide = false;
+                else if (cur > 24) shouldHide = true;
                 if (cur < 16) shouldHide = false;
 
                 if (mobileChromeHiddenRef.current === shouldHide) return;
@@ -560,8 +572,8 @@ export default function DesignConcept() {
                     className={cn(
                         "fixed left-4 right-4 bottom-[calc(env(safe-area-inset-bottom)+10px)] z-50 md:hidden",
                         "h-14 rounded-[1.65rem] border border-slate-200/80 bg-white/88 px-2 shadow-[0_12px_36px_rgba(15,23,42,0.18)] backdrop-blur-2xl",
-                        "flex items-center justify-around transition-all duration-200",
-                        mobileChromeHidden && "translate-y-24 opacity-0 pointer-events-none border-transparent shadow-none"
+                        "flex items-center justify-around transition-[transform,opacity,border-color,box-shadow] duration-200 ease-out",
+                        mobileChromeHidden && "translate-y-[calc(100%+5rem)] opacity-0 pointer-events-none border-transparent shadow-none"
                     )}
                 >
                     {mobileNavItems.filter(item => item.id === 'menu' || status === 'pending' || isTabEnabled(item.id)).map(item => (
@@ -633,7 +645,7 @@ export default function DesignConcept() {
                     {/* Floating Mobile Tools (Glass Island) */}
                     <div
                         className={cn(
-                            "md:hidden absolute top-4 right-4 z-[60] flex items-center gap-3 transition-all duration-200",
+                            "md:hidden absolute top-4 right-4 z-[60] flex items-center gap-3 transition-[transform,opacity] duration-200 ease-out",
                             (mobileChromeHidden || notificationOpen || searchOpen) && "-translate-y-20 opacity-0 pointer-events-none"
                         )}
                     >
@@ -962,20 +974,31 @@ export default function DesignConcept() {
 
 // Reusable Layout Wrapper
 function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }: { children: React.ReactNode, isFixed: boolean, activeTab: string, mobileChromeHidden: boolean }) {
-    const mobileChromeOffset = mobileChromeHidden ? "-translate-y-16" : "translate-y-0";
+    const mobileChromeOffset = mobileChromeHidden ? "-translate-y-[4.25rem]" : "translate-y-0";
+    const fixedCompensationStyle = mobileChromeHidden ? { height: "calc(100dvh + 4.25rem)" } : undefined;
+    const scrollCompensationStyle = mobileChromeHidden ? { minHeight: "calc(100dvh + 4.25rem)" } : undefined;
+  const mobileShellStyle = {
+    "--admin-mobile-bottom-clearance": mobileChromeHidden ? "0px" : "calc(5.5rem + env(safe-area-inset-bottom))",
+  } as CSSProperties;
 
     if (isFixed) {
         return (
-            <div className="h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col md:overflow-y-auto">
-                <div className={cn("max-w-[1600px] mx-auto w-full h-full flex flex-col min-h-0 transition-transform duration-200 md:translate-y-0", mobileChromeOffset)}>
+            <div className="h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col bg-[#f8fafc] md:overflow-y-auto" style={mobileShellStyle}>
+                <div
+                    className={cn("max-w-[1600px] mx-auto w-full h-full shrink-0 flex flex-col min-h-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0", mobileChromeOffset)}
+                    style={fixedCompensationStyle}
+                >
                     {children}
                 </div>
             </div>
         );
     }
     return (
-        <div className="min-h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col">
-            <div className={cn("max-w-[1600px] mx-auto w-full flex-1 transition-transform duration-200 md:translate-y-0", mobileChromeOffset)}>
+        <div className="min-h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col bg-[#f8fafc]" style={mobileShellStyle}>
+            <div
+                className={cn("max-w-[1600px] mx-auto w-full flex-1 shrink-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0", mobileChromeOffset)}
+                style={scrollCompensationStyle}
+            >
                 {children}
             </div>
         </div>

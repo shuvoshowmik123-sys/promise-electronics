@@ -84,7 +84,7 @@ export function MobileMoreMenu({
             </div>
 
             {/* Scrollable groups */}
-            <div className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 pt-2 space-y-3">
+            <div data-bottom-sheet-scroll="true" className="flex-1 min-h-0 overflow-y-auto px-4 pb-8 pt-2 space-y-3">
                 {visibleGroups.length === 0 ? (
                     <p className="text-center text-sm text-slate-400 py-10">No modules found</p>
                 ) : visibleGroups.map((group) => (

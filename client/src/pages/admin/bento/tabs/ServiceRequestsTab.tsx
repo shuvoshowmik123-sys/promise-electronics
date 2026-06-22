@@ -808,33 +808,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                         </div>
                         <p className="truncate text-[11px] font-medium text-slate-500">{filtered.length} showing · follow wizard action first</p>
                     </div>
-                    <Button
-                        size="sm"
-                        className="h-8 rounded-xl bg-blue-600 px-3 text-xs font-black text-white shadow-sm"
-                        onClick={() => selectStatusFilter("New")}
-                    >
-                        Review
-                    </Button>
                 </div>
-
-                <MobileKpiGrid
-                    collapsible
-                    summaryLabel="Request pulse"
-                    items={[
-                        { label: "All", value: serviceRequests.length, meta: "total", tone: "slate", onClick: () => selectStatusFilter("all") },
-                        { label: "New", value: statusCounts.New || 0, meta: "unread queue", tone: "blue", onClick: () => selectStatusFilter("New") },
-                        { label: "Review", value: statusCounts["Under Review"] || 0, meta: "staff check", tone: "amber", onClick: () => selectStatusFilter("Under Review") },
-                        { label: "Work", value: statusCounts["Work Order"] || 0, meta: "job linked", tone: "violet", onClick: () => selectStatusFilter("Work Order") },
-                    ]}
-                />
-
-                <MobileCommandRail
-                    items={[
-                        { key: "new", title: "New", badge: statusCounts.New || 0, tone: "blue", icon: <MessageSquare className="h-3.5 w-3.5" />, onClick: () => selectStatusFilter("New") },
-                        { key: "quotes", title: "Quotes", badge: pendingQuoteCount, tone: "amber", icon: <FileText className="h-3.5 w-3.5" />, onClick: () => selectStatusFilter("Under Review") },
-                        { key: "work", title: "Work", badge: statusCounts["Work Order"] || 0, tone: "violet", icon: <Tv className="h-3.5 w-3.5" />, onClick: () => selectStatusFilter("Work Order") },
-                    ]}
-                />
 
                 <div className="flex items-center gap-1.5">
                     <div className="relative min-w-0 flex-1">
@@ -847,15 +821,34 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                         />
                     </div>
                 </div>
-                <MobileSegmentTabs
-                    value={srStatusFilter as (typeof STATUS_FILTERS)[number]}
-                    items={mobileStatusItems}
-                    onChange={selectStatusFilter}
-                    tone="blue"
-                />
             </MobileTabHeader>
 
-            <MobileScrollContent className="md:hidden">
+            <MobileScrollContent className="md:hidden space-y-2">
+                <div className="space-y-2">
+                    <MobileKpiGrid
+                        collapsible
+                        summaryLabel="Request pulse"
+                        items={[
+                            { label: "All", value: serviceRequests.length, meta: "total", tone: "slate", onClick: () => selectStatusFilter("all") },
+                            { label: "New", value: statusCounts.New || 0, meta: "unread queue", tone: "blue", onClick: () => selectStatusFilter("New") },
+                            { label: "Review", value: statusCounts["Under Review"] || 0, meta: "staff check", tone: "amber", onClick: () => selectStatusFilter("Under Review") },
+                            { label: "Work", value: statusCounts["Work Order"] || 0, meta: "job linked", tone: "violet", onClick: () => selectStatusFilter("Work Order") },
+                        ]}
+                    />
+                    <MobileCommandRail
+                        items={[
+                            { key: "new", title: "New", badge: statusCounts.New || 0, tone: "blue", icon: <MessageSquare className="h-3.5 w-3.5" />, onClick: () => selectStatusFilter("New") },
+                            { key: "quotes", title: "Quotes", badge: pendingQuoteCount, tone: "amber", icon: <FileText className="h-3.5 w-3.5" />, onClick: () => selectStatusFilter("Under Review") },
+                            { key: "work", title: "Work", badge: statusCounts["Work Order"] || 0, tone: "violet", icon: <Tv className="h-3.5 w-3.5" />, onClick: () => selectStatusFilter("Work Order") },
+                        ]}
+                    />
+                    <MobileSegmentTabs
+                        value={srStatusFilter as (typeof STATUS_FILTERS)[number]}
+                        items={mobileStatusItems}
+                        onChange={selectStatusFilter}
+                        tone="blue"
+                    />
+                </div>
                 {paginated.length === 0 ? (
                     <div className="mt-2 flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-4 text-center text-slate-500 shadow-sm">
                         <MessageSquare className="mb-3 h-8 w-8 opacity-25" />

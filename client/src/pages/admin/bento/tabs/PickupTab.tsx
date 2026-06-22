@@ -353,7 +353,7 @@ export default function PickupTab() {
             </MobileTabHeader>
 
             {/* ─── MOBILE CARD LIST ─── */}
-            <MobileScrollContent className="md:hidden">
+            <MobileScrollContent className="md:hidden space-y-2 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
                 {mobilePickups.length === 0 ? (
                     <div className="flex flex-col items-center justify-center py-16 gap-3">
                         <Truck className="h-10 w-10 text-slate-200" />

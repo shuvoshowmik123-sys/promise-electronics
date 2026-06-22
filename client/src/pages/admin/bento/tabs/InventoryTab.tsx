@@ -41,7 +41,7 @@ import { inventoryApi, settingsApi } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 const WastageModal = lazy(() => import("@/components/inventory/WastageModal").then(m => ({ default: m.WastageModal })));
-import { BentoCard, DashboardSkeleton, containerVariants, itemVariants, HighlightMatch, smartMatch, MobileTabHeader, MobileScrollContent } from "../shared";
+import { BentoCard, DashboardSkeleton, containerVariants, itemVariants, HighlightMatch, smartMatch, MobileTabHeader, MobileScrollContent, MobileKpiGrid } from "../shared";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import type { InsertInventoryItem, InventoryItem } from "@shared/schema";
@@ -494,19 +494,16 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                     )}
                 </div>
 
-                <div className="grid grid-cols-4 gap-1 rounded-2xl border border-white/80 bg-white/90 p-1 shadow-[0_8px_20px_rgba(15,23,42,0.05)]">
-                    {[
-                        { label: "Total", value: items.length, tone: "text-violet-700" },
-                        { label: "Low", value: lowStockItemsCount, tone: "text-amber-700" },
-                        { label: "Out", value: outOfStockCount, tone: "text-rose-700" },
-                        { label: "Categories", value: categoryCount, tone: "text-emerald-700" },
-                    ].map(item => (
-                        <div key={item.label} className="min-w-0 rounded-xl bg-slate-50/80 px-1.5 py-1.5 text-center">
-                            <div className={`truncate text-sm font-black leading-tight ${item.tone}`}>{item.value}</div>
-                            <div className="truncate text-[9px] font-black uppercase text-slate-500">{item.label}</div>
-                        </div>
-                    ))}
-                </div>
+                <MobileKpiGrid
+                    collapsible
+                    summaryLabel="Stock pulse"
+                    items={[
+                        { label: "Total", value: items.length, meta: "catalog", icon: <Package className="h-3.5 w-3.5" />, tone: "violet" },
+                        { label: "Low", value: lowStockItemsCount, meta: "reorder", icon: <AlertTriangle className="h-3.5 w-3.5" />, tone: "amber" },
+                        { label: "Out", value: outOfStockCount, meta: "unavailable", icon: <AlertOctagon className="h-3.5 w-3.5" />, tone: "rose" },
+                        { label: "Types", value: categoryCount, meta: "categories", icon: <LayoutGrid className="h-3.5 w-3.5" />, tone: "emerald" },
+                    ]}
+                />
 
                 <div className="flex items-center gap-2">
                     <div className="relative min-w-0 flex-1">
@@ -569,7 +566,7 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                                 key={item.id}
                                 type="button"
                                 onClick={() => { setSelectedMobileItem(item); setIsMobileDetailSheetOpen(true); }}
-                                className="group relative w-full overflow-hidden rounded-[1.35rem] border border-slate-200 bg-gradient-to-br from-white via-white to-violet-50/35 p-3.5 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] active:scale-[0.99]"
+                                className="group relative w-full overflow-hidden rounded-[1.35rem] border border-slate-200 bg-gradient-to-br from-white via-white to-violet-50/35 p-3 text-left shadow-[0_10px_24px_rgba(15,23,42,0.06)] active:scale-[0.99]"
                             >
                                 <div className={`absolute inset-y-3 left-0 w-1 rounded-r-full ${statusColor}`} />
                                 <div className="flex items-start justify-between gap-2 pl-1">
@@ -602,19 +599,10 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                                     </Badge>
                                 </div>
 
-                                <div className="mt-3 grid grid-cols-3 gap-1.5 pl-1">
-                                    <div className="rounded-xl border border-violet-100 bg-violet-50/80 px-2 py-1.5">
-                                        <div className="text-[9px] font-black uppercase text-violet-500">Qty</div>
-                                        <div className="text-xs font-black text-violet-800">{item.stock}</div>
-                                    </div>
-                                    <div className="rounded-xl border border-emerald-100 bg-emerald-50/80 px-2 py-1.5">
-                                        <div className="text-[9px] font-black uppercase text-emerald-500">Price</div>
-                                        <div className="text-xs font-black text-emerald-800">{getCurrencySymbol()} {Number(item.price).toLocaleString()}</div>
-                                    </div>
-                                    <div className="rounded-xl border border-slate-100 bg-slate-50/80 px-2 py-1.5">
-                                        <div className="text-[9px] font-black uppercase text-slate-500">Type</div>
-                                        <div className="text-xs font-black text-slate-800">{item.itemType === "service" ? "Service" : "Product"}</div>
-                                    </div>
+                                <div className="mt-2 flex flex-wrap items-center gap-1.5 pl-1 text-[10px] font-black text-slate-600">
+                                    <span className="rounded-full border border-violet-100 bg-violet-50/80 px-2 py-1 text-violet-700">Qty {item.stock}</span>
+                                    <span className="rounded-full border border-emerald-100 bg-emerald-50/80 px-2 py-1 text-emerald-700">{getCurrencySymbol()} {Number(item.price).toLocaleString()}</span>
+                                    <span className="rounded-full border border-slate-100 bg-slate-50/80 px-2 py-1 text-slate-700">{item.itemType === "service" ? "Service" : "Product"}</span>
                                 </div>
 
                                 {item.preferredSupplier && (

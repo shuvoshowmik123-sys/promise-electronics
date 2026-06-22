@@ -55,30 +55,54 @@ interface SheetContentProps
 
 function BottomSheetDragWrapper({ children, onClose }: { children: React.ReactNode, onClose: () => void }) {
   const startY = React.useRef(0);
+  const startX = React.useRef(0);
   const currentY = React.useRef(0);
   const sheetRef = React.useRef<HTMLDivElement>(null);
   const dragging = React.useRef(false);
+  const trackingPointerId = React.useRef<number | null>(null);
+  const canDragFromScroll = React.useRef(false);
 
   const handlePointerDown = (e: React.PointerEvent) => {
+    const target = e.target instanceof Element ? e.target : null;
+    const fromHandle = Boolean(target?.closest("[data-bottom-sheet-handle]"));
+    const scrollTarget = target?.closest("[data-bottom-sheet-scroll]") as HTMLElement | null;
+    canDragFromScroll.current = Boolean(scrollTarget && scrollTarget.scrollTop <= 0);
+    if (!fromHandle && !canDragFromScroll.current) return;
+
     startY.current = e.clientY;
+    startX.current = e.clientX;
     currentY.current = e.clientY;
-    dragging.current = true;
-    if (sheetRef.current) sheetRef.current.style.transition = "none";
-    e.currentTarget.setPointerCapture(e.pointerId);
+    trackingPointerId.current = e.pointerId;
+    dragging.current = fromHandle;
+    if (fromHandle) {
+      if (sheetRef.current) sheetRef.current.style.transition = "none";
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
   };
   const handlePointerMove = (e: React.PointerEvent) => {
-    if (!dragging.current) return;
+    if (trackingPointerId.current !== e.pointerId) return;
     currentY.current = e.clientY;
     const delta = Math.max(0, currentY.current - startY.current);
+    const xDelta = Math.abs(e.clientX - startX.current);
+    const yDelta = currentY.current - startY.current;
+    if (!dragging.current) {
+      if (!canDragFromScroll.current || yDelta <= 8 || yDelta <= xDelta) return;
+      dragging.current = true;
+      if (sheetRef.current) sheetRef.current.style.transition = "none";
+      e.currentTarget.setPointerCapture(e.pointerId);
+    }
+    e.preventDefault();
     if (sheetRef.current) sheetRef.current.style.transform = `translateY(${delta}px)`;
   };
   const handlePointerUp = (e: React.PointerEvent) => {
-    if (!dragging.current) return;
-    dragging.current = false;
     const delta = currentY.current - startY.current;
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
+    trackingPointerId.current = null;
+    canDragFromScroll.current = false;
+    if (!dragging.current) return;
+    dragging.current = false;
     if (sheetRef.current) {
       sheetRef.current.style.transition = "transform 180ms ease-out";
       sheetRef.current.style.transform = delta > 80 ? "translateY(100%)" : "translateY(0)";
@@ -98,13 +122,14 @@ function BottomSheetDragWrapper({ children, onClose }: { children: React.ReactNo
     <div
       ref={sheetRef}
       className="h-full"
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
+      onPointerCancel={handlePointerUp}
     >
       <div
+        data-bottom-sheet-handle="true"
         className="flex justify-center pt-2 pb-3 touch-none cursor-grab active:cursor-grabbing"
-        onPointerDown={handlePointerDown}
-        onPointerMove={handlePointerMove}
-        onPointerUp={handlePointerUp}
-        onPointerCancel={handlePointerUp}
       >
         <div className="w-10 h-1 rounded-full bg-slate-300" />
       </div>
