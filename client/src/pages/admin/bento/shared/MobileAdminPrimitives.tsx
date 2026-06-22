@@ -66,6 +66,7 @@ export function MobileScrollContent({ children, className }: { children: ReactNo
             data-admin-mobile-scroll="true"
             className={cn(
                 "flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] px-3 pt-0 space-y-2 pb-4",
+                "md:min-h-fit md:flex-none md:overflow-visible",
                 className,
             )}
             onPointerDown={(e) => syncScrollPosition(e.currentTarget)}
