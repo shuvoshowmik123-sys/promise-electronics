@@ -107,7 +107,7 @@ const ADMIN_SIDEBAR_NAV_GROUPS: SidebarGroup[] = [
             { label: "Requests", id: "service-requests", icon: MessageSquare, color: "orange", layout: "fixed" },
             { label: "Repair Journeys", id: "repair-journeys", icon: Wrench, color: "emerald", layout: "fixed" },
             { label: "Jobs", id: "jobs", icon: ClipboardList, color: "violet", layout: "fixed" },
-            { label: "Pickups", id: "pickup", icon: Truck, color: "cyan", layout: "scroll" },
+            { label: "Pickups", id: "pickup", icon: Truck, color: "cyan", layout: "fixed" },
             { label: "Challans", id: "challans", icon: ScrollText, color: "teal", layout: "fixed" },
         ]
     },
@@ -561,7 +561,7 @@ export default function DesignConcept() {
                         "fixed left-4 right-4 bottom-[calc(env(safe-area-inset-bottom)+10px)] z-50 md:hidden",
                         "h-14 rounded-[1.65rem] border border-slate-200/80 bg-white/88 px-2 shadow-[0_12px_36px_rgba(15,23,42,0.18)] backdrop-blur-2xl",
                         "flex items-center justify-around transition-all duration-200",
-                        mobileChromeHidden && "translate-y-24 opacity-0 pointer-events-none"
+                        mobileChromeHidden && "translate-y-24 opacity-0 pointer-events-none border-transparent shadow-none"
                     )}
                 >
                     {mobileNavItems.filter(item => item.id === 'menu' || status === 'pending' || isTabEnabled(item.id)).map(item => (
