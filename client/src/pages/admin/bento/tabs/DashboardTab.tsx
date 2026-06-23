@@ -9,7 +9,7 @@ import {
 } from "recharts";
 import {
     BentoCard, containerVariants, itemVariants, DashboardSkeleton,
-    MobileActionList, MobileCommandRail, MobileKpiGrid, MobileMicroMetricGrid, MobileSegmentTabs,
+    MobileActionList, MobileCommandRail, MobileMicroMetricGrid, MobileSegmentTabs,
     MobileTabLayout, MobileTabHeader, MobileScrollContent,
 } from "../shared";
 import { useState } from "react";
@@ -423,69 +423,6 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                         items={recentMobileItems}
                     />
                 )}
-            </MobileScrollContent>
-            {/* Mobile header — title stays pinned */}
-            <MobileTabHeader className="hidden">
-                <div className="flex items-center justify-between py-1.5">
-                    <div className="min-w-0">
-                        <p className="text-base font-black text-slate-900 truncate">
-                            Hey, {user?.name?.split(" ")[0] ?? "there"} 👋
-                        </p>
-                        <p className="text-[10px] font-semibold text-slate-400 truncate">
-                            {user?.role ?? "Staff"} · Today at a glance
-                        </p>
-                    </div>
-                </div>
-            </MobileTabHeader>
-
-            {/* Mobile scroll content */}
-            <MobileScrollContent className="hidden">
-                <MobileKpiGrid
-                    items={[
-                        {
-                            label: "Revenue",
-                            value: `BDT ${(data.totalRevenue ?? 0).toLocaleString()}`,
-                            meta: "This month",
-                            icon: <DollarSign className="h-4 w-4" />,
-                            tone: "emerald",
-                            onClick: () => setSelectedCard("revenue"),
-                        },
-                        {
-                            label: "Active",
-                            value: data.activeCount ?? 0,
-                            meta: `${(data.activeJobsList ?? []).length} updates`,
-                            icon: <Activity className="h-4 w-4" />,
-                            tone: "blue",
-                            onClick: () => setSelectedCard("active"),
-                        },
-                        {
-                            label: "Pending",
-                            value: data.pendingCount ?? 0,
-                            meta: "Needs action",
-                            icon: <AlertCircle className="h-4 w-4" />,
-                            tone: "amber",
-                            onClick: () => setSelectedCard("pending"),
-                        },
-                        {
-                            label: "Parts Low",
-                            value: data.lowStockCount ?? 0,
-                            meta: "Restock",
-                            icon: <Package className="h-4 w-4" />,
-                            tone: "rose",
-                            onClick: () => setSelectedCard("parts"),
-                        },
-                    ]}
-                />
-                <MobileActionList
-                    title="Urgent Work"
-                    empty="No urgent work right now."
-                    items={[...pendingMobileItems, ...lowStockMobileItems]}
-                />
-                <MobileActionList
-                    title="Recent Jobs"
-                    empty="No recent job activity."
-                    items={recentMobileItems}
-                />
             </MobileScrollContent>
 
             {/* Desktop content — unchanged */}

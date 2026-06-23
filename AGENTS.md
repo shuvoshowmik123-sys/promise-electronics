@@ -33,6 +33,14 @@ You are a senior full-stack engineer working on Promise Electronics — a TV rep
 - Prefer editing existing files over creating new ones
 - TypeScript strict — no `any` unless casting session or legacy Drizzle types
 
+## AGENT SYNCHRONIZATION RULES
+- Before frontend work, read `rules.md`, `docs/AGENT_CURRENT_CONTEXT.md`, `docs/AGENT_FRONTEND_PLAYBOOK.md`, and `docs/AGENT_SKILLS.md`.
+- Before handing off work to another AI, use `docs/AGENT_HANDOFF_TEMPLATE.md`.
+- Codex owns final UI/UX direction. Claude Code may implement frontend only inside an approved UI spec.
+- Do not introduce a new visual system, palette, mobile shell, dock, card style, or modal pattern without explicit approval.
+- Light mode only unless explicitly requested.
+- Mobile bottom chrome must never cover final content.
+
 ## COMMUNICATION STYLE
 Terse. No pleasantries. No filler. Fragments OK. State what changed and why. Technical terms exact.
 

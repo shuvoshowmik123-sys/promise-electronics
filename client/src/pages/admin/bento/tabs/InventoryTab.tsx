@@ -1,4 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -41,7 +42,7 @@ import { inventoryApi, settingsApi } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 const WastageModal = lazy(() => import("@/components/inventory/WastageModal").then(m => ({ default: m.WastageModal })));
-import { BentoCard, DashboardSkeleton, containerVariants, itemVariants, HighlightMatch, smartMatch, MobileTabHeader, MobileScrollContent, MobileKpiGrid } from "../shared";
+import { BentoCard, DashboardSkeleton, containerVariants, itemVariants, HighlightMatch, smartMatch, MobileTabLayout, MobileTabHeader, MobileScrollContent, MobileKpiGrid } from "../shared";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import type { InsertInventoryItem, InventoryItem } from "@shared/schema";
@@ -185,6 +186,16 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
         setSelectedMobileItem(match);
         setIsMobileDetailSheetOpen(true);
     }, [initialItemId, items]);
+
+    useEffect(() => {
+        const anySheetOpen = isMobileFilterSheetOpen || isMobileDetailSheetOpen;
+        if (window.innerWidth < 768 && anySheetOpen) {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+            return () => {
+                window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+            };
+        }
+    }, [isMobileFilterSheetOpen, isMobileDetailSheetOpen]);
 
     const filteredItems = items.filter((item) => {
         const matchesSearch = smartMatch(searchQuery,
@@ -476,7 +487,7 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
     if (isLoading) return <DashboardSkeleton />;
 
     return (
-        <div className="flex h-full flex-col overflow-hidden md:overflow-auto">
+        <MobileTabLayout className="md:overflow-auto">
             <MobileTabHeader className="border-violet-100/70 bg-gradient-to-b from-violet-50 via-slate-50 to-[#f8fafc] pt-2">
                 <div className="flex items-center justify-between gap-3">
                     <div>
@@ -1062,206 +1073,212 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                 </motion.div>
             </div>
 
-            <AnimatePresence>
-                {isMobileFilterSheetOpen && (
-                    <div className="fixed inset-0 z-50 md:hidden" onClick={() => setIsMobileFilterSheetOpen(false)}>
-                        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-                        <div className="absolute inset-x-0 bottom-0" onClick={(e) => e.stopPropagation()}>
-                            <MobileBottomSheetFrame onClose={() => setIsMobileFilterSheetOpen(false)} className="rounded-t-[2rem] border-t border-white/20 bg-white shadow-2xl px-4 pt-5 pb-8 max-h-[75vh] overflow-y-auto">
-                                <MobileBottomSheetHandle />
-                                <h2 className="mt-3 text-lg font-black text-slate-950">Filters</h2>
-                                <div className="mt-4 space-y-5">
-                                    <div>
-                                        <h3 className="text-xs font-black uppercase text-slate-500 mb-2">Status</h3>
-                                        <div className="flex flex-wrap gap-2">
-                                            {["all", "In Stock", "Low Stock", "Out of Stock"].map(s => (
-                                                <button
-                                                    key={s}
-                                                    type="button"
-                                                    onClick={() => setMobileStatusFilter(s)}
-                                                    className={cn(
-                                                        "rounded-xl border px-3 py-1.5 text-xs font-bold",
-                                                        mobileStatusFilter === s
-                                                            ? "border-violet-300 bg-violet-50 text-violet-700"
-                                                            : "border-slate-200 bg-white text-slate-600"
-                                                    )}
-                                                >
-                                                    {s === "all" ? "All" : s}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xs font-black uppercase text-slate-500 mb-2">Category</h3>
-                                        <div className="flex flex-wrap gap-2">
-                                            <button
-                                                type="button"
-                                                onClick={() => setMobileCategoryFilter("all")}
-                                                className={cn(
-                                                    "rounded-xl border px-3 py-1.5 text-xs font-bold",
-                                                    mobileCategoryFilter === "all"
-                                                        ? "border-violet-300 bg-violet-50 text-violet-700"
-                                                        : "border-slate-200 bg-white text-slate-600"
-                                                )}
-                                            >
-                                                All
-                                            </button>
-                                            {Array.from(new Set(items.map(i => i.category))).filter(Boolean).map(cat => (
-                                                <button
-                                                    key={cat}
-                                                    type="button"
-                                                    onClick={() => setMobileCategoryFilter(cat)}
-                                                    className={cn(
-                                                        "rounded-xl border px-3 py-1.5 text-xs font-bold",
-                                                        mobileCategoryFilter === cat
-                                                            ? "border-violet-300 bg-violet-50 text-violet-700"
-                                                            : "border-slate-200 bg-white text-slate-600"
-                                                    )}
-                                                >
-                                                    {cat}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <div>
-                                        <h3 className="text-xs font-black uppercase text-slate-500 mb-2">Sort</h3>
-                                        <div className="flex flex-wrap gap-2">
-                                            {[
-                                                { value: "quantity-asc", label: "Low Qty First" },
-                                                { value: "name-asc", label: "Name A-Z" },
-                                                { value: "recent", label: "Recently Updated" },
-                                            ].map(s => (
-                                                <button
-                                                    key={s.value}
-                                                    type="button"
-                                                    onClick={() => setMobileSortBy(s.value)}
-                                                    className={cn(
-                                                        "flex items-center gap-1 rounded-xl border px-3 py-1.5 text-xs font-bold",
-                                                        mobileSortBy === s.value
-                                                            ? "border-violet-300 bg-violet-50 text-violet-700"
-                                                            : "border-slate-200 bg-white text-slate-600"
-                                                    )}
-                                                >
-                                                    {mobileSortBy === s.value && <ArrowUpDown className="h-3 w-3" />}
-                                                    {s.label}
-                                                </button>
-                                            ))}
-                                        </div>
-                                    </div>
-                                    <Button
-                                        variant="outline"
-                                        onClick={() => {
-                                            setMobileStatusFilter("all");
-                                            setMobileCategoryFilter("all");
-                                            setMobileSortBy("quantity-asc");
-                                            setIsMobileFilterSheetOpen(false);
-                                        }}
-                                        className="w-full rounded-xl border-slate-200 text-xs font-bold"
-                                    >
-                                        Reset Filters
-                                    </Button>
-                                </div>
-                            </MobileBottomSheetFrame>
-                        </div>
-                    </div>
-                )}
-            </AnimatePresence>
-
-            <AnimatePresence>
-                {isMobileDetailSheetOpen && selectedMobileItem && (
-                    <div className="fixed inset-0 z-50 md:hidden" onClick={() => setIsMobileDetailSheetOpen(false)}>
-                        <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
-                        <div className="absolute inset-x-0 bottom-0" onClick={(e) => e.stopPropagation()}>
-                            <MobileBottomSheetFrame onClose={() => setIsMobileDetailSheetOpen(false)} className="rounded-t-[2rem] border-t border-white/20 bg-white shadow-2xl px-4 pt-5 pb-8 max-h-[75vh] overflow-y-auto">
-                                <MobileBottomSheetHandle />
-                                <div className="mt-3">
-                                    <div className="flex items-start justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <h2 className="text-lg font-black text-slate-950 truncate">{selectedMobileItem.name}</h2>
-                                            <div className="mt-1 flex items-center gap-2">
-                                                <span className="font-mono text-xs text-slate-400">{selectedMobileItem.id}</span>
-                                                {selectedMobileItem.category && (
-                                                    <span className="rounded-md bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">{selectedMobileItem.category}</span>
-                                                )}
+            {createPortal(
+                <AnimatePresence>
+                    {isMobileFilterSheetOpen && (
+                        <div className="fixed inset-0 z-[100] md:hidden" onClick={() => setIsMobileFilterSheetOpen(false)}>
+                            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+                            <div className="absolute inset-x-0 bottom-0" onClick={(e) => e.stopPropagation()}>
+                                <MobileBottomSheetFrame onClose={() => setIsMobileFilterSheetOpen(false)} className="rounded-t-[2rem] border-t border-white/20 bg-white shadow-2xl px-4 pt-5 pb-8 max-h-[75vh] overflow-y-auto">
+                                    <MobileBottomSheetHandle />
+                                    <h2 className="mt-3 text-lg font-black text-slate-950">Filters</h2>
+                                    <div className="mt-4 space-y-5">
+                                        <div>
+                                            <h3 className="text-xs font-black uppercase text-slate-500 mb-2">Status</h3>
+                                            <div className="flex flex-wrap gap-2">
+                                                {["all", "In Stock", "Low Stock", "Out of Stock"].map(s => (
+                                                    <button
+                                                        key={s}
+                                                        type="button"
+                                                        onClick={() => setMobileStatusFilter(s)}
+                                                        className={cn(
+                                                            "rounded-xl border px-3 py-1.5 text-xs font-bold",
+                                                            mobileStatusFilter === s
+                                                                ? "border-violet-300 bg-violet-50 text-violet-700"
+                                                                : "border-slate-200 bg-white text-slate-600"
+                                                        )}
+                                                    >
+                                                        {s === "all" ? "All" : s}
+                                                    </button>
+                                                ))}
                                             </div>
                                         </div>
-                                        <Badge variant={selectedMobileItem.stock === 0 ? "destructive" : selectedMobileItem.stock <= (selectedMobileItem.lowStockThreshold || 5) ? "secondary" : "outline"} className={cn(
-                                            "shrink-0 rounded-md border-0 text-[10px] uppercase shadow-sm",
-                                            selectedMobileItem.stock === 0 ? "bg-rose-100 text-rose-700" : selectedMobileItem.stock <= (selectedMobileItem.lowStockThreshold || 5) ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
-                                        )}>
-                                            {selectedMobileItem.stock === 0 ? "Out" : selectedMobileItem.stock <= (selectedMobileItem.lowStockThreshold || 5) ? "Low" : "In Stock"}
-                                        </Badge>
-                                    </div>
-                                </div>
-
-                                <div className="mt-4 grid grid-cols-2 gap-2">
-                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                        <div className="text-[10px] font-black uppercase text-slate-500">Quantity</div>
-                                        <div className="mt-1 text-base font-black text-slate-950">{selectedMobileItem.stock}</div>
-                                    </div>
-                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                        <div className="text-[10px] font-black uppercase text-slate-500">Price</div>
-                                        <div className="mt-1 text-base font-black text-slate-950">{getCurrencySymbol()} {Number(selectedMobileItem.price).toLocaleString()}</div>
-                                    </div>
-                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                        <div className="text-[10px] font-black uppercase text-slate-500">Low Stock Alert</div>
-                                        <div className="mt-1 text-base font-black text-slate-950">{selectedMobileItem.lowStockThreshold || 5}</div>
-                                    </div>
-                                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                        <div className="text-[10px] font-black uppercase text-slate-500">Type</div>
-                                        <div className="mt-1 text-base font-black text-slate-950">{selectedMobileItem.itemType === "service" ? "Service" : "Product"}</div>
-                                    </div>
-                                </div>
-
-                                {selectedMobileItem.preferredSupplier && (
-                                    <div className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                        <MapPin className="h-4 w-4 text-slate-400" />
                                         <div>
-                                            <div className="text-[10px] font-black uppercase text-slate-500">Supplier</div>
-                                            <div className="text-sm font-bold text-slate-800">{selectedMobileItem.preferredSupplier}</div>
+                                            <h3 className="text-xs font-black uppercase text-slate-500 mb-2">Category</h3>
+                                            <div className="flex flex-wrap gap-2">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setMobileCategoryFilter("all")}
+                                                    className={cn(
+                                                        "rounded-xl border px-3 py-1.5 text-xs font-bold",
+                                                        mobileCategoryFilter === "all"
+                                                            ? "border-violet-300 bg-violet-50 text-violet-700"
+                                                            : "border-slate-200 bg-white text-slate-600"
+                                                    )}
+                                                >
+                                                    All
+                                                </button>
+                                                {Array.from(new Set(items.map(i => i.category))).filter(Boolean).map(cat => (
+                                                    <button
+                                                        key={cat}
+                                                        type="button"
+                                                        onClick={() => setMobileCategoryFilter(cat)}
+                                                        className={cn(
+                                                            "rounded-xl border px-3 py-1.5 text-xs font-bold",
+                                                            mobileCategoryFilter === cat
+                                                                ? "border-violet-300 bg-violet-50 text-violet-700"
+                                                                : "border-slate-200 bg-white text-slate-600"
+                                                        )}
+                                                    >
+                                                        {cat}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div>
+                                            <h3 className="text-xs font-black uppercase text-slate-500 mb-2">Sort</h3>
+                                            <div className="flex flex-wrap gap-2">
+                                                {[
+                                                    { value: "quantity-asc", label: "Low Qty First" },
+                                                    { value: "name-asc", label: "Name A-Z" },
+                                                    { value: "recent", label: "Recently Updated" },
+                                                ].map(s => (
+                                                    <button
+                                                        key={s.value}
+                                                        type="button"
+                                                        onClick={() => setMobileSortBy(s.value)}
+                                                        className={cn(
+                                                            "flex items-center gap-1 rounded-xl border px-3 py-1.5 text-xs font-bold",
+                                                            mobileSortBy === s.value
+                                                                ? "border-violet-300 bg-violet-50 text-violet-700"
+                                                                : "border-slate-200 bg-white text-slate-600"
+                                                        )}
+                                                    >
+                                                        {mobileSortBy === s.value && <ArrowUpDown className="h-3 w-3" />}
+                                                        {s.label}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            onClick={() => {
+                                                setMobileStatusFilter("all");
+                                                setMobileCategoryFilter("all");
+                                                setMobileSortBy("quantity-asc");
+                                                setIsMobileFilterSheetOpen(false);
+                                            }}
+                                            className="w-full rounded-xl border-slate-200 text-xs font-bold"
+                                        >
+                                            Reset Filters
+                                        </Button>
+                                    </div>
+                                </MobileBottomSheetFrame>
+                            </div>
+                        </div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
+
+            {createPortal(
+                <AnimatePresence>
+                    {isMobileDetailSheetOpen && selectedMobileItem && (
+                        <div className="fixed inset-0 z-[100] md:hidden" onClick={() => setIsMobileDetailSheetOpen(false)}>
+                            <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
+                            <div className="absolute inset-x-0 bottom-0" onClick={(e) => e.stopPropagation()}>
+                                <MobileBottomSheetFrame onClose={() => setIsMobileDetailSheetOpen(false)} className="rounded-t-[2rem] border-t border-white/20 bg-white shadow-2xl px-4 pt-5 pb-8 max-h-[75vh] overflow-y-auto">
+                                    <MobileBottomSheetHandle />
+                                    <div className="mt-3">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <h2 className="text-lg font-black text-slate-950 truncate">{selectedMobileItem.name}</h2>
+                                                <div className="mt-1 flex items-center gap-2">
+                                                    <span className="font-mono text-xs text-slate-400">{selectedMobileItem.id}</span>
+                                                    {selectedMobileItem.category && (
+                                                        <span className="rounded-md bg-violet-50 px-2 py-0.5 text-[10px] font-bold text-violet-700">{selectedMobileItem.category}</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            <Badge variant={selectedMobileItem.stock === 0 ? "destructive" : selectedMobileItem.stock <= (selectedMobileItem.lowStockThreshold || 5) ? "secondary" : "outline"} className={cn(
+                                                "shrink-0 rounded-md border-0 text-[10px] uppercase shadow-sm",
+                                                selectedMobileItem.stock === 0 ? "bg-rose-100 text-rose-700" : selectedMobileItem.stock <= (selectedMobileItem.lowStockThreshold || 5) ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"
+                                            )}>
+                                                {selectedMobileItem.stock === 0 ? "Out" : selectedMobileItem.stock <= (selectedMobileItem.lowStockThreshold || 5) ? "Low" : "In Stock"}
+                                            </Badge>
                                         </div>
                                     </div>
-                                )}
 
-                                {selectedMobileItem.description && (
-                                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                                        <div className="text-[10px] font-black uppercase text-slate-500">Description</div>
-                                        <div className="mt-1 text-sm text-slate-700">{selectedMobileItem.description}</div>
+                                    <div className="mt-4 grid grid-cols-2 gap-2">
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                            <div className="text-[10px] font-black uppercase text-slate-500">Quantity</div>
+                                            <div className="mt-1 text-base font-black text-slate-950">{selectedMobileItem.stock}</div>
+                                        </div>
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                            <div className="text-[10px] font-black uppercase text-slate-500">Price</div>
+                                            <div className="mt-1 text-base font-black text-slate-950">{getCurrencySymbol()} {Number(selectedMobileItem.price).toLocaleString()}</div>
+                                        </div>
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                            <div className="text-[10px] font-black uppercase text-slate-500">Low Stock Alert</div>
+                                            <div className="mt-1 text-base font-black text-slate-950">{selectedMobileItem.lowStockThreshold || 5}</div>
+                                        </div>
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                            <div className="text-[10px] font-black uppercase text-slate-500">Type</div>
+                                            <div className="mt-1 text-base font-black text-slate-950">{selectedMobileItem.itemType === "service" ? "Service" : "Product"}</div>
+                                        </div>
                                     </div>
-                                )}
 
-                                <div className="mt-5 flex gap-2">
-                                    {hasPermission("canEdit") && (
-                                        <Button
-                                            onClick={() => {
-                                                setIsMobileDetailSheetOpen(false);
-                                                handleStockAdjust(selectedMobileItem);
-                                            }}
-                                            className="flex-1 rounded-xl bg-violet-600 text-xs font-black text-white shadow-lg shadow-violet-500/25 h-10"
-                                        >
-                                            <Package className="mr-1.5 h-4 w-4" />
-                                            Adjust Stock
-                                        </Button>
+                                    {selectedMobileItem.preferredSupplier && (
+                                        <div className="mt-3 flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                            <MapPin className="h-4 w-4 text-slate-400" />
+                                            <div>
+                                                <div className="text-[10px] font-black uppercase text-slate-500">Supplier</div>
+                                                <div className="text-sm font-bold text-slate-800">{selectedMobileItem.preferredSupplier}</div>
+                                            </div>
+                                        </div>
                                     )}
-                                    {hasPermission("canEdit") && (
-                                        <Button
-                                            onClick={() => {
-                                                setIsMobileDetailSheetOpen(false);
-                                                handleEdit(selectedMobileItem);
-                                            }}
-                                            variant="outline"
-                                            className="flex-1 rounded-xl border-slate-200 text-xs font-bold h-10"
-                                        >
-                                            <Wrench className="mr-1.5 h-4 w-4" />
-                                            Edit
-                                        </Button>
+
+                                    {selectedMobileItem.description && (
+                                        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                            <div className="text-[10px] font-black uppercase text-slate-500">Description</div>
+                                            <div className="mt-1 text-sm text-slate-700">{selectedMobileItem.description}</div>
+                                        </div>
                                     )}
-                                </div>
-                            </MobileBottomSheetFrame>
+
+                                    <div className="mt-5 flex gap-2">
+                                        {hasPermission("canEdit") && (
+                                            <Button
+                                                onClick={() => {
+                                                    setIsMobileDetailSheetOpen(false);
+                                                    handleStockAdjust(selectedMobileItem);
+                                                }}
+                                                className="flex-1 rounded-xl bg-violet-600 text-xs font-black text-white shadow-lg shadow-violet-500/25 h-10"
+                                            >
+                                                <Package className="mr-1.5 h-4 w-4" />
+                                                Adjust Stock
+                                            </Button>
+                                        )}
+                                        {hasPermission("canEdit") && (
+                                            <Button
+                                                onClick={() => {
+                                                    setIsMobileDetailSheetOpen(false);
+                                                    handleEdit(selectedMobileItem);
+                                                }}
+                                                variant="outline"
+                                                className="flex-1 rounded-xl border-slate-200 text-xs font-bold h-10"
+                                            >
+                                                <Wrench className="mr-1.5 h-4 w-4" />
+                                                Edit
+                                            </Button>
+                                        )}
+                                    </div>
+                                </MobileBottomSheetFrame>
+                            </div>
                         </div>
-                    </div>
-                )}
-            </AnimatePresence>
-        </div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
+        </MobileTabLayout>
     );
 }

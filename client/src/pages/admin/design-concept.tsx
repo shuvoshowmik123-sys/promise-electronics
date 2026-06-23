@@ -300,6 +300,7 @@ export default function DesignConcept() {
     const [visitedTabs, setVisitedTabs] = useState<string[]>(() => [activeTab]);
     const mobileChromeScrollTopRef = useRef(0);
     const mobileChromeHiddenRef = useRef(false);
+    const mobileChromeLockedRef = useRef(false);
     const mobileScrollTickingRef = useRef(false);
 
     const { isEnabled } = useModules();
@@ -466,6 +467,7 @@ export default function DesignConcept() {
         }
         mobileChromeScrollTopRef.current = 0;
         mobileChromeHiddenRef.current = false;
+        mobileChromeLockedRef.current = false;
         setMobileChromeHidden(false);
     }, [activeTab, selectedCorporateClientId, selectedFinanceRecordId, selectedFinanceRecordType]);
 
@@ -473,6 +475,7 @@ export default function DesignConcept() {
         const handleMobileChrome = (event: Event) => {
             const detail = (event as CustomEvent<{ hidden?: boolean; scrollTop?: number; syncOnly?: boolean }>).detail;
             if (typeof detail?.scrollTop === "number") {
+                if (mobileChromeLockedRef.current) return;
                 const prev = mobileChromeScrollTopRef.current;
                 const cur = detail.scrollTop;
                 if (detail.syncOnly) {
@@ -509,6 +512,7 @@ export default function DesignConcept() {
                 return;
             }
             const hidden = Boolean(detail?.hidden);
+            mobileChromeLockedRef.current = hidden;
             mobileChromeHiddenRef.current = hidden;
             if (!hidden) mobileChromeScrollTopRef.current = 0;
             setMobileChromeHidden(hidden);
@@ -573,7 +577,7 @@ export default function DesignConcept() {
                         "fixed left-4 right-4 bottom-[calc(env(safe-area-inset-bottom)+10px)] z-50 md:hidden",
                         "h-14 rounded-[1.65rem] border border-slate-200/80 bg-white/88 px-2 shadow-[0_12px_36px_rgba(15,23,42,0.18)] backdrop-blur-2xl",
                         "flex items-center justify-around transition-[transform,opacity,border-color,box-shadow] duration-200 ease-out",
-                        mobileChromeHidden && "translate-y-[calc(100%+5rem)] opacity-0 pointer-events-none border-transparent shadow-none"
+                        mobileChromeHidden && "translate-y-20 opacity-0 pointer-events-none border-transparent shadow-none"
                     )}
                 >
                     {mobileNavItems.filter(item => item.id === 'menu' || status === 'pending' || isTabEnabled(item.id)).map(item => (
@@ -974,9 +978,9 @@ export default function DesignConcept() {
 
 // Reusable Layout Wrapper
 function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }: { children: React.ReactNode, isFixed: boolean, activeTab: string, mobileChromeHidden: boolean }) {
-    const mobileChromeOffset = mobileChromeHidden ? "-translate-y-[4.25rem]" : "translate-y-0";
-    const fixedCompensationStyle = mobileChromeHidden ? { height: "calc(100dvh + 4.25rem)" } : undefined;
-    const scrollCompensationStyle = mobileChromeHidden ? { minHeight: "calc(100dvh + 4.25rem)" } : undefined;
+    const mobileChromeOffset = mobileChromeHidden ? "-translate-y-20" : "translate-y-0";
+    const fixedCompensationStyle = mobileChromeHidden ? { height: "calc(100dvh + 5rem)" } : undefined;
+    const scrollCompensationStyle = mobileChromeHidden ? { minHeight: "calc(100dvh + 5rem)" } : undefined;
   const mobileShellStyle = {
     "--admin-mobile-bottom-clearance": "calc(5.5rem + env(safe-area-inset-bottom))",
   } as CSSProperties;

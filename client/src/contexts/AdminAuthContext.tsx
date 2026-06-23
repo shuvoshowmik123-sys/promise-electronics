@@ -11,7 +11,7 @@ interface AdminAuthContextType {
   isAuthenticated: boolean;
   status: "pending" | "authenticated" | "unauthenticated";
   isLoading: boolean; // backward compatibility
-  login: (username: string, password: string) => Promise<SafeUser>;
+  login: (username: string, password: string, rememberMe?: boolean) => Promise<SafeUser>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
   hasPermission: (permission: keyof UserPermissions) => boolean;
@@ -57,8 +57,8 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     fetchUser();
   }, []);
 
-  const login = async (username: string, password: string): Promise<SafeUser> => {
-    const data = await adminAuthApi.login({ username, password });
+  const login = async (username: string, password: string, rememberMe: boolean = false): Promise<SafeUser> => {
+    const data = await adminAuthApi.login({ username, password, rememberMe });
     setUser(data);
     setStatus("authenticated");
     return data;

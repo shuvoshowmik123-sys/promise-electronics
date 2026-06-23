@@ -57,10 +57,15 @@ function BottomSheetDragWrapper({ children, onClose }: { children: React.ReactNo
   const startY = React.useRef(0);
   const startX = React.useRef(0);
   const currentY = React.useRef(0);
-  const sheetRef = React.useRef<HTMLDivElement>(null);
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
   const dragging = React.useRef(false);
   const trackingPointerId = React.useRef<number | null>(null);
   const canDragFromScroll = React.useRef(false);
+
+  // Apply transforms to the Radix Content element (owns shadow/border/bg)
+  // so the entire sheet moves as one unit — no ghost artifacts.
+  const getContentEl = (): HTMLElement | null =>
+    wrapperRef.current?.closest('[role="dialog"]') as HTMLElement | null;
 
   const handlePointerDown = (e: React.PointerEvent) => {
     const target = e.target instanceof Element ? e.target : null;
@@ -75,7 +80,8 @@ function BottomSheetDragWrapper({ children, onClose }: { children: React.ReactNo
     trackingPointerId.current = e.pointerId;
     dragging.current = fromHandle;
     if (fromHandle) {
-      if (sheetRef.current) sheetRef.current.style.transition = "none";
+      const el = getContentEl();
+      if (el) el.style.transition = "none";
       e.currentTarget.setPointerCapture(e.pointerId);
     }
   };
@@ -88,11 +94,13 @@ function BottomSheetDragWrapper({ children, onClose }: { children: React.ReactNo
     if (!dragging.current) {
       if (!canDragFromScroll.current || yDelta <= 8 || yDelta <= xDelta) return;
       dragging.current = true;
-      if (sheetRef.current) sheetRef.current.style.transition = "none";
+      const el = getContentEl();
+      if (el) el.style.transition = "none";
       e.currentTarget.setPointerCapture(e.pointerId);
     }
     e.preventDefault();
-    if (sheetRef.current) sheetRef.current.style.transform = `translateY(${delta}px)`;
+    const el = getContentEl();
+    if (el) el.style.transform = `translateY(${delta}px)`;
   };
   const handlePointerUp = (e: React.PointerEvent) => {
     const delta = currentY.current - startY.current;
@@ -103,24 +111,25 @@ function BottomSheetDragWrapper({ children, onClose }: { children: React.ReactNo
     canDragFromScroll.current = false;
     if (!dragging.current) return;
     dragging.current = false;
-    if (sheetRef.current) {
-      sheetRef.current.style.transition = "transform 180ms ease-out";
-      sheetRef.current.style.transform = delta > 80 ? "translateY(100%)" : "translateY(0)";
-    }
+    const el = getContentEl();
+    if (!el) return;
+    el.style.transition = "transform 180ms ease-out";
     if (delta > 80) {
-      window.setTimeout(onClose, 120);
-      return;
+      el.style.transform = "translateY(100%)";
+      window.setTimeout(onClose, 160);
+    } else {
+      el.style.transform = "translateY(0)";
+      window.setTimeout(() => {
+        if (dragging.current) return;
+        el.style.transition = "";
+        el.style.transform = "";
+      }, 190);
     }
-    window.setTimeout(() => {
-      if (!sheetRef.current || dragging.current) return;
-      sheetRef.current.style.transition = "";
-      sheetRef.current.style.transform = "";
-    }, 190);
   };
 
   return (
     <div
-      ref={sheetRef}
+      ref={wrapperRef}
       className="h-full"
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}

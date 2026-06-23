@@ -138,7 +138,7 @@ router.get('/api/admin/me', async (req: Request, res: Response) => {
 router.post('/api/admin/login', authLimiter, validate(adminLoginSchema), async (req: Request, res: Response) => {
     try {
         console.log('Admin login attempt for:', req.body.username);
-        const { username, password } = req.body;
+        const { username, password, rememberMe } = req.body;
 
         const result = await authService.authenticateAdmin(username, password);
 
@@ -161,6 +161,12 @@ router.post('/api/admin/login', authLimiter, validate(adminLoginSchema), async (
         req.session.adminUserId = result.user.id;
         req.session.adminUserRole = result.user.role;
         req.session.adminUserPermissions = result.user.permissions ?? null;
+
+        // Remember Me: extend this session's cookie lifetime to 30 days.
+        // When false/undefined, the global default session lifetime is unchanged.
+        if (rememberMe === true && req.session.cookie) {
+            req.session.cookie.maxAge = 30 * 24 * 60 * 60 * 1000;
+        }
 
         auditLogger.log({
             userId: result.user.id,

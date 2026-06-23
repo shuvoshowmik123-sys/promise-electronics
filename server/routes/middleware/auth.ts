@@ -37,6 +37,7 @@ declare module 'express-session' {
 export const adminLoginSchema = z.object({
     username: z.string().min(1, 'Username is required'),
     password: z.string().min(6, 'Password must be at least 6 characters').max(13, 'Password is too long'),
+    rememberMe: z.boolean().optional(),
 });
 
 export const adminCreateUserSchema = z.object({

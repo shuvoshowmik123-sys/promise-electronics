@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -95,6 +95,16 @@ export default function PickupTab() {
     // Mobile: leg-based filter + handover sheet target
     const [mobileLeg, setMobileLeg] = useState<"all" | "collect" | "return" | "done">("all");
     const [handoverTarget, setHandoverTarget] = useState<import("./pickup/HandoverSheet").HandoverTarget | null>(null);
+
+    useEffect(() => {
+        const anySheetOpen = scheduleDialogOpen || viewDialogOpen || !!handoverTarget;
+        if (isMobile && anySheetOpen) {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+            return () => {
+                window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+            };
+        }
+    }, [scheduleDialogOpen, viewDialogOpen, handoverTarget, isMobile]);
 
     const { data: serviceRequestsData } = useQuery({
         queryKey: ["service-requests"],

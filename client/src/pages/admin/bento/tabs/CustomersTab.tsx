@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     Users, Search, Plus, Phone, Mail,
@@ -160,6 +161,16 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
             }
         }
     }, [initialCustomerId, customers]);
+
+    useEffect(() => {
+        const anySheetOpen = isMobileFilterSheetOpen || activitySheet.open || isMobileAddSheetOpen;
+        if (window.innerWidth < 768 && anySheetOpen) {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+            return () => {
+                window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+            };
+        }
+    }, [isMobileFilterSheetOpen, activitySheet.open, isMobileAddSheetOpen]);
 
     const filteredCustomers = customers.filter((c: any) => {
         const q = debouncedSearch.toLowerCase();
@@ -675,10 +686,10 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-            {/* Framer Motion Expanding Activity Overlay */}
+            {/* Framer Motion Expanding Activity Overlay — desktop only (mobile uses portal sheet) */}
             <AnimatePresence>
                 {activitySheet.open && activitySheet.customer && (
-                    <>
+                    <div className="hidden md:contents">
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -835,7 +846,7 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                 </ScrollArea>
                             </motion.div>
                         </div>
-                    </>
+                    </div>
                 )}
             </AnimatePresence>
             </motion.div>
@@ -908,120 +919,124 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                 </DialogContent>
             </Dialog>
 
-            <AnimatePresence>
-                {isMobileFilterSheetOpen && (
-                    <div className="fixed inset-0 z-50 md:hidden">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
-                            onClick={() => setIsMobileFilterSheetOpen(false)}
-                        />
-                        <div className="absolute inset-x-0 bottom-0">
-                            <MobileBottomSheetFrame
-                                onClose={() => setIsMobileFilterSheetOpen(false)}
-                                className="overflow-hidden rounded-t-[1.75rem] border border-slate-200 bg-white shadow-2xl"
-                            >
-                                <div className="space-y-4 bg-gradient-to-b from-blue-50 to-white px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-3">
-                                    <MobileBottomSheetHandle />
-                                    <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/90 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
-                                        <div className="flex min-w-0 items-center gap-3">
-                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-500/20">
-                                                <SlidersHorizontal className="h-5 w-5" />
+            {createPortal(
+                <AnimatePresence>
+                    {isMobileFilterSheetOpen && (
+                        <div className="fixed inset-0 z-[100] md:hidden">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+                                onClick={() => setIsMobileFilterSheetOpen(false)}
+                            />
+                            <div className="absolute inset-x-0 bottom-0">
+                                <MobileBottomSheetFrame
+                                    onClose={() => setIsMobileFilterSheetOpen(false)}
+                                    className="overflow-hidden rounded-t-[1.75rem] border border-slate-200 bg-white shadow-2xl"
+                                >
+                                    <div className="space-y-4 bg-gradient-to-b from-blue-50 to-white px-4 pb-[calc(5.5rem+env(safe-area-inset-bottom))] pt-3">
+                                        <MobileBottomSheetHandle />
+                                        <div className="flex items-center justify-between gap-3 rounded-2xl border border-white/80 bg-white/90 p-3 shadow-[0_10px_24px_rgba(15,23,42,0.06)]">
+                                            <div className="flex min-w-0 items-center gap-3">
+                                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-white shadow-lg shadow-blue-500/20">
+                                                    <SlidersHorizontal className="h-5 w-5" />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h2 className="truncate text-lg font-black leading-tight text-slate-950">Customer Filter</h2>
+                                                    <p className="text-xs font-medium text-slate-500">{mobileFilteredCustomers.length} matching customers</p>
+                                                </div>
                                             </div>
-                                            <div className="min-w-0">
-                                                <h2 className="truncate text-lg font-black leading-tight text-slate-950">Customer Filter</h2>
-                                                <p className="text-xs font-medium text-slate-500">{mobileFilteredCustomers.length} matching customers</p>
+                                            <Button
+                                                variant="ghost"
+                                                className="h-8 rounded-xl px-2 text-xs font-black text-slate-500"
+                                                onClick={() => setMobileFilters({ status: "all", activity: "all", history: "all" })}
+                                            >
+                                                Reset
+                                            </Button>
+                                        </div>
+
+                                        <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-black uppercase text-slate-500">Status</Label>
+                                                <div className="grid grid-cols-3 gap-1.5">
+                                                    {[
+                                                        { value: "all", label: "All" },
+                                                        { value: "active", label: "Active" },
+                                                        { value: "inactive", label: "Inactive" },
+                                                    ].map(item => (
+                                                        <button
+                                                            key={item.value}
+                                                            type="button"
+                                                            onClick={() => setMobileFilterValue("status", item.value as CustomerMobileFilters["status"])}
+                                                            className={`h-9 rounded-xl border text-xs font-black ${mobileFilters.status === item.value ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}
+                                                        >
+                                                            {item.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-black uppercase text-slate-500">Activity</Label>
+                                                <div className="grid grid-cols-3 gap-1.5">
+                                                    {[
+                                                        { value: "all", label: "Any" },
+                                                        { value: "recent", label: "Recent" },
+                                                        { value: "older", label: "Older" },
+                                                    ].map(item => (
+                                                        <button
+                                                            key={item.value}
+                                                            type="button"
+                                                            onClick={() => setMobileFilterValue("activity", item.value as CustomerMobileFilters["activity"])}
+                                                            className={`h-9 rounded-xl border text-xs font-black ${mobileFilters.activity === item.value ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}
+                                                        >
+                                                            {item.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-2">
+                                                <Label className="text-xs font-black uppercase text-slate-500">Work History</Label>
+                                                <div className="grid grid-cols-3 gap-1.5">
+                                                    {[
+                                                        { value: "all", label: "Any" },
+                                                        { value: "hasWork", label: "Has Work" },
+                                                        { value: "noWork", label: "New" },
+                                                    ].map(item => (
+                                                        <button
+                                                            key={item.value}
+                                                            type="button"
+                                                            onClick={() => setMobileFilterValue("history", item.value as CustomerMobileFilters["history"])}
+                                                            className={`h-9 rounded-xl border text-xs font-black ${mobileFilters.history === item.value ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}
+                                                        >
+                                                            {item.label}
+                                                        </button>
+                                                    ))}
+                                                </div>
                                             </div>
                                         </div>
+
                                         <Button
-                                            variant="ghost"
-                                            className="h-8 rounded-xl px-2 text-xs font-black text-slate-500"
-                                            onClick={() => setMobileFilters({ status: "all", activity: "all", history: "all" })}
+                                            className="h-11 w-full rounded-2xl bg-blue-600 text-sm font-black text-white shadow-lg shadow-blue-500/20"
+                                            onClick={() => setIsMobileFilterSheetOpen(false)}
                                         >
-                                            Reset
+                                            Show {mobileFilteredCustomers.length} Customers
                                         </Button>
                                     </div>
-
-                                    <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                                        <div className="space-y-2">
-                                            <Label className="text-xs font-black uppercase text-slate-500">Status</Label>
-                                            <div className="grid grid-cols-3 gap-1.5">
-                                                {[
-                                                    { value: "all", label: "All" },
-                                                    { value: "active", label: "Active" },
-                                                    { value: "inactive", label: "Inactive" },
-                                                ].map(item => (
-                                                    <button
-                                                        key={item.value}
-                                                        type="button"
-                                                        onClick={() => setMobileFilterValue("status", item.value as CustomerMobileFilters["status"])}
-                                                        className={`h-9 rounded-xl border text-xs font-black ${mobileFilters.status === item.value ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}
-                                                    >
-                                                        {item.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label className="text-xs font-black uppercase text-slate-500">Activity</Label>
-                                            <div className="grid grid-cols-3 gap-1.5">
-                                                {[
-                                                    { value: "all", label: "Any" },
-                                                    { value: "recent", label: "Recent" },
-                                                    { value: "older", label: "Older" },
-                                                ].map(item => (
-                                                    <button
-                                                        key={item.value}
-                                                        type="button"
-                                                        onClick={() => setMobileFilterValue("activity", item.value as CustomerMobileFilters["activity"])}
-                                                        className={`h-9 rounded-xl border text-xs font-black ${mobileFilters.activity === item.value ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}
-                                                    >
-                                                        {item.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-2">
-                                            <Label className="text-xs font-black uppercase text-slate-500">Work History</Label>
-                                            <div className="grid grid-cols-3 gap-1.5">
-                                                {[
-                                                    { value: "all", label: "Any" },
-                                                    { value: "hasWork", label: "Has Work" },
-                                                    { value: "noWork", label: "New" },
-                                                ].map(item => (
-                                                    <button
-                                                        key={item.value}
-                                                        type="button"
-                                                        onClick={() => setMobileFilterValue("history", item.value as CustomerMobileFilters["history"])}
-                                                        className={`h-9 rounded-xl border text-xs font-black ${mobileFilters.history === item.value ? "border-blue-200 bg-blue-50 text-blue-700" : "border-slate-200 bg-slate-50 text-slate-600"}`}
-                                                    >
-                                                        {item.label}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <Button
-                                        className="h-11 w-full rounded-2xl bg-blue-600 text-sm font-black text-white shadow-lg shadow-blue-500/20"
-                                        onClick={() => setIsMobileFilterSheetOpen(false)}
-                                    >
-                                        Show {mobileFilteredCustomers.length} Customers
-                                    </Button>
-                                </div>
-                            </MobileBottomSheetFrame>
+                                </MobileBottomSheetFrame>
+                            </div>
                         </div>
-                    </div>
-                )}
-            </AnimatePresence>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
 
-            <AnimatePresence>
-                {activitySheet.open && activitySheet.customer && (
-                    <div className="fixed inset-0 z-50 md:hidden">
+            {createPortal(
+                <AnimatePresence>
+                    {activitySheet.open && activitySheet.customer && (
+                        <div className="fixed inset-0 z-[100] md:hidden">
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -1029,41 +1044,41 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                             className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
                             onClick={() => setActivitySheet({ open: false, customer: null })}
                         />
-                        <div className="absolute inset-x-0 bottom-0 max-h-[88vh]">
+                        <div className="absolute inset-x-0 bottom-0 max-h-[70vh]">
                             <MobileBottomSheetFrame
                                 onClose={() => setActivitySheet({ open: false, customer: null })}
-                                className="max-h-[88vh] overflow-hidden rounded-t-[1.75rem] border border-slate-200 bg-white shadow-2xl"
+                                className="max-h-[70vh] overflow-hidden rounded-t-[1.75rem] border border-slate-200 bg-white shadow-2xl"
                             >
-                                <div className="flex max-h-[88vh] flex-col">
-                                    <div className="flex-none space-y-3 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 px-4 pb-4 pt-3 text-white">
+                                <div className="flex max-h-[70vh] flex-col">
+                                    <div className="flex-none space-y-2 bg-gradient-to-br from-slate-950 via-slate-900 to-blue-950 px-4 pb-3 pt-2.5 text-white">
                                         <MobileBottomSheetHandle className="bg-white/35" />
-                                        <div className="flex items-start justify-between gap-3">
-                                            <div className="flex min-w-0 items-center gap-3">
-                                                <Avatar className="h-12 w-12 shrink-0 border border-white/20 bg-white/10 shadow-inner">
+                                        <div className="flex items-center justify-between gap-3">
+                                            <div className="flex min-w-0 items-center gap-2.5">
+                                                <Avatar className="h-9 w-9 shrink-0 border border-white/20 bg-white/10">
                                                     <AvatarImage src={`https://api.dicebear.com/7.x/initials/svg?seed=${activitySheet.customer.name}&backgroundColor=transparent`} />
-                                                    <AvatarFallback className="bg-white/15 text-sm font-black text-white">{getInitials(activitySheet.customer.name)}</AvatarFallback>
+                                                    <AvatarFallback className="bg-white/15 text-xs font-black text-white">{getInitials(activitySheet.customer.name)}</AvatarFallback>
                                                 </Avatar>
                                                 <div className="min-w-0">
-                                                    <h2 className="truncate text-lg font-black leading-tight text-white">{activitySheet.customer.name}</h2>
-                                                    <div className="mt-1 flex items-center gap-1.5 text-xs font-bold text-blue-100">
-                                                        <Phone className="h-3.5 w-3.5 text-blue-200" />
+                                                    <h2 className="truncate text-[15px] font-black leading-tight text-white">{activitySheet.customer.name}</h2>
+                                                    <div className="flex items-center gap-1.5 text-[11px] font-bold text-blue-200">
+                                                        <Phone className="h-3 w-3" />
                                                         <span className="font-mono">{formatBdPhone(activitySheet.customer.phone)}</span>
                                                     </div>
                                                 </div>
                                             </div>
                                             {activitySheet.customer.status === "Active" ? (
-                                                <Badge variant="outline" className="shrink-0 border-emerald-300/30 bg-emerald-400/15 text-[10px] uppercase text-emerald-100">Active</Badge>
+                                                <Badge variant="outline" className="shrink-0 border-emerald-300/30 bg-emerald-400/15 text-[9px] uppercase text-emerald-100">Active</Badge>
                                             ) : (
-                                                <Badge variant="outline" className="shrink-0 border-red-300/30 bg-red-400/15 text-[10px] uppercase text-red-100">{activitySheet.customer.status}</Badge>
+                                                <Badge variant="outline" className="shrink-0 border-red-300/30 bg-red-400/15 text-[9px] uppercase text-red-100">{activitySheet.customer.status}</Badge>
                                             )}
                                         </div>
 
                                         <div className="grid grid-cols-3 gap-1.5">
                                             <a
                                                 href={`tel:${formatBdPhone(activitySheet.customer.phone)}`}
-                                                className="flex h-10 items-center justify-center gap-1 rounded-xl bg-blue-500 px-2 text-xs font-black text-white shadow-lg shadow-blue-950/20"
+                                                className="flex h-8 items-center justify-center gap-1 rounded-lg bg-blue-500 px-2 text-[11px] font-black text-white shadow-sm"
                                             >
-                                                <Phone className="h-3.5 w-3.5" />
+                                                <Phone className="h-3 w-3" />
                                                 Call
                                             </a>
                                             <button
@@ -1074,9 +1089,9 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                                         window.location.hash = `#quotations?search=${encodeURIComponent(activitySheet.customer.phone)}`;
                                                     }, 100);
                                                 }}
-                                                className="flex h-10 items-center justify-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2 text-xs font-black text-white"
+                                                className="flex h-8 items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/10 px-2 text-[11px] font-black text-white"
                                             >
-                                                <FileText className="h-3.5 w-3.5" />
+                                                <FileText className="h-3 w-3" />
                                                 Quote
                                             </button>
                                             <button
@@ -1087,57 +1102,57 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                                         window.location.hash = `#service-requests?search=${encodeURIComponent(activitySheet.customer.phone)}`;
                                                     }, 100);
                                                 }}
-                                                className="flex h-10 items-center justify-center gap-1 rounded-xl border border-white/15 bg-white/10 px-2 text-xs font-black text-white"
+                                                className="flex h-8 items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/10 px-2 text-[11px] font-black text-white"
                                             >
-                                                <Wrench className="h-3.5 w-3.5" />
+                                                <Wrench className="h-3 w-3" />
                                                 Requests
                                             </button>
                                         </div>
                                     </div>
 
-                                    <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#f8fafc] px-4 py-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
-                                        <div className="grid grid-cols-3 gap-2">
-                                            <div className="rounded-xl border border-blue-100 bg-white p-2 shadow-sm">
-                                                <div className="text-[9px] font-black uppercase text-slate-500">Orders</div>
+                                    <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#f8fafc] px-3 py-2.5 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+                                        <div className="flex items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-2.5 py-1.5 shadow-sm">
+                                            <div className="flex-1 text-center border-r border-slate-100">
+                                                <div className="text-[9px] font-black uppercase text-slate-400">Orders</div>
                                                 <div className="text-sm font-black text-slate-950">{activitySheet.customer.totalOrders || 0}</div>
                                             </div>
-                                            <div className="rounded-xl border border-violet-100 bg-white p-2 shadow-sm">
-                                                <div className="text-[9px] font-black uppercase text-slate-500">Repairs</div>
+                                            <div className="flex-1 text-center border-r border-slate-100">
+                                                <div className="text-[9px] font-black uppercase text-slate-400">Repairs</div>
                                                 <div className="text-sm font-black text-slate-950">{activitySheet.customer.totalServiceRequests || 0}</div>
                                             </div>
-                                            <div className="rounded-xl border border-emerald-100 bg-white p-2 shadow-sm">
-                                                <div className="text-[9px] font-black uppercase text-slate-500">LTV</div>
+                                            <div className="flex-1 text-center">
+                                                <div className="text-[9px] font-black uppercase text-slate-400">LTV</div>
                                                 <div className="truncate text-sm font-black text-slate-950">{compactMoney(activitySheet.customer.lifetimeValue || 0)}</div>
                                             </div>
                                         </div>
 
-                                        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                                            <div className="mb-2 flex items-center justify-between gap-2">
-                                                <h3 className="text-xs font-black uppercase tracking-wide text-slate-600">Interaction History</h3>
-                                                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-500">
+                                        <div className="rounded-xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                                            <div className="mb-1.5 flex items-center justify-between gap-2">
+                                                <h3 className="text-[10px] font-black uppercase tracking-wide text-slate-500">History</h3>
+                                                <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold text-slate-500">
                                                     {activitySheet.customer.interactionTimeline?.length || 0}
                                                 </span>
                                             </div>
                                             {(!activitySheet.customer.interactionTimeline || activitySheet.customer.interactionTimeline.length === 0) ? (
-                                                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 px-3 py-5 text-center text-xs font-medium text-slate-500">
-                                                    No interactions found.
+                                                <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-3 text-center text-[11px] font-medium text-slate-400">
+                                                    No interactions yet
                                                 </div>
                                             ) : (
-                                                <div className="space-y-2">
+                                                <div className="space-y-1.5">
                                                     {activitySheet.customer.interactionTimeline.map((interaction: any, index: number) => (
                                                         <button
                                                             key={`${interaction.type}-${interaction.id}-${index}`}
                                                             type="button"
                                                             onClick={() => navigateFromInteraction(interaction)}
-                                                            className="flex w-full items-center justify-between gap-2 rounded-xl border border-slate-100 bg-gradient-to-br from-white to-slate-50 px-3 py-2 text-left shadow-sm active:scale-[0.99]"
+                                                            className="flex w-full items-center justify-between gap-2 rounded-lg border border-slate-100 bg-white px-2.5 py-1.5 text-left active:scale-[0.99]"
                                                         >
                                                             <div className="min-w-0">
-                                                                <div className="truncate text-xs font-black text-slate-900">#{interaction.reference}</div>
-                                                                <div className="mt-0.5 truncate text-[11px] font-bold text-slate-500">{interaction.type} · {interaction.status}</div>
+                                                                <div className="truncate text-[11px] font-black text-slate-900">#{interaction.reference}</div>
+                                                                <div className="truncate text-[10px] font-bold text-slate-400">{interaction.type} · {interaction.status}</div>
                                                             </div>
                                                             <div className="shrink-0 text-right">
-                                                                <div className="text-[10px] font-bold text-slate-400">{formatShortDate(interaction.date)}</div>
-                                                                <div className="font-mono text-xs font-black text-slate-800">{compactMoney(interaction.amount || 0)}</div>
+                                                                <div className="text-[9px] font-bold text-slate-400">{formatShortDate(interaction.date)}</div>
+                                                                <div className="font-mono text-[11px] font-black text-slate-700">{compactMoney(interaction.amount || 0)}</div>
                                                             </div>
                                                         </button>
                                                     ))}
@@ -1150,12 +1165,15 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                             </MobileBottomSheetFrame>
                         </div>
                     </div>
-                )}
-            </AnimatePresence>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
 
-            <AnimatePresence>
-                {isMobileAddSheetOpen && (
-                    <div className="fixed inset-0 z-50 md:hidden">
+            {createPortal(
+                <AnimatePresence>
+                    {isMobileAddSheetOpen && (
+                        <div className="fixed inset-0 z-[100] md:hidden">
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -1235,8 +1253,10 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                             </MobileBottomSheetFrame>
                         </div>
                     </div>
-                )}
-            </AnimatePresence>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
         </MobileTabLayout>
     );
 }

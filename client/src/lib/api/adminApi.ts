@@ -572,7 +572,7 @@ export interface AdminAggregatedDashboard {
 
 // Admin Authentication API
 export const adminAuthApi = {
-    login: (data: { username?: string; password?: string }) =>
+    login: (data: { username?: string; password?: string; rememberMe?: boolean }) =>
         fetchApi<Omit<User, "password">>("/admin/login", {
             method: "POST",
             body: JSON.stringify(data),

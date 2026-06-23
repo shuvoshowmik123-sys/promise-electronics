@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -197,6 +198,16 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
             }
         }
     }, [initialTransactionId, posTransactions]);
+
+    useEffect(() => {
+        const anySheetOpen = mobileCartOpen || showPaymentReview;
+        if (window.innerWidth < 768 && anySheetOpen) {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+            return () => {
+                window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+            };
+        }
+    }, [mobileCartOpen, showPaymentReview]);
 
     // ── Cart Logic ──
     const addToCart = (item: CartItem) => {
@@ -998,7 +1009,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                 <motion.div
                     initial={{ y: 80 }}
                     animate={{ y: 0 }}
-                    className="fixed bottom-[72px] left-0 right-0 z-40 bg-slate-900 px-5 py-3 flex items-center justify-between gap-3 shadow-[0_-4px_24px_rgba(0,0,0,0.35)]"
+                    className="fixed bottom-[calc(72px+env(safe-area-inset-bottom))] left-0 right-0 z-40 bg-slate-900 px-5 py-3 flex items-center justify-between gap-3 shadow-[0_-4px_24px_rgba(0,0,0,0.35)]"
                     onClick={() => setMobileCartOpen(true)}
                 >
                     <div>
@@ -1012,10 +1023,11 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
             )}
 
             {/* Mobile Cart Drawer */}
-            <AnimatePresence>
-                {isMobile && mobileCartOpen && (
-                    <>
-                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[210] bg-black/40 backdrop-blur-sm" onClick={() => setMobileCartOpen(false)} />
+            {createPortal(
+                <AnimatePresence>
+                    {isMobile && mobileCartOpen && (
+                        <>
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[210] bg-black/40 backdrop-blur-sm" onClick={() => setMobileCartOpen(false)} />
                         <motion.div initial={{ y: "100%" }} animate={{ y: 0 }} exit={{ y: "100%" }} transition={{ type: "spring", damping: 25, stiffness: 300 }} className="fixed bottom-0 left-0 right-0 z-[220] flex h-[calc(100dvh-0.5rem)] flex-col rounded-t-[2rem] bg-white shadow-2xl">
                             <div className="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mt-3 mb-1" />
                             <div className="flex items-center justify-between border-b border-slate-100 bg-white px-5 py-3">
@@ -1150,12 +1162,15 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                             </div>
                         </motion.div>
                     </>
-                )}
-            </AnimatePresence>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
 
             {/* ─── MOBILE PRODUCT GRID ─────────────────────────────────────── */}
-            <AnimatePresence>
-                {showPaymentReview && (
+            {createPortal(
+                <AnimatePresence>
+                    {showPaymentReview && (
                     <>
                         <motion.div
                             initial={{ opacity: 0 }}
@@ -1284,8 +1299,10 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                             </div>
                         </motion.div>
                     </>
-                )}
-            </AnimatePresence>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
 
             <div className="flex flex-col flex-1 min-h-0 overflow-hidden md:hidden">
                 {/* Header: session pill + search + category chips */}

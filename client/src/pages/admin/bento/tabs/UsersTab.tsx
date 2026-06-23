@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Search, UserPlus, MoreHorizontal, Shield, Mail, Loader2,
@@ -12,6 +12,7 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import type { UserPermissions } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 // Shared Bento Components
 import { BentoCard } from "../shared/BentoCard";
@@ -159,6 +160,17 @@ export default function UsersTab() {
     const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<SafeUser | null>(null);
     const [showPassword, setShowPassword] = useState(false);
+    const isMobile = useIsMobile();
+
+    useEffect(() => {
+        const anyDialogOpen = isCreateOpen || isEditOpen || isDeleteOpen || isPermissionsOpen;
+        if (isMobile && anyDialogOpen) {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+            return () => {
+                window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+            };
+        }
+    }, [isCreateOpen, isEditOpen, isDeleteOpen, isPermissionsOpen, isMobile]);
 
     const [formData, setFormData] = useState({
         username: "",

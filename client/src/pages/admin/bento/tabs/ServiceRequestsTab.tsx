@@ -823,7 +823,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 </div>
             </MobileTabHeader>
 
-            <MobileScrollContent className="md:hidden space-y-2">
+            <MobileScrollContent className="md:hidden space-y-2 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
                 <div className="space-y-2">
                     <MobileKpiGrid
                         collapsible

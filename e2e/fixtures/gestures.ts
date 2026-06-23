@@ -1,5 +1,9 @@
 import type { BrowserContext, Locator, Page } from '@playwright/test';
 
+export type Point = { x: number; y: number };
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export async function installPointerOverlay(context: BrowserContext) {
   await context.addInitScript(() => {
     const win = window as Window & { __promisePointerOverlayInstalled?: boolean };
@@ -92,6 +96,107 @@ export async function installPointerOverlay(context: BrowserContext) {
   });
 }
 
+export async function scrollPageByEvaluate(page: Page, amountY: number, options: { steps?: number; delayMs?: number } = {}) {
+  const steps = options.steps ?? 8;
+  const delayMs = options.delayMs ?? 40;
+  const perStep = amountY / steps;
+
+  for (let i = 0; i < steps; i++) {
+    await page.evaluate((dy) => {
+      window.scrollBy({ top: dy, left: 0, behavior: 'auto' });
+      window.dispatchEvent(new Event('scroll', { bubbles: true }));
+    }, perStep);
+    await sleep(delayMs);
+  }
+}
+
+export async function scrollElementByEvaluate(locator: Locator, amountY: number, options: { steps?: number; delayMs?: number } = {}) {
+  const steps = options.steps ?? 8;
+  const delayMs = options.delayMs ?? 40;
+  const perStep = amountY / steps;
+
+  for (let i = 0; i < steps; i++) {
+    await locator.evaluate((el, dy) => {
+      el.scrollTop += dy;
+      el.dispatchEvent(new Event('scroll', { bubbles: true }));
+    }, perStep);
+    await sleep(delayMs);
+  }
+}
+
+export async function wheelScrollAt(page: Page, point: Point, amountY: number, options: { steps?: number; delayMs?: number } = {}) {
+  const steps = options.steps ?? 8;
+  const delayMs = options.delayMs ?? 50;
+  const perStep = amountY / steps;
+
+  await page.mouse.move(point.x, point.y);
+  for (let i = 0; i < steps; i++) {
+    await page.mouse.wheel(0, perStep);
+    await sleep(delayMs);
+  }
+}
+
+export async function scrollIntoView(locator: Locator) {
+  await locator.scrollIntoViewIfNeeded();
+}
+
+export async function dragMouse(page: Page, start: Point, end: Point, options: { steps?: number; delayMs?: number } = {}) {
+  const steps = options.steps ?? 24;
+  const delayMs = options.delayMs ?? 10;
+
+  await page.mouse.move(start.x, start.y);
+  await page.mouse.down();
+  for (let i = 1; i <= steps; i++) {
+    const x = start.x + ((end.x - start.x) * i) / steps;
+    const y = start.y + ((end.y - start.y) * i) / steps;
+    await page.mouse.move(x, y);
+    await sleep(delayMs);
+  }
+  await page.mouse.up();
+}
+
+export async function dragLocatorToLocator(page: Page, source: Locator, target: Locator, options: { steps?: number; delayMs?: number } = {}) {
+  await source.scrollIntoViewIfNeeded();
+  await target.scrollIntoViewIfNeeded();
+
+  const sourceBox = await source.boundingBox();
+  const targetBox = await target.boundingBox();
+  if (!sourceBox || !targetBox) throw new Error('Source or target element is not visible.');
+
+  await dragMouse(
+    page,
+    { x: sourceBox.x + sourceBox.width / 2, y: sourceBox.y + sourceBox.height / 2 },
+    { x: targetBox.x + targetBox.width / 2, y: targetBox.y + targetBox.height / 2 },
+    options,
+  );
+}
+
+export async function cdpTouchSwipe(page: Page, start: Point, end: Point, options: { steps?: number; delayMs?: number } = {}) {
+  const steps = options.steps ?? 18;
+  const delayMs = options.delayMs ?? 16;
+  const client = await page.context().newCDPSession(page);
+
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchStart',
+    touchPoints: [{ x: start.x, y: start.y }],
+  });
+
+  for (let i = 1; i <= steps; i++) {
+    const x = start.x + ((end.x - start.x) * i) / steps;
+    const y = start.y + ((end.y - start.y) * i) / steps;
+    await client.send('Input.dispatchTouchEvent', {
+      type: 'touchMove',
+      touchPoints: [{ x, y }],
+    });
+    await sleep(delayMs);
+  }
+
+  await client.send('Input.dispatchTouchEvent', {
+    type: 'touchEnd',
+    touchPoints: [],
+  });
+}
+
 export async function tapLikeHuman(locator: Locator, page: Page) {
   await locator.scrollIntoViewIfNeeded();
   const box = await locator.boundingBox();
@@ -113,19 +218,31 @@ export async function tapLikeHuman(locator: Locator, page: Page) {
 
 export async function swipeUp(page: Page, distance = 420) {
   const viewport = page.viewportSize() || { width: 390, height: 844 };
-  await dragBy(page, viewport.width / 2, viewport.height * 0.72, 0, -distance);
+  await cdpTouchSwipe(
+    page,
+    { x: viewport.width / 2, y: viewport.height * 0.72 },
+    { x: viewport.width / 2, y: viewport.height * 0.72 - distance },
+  ).catch(() => dragBy(page, viewport.width / 2, viewport.height * 0.72, 0, -distance));
 }
 
 export async function swipeDown(page: Page, distance = 360) {
   const viewport = page.viewportSize() || { width: 390, height: 844 };
-  await dragBy(page, viewport.width / 2, viewport.height * 0.35, 0, distance);
+  await cdpTouchSwipe(
+    page,
+    { x: viewport.width / 2, y: viewport.height * 0.35 },
+    { x: viewport.width / 2, y: viewport.height * 0.35 + distance },
+  ).catch(() => dragBy(page, viewport.width / 2, viewport.height * 0.35, 0, distance));
 }
 
 export async function dragSheetDown(page: Page, handle: Locator, distance = 420) {
   await handle.scrollIntoViewIfNeeded();
   const box = await handle.boundingBox();
   if (!box) throw new Error('Drag handle is not visible');
-  await dragBy(page, box.x + box.width / 2, box.y + box.height / 2, 0, distance);
+  await dragMouse(
+    page,
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 },
+    { x: box.x + box.width / 2, y: box.y + box.height / 2 + distance },
+  );
 }
 
 export async function holdPress(locator: Locator, page: Page, ms = 750) {

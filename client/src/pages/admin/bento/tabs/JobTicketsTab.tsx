@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, lazy, Suspense, type UIEvent } from "react";
+import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
@@ -123,6 +124,16 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
             window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
         };
     }, []);
+
+    useEffect(() => {
+        const anySheetOpen = isMobileAssignSheetOpen || viewDialogOpen || isCreateDrawerOpen || isEditDrawerOpen || qrDialogOpen || isAdvanceDialogOpen || isLocalPurchaseOpen;
+        if (window.innerWidth < 768 && anySheetOpen) {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+            return () => {
+                window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+            };
+        }
+    }, [isMobileAssignSheetOpen, viewDialogOpen, isCreateDrawerOpen, isEditDrawerOpen, qrDialogOpen, isAdvanceDialogOpen, isLocalPurchaseOpen]);
 
     // Data Fetching
     // Use `initialJobType` if provided (e.g., when deep-linking from System Health so all job types are searched)
@@ -842,7 +853,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
 
                     {/* Scrollable Card Grid Area */}
                     <div
-                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] md:bg-slate-50/60 px-3 py-3 pb-4 md:p-6 lg:p-8 md:pb-24"
+                        className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] md:bg-slate-50/60 px-3 py-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:p-6 lg:p-8 md:pb-24"
                         onScroll={handleMobileChromeScroll}
                     >
                         {filteredJobs.length === 0 ? (
@@ -947,8 +958,9 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
             </Suspense>
 
             {/* MOBILE ASSIGN SHEET */}
-            {selectedJob && (
-                <div className={cn("fixed inset-0 z-[210] md:hidden", !isMobileAssignSheetOpen && "pointer-events-none")}>
+            {createPortal(
+                selectedJob ? (
+                    <div className={cn("fixed inset-0 z-[210] md:hidden", !isMobileAssignSheetOpen && "pointer-events-none")}>
                     {isMobileAssignSheetOpen && (
                         <>
                             <div
@@ -1089,7 +1101,9 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                             </div>
                         </>
                     )}
-                </div>
+                    </div>
+                ) : null,
+                document.body
             )}
 
             {/* EDIT JOB SHEET */}
