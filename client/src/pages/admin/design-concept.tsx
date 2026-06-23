@@ -772,7 +772,7 @@ export default function DesignConcept() {
                         )}
                         <OfflineBanner />
                         <DatabaseSyncStatus enabled={status === "authenticated"} />
-                        <MainContentWrapper isFixed={isFixed} activeTab={activeTab} mobileChromeHidden={mobileChromeHidden}>
+                        <MainContentWrapper isFixed={isFixed} activeTab={activeTab}>
                             {visitedTabs.map((tabId) => (
                                 <motion.div
                                     key={tabId}
@@ -977,10 +977,7 @@ export default function DesignConcept() {
 }
 
 // Reusable Layout Wrapper
-function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }: { children: React.ReactNode, isFixed: boolean, activeTab: string, mobileChromeHidden: boolean }) {
-    const mobileChromeOffset = mobileChromeHidden ? "-translate-y-20" : "translate-y-0";
-    const fixedCompensationStyle = mobileChromeHidden ? { height: "calc(100dvh + 5rem)" } : undefined;
-    const scrollCompensationStyle = mobileChromeHidden ? { minHeight: "calc(100dvh + 5rem)" } : undefined;
+function MainContentWrapper({ children, isFixed, activeTab }: { children: React.ReactNode, isFixed: boolean, activeTab: string }) {
   const mobileShellStyle = {
     "--admin-mobile-bottom-clearance": "calc(5.5rem + env(safe-area-inset-bottom))",
   } as CSSProperties;
@@ -988,10 +985,7 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
     if (isFixed) {
         return (
             <div className="h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col bg-[#f8fafc] md:overflow-y-auto" style={mobileShellStyle}>
-                <div
-                    className={cn("max-w-[1600px] mx-auto w-full h-full shrink-0 flex flex-col min-h-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0", mobileChromeOffset)}
-                    style={fixedCompensationStyle}
-                >
+                <div className="max-w-[1600px] mx-auto w-full h-full shrink-0 flex flex-col min-h-0">
                     {children}
                 </div>
             </div>
@@ -999,10 +993,7 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
     }
     return (
         <div className="min-h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col bg-[#f8fafc]" style={mobileShellStyle}>
-            <div
-                className={cn("max-w-[1600px] mx-auto w-full flex-1 shrink-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0", mobileChromeOffset)}
-                style={scrollCompensationStyle}
-            >
+            <div className="max-w-[1600px] mx-auto w-full flex-1 shrink-0">
                 {children}
             </div>
         </div>
