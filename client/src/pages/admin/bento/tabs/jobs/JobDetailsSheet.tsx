@@ -365,7 +365,7 @@ export function JobDetailsSheet({
 
                             {/* Sticky contextual action */}
                             {action && ActionIcon && (
-                                <div className="absolute inset-x-0 bottom-0 p-4 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent pt-8">
+                                <div className="absolute inset-x-0 bottom-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-slate-50 via-slate-50 to-transparent pt-8">
                                     <Button
                                         onClick={handlePrimaryAction}
                                         className={cn(
@@ -530,7 +530,7 @@ export function JobDetailsSheet({
                                                     </div>
                                                 </section>
                                             </div>
-                                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent p-4 pt-8">
+                                            <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-50 via-slate-50 to-transparent p-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-8">
                                                 <Button
                                                     onClick={submitWorkFeedback}
                                                     disabled={savingFeedback || workFeedback.workDone.length === 0}

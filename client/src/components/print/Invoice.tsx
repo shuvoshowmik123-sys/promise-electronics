@@ -166,7 +166,7 @@ export const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ data, company
         </thead>
         <tbody>
           {data.items.map((item, index) => {
-            const price = parseFloat(item.price.replace(/[^0-9.-]+/g, ""));
+            const price = parseFloat(String(item.price).replace(/[^0-9.-]+/g, ""));
             const amount = price * item.quantity;
             return (
               <tr key={item.id} className="border-b" data-testid={`invoice-item-${index}`}>

@@ -19,7 +19,7 @@ import {
     RefreshCw,
     Volume2,
     VolumeX,
-    Menu,
+    ChevronLeft,
     Briefcase,
     ExternalLink
 } from "lucide-react";
@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge";
 import { corporateMessagesApi } from "@/lib/api";
 import { ImageKitUpload } from "@/components/common/ImageKitUpload";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -134,6 +135,7 @@ function AdminJobCardBubble({ meta, isFromAdmin, onClick }: { meta: { jobId: str
 
 export default function CorporateMessagesTab({ preSelectedClientId, hideSidebar, preSelectedThreadId }: { preSelectedClientId?: string, hideSidebar?: boolean, preSelectedThreadId?: string }) {
     const queryClient = useQueryClient();
+    const isMobile = useIsMobile();
     const { isOnline } = useNetworkStatus();
     const { playSent, playReceived, isMuted, toggleMute } = useSound();
 
@@ -144,6 +146,16 @@ export default function CorporateMessagesTab({ preSelectedClientId, hideSidebar,
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const prevMessagesLength = useRef(0);
     const [isMobileOpen, setIsMobileOpen] = useState(false);
+
+    useEffect(() => {
+        const shouldHide = isMobile && (!!selectedThreadId || isMobileOpen);
+        if (shouldHide) {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+            return () => {
+                window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+            };
+        }
+    }, [selectedThreadId, isMobileOpen, isMobile]);
 
     // Sync if parent passes a new preSelectedThreadId (e.g. notification click)
     useEffect(() => {
@@ -264,9 +276,9 @@ export default function CorporateMessagesTab({ preSelectedClientId, hideSidebar,
             await sendMessage.mutateAsync({ content: messageText, messageType: "text" });
             setMessageText("");
         } catch (error) {
-            console.error("Send failed, adding to queue", error);
             addToQueue(messageText, selectedThreadId);
             setMessageText("");
+            toast.error("Message queued until connection returns");
         }
     };
 
@@ -347,7 +359,7 @@ export default function CorporateMessagesTab({ preSelectedClientId, hideSidebar,
                         <p className="text-sm text-slate-500 font-medium">No messages found</p>
                     </div>
                 ) : (
-                    <div className="flex flex-col gap-2 p-2">
+                    <div className="flex flex-col gap-2 p-2 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-2">
                         {filteredThreads.map((thread: any) => (
                             <button
                                 key={thread.id}
@@ -432,7 +444,7 @@ export default function CorporateMessagesTab({ preSelectedClientId, hideSidebar,
 
             <BentoCard
                 variant={hideSidebar ? "ghost" : "default"}
-                className="flex flex-1 overflow-hidden h-full rounded-xl"
+                className="flex flex-1 min-h-0 overflow-hidden rounded-none border-0 bg-transparent p-0 shadow-none md:h-full md:rounded-xl md:border md:bg-white md:p-6 md:shadow-sm"
                 disableHover
             >
                 {/* Desktop Sidebar */}
@@ -452,23 +464,35 @@ export default function CorporateMessagesTab({ preSelectedClientId, hideSidebar,
                 )}
 
                 {/* Main Chat Area */}
-                <div className="flex-1 flex flex-col h-full bg-slate-50/50 min-w-0">
+                <div className="flex-1 flex flex-col min-h-0 bg-slate-50/50 min-w-0">
                     {!selectedThreadId ? (
-                        <div className="flex-1 flex flex-col items-center justify-center p-12 text-center text-slate-400">
+                        <>
+                        {/* Mobile: show thread list inline when no thread selected */}
+                        <div className="md:hidden flex-1 flex flex-col h-full overflow-hidden">
+                            <SidebarContent />
+                        </div>
+                        {/* Desktop: empty state */}
+                        <div className="hidden md:flex flex-1 flex-col items-center justify-center p-12 text-center text-slate-400">
                             <div className="w-20 h-20 bg-slate-100 rounded-3xl flex items-center justify-center mb-6">
                                 <MessageSquare className="w-10 h-10 text-slate-300" />
                             </div>
                             <h3 className="text-xl font-bold text-slate-800 mb-2">No active conversation</h3>
                             <p className="max-w-xs text-sm">Create a new message to start a thread with this client.</p>
                         </div>
+                        </>
                     ) : (
                         <>
+                            {/* Mobile: full-screen chat overlay. top-16 compensates for ancestor -translate-y-16 (CSS transforms create a containing block for fixed children) */}
+                            <div className="fixed top-16 bottom-0 left-0 right-0 z-50 flex flex-col bg-white md:static md:z-auto md:flex-1 md:bg-transparent">
                             {/* Chat Header */}
-                            <div className="h-16 shrink-0 px-4 md:px-6 border-b border-slate-100 bg-white flex items-center justify-between z-10 shadow-sm">
+                            <div className="h-14 md:h-16 shrink-0 px-4 md:px-6 border-b border-slate-100 bg-white flex items-center justify-between z-10 shadow-sm">
                                 <div className="flex items-center gap-3 min-w-0">
                                     {!hideSidebar && (
-                                        <Button variant="ghost" size="icon" className="md:hidden -ml-2 shrink-0" onClick={() => setIsMobileOpen(true)}>
-                                            <Menu className="w-5 h-5 text-slate-600" />
+                                        <Button variant="ghost" size="icon" className="md:hidden -ml-2 shrink-0" onClick={() => {
+                                            setSelectedThreadId(null);
+                                            setIsMobileOpen(false);
+                                        }}>
+                                            <ChevronLeft className="w-5 h-5 text-slate-600" />
                                         </Button>
                                     )}
                                     <div className="w-10 h-10 shrink-0 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600 border border-blue-100">
@@ -626,21 +650,21 @@ export default function CorporateMessagesTab({ preSelectedClientId, hideSidebar,
                             </div>
 
                             {/* Chat Input */}
-                            <div className="shrink-0 p-4 border-t border-slate-100 bg-white">
-                                <div className="max-w-4xl mx-auto flex items-end gap-2">
-                                    <div className="flex items-center gap-1 pb-1">
+                            <div className="shrink-0 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-4 md:p-4 border-t border-slate-100 bg-white">
+                                <div className="max-w-4xl mx-auto flex items-end gap-1.5">
+                                    <div className="flex items-center gap-0.5 pb-0.5">
                                         <ImageKitUpload onUploadSuccess={handleImageUpload} folder="/corporate-chat" hideError>
-                                            <Button variant="ghost" size="icon" className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 h-10 w-10 shrink-0 rounded-full">
-                                                <ImageIcon className="w-5 h-5" />
+                                            <Button variant="ghost" size="icon" className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 h-9 w-9 shrink-0 rounded-full">
+                                                <ImageIcon className="w-4 h-4" />
                                             </Button>
                                         </ImageKitUpload>
-                                        <Button variant="ghost" size="icon" className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 h-10 w-10 shrink-0 rounded-full">
-                                            <Paperclip className="w-5 h-5" />
+                                        <Button variant="ghost" size="icon" className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 h-9 w-9 shrink-0 rounded-full md:h-10 md:w-10">
+                                            <Paperclip className="w-4 h-4 md:w-5 md:h-5" />
                                         </Button>
                                     </div>
                                     <textarea
                                         placeholder="Type your message..."
-                                        className="flex-1 w-full min-h-[48px] max-h-32 py-3 px-4 bg-slate-50 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none text-sm text-slate-800 placeholder:text-slate-400"
+                                        className="flex-1 w-full min-h-[44px] max-h-32 py-2.5 px-3 md:py-3 md:px-4 bg-slate-50 rounded-2xl border border-slate-200 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none text-sm text-slate-800 placeholder:text-slate-400"
                                         value={messageText}
                                         onChange={(e) => setMessageText(e.target.value)}
                                         onKeyDown={(e) => {
@@ -649,6 +673,11 @@ export default function CorporateMessagesTab({ preSelectedClientId, hideSidebar,
                                                 handleSendMessage();
                                             }
                                         }}
+                                        onFocus={() => {
+                                            setTimeout(() => {
+                                                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                                            }, 300);
+                                        }}
                                         rows={1}
                                     />
                                     <Button
@@ -656,14 +685,15 @@ export default function CorporateMessagesTab({ preSelectedClientId, hideSidebar,
                                         onClick={handleSendMessage}
                                         disabled={!messageText.trim() || sendMessage.isPending}
                                         className={cn(
-                                            "h-12 w-12 rounded-full shrink-0 shadow-sm transition-all text-white",
+                                            "h-10 w-10 md:h-12 md:w-12 rounded-full shrink-0 shadow-sm transition-all text-white",
                                             messageText.trim() ? "bg-blue-600 hover:bg-blue-700" : "bg-slate-200"
                                         )}
                                     >
-                                        <Send className="w-5 h-5 ml-0.5" />
+                                        <Send className="w-4 h-4 md:w-5 md:h-5 ml-0.5" />
                                     </Button>
                                 </div>
                             </div>
+                            </div>{/* end mobile fixed overlay */}
                         </>
                     )}
                 </div>

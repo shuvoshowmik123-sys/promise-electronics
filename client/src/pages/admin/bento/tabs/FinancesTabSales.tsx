@@ -558,11 +558,67 @@ export function SalesTab({
                     <DialogHeader>
                         <DialogTitle>Invoice Preview</DialogTitle>
                     </DialogHeader>
-                    {selectedSaleTransaction && (
-                        <div ref={invoiceRef}>
-                            <Invoice data={selectedSaleTransaction} company={getCompanyInfo()} />
-                        </div>
-                    )}
+                    {selectedSaleTransaction && (() => {
+                        const tx = selectedSaleTransaction;
+                        const companyInfo = getCompanyInfo();
+                        const jobWithCustomer = tx.linkedJobs?.find((j: any) => j.customerName);
+                        const customer = jobWithCustomer?.customerName || tx.customer || "Walk-in";
+                        const phone = jobWithCustomer?.customerPhone || tx.customerPhone;
+                        return (
+                            <>
+                            {/* ── MOBILE CARD SUMMARY ── */}
+                            <div className="md:hidden space-y-3 print:hidden">
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                    <div className="flex items-center justify-between gap-2">
+                                        <span className="font-mono text-xs text-slate-500">{tx.invoiceNumber || tx.id}</span>
+                                        <Badge variant="outline" className="text-[10px]">{tx.paymentMethod}</Badge>
+                                    </div>
+                                    <div className="mt-1 text-xs text-slate-500">{format(new Date(tx.createdAt), "MMM d, yyyy · h:mm a")}</div>
+                                </div>
+                                <div className="rounded-xl border border-slate-200 bg-white p-3">
+                                    <div className="text-[10px] font-bold uppercase text-slate-400">Bill To</div>
+                                    <div className="mt-0.5 font-bold text-slate-900">{customer}</div>
+                                    {phone && <div className="text-xs text-slate-500">{phone}</div>}
+                                </div>
+                                <div className="space-y-2">
+                                    <div className="text-[10px] font-bold uppercase text-slate-400 px-1">Items</div>
+                                    {tx.items?.map((item: any, i: number) => {
+                                        const price = parseFloat(String(item.price).replace(/[^0-9.-]+/g, ""));
+                                        return (
+                                            <div key={item.id || i} className="rounded-xl border border-slate-200 bg-white p-3">
+                                                <div className="font-medium text-sm text-slate-900">{item.name}</div>
+                                                <div className="mt-1 flex items-center justify-between text-xs text-slate-600">
+                                                    <span>{item.quantity} × ৳{price.toLocaleString()}</span>
+                                                    <span className="font-bold text-slate-900">৳{(price * item.quantity).toLocaleString()}</span>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                    {tx.linkedJobs?.map((job: any, i: number) => (
+                                        <div key={job.jobId || i} className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
+                                            <div className="font-medium text-sm text-slate-900">{job.serviceItemName || "Repair Service"}</div>
+                                            <div className="text-[10px] text-slate-500">Job: {job.jobId}</div>
+                                            <div className="mt-1 flex items-center justify-between text-xs">
+                                                <span className="text-slate-600">1 × ৳{job.billedAmount.toLocaleString()}</span>
+                                                <span className="font-bold text-slate-900">৳{job.billedAmount.toLocaleString()}</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+                                    <div className="flex justify-between text-xs text-slate-600"><span>Subtotal</span><span>৳{parseFloat(tx.subtotal).toLocaleString()}</span></div>
+                                    <div className="flex justify-between text-xs text-slate-600"><span>VAT ({tx.taxRate || "5"}%)</span><span>৳{parseFloat(tx.tax).toLocaleString()}</span></div>
+                                    {parseFloat(tx.discount) > 0 && <div className="flex justify-between text-xs text-emerald-600"><span>Discount</span><span>-৳{parseFloat(tx.discount).toLocaleString()}</span></div>}
+                                    <div className="flex justify-between text-base font-black text-slate-900 border-t border-slate-200 pt-1.5"><span>Total</span><span>৳{parseFloat(tx.total).toLocaleString()}</span></div>
+                                </div>
+                            </div>
+                            {/* ── DESKTOP/PRINT INVOICE (always in DOM for print, visually hidden on mobile) ── */}
+                            <div ref={invoiceRef} className="hidden md:block print:block">
+                                <Invoice data={tx} company={companyInfo} />
+                            </div>
+                            </>
+                        );
+                    })()}
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setIsInvoiceDialogOpen(false)}>
                             Close

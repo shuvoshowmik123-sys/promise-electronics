@@ -16,9 +16,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { BentoCard, containerVariants, itemVariants, MobileTabLayout, MobileTabHeader, MobileScrollContent } from "../shared";
-import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
+import { MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 import { fetchApi } from "@/lib/api/httpClient";
 import { createPortal } from "react-dom";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 const fetchInquiries = () => fetchApi<any[]>("/inquiries");
 
@@ -26,6 +27,7 @@ type StatusFilter = "all" | "Pending" | "Replied";
 
 export default function InquiriesTab() {
     const queryClient = useQueryClient();
+    const isMobile = useIsMobile();
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
     const [replyDialog, setReplyDialog] = useState<{ open: boolean; id: string | null }>({ open: false, id: null });
@@ -121,7 +123,7 @@ export default function InquiriesTab() {
             </MobileTabHeader>
 
             {/* Mobile scroll content */}
-            <MobileScrollContent className="md:hidden">
+            <MobileScrollContent className="md:hidden pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
                 {isLoading ? (
                     <div className="space-y-2">
                         {[1, 2, 3].map(i => <div key={i} className="h-24 rounded-xl bg-slate-100 animate-pulse" />)}
@@ -272,18 +274,21 @@ export default function InquiriesTab() {
             </motion.div>
 
             {/* Reply — bottom sheet on mobile, Dialog on desktop */}
-            {typeof document !== "undefined" && createPortal(
+            {isMobile && typeof document !== "undefined" && createPortal(
                 <AnimatePresence>
                     {replyDialog.open && (
                         <>
                             <motion.div
                                 initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                                className="fixed inset-0 z-[200] bg-slate-900/40 backdrop-blur-sm md:hidden"
+                                className="fixed inset-0 z-[190] bg-slate-900/40 backdrop-blur-sm md:hidden"
                                 onClick={() => setReplyDialog({ open: false, id: null })}
                             />
-                            <MobileBottomSheetFrame
-                                onClose={() => setReplyDialog({ open: false, id: null })}
-                                className="fixed inset-x-0 bottom-0 z-[200] rounded-t-3xl bg-white shadow-2xl md:hidden"
+                            <motion.div
+                                initial={{ y: "100%" }}
+                                animate={{ y: 0 }}
+                                exit={{ y: "100%" }}
+                                transition={{ type: "spring", stiffness: 340, damping: 34 }}
+                                className="fixed inset-x-0 bottom-0 z-[210] rounded-t-3xl bg-white shadow-2xl md:hidden"
                             >
                                 <div className="p-5 space-y-4">
                                     <MobileBottomSheetHandle />
@@ -295,6 +300,8 @@ export default function InquiriesTab() {
                                         placeholder="Type your reply…"
                                         className="min-h-[140px] rounded-xl resize-none"
                                         value={replyText}
+                                        onPointerDownCapture={(event) => event.stopPropagation()}
+                                        onTouchStartCapture={(event) => event.stopPropagation()}
                                         onChange={e => setReplyText(e.target.value)}
                                     />
                                     <Button
@@ -306,7 +313,7 @@ export default function InquiriesTab() {
                                         Send Reply
                                     </Button>
                                 </div>
-                            </MobileBottomSheetFrame>
+                            </motion.div>
                         </>
                     )}
                 </AnimatePresence>,
@@ -314,24 +321,26 @@ export default function InquiriesTab() {
             )}
 
             {/* Desktop reply dialog */}
-            <Dialog open={replyDialog.open} onOpenChange={open => setReplyDialog({ ...replyDialog, open })}>
-                <DialogContent className="hidden md:grid">
-                    <DialogHeader>
-                        <DialogTitle>Reply to Inquiry</DialogTitle>
-                        <DialogDescription>Send a response via email. Access to history is logged.</DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-2">
-                        <Textarea placeholder="Type your reply here..." className="min-h-[150px]" value={replyText} onChange={e => setReplyText(e.target.value)} />
-                    </div>
-                    <DialogFooter>
-                        <Button variant="outline" onClick={() => setReplyDialog({ open: false, id: null })}>Cancel</Button>
-                        <Button onClick={handleReply} disabled={updateStatusMutation.isPending}>
-                            {updateStatusMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                            Send Reply
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
+            {!isMobile && (
+                <Dialog open={replyDialog.open} onOpenChange={open => setReplyDialog({ ...replyDialog, open })}>
+                    <DialogContent>
+                        <DialogHeader>
+                            <DialogTitle>Reply to Inquiry</DialogTitle>
+                            <DialogDescription>Send a response via email. Access to history is logged.</DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-2">
+                            <Textarea placeholder="Type your reply here..." className="min-h-[150px]" value={replyText} onChange={e => setReplyText(e.target.value)} />
+                        </div>
+                        <DialogFooter>
+                            <Button variant="outline" onClick={() => setReplyDialog({ open: false, id: null })}>Cancel</Button>
+                            <Button onClick={handleReply} disabled={updateStatusMutation.isPending}>
+                                {updateStatusMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                Send Reply
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+            )}
         </MobileTabLayout>
     );
 }

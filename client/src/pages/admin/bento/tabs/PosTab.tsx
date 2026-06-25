@@ -200,14 +200,42 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     }, [initialTransactionId, posTransactions]);
 
     useEffect(() => {
-        const anySheetOpen = mobileCartOpen || showPaymentReview;
-        if (window.innerWidth < 768 && anySheetOpen) {
+        const anySurfaceOpen = mobileCartOpen || showPaymentReview || isCustomerDialogOpen || isJobDialogOpen || isInventoryDialogOpen || showSuccessDialog || showInvoicePreview || showReceiptPreview || showHistoryDialog || showRefundDialog;
+        if (isMobile && anySurfaceOpen) {
             window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
             return () => {
                 window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
             };
         }
-    }, [mobileCartOpen, showPaymentReview]);
+    }, [isMobile, mobileCartOpen, showPaymentReview, isCustomerDialogOpen, isJobDialogOpen, isInventoryDialogOpen, showSuccessDialog, showInvoicePreview, showReceiptPreview, showHistoryDialog, showRefundDialog]);
+
+    // Close mobile-only surfaces on tab/hash change so POS cart doesn't cover other tabs
+    useEffect(() => {
+        const onHash = () => {
+            if (!isMobile) return;
+            if (!window.location.hash.includes('pos')) {
+                setMobileCartOpen(false);
+                setShowPaymentReview(false);
+            }
+        };
+        window.addEventListener("hashchange", onHash);
+        return () => window.removeEventListener("hashchange", onHash);
+    }, [isMobile]);
+
+    const posDialogOpenRef = useRef(false);
+    posDialogOpenRef.current = isCustomerDialogOpen || isJobDialogOpen || isInventoryDialogOpen || showSuccessDialog || showInvoicePreview || showReceiptPreview || showHistoryDialog || showRefundDialog || showPaymentReview;
+
+    useEffect(() => {
+        if (!isMobile || !mobileCartOpen) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== "Escape") return;
+            // If any POS sub-dialog is open, let it handle Escape — don't close cart
+            if (posDialogOpenRef.current) return;
+            setMobileCartOpen(false);
+        };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [isMobile, mobileCartOpen]);
 
     // ── Cart Logic ──
     const addToCart = (item: CartItem) => {
@@ -293,7 +321,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
 
     // ── Calculations ──
     const calculateSubtotal = () => {
-        const cart = cartItems.reduce((s, i) => s + parseFloat(i.price.replace(/[^0-9.-]+/g, "")) * i.quantity, 0);
+        const cart = cartItems.reduce((s, i) => s + parseFloat(String(i.price).replace(/[^0-9.-]+/g, "")) * i.quantity, 0);
         return cart + linkedJobCharges.reduce((s, j) => s + (j.billedAmount || 0), 0);
     };
     const calculateTax = (sub: number) => sub * (getVatPercentage() / 100);
@@ -1084,7 +1112,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                 </div>
                                 {/* Mobile Cart Items */}
                                 {cartItems.map(item => {
-                                    const price = parseFloat(item.price.replace(/[^0-9.-]+/g, "")); const inv = inventoryItems?.find((i: any) => i.id === item.id); const stock = inv?.stock || 0;
+                                    const price = parseFloat(String(item.price).replace(/[^0-9.-]+/g, "")); const inv = inventoryItems?.find((i: any) => i.id === item.id); const stock = inv?.stock || 0;
                                     return (
                                         <div key={item.id} className="flex gap-3 rounded-3xl border border-slate-100 bg-white p-3.5 shadow-sm">
                                             <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-100 bg-slate-50">{item.image ? <img src={item.image} alt={item.name} className="h-full w-full object-cover" /> : <Package className="h-6 w-6 text-slate-300" />}</div>
@@ -1228,7 +1256,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                 </div>
                                 <div className="space-y-2">
                                     {cartItems.map((item) => {
-                                        const price = parseFloat(item.price.replace(/[^0-9.-]+/g, ""));
+                                        const price = parseFloat(String(item.price).replace(/[^0-9.-]+/g, ""));
                                         return (
                                             <div key={item.id} className="flex items-center gap-3 rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
                                                 <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-slate-50">
@@ -1595,7 +1623,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                 ) : (
                                     <div className="space-y-3">
                                         {cartItems.map(item => {
-                                            const price = parseFloat(item.price.replace(/[^0-9.-]+/g, ""));
+                                            const price = parseFloat(String(item.price).replace(/[^0-9.-]+/g, ""));
                                             const inv = inventoryItems?.find((i: any) => i.id === item.id);
                                             const stock = inv?.stock || 0;
                                             const isLow = stock <= 5 && stock > 0;

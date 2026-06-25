@@ -45,6 +45,7 @@ const WastageModal = lazy(() => import("@/components/inventory/WastageModal").th
 import { BentoCard, DashboardSkeleton, containerVariants, itemVariants, HighlightMatch, smartMatch, MobileTabLayout, MobileTabHeader, MobileScrollContent, MobileKpiGrid } from "../shared";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { InsertInventoryItem, InventoryItem } from "@shared/schema";
 
 interface InventoryTabProps {
@@ -56,6 +57,7 @@ interface InventoryTabProps {
 export default function InventoryTab({ initialSearchQuery, initialItemId, onSearchConsumed }: InventoryTabProps = {}) {
     const queryClient = useQueryClient();
     const { hasPermission } = useAdminAuth();
+    const isMobile = useIsMobile();
 
     const [isAddEditDrawerOpen, setIsAddEditDrawerOpen] = useState(false);
     const [isStockDialogOpen, setIsStockDialogOpen] = useState(false);
@@ -189,13 +191,13 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
 
     useEffect(() => {
         const anySheetOpen = isMobileFilterSheetOpen || isMobileDetailSheetOpen;
-        if (window.innerWidth < 768 && anySheetOpen) {
+        if (isMobile && anySheetOpen) {
             window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
             return () => {
                 window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
             };
         }
-    }, [isMobileFilterSheetOpen, isMobileDetailSheetOpen]);
+    }, [isMobileFilterSheetOpen, isMobileDetailSheetOpen, isMobile]);
 
     const filteredItems = items.filter((item) => {
         const matchesSearch = smartMatch(searchQuery,
@@ -1079,7 +1081,7 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                         <div className="fixed inset-0 z-[100] md:hidden" onClick={() => setIsMobileFilterSheetOpen(false)}>
                             <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
                             <div className="absolute inset-x-0 bottom-0" onClick={(e) => e.stopPropagation()}>
-                                <MobileBottomSheetFrame onClose={() => setIsMobileFilterSheetOpen(false)} className="rounded-t-[2rem] border-t border-white/20 bg-white shadow-2xl px-4 pt-5 pb-8 max-h-[75vh] overflow-y-auto">
+                                <MobileBottomSheetFrame onClose={() => setIsMobileFilterSheetOpen(false)} className="rounded-t-[2rem] border-t border-white/20 bg-white shadow-2xl px-4 pt-5 pb-[max(2rem,env(safe-area-inset-bottom))] max-h-[80vh] overflow-y-auto">
                                     <MobileBottomSheetHandle />
                                     <h2 className="mt-3 text-lg font-black text-slate-950">Filters</h2>
                                     <div className="mt-4 space-y-5">
@@ -1187,7 +1189,7 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                         <div className="fixed inset-0 z-[100] md:hidden" onClick={() => setIsMobileDetailSheetOpen(false)}>
                             <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" />
                             <div className="absolute inset-x-0 bottom-0" onClick={(e) => e.stopPropagation()}>
-                                <MobileBottomSheetFrame onClose={() => setIsMobileDetailSheetOpen(false)} className="rounded-t-[2rem] border-t border-white/20 bg-white shadow-2xl px-4 pt-5 pb-8 max-h-[75vh] overflow-y-auto">
+                                <MobileBottomSheetFrame onClose={() => setIsMobileDetailSheetOpen(false)} className="rounded-t-[2rem] border-t border-white/20 bg-white shadow-2xl px-4 pt-5 pb-[max(2rem,env(safe-area-inset-bottom))] max-h-[85vh] overflow-y-auto">
                                     <MobileBottomSheetHandle />
                                     <div className="mt-3">
                                         <div className="flex items-start justify-between gap-3">

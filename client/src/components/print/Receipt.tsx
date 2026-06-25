@@ -113,7 +113,7 @@ export const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ data, company
           <span>Amount</span>
         </div>
         {data.items.map((item, index) => {
-          const price = parseFloat(item.price.replace(/[^0-9.-]+/g, ""));
+          const price = parseFloat(String(item.price).replace(/[^0-9.-]+/g, ""));
           const amount = price * item.quantity;
           return (
             <div key={item.id} className="mb-1" data-testid={`receipt-item-${index}`}>

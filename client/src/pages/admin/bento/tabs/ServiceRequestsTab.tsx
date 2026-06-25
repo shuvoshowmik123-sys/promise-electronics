@@ -120,7 +120,6 @@ import {
     itemVariants,
     HighlightMatch,
     smartMatch,
-    MobileTabLayout,
     MobileTabHeader,
     MobileScrollContent,
     MobileKpiGrid,
@@ -286,6 +285,16 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
     const { addRollbackRequest } = useRollback();
     const [custodyOtp, setCustodyOtp] = useState<{ requestId: string; action: CustodyOtpAction; targetStage: string; phone?: string } | null>(null);
     const [custodyOtpCode, setCustodyOtpCode] = useState("");
+
+    useEffect(() => {
+        const anyOpen = !!selectedRequest || showDeleteDialog || showStatusConfirmDialog || showQuotePriceDialog || showVerifyDialog || showRollbackDialog || showMobileMoreActions;
+        if (isMobile && anyOpen) {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+            return () => {
+                window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+            };
+        }
+    }, [isMobile, selectedRequest, showDeleteDialog, showStatusConfirmDialog, showQuotePriceDialog, showVerifyDialog, showRollbackDialog, showMobileMoreActions]);
 
     const queryClient = useQueryClient();
 
@@ -797,8 +806,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
     }));
 
     return (
-        <MobileTabLayout>
-        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="flex flex-col h-full overflow-hidden md:overflow-auto md:gap-6">
+        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="flex flex-col h-full w-full overflow-hidden md:overflow-auto md:gap-6">
             <MobileTabHeader>
                 <div className="flex items-center justify-between gap-2 pt-1">
                     <div className="min-w-0">
@@ -1954,6 +1962,5 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             {/* Media Viewer */}
             <Suspense fallback={null}><MediaViewer urls={currentMediaUrls} initialIndex={mediaViewerIndex} isOpen={mediaViewerOpen} onClose={() => setMediaViewerOpen(false)} /></Suspense>
         </motion.div>
-        </MobileTabLayout>
     );
 }

@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { motion, type PanInfo } from "framer-motion";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +17,12 @@ export function MobileBottomSheetFrame({
     closeOffset = 120,
     closeVelocity = 700,
 }: MobileBottomSheetFrameProps) {
+    useEffect(() => {
+        const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+        window.addEventListener("keydown", onKey);
+        return () => window.removeEventListener("keydown", onKey);
+    }, [onClose]);
+
     const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
         if (info.offset.y > closeOffset || info.velocity.y > closeVelocity) onClose();
     };

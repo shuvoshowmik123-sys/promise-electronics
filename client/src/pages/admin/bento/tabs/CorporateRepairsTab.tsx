@@ -9,7 +9,8 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import { format, isWithinInterval } from "date-fns";
 import { DateRange } from "react-day-picker";
-import { useToast } from "@/hooks/use-toast"; // Use existing hook
+import { useToast } from "@/hooks/use-toast";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { corporateApi, adminUsersApi } from "@/lib/api";
 import { smartMatch } from "../shared/smartMatch";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
@@ -119,6 +120,7 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
     const { toast } = useToast();
     const queryClient = useQueryClient();
     const { user } = useAdminAuth();
+    const isMobile = useIsMobile();
 
     // If no client is passed, we allow selecting one
     const [selectedClientId, setSelectedClientId] = useState<string | null>(initialClientId || null);
@@ -625,13 +627,13 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                         <p className="text-xs font-bold text-slate-500">B2B full-page control room</p>
                     </div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
                     {clientRuleChips.slice(0, 4).map((chip) => (
-                        <span key={chip.label} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-slate-700">
+                        <span key={chip.label} className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-slate-700">
                             {chip.label}: <span className="capitalize text-slate-950">{chip.value}</span>
                         </span>
                     ))}
-                    <span className="inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-black text-emerald-700">
+                    <span className="shrink-0 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-black text-emerald-700">
                         <span className="mr-2 h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" /> Portal Live
                     </span>
                 </div>
@@ -711,61 +713,37 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                 </div>
             </div>
 
-            {/* Mobile Bento Action Grid */}
-            <div className="lg:hidden grid grid-cols-2 gap-3 shrink-0">
-                <BentoCard className="flex flex-col items-center justify-center p-4 gap-2 border-emerald-100 bg-emerald-50/40 hover:bg-emerald-50 cursor-pointer shadow-sm active:scale-95 transition-transform" disableHover onClick={() => setIsChallanInOpen(true)}>
-                    <div className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-1 shadow-sm">
-                        <FileDown className="w-5 h-5" />
-                    </div>
-                    <span className="text-sm font-semibold text-emerald-800">Add Incoming Work</span>
-                </BentoCard>
-                <BentoCard className="flex flex-col items-center justify-center p-4 gap-2 border-violet-100 bg-violet-50/40 hover:bg-violet-50 cursor-pointer shadow-sm active:scale-95 transition-transform" disableHover onClick={() => {
-                    if (selectedJobs.length === 0) toast({ title: "Select Jobs", description: "Select items first to bill.", variant: "destructive" });
-                    else setIsGenerateBillOpen(true);
-                }}>
-                    <div className="w-10 h-10 rounded-full bg-violet-100 flex items-center justify-center text-violet-600 mb-1 shadow-sm">
-                        <Receipt className="w-5 h-5" />
-                    </div>
-                    <span className="text-sm font-semibold text-violet-800">Bill Selected</span>
-                </BentoCard>
-                <BentoCard className="flex flex-col items-center justify-center p-4 gap-2 border-amber-100 bg-amber-50/40 hover:bg-amber-50 cursor-pointer shadow-sm active:scale-95 transition-transform" disableHover onClick={() => {
-                    if (selectedJobs.length === 0) toast({ title: "Select Jobs", description: "Select items first.", variant: "destructive" });
-                    else setIsChallanOutOpen(true);
-                }}>
-                    <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center text-amber-600 mb-1 shadow-sm">
-                        <FileUp className="w-5 h-5" />
-                    </div>
-                    <span className="text-sm font-semibold text-amber-800">Deliver</span>
-                </BentoCard>
-                <BentoCard className="flex flex-col items-center justify-center p-4 gap-2 border-slate-200 bg-slate-50/40 hover:bg-slate-100 cursor-pointer shadow-sm active:scale-95 transition-transform" disableHover onClick={() => {
-                    if (selectedJobs.length === 0) toast({ title: "Select Jobs", description: "Select items first to print.", variant: "destructive" });
-                    else {
-                        const jobsToPrint = jobs?.filter((j: any) => selectedJobs.includes(j.id)) || [];
-                        setJobsForMultiPrint(jobsToPrint);
-                    }
-                }}>
-                    <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center text-slate-700 mb-1 shadow-sm">
-                        <Printer className="w-5 h-5" />
-                    </div>
-                    <span className="text-sm font-semibold text-slate-800">Print Selected</span>
-                </BentoCard>
+            {/* Mobile Action Strip — compact horizontal row */}
+            <div className="lg:hidden flex gap-2 overflow-x-auto hide-scrollbar shrink-0 px-0.5">
+                <button type="button" onClick={() => setIsChallanInOpen(true)} className="flex items-center gap-1.5 shrink-0 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-bold text-emerald-800 active:scale-95 transition-transform">
+                    <FileDown className="h-3.5 w-3.5" /> Receive
+                </button>
+                <button type="button" onClick={() => { if (selectedJobs.length === 0) toast({ title: "Select Jobs", description: "Select items first to bill.", variant: "destructive" }); else setIsGenerateBillOpen(true); }} className="flex items-center gap-1.5 shrink-0 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-xs font-bold text-violet-800 active:scale-95 transition-transform">
+                    <Receipt className="h-3.5 w-3.5" /> Bill
+                </button>
+                <button type="button" onClick={() => { if (selectedJobs.length === 0) toast({ title: "Select Jobs", description: "Select items first.", variant: "destructive" }); else setIsChallanOutOpen(true); }} className="flex items-center gap-1.5 shrink-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-bold text-amber-800 active:scale-95 transition-transform">
+                    <FileUp className="h-3.5 w-3.5" /> Deliver
+                </button>
+                <button type="button" onClick={() => { if (selectedJobs.length === 0) toast({ title: "Select Jobs", description: "Select items first to print.", variant: "destructive" }); else { setJobsForMultiPrint(jobs?.filter((j: any) => selectedJobs.includes(j.id)) || []); } }} className="flex items-center gap-1.5 shrink-0 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 active:scale-95 transition-transform">
+                    <Printer className="h-3.5 w-3.5" /> Print
+                </button>
             </div>
 
                 <main className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
-                    <div className="flex shrink-0 flex-col gap-3 border-b border-slate-200 bg-white p-3 lg:p-4">
+                    <div className="flex shrink-0 flex-col gap-2 border-b border-slate-200 bg-white p-2 lg:gap-3 lg:p-4">
                         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
                             <div className="min-w-0">
                                 <div className="hidden lg:block">
                                     <h2 className="text-xl font-black text-slate-900">Work Items</h2>
                                     <p className="text-sm text-slate-500">Operate from the list. Client rules stay visible on the left.</p>
                                 </div>
-                                <div className="lg:hidden">
+                                <div className="hidden">
                                     <h2 className="text-lg font-black text-slate-900">{client?.companyName || "B2B Workspace"}</h2>
                                     <p className="text-xs font-semibold text-slate-500">Workbench view</p>
                                 </div>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-2">
+                            <div className="hidden lg:flex flex-wrap items-center gap-2">
                                 <Button size="sm" className="rounded-xl bg-emerald-600 font-bold text-white hover:bg-emerald-700" onClick={() => setIsChallanInOpen(true)}>
                                     <FileDown className="mr-2 h-4 w-4" /> Receive Work
                                 </Button>
@@ -784,7 +762,7 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                         </div>
 
                         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                            <div className="flex flex-wrap gap-2">
+                            <div className="flex gap-2 overflow-x-auto hide-scrollbar lg:flex-wrap">
                                 {[
                                     { key: "pending", label: "Pending", value: cockpitCards.find(c => c.key === "pending")?.value || 0, className: "bg-amber-50 text-amber-800 border-amber-200" },
                                     { key: "ready", label: "Ready", value: cockpitCards.find(c => c.key === "ready")?.value || 0, className: "bg-emerald-50 text-emerald-800 border-emerald-200" },
@@ -792,14 +770,14 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                                     { key: "bill-pending", label: "Bill Pending", value: cockpitCards.find(c => c.key === "bill-pending")?.value || 0, className: "bg-violet-50 text-violet-800 border-violet-200" },
                                     { key: "crr", label: "CRR", value: cockpitCards.find(c => c.key === "crr")?.value || 0, className: "bg-rose-50 text-rose-800 border-rose-200" },
                                 ].map((chip) => (
-                                    <button key={chip.key} type="button" onClick={() => setCockpitFilter(chip.key)} className={`rounded-full border px-3 py-1 text-xs font-black transition hover:shadow-sm ${chip.className} ${quickFilter === chip.key ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}>
+                                    <button key={chip.key} type="button" onClick={() => setCockpitFilter(chip.key)} className={`shrink-0 rounded-full border px-3 py-1 text-xs font-black transition hover:shadow-sm ${chip.className} ${quickFilter === chip.key ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}>
                                         {chip.value} {chip.label}
                                     </button>
                                 ))}
-                                <button type="button" onClick={() => setActiveTab("dashboard")} className="rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-black text-red-800 hover:shadow-sm">
+                                <button type="button" onClick={() => setActiveTab("dashboard")} className="shrink-0 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-black text-red-800 hover:shadow-sm">
                                     {batchSummary.dueSoon + batchSummary.overdue} Batch Risk
                                 </button>
-                                <button type="button" onClick={() => setActiveTab("service-warranty")} className="rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-800 hover:shadow-sm">
+                                <button type="button" onClick={() => setActiveTab("service-warranty")} className="shrink-0 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-800 hover:shadow-sm">
                                     {batchSummary.extensionPending} Extension Wait
                                 </button>
                             </div>
@@ -872,7 +850,101 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                                             <p className="text-base font-bold">No work items found.</p>
                                         </div>
                                     ) : (
-                                        <div className="min-w-[860px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                                        <>
+                                        {/* ─── MOBILE JOB CARDS ─── */}
+                                        <div className="space-y-2 md:hidden">
+                                            <div className="flex items-center justify-between px-1 pb-1">
+                                                <label className="flex items-center gap-2 text-xs font-bold text-slate-600">
+                                                    <Checkbox
+                                                        checked={allVisibleJobsSelected}
+                                                        onCheckedChange={() => {
+                                                            const pageJobIds = paginatedJobs.map((job) => job.id);
+                                                            const pageJobIdSet = new Set(pageJobIds);
+                                                            setSelectedJobs((prev) => {
+                                                                const areAllSelected = pageJobIds.every((id) => prev.includes(id));
+                                                                if (areAllSelected) return prev.filter((id) => !pageJobIdSet.has(id));
+                                                                const next = [...prev];
+                                                                pageJobIds.forEach((id) => { if (!next.includes(id)) next.push(id); });
+                                                                return next;
+                                                            });
+                                                        }}
+                                                    />
+                                                    Select all
+                                                </label>
+                                                {selectedJobs.length > 0 && (
+                                                    <Badge className="rounded-full bg-blue-50 text-blue-700 hover:bg-blue-50 text-[10px]">{selectedJobs.length} selected</Badge>
+                                                )}
+                                            </div>
+                                            {paginatedJobs.map((job) => (
+                                                <div
+                                                    key={job.id}
+                                                    className={`rounded-2xl border bg-white p-3 shadow-sm transition active:scale-[0.99] ${selectedJobs.includes(job.id) ? "border-blue-300 ring-1 ring-blue-200" : "border-slate-200"}`}
+                                                >
+                                                    <div className="flex items-start gap-2.5">
+                                                        <div className="pt-0.5" onClick={(e) => e.stopPropagation()}>
+                                                            <Checkbox
+                                                                checked={selectedJobs.includes(job.id)}
+                                                                onCheckedChange={() => setSelectedJobs(prev => prev.includes(job.id) ? prev.filter(id => id !== job.id) : [...prev, job.id])}
+                                                            />
+                                                        </div>
+                                                        <button
+                                                            type="button"
+                                                            className="min-w-0 flex-1 text-left"
+                                                            onClick={() => { setSelectedJobForDetails(job); setIsDetailsOpen(true); }}
+                                                        >
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="font-mono text-[13px] font-black text-blue-700">#{job.corporateJobNumber || "N/A"}</span>
+                                                                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${job.status === "Ready" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : job.status === "Delivered" ? "bg-blue-50 text-blue-700 border-blue-200" : job.status === "Pending" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-slate-100 text-slate-700"}`}>
+                                                                    {displayJobStatus(job.status)}
+                                                                </Badge>
+                                                                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${job.corporateBillId ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-orange-50 text-orange-700 border-orange-200"}`}>
+                                                                    {job.corporateBillId ? "Billed" : "Unbilled"}
+                                                                </Badge>
+                                                            </div>
+                                                            <p className="mt-1 text-[13px] font-bold text-slate-900 truncate">{job.device || "Unknown device"}</p>
+                                                            <p className="text-[11px] text-slate-500 truncate">{job.reportedDefect || "No defect reported"}</p>
+                                                            <div className="mt-1.5 flex items-center gap-3 text-[10px] text-slate-500">
+                                                                <span className="font-mono">{job.tvSerialNumber || "No serial"}</span>
+                                                                {job.batchTargetClearDate && (
+                                                                    <span className="font-bold text-slate-600">Batch {format(new Date(job.batchTargetClearDate), "dd MMM")}</span>
+                                                                )}
+                                                                {job.technician && (
+                                                                    <span className="flex items-center gap-1 font-medium"><Users className="h-2.5 w-2.5" />{job.technician}</span>
+                                                                )}
+                                                            </div>
+                                                            {job.slaDeadline && <div className="mt-1.5"><SlaTimer deadline={job.slaDeadline} status={job.status} /></div>}
+                                                        </button>
+                                                        <DropdownMenu>
+                                                            <DropdownMenuTrigger asChild>
+                                                                <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0 rounded-lg text-slate-400">
+                                                                    <MoreVertical className="h-3.5 w-3.5" />
+                                                                </Button>
+                                                            </DropdownMenuTrigger>
+                                                            <DropdownMenuContent align="end" className="w-48">
+                                                                <DropdownMenuItem onClick={() => { setSelectedJobForDetails(job); setIsDetailsOpen(true); }}>
+                                                                    <Eye className="mr-2 h-4 w-4" /> View Details
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Checking", jobIds: [job.id] })}>
+                                                                    <Clock className="mr-2 h-4 w-4" /> Mark Checking
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Declared OK", jobIds: [job.id] })}>
+                                                                    <Check className="mr-2 h-4 w-4" /> Declare OK
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Ready", jobIds: [job.id] })}>
+                                                                    <PackageCheck className="mr-2 h-4 w-4" /> Mark Ready
+                                                                </DropdownMenuItem>
+                                                                <DropdownMenuItem onClick={() => setSelectedJobForCrr(job)}>
+                                                                    <RotateCcw className="mr-2 h-4 w-4" /> CRR / Reservice
+                                                                </DropdownMenuItem>
+                                                            </DropdownMenuContent>
+                                                        </DropdownMenu>
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+
+                                        {/* ─── DESKTOP TABLE ─── */}
+                                        <div className="hidden md:block min-w-[860px] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                                             <Table>
                                                 <TableHeader className="sticky top-0 z-10 border-b bg-slate-50">
                                                     <TableRow>
@@ -982,6 +1054,7 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                                                 </TableBody>
                                             </Table>
                                         </div>
+                                        </>
                                     )}
                                 </div>
 

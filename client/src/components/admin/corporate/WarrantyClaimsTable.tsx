@@ -81,7 +81,59 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
     }
 
     return (
-        <div className="rounded-md border">
+        <>
+        {/* ─── MOBILE CARDS ─── */}
+        <div className="md:hidden space-y-2">
+            {claimsArray.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground text-sm">No CRR / reservice records found.</div>
+            ) : (
+                claimsArray.map((claim: any) => (
+                    <div key={claim.id} className="rounded-xl border bg-white p-3 shadow-sm">
+                        <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-mono text-[11px] text-muted-foreground">{claim.id.slice(0, 8)}</span>
+                                <Badge variant={claim.status === 'approved' ? 'default' : claim.status === 'rejected' ? 'destructive' : 'secondary'} className="text-[10px] px-1.5 py-0">
+                                    {claim.status}
+                                </Badge>
+                            </div>
+                            <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0">
+                                        <MoreVertical className="h-3.5 w-3.5" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="end">
+                                    {claim.status === 'pending' && (
+                                        <>
+                                            <DropdownMenuItem onClick={() => approveMutation.mutate(claim.id)}>
+                                                <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Approve
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem onClick={() => rejectMutation.mutate(claim.id)}>
+                                                <XCircle className="mr-2 h-4 w-4 text-red-500" /> Reject
+                                            </DropdownMenuItem>
+                                        </>
+                                    )}
+                                    {claim.status === 'approved' && claim.newJobId && (
+                                        <DropdownMenuItem disabled><ArrowRight className="mr-2 h-4 w-4" /> Job: #{claim.newJobId}</DropdownMenuItem>
+                                    )}
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                        </div>
+                        <div className="mt-1.5 flex items-center gap-2 text-xs">
+                            <span className="text-slate-500">Job</span>
+                            <span className="font-mono font-bold text-blue-700">#{claim.originalJobId}</span>
+                            <span className="text-slate-300">·</span>
+                            <span className="capitalize text-slate-600 font-medium">{claim.claimType}</span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-500 truncate">{claim.claimReason}</p>
+                        <div className="mt-1 text-[10px] text-slate-400">{claim.claimedAt ? format(new Date(claim.claimedAt), "PP") : "N/A"}</div>
+                    </div>
+                ))
+            )}
+        </div>
+
+        {/* ─── DESKTOP TABLE ─── */}
+        <div className="hidden md:block rounded-md border">
             <Table>
                 <TableHeader>
                     <TableRow>
@@ -153,5 +205,6 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
                 </TableBody>
             </Table>
         </div>
+        </>
     );
 }

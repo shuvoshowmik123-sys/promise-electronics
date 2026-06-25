@@ -80,6 +80,16 @@ export default function QuotationsTab() {
 
     const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
+    useEffect(() => {
+        const anySheetOpen = isDialogOpen || !!printQuotation;
+        if (isMobile && anySheetOpen) {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+            return () => {
+                window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+            };
+        }
+    }, [isDialogOpen, printQuotation, isMobile]);
+
     // Mobile preview: render the A4 doc at true size, scale it down to fit the
     // phone (keeps proportions perfect; pinch-zoom + correct PDF). Desktop = 1.
     const [previewScale, setPreviewScale] = useState(1);
@@ -306,7 +316,7 @@ export default function QuotationsTab() {
             </MobileTabHeader>
 
             {/* ─── MOBILE CARD LIST ─── */}
-            <MobileScrollContent className="md:hidden">
+            <MobileScrollContent className="md:hidden pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
                 {isLoadingQuotations ? (
                     <div className="flex justify-center py-16"><Loader2 className="h-7 w-7 animate-spin text-slate-300" /></div>
                 ) : filteredQuotations.length === 0 ? (
@@ -1096,6 +1106,8 @@ function PinchZoomPane({ baseScale, className, children }: { baseScale: number; 
     const ref = useRef<HTMLDivElement>(null);
     const [t, setT] = useState({ scale: 1, x: 0, y: 0 });
     const tRef = useRef(t);
+    const paperWidth = 800;
+    const paperHeight = 1100;
     const g = useRef<{ mode: "pinch" | "pan" | null; startDist: number; startScale: number; startX: number; startY: number; startTx: number; startTy: number }>({
         mode: null, startDist: 0, startScale: 1, startX: 0, startY: 0, startTx: 0, startTy: 0,
     });
@@ -1152,14 +1164,21 @@ function PinchZoomPane({ baseScale, className, children }: { baseScale: number; 
             style={{ overflow: "auto", touchAction: t.scale > 1 ? "none" : "pan-y", padding: 12 }}
             onDoubleClick={() => set(t.scale > 1 ? { scale: 1, x: 0, y: 0 } : { scale: 2, x: 0, y: 0 })}
         >
-            <div style={{
-                transform: `translate(${t.x}px, ${t.y}px) scale(${baseScale * t.scale})`,
-                transformOrigin: "top center",
-                transition: g.current.mode ? "none" : "transform 0.15s ease-out",
-                width: 800,
-                margin: "0 auto",
-            }}>
-                {children}
+            <div
+                style={{
+                    width: paperWidth * baseScale,
+                    minHeight: paperHeight * baseScale,
+                    margin: "0 auto",
+                }}
+            >
+                <div style={{
+                    transform: `translate(${t.x}px, ${t.y}px) scale(${baseScale * t.scale})`,
+                    transformOrigin: "top left",
+                    transition: g.current.mode ? "none" : "transform 0.15s ease-out",
+                    width: paperWidth,
+                }}>
+                    {children}
+                </div>
             </div>
         </div>
     );

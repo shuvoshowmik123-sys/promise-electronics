@@ -14,7 +14,8 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "@/hooks/use-toast";
 import { format, subMonths } from "date-fns";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { CreateCorporateClientDialog } from "@/components/admin/corporate/CreateCorporateClientDialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -23,6 +24,7 @@ interface CorporateTabProps {
 }
 
 export default function CorporateTab({ onSelectClient }: CorporateTabProps) {
+    const isMobile = useIsMobile();
     const { data: clients = [], isLoading } = useQuery({
         queryKey: ["corporate-clients"],
         queryFn: corporateApi.getAll,
@@ -38,6 +40,16 @@ export default function CorporateTab({ onSelectClient }: CorporateTabProps) {
     const [selectedBillClient, setSelectedBillClient] = useState<any | null>(null);
     const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
+
+    useEffect(() => {
+        const anyOpen = !!selectedBillClient || isCreateDialogOpen;
+        if (isMobile && anyOpen) {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+            return () => {
+                window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+            };
+        }
+    }, [selectedBillClient, isCreateDialogOpen, isMobile]);
 
     const filteredClients = clients.filter((c: any) =>
         c.companyName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -160,8 +172,7 @@ export default function CorporateTab({ onSelectClient }: CorporateTabProps) {
                         </div>
                     </div>
 
-                    {/* Non-Scrolling Card Stack (Scrolls natively with the page) */}
-                    <div className="pb-24 space-y-4 px-1">
+                    <div className="pb-[calc(5.5rem+env(safe-area-inset-bottom))] space-y-4 px-1">
                         {isLoading ? (
                             <div className="p-8 text-center text-slate-500 font-medium animate-pulse">Loading premium clients...</div>
                         ) : filteredClients.map((client: any) => (

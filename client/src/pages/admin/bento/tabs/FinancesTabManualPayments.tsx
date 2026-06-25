@@ -333,7 +333,7 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
                     Record Walk-in Payment
                 </button>
                 <Sheet open={showWalkinSheet} onOpenChange={setShowWalkinSheet}>
-                    <SheetContent side="bottom" className="h-[92dvh] rounded-t-3xl overflow-y-auto pb-8 pt-0 px-4">
+                    <SheetContent side="bottom" className="h-[92dvh] rounded-t-3xl overflow-y-auto pb-[max(2rem,env(safe-area-inset-bottom))] pt-0 px-4">
                         <div className="sticky top-0 z-10 border-b bg-white pb-3 pt-4 mb-4">
                             <h3 className="font-bold text-slate-900">Walk-in Manual Record</h3>
                             <p className="text-xs text-muted-foreground">Use only when staff collected payment outside the customer portal.</p>

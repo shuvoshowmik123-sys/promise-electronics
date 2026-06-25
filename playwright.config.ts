@@ -45,6 +45,30 @@ export default defineConfig({
       grep: [/customer/, /responsive/, /visual/, /a11y/],
     },
     {
+      // Trustworthy admin mobile audit harness: real iPhone-15 touch context so
+      // CDP Input.dispatchTouchEvent drives real compositor scrolling (the MCP
+      // desktop browser cannot). Runs only @admin-mobile-tagged audit specs.
+      name: 'admin-mobile-chrome',
+      use: {
+        ...devices['iPhone 15'],
+        browserName: 'chromium',
+        channel: 'chrome',
+        viewport: { width: 390, height: 844 }, // exact ledger viewport
+      },
+      grep: /@admin-mobile/,
+    },
+    {
+      // Larger phone viewport (584x918) required by the visual ledger.
+      name: 'admin-mobile-lg',
+      use: {
+        ...devices['iPhone 15'],
+        browserName: 'chromium',
+        channel: 'chrome',
+        viewport: { width: 584, height: 918 },
+      },
+      grep: /@admin-mobile/,
+    },
+    {
       name: 'mobile-safari',
       use: { ...devices['iPhone 15'] },
       grep: /customer/,

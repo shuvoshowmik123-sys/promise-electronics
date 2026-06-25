@@ -127,13 +127,13 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
 
     useEffect(() => {
         const anySheetOpen = isMobileAssignSheetOpen || viewDialogOpen || isCreateDrawerOpen || isEditDrawerOpen || qrDialogOpen || isAdvanceDialogOpen || isLocalPurchaseOpen;
-        if (window.innerWidth < 768 && anySheetOpen) {
+        if (isMobile && anySheetOpen) {
             window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
             return () => {
                 window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
             };
         }
-    }, [isMobileAssignSheetOpen, viewDialogOpen, isCreateDrawerOpen, isEditDrawerOpen, qrDialogOpen, isAdvanceDialogOpen, isLocalPurchaseOpen]);
+    }, [isMobileAssignSheetOpen, viewDialogOpen, isCreateDrawerOpen, isEditDrawerOpen, qrDialogOpen, isAdvanceDialogOpen, isLocalPurchaseOpen, isMobile]);
 
     // Data Fetching
     // Use `initialJobType` if provided (e.g., when deep-linking from System Health so all job types are searched)
