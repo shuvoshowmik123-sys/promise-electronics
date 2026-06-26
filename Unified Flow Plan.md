@@ -591,7 +591,35 @@ Safe minimal hardening (backend only, no UI redesign):
 
 Inspector: should any of items 1-4 be implemented now, or should all wait for Phase 4B?
 
-## Phase 4B: Job Tab Sync
+## Phase 4B-lite: Direct Walk-in Job Hardening
+
+Status: DONE
+Completed: 2026-06-27
+
+Files changed:
+
+- server/routes/jobs.routes.ts — added phone normalization + source defaulting on direct job creation
+
+### Changes
+
+1. `customerPhoneNormalized` set via `normalizePhone(customerPhone)` when `customerPhone` exists. Applied before Zod validation so the field passes schema check.
+
+2. `source` defaults to `'walk_in'` when no source is provided and no `corporateClientId`/`corporateChallanId` are present. Request-provided source is preserved. Corporate source behavior unchanged (corporate jobs are blocked by the existing guard above).
+
+### Not implemented (deferred)
+
+- Journey creation for direct walk-in jobs
+- Auto-linking job tickets to customer accounts on registration
+- Claim code schema/field
+- Customer portal visibility for walk-in jobs
+
+Checks run:
+
+- npx tsc --noEmit --pretty false (PASS)
+- npx vite build --mode development (PASS, 17.19s)
+- git diff --check (PASS)
+
+## Phase 4C: Job Tab Sync
 
 Status: NOT STARTED
 

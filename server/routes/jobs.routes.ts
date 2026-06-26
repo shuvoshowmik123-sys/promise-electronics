@@ -21,6 +21,7 @@ import { localPurchases } from '../../shared/schema.js';
 import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 import { eq } from 'drizzle-orm';
 import { loadRepairCaseByJobTicket } from '../services/repair-case.service.js';
+import { normalizePhone } from '../utils/phone.js';
 
 const router = Router();
 const JOB_REALTIME_TAGS = ["jobTickets", "jobOverview", "dashboardStats"] as const;
@@ -179,6 +180,14 @@ router.post('/api/job-tickets', requireAdminAuth, requirePermission('jobs'), asy
         // Convert deadline string to Date if present
         if (jobData.deadline && typeof jobData.deadline === 'string') {
             jobData.deadline = new Date(jobData.deadline);
+        }
+
+        if (jobData.customerPhone) {
+            jobData.customerPhoneNormalized = normalizePhone(jobData.customerPhone);
+        }
+
+        if (!jobData.source && !jobData.corporateClientId && !jobData.corporateChallanId) {
+            jobData.source = 'walk_in';
         }
 
         const validated = insertJobTicketSchema.parse(jobData);
