@@ -12,8 +12,9 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { drawerApi, settingsApi } from "@/lib/api";
-import { containerVariants, itemVariants, MobileScrollContent, MobileTabHeader, MobileTabLayout } from "../shared";
+import { containerVariants, itemVariants, MobileScrollContent, MobileTabHeader, MobileTabLayout, MobileMarqueeText, MobileSegmentTabs } from "../shared";
 import { BentoCard } from "../shared/BentoCard";
+import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 
 // Sections
 import GeneralSection from "./settings/GeneralSection";
@@ -23,6 +24,7 @@ import type { TeamMember } from "./settings/AboutUsSection";
 const CmsHomeSection = lazy(() => import("./settings/CmsHomeSection"));
 const AboutUsSection = lazy(() => import("./settings/AboutUsSection"));
 const ServiceConfigEditor = lazy(() => import("./settings/ServiceConfigEditor").then(m => ({ default: m.ServiceConfigEditor })));
+import { TagListCard } from "./settings/TagListCard";
 
 interface SettingsTabProps {
     initialSearchQuery?: string;
@@ -370,6 +372,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     const [selectedPanel, setSelectedPanel] = useState<string | null>(null);
     const [generalDialogTrigger, setGeneralDialogTrigger] = useState<string | null>(null);
     const [dangerExpanded, setDangerExpanded] = useState(false);
+    const [mobileCatalogTab, setMobileCatalogTab] = useState<string>("service");
 
     useEffect(() => {
         if (!initialSearchQuery) return;
@@ -416,7 +419,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
             </div>
             <div className="flex-1 min-w-0">
                 <p className="text-[13px] font-semibold text-slate-900">{label}</p>
-                {helper && <p className="text-[11px] text-slate-400 truncate">{helper}</p>}
+                {helper && <MobileMarqueeText className="text-[11px] text-slate-400 block" title={helper}>{helper}</MobileMarqueeText>}
             </div>
             <div className="flex items-center gap-2 shrink-0">
                 {right}
@@ -800,10 +803,10 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
             </div>
 
             {/* ═══════════════════════════════════════════════════════════════
-                SHARED MODALS (used by both mobile and desktop)
-               ═══════════════════════════════════════════════════════════════ */}
+                SHARED MODALS — mobile uses MobileBottomSheetFrame, desktop keeps existing popups
+                ═══════════════════════════════════════════════════════════════ */}
 
-            {/* Modal for Full Editors */}
+            {/* ─── CMS / About full editor — mobile near-full-screen bottom sheet ─── */}
             <AnimatePresence>
                 {selectedPanel && (
                     <div className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:z-50 md:items-center md:p-12">
@@ -814,22 +817,18 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             onClick={() => setSelectedPanel(null)}
                             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
                         />
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] border border-slate-200 bg-white shadow-2xl md:h-auto md:max-h-[90vh] md:max-w-6xl md:rounded-3xl"
-                        >
-                            <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 p-4 md:p-6">
-                                <h2 className="flex min-w-0 items-center gap-2 text-lg font-black text-slate-900 md:gap-3 md:text-2xl">
-                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-6 h-6 text-indigo-500" /> : <Building2 className="w-6 h-6 text-emerald-500" />}
-                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS Editor" : "About Us Editor"}</span>
+                        <MobileBottomSheetFrame onClose={() => setSelectedPanel(null)} className="relative flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] border border-slate-200 bg-white shadow-2xl md:hidden">
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-3">
+                                <h2 className="flex min-w-0 items-center gap-2 text-base font-black text-slate-900">
+                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-5 h-5 text-indigo-500" /> : <Building2 className="w-5 h-5 text-emerald-500" />}
+                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS" : "About Us"}</span>
                                 </h2>
-                                <Button variant="ghost" size="icon" onClick={() => setSelectedPanel(null)} className="h-10 w-10 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200">
-                                    <X className="w-5 h-5" />
+                                <Button variant="ghost" size="icon" onClick={() => setSelectedPanel(null)} className="h-9 w-9 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200">
+                                    <X className="w-4 h-4" />
                                 </Button>
                             </div>
-                            <div className="custom-scrollbar flex-1 overflow-y-auto bg-slate-50/30 p-3 md:p-6">
+                            <div className="custom-scrollbar flex-1 overflow-y-auto bg-slate-50/30 px-3 pb-4">
                                 {selectedPanel === "cmshome" && (
                                     <Suspense fallback={null}><CmsHomeSection
                                         heroTitle={heroTitle} setHeroTitle={setHeroTitle}
@@ -873,10 +872,78 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     /></Suspense>
                                 )}
                             </div>
-                            <div className="flex flex-col gap-2 border-t border-slate-100 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:flex-row md:justify-end md:p-5">
-                                <Button variant="outline" className="h-11 rounded-xl md:h-10" onClick={() => setSelectedPanel(null)}>Close Editor</Button>
-                                {/* Note: Since save hits the main state, closing and saving from the main Header is preferred, but we can also just let them close it and save later */}
-                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700 md:h-10" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
+                            <div className="flex flex-col gap-2 border-t border-slate-100 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                <Button variant="outline" className="h-11 rounded-xl" onClick={() => setSelectedPanel(null)}>Close Editor</Button>
+                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
+                                    {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                    Save & Close
+                                </Button>
+                            </div>
+                        </MobileBottomSheetFrame>
+
+                        {/* Desktop popup — unchanged */}
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative hidden md:flex h-auto max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+                        >
+                            <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 p-6">
+                                <h2 className="flex min-w-0 items-center gap-3 text-2xl font-black text-slate-900">
+                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-6 h-6 text-indigo-500" /> : <Building2 className="w-6 h-6 text-emerald-500" />}
+                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS Editor" : "About Us Editor"}</span>
+                                </h2>
+                                <Button variant="ghost" size="icon" onClick={() => setSelectedPanel(null)} className="h-10 w-10 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200">
+                                    <X className="w-5 h-5" />
+                                </Button>
+                            </div>
+                            <div className="custom-scrollbar flex-1 overflow-y-auto bg-slate-50/30 p-6">
+                                {selectedPanel === "cmshome" && (
+                                    <Suspense fallback={null}><CmsHomeSection
+                                        heroTitle={heroTitle} setHeroTitle={setHeroTitle}
+                                        heroSubtitle={heroSubtitle} setHeroSubtitle={setHeroSubtitle}
+                                        heroAnimationType={heroAnimationType} setHeroAnimationType={setHeroAnimationType}
+                                        heroImages={heroImages} setHeroImages={setHeroImages}
+                                        mobileHeroImages={mobileHeroImages} setMobileHeroImages={setMobileHeroImages}
+                                        infoBoxes={infoBoxes} setInfoBoxes={setInfoBoxes}
+                                        homepageStats={homepageStats} setHomepageStats={setHomepageStats}
+                                        faqItems={faqItems} setFaqItems={setFaqItems}
+                                        contactInfo={contactInfo} setContactInfo={setContactInfo}
+                                        serviceAreas={serviceAreas} setServiceAreas={setServiceAreas}
+                                        homepageBrands={homepageBrands} setHomepageBrands={setHomepageBrands}
+                                        problemNavItems={problemNavItems} setProblemNavItems={setProblemNavItems}
+                                        beforeAfterGallery={beforeAfterGallery} setBeforeAfterGallery={setBeforeAfterGallery}
+                                        pricingTable={pricingTable} setPricingTable={setPricingTable}
+                                        trackRepairEnabled={trackRepairEnabled} setTrackRepairEnabled={setTrackRepairEnabled}
+                                        googleMapUrl={googleMapUrl} setGoogleMapUrl={setGoogleMapUrl}
+                                    /></Suspense>
+                                )}
+                                {selectedPanel === "about" && (
+                                    <Suspense fallback={null}><AboutUsSection
+                                        aboutTitle={aboutTitle} setAboutTitle={setAboutTitle}
+                                        aboutTitleBn={aboutTitleBn} setAboutTitleBn={setAboutTitleBn}
+                                        aboutDescription={aboutDescription} setAboutDescription={setAboutDescription}
+                                        aboutDescriptionBn={aboutDescriptionBn} setAboutDescriptionBn={setAboutDescriptionBn}
+                                        aboutMission={aboutMission} setAboutMission={setAboutMission}
+                                        aboutMissionBn={aboutMissionBn} setAboutMissionBn={setAboutMissionBn}
+                                        aboutVision={aboutVision} setAboutVision={setAboutVision}
+                                        aboutVisionBn={aboutVisionBn} setAboutVisionBn={setAboutVisionBn}
+                                        aboutCapabilities={aboutCapabilities} setAboutCapabilities={setAboutCapabilities}
+                                        aboutCapabilitiesBn={aboutCapabilitiesBn} setAboutCapabilitiesBn={setAboutCapabilitiesBn}
+                                        aboutTeam={aboutTeam} setAboutTeam={setAboutTeam}
+                                        aboutTeamBn={aboutTeamBn} setAboutTeamBn={setAboutTeamBn}
+                                        aboutAddress={aboutAddress} setAboutAddress={setAboutAddress}
+                                        aboutAddressBn={aboutAddressBn} setAboutAddressBn={setAboutAddressBn}
+                                        aboutEmail={aboutEmail} setAboutEmail={setAboutEmail}
+                                        aboutWorkingHours={aboutWorkingHours} setAboutWorkingHours={setAboutWorkingHours}
+                                        aboutWorkingHoursBn={aboutWorkingHoursBn} setAboutWorkingHoursBn={setAboutWorkingHoursBn}
+                                        teamMembers={teamMembers} setTeamMembers={setTeamMembers}
+                                    /></Suspense>
+                                )}
+                            </div>
+                            <div className="flex flex-col gap-2 border-t border-slate-100 bg-white p-5 md:flex-row md:justify-end">
+                                <Button variant="outline" className="h-10 rounded-xl" onClick={() => setSelectedPanel(null)}>Close Editor</Button>
+                                <Button className="h-10 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
                                     {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                     Save & Close
                                 </Button>
@@ -886,35 +953,31 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                 )}
             </AnimatePresence>
 
-            {/* Expanding Modals for Settings (Replaced Sheets based on user feedback) */}
+            {/* ─── Identity editor — mobile bottom sheet + desktop popup ─── */}
             <AnimatePresence>
-                {/* Identity Popup */}
                 {activeSheet === 'identity' && (
                     <div className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:items-center md:p-6" style={{ pointerEvents: 'auto' }}>
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/40"
                             onClick={() => setActiveSheet(null)}
+                            className="absolute inset-0 bg-slate-900/40"
                         />
-                        <motion.div
-                            layoutId="card-identity"
-                            className="relative z-10 flex h-auto max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:max-h-[90vh] md:max-w-md md:rounded-3xl"
-                        >
-                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-4 md:p-6">
+                        <MobileBottomSheetFrame onClose={() => setActiveSheet(null)} className="relative z-10 flex h-auto max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                                 <div>
-                                    <h2 className="flex items-center gap-2 text-lg font-black text-slate-900 md:text-xl">
+                                    <h2 className="flex items-center gap-2 text-base font-black text-slate-900">
                                         <Globe className="w-5 h-5 text-indigo-500" /> Business Identity
                                     </h2>
-                                    <p className="mt-1 text-xs font-medium text-slate-500 md:text-sm">Update public business information.</p>
+                                    <p className="mt-0.5 text-xs font-medium text-slate-500">Update public business information.</p>
                                 </div>
                                 <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
                                     <X className="w-5 h-5" />
                                 </Button>
                             </div>
-
-                            <div className="custom-scrollbar space-y-4 overflow-y-auto p-4 md:space-y-6 md:p-6">
+                            <div className="custom-scrollbar space-y-4 overflow-y-auto p-4">
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700">Site Name</label>
                                     <Input placeholder="Enter site name" value={siteName} onChange={(e) => setSiteName(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
@@ -937,10 +1000,57 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     <Input placeholder="e.g. Mon-Fri 9AM-6PM" value={businessHours} onChange={(e) => setBusinessHours(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
                                 </div>
                             </div>
+                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                <Button variant="outline" className="h-11 rounded-xl" onClick={() => setActiveSheet(null)}>Cancel</Button>
+                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
+                                    {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                    Save Changes
+                                </Button>
+                            </div>
+                        </MobileBottomSheetFrame>
 
-                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:flex-row md:justify-end md:p-5 md:rounded-b-3xl">
-                                <Button variant="outline" className="h-11 rounded-xl md:h-10" onClick={() => setActiveSheet(null)}>Cancel</Button>
-                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700 md:h-10" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
+                        {/* Desktop popup — unchanged */}
+                        <motion.div
+                            layoutId="card-identity"
+                            className="relative z-10 hidden md:flex h-auto max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+                        >
+                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-6">
+                                <div>
+                                    <h2 className="flex items-center gap-2 text-xl font-black text-slate-900">
+                                        <Globe className="w-5 h-5 text-indigo-500" /> Business Identity
+                                    </h2>
+                                    <p className="mt-1 text-sm font-medium text-slate-500">Update public business information.</p>
+                                </div>
+                                <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
+                                    <X className="w-5 h-5" />
+                                </Button>
+                            </div>
+                            <div className="custom-scrollbar space-y-6 overflow-y-auto p-6">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Site Name</label>
+                                    <Input placeholder="Enter site name" value={siteName} onChange={(e) => setSiteName(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Logo Image URL</label>
+                                    <Input placeholder="/logo.png" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    {logoUrl && <img src={logoUrl} alt="Logo Preview" className="h-10 object-contain mt-2 border rounded-md p-1 bg-white" />}
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Support Phone</label>
+                                    <Input placeholder="Phone number" value={supportPhone} onChange={(e) => setSupportPhone(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Service Center Address</label>
+                                    <Input placeholder="Full address" value={serviceCenterContact} onChange={(e) => setServiceCenterContact(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Business Hours</label>
+                                    <Input placeholder="e.g. Mon-Fri 9AM-6PM" value={businessHours} onChange={(e) => setBusinessHours(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                </div>
+                            </div>
+                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-5 md:flex-row md:justify-end md:rounded-b-3xl">
+                                <Button variant="outline" className="h-10 rounded-xl" onClick={() => setActiveSheet(null)}>Cancel</Button>
+                                <Button className="h-10 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
                                     {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                     Save Changes
                                 </Button>
@@ -948,34 +1058,33 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         </motion.div>
                     </div>
                 )}
+            </AnimatePresence>
 
-                {/* Finance & Locale Popup */}
+            {/* ─── Finance editor — mobile bottom sheet + desktop popup ─── */}
+            <AnimatePresence>
                 {activeSheet === 'finance' && (
                     <div className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:items-center md:p-6" style={{ pointerEvents: 'auto' }}>
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/40"
                             onClick={() => setActiveSheet(null)}
+                            className="absolute inset-0 bg-slate-900/40"
                         />
-                        <motion.div
-                            layoutId="card-finance"
-                            className="relative z-10 flex h-auto max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:max-h-[90vh] md:max-w-md md:rounded-3xl"
-                        >
-                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-4 md:p-6">
+                        <MobileBottomSheetFrame onClose={() => setActiveSheet(null)} className="relative z-10 flex h-auto max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                                 <div>
-                                    <h2 className="flex items-center gap-2 text-lg font-black text-slate-900 md:text-xl">
+                                    <h2 className="flex items-center gap-2 text-base font-black text-slate-900">
                                         <Database className="w-5 h-5 text-emerald-500" /> Finance & Locale
                                     </h2>
-                                    <p className="mt-1 text-xs font-medium text-slate-500 md:text-sm">Configure money and timezone.</p>
+                                    <p className="mt-0.5 text-xs font-medium text-slate-500">Configure money and timezone.</p>
                                 </div>
                                 <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
                                     <X className="w-5 h-5" />
                                 </Button>
                             </div>
-
-                            <div className="custom-scrollbar space-y-4 overflow-y-auto p-4 md:space-y-6 md:p-6">
+                            <div className="custom-scrollbar space-y-4 overflow-y-auto p-4">
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700">Currency Symbol</label>
                                     <Input placeholder="$" value={currencySymbol} onChange={(e) => setCurrencySymbol(e.target.value)} className="bg-slate-50 focus:bg-white font-mono text-lg transition-colors" />
@@ -992,8 +1101,6 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     <Input placeholder="Asia/Riyadh" value={timezone} onChange={(e) => setTimezone(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
                                     <p className="text-xs text-slate-500 mt-1">Accepts standard IANA timezone formats.</p>
                                 </div>
-
-                                {/* Customer Send Money numbers — shown on the customer track page */}
                                 <div className="pt-2 border-t border-slate-100 space-y-4">
                                     <div>
                                         <h3 className="text-sm font-bold text-slate-800">Customer Send Money Numbers</h3>
@@ -1010,10 +1117,67 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     <p className="text-xs text-amber-600">⚠ Double-check these — customers will send real money to these numbers.</p>
                                 </div>
                             </div>
+                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                <Button variant="outline" className="h-11 rounded-xl" onClick={() => setActiveSheet(null)}>Cancel</Button>
+                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
+                                    {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                    Save Changes
+                                </Button>
+                            </div>
+                        </MobileBottomSheetFrame>
 
-                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:flex-row md:justify-end md:p-5 md:rounded-b-3xl">
-                                <Button variant="outline" className="h-11 rounded-xl md:h-10" onClick={() => setActiveSheet(null)}>Cancel</Button>
-                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700 md:h-10" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
+                        {/* Desktop popup — unchanged */}
+                        <motion.div
+                            layoutId="card-finance"
+                            className="relative z-10 hidden md:flex h-auto max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+                        >
+                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-6">
+                                <div>
+                                    <h2 className="flex items-center gap-2 text-xl font-black text-slate-900">
+                                        <Database className="w-5 h-5 text-emerald-500" /> Finance & Locale
+                                    </h2>
+                                    <p className="mt-1 text-sm font-medium text-slate-500">Configure money and timezone.</p>
+                                </div>
+                                <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
+                                    <X className="w-5 h-5" />
+                                </Button>
+                            </div>
+                            <div className="custom-scrollbar space-y-6 overflow-y-auto p-6">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Currency Symbol</label>
+                                    <Input placeholder="$" value={currencySymbol} onChange={(e) => setCurrencySymbol(e.target.value)} className="bg-slate-50 focus:bg-white font-mono text-lg transition-colors" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">VAT / Tax Percentage</label>
+                                    <div className="relative">
+                                        <Input type="number" step="0.1" placeholder="0" value={vatPercentage} onChange={(e) => setVatPercentage(e.target.value)} className="bg-slate-50 focus:bg-white pr-8 transition-colors" />
+                                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Timezone</label>
+                                    <Input placeholder="Asia/Riyadh" value={timezone} onChange={(e) => setTimezone(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    <p className="text-xs text-slate-500 mt-1">Accepts standard IANA timezone formats.</p>
+                                </div>
+                                <div className="pt-2 border-t border-slate-100 space-y-4">
+                                    <div>
+                                        <h3 className="text-sm font-bold text-slate-800">Customer Send Money Numbers</h3>
+                                        <p className="text-xs text-slate-500 mt-0.5">Customers send money to these and submit the transaction for verification. Leave blank to hide that option.</p>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">bKash Send Money Number</label>
+                                        <Input placeholder="01XXXXXXXXX" value={bkashSendMoney} onChange={(e) => setBkashSendMoney(e.target.value)} className="bg-slate-50 focus:bg-white font-mono transition-colors" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">Nagad Send Money Number</label>
+                                        <Input placeholder="01XXXXXXXXX" value={nagadSendMoney} onChange={(e) => setNagadSendMoney(e.target.value)} className="bg-slate-50 focus:bg-white font-mono transition-colors" />
+                                    </div>
+                                    <p className="text-xs text-amber-600">⚠ Double-check these — customers will send real money to these numbers.</p>
+                                </div>
+                            </div>
+                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-5 md:flex-row md:justify-end md:rounded-b-3xl">
+                                <Button variant="outline" className="h-10 rounded-xl" onClick={() => setActiveSheet(null)}>Cancel</Button>
+                                <Button className="h-10 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
                                     {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                     Save Changes
                                 </Button>
@@ -1021,40 +1185,100 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         </motion.div>
                     </div>
                 )}
+            </AnimatePresence>
 
-                {/* Catalog Popup */}
+            {/* ─── Catalog editor — mobile bottom sheet with segment tabs + desktop popup ─── */}
+            <AnimatePresence>
                 {activeSheet === 'catalog' && (
                     <div className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:items-center md:p-6" style={{ pointerEvents: 'auto' }}>
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
                             exit={{ opacity: 0 }}
-                            className="absolute inset-0 bg-slate-900/40"
                             onClick={() => setActiveSheet(null)}
+                            className="absolute inset-0 bg-slate-900/40"
                         />
-                        <motion.div
-                            layoutId="card-catalog"
-                            className="relative z-10 flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-3xl"
-                        >
-                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-4 md:p-6">
+                        <MobileBottomSheetFrame onClose={() => setActiveSheet(null)} className="relative z-10 flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                                 <div>
-                                    <h2 className="flex items-center gap-2 text-lg font-black text-slate-900 md:text-xl">
+                                    <h2 className="flex items-center gap-2 text-base font-black text-slate-900">
                                         <Wrench className="w-5 h-5 text-blue-500" /> Service Catalogs
                                     </h2>
-                                    <p className="mt-1 text-xs font-medium text-slate-500 md:text-sm">Manage tags used by services and stock.</p>
+                                    <p className="mt-0.5 text-xs font-medium text-slate-500">Manage tags used by services and stock.</p>
                                 </div>
                                 <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
                                     <X className="w-5 h-5" />
                                 </Button>
                             </div>
+                            <div className="shrink-0 px-3 py-2 border-b border-slate-100 bg-slate-50/50">
+                                <MobileSegmentTabs
+                                    value={mobileCatalogTab}
+                                    onChange={setMobileCatalogTab}
+                                    items={[
+                                        { value: "service", label: "Service" },
+                                        { value: "shop", label: "Shop" },
+                                        { value: "brands", label: "Brands" },
+                                        { value: "sizes", label: "Sizes" },
+                                        { value: "symptoms", label: "Symptoms" },
+                                        { value: "filters", label: "Filters" },
+                                    ]}
+                                />
+                            </div>
+                            <div className="custom-scrollbar flex-1 overflow-y-auto p-3">
+                                <div className="flex items-start gap-2 bg-blue-50 text-blue-800 p-3 rounded-xl border border-blue-100 text-xs mb-3">
+                                    <Star className="w-3.5 h-3.5 mt-0.5 shrink-0 text-blue-500" />
+                                    <p>Changes sync locally. Click <strong>Save Changes</strong> to push to server.</p>
+                                </div>
+                                {mobileCatalogTab === "service" && (
+                                    <TagListCard title="Service Categories" icon={<Wrench className="w-5 h-5 text-blue-500" />} items={serviceCategories} setItems={setServiceCategories} placeholder="e.g. TV Repair, AC Servicing" accentColor="blue" />
+                                )}
+                                {mobileCatalogTab === "shop" && (
+                                    <TagListCard title="Shop Categories" icon={<ShoppingBag className="w-5 h-5 text-emerald-500" />} items={shopCategories} setItems={setShopCategories} placeholder="e.g. Spare Parts, Accessories" accentColor="emerald" />
+                                )}
+                                {mobileCatalogTab === "brands" && (
+                                    <TagListCard title="TV Brands" icon={<Tv className="w-5 h-5 text-purple-500" />} items={tvBrands} setItems={setTvBrands} placeholder="e.g. Samsung, LG, Sony" accentColor="purple" />
+                                )}
+                                {mobileCatalogTab === "sizes" && (
+                                    <TagListCard title="TV Sizes (Inches)" icon={<Ruler className="w-5 h-5 text-amber-500" />} items={tvInches} setItems={setTvInches} placeholder="e.g. 32, 43, 55" accentColor="amber" />
+                                )}
+                                {mobileCatalogTab === "symptoms" && (
+                                    <TagListCard title="Common Symptoms" icon={<AlertCircle className="w-5 h-5 text-rose-500" />} items={commonSymptoms} setItems={setCommonSymptoms} placeholder="e.g. No display, Lines on screen" accentColor="rose" />
+                                )}
+                                {mobileCatalogTab === "filters" && (
+                                    <TagListCard title="Service Filter Categories" icon={<Filter className="w-5 h-5 text-cyan-500" />} items={serviceFilterCategories} setItems={setServiceFilterCategories} placeholder="e.g. Premium, Budget" accentColor="cyan" />
+                                )}
+                            </div>
+                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                <Button variant="outline" className="h-11 rounded-xl" onClick={() => setActiveSheet(null)}>Close</Button>
+                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
+                                    {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                    Save Changes
+                                </Button>
+                            </div>
+                        </MobileBottomSheetFrame>
 
-                            <div className="custom-scrollbar flex-1 overflow-y-auto p-3 md:p-4">
-                                {/* Note on save mechanism */}
+                        {/* Desktop popup — unchanged */}
+                        <motion.div
+                            layoutId="card-catalog"
+                            className="relative z-10 hidden md:flex h-auto max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+                        >
+                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-6">
+                                <div>
+                                    <h2 className="flex items-center gap-2 text-xl font-black text-slate-900">
+                                        <Wrench className="w-5 h-5 text-blue-500" /> Service Catalogs
+                                    </h2>
+                                    <p className="mt-1 text-sm font-medium text-slate-500">Manage tags used by services and stock.</p>
+                                </div>
+                                <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
+                                    <X className="w-5 h-5" />
+                                </Button>
+                            </div>
+                            <div className="custom-scrollbar flex-1 overflow-y-auto p-4">
                                 <div className="flex items-start gap-2 bg-blue-50 text-blue-800 p-3 rounded-xl border border-blue-100 text-sm mb-6 mx-2">
                                     <Star className="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
                                     <p>Changes made here are auto-synced locally. Remember to click <strong>Save Changes</strong> to push everything to the server when you are done.</p>
                                 </div>
-
                                 <Suspense fallback={null}><ServiceConfigEditor
                                     serviceCategories={serviceCategories} setServiceCategories={setServiceCategories}
                                     shopCategories={shopCategories} setShopCategories={setShopCategories}
@@ -1064,10 +1288,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     serviceFilterCategories={serviceFilterCategories} setServiceFilterCategories={setServiceFilterCategories}
                                 /></Suspense>
                             </div>
-
-                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:flex-row md:justify-end md:p-5 md:rounded-b-3xl">
-                                <Button variant="outline" className="h-11 rounded-xl md:h-10" onClick={() => setActiveSheet(null)}>Close</Button>
-                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700 md:h-10" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
+                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-5 md:flex-row md:justify-end md:rounded-b-3xl">
+                                <Button variant="outline" className="h-10 rounded-xl" onClick={() => setActiveSheet(null)}>Close</Button>
+                                <Button className="h-10 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
                                     {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                     Save Changes
                                 </Button>

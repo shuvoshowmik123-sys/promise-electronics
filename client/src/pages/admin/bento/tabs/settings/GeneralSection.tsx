@@ -15,6 +15,7 @@ import { Slider } from "@/components/ui/slider";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { BentoCard } from "../../shared";
+import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 import { toast } from "sonner";
 import { BackupDialog } from "@/components/admin/BackupDialog";
 import { RestoreDialog } from "@/components/admin/RestoreDialog";
@@ -93,6 +94,15 @@ export default function GeneralSection(props: GeneralSectionProps) {
         }
         props.onExternalDialogConsumed?.();
     }, [props.externalDialogTrigger]);
+
+    useEffect(() => {
+        const anyOpen = showDeleteDialog || maintenanceDialog || registrationDialog || developerDialog || dataDialog || showBackupDialog || showRestoreDialog;
+        if (!anyOpen || window.innerWidth >= 768) return;
+        window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+        return () => {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+        };
+    }, [showDeleteDialog, maintenanceDialog, registrationDialog, developerDialog, dataDialog, showBackupDialog, showRestoreDialog]);
 
     const handleCloseDialogs = () => {
         // Delay inner state reset to allow exit animations to finish smoothly
@@ -359,8 +369,34 @@ export default function GeneralSection(props: GeneralSectionProps) {
                 </BentoCard>
             </div>
 
-            {/* Delete Confirmation Dialog */}
-            <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+            {/* Delete Confirmation — Mobile bottom sheet */}
+            <AnimatePresence>
+                {showDeleteDialog && (
+                    <div className="fixed inset-0 z-[260] flex items-end justify-center md:hidden" style={{ pointerEvents: 'auto' }}>
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/50" onClick={() => { setShowDeleteDialog(false); setDeleteConfirmation(""); }} />
+                        <MobileBottomSheetFrame onClose={() => { setShowDeleteDialog(false); setDeleteConfirmation(""); }} className="bg-white rounded-t-[2rem] shadow-2xl flex flex-col relative z-10 w-full max-h-[80vh]" dragHandleOnly>
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="px-4 pt-3 pb-3 border-b border-red-100">
+                                <h2 className="text-base font-bold text-red-700 flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> Delete All Business Data</h2>
+                                <p className="text-xs text-red-500 mt-1">This will permanently delete ALL data. This action cannot be undone.</p>
+                            </div>
+                            <div className="px-4 py-4 space-y-3 overflow-y-auto">
+                                <Label className="text-sm">Type <Badge variant="destructive" className="mx-1">DELETE ALL</Badge> to confirm:</Label>
+                                <Input value={deleteConfirmation} onChange={(e) => setDeleteConfirmation(e.target.value)} placeholder="Type DELETE ALL..." className="font-mono h-11 rounded-xl" />
+                            </div>
+                            <div className="px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-slate-100 flex gap-3">
+                                <Button variant="outline" className="flex-1 h-11 rounded-xl" onClick={() => { setShowDeleteDialog(false); setDeleteConfirmation(""); }}>Cancel</Button>
+                                <Button variant="destructive" className="flex-1 h-11 rounded-xl" onClick={handleDeleteAllData} disabled={isDeleting || deleteConfirmation !== "DELETE ALL"}>
+                                    {isDeleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                                    Delete Everything
+                                </Button>
+                            </div>
+                        </MobileBottomSheetFrame>
+                    </div>
+                )}
+            </AnimatePresence>
+            {/* Delete Confirmation — Desktop Radix Dialog */}
+            <Dialog open={showDeleteDialog && typeof window !== 'undefined' && window.innerWidth >= 768} onOpenChange={setShowDeleteDialog}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
                         <DialogTitle className="text-red-600 flex items-center gap-2">
@@ -373,22 +409,11 @@ export default function GeneralSection(props: GeneralSectionProps) {
                     </DialogHeader>
                     <div className="space-y-3 py-2">
                         <Label>Type <Badge variant="destructive" className="mx-1">DELETE ALL</Badge> to confirm:</Label>
-                        <Input
-                            value={deleteConfirmation}
-                            onChange={(e) => setDeleteConfirmation(e.target.value)}
-                            placeholder="Type DELETE ALL..."
-                            className="font-mono"
-                        />
+                        <Input value={deleteConfirmation} onChange={(e) => setDeleteConfirmation(e.target.value)} placeholder="Type DELETE ALL..." className="font-mono" />
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => { setShowDeleteDialog(false); setDeleteConfirmation(""); }}>
-                            Cancel
-                        </Button>
-                        <Button
-                            variant="destructive"
-                            onClick={handleDeleteAllData}
-                            disabled={isDeleting || deleteConfirmation !== "DELETE ALL"}
-                        >
+                        <Button variant="outline" onClick={() => { setShowDeleteDialog(false); setDeleteConfirmation(""); }}>Cancel</Button>
+                        <Button variant="destructive" onClick={handleDeleteAllData} disabled={isDeleting || deleteConfirmation !== "DELETE ALL"}>
                             {isDeleting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                             Delete Everything
                         </Button>
@@ -400,7 +425,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                 {dataDialog && (
                     <motion.div
                         key="dialog-data"
-                        className="fixed inset-0 z-40 flex items-center justify-center p-4 sm:p-6"
+                        className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:z-40 md:items-center md:p-4 sm:p-6"
                         style={{ pointerEvents: 'auto' }}
                     >
                         <motion.div
@@ -410,11 +435,58 @@ export default function GeneralSection(props: GeneralSectionProps) {
                             className="absolute inset-0 bg-slate-900/40"
                             onClick={handleCloseDialogs}
                         />
+                        <MobileBottomSheetFrame onClose={handleCloseDialogs} dragHandleOnly className="bg-white rounded-t-[2rem] overflow-hidden shadow-2xl flex flex-col relative z-10 w-full max-h-[90vh] md:hidden">
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="px-4 pt-3 pb-3 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
+                                <div className="flex items-center gap-3 text-blue-600">
+                                    <div className="p-2 bg-blue-100 rounded-xl">
+                                        <Database className="w-5 h-5 text-blue-600" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-base font-bold text-slate-800 tracking-tight">Data Management</h2>
+                                        <p className="text-xs text-slate-500 mt-0.5">Manage system data and unified backups.</p>
+                                    </div>
+                                </div>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200" onClick={handleCloseDialogs}>
+                                    <X className="w-4 h-4" />
+                                </Button>
+                            </div>
+                            <div className="p-4 overflow-y-auto w-full custom-scrollbar space-y-4">
+                                <div className="flex items-center justify-between p-3 border rounded-xl bg-blue-50/50 border-blue-100">
+                                    <div className="space-y-1">
+                                        <h4 className="text-sm font-bold text-slate-800">Manual Backup</h4>
+                                        <p className="text-xs text-slate-500">Create an immediate encrypted backup.</p>
+                                    </div>
+                                    <Button onClick={() => { setDataDialog(false); setShowBackupDialog(true); }} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-9 px-3">
+                                        <Upload className="w-4 h-4 mr-1.5" />
+                                        Backup
+                                    </Button>
+                                </div>
+                                <div className="flex items-center justify-between p-3 border rounded-xl bg-rose-50/50 border-rose-100">
+                                    <div className="space-y-1">
+                                        <h4 className="text-sm font-bold text-slate-800">Restore System</h4>
+                                        <p className="text-xs text-slate-500">Restore from encrypted backup file.</p>
+                                    </div>
+                                    <Button variant="destructive" onClick={() => { setDataDialog(false); setShowRestoreDialog(true); }} className="rounded-xl h-9 px-3">
+                                        <RefreshCw className="w-4 h-4 mr-1.5" />
+                                        Restore
+                                    </Button>
+                                </div>
+                                <div className="flex items-center justify-between p-3 border border-dashed rounded-xl bg-slate-50/50 opacity-60">
+                                    <div className="space-y-1">
+                                        <h4 className="text-sm font-bold text-slate-800">Automated Schedules</h4>
+                                        <p className="text-xs text-slate-500">Configure daily/weekly backups. (Coming Soon)</p>
+                                    </div>
+                                    <Button variant="outline" disabled className="rounded-xl h-9">Configure</Button>
+                                </div>
+                            </div>
+                        </MobileBottomSheetFrame>
+
+                        {/* Desktop dialog — unchanged */}
                         <motion.div
                             layoutId="card-data"
-                            className="bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-xl max-h-[90vh]"
+                            className="hidden md:flex bg-white rounded-3xl overflow-hidden shadow-2xl flex-col relative z-10 w-full sm:max-w-xl max-h-[90vh]"
                         >
-                            {/* Header */}
                             <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
                                 <div className="flex items-center gap-3 text-blue-600">
                                     <div className="p-2 bg-blue-100 rounded-xl">
@@ -431,8 +503,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
                                     <X className="w-4 h-4" />
                                 </Button>
                             </div>
-
-                            {/* Content */}
                             <div className="p-6 overflow-y-auto w-full custom-scrollbar space-y-6">
                                 <div className="flex flex-col gap-4">
                                     <div className="flex items-center justify-between p-4 border rounded-xl bg-blue-50/50 border-blue-100 transition-colors hover:bg-blue-50/80">
@@ -496,7 +566,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                 {maintenanceDialog && (
                     <motion.div
                         key="dialog-main"
-                        className="fixed inset-0 z-40 flex items-center justify-center p-4 sm:p-6"
+                        className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:z-40 md:items-center md:p-4 sm:p-6"
                         style={{ pointerEvents: 'auto' }}
                     >
                         <motion.div
@@ -506,11 +576,74 @@ export default function GeneralSection(props: GeneralSectionProps) {
                             className="absolute inset-0 bg-slate-900/40"
                             onClick={handleCloseDialogs}
                         />
+                        <MobileBottomSheetFrame onClose={handleCloseDialogs} dragHandleOnly className="bg-white rounded-t-[2rem] overflow-hidden shadow-2xl flex flex-col relative z-10 w-full max-h-[90vh] md:hidden">
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="px-4 pt-3 pb-3 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
+                                <div className="flex items-center gap-3 text-red-600">
+                                    <div className="p-2 bg-red-100 rounded-xl">
+                                        <AlertTriangle className="w-5 h-5 text-red-600" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-base font-bold text-slate-800 tracking-tight">{maintenanceMode ? "Disable" : "Enable"} Maintenance</h2>
+                                        <p className="text-xs text-slate-500 mt-0.5">System offline status</p>
+                                    </div>
+                                </div>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200" onClick={handleCloseDialogs}>
+                                    <X className="w-4 h-4" />
+                                </Button>
+                            </div>
+                            <div className="p-4 overflow-y-auto w-full custom-scrollbar space-y-4">
+                                <div className="bg-red-50 border-l-4 border-red-500 p-3 rounded-r-md">
+                                    <p className="font-semibold text-red-900 flex items-center gap-2 text-sm">
+                                        <AlertTriangle className="w-4 h-4" />
+                                        This will immediately:
+                                    </p>
+                                    <ul className="list-disc ml-5 mt-2 space-y-1 text-xs text-red-800">
+                                        <li>Block ALL customer access to the website</li>
+                                        <li>Show "Under Maintenance" page</li>
+                                        <li>Cancel pending customer operations</li>
+                                    </ul>
+                                </div>
+                                <div className="space-y-3">
+                                    <Label className="text-center block text-slate-600 text-sm">Drag slider to 100% to confirm</Label>
+                                    <Slider value={[confirmSlider]} onValueChange={(v) => setConfirmSlider(v[0])} max={100} step={1} className="w-full py-2 cursor-pointer" />
+                                    <div className="text-center">
+                                        <span className={`text-3xl font-black tracking-tight transition-colors ${confirmSlider === 100 ? 'text-red-600 scale-110' : 'text-slate-300'}`}>{confirmSlider}%</span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                <Button variant="outline" className="rounded-xl font-bold h-11" onClick={handleCloseDialogs}>Cancel</Button>
+                                <Button
+                                    variant="destructive"
+                                    disabled={confirmSlider !== 100 || isDeleting}
+                                    onClick={async () => {
+                                        setIsDeleting(true);
+                                        const newValue = !maintenanceMode;
+                                        try {
+                                            await settingsApi.upsert({ key: "maintenance_mode", value: String(newValue) });
+                                            setMaintenanceMode(newValue);
+                                            handleCloseDialogs();
+                                            toast.success(`Maintenance Mode ${newValue ? 'ENABLED' : 'DISABLED'}`, { description: "System access has been updated." });
+                                        } catch (e: any) {
+                                            toast.error("Failed to update maintenance mode", { description: e.message });
+                                        } finally {
+                                            setIsDeleting(false);
+                                        }
+                                    }}
+                                    className="rounded-xl font-bold shadow-lg gap-2 h-11"
+                                >
+                                    {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : confirmSlider === 100 && <Check className="w-4 h-4" />}
+                                    Confirm Change
+                                </Button>
+                            </div>
+                        </MobileBottomSheetFrame>
+
+                        {/* Desktop dialog — unchanged */}
                         <motion.div
                             layoutId="card-maintenance"
-                            className="bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-md max-h-[90vh]"
+                            className="hidden md:flex bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-md max-h-[90vh]"
                         >
-                            {/* Header */}
                             <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
                                 <div className="flex items-center gap-3 text-red-600">
                                     <div className="p-2 bg-red-100 rounded-xl">
@@ -527,8 +660,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
                                     <X className="w-4 h-4" />
                                 </Button>
                             </div>
-
-                            {/* Content */}
                             <div className="p-6 overflow-y-auto w-full custom-scrollbar space-y-6">
                                 <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-md">
                                     <p className="font-semibold text-red-900 flex items-center gap-2">
@@ -541,31 +672,18 @@ export default function GeneralSection(props: GeneralSectionProps) {
                                         <li>Cancel pending customer operations</li>
                                     </ul>
                                 </div>
-
                                 <div className="space-y-6">
                                     <div className="space-y-3">
                                         <Label className="text-center block text-slate-600">Drag slider to 100% to confirm action</Label>
-                                        <Slider
-                                            value={[confirmSlider]}
-                                            onValueChange={(v) => setConfirmSlider(v[0])}
-                                            max={100}
-                                            step={1}
-                                            className="w-full py-2 cursor-pointer"
-                                        />
+                                        <Slider value={[confirmSlider]} onValueChange={(v) => setConfirmSlider(v[0])} max={100} step={1} className="w-full py-2 cursor-pointer" />
                                     </div>
                                     <div className="text-center">
-                                        <span className={`text-4xl font-black tracking-tight transition-colors ${confirmSlider === 100 ? 'text-red-600 scale-110' : 'text-slate-300'}`}>
-                                            {confirmSlider}%
-                                        </span>
+                                        <span className={`text-4xl font-black tracking-tight transition-colors ${confirmSlider === 100 ? 'text-red-600 scale-110' : 'text-slate-300'}`}>{confirmSlider}%</span>
                                     </div>
                                 </div>
                             </div>
-
-                            {/* Footer */}
                             <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 mt-auto">
-                                <Button variant="outline" className="rounded-xl font-bold" onClick={handleCloseDialogs}>
-                                    Cancel
-                                </Button>
+                                <Button variant="outline" className="rounded-xl font-bold" onClick={handleCloseDialogs}>Cancel</Button>
                                 <Button
                                     variant="destructive"
                                     disabled={confirmSlider !== 100 || isDeleting}
@@ -576,9 +694,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                                             await settingsApi.upsert({ key: "maintenance_mode", value: String(newValue) });
                                             setMaintenanceMode(newValue);
                                             handleCloseDialogs();
-                                            toast.success(`Maintenance Mode ${newValue ? 'ENABLED' : 'DISABLED'}`, {
-                                                description: "System access has been updated."
-                                            });
+                                            toast.success(`Maintenance Mode ${newValue ? 'ENABLED' : 'DISABLED'}`, { description: "System access has been updated." });
                                         } catch (e: any) {
                                             toast.error("Failed to update maintenance mode", { description: e.message });
                                         } finally {
@@ -601,7 +717,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                 {registrationDialog && (
                     <motion.div
                         key="dialog-reg"
-                        className="fixed inset-0 z-40 flex items-center justify-center p-4 sm:p-6"
+                        className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:z-40 md:items-center md:p-4 sm:p-6"
                         style={{ pointerEvents: 'auto' }}
                     >
                         <motion.div
@@ -611,11 +727,74 @@ export default function GeneralSection(props: GeneralSectionProps) {
                             className="absolute inset-0 bg-slate-900/40"
                             onClick={handleCloseDialogs}
                         />
+                        <MobileBottomSheetFrame onClose={handleCloseDialogs} dragHandleOnly className="bg-white rounded-t-[2rem] overflow-hidden shadow-2xl flex flex-col relative z-10 w-full max-h-[90vh] md:hidden">
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="px-4 pt-3 pb-3 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
+                                <div className="flex items-center gap-3 text-emerald-600">
+                                    <div className="p-2 bg-emerald-100 rounded-xl">
+                                        <Users className="w-5 h-5 text-emerald-600" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-base font-bold text-slate-800 tracking-tight">{allowRegistrations ? "Disable" : "Enable"} Registrations</h2>
+                                        <p className="text-xs text-slate-500 mt-0.5">Control user signups</p>
+                                    </div>
+                                </div>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200" onClick={handleCloseDialogs}>
+                                    <X className="w-4 h-4" />
+                                </Button>
+                            </div>
+                            <div className="p-4 overflow-y-auto w-full custom-scrollbar space-y-4">
+                                <p className="text-sm text-muted-foreground">
+                                    {allowRegistrations ? "Disabling registration prevents new users from signing up." : "Enabling registration allows public user signups."}
+                                </p>
+                                <div className="space-y-2">
+                                    <div className="flex items-start gap-3 p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                                        <Checkbox id="c1" checked={regChecks.c1} onCheckedChange={(c) => setRegChecks({ ...regChecks, c1: c as boolean })} />
+                                        <label htmlFor="c1" className="text-sm text-slate-700 cursor-pointer leading-none pt-0.5">
+                                            I understand this will {allowRegistrations ? "block" : "allow"} new account creation
+                                        </label>
+                                    </div>
+                                    <div className="flex items-start gap-3 p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                                        <Checkbox id="c2" checked={regChecks.c2} onCheckedChange={(c) => setRegChecks({ ...regChecks, c2: c as boolean })} />
+                                        <label htmlFor="c2" className="text-sm text-slate-700 cursor-pointer leading-none pt-0.5">Existing users can still log in</label>
+                                    </div>
+                                    <div className="flex items-start gap-3 p-3 bg-slate-50 border border-slate-100 rounded-lg">
+                                        <Checkbox id="c3" checked={regChecks.c3} onCheckedChange={(c) => setRegChecks({ ...regChecks, c3: c as boolean })} />
+                                        <label htmlFor="c3" className="text-sm text-slate-700 cursor-pointer leading-none pt-0.5">I acknowledge this change is immediate</label>
+                                    </div>
+                                </div>
+                            </div>
+                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                <Button variant="outline" className="rounded-xl font-bold h-11" onClick={handleCloseDialogs}>Cancel</Button>
+                                <Button
+                                    disabled={!regChecks.c1 || !regChecks.c2 || !regChecks.c3 || isDeleting}
+                                    onClick={async () => {
+                                        setIsDeleting(true);
+                                        const newValue = !allowRegistrations;
+                                        try {
+                                            await settingsApi.upsert({ key: "allow_registrations", value: String(newValue) });
+                                            setAllowRegistrations(newValue);
+                                            handleCloseDialogs();
+                                            toast.success(`Registrations ${newValue ? 'ENABLED' : 'DISABLED'}`);
+                                        } catch (e: any) {
+                                            toast.error("Failed to update registration setting", { description: e.message });
+                                        } finally {
+                                            setIsDeleting(false);
+                                        }
+                                    }}
+                                    className="bg-emerald-600 hover:bg-emerald-700 text-white gap-2 rounded-xl font-bold shadow-lg shadow-emerald-500/20 h-11"
+                                >
+                                    {isDeleting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                                    Confirm Change
+                                </Button>
+                            </div>
+                        </MobileBottomSheetFrame>
+
+                        {/* Desktop dialog — unchanged */}
                         <motion.div
                             layoutId="card-registration"
-                            className="bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-md max-h-[90vh]"
+                            className="hidden md:flex bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-md max-h-[90vh]"
                         >
-                            {/* Header */}
                             <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
                                 <div className="flex items-center gap-3 text-emerald-600">
                                     <div className="p-2 bg-emerald-100 rounded-xl">
@@ -632,8 +811,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
                                     <X className="w-4 h-4" />
                                 </Button>
                             </div>
-
-                            {/* Content */}
                             <div className="p-6 overflow-y-auto w-full custom-scrollbar space-y-6">
                                 <p className="text-sm text-muted-foreground">
                                     {allowRegistrations
@@ -642,39 +819,25 @@ export default function GeneralSection(props: GeneralSectionProps) {
                                 </p>
                                 <div className="space-y-3">
                                     <div className="flex items-start gap-3 p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100/80 transition-colors">
-                                        <Checkbox
-                                            id="c1"
-                                            checked={regChecks.c1}
-                                            onCheckedChange={(c) => setRegChecks({ ...regChecks, c1: c as boolean })}
-                                        />
+                                        <Checkbox id="c1" checked={regChecks.c1} onCheckedChange={(c) => setRegChecks({ ...regChecks, c1: c as boolean })} />
                                         <label htmlFor="c1" className="text-sm text-slate-700 cursor-pointer leading-none pt-0.5">
                                             I understand this will {allowRegistrations ? "block" : "allow"} new account creation
                                         </label>
                                     </div>
                                     <div className="flex items-start gap-3 p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100/80 transition-colors">
-                                        <Checkbox
-                                            id="c2"
-                                            checked={regChecks.c2}
-                                            onCheckedChange={(c) => setRegChecks({ ...regChecks, c2: c as boolean })}
-                                        />
+                                        <Checkbox id="c2" checked={regChecks.c2} onCheckedChange={(c) => setRegChecks({ ...regChecks, c2: c as boolean })} />
                                         <label htmlFor="c2" className="text-sm text-slate-700 cursor-pointer leading-none pt-0.5">
                                             Existing users can still log in
                                         </label>
                                     </div>
                                     <div className="flex items-start gap-3 p-3 bg-slate-50 border border-slate-100 rounded-lg hover:bg-slate-100/80 transition-colors">
-                                        <Checkbox
-                                            id="c3"
-                                            checked={regChecks.c3}
-                                            onCheckedChange={(c) => setRegChecks({ ...regChecks, c3: c as boolean })}
-                                        />
+                                        <Checkbox id="c3" checked={regChecks.c3} onCheckedChange={(c) => setRegChecks({ ...regChecks, c3: c as boolean })} />
                                         <label htmlFor="c3" className="text-sm text-slate-700 cursor-pointer leading-none pt-0.5">
                                             I acknowledge this change is immediate
                                         </label>
                                     </div>
                                 </div>
                             </div>
-
-                            {/* Footer */}
                             <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 mt-auto">
                                 <Button variant="outline" className="rounded-xl font-bold" onClick={handleCloseDialogs}>
                                     Cancel
@@ -711,7 +874,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                 {developerDialog && (
                     <motion.div
                         key="dialog-dev"
-                        className="fixed inset-0 z-40 flex items-center justify-center p-4 sm:p-6"
+                        className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:z-40 md:items-center md:p-4 sm:p-6"
                         style={{ pointerEvents: 'auto' }}
                     >
                         <motion.div
@@ -721,11 +884,83 @@ export default function GeneralSection(props: GeneralSectionProps) {
                             className="absolute inset-0 bg-slate-900/40"
                             onClick={handleCloseDialogs}
                         />
+                        <MobileBottomSheetFrame onClose={handleCloseDialogs} dragHandleOnly className="bg-white rounded-t-[2rem] overflow-hidden shadow-2xl flex flex-col relative z-10 w-full max-h-[90vh] md:hidden">
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="px-4 pt-3 pb-3 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
+                                <div className="flex items-center gap-3 text-amber-600">
+                                    <div className="p-2 bg-amber-100 rounded-xl">
+                                        <Code2 className="w-5 h-5 text-amber-600" />
+                                    </div>
+                                    <div>
+                                        <h2 className="text-base font-bold text-slate-800 tracking-tight">{developerMode ? "Disable" : "Enable"} Developer Mode</h2>
+                                        <p className="text-xs text-slate-500 mt-0.5">Advanced system features</p>
+                                    </div>
+                                </div>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-slate-400 hover:text-slate-600 hover:bg-slate-200" onClick={handleCloseDialogs}>
+                                    <X className="w-4 h-4" />
+                                </Button>
+                            </div>
+                            <div className="p-4 overflow-y-auto w-full custom-scrollbar space-y-4">
+                                <div className="bg-amber-50 border-l-4 border-amber-500 p-3 rounded-r-md">
+                                    <p className="font-semibold text-amber-900 mb-2 text-sm">ℹ️ Developer Mode Impacts:</p>
+                                    <ul className="list-disc ml-5 space-y-1 text-xs text-amber-800">
+                                        <li>Exposes API responses in console</li>
+                                        <li>Shows internal debug error messages</li>
+                                        <li>Displays raw database query logs</li>
+                                        <li>May slightly impact performance</li>
+                                    </ul>
+                                </div>
+                                {devCountdown > 0 ? (
+                                    <div className="text-center py-4">
+                                        <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-amber-100 border-4 border-amber-300 relative overflow-hidden">
+                                            <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
+                                                <circle cx="50" cy="50" r="46" fill="none" stroke="#ddd" strokeWidth="8" />
+                                                <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeWidth="8" className="text-amber-500 transition-[stroke-dashoffset] duration-1000 ease-linear" strokeDasharray="289" strokeDashoffset={289 - (289 * devCountdown) / 5} />
+                                            </svg>
+                                            <span className="text-2xl font-black tracking-tighter text-amber-700 drop-shadow-md font-mono relative z-10">{devCountdown}</span>
+                                        </div>
+                                        <p className="text-xs text-muted-foreground mt-3 font-medium animate-pulse">Please wait to confirm...</p>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4 animate-in zoom-in duration-300">
+                                        <div className="inline-flex items-center justify-center w-20 h-20 rounded-full bg-green-100 border-4 border-green-500 text-green-600 mb-2">
+                                            <Check className="w-10 h-10" />
+                                        </div>
+                                        <p className="text-sm text-green-700 font-bold mt-2">You may now confirm the change</p>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                <Button variant="outline" className="rounded-xl font-bold h-11" onClick={handleCloseDialogs}>Cancel</Button>
+                                <Button
+                                    disabled={devCountdown > 0 || isDeleting}
+                                    onClick={async () => {
+                                        setIsDeleting(true);
+                                        const newValue = !developerMode;
+                                        try {
+                                            await settingsApi.upsert({ key: "developer_mode", value: String(newValue) });
+                                            setDeveloperMode(newValue);
+                                            handleCloseDialogs();
+                                            toast.success(`Developer Mode ${newValue ? 'ENABLED' : 'DISABLED'}`);
+                                        } catch (e: any) {
+                                            toast.error("Failed to update developer mode", { description: e.message });
+                                        } finally {
+                                            setIsDeleting(false);
+                                        }
+                                    }}
+                                    className="bg-amber-600 hover:bg-amber-700 text-white gap-2 rounded-xl font-bold shadow-lg shadow-amber-500/20 h-11"
+                                >
+                                    {isDeleting && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+                                    Confirm Change
+                                </Button>
+                            </div>
+                        </MobileBottomSheetFrame>
+
+                        {/* Desktop dialog — unchanged */}
                         <motion.div
                             layoutId="card-developer"
-                            className="bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-md max-h-[90vh]"
+                            className="hidden md:flex bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-md max-h-[90vh]"
                         >
-                            {/* Header */}
                             <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
                                 <div className="flex items-center gap-3 text-amber-600">
                                     <div className="p-2 bg-amber-100 rounded-xl">
@@ -742,8 +977,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
                                     <X className="w-4 h-4" />
                                 </Button>
                             </div>
-
-                            {/* Content */}
                             <div className="p-6 overflow-y-auto w-full custom-scrollbar space-y-6">
                                 <div className="bg-amber-50 border-l-4 border-amber-500 p-4 rounded-r-md">
                                     <p className="font-semibold text-amber-900 mb-2">ℹ️ Developer Mode Impacts:</p>
@@ -754,42 +987,28 @@ export default function GeneralSection(props: GeneralSectionProps) {
                                         <li>May slightly impact performance</li>
                                     </ul>
                                 </div>
-
                                 {devCountdown > 0 ? (
                                     <div className="text-center py-4">
                                         <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-amber-100 border-4 border-amber-300 relative overflow-hidden">
                                             <svg className="absolute inset-0 w-full h-full -rotate-90" viewBox="0 0 100 100">
                                                 <circle cx="50" cy="50" r="46" fill="none" stroke="#ddd" strokeWidth="8" />
-                                                <circle
-                                                    cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeWidth="8"
-                                                    className="text-amber-500 transition-[stroke-dashoffset] duration-1000 ease-linear"
-                                                    strokeDasharray="289"
-                                                    strokeDashoffset={289 - (289 * devCountdown) / 5}
-                                                />
+                                                <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" strokeWidth="8" className="text-amber-500 transition-[stroke-dashoffset] duration-1000 ease-linear" strokeDasharray="289" strokeDashoffset={289 - (289 * devCountdown) / 5} />
                                             </svg>
                                             <span className="text-3xl font-black tracking-tighter text-amber-700 drop-shadow-md font-mono relative z-10">{devCountdown}</span>
                                         </div>
-                                        <p className="text-sm text-muted-foreground mt-3 font-medium animate-pulse">
-                                            Please wait to confirm...
-                                        </p>
+                                        <p className="text-sm text-muted-foreground mt-3 font-medium animate-pulse">Please wait to confirm...</p>
                                     </div>
                                 ) : (
                                     <div className="text-center py-4 animate-in zoom-in duration-300">
                                         <div className="inline-flex items-center justify-center w-24 h-24 rounded-full bg-green-100 border-4 border-green-500 text-green-600 mb-2">
                                             <Check className="w-12 h-12" />
                                         </div>
-                                        <p className="text-sm text-green-700 font-bold mt-2">
-                                            You may now confirm the change
-                                        </p>
+                                        <p className="text-sm text-green-700 font-bold mt-2">You may now confirm the change</p>
                                     </div>
                                 )}
                             </div>
-
-                            {/* Footer */}
                             <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 mt-auto">
-                                <Button variant="outline" className="rounded-xl font-bold" onClick={handleCloseDialogs}>
-                                    Cancel
-                                </Button>
+                                <Button variant="outline" className="rounded-xl font-bold" onClick={handleCloseDialogs}>Cancel</Button>
                                 <Button
                                     disabled={devCountdown > 0 || isDeleting}
                                     onClick={async () => {
