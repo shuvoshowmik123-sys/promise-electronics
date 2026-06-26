@@ -293,22 +293,28 @@ Files changed:
 - Existing filters (search, status) still work alongside lane filter.
 - All existing actions preserved: review, convert, quote, stage, custody, rollback, delete.
 
+### Phase 2B Hotfix (2026-06-27)
+
+Fixed:
+1. Call Log dialog: replaced FormData with controlled React state (callForm). Radix Select values now reliably captured.
+2. Call form resets on dialog open, after save success, and on cancel.
+3. Call history shown in selected request detail: newest first, up to 4 recent entries with outcome badge, mood badge, callback time, notes, staff name. "+N more" if over 4.
+4. Converted/closed cards muted: `bg-slate-50 opacity-70`, muted name text. Converted cards show "JOB" badge. Active intake visually distinct.
+
 ### What was NOT done (remaining Phase 2B polish)
 
 - Full lane board/kanban view (currently filter chips, not columns)
-- Call panel showing full call history list in detail view
-- "Needs Call" lane using backend call summary (currently uses SR fields only)
+- "Needs Call" lane using backend call summary (currently uses SR fields only for classification)
 - Guided action sheet/wizard for intake processing
-- Converted request visual distinction (currently same card style)
 - Desktop layout refinement for lane chips
-- Visual QA not run in this pass
+- Call history in desktop detail panel (only mobile detail has it)
 
 Checks run:
 
 - npx tsc --noEmit --pretty false (PASS)
-- npx vite build --mode development (PASS, 36.09s)
+- npx vite build --mode development (PASS, 17.17s)
 - git diff --check (PASS)
-- Visual QA: NOT RUN
+- Visual QA: NOT RUN — confidence MEDIUM
 
 Goal: turn Service Request into a clean intake workflow, not a dropdown status table.
 

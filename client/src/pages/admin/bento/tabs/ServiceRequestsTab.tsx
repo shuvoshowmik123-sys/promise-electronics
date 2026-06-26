@@ -273,6 +273,8 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
     const [srStatusFilter, setSrStatusFilter] = useState("all");
     const [laneFilter, setLaneFilter] = useState<IntakeLane>("all");
     const [showCallLogDialog, setShowCallLogDialog] = useState(false);
+    const [callForm, setCallForm] = useState({ callType: "follow_up", outcome: "", customerMood: "", callbackAt: "", notes: "" });
+    const resetCallForm = () => setCallForm({ callType: "follow_up", outcome: "", customerMood: "", callbackAt: "", notes: "" });
 
     // Update search query when initialSearchQuery changes (e.g., from deep link)
     useEffect(() => {
@@ -366,6 +368,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             queryClient.invalidateQueries({ queryKey: ["repair-case", selectedRequest?.id] });
             toast.success("Call logged");
             setShowCallLogDialog(false);
+            resetCallForm();
         },
     });
     const developerMode = settings.find((s: any) => s.key === "developer_mode")?.value === "true";
@@ -926,16 +929,19 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                         {paginated.map((request: any, index: number) => {
                             const sc = statusCardColors[request.status] || statusCardColors.Closed;
                             const modeLabel = request.servicePreference === "pickup" ? "Pickup" : "Center";
+                            const lane = classifyLane(request);
+                            const isMuted = lane === 'converted_to_job' || lane === 'rejected_closed';
                             return (
                                 <button
                                     key={request.id}
                                     type="button"
                                     onClick={() => handleViewDetails(request, index)}
                                     className={cn(
-                                        "w-full rounded-2xl border bg-white p-3 text-left shadow-sm transition active:scale-[0.99]",
+                                        "w-full rounded-2xl border p-3 text-left shadow-sm transition active:scale-[0.99]",
                                         "border-l-4 border-slate-300",
                                         sc.border,
-                                        !request.adminInteracted && "bg-rose-50/40 ring-1 ring-rose-100"
+                                        isMuted ? "bg-slate-50 opacity-70" : "bg-white",
+                                        !request.adminInteracted && !isMuted && "bg-rose-50/40 ring-1 ring-rose-100"
                                     )}
                                 >
                                     <div className="flex items-start justify-between gap-2">
@@ -944,8 +950,9 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                                 {!request.adminInteracted && <span className="h-2 w-2 shrink-0 rounded-full bg-rose-500" />}
                                                 <span className="truncate font-mono text-[10px] font-black text-slate-400">#<HighlightMatch text={request.ticketNumber} query={srSearchQuery} /></span>
                                                 {request.isQuote && <Badge className="h-4 rounded-md border-amber-200 bg-amber-50 px-1.5 text-[9px] font-black text-amber-700 shadow-none">QUOTE</Badge>}
+                                                {lane === 'converted_to_job' && <Badge className="h-4 rounded-md border-indigo-200 bg-indigo-50 px-1.5 text-[9px] font-black text-indigo-700 shadow-none">JOB</Badge>}
                                             </div>
-                                            <h3 className="mt-1 truncate text-sm font-black leading-tight text-slate-950"><HighlightMatch text={request.customerName} query={srSearchQuery} /></h3>
+                                            <h3 className={cn("mt-1 truncate text-sm font-black leading-tight", isMuted ? "text-slate-500" : "text-slate-950")}><HighlightMatch text={request.customerName} query={srSearchQuery} /></h3>
                                         </div>
                                         <Badge className={cn("shrink-0 border px-1.5 py-0 text-[9px] font-black shadow-none", sc.badge)}>{request.status}</Badge>
                                     </div>
@@ -1192,6 +1199,26 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                     {repairCase?.intake?.needsStaffAction && (
                                         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
                                             ⚡ Staff action needed — {repairCase.intake.lane.replace(/_/g, ' ')}
+                                        </div>
+                                    )}
+                                    {callAttempts.length > 0 && (
+                                        <div className="rounded-xl border border-slate-200 bg-white p-2.5 space-y-1.5">
+                                            <p className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1"><Phone className="h-3 w-3" /> Call History ({callAttempts.length})</p>
+                                            {callAttempts.slice(0, 4).map((a: any) => (
+                                                <div key={a.id} className="flex items-start gap-2 rounded-lg bg-slate-50 px-2.5 py-1.5 text-[11px]">
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                            <span className="font-bold text-slate-700">{(a.callType || '').replace(/_/g, ' ')}</span>
+                                                            {a.outcome && <Badge className="h-4 rounded-full border-0 bg-slate-200 px-1.5 text-[9px] font-bold text-slate-600 shadow-none">{a.outcome.replace(/_/g, ' ')}</Badge>}
+                                                            {a.customerMood && a.customerMood !== 'normal' && <Badge className="h-4 rounded-full border-0 bg-amber-100 px-1.5 text-[9px] font-bold text-amber-700 shadow-none">{a.customerMood}</Badge>}
+                                                        </div>
+                                                        {a.notes && <p className="mt-0.5 text-slate-500 truncate">{a.notes}</p>}
+                                                        {a.callbackAt && <p className="text-blue-600 font-semibold">↩ Callback: {new Date(a.callbackAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>}
+                                                    </div>
+                                                    <span className="shrink-0 text-[9px] text-slate-400">{a.staffName}</span>
+                                                </div>
+                                            ))}
+                                            {callAttempts.length > 4 && <p className="text-center text-[10px] text-slate-400 font-semibold">+{callAttempts.length - 4} more</p>}
                                         </div>
                                     )}
                                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -2040,26 +2067,14 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             <Suspense fallback={null}><MediaViewer urls={currentMediaUrls} initialIndex={mediaViewerIndex} isOpen={mediaViewerOpen} onClose={() => setMediaViewerOpen(false)} /></Suspense>
 
             {/* Call Log Dialog */}
-            <Dialog open={showCallLogDialog} onOpenChange={setShowCallLogDialog}>
+            <Dialog open={showCallLogDialog} onOpenChange={(open) => { setShowCallLogDialog(open); if (open) resetCallForm(); }}>
                 <DialogContent className="sm:max-w-[400px] rounded-2xl">
                     <DialogHeader><DialogTitle className="flex items-center gap-2"><Phone className="w-4 h-4" /> Log Call</DialogTitle></DialogHeader>
-                    <form onSubmit={(e) => {
-                        e.preventDefault();
-                        if (!selectedRequest) return;
-                        const fd = new FormData(e.currentTarget);
-                        callLogMutation.mutate({
-                            serviceRequestId: selectedRequest.id,
-                            callType: fd.get('callType') as string || 'follow_up',
-                            outcome: fd.get('outcome') as string || undefined,
-                            customerMood: fd.get('customerMood') as string || undefined,
-                            notes: fd.get('notes') as string || undefined,
-                            callbackAt: fd.get('callbackAt') as string || undefined,
-                        });
-                    }} className="space-y-3">
+                    <div className="space-y-3">
                         <div className="grid grid-cols-2 gap-3">
                             <div>
                                 <Label className="text-xs">Call Type</Label>
-                                <Select name="callType" defaultValue="follow_up">
+                                <Select value={callForm.callType} onValueChange={v => setCallForm(f => ({ ...f, callType: v }))}>
                                     <SelectTrigger className="h-9 rounded-xl text-xs"><SelectValue /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="consultation">Consultation</SelectItem>
@@ -2073,7 +2088,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                             </div>
                             <div>
                                 <Label className="text-xs">Outcome</Label>
-                                <Select name="outcome">
+                                <Select value={callForm.outcome} onValueChange={v => setCallForm(f => ({ ...f, outcome: v }))}>
                                     <SelectTrigger className="h-9 rounded-xl text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
                                     <SelectContent>
                                         <SelectItem value="accepted">Accepted</SelectItem>
@@ -2095,7 +2110,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                         </div>
                         <div>
                             <Label className="text-xs">Customer Mood</Label>
-                            <Select name="customerMood">
+                            <Select value={callForm.customerMood} onValueChange={v => setCallForm(f => ({ ...f, customerMood: v }))}>
                                 <SelectTrigger className="h-9 rounded-xl text-xs"><SelectValue placeholder="Optional..." /></SelectTrigger>
                                 <SelectContent>
                                     <SelectItem value="normal">Normal</SelectItem>
@@ -2108,19 +2123,29 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                         </div>
                         <div>
                             <Label className="text-xs">Callback At</Label>
-                            <Input type="datetime-local" name="callbackAt" className="h-9 rounded-xl text-xs" />
+                            <Input type="datetime-local" value={callForm.callbackAt} onChange={e => setCallForm(f => ({ ...f, callbackAt: e.target.value }))} className="h-9 rounded-xl text-xs" />
                         </div>
                         <div>
                             <Label className="text-xs">Notes</Label>
-                            <Textarea name="notes" placeholder="Call notes..." rows={2} className="rounded-xl text-xs" />
+                            <Textarea value={callForm.notes} onChange={e => setCallForm(f => ({ ...f, notes: e.target.value }))} placeholder="Call notes..." rows={2} className="rounded-xl text-xs" />
                         </div>
                         <DialogFooter>
-                            <Button type="button" variant="outline" onClick={() => setShowCallLogDialog(false)} className="rounded-xl">Cancel</Button>
-                            <Button type="submit" disabled={callLogMutation.isPending} className="rounded-xl">
+                            <Button variant="outline" onClick={() => { setShowCallLogDialog(false); resetCallForm(); }} className="rounded-xl">Cancel</Button>
+                            <Button disabled={callLogMutation.isPending} className="rounded-xl" onClick={() => {
+                                if (!selectedRequest) return;
+                                callLogMutation.mutate({
+                                    serviceRequestId: selectedRequest.id,
+                                    callType: callForm.callType,
+                                    outcome: callForm.outcome || undefined,
+                                    customerMood: callForm.customerMood || undefined,
+                                    notes: callForm.notes || undefined,
+                                    callbackAt: callForm.callbackAt || undefined,
+                                });
+                            }}>
                                 {callLogMutation.isPending ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Saving...</> : "Save Call"}
                             </Button>
                         </DialogFooter>
-                    </form>
+                    </div>
                 </DialogContent>
             </Dialog>
         </motion.div>
