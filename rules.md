@@ -34,6 +34,8 @@ Before backend work, read:
 - Do not squeeze desktop UI into mobile.
 - Mobile and desktop branches must stay separate when layouts differ.
 - Bottom docks must never cover the final card, final button, or final form field.
+- Admin mobile chrome hide/show has a hard invariant: if content moves up by `4rem`, the mobile content surface must extend down by `4rem`; never leave a white/gray strip at the bottom.
+- Admin mobile sheets use one native contract: portal to `document.body` when under the transformed shell, real drag pill only, no fake handle, no top-right X on normal sheets, body scroll inside, safe-area footer.
 - Bangla and English UI must both fit cleanly.
 - Do not introduce a new palette, shadow style, navigation style, or card shape without approval.
 - No decorative gradient blobs, dark dashboards, marketing hero sections inside operational tools, or random template imports.

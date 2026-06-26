@@ -37,6 +37,9 @@ Rules:
 - Search/filter/action controls should not permanently consume half the viewport.
 - Bottom dock must never cover the last card or action.
 - Mobile dialogs should be bottom sheets where practical.
+- Admin mobile bottom sheets must use the native sheet contract: viewport-owned overlay, real drag pill, body scroll, safe-area footer, no fake handle, and no top-right X unless the surface is full-screen chat/workspace.
+- If a sheet lives under the transformed admin shell, portal it to `document.body`.
+- Chrome hide/show must preserve the bottom edge: when content uses `-translate-y-16`, the hidden state must extend the content height/min-height by `4rem` so no white strip appears at the bottom.
 - Desktop admin layout must remain untouched unless the task explicitly says desktop.
 - Daily Ops tabs must follow the strict native shell: compact header, collapsed KPI when dense, search/filter, card list, and bottom-sheet details/actions.
 - Normal list pages hide/reveal top tools and bottom dock together.

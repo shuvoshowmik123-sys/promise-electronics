@@ -157,13 +157,15 @@ Mobile bottom sheets are the native detail/action surface.
 
 Rules:
 - render above the admin dock
-- portal to document.body when parent stacking contexts exist
-- include one drag handle
-- no duplicate close buttons
+- portal to `document.body` whenever the sheet is inside the admin shell, a transformed parent, or any uncertain stacking context
+- cover the real viewport on mobile; `fixed inset-0` must measure to the full viewport, not the translated tab body
+- include one visible drag pill only when the pill actually drags/closes the sheet
+- use handle-only drag for long forms so inner scroll and inputs keep working
+- do not show an X close button on native mobile sheets unless the surface is full-screen chat or a route-like workspace
 - internal content scrolls
 - background page does not scroll while sheet is active
-- final action clears safe area
-- close/reopen leaves no ghost shadow or handle
+- footer actions are sticky or fixed to the sheet bottom and clear `env(safe-area-inset-bottom)`
+- close/reopen leaves no ghost shadow, white strip, stale overlay, or fake handle
 
 Use bottom sheets for:
 - detail view
@@ -174,6 +176,30 @@ Use bottom sheets for:
 - destructive confirmation
 
 Desktop can keep dialog/drawer patterns.
+
+### Bottom Sheet Implementation Contract
+
+All admin mobile sheets must follow this contract:
+
+1. The overlay is viewport-owned.
+   - If the sheet is rendered below `MainContentWrapper`, use `createPortal(..., document.body)`.
+   - `elementFromPoint()` inside the bottom 64px of the viewport must hit the sheet/backdrop/content, not the admin shell.
+
+2. The handle is real.
+   - The gray pill means "drag me down to close".
+   - If drag is disabled, hide the pill and use plain top spacing.
+   - Preferred behavior for form-heavy sheets: only the handle/top grab zone drags; the body remains `overflow-y-auto`.
+
+3. The close model is native.
+   - Primary close: drag pill down.
+   - Secondary close: backdrop tap or explicit Cancel/Close footer action.
+   - Avoid top-right X buttons on mobile admin sheets.
+
+4. Sheet layout is stable.
+   - Header: compact, fixed-height, no clipping at the top.
+   - Body: `flex-1 min-h-0 overflow-y-auto`.
+   - Footer: `shrink-0` with safe-area bottom padding.
+   - No sheet may leave a 64px bottom strip when chrome is hidden.
 
 ## Motion Rules
 
@@ -201,6 +227,31 @@ Every mobile tab must pass:
 - sheet scroll does not move background page
 
 For fixed-layout tabs, use one intended scroll container. Do not stack three competing scroll containers.
+
+## Chrome Coverage Rules
+
+The admin mobile shell hides the top tools and bottom dock by moving the tab content upward by `4rem`.
+
+This creates a strict invariant:
+
+- when chrome is visible, content may start below the 64px top tool zone
+- when chrome is hidden, content top moves to `0`
+- when chrome is hidden, content bottom must still reach the viewport bottom
+
+Do not break this invariant.
+
+Required `MainContentWrapper` behavior:
+
+- fixed-layout inner wrapper: when `mobileChromeHidden` is true, height must be `calc(100% + 4rem)`
+- scroll-layout inner wrapper: when `mobileChromeHidden` is true, min-height must extend by `4rem`
+- top transform remains `-translate-y-16`; do not change the top chrome rhythm to fix bottom gaps
+- do not solve bottom strips with background-color patches, random padding, or hiding overflow
+
+Verification:
+
+- after chrome hide at `390x844`, the active tab inner wrapper must have `bottom ~= 844`
+- `elementFromPoint(195, 824)` must return real tab content or a real sheet, not `MainContentWrapper`
+- top chrome behavior must remain visually unchanged
 
 ## Native Tab Types
 
@@ -243,6 +294,14 @@ Structure:
 - no dashboard-scale hero
 - risky actions use confirmation sheets
 - desktop-only advanced panels can remain desktop-only if mobile use is unrealistic
+
+Settings-specific mobile rules:
+
+- every editor row opens a native bottom sheet, not a centered desktop dialog
+- Business Identity, Finance & Locale, POS Day-End, Service Catalogs, Data & Backups, Maintenance, Registrations, Developer, CMS, and About editors all use the same bottom-sheet contract
+- no top-right X buttons in these sheets; use the drag pill plus footer Cancel/Close
+- long settings sheets must use handle-only drag, body scrolling, and safe-area footers
+- settings sheets must be portaled to `document.body` because the admin shell uses transforms during chrome hide/show
 
 ## Completed Reference Checklist
 
