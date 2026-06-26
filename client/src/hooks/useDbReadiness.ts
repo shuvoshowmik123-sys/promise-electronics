@@ -1,22 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
-
-export type DbReadinessState = "initializing" | "checking" | "ready" | "degraded";
+import { API_BASE_URL } from "@/lib/config";
 
 export type DbReadiness = {
   ready: boolean;
-  state: DbReadinessState;
-  dbConnected: boolean;
-  migrationsComplete: boolean;
-  lastCheck: string | null;
-  lastError: string | null;
-  checkCount: number;
-  ts: string;
 };
 
 async function fetchDbReadiness(): Promise<DbReadiness> {
-  const res = await fetch("/ready", { credentials: "include" });
-  const data = await res.json();
-  return data;
+  const res = await fetch(`${API_BASE_URL}/api/ready`, { credentials: "include" });
+  if (!res.ok) return { ready: false };
+  return res.json();
 }
 
 export function useDbReadiness(enabled = true) {
@@ -24,9 +16,9 @@ export function useDbReadiness(enabled = true) {
     queryKey: ["db-readiness"],
     queryFn: fetchDbReadiness,
     enabled,
-    refetchInterval: 5_000,
+    refetchInterval: 10_000,
     refetchOnWindowFocus: true,
-    staleTime: 2_000,
+    staleTime: 5_000,
     retry: false,
   });
 }

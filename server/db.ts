@@ -15,8 +15,8 @@ function getPool(): pg.Pool {
     }
     _pool = new Pool({
       connectionString: dbUrl,
-      max: parseInt(process.env.DB_POOL_MAX || '10', 10),
-      idleTimeoutMillis: 30_000,
+      max: parseInt(process.env.DB_POOL_MAX || '5', 10),
+      idleTimeoutMillis: 20_000,
       connectionTimeoutMillis: 10_000,
       keepAlive: true,
       ssl: dbUrl.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,

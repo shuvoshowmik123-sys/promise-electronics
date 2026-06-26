@@ -18,6 +18,7 @@ import { setupSwagger } from "./swagger.js";
 import { errorHandler } from "./routes/middleware/error-handler.js";
 import { apiLimiter } from "./routes/middleware/rate-limit.js";
 import { coldStartCacheMiddleware, getColdStartCacheState } from "./middleware/cold-start-cache.js";
+import { pool as sharedPool } from "./db.js";
 import { getReadinessState, isDbReady } from "./services/db-readiness.js";
 import { requireAdminAuth } from "./routes/middleware/auth.js";
 
@@ -156,11 +157,9 @@ export async function createApp(): Promise<Express> {
     const usePgSession = isProduction || process.env.SESSION_STORE === "postgres";
     if (process.env.DATABASE_URL && usePgSession) {
         sessionConfig.store = new PgStore({
-            conString: process.env.DATABASE_URL,
+            pool: sharedPool as any,
             tableName: 'user_sessions',
             createTableIfMissing: true,
-            // pruneSessionInterval MUST be false in serverless — setInterval will
-            // prevent the Lambda/Vercel function from shutting down cleanly.
             pruneSessionInterval: false as any,
         });
         console.log('[Session] Using PostgreSQL session store (persistent)');
