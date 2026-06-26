@@ -383,6 +383,65 @@ Remaining Phase 2 issues:
 - Guided action sheet/wizard for intake processing
 - Visual QA needed for both desktop and mobile
 
+## Phase 2D: Lane Accuracy + Visual QA
+
+Status: DONE
+Completed: 2026-06-27
+
+Files changed:
+
+- server/services/call-attempt.service.ts — added getIntakeSummaryBulk() for batch lane classification
+- server/routes/service-requests.routes.ts — added GET /api/admin/service-requests/intake-summary
+- client/src/lib/api/adminApi.ts — added intakeSummaryApi.getAll()
+- client/src/pages/admin/bento/tabs/ServiceRequestsTab.tsx — wired backend intake summary for lane filtering, replaced classifyLane with getLane (backend-first, client fallback)
+
+### Backend endpoint
+
+GET /api/admin/service-requests/intake-summary
+- Returns array of { serviceRequestId, lane, callSummary, needsStaffAction }
+- Single query fetches all call attempts, aggregates per-SR in memory
+- Reuses deriveIntakeLane() for consistent classification
+- Requires admin auth + serviceRequests permission
+
+### Frontend changes
+
+- intakeSummaryApi query loaded alongside SR list (staleTime 10s, refetchOnMount always)
+- getLane(sr) checks backend summary first, falls back to client-side classifyLane(sr)
+- Lane counts use backend lane when available
+- Call log mutation invalidates intake-summary query so lanes update after logging a call
+- "Needs Call" lane now works for callback/no-answer cases (backend has call attempt data)
+
+### Visual QA (2026-06-27)
+
+Desktop 1440x900:
+- KPI cards: New Intake 20, Needs Reply 6, Quote & Schedule — correct counts ✓
+- Lane chips: All 32, New 20, Needs Reply 6, Quote Sent 1, Schedule 1, Job 4, Closed 1 ✓
+- Table view: rows render, converted/closed muted ✓
+- Detail panel: lane badge, Log Call, staff-action banner, customer/device/issue ✓
+- No horizontal overflow ✓
+
+Mobile 390x844:
+- Lane chips scrollable: All 32, New 20, Reply 6, Quote 1, Sched 1 ✓
+- Cards: muted for converted/closed, JOB badge ✓
+- Detail sheet: lane badge, Log Call button, staff-action banner ✓
+- Call log dialog: all fields visible, Save/Cancel ✓
+- No horizontal overflow, no dock covering content ✓
+
+Evidence: sr-desktop-full.png, sr-desktop-detail.png, sr-mobile-390.png, sr-mobile-call-dialog.png
+
+### Phase 2 remaining issues (minor polish, not blocking)
+
+- Full kanban board view (currently filter chips, not columns)
+- Guided action sheet/wizard for intake processing
+- Call history not shown in desktop detail if backend has 0 call attempts (correct behavior, no calls yet)
+
+### Phase 2 completion assessment
+
+Phase 2 (A through D) is functionally complete:
+- Backend: call attempts table, CRUD endpoints, intake lane classifier, bulk intake summary, repair case contract with intake context
+- Frontend: lane filter chips (mobile + desktop), lane counts from backend, call log dialog, call history in detail view, staff-action banner, muted converted/closed cards
+- Visual QA: PASS at desktop 1440x900 and mobile 390x844
+
 ## Phase 3: Service Request To Job Conversion
 
 Status: NOT STARTED

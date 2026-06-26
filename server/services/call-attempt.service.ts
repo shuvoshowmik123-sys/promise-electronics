@@ -208,3 +208,55 @@ export function deriveIntakeLane(sr: {
 
     return 'new_intake';
 }
+
+export interface IntakeSummaryItem {
+    serviceRequestId: string;
+    lane: IntakeLane;
+    callSummary: CallSummary;
+    needsStaffAction: boolean;
+}
+
+const ACTION_LANES: IntakeLane[] = ['new_intake', 'needs_call', 'needs_reply', 'schedule_needed'];
+
+export async function getIntakeSummaryBulk(serviceRequests: {
+    id: string;
+    status: string;
+    stage: string | null;
+    convertedJobId: string | null;
+    quoteStatus: string | null;
+    isQuote: boolean | null;
+    adminInteracted: boolean | null;
+}[]): Promise<IntakeSummaryItem[]> {
+    if (serviceRequests.length === 0) return [];
+
+    const rows = await db.execute(sql`
+        SELECT service_request_id, outcome, callback_at, created_at
+        FROM service_request_call_attempts
+        ORDER BY created_at DESC
+    `);
+
+    const attemptsBySr = new Map<string, any[]>();
+    for (const row of rows.rows as any[]) {
+        const srId = row.service_request_id;
+        if (!attemptsBySr.has(srId)) attemptsBySr.set(srId, []);
+        attemptsBySr.get(srId)!.push(row);
+    }
+
+    return serviceRequests.map(sr => {
+        const attempts = attemptsBySr.get(sr.id) || [];
+        let noAnswerStreak = 0;
+        for (const a of attempts) {
+            if (a.outcome === 'no_answer' || a.outcome === 'phone_off') noAnswerStreak++;
+            else break;
+        }
+        const pendingCallback = attempts.find((a: any) => a.callback_at && new Date(a.callback_at) > new Date());
+        const callSummary: CallSummary = {
+            callAttemptCount: attempts.length,
+            lastCallOutcome: attempts[0]?.outcome ?? null,
+            nextCallbackAt: pendingCallback?.callback_at ?? null,
+            noAnswerStreak,
+        };
+        const lane = deriveIntakeLane(sr, callSummary);
+        return { serviceRequestId: sr.id, lane, callSummary, needsStaffAction: ACTION_LANES.includes(lane) };
+    });
+}

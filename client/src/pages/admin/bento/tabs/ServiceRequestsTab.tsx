@@ -109,7 +109,7 @@ function getStatusChangeWarning(type: 'internal' | 'tracking', from: string, to:
         color: 'bg-blue-50 border-blue-200 text-blue-800',
     };
 }
-import { serviceRequestsApi, adminQuotesApi, adminStageApi, jobTicketsApi, settingsApi, adminPickupsApi, repairCaseApi, callAttemptsApi } from "@/lib/api";
+import { serviceRequestsApi, adminQuotesApi, adminStageApi, jobTicketsApi, settingsApi, adminPickupsApi, repairCaseApi, callAttemptsApi, intakeSummaryApi } from "@/lib/api";
 import { useRollback } from "@/contexts/RollbackContext";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { cn } from "@/lib/utils";
@@ -338,6 +338,22 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
         refetchOnMount: false,
         placeholderData: (previousData) => previousData,
     });
+    const { data: intakeSummary } = useQuery({
+        queryKey: ["intake-summary"],
+        queryFn: () => intakeSummaryApi.getAll(),
+        staleTime: 10_000,
+        refetchOnMount: "always" as const,
+    });
+    const intakeLaneMap = useMemo(() => {
+        const m = new Map<string, { lane: string; callSummary: any; needsStaffAction: boolean }>();
+        if (intakeSummary) for (const item of intakeSummary) m.set(item.serviceRequestId, item);
+        return m;
+    }, [intakeSummary]);
+    const getLane = (sr: ServiceRequest): IntakeLane => {
+        const backend = intakeLaneMap.get(sr.id);
+        if (backend) return backend.lane as IntakeLane;
+        return classifyLane(sr);
+    };
     const { data: settings = [] } = useQuery({ queryKey: ["settings"], queryFn: settingsApi.getAll });
     const { data: nextStagesData } = useQuery({
         queryKey: ["next-stages", selectedRequest?.id],
@@ -366,6 +382,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["call-attempts", selectedRequest?.id] });
             queryClient.invalidateQueries({ queryKey: ["repair-case", selectedRequest?.id] });
+            queryClient.invalidateQueries({ queryKey: ["intake-summary"] });
             toast.success("Call logged");
             setShowCallLogDialog(false);
             resetCallForm();
@@ -695,13 +712,13 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             r.id
         );
         const statusMatch = srStatusFilter === 'all' || r.status === srStatusFilter;
-        const laneMatch = laneFilter === 'all' || classifyLane(r) === laneFilter;
+        const laneMatch = laneFilter === 'all' || getLane(r) === laneFilter;
         return ms && statusMatch && laneMatch;
     });
     const laneCounts = useMemo(() => {
         const counts: Record<string, number> = { all: serviceRequests.length };
         for (const sr of serviceRequests) {
-            const lane = classifyLane(sr);
+            const lane = getLane(sr);
             counts[lane] = (counts[lane] || 0) + 1;
         }
         return counts;
@@ -929,7 +946,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                         {paginated.map((request: any, index: number) => {
                             const sc = statusCardColors[request.status] || statusCardColors.Closed;
                             const modeLabel = request.servicePreference === "pickup" ? "Pickup" : "Center";
-                            const lane = classifyLane(request);
+                            const lane = getLane(request);
                             const isMuted = lane === 'converted_to_job' || lane === 'rejected_closed';
                             return (
                                 <button
@@ -1052,7 +1069,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {paginated.map((request: any, index: number) => {
                             const sc = statusCardColors[request.status] || statusCardColors.Closed;
-                            const deskLane = classifyLane(request);
+                            const deskLane = getLane(request);
                             const deskMuted = deskLane === 'converted_to_job' || deskLane === 'rejected_closed';
                             return (
                                 <motion.div layout initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: index * 0.04 }} key={request.id}
@@ -1104,7 +1121,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                     <AnimatePresence>
                                         {paginated.map((request: any, index: number) => {
                                             const sc = statusCardColors[request.status] || statusCardColors.Closed;
-                                            const tblLane = classifyLane(request);
+                                            const tblLane = getLane(request);
                                             const tblMuted = tblLane === 'converted_to_job' || tblLane === 'rejected_closed';
                                             return (
                                                 <TableRow
@@ -1195,7 +1212,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                     {/* Intake lane + call summary */}
                                     <div className="flex items-center gap-2 flex-wrap">
                                         {(() => {
-                                            const lane = classifyLane(selectedRequest);
+                                            const lane = getLane(selectedRequest);
                                             const laneConf = LANE_CONFIG.find(l => l.value === lane);
                                             return laneConf ? <Badge className="rounded-full border border-blue-200 bg-blue-50 text-blue-800 text-[10px] font-black shadow-none px-2 py-0">{laneConf.label}</Badge> : null;
                                         })()}
@@ -1393,7 +1410,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                     {/* Intake Lane + Call Summary */}
                                     <div className="flex items-center gap-2 flex-wrap">
                                         {(() => {
-                                            const lane = classifyLane(selectedRequest);
+                                            const lane = getLane(selectedRequest);
                                             const laneConf = LANE_CONFIG.find(l => l.value === lane);
                                             return laneConf ? <Badge className="rounded-full border border-blue-200 bg-blue-50 text-blue-800 text-[10px] font-black shadow-none px-2 py-0">{laneConf.label}</Badge> : null;
                                         })()}

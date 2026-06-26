@@ -498,6 +498,10 @@ export const serviceRequestsApi = {
         }),
 };
 
+export const intakeSummaryApi = {
+    getAll: () => fetchApi<{ serviceRequestId: string; lane: string; callSummary: { callAttemptCount: number; lastCallOutcome: string | null; nextCallbackAt: string | null; noAnswerStreak: number }; needsStaffAction: boolean }[]>("/admin/service-requests/intake-summary"),
+};
+
 export const repairCaseApi = {
     getByServiceRequest: (id: string) => fetchApi<any>(`/admin/service-requests/${id}/repair-case`),
     getByJobTicket: (id: string) => fetchApi<any>(`/admin/job-tickets/${id}/repair-case`),

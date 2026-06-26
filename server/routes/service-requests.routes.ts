@@ -23,7 +23,7 @@ import { db } from '../db.js';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 import { loadRepairCaseByServiceRequest } from '../services/repair-case.service.js';
-import { getCallAttempts, createCallAttempt, updateCallAttempt } from '../services/call-attempt.service.js';
+import { getCallAttempts, createCallAttempt, updateCallAttempt, getIntakeSummaryBulk } from '../services/call-attempt.service.js';
 
 const router = Router();
 const SERVICE_REQUEST_REALTIME_TAGS = ["serviceRequests", "dashboardStats"] as const;
@@ -1109,6 +1109,26 @@ router.patch('/api/service-requests/:id/quote-response', async (req: Request, re
         res.json(updatedRequest);
     } catch (error: any) {
         res.status(500).json({ error: error.message || 'Failed to process quote response' });
+    }
+});
+
+// ─── Intake Summary (bulk lane classification) ───
+
+router.get('/api/admin/service-requests/intake-summary', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+    try {
+        const allSr = await serviceRequestRepo.getAllServiceRequests();
+        const summary = await getIntakeSummaryBulk(allSr.map(sr => ({
+            id: sr.id,
+            status: sr.status,
+            stage: sr.stage,
+            convertedJobId: sr.convertedJobId,
+            quoteStatus: (sr as any).quoteStatus,
+            isQuote: (sr as any).isQuote,
+            adminInteracted: sr.adminInteracted,
+        })));
+        res.json(summary);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to load intake summary' });
     }
 });
 
