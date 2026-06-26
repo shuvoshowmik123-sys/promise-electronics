@@ -2,6 +2,7 @@ import { db } from '../db.js';
 import { sql } from 'drizzle-orm';
 import { jobRepo, serviceRequestRepo, pickupRepo } from '../repositories/index.js';
 import type { ServiceRequest, JobTicket, PickupSchedule } from '../../shared/schema.js';
+import { getCallSummary, deriveIntakeLane, type CallSummary, type IntakeLane } from './call-attempt.service.js';
 
 interface JourneySummary {
     id: string;
@@ -43,6 +44,11 @@ export interface UnifiedRepairCase {
         jobTicketNumber: string | null;
     };
     warnings: RepairCaseWarning[];
+    intake: {
+        lane: IntakeLane;
+        callSummary: CallSummary;
+        needsStaffAction: boolean;
+    } | null;
 }
 
 async function getJourneySummary(serviceRequestId: string | null, jobTicketId: string | null): Promise<JourneySummary | null> {
@@ -147,7 +153,16 @@ export async function loadRepairCaseByServiceRequest(serviceRequestId: string): 
             jobTicketNumber: job?.id ?? null,
         },
         warnings: buildWarnings(sr, job ?? null, journey, pickup),
+        intake: await buildIntake(sr),
     };
+}
+
+async function buildIntake(sr: ServiceRequest | null): Promise<UnifiedRepairCase['intake']> {
+    if (!sr) return null;
+    const callSummary = await getCallSummary(sr.id);
+    const lane = deriveIntakeLane(sr, callSummary);
+    const actionLanes: IntakeLane[] = ['new_intake', 'needs_call', 'needs_reply', 'schedule_needed'];
+    return { lane, callSummary, needsStaffAction: actionLanes.includes(lane) };
 }
 
 export async function loadRepairCaseByJobTicket(jobTicketId: string): Promise<UnifiedRepairCase | null> {
@@ -182,5 +197,6 @@ export async function loadRepairCaseByJobTicket(jobTicketId: string): Promise<Un
             jobTicketNumber: job.id,
         },
         warnings: buildWarnings(sr, job, journey, pickup),
+        intake: await buildIntake(sr),
     };
 }

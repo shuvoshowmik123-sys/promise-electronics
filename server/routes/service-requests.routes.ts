@@ -22,6 +22,8 @@ import { smsService } from '../services/sms.service.js';
 import { db } from '../db.js';
 import { and, desc, eq, gt } from 'drizzle-orm';
 import { repairJourneyService } from '../services/customer-repair-journey.service.js';
+import { loadRepairCaseByServiceRequest } from '../services/repair-case.service.js';
+import { getCallAttempts, createCallAttempt, updateCallAttempt } from '../services/call-attempt.service.js';
 
 const router = Router();
 const SERVICE_REQUEST_REALTIME_TAGS = ["serviceRequests", "dashboardStats"] as const;
@@ -1111,7 +1113,6 @@ router.patch('/api/service-requests/:id/quote-response', async (req: Request, re
 });
 
 // ─── Unified Repair Case ───
-import { loadRepairCaseByServiceRequest } from '../services/repair-case.service.js';
 
 router.get('/api/admin/service-requests/:id/repair-case', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
     try {
@@ -1121,6 +1122,77 @@ router.get('/api/admin/service-requests/:id/repair-case', requireAdminAuth, requ
     } catch (error: any) {
         logRouteError('GET /api/admin/service-requests/:id/repair-case', req, error);
         res.status(500).json({ error: error.message || 'Failed to load repair case' });
+    }
+});
+
+// ─── Call Attempts ───
+
+const VALID_CALL_TYPES = ['consultation', 'quote', 'schedule', 'follow_up', 'payment', 'delivery'] as const;
+const VALID_OUTCOMES = ['scheduled', 'accepted', 'rejected', 'asked_for_time', 'no_answer', 'phone_off', 'wrong_number', 'hung_up', 'callback_requested', 'converted_to_pickup', 'converted_to_service_center', 'converted_to_quote', 'closed_no_response'] as const;
+const VALID_MOODS = ['normal', 'confused', 'angry', 'interested', 'not_interested'] as const;
+
+router.get('/api/admin/service-requests/:id/call-attempts', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+    try {
+        const sr = await serviceRequestRepo.getServiceRequest(req.params.id);
+        if (!sr) return res.status(404).json({ error: 'Service request not found' });
+        const attempts = await getCallAttempts(req.params.id);
+        res.json(attempts);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to load call attempts' });
+    }
+});
+
+router.post('/api/admin/service-requests/:id/call-attempts', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+    try {
+        const sr = await serviceRequestRepo.getServiceRequest(req.params.id);
+        if (!sr) return res.status(404).json({ error: 'Service request not found' });
+
+        const session = req.session as any;
+        const { callType, scheduledAt, calledAt, outcome, nextAction, callbackAt, customerMood, notes, customerVisibleMessage } = req.body;
+
+        if (!callType || !VALID_CALL_TYPES.includes(callType)) {
+            return res.status(400).json({ error: `callType must be one of: ${VALID_CALL_TYPES.join(', ')}` });
+        }
+        if (outcome && !VALID_OUTCOMES.includes(outcome)) {
+            return res.status(400).json({ error: `outcome must be one of: ${VALID_OUTCOMES.join(', ')}` });
+        }
+        if (customerMood && !VALID_MOODS.includes(customerMood)) {
+            return res.status(400).json({ error: `customerMood must be one of: ${VALID_MOODS.join(', ')}` });
+        }
+
+        const attempt = await createCallAttempt({
+            serviceRequestId: req.params.id,
+            staffId: session.adminUserId,
+            staffName: session.adminUserName || 'Admin',
+            callType,
+            scheduledAt, calledAt, outcome, nextAction, callbackAt, customerMood, notes, customerVisibleMessage,
+        });
+
+        res.status(201).json(attempt);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to create call attempt' });
+    }
+});
+
+router.patch('/api/admin/service-requests/:id/call-attempts/:attemptId', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+    try {
+        const { calledAt, outcome, nextAction, callbackAt, customerMood, notes, customerVisibleMessage } = req.body;
+
+        if (outcome && !VALID_OUTCOMES.includes(outcome)) {
+            return res.status(400).json({ error: `outcome must be one of: ${VALID_OUTCOMES.join(', ')}` });
+        }
+        if (customerMood && !VALID_MOODS.includes(customerMood)) {
+            return res.status(400).json({ error: `customerMood must be one of: ${VALID_MOODS.join(', ')}` });
+        }
+
+        const updated = await updateCallAttempt(req.params.attemptId, req.params.id, {
+            calledAt, outcome, nextAction, callbackAt, customerMood, notes, customerVisibleMessage,
+        });
+
+        if (!updated) return res.status(404).json({ error: 'Call attempt not found for this service request' });
+        res.json(updated);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to update call attempt' });
     }
 });
 

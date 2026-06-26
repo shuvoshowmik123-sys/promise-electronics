@@ -20,6 +20,7 @@ import { db } from '../db.js';
 import { localPurchases } from '../../shared/schema.js';
 import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 import { eq } from 'drizzle-orm';
+import { loadRepairCaseByJobTicket } from '../services/repair-case.service.js';
 
 const router = Router();
 const JOB_REALTIME_TAGS = ["jobTickets", "jobOverview", "dashboardStats"] as const;
@@ -1131,7 +1132,6 @@ router.post('/api/job-tickets/:id/mark-incomplete', requireAdminAuth, requirePer
 });
 
 // ─── Unified Repair Case ───
-import { loadRepairCaseByJobTicket } from '../services/repair-case.service.js';
 
 router.get('/api/admin/job-tickets/:id/repair-case', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
     try {

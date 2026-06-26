@@ -206,7 +206,67 @@ Remaining issues:
 - Customer identity falls back from SR to job denormalized fields — some edge cases (renamed customer, phone changed) could show stale data
 - Pickup is only linked via SR — jobs created without SR (walk-in) have no pickup path
 
-## Phase 2: Service Request Tab Redesign As Intake Queue
+## Phase 2A: Service Request Intake + Call Follow-up Backend
+
+Status: DONE
+Completed: 2026-06-26
+
+Files changed:
+
+- server/services/call-attempt.service.ts (NEW) — call attempts CRUD, call summary, intake lane classifier
+- server/services/repair-case.service.ts — extended UnifiedRepairCase with intake { lane, callSummary, needsStaffAction }
+- server/routes/service-requests.routes.ts — added 3 call attempt endpoints, moved repair-case import to top
+- server/routes/jobs.routes.ts — moved repair-case import to top
+- server/index.ts — registered call attempts migration
+
+### API endpoints added
+
+- GET /api/admin/service-requests/:id/call-attempts — list call attempts for SR
+- POST /api/admin/service-requests/:id/call-attempts — create structured call attempt with validated callType, outcome, customerMood
+- PATCH /api/admin/service-requests/:id/call-attempts/:attemptId — update call attempt outcome/notes
+
+### Call attempt schema
+
+Table: service_request_call_attempts (idempotent DDL via db.execute)
+Fields: id, service_request_id, staff_id, staff_name, call_type, scheduled_at, called_at, outcome, next_action, callback_at, customer_mood, notes, customer_visible_message, created_at, updated_at
+
+### Intake lane classifier
+
+deriveIntakeLane() maps SR state + call summary to one of 9 lanes:
+- new_intake: unreviewed pending SR
+- needs_call: callback requested or pending callback
+- needs_reply: quote pending or SR under review
+- quote_sent: quote sent, awaiting customer response
+- schedule_needed: pickup/dropoff scheduled
+- waiting_customer: 3+ no-answer streak or customer asked for time
+- ready_to_receive: device custody stage reached
+- converted_to_job: SR has convertedJobId
+- rejected_closed: cancelled/declined/closed/unrepairable
+
+### Repair case contract extension
+
+UnifiedRepairCase now includes:
+```
+intake: {
+    lane: IntakeLane;
+    callSummary: { callAttemptCount, lastCallOutcome, nextCallbackAt, noAnswerStreak };
+    needsStaffAction: boolean;
+} | null
+```
+
+Checks run:
+
+- npx tsc --noEmit --pretty false (PASS)
+- git diff --check (PASS)
+
+Remaining Phase 2B (UI):
+
+- Service Request admin tab redesign using intake lanes
+- Call panel UI inside SR detail
+- Guided action sheet/wizard for intake processing
+- Show linked job status when converted
+
+## Phase 2B: Service Request Tab Redesign As Intake Queue
 
 Status: NOT STARTED
 

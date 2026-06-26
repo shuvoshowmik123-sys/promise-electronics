@@ -24,6 +24,7 @@ import { migrateCustomerRepairJourneyTables } from "./services/customer-repair-j
 import { migrateStaffResetCodes } from "./services/staff-reset-migration.service.js";
 import { migratePasswordChangedAt } from "./services/password-changed-at-migration.service.js";
 import { migrateOperationalFields } from "./services/operational-fields-migration.service.js";
+import { migrateCallAttempts } from "./services/call-attempt.service.js";
 import { markMigrationsComplete, startReadinessChecks } from "./services/db-readiness.js";
 
 // ── Crash guards ────────────────────────────────────────────────────────────
@@ -87,6 +88,7 @@ async function runStartupMigrations(): Promise<boolean> {
     runStartupTask("staff reset codes migration", migrateStaffResetCodes, 2),
     runStartupTask("password_changed_at migration", migratePasswordChangedAt, 2),
     runStartupTask("operational fields migration", migrateOperationalFields, 2),
+    runStartupTask("call attempts migration", migrateCallAttempts, 2),
     runStartupTask("firebase_uid migration", async () => {
       const { db } = await import("./db.js");
       const { sql } = await import("drizzle-orm");
