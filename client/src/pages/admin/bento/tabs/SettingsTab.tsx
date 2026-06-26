@@ -3,13 +3,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
     Settings, Globe, PenTool, Users, Database, Save,
     Smartphone, FileText, MessageSquare, Loader2,
-    Search, X, Wrench, Star, Upload, LayoutTemplate, Building2, Clock3, PlayCircle
+    Search, X, Wrench, Star, Upload, LayoutTemplate, Building2, Clock3, PlayCircle,
+    Shield, AlertTriangle, Code2, ChevronRight, ChevronDown, Percent,
+    Phone, MapPin, Clock, Trash2, ShoppingBag, Tv, Ruler, AlertCircle, Filter
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { drawerApi, settingsApi } from "@/lib/api"; // Correct import
+import { drawerApi, settingsApi } from "@/lib/api";
 import { containerVariants, itemVariants } from "../shared";
 import { BentoCard } from "../shared/BentoCard";
 
@@ -366,6 +368,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     };
 
     const [selectedPanel, setSelectedPanel] = useState<string | null>(null);
+    const [generalDialogTrigger, setGeneralDialogTrigger] = useState<string | null>(null);
+    const [dangerExpanded, setDangerExpanded] = useState(false);
 
     useEffect(() => {
         if (!initialSearchQuery) return;
@@ -384,12 +388,204 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
         );
     }
 
+    const catalogItems = [
+        { label: "Service", count: serviceCategories.length, icon: Wrench, color: "text-blue-500", bg: "bg-blue-50" },
+        { label: "Shop", count: shopCategories.length, icon: ShoppingBag, color: "text-emerald-500", bg: "bg-emerald-50" },
+        { label: "Brands", count: tvBrands.length, icon: Tv, color: "text-purple-500", bg: "bg-purple-50" },
+        { label: "Sizes", count: tvInches.length, icon: Ruler, color: "text-amber-500", bg: "bg-amber-50" },
+        { label: "Symptoms", count: commonSymptoms.length, icon: AlertCircle, color: "text-rose-500", bg: "bg-rose-50" },
+        { label: "Filters", count: serviceFilterCategories.length, icon: Filter, color: "text-cyan-500", bg: "bg-cyan-50" },
+    ];
+
+    const MobileSettingsRow = ({ icon: Icon, iconColor, iconBg, label, helper, right, onClick }: {
+        icon: any; iconColor: string; iconBg: string; label: string; helper?: string;
+        right: React.ReactNode; onClick?: () => void;
+    }) => (
+        <button type="button" onClick={onClick} className="flex items-center gap-3 w-full px-4 py-3 text-left active:bg-slate-50 transition-colors">
+            <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] ${iconBg}`}>
+                <Icon className={`h-4 w-4 ${iconColor}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+                <p className="text-[13px] font-semibold text-slate-900">{label}</p>
+                {helper && <p className="text-[11px] text-slate-400 truncate">{helper}</p>}
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+                {right}
+                {onClick && <ChevronRight className="h-4 w-4 text-slate-300" />}
+            </div>
+        </button>
+    );
+
+    const MobileSectionTitle = ({ children }: { children: string }) => (
+        <p className="px-4 pt-5 pb-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400">{children}</p>
+    );
+
+    const MobilePanel = ({ children }: { children: React.ReactNode }) => (
+        <div className="mx-4 rounded-[20px] border border-slate-200 bg-white divide-y divide-slate-100 overflow-hidden">{children}</div>
+    );
+
+    const StatusPill = ({ label, tone }: { label: string; tone: string }) => (
+        <span className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${tone}`}>{label}</span>
+    );
+
     return (
+        <>
+        {/* ═══════════════════════════════════════════════════════════════
+            MOBILE SETTINGS VIEW
+           ═══════════════════════════════════════════════════════════════ */}
+        <div className="md:hidden flex flex-col min-h-0">
+            <div className="flex-1 overflow-y-auto bg-slate-50/80 pb-[140px]">
+                {/* Header */}
+                <div className="px-4 pt-2 pb-3">
+                    <h1 className="text-[22px] font-extrabold text-slate-900">Settings</h1>
+                    <p className="text-[13px] text-slate-500">System configuration</p>
+                    <div className="relative mt-3">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                        <Input
+                            placeholder="Search settings..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="pl-9 h-11 rounded-xl bg-white border-slate-200 text-sm"
+                        />
+                    </div>
+                </div>
+
+                {/* System Status */}
+                <MobileSectionTitle>System Status</MobileSectionTitle>
+                <MobilePanel>
+                    <MobileSettingsRow icon={Shield} iconColor="text-blue-600" iconBg="bg-blue-100" label="Data & Backups" helper="Last backup 2:00 AM"
+                        right={<StatusPill label="Secure" tone="bg-blue-50 text-blue-700" />} onClick={() => setGeneralDialogTrigger("data")} />
+                    <MobileSettingsRow icon={AlertTriangle} iconColor={maintenanceMode ? "text-red-600" : "text-slate-500"} iconBg={maintenanceMode ? "bg-red-100" : "bg-slate-100"} label="Maintenance" helper={maintenanceMode ? "System is offline" : "System is live"}
+                        right={<StatusPill label={maintenanceMode ? "Active" : "Off"} tone={maintenanceMode ? "bg-red-50 text-red-700" : "bg-slate-100 text-slate-600"} />} onClick={() => setGeneralDialogTrigger("maintenance")} />
+                    <MobileSettingsRow icon={Users} iconColor={allowRegistrations ? "text-emerald-600" : "text-slate-500"} iconBg={allowRegistrations ? "bg-emerald-100" : "bg-slate-100"} label="Registrations" helper={allowRegistrations ? "New signups allowed" : "Signups blocked"}
+                        right={<StatusPill label={allowRegistrations ? "Open" : "Closed"} tone={allowRegistrations ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-600"} />} onClick={() => setGeneralDialogTrigger("registration")} />
+                    <MobileSettingsRow icon={Code2} iconColor={developerMode ? "text-amber-600" : "text-slate-500"} iconBg={developerMode ? "bg-amber-100" : "bg-slate-100"} label="Developer" helper={developerMode ? "Debug logs exposed" : "Production limits"}
+                        right={<StatusPill label={developerMode ? "On" : "Off"} tone={developerMode ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"} />} onClick={() => setGeneralDialogTrigger("developer")} />
+                </MobilePanel>
+
+                {/* Business Identity */}
+                <MobileSectionTitle>Business Identity</MobileSectionTitle>
+                <MobilePanel>
+                    <div className="flex items-center gap-3 px-4 py-3">
+                        <div className="h-12 w-12 shrink-0 rounded-2xl border border-slate-200 bg-white flex items-center justify-center overflow-hidden">
+                            {logoUrl ? <img src={logoUrl} alt="Logo" className="w-full h-full object-contain p-1.5" /> : <Globe className="h-5 w-5 text-slate-400" />}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                            <p className="text-[15px] font-bold text-slate-900 truncate">{siteName || "Unnamed Business"}</p>
+                            <p className="text-[12px] text-slate-500 flex items-center gap-1"><Phone className="h-3 w-3" />{supportPhone || "No phone set"}</p>
+                        </div>
+                    </div>
+                    <MobileSettingsRow icon={MapPin} iconColor="text-slate-500" iconBg="bg-slate-100" label="Location" helper={serviceCenterContact || "Not set"} right={null} />
+                    <MobileSettingsRow icon={Clock} iconColor="text-slate-500" iconBg="bg-slate-100" label="Business Hours" helper={businessHours || "Not set"} right={null} />
+                    <button type="button" onClick={() => document.dispatchEvent(new CustomEvent('open-sheet', { detail: 'identity' }))} className="flex items-center justify-center gap-2 w-full px-4 py-3 text-[13px] font-bold text-blue-600 active:bg-blue-50 transition-colors">
+                        <PenTool className="h-3.5 w-3.5" /> Edit Business Identity
+                    </button>
+                </MobilePanel>
+
+                {/* Finance & Locale */}
+                <MobileSectionTitle>Finance & Locale</MobileSectionTitle>
+                <MobilePanel>
+                    <MobileSettingsRow icon={Database} iconColor="text-amber-500" iconBg="bg-amber-50" label="Currency" right={<span className="text-[14px] font-bold text-amber-600 font-mono">{currencySymbol} BDT</span>} />
+                    <MobileSettingsRow icon={Percent} iconColor="text-slate-500" iconBg="bg-slate-100" label="Global VAT" right={<span className="text-[14px] font-bold text-slate-700">{vatPercentage}%</span>} />
+                    <MobileSettingsRow icon={Globe} iconColor="text-slate-500" iconBg="bg-slate-100" label="Timezone" right={<span className="text-[13px] font-semibold text-slate-600">{timezone}</span>} />
+                    <button type="button" onClick={() => document.dispatchEvent(new CustomEvent('open-sheet', { detail: 'finance' }))} className="flex items-center justify-center gap-2 w-full px-4 py-3 text-[13px] font-bold text-blue-600 active:bg-blue-50 transition-colors">
+                        <PenTool className="h-3.5 w-3.5" /> Edit Finance Settings
+                    </button>
+                </MobilePanel>
+
+                {/* POS Day-End */}
+                <MobileSectionTitle>POS Day-End</MobileSectionTitle>
+                <MobilePanel>
+                    <div className="flex items-center justify-between px-4 py-3">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-cyan-50">
+                                <Clock3 className="h-4 w-4 text-cyan-600" />
+                            </div>
+                            <div>
+                                <p className="text-[13px] font-semibold text-slate-900">Auto Day-End</p>
+                                <p className="text-[11px] text-slate-400">Close sessions at cutoff</p>
+                            </div>
+                        </div>
+                        <Switch checked={drawerDayCloseEnabled} onCheckedChange={setDrawerDayCloseEnabled} />
+                    </div>
+                    <div className="px-4 py-3 grid grid-cols-2 gap-3">
+                        <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 block">Cutoff Time</label>
+                            <Input type="time" value={drawerDayCloseTime} onChange={(e) => setDrawerDayCloseTime(e.target.value || "23:59")} className="h-10 rounded-xl bg-slate-50 text-sm" />
+                        </div>
+                        <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 block">Timezone</label>
+                            <Input value={drawerDayCloseTimezone} onChange={(e) => setDrawerDayCloseTimezone(e.target.value)} placeholder="Asia/Dhaka" className="h-10 rounded-xl bg-slate-50 text-sm" />
+                        </div>
+                    </div>
+                    <div className="px-4 py-3">
+                        <Button type="button" onClick={handleRunDayEndNow} disabled={runningDayCloseNow} className="w-full h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold">
+                            {runningDayCloseNow ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
+                            Run Day-End Now
+                        </Button>
+                    </div>
+                </MobilePanel>
+
+                {/* Service Catalogs */}
+                <MobileSectionTitle>Service Catalogs</MobileSectionTitle>
+                <MobilePanel>
+                    {catalogItems.map((item, i) => (
+                        <MobileSettingsRow key={i} icon={item.icon} iconColor={item.color} iconBg={item.bg} label={item.label}
+                            right={<span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[12px] font-bold text-slate-700">{item.count}</span>}
+                            onClick={() => document.dispatchEvent(new CustomEvent('open-sheet', { detail: 'catalog' }))} />
+                    ))}
+                </MobilePanel>
+
+                {/* Website Content */}
+                <MobileSectionTitle>Website Content</MobileSectionTitle>
+                <MobilePanel>
+                    <MobileSettingsRow icon={LayoutTemplate} iconColor="text-indigo-500" iconBg="bg-indigo-50" label="Homepage CMS" helper={`${infoBoxes.length} info boxes · ${faqItems.length} FAQs`}
+                        right={null} onClick={() => setSelectedPanel("cmshome")} />
+                    <MobileSettingsRow icon={Building2} iconColor="text-emerald-500" iconBg="bg-emerald-50" label="About Us Page" helper={`${teamMembers.length} team member${teamMembers.length !== 1 ? 's' : ''}`}
+                        right={null} onClick={() => setSelectedPanel("about")} />
+                </MobilePanel>
+
+                {/* Danger Zone */}
+                <MobileSectionTitle>Advanced</MobileSectionTitle>
+                <div className="mx-4 mb-6 rounded-[20px] border border-red-200 bg-white overflow-hidden">
+                    <button type="button" onClick={() => setDangerExpanded(!dangerExpanded)} className="flex items-center gap-3 w-full px-4 py-3 text-left">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-red-100">
+                            <AlertTriangle className="h-4 w-4 text-red-600" />
+                        </div>
+                        <div className="flex-1">
+                            <p className="text-[13px] font-semibold text-red-700">Danger Zone</p>
+                            <p className="text-[11px] text-red-400">Restricted destructive actions</p>
+                        </div>
+                        <ChevronDown className={`h-4 w-4 text-red-300 transition-transform ${dangerExpanded ? "rotate-180" : ""}`} />
+                    </button>
+                    {dangerExpanded && (
+                        <div className="px-4 pb-4 pt-1 border-t border-red-100">
+                            <p className="text-[12px] text-red-600 mb-3">Deleting data is irreversible. All transactions, customers, and catalog data will be permanently removed.</p>
+                            <Button variant="outline" className="w-full h-11 rounded-xl border-red-300 text-red-600 font-bold hover:bg-red-50" onClick={() => setGeneralDialogTrigger("delete")}>
+                                <Trash2 className="w-4 h-4 mr-2" /> Delete All Data
+                            </Button>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Sticky Save Footer */}
+            <div className="fixed bottom-0 inset-x-0 z-20 bg-white border-t border-slate-200 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.08)] md:hidden">
+                <Button onClick={handleSaveAll} disabled={saving} className="w-full h-12 rounded-[14px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-[14px] font-extrabold shadow-lg shadow-blue-500/20">
+                    {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                    Save Changes
+                </Button>
+            </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════════════
+            DESKTOP SETTINGS VIEW (existing layout, hidden on mobile)
+           ═══════════════════════════════════════════════════════════════ */}
         <motion.div
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6 pb-24 md:pb-0 max-w-[1600px] mx-auto"
+            className="hidden md:block space-y-6 pb-24 md:pb-0 max-w-[1600px] mx-auto"
         >
             {/* Header */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white/50 backdrop-blur-xl p-6 rounded-3xl border border-white/40 shadow-sm">
@@ -434,6 +630,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                     maintenanceMode={maintenanceMode} setMaintenanceMode={setMaintenanceMode}
                     allowRegistrations={allowRegistrations} setAllowRegistrations={setAllowRegistrations}
                     developerMode={developerMode} setDeveloperMode={setDeveloperMode}
+                    externalDialogTrigger={generalDialogTrigger}
+                    onExternalDialogConsumed={() => setGeneralDialogTrigger(null)}
                 />
 
                 {/* Row 3: Drawer Day-End Controls */}
@@ -572,6 +770,12 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                     </motion.div>
                 </div>
             </div>
+
+        </motion.div>
+
+            {/* ═══════════════════════════════════════════════════════════════
+                SHARED MODALS (used by both mobile and desktop)
+               ═══════════════════════════════════════════════════════════════ */}
 
             {/* Modal for Full Editors */}
             <AnimatePresence>
@@ -846,6 +1050,6 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                     </div>
                 )}
             </AnimatePresence>
-        </motion.div>
+        </>
     );
 }

@@ -43,6 +43,8 @@ interface GeneralSectionProps {
     setAllowRegistrations: (v: boolean) => void;
     developerMode: boolean;
     setDeveloperMode: (v: boolean) => void;
+    externalDialogTrigger?: string | null;
+    onExternalDialogConsumed?: () => void;
 }
 
 export default function GeneralSection(props: GeneralSectionProps) {
@@ -80,7 +82,18 @@ export default function GeneralSection(props: GeneralSectionProps) {
     const [showBackupDialog, setShowBackupDialog] = useState(false);
     const [showRestoreDialog, setShowRestoreDialog] = useState(false);
 
-    // Reset states when dialogs close
+    useEffect(() => {
+        if (!props.externalDialogTrigger) return;
+        switch (props.externalDialogTrigger) {
+            case "data": setDataDialog(true); break;
+            case "maintenance": setMaintenanceDialog(true); break;
+            case "registration": setRegistrationDialog(true); break;
+            case "developer": setDeveloperDialog(true); setIsDevCountdownActive(true); setDevCountdown(5); break;
+            case "delete": setShowDeleteDialog(true); break;
+        }
+        props.onExternalDialogConsumed?.();
+    }, [props.externalDialogTrigger]);
+
     const handleCloseDialogs = () => {
         // Delay inner state reset to allow exit animations to finish smoothly
         // but close the actual dialog visibility flags immediately
@@ -136,8 +149,8 @@ export default function GeneralSection(props: GeneralSectionProps) {
 
     return (
         <div className="flex flex-col gap-6">
-            {/* ── ROW 1: Quick Status Cards (4 vibrant cards) ── */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+            {/* ── ROW 1: Quick Status Cards (desktop only — mobile uses compact rows in SettingsTab) ── */}
+            <div className="hidden md:grid md:grid-cols-2 xl:grid-cols-4 gap-6">
 
                 {/* 1. Data & Backups */}
                 <BentoCard
@@ -226,8 +239,8 @@ export default function GeneralSection(props: GeneralSectionProps) {
 
             </div>
 
-            {/* ── ROW 2: Business Config ── */}
-            <div className="grid grid-cols-1 md:grid-cols-3 xl:grid-cols-4 gap-6">
+            {/* ── ROW 2: Business Config (desktop only) ── */}
+            <div className="hidden md:grid md:grid-cols-3 xl:grid-cols-4 gap-6">
 
                 {/* Business Details Widget */}
                 <BentoCard
