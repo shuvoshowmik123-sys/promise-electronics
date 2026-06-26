@@ -240,7 +240,7 @@ export function DrawerModals({ type, onClose, drawerSessionId, currentUser, curr
         const activeCount = DENOMINATIONS.filter((denomination) => counts[denomination] > 0).length;
 
         return (
-            <div className="grid h-full min-h-0 gap-4 lg:grid-cols-[minmax(0,1fr)_290px]">
+            <div className="grid h-full min-h-0 gap-4 grid-rows-[1fr_auto] lg:grid-rows-none lg:grid-cols-[minmax(0,1fr)_290px]">
                 <div className="flex min-h-0 flex-col rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-none flex-wrap items-start justify-between gap-3 border-b border-slate-100 pb-4">
                         <div>
@@ -333,14 +333,14 @@ export function DrawerModals({ type, onClose, drawerSessionId, currentUser, curr
                     </div>
                 </div>
 
-                <div className="flex min-h-0 flex-col rounded-3xl border border-slate-200 bg-slate-950 p-5 text-white shadow-sm">
+                <div className="flex min-h-0 flex-col rounded-3xl border border-slate-200 bg-slate-950 p-4 lg:p-5 text-white shadow-sm">
                     <p className="text-[11px] font-black uppercase tracking-[0.16em] text-white/40">
                         {mode === "open" ? "Total Opening Float" : "Total Counted Cash"}
                     </p>
-                    <div className="mt-2 text-4xl font-black tabular-nums">
+                    <div className="mt-1 lg:mt-2 text-2xl lg:text-4xl font-black tabular-nums">
                         {currencySymbol}{total.toLocaleString()}
                     </div>
-                    <div className="mt-5 space-y-3 text-sm">
+                    <div className="mt-3 lg:mt-5 space-y-2 lg:space-y-3 text-sm">
                         <div className="flex items-center justify-between rounded-2xl bg-white/8 px-3 py-2">
                             <span className="text-white/50">Notes total</span>
                             <span className="font-black tabular-nums">{currencySymbol}{noteTotal.toLocaleString()}</span>
@@ -354,7 +354,7 @@ export function DrawerModals({ type, onClose, drawerSessionId, currentUser, curr
                             <span className="font-black tabular-nums">{activeCount}</span>
                         </div>
                     </div>
-                    <div className="mt-auto pt-5">
+                    <div className="mt-auto hidden lg:block pt-5">
                         {mode === "drop" ? (
                         <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-400/10 p-3 text-xs font-semibold leading-relaxed text-amber-100">
                             Expected cash is hidden until submit. Any shortage or surplus moves to review.
@@ -383,7 +383,7 @@ export function DrawerModals({ type, onClose, drawerSessionId, currentUser, curr
                 initial={{ opacity: 0, scale: 0.9 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{ type: "spring", stiffness: 300, damping: 25 }}
-                className="p-6 space-y-4"
+                className="p-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-6 space-y-4 overflow-y-auto"
             >
                 {/* Status Icon */}
                 <div className="flex flex-col items-center text-center space-y-3">
@@ -493,7 +493,10 @@ export function DrawerModals({ type, onClose, drawerSessionId, currentUser, curr
                         "p-0 overflow-hidden bg-white/60 backdrop-blur-xl border-white/40 shadow-2xl [&>button]:right-3 [&>button]:top-3 [&>button]:z-30 [&>button]:h-10 [&>button]:w-10 [&>button]:rounded-full [&>button]:bg-white [&>button]:shadow-md [&>button]:ring-1 [&>button]:ring-slate-200",
                         type === "drop" && dropResult
                             ? "sm:max-w-[425px]"
-                            : "h-[calc(100vh-2rem)] max-h-[860px] w-[calc(100vw-2rem)] max-w-[1280px]",
+                            : [
+                                "!left-0 !right-0 !top-auto !bottom-0 !translate-x-0 !translate-y-0 !max-h-none z-[260] h-[calc(100dvh-0.5rem)] w-full max-w-none rounded-t-[2rem] rounded-b-none",
+                                "md:!left-[50%] md:!right-auto md:!top-[50%] md:!bottom-auto md:!translate-x-[-50%] md:!translate-y-[-50%] md:!max-h-[860px] md:z-50 md:h-[calc(100vh-2rem)] md:w-[calc(100vw-2rem)] md:max-w-[1280px] md:rounded-xl",
+                            ].join(" "),
                     )}>
                         <motion.div
                             variants={modalVariants}
@@ -566,7 +569,7 @@ export function DrawerModals({ type, onClose, drawerSessionId, currentUser, curr
                                         {type === 'open' ? (
                                             <form onSubmit={openForm.handleSubmit(() => openMutation.mutate({ startingFloat: openingTotal }))} className="flex min-h-0 flex-1 flex-col gap-5">
                                                 <DenominationCounter counts={openCounts} setCounts={setOpenCounts} mode="open" />
-                                                <DialogFooter className="flex-none border-t border-slate-100 pt-5 gap-3">
+                                                <DialogFooter className="flex-none border-t border-slate-100 pt-5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:pb-0 gap-3">
                                                     <Button type="button" variant="outline" onClick={handleClose} className="h-11 rounded-xl">
                                                         Cancel
                                                     </Button>
@@ -578,7 +581,7 @@ export function DrawerModals({ type, onClose, drawerSessionId, currentUser, curr
                                         ) : (
                                             <form onSubmit={dropForm.handleSubmit(() => dropMutation.mutate({ declaredCash: blindDropTotal }))} className="flex min-h-0 flex-1 flex-col gap-5">
                                                 <DenominationCounter counts={dropCounts} setCounts={setDropCounts} mode="drop" />
-                                                <DialogFooter className="flex-none border-t border-slate-100 pt-5 gap-3">
+                                                <DialogFooter className="flex-none border-t border-slate-100 pt-5 pb-[calc(0.5rem+env(safe-area-inset-bottom))] md:pb-0 gap-3">
                                                     <Button type="button" variant="outline" onClick={handleClose} className="h-11 rounded-xl">
                                                         Cancel
                                                     </Button>

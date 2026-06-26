@@ -200,14 +200,14 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     }, [initialTransactionId, posTransactions]);
 
     useEffect(() => {
-        const anySurfaceOpen = mobileCartOpen || showPaymentReview || isCustomerDialogOpen || isJobDialogOpen || isInventoryDialogOpen || showSuccessDialog || showInvoicePreview || showReceiptPreview || showHistoryDialog || showRefundDialog;
+        const anySurfaceOpen = mobileCartOpen || showPaymentReview || isCustomerDialogOpen || isJobDialogOpen || isInventoryDialogOpen || showSuccessDialog || showInvoicePreview || showReceiptPreview || showHistoryDialog || showRefundDialog || drawerModalType !== null;
         if (isMobile && anySurfaceOpen) {
             window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
             return () => {
                 window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
             };
         }
-    }, [isMobile, mobileCartOpen, showPaymentReview, isCustomerDialogOpen, isJobDialogOpen, isInventoryDialogOpen, showSuccessDialog, showInvoicePreview, showReceiptPreview, showHistoryDialog, showRefundDialog]);
+    }, [isMobile, mobileCartOpen, showPaymentReview, isCustomerDialogOpen, isJobDialogOpen, isInventoryDialogOpen, showSuccessDialog, showInvoicePreview, showReceiptPreview, showHistoryDialog, showRefundDialog, drawerModalType]);
 
     // Close mobile-only surfaces on tab/hash change so POS cart doesn't cover other tabs
     useEffect(() => {
