@@ -88,20 +88,8 @@ export const queryClient = new QueryClient({
       }
 
       // Global 401 Unauthorized handler for admin requests
-      // This catches 401s from both fetch and api.ts throws
-      if (
-        error?.message?.includes('401') ||
-        error?.statusCode === 401 ||
-        error?.code === 'UNAUTHORIZED'
-      ) {
-        // If we're on an admin route and it's not the login page, redirect
-        if (typeof window !== 'undefined' &&
-          window.location.pathname.startsWith('/admin') &&
-          !window.location.pathname.includes('/login')) {
-          console.warn('[QueryClient] 401 Unauthorized detected, redirecting to login');
-          window.location.href = '/admin/login';
-        }
-      }
+      // Auth redirects are handled by AdminRouter — do NOT use
+      // window.location.href here as it causes full-page reload loops.
     }
   })
 });
@@ -223,10 +211,15 @@ export function initQueryPersistence() {
   persistQueryClient({
     queryClient,
     persister,
+    buster: "promise-rq-success-only-v1",
     maxAge: 1000 * 60 * 60 * 24 * 7, // 7 days
     dehydrateOptions: {
       // Only persist queries that should be available offline
       shouldDehydrateQuery: (query) => {
+        if (query.state.status !== "success" || query.state.data === undefined) {
+          return false;
+        }
+
         const key = query.queryKey[0];
         // Persist user profile, service requests, orders, warranties, notifications
         const persistedQueries = [
