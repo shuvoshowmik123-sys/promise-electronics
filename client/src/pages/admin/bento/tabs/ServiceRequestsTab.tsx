@@ -722,7 +722,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             counts[lane] = (counts[lane] || 0) + 1;
         }
         return counts;
-    }, [serviceRequests]);
+    }, [serviceRequests, intakeLaneMap]);
     const paginated = filtered.slice((srPage - 1) * 12, srPage * 12);
     const totalPages = Math.ceil(filtered.length / 12);
 

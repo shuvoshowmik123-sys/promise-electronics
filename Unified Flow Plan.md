@@ -429,6 +429,10 @@ Mobile 390x844:
 
 Evidence: sr-desktop-full.png, sr-desktop-detail.png, sr-mobile-390.png, sr-mobile-call-dialog.png
 
+### Hotfix: laneCounts dependency (2026-06-27)
+
+laneCounts useMemo depended only on `[serviceRequests]` but `getLane()` reads `intakeLaneMap` which loads async. Counts stayed stale until next SR refetch. Fixed by adding `intakeLaneMap` to the dependency array: `[serviceRequests, intakeLaneMap]`.
+
 ### Phase 2 remaining issues (minor polish, not blocking)
 
 - Full kanban board view (currently filter chips, not columns)
