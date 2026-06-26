@@ -259,6 +259,12 @@ Checks run:
 - npx tsc --noEmit --pretty false (PASS)
 - git diff --check (PASS)
 
+### Hotfix: updateCallAttempt SQL (2026-06-26)
+
+Bug: updateCallAttempt() built dynamic SET clauses with `sql.raw` using `$1`/`$2` placeholders, but the `values` array was never bound to `db.execute()`. Values would not be substituted — columns would receive literal `$1` strings or fail.
+
+Fix: replaced raw placeholder logic with safe Drizzle `sql` template chunks. Each column update uses `sql\`column = ${value}\``, joined via `sql.join(chunks, sql\`, \`)`. All values pass through Drizzle parameterized interpolation. Column names remain hardcoded/whitelisted. If no mutable fields are provided, only `updated_at = NOW()` runs (always at least one SET chunk).
+
 Remaining Phase 2B (UI):
 
 - Service Request admin tab redesign using intake lanes

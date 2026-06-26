@@ -117,20 +117,19 @@ export async function updateCallAttempt(id: string, serviceRequestId: string, up
     notes?: string;
     customerVisibleMessage?: string;
 }): Promise<CallAttempt | null> {
-    const setClauses: string[] = ["updated_at = NOW()"];
-    const values: any[] = [];
+    const chunks = [sql`updated_at = NOW()`];
 
-    if (updates.calledAt !== undefined) { setClauses.push(`called_at = $${values.length + 1}`); values.push(updates.calledAt); }
-    if (updates.outcome !== undefined) { setClauses.push(`outcome = $${values.length + 1}`); values.push(updates.outcome); }
-    if (updates.nextAction !== undefined) { setClauses.push(`next_action = $${values.length + 1}`); values.push(updates.nextAction); }
-    if (updates.callbackAt !== undefined) { setClauses.push(`callback_at = $${values.length + 1}`); values.push(updates.callbackAt); }
-    if (updates.customerMood !== undefined) { setClauses.push(`customer_mood = $${values.length + 1}`); values.push(updates.customerMood); }
-    if (updates.notes !== undefined) { setClauses.push(`notes = $${values.length + 1}`); values.push(updates.notes); }
-    if (updates.customerVisibleMessage !== undefined) { setClauses.push(`customer_visible_message = $${values.length + 1}`); values.push(updates.customerVisibleMessage); }
+    if (updates.calledAt !== undefined) chunks.push(sql`called_at = ${updates.calledAt}`);
+    if (updates.outcome !== undefined) chunks.push(sql`outcome = ${updates.outcome}`);
+    if (updates.nextAction !== undefined) chunks.push(sql`next_action = ${updates.nextAction}`);
+    if (updates.callbackAt !== undefined) chunks.push(sql`callback_at = ${updates.callbackAt}`);
+    if (updates.customerMood !== undefined) chunks.push(sql`customer_mood = ${updates.customerMood}`);
+    if (updates.notes !== undefined) chunks.push(sql`notes = ${updates.notes}`);
+    if (updates.customerVisibleMessage !== undefined) chunks.push(sql`customer_visible_message = ${updates.customerVisibleMessage}`);
 
     await db.execute(sql`
         UPDATE service_request_call_attempts
-        SET ${sql.raw(setClauses.join(', '))}
+        SET ${sql.join(chunks, sql`, `)}
         WHERE id = ${id} AND service_request_id = ${serviceRequestId}
     `);
 
