@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
     Globe, Settings, AlertTriangle, Building2, Clock, Percent,
     Phone, MapPin, Shield, Code2, Users, Loader2, Trash2,
@@ -20,6 +21,11 @@ import { toast } from "sonner";
 import { BackupDialog } from "@/components/admin/BackupDialog";
 import { RestoreDialog } from "@/components/admin/RestoreDialog";
 import { settingsApi, adminAuthApi } from "@/lib/api";
+
+function BodyPortal({ children }: { children: React.ReactNode }) {
+    if (typeof document === "undefined") return null;
+    return createPortal(children, document.body);
+}
 
 interface GeneralSectionProps {
     siteName: string;
@@ -364,7 +370,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
             </div>
 
             {/* Delete Confirmation — Mobile bottom sheet */}
-            <AnimatePresence>
+            <BodyPortal><AnimatePresence>
                 {showDeleteDialog && (
                     <div className="fixed inset-0 z-[260] flex items-end justify-center md:hidden" style={{ pointerEvents: 'auto' }}>
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/50" onClick={() => { setShowDeleteDialog(false); setDeleteConfirmation(""); }} />
@@ -388,7 +394,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                         </MobileBottomSheetFrame>
                     </div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence></BodyPortal>
             {/* Delete Confirmation — Desktop Radix Dialog */}
             <Dialog open={showDeleteDialog && typeof window !== 'undefined' && window.innerWidth >= 768} onOpenChange={setShowDeleteDialog}>
                 <DialogContent className="sm:max-w-md">
@@ -415,7 +421,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                 </DialogContent>
             </Dialog>
             {/* ── Data & Backups Dialog (Expanding Popup) ── */}
-            <AnimatePresence>
+            <BodyPortal><AnimatePresence>
                 {dataDialog && (
                     <motion.div
                         key="dialog-data"
@@ -542,7 +548,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                         </motion.div>
                     </motion.div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence></BodyPortal>
 
             {/* ── External Backup and Restore Dialogs ── */}
             <BackupDialog
@@ -555,7 +561,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
             />
 
             {/* ── Maintenance Mode Dialog (Expanding Popup) ── */}
-            <AnimatePresence>
+            <BodyPortal><AnimatePresence>
                 {maintenanceDialog && (
                     <motion.div
                         key="dialog-main"
@@ -702,10 +708,10 @@ export default function GeneralSection(props: GeneralSectionProps) {
                         </motion.div>
                     </motion.div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence></BodyPortal>
 
             {/* ── Registration Dialog (Expanding Popup) ── */}
-            <AnimatePresence>
+            <BodyPortal><AnimatePresence>
                 {registrationDialog && (
                     <motion.div
                         key="dialog-reg"
@@ -858,10 +864,10 @@ export default function GeneralSection(props: GeneralSectionProps) {
                         </motion.div>
                     </motion.div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence></BodyPortal>
 
             {/* ── Developer Mode Dialog (Expanding Popup) ── */}
-            <AnimatePresence>
+            <BodyPortal><AnimatePresence>
                 {developerDialog && (
                     <motion.div
                         key="dialog-dev"
@@ -1024,7 +1030,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                         </motion.div>
                     </motion.div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence></BodyPortal>
         </div>
     );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Settings, Globe, PenTool, Users, Database, Save,
@@ -25,6 +26,11 @@ const CmsHomeSection = lazy(() => import("./settings/CmsHomeSection"));
 const AboutUsSection = lazy(() => import("./settings/AboutUsSection"));
 const ServiceConfigEditor = lazy(() => import("./settings/ServiceConfigEditor").then(m => ({ default: m.ServiceConfigEditor })));
 import { TagListCard } from "./settings/TagListCard";
+
+function BodyPortal({ children }: { children: React.ReactNode }) {
+    if (typeof document === "undefined") return null;
+    return createPortal(children, document.body);
+}
 
 interface SettingsTabProps {
     initialSearchQuery?: string;
@@ -807,7 +813,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                 ═══════════════════════════════════════════════════════════════ */}
 
             {/* ─── CMS / About full editor — mobile near-full-screen bottom sheet ─── */}
-            <AnimatePresence>
+            <BodyPortal><AnimatePresence>
                 {selectedPanel && (
                     <div className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:z-50 md:items-center md:p-12">
                         <motion.div
@@ -951,10 +957,10 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         </motion.div>
                     </div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence></BodyPortal>
 
             {/* ─── Identity editor — mobile bottom sheet + desktop popup ─── */}
-            <AnimatePresence>
+            <BodyPortal><AnimatePresence>
                 {activeSheet === 'identity' && (
                     <div className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:items-center md:p-6" style={{ pointerEvents: 'auto' }}>
                         <motion.div
@@ -1057,10 +1063,10 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         </motion.div>
                     </div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence></BodyPortal>
 
             {/* ─── Finance editor — mobile bottom sheet + desktop popup ─── */}
-            <AnimatePresence>
+            <BodyPortal><AnimatePresence>
                 {activeSheet === 'finance' && (
                     <div className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:items-center md:p-6" style={{ pointerEvents: 'auto' }}>
                         <motion.div
@@ -1183,10 +1189,10 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         </motion.div>
                     </div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence></BodyPortal>
 
             {/* ─── Catalog editor — mobile bottom sheet with segment tabs + desktop popup ─── */}
-            <AnimatePresence>
+            <BodyPortal><AnimatePresence>
                 {activeSheet === 'catalog' && (
                     <div className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:items-center md:p-6" style={{ pointerEvents: 'auto' }}>
                         <motion.div
@@ -1295,7 +1301,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         </motion.div>
                     </div>
                 )}
-            </AnimatePresence>
+            </AnimatePresence></BodyPortal>
         </>
     );
 }
