@@ -44,7 +44,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       setUser(data);
       setStatus("authenticated");
     } catch (error: any) {
-      if (error?.statusCode !== 401) {
+      if (error?.statusCode !== 401 && error?.code !== "REQUEST_TIMEOUT") {
         // Only log if it's not a standard unauthorized response
         console.error("Failed to fetch admin user:", error);
       }

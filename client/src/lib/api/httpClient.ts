@@ -20,7 +20,9 @@ function getCsrfToken(): string | undefined {
     return match ? match[2] : undefined;
 }
 
-export async function fetchApi<T>(url: string, options?: RequestInit): Promise<T> {
+type FetchApiOptions = RequestInit & { timeoutMs?: number };
+
+export async function fetchApi<T>(url: string, options?: FetchApiOptions): Promise<T> {
     const fullUrl = `${API_BASE}${url}`;
 
     // Use import.meta.env.DEV since Vite handles this
@@ -30,24 +32,41 @@ export async function fetchApi<T>(url: string, options?: RequestInit): Promise<T
         console.log(`[API] Fetching: ${fullUrl}`);
     }
 
+    const { timeoutMs, ...requestOptions } = options || {};
     const csrfToken = getCsrfToken();
     const baseHeaders = {
         "Content-Type": "application/json",
-        ...options?.headers,
+        ...requestOptions.headers,
         ...(csrfToken ? { "X-XSRF-TOKEN": csrfToken } : {})
     };
 
     // Use CapacitorHttp on native platforms to bypass CORS/WebView restrictions
     if (isNative) {
-        return nativeFetchApi<T>(fullUrl, { ...options, headers: baseHeaders });
+        return nativeFetchApi<T>(fullUrl, { ...requestOptions, timeoutMs, headers: baseHeaders });
     }
 
+    const controller = requestOptions.signal ? null : new AbortController();
+    const timeout = controller
+        ? setTimeout(() => controller.abort(), timeoutMs ?? 30000)
+        : null;
+
     // Standard browser fetch for web
-    const response = await fetch(fullUrl, {
-        ...options,
-        credentials: 'include',
-        headers: baseHeaders,
-    });
+    let response: Response;
+    try {
+        response = await fetch(fullUrl, {
+            ...requestOptions,
+            credentials: 'include',
+            headers: baseHeaders,
+            signal: requestOptions.signal || controller?.signal,
+        });
+    } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError") {
+            throw new ApiError("Request timed out. Please try again.", "REQUEST_TIMEOUT", 408);
+        }
+        throw error;
+    } finally {
+        if (timeout) clearTimeout(timeout);
+    }
     const contentType = response.headers.get("content-type") || "";
 
     if (import.meta.env?.DEV) {
@@ -94,7 +113,7 @@ export async function fetchApi<T>(url: string, options?: RequestInit): Promise<T
 }
 
 // Native HTTP implementation using CapacitorHttp
-async function nativeFetchApi<T>(fullUrl: string, options?: RequestInit): Promise<T> {
+async function nativeFetchApi<T>(fullUrl: string, options?: FetchApiOptions): Promise<T> {
     const method = (options?.method?.toUpperCase() || 'GET') as 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
     let response: HttpResponse;
@@ -106,8 +125,8 @@ async function nativeFetchApi<T>(fullUrl: string, options?: RequestInit): Promis
             'User-Agent': 'PromiseNativeApp/1.0',
             ...(options?.headers as Record<string, string> || {}),
         },
-        connectTimeout: 15000,
-        readTimeout: 15000,
+        connectTimeout: options?.timeoutMs ?? 15000,
+        readTimeout: options?.timeoutMs ?? 15000,
     };
 
     try {

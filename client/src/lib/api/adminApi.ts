@@ -581,7 +581,7 @@ export const adminAuthApi = {
         fetchApi<{ message: string }>("/admin/logout", {
             method: "POST",
         }),
-    me: () => fetchApi<Omit<User, "password">>("/admin/me"),
+    me: () => fetchApi<Omit<User, "password">>("/admin/me", { timeoutMs: 10000 }),
     wipeData: () => fetchApi<{ message: string }>("/admin/data/all", { method: "DELETE", body: JSON.stringify({ confirmation: 'DELETE ALL' }) }),
     getAggregatedDashboard: () => fetchApi<AdminAggregatedDashboard>("/admin/dashboard"),
 };
