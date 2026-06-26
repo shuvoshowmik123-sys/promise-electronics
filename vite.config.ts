@@ -6,8 +6,7 @@ import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { metaImagesPlugin } from "./vite-plugin-meta-images";
 
 export default defineConfig({
-  // Base path for Capacitor mobile builds
-  base: './',
+  base: '/',
   plugins: [
     react(),
     runtimeErrorOverlay(),
