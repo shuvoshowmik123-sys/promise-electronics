@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { drawerApi, settingsApi } from "@/lib/api";
-import { containerVariants, itemVariants } from "../shared";
+import { containerVariants, itemVariants, MobileScrollContent, MobileTabHeader, MobileTabLayout } from "../shared";
 import { BentoCard } from "../shared/BentoCard";
 
 // Sections
@@ -380,6 +380,15 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
         onSearchConsumed?.();
     }, [initialSearchQuery]);
 
+    useEffect(() => {
+        const anyMobileSurfaceOpen = !!activeSheet || !!selectedPanel;
+        if (!anyMobileSurfaceOpen || window.innerWidth >= 768) return;
+        window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+        return () => {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+        };
+    }, [activeSheet, selectedPanel]);
+
     if (loading) {
         return (
             <div className="flex items-center justify-center h-96">
@@ -433,13 +442,13 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
         {/* ═══════════════════════════════════════════════════════════════
             MOBILE SETTINGS VIEW
            ═══════════════════════════════════════════════════════════════ */}
-        <div className="md:hidden flex flex-col min-h-0">
-            <div className="flex-1 overflow-y-auto bg-slate-50/80 pb-[140px]">
-                {/* Header */}
-                <div className="px-4 pt-2 pb-3">
-                    <h1 className="text-[22px] font-extrabold text-slate-900">Settings</h1>
-                    <p className="text-[13px] text-slate-500">System configuration</p>
-                    <div className="relative mt-3">
+        <MobileTabLayout className="md:hidden bg-slate-50">
+            <MobileTabHeader className="px-4 pt-2 pb-3 space-y-3">
+                <div>
+                    <h1 className="text-[21px] font-extrabold text-slate-900">Settings</h1>
+                    <p className="text-[12px] font-medium text-slate-500">System configuration</p>
+                </div>
+                <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                         <Input
                             placeholder="Search settings..."
@@ -447,8 +456,10 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="pl-9 h-11 rounded-xl bg-white border-slate-200 text-sm"
                         />
-                    </div>
                 </div>
+            </MobileTabHeader>
+
+            <MobileScrollContent className="px-0 space-y-0 pt-1">
 
                 {/* System Status */}
                 <MobileSectionTitle>System Status</MobileSectionTitle>
@@ -567,16 +578,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         </div>
                     )}
                 </div>
-            </div>
-
-            {/* Sticky Save Footer */}
-            <div className="fixed bottom-0 inset-x-0 z-20 bg-white border-t border-slate-200 px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] shadow-[0_-4px_20px_-4px_rgba(0,0,0,0.08)] md:hidden">
-                <Button onClick={handleSaveAll} disabled={saving} className="w-full h-12 rounded-[14px] bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-[14px] font-extrabold shadow-lg shadow-blue-500/20">
-                    {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                    Save Changes
-                </Button>
-            </div>
-        </div>
+            </MobileScrollContent>
+        </MobileTabLayout>
 
         {/* ═══════════════════════════════════════════════════════════════
             DESKTOP SETTINGS VIEW (existing layout, hidden on mobile)
@@ -780,7 +783,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
             {/* Modal for Full Editors */}
             <AnimatePresence>
                 {selectedPanel && (
-                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-12">
+                    <div className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:z-50 md:items-center md:p-12">
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -792,18 +795,18 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             initial={{ opacity: 0, scale: 0.95, y: 20 }}
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative w-full max-w-6xl max-h-[90vh] bg-white rounded-3xl shadow-2xl flex flex-col overflow-hidden border border-slate-200"
+                            className="relative flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] border border-slate-200 bg-white shadow-2xl md:h-auto md:max-h-[90vh] md:max-w-6xl md:rounded-3xl"
                         >
-                            <div className="flex items-center justify-between p-6 border-b border-slate-100 bg-slate-50/50">
-                                <h2 className="text-2xl font-bold flex items-center gap-3">
+                            <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 p-4 md:p-6">
+                                <h2 className="flex min-w-0 items-center gap-2 text-lg font-black text-slate-900 md:gap-3 md:text-2xl">
                                     {selectedPanel === "cmshome" ? <LayoutTemplate className="w-6 h-6 text-indigo-500" /> : <Building2 className="w-6 h-6 text-emerald-500" />}
-                                    {selectedPanel === "cmshome" ? "Homepage CMS Editor" : "About Us Editor"}
+                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS Editor" : "About Us Editor"}</span>
                                 </h2>
                                 <Button variant="ghost" size="icon" onClick={() => setSelectedPanel(null)} className="h-10 w-10 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200">
                                     <X className="w-5 h-5" />
                                 </Button>
                             </div>
-                            <div className="flex-1 overflow-y-auto p-6 custom-scrollbar bg-slate-50/30">
+                            <div className="custom-scrollbar flex-1 overflow-y-auto bg-slate-50/30 p-3 md:p-6">
                                 {selectedPanel === "cmshome" && (
                                     <Suspense fallback={null}><CmsHomeSection
                                         heroTitle={heroTitle} setHeroTitle={setHeroTitle}
@@ -847,10 +850,10 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     /></Suspense>
                                 )}
                             </div>
-                            <div className="p-5 border-t border-slate-100 bg-white flex justify-end gap-3">
-                                <Button variant="outline" onClick={() => setSelectedPanel(null)}>Close Editor</Button>
+                            <div className="flex flex-col gap-2 border-t border-slate-100 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:flex-row md:justify-end md:p-5">
+                                <Button variant="outline" className="h-11 rounded-xl md:h-10" onClick={() => setSelectedPanel(null)}>Close Editor</Button>
                                 {/* Note: Since save hits the main state, closing and saving from the main Header is preferred, but we can also just let them close it and save later */}
-                                <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
+                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700 md:h-10" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
                                     {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                     Save & Close
                                 </Button>
@@ -864,7 +867,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
             <AnimatePresence>
                 {/* Identity Popup */}
                 {activeSheet === 'identity' && (
-                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6" style={{ pointerEvents: 'auto' }}>
+                    <div className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:items-center md:p-6" style={{ pointerEvents: 'auto' }}>
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -874,21 +877,21 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         />
                         <motion.div
                             layoutId="card-identity"
-                            className="bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-md max-h-[90vh]"
+                            className="relative z-10 flex h-auto max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:max-h-[90vh] md:max-w-md md:rounded-3xl"
                         >
-                            <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-4 md:p-6">
                                 <div>
-                                    <h2 className="text-xl font-bold flex items-center gap-2">
+                                    <h2 className="flex items-center gap-2 text-lg font-black text-slate-900 md:text-xl">
                                         <Globe className="w-5 h-5 text-indigo-500" /> Business Identity
                                     </h2>
-                                    <p className="text-sm text-slate-500 mt-1">Update your company's core public information.</p>
+                                    <p className="mt-1 text-xs font-medium text-slate-500 md:text-sm">Update public business information.</p>
                                 </div>
                                 <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
                                     <X className="w-5 h-5" />
                                 </Button>
                             </div>
 
-                            <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
+                            <div className="custom-scrollbar space-y-4 overflow-y-auto p-4 md:space-y-6 md:p-6">
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700">Site Name</label>
                                     <Input placeholder="Enter site name" value={siteName} onChange={(e) => setSiteName(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
@@ -912,9 +915,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 </div>
                             </div>
 
-                            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0 rounded-b-3xl">
-                                <Button variant="outline" onClick={() => setActiveSheet(null)}>Cancel</Button>
-                                <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
+                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:flex-row md:justify-end md:p-5 md:rounded-b-3xl">
+                                <Button variant="outline" className="h-11 rounded-xl md:h-10" onClick={() => setActiveSheet(null)}>Cancel</Button>
+                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700 md:h-10" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
                                     {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                     Save Changes
                                 </Button>
@@ -925,7 +928,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
                 {/* Finance & Locale Popup */}
                 {activeSheet === 'finance' && (
-                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6" style={{ pointerEvents: 'auto' }}>
+                    <div className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:items-center md:p-6" style={{ pointerEvents: 'auto' }}>
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -935,21 +938,21 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         />
                         <motion.div
                             layoutId="card-finance"
-                            className="bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-md max-h-[90vh]"
+                            className="relative z-10 flex h-auto max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:max-h-[90vh] md:max-w-md md:rounded-3xl"
                         >
-                            <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-4 md:p-6">
                                 <div>
-                                    <h2 className="text-xl font-bold flex items-center gap-2">
+                                    <h2 className="flex items-center gap-2 text-lg font-black text-slate-900 md:text-xl">
                                         <Database className="w-5 h-5 text-emerald-500" /> Finance & Locale
                                     </h2>
-                                    <p className="text-sm text-slate-500 mt-1">Configure currency, taxes, and timezone settings.</p>
+                                    <p className="mt-1 text-xs font-medium text-slate-500 md:text-sm">Configure money and timezone.</p>
                                 </div>
                                 <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
                                     <X className="w-5 h-5" />
                                 </Button>
                             </div>
 
-                            <div className="p-6 overflow-y-auto custom-scrollbar space-y-6">
+                            <div className="custom-scrollbar space-y-4 overflow-y-auto p-4 md:space-y-6 md:p-6">
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700">Currency Symbol</label>
                                     <Input placeholder="$" value={currencySymbol} onChange={(e) => setCurrencySymbol(e.target.value)} className="bg-slate-50 focus:bg-white font-mono text-lg transition-colors" />
@@ -985,9 +988,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 </div>
                             </div>
 
-                            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0 rounded-b-3xl">
-                                <Button variant="outline" onClick={() => setActiveSheet(null)}>Cancel</Button>
-                                <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
+                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:flex-row md:justify-end md:p-5 md:rounded-b-3xl">
+                                <Button variant="outline" className="h-11 rounded-xl md:h-10" onClick={() => setActiveSheet(null)}>Cancel</Button>
+                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700 md:h-10" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
                                     {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                     Save Changes
                                 </Button>
@@ -998,7 +1001,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
                 {/* Catalog Popup */}
                 {activeSheet === 'catalog' && (
-                    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6" style={{ pointerEvents: 'auto' }}>
+                    <div className="fixed inset-0 z-[260] flex items-end justify-center p-0 md:items-center md:p-6" style={{ pointerEvents: 'auto' }}>
                         <motion.div
                             initial={{ opacity: 0 }}
                             animate={{ opacity: 1 }}
@@ -1008,21 +1011,21 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         />
                         <motion.div
                             layoutId="card-catalog"
-                            className="bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-4xl max-h-[90vh]"
+                            className="relative z-10 flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:h-auto md:max-h-[90vh] md:max-w-4xl md:rounded-3xl"
                         >
-                            <div className="p-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-4 md:p-6">
                                 <div>
-                                    <h2 className="text-xl font-bold flex items-center gap-2">
+                                    <h2 className="flex items-center gap-2 text-lg font-black text-slate-900 md:text-xl">
                                         <Wrench className="w-5 h-5 text-blue-500" /> Service Catalogs
                                     </h2>
-                                    <p className="text-sm text-slate-500 mt-1">Manage all the master tags used for filtering and categorizing items.</p>
+                                    <p className="mt-1 text-xs font-medium text-slate-500 md:text-sm">Manage tags used by services and stock.</p>
                                 </div>
                                 <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
                                     <X className="w-5 h-5" />
                                 </Button>
                             </div>
 
-                            <div className="p-4 overflow-y-auto custom-scrollbar">
+                            <div className="custom-scrollbar flex-1 overflow-y-auto p-3 md:p-4">
                                 {/* Note on save mechanism */}
                                 <div className="flex items-start gap-2 bg-blue-50 text-blue-800 p-3 rounded-xl border border-blue-100 text-sm mb-6 mx-2">
                                     <Star className="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
@@ -1039,9 +1042,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 /></Suspense>
                             </div>
 
-                            <div className="p-5 border-t border-slate-100 bg-slate-50 flex justify-end gap-3 shrink-0 rounded-b-3xl">
-                                <Button variant="outline" onClick={() => setActiveSheet(null)}>Close</Button>
-                                <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
+                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] md:flex-row md:justify-end md:p-5 md:rounded-b-3xl">
+                                <Button variant="outline" className="h-11 rounded-xl md:h-10" onClick={() => setActiveSheet(null)}>Close</Button>
+                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700 md:h-10" onClick={() => { setActiveSheet(null); handleSaveAll(); }}>
                                     {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                     Save Changes
                                 </Button>
