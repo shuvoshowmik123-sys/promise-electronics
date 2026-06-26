@@ -990,6 +990,7 @@ export default function DesignConcept() {
 // Reusable Layout Wrapper
 function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }: { children: React.ReactNode, isFixed: boolean, activeTab: string, mobileChromeHidden: boolean }) {
     const mobileChromeOffset = mobileChromeHidden ? "-translate-y-16" : "translate-y-0";
+    const mobileHeight = mobileChromeHidden ? "h-[calc(100%+4rem)]" : "h-full";
     const mobileShellStyle = {
         "--admin-mobile-bottom-clearance": "calc(5.5rem + env(safe-area-inset-bottom))",
     } as CSSProperties;
@@ -998,7 +999,7 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
         return (
             <div className="h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col bg-[#f8fafc] md:overflow-y-auto" style={mobileShellStyle}>
                 <div
-                    className={cn("max-w-[1600px] mx-auto w-full h-full shrink-0 flex flex-col min-h-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0", mobileChromeOffset)}
+                    className={cn("max-w-[1600px] mx-auto w-full md:h-full shrink-0 flex flex-col min-h-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0", mobileHeight, mobileChromeOffset)}
                 >
                     {children}
                 </div>
@@ -1008,7 +1009,7 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
     return (
         <div className="min-h-full pt-16 md:pt-5 px-0 md:px-5 pb-0 md:pb-5 flex flex-col bg-[#f8fafc]" style={mobileShellStyle}>
             <div
-                className={cn("max-w-[1600px] mx-auto w-full flex-1 shrink-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0", mobileChromeOffset)}
+                className={cn("max-w-[1600px] mx-auto w-full flex-1 shrink-0 transition-transform duration-200 ease-out will-change-transform md:translate-y-0", mobileChromeHidden && "min-h-[calc(100%+4rem)]", mobileChromeOffset)}
             >
                 {children}
             </div>
