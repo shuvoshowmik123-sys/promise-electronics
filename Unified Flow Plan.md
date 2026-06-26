@@ -144,35 +144,67 @@ Remaining risks:
 
 ## Phase 1: Unified Repair Case Contract
 
-Status: NOT STARTED
+Status: DONE
+Completed: 2026-06-26
 
-Goal: define backend rules without changing broad UI.
+Files changed:
 
-Decisions:
+- server/services/repair-case.service.ts (NEW)
+- server/routes/service-requests.routes.ts (added repair-case endpoint)
+- server/routes/jobs.routes.ts (added repair-case endpoint)
 
-- Service Request remains intake.
-- Job Ticket becomes master after device acceptance.
-- Customer Repair Journey becomes customer timeline.
-- Logistics becomes separate movement layer.
+### What the unified case contract returns
 
-Implementation tasks:
+`UnifiedRepairCase` contains:
 
-- add or confirm helper functions for linked repair case lookup
-- make sure Service Request can show linked job summary
-- make sure Job Ticket can show source service request
-- make sure Journey links to request and job consistently
-- define automatic sync entry points
+- `operationalOwner`: `"service_request"` (pre-conversion) or `"job_ticket"` (post-conversion)
+- `serviceRequest`: full ServiceRequest record or null
+- `jobTicket`: full JobTicket record or null
+- `journey`: JourneySummary (id, stage, status, friendly status, event/schedule counts) or null — loaded via raw SQL from customer_repair_journeys
+- `pickup`: PickupSchedule record or null — loaded via Drizzle from pickup_schedules
+- `customer`: { id, name, phone, address } — aggregated from SR or job
+- `links`: { serviceRequestId, jobTicketId, journeyId, pickupScheduleId, serviceRequestTicketNumber, jobTicketNumber }
+- `warnings`: array of { code, message } for data integrity issues
 
-Do not:
+Warning codes:
+- `ORPHANED_CONVERSION`: SR references a job that doesn't exist
+- `NO_CUSTOMER_ACCOUNT`: no linked customer account (walk-in/unregistered)
+- `NO_JOURNEY`: converted to job but no journey record
+- `NO_SOURCE_REQUEST`: job has no linked service request (direct walk-in or corporate)
+- `MISSING_PICKUP`: SR indicates pickup but no pickup_schedule found
 
-- redesign pickup tab yet
-- redesign customer portal yet
-- create new visual system
+### API endpoints
 
-Done when:
+- `GET /api/admin/service-requests/:id/repair-case` — load case from SR side (requires serviceRequests permission)
+- `GET /api/admin/job-tickets/:id/repair-case` — load case from job side (requires jobs permission)
 
-- one repair can be loaded as a unified case object in backend or API helper
-- link rules are documented in code or plan
+Both return the same `UnifiedRepairCase` shape. Either tab can display the same repair context.
+
+### parentJobId ambiguity documented
+
+`job_tickets.parentJobId` is overloaded:
+1. SR→Job conversion: stores `service_request.id` (job.service.ts line 304)
+2. Warranty claims: stores `original_job.id` (warranty.routes.ts line 306)
+3. Corporate bulk jobs: stores parent job id (corporate.service.ts)
+
+The repair case service uses `service_requests.convertedJobId` (forward link) and `serviceRequestRepo.getServiceRequestByConvertedJobId()` (reverse lookup) instead of relying on parentJobId. This avoids the ambiguity.
+
+### Design decisions
+
+- Journey tables stay as raw SQL (not added to Drizzle schema) — they are migration-created tables queried via `db.execute(sql`...`)`. Adding to schema.ts would require verifying all column types match and could break existing journey service code. Phase 5 can address this.
+- No schema changes in this phase — all new code is read-only aggregation.
+- No UI changes — contract is backend-only for future tab consumption.
+
+Checks run:
+
+- npx tsc --noEmit --pretty false (PASS)
+- git diff --check (PASS)
+
+Remaining issues:
+
+- Journey summary uses raw SQL subqueries for event/schedule counts — acceptable for read-only aggregation but not as efficient as indexed counts
+- Customer identity falls back from SR to job denormalized fields — some edge cases (renamed customer, phone changed) could show stale data
+- Pickup is only linked via SR — jobs created without SR (walk-in) have no pickup path
 
 ## Phase 2: Service Request Tab Redesign As Intake Queue
 

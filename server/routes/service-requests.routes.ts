@@ -1110,4 +1110,18 @@ router.patch('/api/service-requests/:id/quote-response', async (req: Request, re
     }
 });
 
+// ─── Unified Repair Case ───
+import { loadRepairCaseByServiceRequest } from '../services/repair-case.service.js';
+
+router.get('/api/admin/service-requests/:id/repair-case', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+    try {
+        const repairCase = await loadRepairCaseByServiceRequest(req.params.id);
+        if (!repairCase) return res.status(404).json({ error: 'Service request not found' });
+        res.json(repairCase);
+    } catch (error: any) {
+        logRouteError('GET /api/admin/service-requests/:id/repair-case', req, error);
+        res.status(500).json({ error: error.message || 'Failed to load repair case' });
+    }
+});
+
 export default router;

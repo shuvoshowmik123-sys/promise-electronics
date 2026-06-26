@@ -1130,4 +1130,17 @@ router.post('/api/job-tickets/:id/mark-incomplete', requireAdminAuth, requirePer
     }
 });
 
+// ─── Unified Repair Case ───
+import { loadRepairCaseByJobTicket } from '../services/repair-case.service.js';
+
+router.get('/api/admin/job-tickets/:id/repair-case', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+    try {
+        const repairCase = await loadRepairCaseByJobTicket(req.params.id);
+        if (!repairCase) return res.status(404).json({ error: 'Job ticket not found' });
+        res.json(repairCase);
+    } catch (error: any) {
+        res.status(500).json({ error: error.message || 'Failed to load repair case' });
+    }
+});
+
 export default router;
