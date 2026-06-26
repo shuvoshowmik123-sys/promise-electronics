@@ -62,7 +62,7 @@ export function MobileBottomSheetFrame({
 }
 
 export function MobileBottomSheetHandle({ className }: { className?: string }) {
-    return <div className={cn("mx-auto h-1.5 w-10 rounded-full bg-slate-300", className)} aria-hidden />;
+    return <div className={cn("mx-auto mt-4 mb-3 h-1.5 w-10 rounded-full bg-slate-300", className)} aria-hidden />;
 }
 
 interface MobileBottomSheetDragHandleProps {
