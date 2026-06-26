@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { drawerApi, settingsApi } from "@/lib/api";
 import { containerVariants, itemVariants, MobileScrollContent, MobileTabHeader, MobileTabLayout, MobileMarqueeText, MobileSegmentTabs } from "../shared";
 import { BentoCard } from "../shared/BentoCard";
-import { MobileBottomSheetFrame, MobileBottomSheetDragHandle } from "@/components/ui/mobile-bottom-sheet";
+import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 
 // Sections
 import GeneralSection from "./settings/GeneralSection";
@@ -823,16 +823,13 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             onClick={() => setSelectedPanel(null)}
                             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
                         />
-                        <MobileBottomSheetFrame onClose={() => setSelectedPanel(null)} dragHandleOnly className="relative flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] border border-slate-200 bg-white shadow-2xl md:hidden">
-                            <MobileBottomSheetDragHandle onClose={() => setSelectedPanel(null)} />
-                            <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-3">
+                        <MobileBottomSheetFrame onClose={() => setSelectedPanel(null)} className="relative flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] border border-slate-200 bg-white shadow-2xl md:hidden">
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="border-b border-slate-100 bg-white px-4 py-3">
                                 <h2 className="flex min-w-0 items-center gap-2 text-base font-black text-slate-900">
                                     {selectedPanel === "cmshome" ? <LayoutTemplate className="w-5 h-5 text-indigo-500" /> : <Building2 className="w-5 h-5 text-emerald-500" />}
                                     <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS" : "About Us"}</span>
                                 </h2>
-                                <Button variant="ghost" size="icon" onClick={() => setSelectedPanel(null)} className="h-9 w-9 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200">
-                                    <X className="w-4 h-4" />
-                                </Button>
                             </div>
                             <div className="custom-scrollbar flex-1 overflow-y-auto bg-slate-50/30 px-3 pb-4">
                                 {selectedPanel === "cmshome" && (
@@ -970,8 +967,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             onClick={() => setActiveSheet(null)}
                             className="absolute inset-0 bg-slate-900/40"
                         />
-                        <MobileBottomSheetFrame onClose={() => setActiveSheet(null)} dragHandleOnly className="relative z-10 flex h-auto max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
-                            <MobileBottomSheetDragHandle onClose={() => setActiveSheet(null)} />
+                        <MobileBottomSheetFrame onClose={() => setActiveSheet(null)} className="relative z-10 flex h-auto max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
                             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                                 <div>
                                     <h2 className="flex items-center gap-2 text-base font-black text-slate-900">
@@ -979,9 +976,6 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     </h2>
                                     <p className="mt-0.5 text-xs font-medium text-slate-500">Update public business information.</p>
                                 </div>
-                                <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
-                                    <X className="w-5 h-5" />
-                                </Button>
                             </div>
                             <div className="custom-scrollbar space-y-4 overflow-y-auto p-4">
                                 <div className="space-y-2">
@@ -1076,8 +1070,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             onClick={() => setActiveSheet(null)}
                             className="absolute inset-0 bg-slate-900/40"
                         />
-                        <MobileBottomSheetFrame onClose={() => setActiveSheet(null)} dragHandleOnly className="relative z-10 flex h-auto max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
-                            <MobileBottomSheetDragHandle onClose={() => setActiveSheet(null)} />
+                        <MobileBottomSheetFrame onClose={() => setActiveSheet(null)} className="relative z-10 flex h-auto max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
                             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                                 <div>
                                     <h2 className="flex items-center gap-2 text-base font-black text-slate-900">
@@ -1085,9 +1079,6 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     </h2>
                                     <p className="mt-0.5 text-xs font-medium text-slate-500">Configure money and timezone.</p>
                                 </div>
-                                <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
-                                    <X className="w-5 h-5" />
-                                </Button>
                             </div>
                             <div className="custom-scrollbar space-y-4 overflow-y-auto p-4">
                                 <div className="space-y-2">
@@ -1202,8 +1193,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             onClick={() => setActiveSheet(null)}
                             className="absolute inset-0 bg-slate-900/40"
                         />
-                        <MobileBottomSheetFrame onClose={() => setActiveSheet(null)} dragHandleOnly className="relative z-10 flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
-                            <MobileBottomSheetDragHandle onClose={() => setActiveSheet(null)} />
+                        <MobileBottomSheetFrame onClose={() => setActiveSheet(null)} className="relative z-10 flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
+                            <MobileBottomSheetHandle className="mt-2 mb-1" />
                             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                                 <div>
                                     <h2 className="flex items-center gap-2 text-base font-black text-slate-900">
@@ -1211,9 +1202,6 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     </h2>
                                     <p className="mt-0.5 text-xs font-medium text-slate-500">Manage tags used by services and stock.</p>
                                 </div>
-                                <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
-                                    <X className="w-5 h-5" />
-                                </Button>
                             </div>
                             <div className="shrink-0 px-3 py-2 border-b border-slate-100 bg-slate-50/50">
                                 <MobileSegmentTabs
