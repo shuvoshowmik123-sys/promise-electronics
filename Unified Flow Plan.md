@@ -446,32 +446,66 @@ Phase 2 (A through D) is functionally complete:
 - Frontend: lane filter chips (mobile + desktop), lane counts from backend, call log dialog, call history in detail view, staff-action banner, muted converted/closed cards
 - Visual QA: PASS at desktop 1440x900 and mobile 390x844
 
-## Phase 3: Service Request To Job Conversion
+## Phase 3A: Service Request To Job Conversion Hardening
+
+Status: DONE
+Completed: 2026-06-27
+
+Files changed:
+
+- server/services/job.service.ts — improved error messages, added phone normalization
+- server/services/repair-case.service.ts — added JOURNEY_LINK_BROKEN warning
+
+### Audit findings
+
+Conversion path (`POST /api/admin/service-requests/:id/verify-and-convert`) was already well-guarded:
+
+1. Duplicate prevention: ✓ — `if (request.convertedJobId) throw` (was present)
+2. Custody enforcement: ✓ — `JOB_CREATION_STAGES` requires "picked_up" or "device_received" (was present)
+3. Fields copied: ✓ — customer name/phone/address, device brand/size/model, issue, quote amount, corporate links (was present)
+4. `convertedJobId` always set: ✓ — updated in SR after job creation (was present)
+5. `parentJobId` stores SR id: ✓ — `parentJobId: request.id` (was present, ambiguity documented in Phase 1)
+6. Journey linked: ✓ — `syncJobConversionToJourney` links journey + creates "job_created" event (was present)
+7. Audit logging: ✓ — both SR conversion and job creation audit events (was present)
+8. Timeline event: ✓ — SR timeline records conversion with actor name (was present)
+
+### Hardening applied
+
+1. Error messages improved:
+   - Duplicate: now shows linked job id: `"already converted to job JOB-2026-0123. Open the linked job instead."`
+   - Stage check: now shows current stage and allowed stages: `"Cannot create job at stage 'intake'. Device custody must be confirmed first (stage must be 'picked_up' or 'device_received')."`
+
+2. Phone normalization: job ticket now gets `customerPhoneNormalized` from `normalizePhone(request.phone)` during conversion. Previously only `customerPhone` was copied, missing the normalized form used for phone-based lookups.
+
+3. Repair case warning: added `JOURNEY_LINK_BROKEN` code for cases where job exists but journey record has no valid id (sync may have failed during conversion).
+
+### What was NOT changed
+
+- Journey sync remains fire-and-forget (`.catch()` in route handler). Making it transactional would require wrapping the entire conversion in a DB transaction, which is a larger change. The `NO_JOURNEY` repair-case warning already catches this case.
+- `parentJobId` field name not renamed (documented in Phase 1 — used for warranty/corporate too).
+- No claim code for walk-in no-account customers (deferred to later phase).
+- No printed slip generation (deferred — not blocking conversion flow).
+
+Checks run:
+
+- npx tsc --noEmit --pretty false (PASS)
+- npx vite build --mode development (PASS, 17.79s)
+- git diff --check (PASS)
+
+Remaining risks:
+
+- Journey sync failure is silent. Staff must check repair case warnings if customer reports missing timeline.
+- Walk-in direct job creation (no SR involved) has no structured intake tracking. Phase 4 should address this.
+
+## Phase 3B: Conversion UI + Remaining Tasks
 
 Status: NOT STARTED
 
-Goal: make conversion reliable and hard to misuse.
+Remaining tasks from original Phase 3:
 
-Allowed conversion paths:
-
-- customer drops TV at shop
-- pickup completed
-- admin verifies and accepts work
-- walk-in direct job creation
-
-Tasks:
-
-- enforce custody/receive step before normal repair job
-- preserve customer name, phone, media, issue, quote, and source
-- create or link Customer Repair Journey
-- create audit event
-- create printed slip/claim code path for no-account customers if missing
-
-Done when:
-
-- converted Service Request clearly points to Job Ticket
-- Job Ticket clearly points back to Service Request
-- customer timeline continues without duplicate records
+- printed slip/claim code path for no-account customers
+- walk-in direct job creation flow audit
+- conversion UI improvements (show what will be copied, preview job before creating)
 
 ## Phase 4: Job Tab Sync
 

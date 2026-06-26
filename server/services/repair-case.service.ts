@@ -121,6 +121,10 @@ function buildWarnings(sr: ServiceRequest | null, job: JobTicket | null, journey
         warnings.push({ code: 'MISSING_PICKUP', message: 'Service request indicates pickup but no pickup schedule found' });
     }
 
+    if (job && journey && !journey.id) {
+        warnings.push({ code: 'JOURNEY_LINK_BROKEN', message: 'Job exists but journey record has no id — sync may have failed during conversion' });
+    }
+
     return warnings;
 }
 

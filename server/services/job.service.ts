@@ -12,6 +12,7 @@ import { jobRepo, serviceRequestRepo, inventoryRepo } from '../repositories/inde
 import { nanoid } from 'nanoid';
 import type { JobTicket, ServiceRequest } from '../../shared/schema.js';
 import { repairJourneyService } from './customer-repair-journey.service.js';
+import { normalizePhone } from '../utils/phone.js';
 
 function isPickupRequest(request: ServiceRequest): boolean {
     return request.servicePreference === "pickup"
@@ -276,11 +277,13 @@ export class JobService {
         }
 
         if (request.convertedJobId) {
-            throw new Error("Service request has already been converted to a job ticket");
+            throw new Error(`This request was already converted to job ${request.convertedJobId}. Open the linked job instead.`);
         }
 
-        if (!schema.JOB_CREATION_STAGES.includes((request.stage || "") as any)) {
-            throw new Error("Device custody must be confirmed before creating a job ticket");
+        const currentStage = request.stage || "intake";
+        if (!schema.JOB_CREATION_STAGES.includes(currentStage as any)) {
+            const allowed = schema.JOB_CREATION_STAGES.join('" or "');
+            throw new Error(`Cannot create job at stage "${currentStage}". Device custody must be confirmed first (stage must be "${allowed}").`);
         }
 
         const jobId = await jobRepo.getNextJobNumber();
@@ -289,6 +292,7 @@ export class JobService {
             id: jobId,
             customer: request.customerName,
             customerPhone: request.phone,
+            customerPhoneNormalized: normalizePhone(request.phone),
             customerAddress: request.address || undefined,
             device: `${request.brand} TV`,
             tvSerialNumber: request.modelNumber || undefined,
