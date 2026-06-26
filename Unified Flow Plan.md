@@ -492,6 +492,12 @@ Checks run:
 - npx vite build --mode development (PASS, 17.79s)
 - git diff --check (PASS)
 
+### Hotfix: JOURNEY_LINK_BROKEN detection (2026-06-27)
+
+Original check `job && journey && !journey.id` never fires — if journey is found it always has an id. Real failure mode: journey exists (found by service_request_id) but `job_ticket_id` is null or mismatched because `syncJobConversionToJourney` failed silently.
+
+Fix: added `serviceRequestId` and `jobTicketId` to `JourneySummary`. New condition: if `sr.convertedJobId && job && journey && journey.jobTicketId !== job.id` then warn with both ids for diagnosis.
+
 Remaining risks:
 
 - Journey sync failure is silent. Staff must check repair case warnings if customer reports missing timeline.

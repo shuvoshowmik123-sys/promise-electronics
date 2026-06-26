@@ -6,6 +6,8 @@ import { getCallSummary, deriveIntakeLane, type CallSummary, type IntakeLane } f
 
 interface JourneySummary {
     id: string;
+    serviceRequestId: string | null;
+    jobTicketId: string | null;
     currentStage: string;
     currentStatus: string;
     customerFriendlyStatus: string;
@@ -80,6 +82,8 @@ async function getJourneySummary(serviceRequestId: string | null, jobTicketId: s
 
     return {
         id: journeyRow.id,
+        serviceRequestId: journeyRow.service_request_id ?? null,
+        jobTicketId: journeyRow.job_ticket_id ?? null,
         currentStage: journeyRow.current_stage,
         currentStatus: journeyRow.current_status,
         customerFriendlyStatus: journeyRow.customer_friendly_status,
@@ -121,8 +125,8 @@ function buildWarnings(sr: ServiceRequest | null, job: JobTicket | null, journey
         warnings.push({ code: 'MISSING_PICKUP', message: 'Service request indicates pickup but no pickup schedule found' });
     }
 
-    if (job && journey && !journey.id) {
-        warnings.push({ code: 'JOURNEY_LINK_BROKEN', message: 'Job exists but journey record has no id — sync may have failed during conversion' });
+    if (sr && sr.convertedJobId && job && journey && journey.jobTicketId !== job.id) {
+        warnings.push({ code: 'JOURNEY_LINK_BROKEN', message: `Journey exists but is not linked to converted job ${job.id} — journey.jobTicketId is ${journey.jobTicketId || 'null'}` });
     }
 
     return warnings;
