@@ -352,6 +352,37 @@ Done when:
 - call outcomes are structured
 - converted requests become read-only/source history
 
+## Phase 2C: Desktop Intake Parity
+
+Status: DONE
+Completed: 2026-06-27
+
+Files changed:
+
+- client/src/pages/admin/bento/tabs/ServiceRequestsTab.tsx
+
+### Desktop changes
+
+1. Lane filter chips: replaced STATUS_FILTERS with LANE_CONFIG in desktop toolbar. 9 lanes with counts, horizontal scroll, active chip highlighted.
+2. KPI cards updated: "Total Requests" → "New Intake" (count), "Pending" → "Needs Reply" (count), "Quote Requests" → "Quote & Schedule" (quote sent + schedule needed counts). Cards are clickable to filter by lane.
+3. Desktop detail panel: added intake lane badge, call summary, "Log Call" button, staff-action-needed banner, and call history (up to 4 recent attempts with outcome/mood badges, callback times, notes, staff names).
+4. Desktop grid cards: converted/closed requests muted (bg-slate-50 opacity-75, muted name text). Converted cards show "JOB" badge.
+5. Desktop table rows: converted/closed rows muted (opacity-60).
+
+Checks run:
+
+- npx tsc --noEmit --pretty false (PASS)
+- npx vite build --mode development (PASS, 18.77s)
+- git diff --check (PASS)
+- Visual QA: NOT RUN — confidence MEDIUM
+
+Remaining Phase 2 issues:
+
+- Full lane board/kanban view (not implemented — filter chips only)
+- "Needs Call" lane using backend call summary (client-side only uses SR fields)
+- Guided action sheet/wizard for intake processing
+- Visual QA needed for both desktop and mobile
+
 ## Phase 3: Service Request To Job Conversion
 
 Status: NOT STARTED

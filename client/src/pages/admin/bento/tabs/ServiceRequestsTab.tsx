@@ -992,26 +992,26 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             {/* KPI Row */}
             <div className="hidden md:grid grid-cols-1 md:grid-cols-4 gap-6 shrink-0">
                 <motion.div variants={itemVariants} className="col-span-1 h-full min-h-[200px]">
-                    <BentoCard className="h-full bg-gradient-to-br from-blue-500 to-indigo-600" title="Total Requests" icon={<MessageSquare size={24} className="text-white" />} variant="vibrant">
+                    <BentoCard className="h-full bg-gradient-to-br from-blue-500 to-indigo-600" title="New Intake" icon={<MessageSquare size={24} className="text-white" />} variant="vibrant" onClick={() => { setLaneFilter("new_intake"); setSrStatusFilter("all"); }}>
                         <div className="flex-1 flex flex-col justify-end">
-                            <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{serviceRequests.length}</div>
-                            <div className="text-white/80 text-sm mt-2">All time</div>
+                            <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{laneCounts.new_intake || 0}</div>
+                            <div className="text-white/80 text-sm mt-2">Unreviewed</div>
                         </div>
                     </BentoCard>
                 </motion.div>
                 <motion.div variants={itemVariants} className="col-span-1 h-full min-h-[200px]">
-                    <BentoCard className="h-full bg-gradient-to-br from-amber-500 to-orange-600" title="Pending" icon={<Clock size={24} className="text-white" />} variant="vibrant">
+                    <BentoCard className="h-full bg-gradient-to-br from-amber-500 to-orange-600" title="Needs Reply" icon={<Clock size={24} className="text-white" />} variant="vibrant" onClick={() => { setLaneFilter("needs_reply"); setSrStatusFilter("all"); }}>
                         <div className="flex-1 flex flex-col justify-end">
-                            <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{serviceRequests.filter((r: any) => r.status === 'New').length}</div>
-                            <div className="text-white/80 text-sm mt-2">Needs Review</div>
+                            <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{laneCounts.needs_reply || 0}</div>
+                            <div className="text-white/80 text-sm mt-2">Staff action</div>
                         </div>
                     </BentoCard>
                 </motion.div>
                 <motion.div variants={itemVariants} className="col-span-1 md:col-span-2 h-full min-h-[200px]">
-                    <BentoCard className="h-full bg-gradient-to-br from-purple-500 to-fuchsia-600" title="Quote Requests" icon={<FileText size={24} className="text-white" />} variant="vibrant">
+                    <BentoCard className="h-full bg-gradient-to-br from-purple-500 to-fuchsia-600" title="Quote & Schedule" icon={<FileText size={24} className="text-white" />} variant="vibrant">
                         <div className="flex-1 flex justify-between items-end">
-                            <div><div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{serviceRequests.filter((r: any) => r.isQuote).length}</div><div className="text-white/80 text-sm mt-2">Total Quotes</div></div>
-                            <div className="text-right"><div className="text-2xl font-bold text-white/90">{serviceRequests.filter((r: any) => r.isQuote && r.quoteStatus === 'Pending').length}</div><div className="text-white/60 text-xs">Pending Response</div></div>
+                            <div><div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{laneCounts.quote_sent || 0}</div><div className="text-white/80 text-sm mt-2">Quotes Sent</div></div>
+                            <div className="text-right"><div className="text-2xl font-bold text-white/90">{laneCounts.schedule_needed || 0}</div><div className="text-white/60 text-xs">Schedule Needed</div></div>
                         </div>
                     </BentoCard>
                 </motion.div>
@@ -1019,10 +1019,13 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
 
             {/* Filter Toolbar */}
             <motion.div variants={itemVariants} className="hidden md:flex flex-wrap items-center gap-3">
-                <div className="flex gap-1 bg-slate-100 p-1 rounded-xl">
-                    {STATUS_FILTERS.map(s => (
-                        <button key={s} onClick={() => { setSrStatusFilter(s); setSrPage(1); }} className={cn("px-3 py-1.5 text-xs font-semibold rounded-lg transition-all", srStatusFilter === s ? statusActiveColors[s] : "text-slate-500 hover:text-slate-700 hover:bg-slate-200")}>
-                            {s === "all" ? `All (${serviceRequests.length})` : s}
+                <div className="flex gap-1 overflow-x-auto hide-scrollbar bg-slate-100 p-1 rounded-xl">
+                    {LANE_CONFIG.map(lane => (
+                        <button key={lane.value} onClick={() => { setLaneFilter(lane.value); setSrStatusFilter("all"); setSrPage(1); }}
+                            className={cn("shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap",
+                                laneFilter === lane.value ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200"
+                            )}>
+                            {lane.label} {(laneCounts[lane.value] || 0) > 0 && <span className="ml-1 font-black tabular-nums">{laneCounts[lane.value]}</span>}
                         </button>
                     ))}
                 </div>
@@ -1049,16 +1052,17 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                         {paginated.map((request: any, index: number) => {
                             const sc = statusCardColors[request.status] || statusCardColors.Closed;
+                            const deskLane = classifyLane(request);
+                            const deskMuted = deskLane === 'converted_to_job' || deskLane === 'rejected_closed';
                             return (
                                 <motion.div layout initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: index * 0.04 }} key={request.id}
                                     onClick={() => handleViewDetails(request, index)}
                                     className={cn(
-                                        "group relative bg-white rounded-2xl border cursor-pointer bc-hover bc-rise",
+                                        "group relative rounded-2xl border cursor-pointer bc-hover bc-rise",
                                         "border-t-4",
                                         sc.border,
-                                        sc.bg,
-                                        sc.ring,
-                                        !request.adminInteracted && "ring-1 ring-rose-100 bg-rose-50/30"
+                                        deskMuted ? "bg-slate-50 opacity-75" : cn("bg-white", sc.bg, sc.ring),
+                                        !request.adminInteracted && !deskMuted && "ring-1 ring-rose-100 bg-rose-50/30"
                                     )}
                                 >
                                     <div className="p-4 space-y-2.5">
@@ -1069,9 +1073,12 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                                 )}
                                                 <span className="font-mono text-[11px] font-bold text-slate-400 truncate">#<HighlightMatch text={request.ticketNumber} query={srSearchQuery} /></span>
                                             </div>
-                                            <Badge className={cn("font-semibold shadow-none border text-[10px] px-1.5 py-0", sc.badge)}>{request.status}</Badge>
+                                            <div className="flex items-center gap-1">
+                                                {deskLane === 'converted_to_job' && <Badge className="h-4 rounded-md border-indigo-200 bg-indigo-50 px-1.5 text-[9px] font-black text-indigo-700 shadow-none">JOB</Badge>}
+                                                <Badge className={cn("font-semibold shadow-none border text-[10px] px-1.5 py-0", sc.badge)}>{request.status}</Badge>
+                                            </div>
                                         </div>
-                                        <h4 className="text-sm font-semibold text-slate-800 truncate group-hover:text-blue-600 transition-colors"><HighlightMatch text={request.customerName} query={srSearchQuery} /></h4>
+                                        <h4 className={cn("text-sm font-semibold truncate transition-colors", deskMuted ? "text-slate-500" : "text-slate-800 group-hover:text-blue-600")}><HighlightMatch text={request.customerName} query={srSearchQuery} /></h4>
                                         <p className="text-xs text-slate-500 truncate"><HighlightMatch text={request.brand} query={srSearchQuery} /> {request.screenSize ? `${request.screenSize}"` : ""} — <HighlightMatch text={request.primaryIssue} query={srSearchQuery} /></p>
                                         <p className="text-[11px] text-slate-400 pt-1">{format(new Date(request.createdAt), 'MMM d, yyyy')}</p>
                                     </div>
@@ -1097,13 +1104,16 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                     <AnimatePresence>
                                         {paginated.map((request: any, index: number) => {
                                             const sc = statusCardColors[request.status] || statusCardColors.Closed;
+                                            const tblLane = classifyLane(request);
+                                            const tblMuted = tblLane === 'converted_to_job' || tblLane === 'rejected_closed';
                                             return (
                                                 <TableRow
                                                     key={request.id}
                                                     onClick={() => handleViewDetails(request, index)}
                                                     className={cn(
                                                         "cursor-pointer hover:bg-blue-50/50 transition-colors group bc-hover bc-rise border-b border-slate-100 last:border-0",
-                                                        !request.adminInteracted && "bg-rose-50/20"
+                                                        tblMuted ? "opacity-60" : "",
+                                                        !request.adminInteracted && !tblMuted && "bg-rose-50/20"
                                                     )}
                                                 >
                                                     <TableCell className="font-mono text-xs font-bold text-slate-500 py-4">
@@ -1379,6 +1389,46 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         <div><Label className="text-muted-foreground text-xs">Status</Label><Badge className={cn("font-semibold shadow-none border mt-1", statusCardColors[selectedRequest.status]?.badge)}>{selectedRequest.status}</Badge></div>
                                         <div><Label className="text-muted-foreground text-xs">Submitted</Label><p className="text-sm mt-1">{format(new Date(selectedRequest.createdAt), "PPP 'at' p")}</p></div>
                                     </div>
+
+                                    {/* Intake Lane + Call Summary */}
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        {(() => {
+                                            const lane = classifyLane(selectedRequest);
+                                            const laneConf = LANE_CONFIG.find(l => l.value === lane);
+                                            return laneConf ? <Badge className="rounded-full border border-blue-200 bg-blue-50 text-blue-800 text-[10px] font-black shadow-none px-2 py-0">{laneConf.label}</Badge> : null;
+                                        })()}
+                                        {repairCase?.intake?.callSummary?.callAttemptCount > 0 && (
+                                            <span className="text-xs text-slate-500">{repairCase.intake.callSummary.callAttemptCount} call{repairCase.intake.callSummary.callAttemptCount > 1 ? 's' : ''}{repairCase.intake.callSummary.lastCallOutcome ? ` · ${repairCase.intake.callSummary.lastCallOutcome.replace(/_/g, ' ')}` : ''}</span>
+                                        )}
+                                        <Button variant="outline" size="sm" className="ml-auto h-7 rounded-lg text-xs font-bold gap-1" onClick={() => setShowCallLogDialog(true)}>
+                                            <Phone className="h-3 w-3" /> Log Call
+                                        </Button>
+                                    </div>
+                                    {repairCase?.intake?.needsStaffAction && (
+                                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                                            ⚡ Staff action needed — {repairCase.intake.lane.replace(/_/g, ' ')}
+                                        </div>
+                                    )}
+                                    {callAttempts.length > 0 && (
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
+                                            <p className="text-xs font-bold text-slate-500 flex items-center gap-1"><Phone className="h-3 w-3" /> Call History ({callAttempts.length})</p>
+                                            {callAttempts.slice(0, 4).map((a: any) => (
+                                                <div key={a.id} className="flex items-start gap-2 rounded-lg bg-white px-3 py-2 text-xs border border-slate-100">
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                                            <span className="font-bold text-slate-700">{(a.callType || '').replace(/_/g, ' ')}</span>
+                                                            {a.outcome && <Badge className="h-4 rounded-full border-0 bg-slate-200 px-1.5 text-[9px] font-bold text-slate-600 shadow-none">{a.outcome.replace(/_/g, ' ')}</Badge>}
+                                                            {a.customerMood && a.customerMood !== 'normal' && <Badge className="h-4 rounded-full border-0 bg-amber-100 px-1.5 text-[9px] font-bold text-amber-700 shadow-none">{a.customerMood}</Badge>}
+                                                        </div>
+                                                        {a.notes && <p className="mt-0.5 text-slate-500">{a.notes}</p>}
+                                                        {a.callbackAt && <p className="text-blue-600 font-semibold">↩ Callback: {new Date(a.callbackAt).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</p>}
+                                                    </div>
+                                                    <span className="shrink-0 text-[10px] text-slate-400">{a.staffName}</span>
+                                                </div>
+                                            ))}
+                                            {callAttempts.length > 4 && <p className="text-center text-xs text-slate-400 font-semibold">+{callAttempts.length - 4} more</p>}
+                                        </div>
+                                    )}
 
                                     {/* Customer Info */}
                                     <div className="border-t pt-4">
