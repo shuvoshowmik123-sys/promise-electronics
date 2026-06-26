@@ -513,7 +513,85 @@ Remaining tasks from original Phase 3:
 - walk-in direct job creation flow audit
 - conversion UI improvements (show what will be copied, preview job before creating)
 
-## Phase 4: Job Tab Sync
+## Phase 4A: Walk-in / Offline Job Intake Audit
+
+Status: DONE (audit only, no code changes)
+Completed: 2026-06-27
+
+Files inspected:
+
+- server/routes/jobs.routes.ts (POST /api/job-tickets, lines 167-228)
+- server/services/job.service.ts (verifyAndConvertServiceRequest)
+- server/services/canonical-customer.service.ts (bindCustomerToJob, findCustomerByPhone)
+- server/services/customer-repair-journey.service.ts (no direct-job journey creation)
+- server/services/customer.service.ts (linkServiceRequestsByPhone)
+- server/routes/customer.routes.ts (phone-based SR linking on registration/login)
+- shared/schema.ts (jobTickets table: source, customerPhoneNormalized fields)
+- client/src/pages/admin/bento/tabs/JobTicketsTab.tsx (handlePrintTicket, generatePrintHtml)
+
+### Answers to 10 questions
+
+1. **Can admin create a direct walk-in job today?**
+YES. POST /api/job-tickets accepts any validated InsertJobTicket. Corporate jobs are explicitly blocked, but walk-in is allowed. The `source` field supports `'walk_in'` as a value (schema line 264) but it is NOT required or auto-set — the UI may or may not send it.
+
+2. **Which fields are required?**
+Only `status` (defaults to "Pending"). All other fields are nullable: customer, customerPhone, device, issue, technician, priority, etc. The Zod schema omits createdAt and completedAt but everything else is optional. In practice the admin UI wizard requires customer name, phone, device, and issue.
+
+3. **Is phone normalized?**
+NOT on direct job creation. `customerPhoneNormalized` exists on the schema but the POST /api/job-tickets route does NOT set it. It's only set during SR-to-job conversion (Phase 3A fix). The `bindCustomerToJob` fire-and-forget call normalizes phone internally for canonical customer matching but does NOT update the job_ticket record.
+
+4. **Is there an audit log?**
+YES. POST /api/job-tickets creates an audit log entry: `CREATE_JOB` action with the job data as newValue (lines 213-221).
+
+5. **Is a customer account required?**
+NO. Job tickets don't have a customerId FK. They store denormalized `customer` (name text) and `customerPhone` (text). The `bindCustomerToJob` call creates or updates a `customers` record by phone, but this is fire-and-forget and doesn't link back to the job.
+
+6. **Is a journey created?**
+NO. Direct job creation does NOT create a customer_repair_journey. Journey is only created from service requests (createJourneyFromServiceRequest / createJourneyFromQuote) or linked during SR-to-job conversion (syncJobConversionToJourney).
+
+7. **Can the customer later see the job from portal/mobile?**
+PARTIALLY. Public QR tracking (GET /api/job-tickets/track/:id) works for any job by id — shows device, status, dates, estimated cost. But the customer portal "My Repairs" page only shows customer_repair_journeys, not direct jobs. So a walk-in job is only trackable via printed QR code, not portal.
+
+8. **If customer later creates account with same phone, is old repair linked?**
+SERVICE REQUESTS: YES — linkServiceRequestsByPhone auto-links unlinked SRs on registration/login.
+JOB TICKETS: NO — no equivalent linkJobTicketsByPhone exists. Direct walk-in jobs stay unlinked.
+CANONICAL CUSTOMERS: PARTIAL — bindCustomerToJob creates a customers table record by phone, but this doesn't make jobs visible in the portal.
+
+9. **Is there a safe non-OTP claim model already available?**
+NO. There is no claim code field on job_tickets. Public tracking uses the job id itself (e.g., JOB-2026-0399) as the tracking identifier — this is guessable if someone knows the numbering pattern. No secret claim code exists.
+
+10. **What is the minimum public-release-safe flow?**
+Current flow: admin creates job with name+phone → prints ticket with QR code → customer uses QR to track basic status. This is safe for release because:
+- No sensitive data is exposed on the public tracking endpoint
+- QR tracking URL includes the job id which is not easily guessable without the printed slip
+- Customer name and phone are NOT shown on the public tracking page
+- The flow works without customer account
+
+### Gaps identified
+
+1. `customerPhoneNormalized` NOT set on direct job creation — breaks phone-based lookup consistency.
+2. No journey created for direct jobs — customer portal "My Repairs" won't show these repairs.
+3. No automatic job-to-account linking when customer registers with same phone.
+4. `source` field not auto-set to `'walk_in'` — UI may not send it, making it hard to filter.
+5. No claim code for secure linking without portal account.
+
+### Recommended Phase 4B implementation (for Inspector approval)
+
+Safe minimal hardening (backend only, no UI redesign):
+
+1. **Set `customerPhoneNormalized` on direct job creation** — add `normalizePhone(jobData.customerPhone)` to POST /api/job-tickets. Low risk.
+
+2. **Auto-set `source = 'walk_in'`** when no source is provided and no corporateClientId/corporateChallanId are present. Low risk.
+
+3. **Optionally create journey for walk-in jobs** — only if customer phone matches an existing user account. Fire-and-forget. Medium risk (new behavior for direct jobs).
+
+4. **Add linkJobTicketsByPhone** equivalent — when customer registers, auto-link existing jobs by normalized phone. Medium risk (touches customer registration flow).
+
+5. **Claim code** deferred — requires schema change + UI.
+
+Inspector: should any of items 1-4 be implemented now, or should all wait for Phase 4B?
+
+## Phase 4B: Job Tab Sync
 
 Status: NOT STARTED
 
