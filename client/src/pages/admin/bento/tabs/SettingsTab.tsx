@@ -444,9 +444,15 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
            ═══════════════════════════════════════════════════════════════ */}
         <MobileTabLayout className="md:hidden bg-slate-50">
             <MobileTabHeader className="px-4 pt-2 pb-3 space-y-3">
-                <div>
-                    <h1 className="text-[21px] font-extrabold text-slate-900">Settings</h1>
-                    <p className="text-[12px] font-medium text-slate-500">System configuration</p>
+                <div className="flex items-start justify-between">
+                    <div>
+                        <h1 className="text-[21px] font-extrabold text-slate-900">Settings</h1>
+                        <p className="text-[12px] font-medium text-slate-500">System configuration</p>
+                    </div>
+                    <Button onClick={handleSaveAll} disabled={saving} size="sm" className="h-8 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold px-3 gap-1.5 shrink-0 mt-0.5">
+                        {saving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                        Save
+                    </Button>
                 </div>
                 <div className="relative">
                         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -620,7 +626,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
             {/* Main Bento Layout */}
             <div className="flex flex-col gap-6">
 
-                {/* Row 1 & 2: General Section (includes Status Cards & Ops) */}
+                {/* Row 1 & 2: General Section (visual cards — dialogs rendered separately below) */}
                 <GeneralSection
                     siteName={siteName} setSiteName={setSiteName}
                     supportPhone={supportPhone} setSupportPhone={setSupportPhone}
@@ -633,8 +639,6 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                     maintenanceMode={maintenanceMode} setMaintenanceMode={setMaintenanceMode}
                     allowRegistrations={allowRegistrations} setAllowRegistrations={setAllowRegistrations}
                     developerMode={developerMode} setDeveloperMode={setDeveloperMode}
-                    externalDialogTrigger={generalDialogTrigger}
-                    onExternalDialogConsumed={() => setGeneralDialogTrigger(null)}
                 />
 
                 {/* Row 3: Drawer Day-End Controls */}
@@ -775,6 +779,25 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
             </div>
 
         </motion.div>
+
+            {/* GeneralSection dialogs — always mounted so mobile rows can trigger them */}
+            <div className="contents md:hidden">
+                <GeneralSection
+                    siteName={siteName} setSiteName={setSiteName}
+                    supportPhone={supportPhone} setSupportPhone={setSupportPhone}
+                    serviceCenterContact={serviceCenterContact} setServiceCenterContact={setServiceCenterContact}
+                    businessHours={businessHours} setBusinessHours={setBusinessHours}
+                    currencySymbol={currencySymbol} setCurrencySymbol={setCurrencySymbol}
+                    vatPercentage={vatPercentage} setVatPercentage={setVatPercentage}
+                    timezone={timezone} setTimezone={setTimezone}
+                    logoUrl={logoUrl} setLogoUrl={setLogoUrl}
+                    maintenanceMode={maintenanceMode} setMaintenanceMode={setMaintenanceMode}
+                    allowRegistrations={allowRegistrations} setAllowRegistrations={setAllowRegistrations}
+                    developerMode={developerMode} setDeveloperMode={setDeveloperMode}
+                    externalDialogTrigger={generalDialogTrigger}
+                    onExternalDialogConsumed={() => setGeneralDialogTrigger(null)}
+                />
+            </div>
 
             {/* ═══════════════════════════════════════════════════════════════
                 SHARED MODALS (used by both mobile and desktop)
