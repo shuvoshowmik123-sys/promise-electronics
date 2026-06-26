@@ -23,6 +23,21 @@ This is the source of truth for admin mobile visual consistency. Use it before a
   - ghost/white bar after sheet or chrome transition
   - detail/action surface covered by global chrome
 
+## Accepted Bottom-Sheet Baseline (2026-06-26)
+
+All admin mobile bottom sheets must follow:
+- Portaled to `document.body` if inside a transformed parent (Settings sheets)
+- Gray drag pill via `MobileBottomSheetHandle` with default spacing `mt-4 mb-3`
+- Whole sheet drags as one surface (full-sheet `drag="y"` on `MobileBottomSheetFrame`)
+- No independent pill drag (no `MobileBottomSheetDragHandle` unless proven needed)
+- No mobile top-right X button on normal sheets — close via drag down, backdrop tap, Escape, or footer Cancel
+- Footer actions clear safe area with `pb-[calc(...+env(safe-area-inset-bottom))]`
+- Overlay covers full viewport (`fixed inset-0`, height=844 on 844px viewport)
+- No 64px bottom ghost strip (inner wrapper uses `h-[calc(100%+4rem)]` when chrome hidden)
+- Body scrolls normally inside `overflow-y-auto` containers
+- Inputs focus normally — sheet drag does not interfere
+- Chrome hides while sheet is open, restores on close
+
 ## Status Labels
 
 - `Native Complete`: matches Dashboard C behavior and passed mobile/desktop verification.
@@ -60,7 +75,7 @@ These need functional-clean behavior before launch, not full native redesign unl
 | Inquiries | Functional Clean | 2026-06-25 | `raw/inquiries-*.json` + screenshots | Reply sheet ✓ (both viewports), textarea focus safe ✓, X close ✓. |
 | Warranty Claims | Functional Clean | 2026-06-25 | `raw/warranty-claims-*.json` + screenshots | Mobile cards ✓, dropdown actions ✓, dock ✓. |
 | Orders | Not Mobile Priority | 2026-06-25 | `raw/orders-*.json` + screenshots | Module disabled — "Access Restricted". Permission-enabled retest needed. |
-| Settings | Functional Clean | 2026-06-25 | `raw/settings-*.json` + screenshots | Configuration cards ✓, dock ✓. |
+| Settings | Native Complete | 2026-06-26 | `raw/settings-*.json` + `screenshots/handle-verify-finance-390.png` | Native mobile redesign: grouped rows, compact sections, portaled sheets, real drag handle, no bottom strip, no fake pill, no mobile X button. Inspector approved. |
 | Audit Logs | Not Mobile Priority | 2026-06-25 | `raw/audit-logs-*.json` + screenshots | Module disabled — "Access Restricted". Permission-enabled retest needed. |
 
 ## Required Row Update Format
