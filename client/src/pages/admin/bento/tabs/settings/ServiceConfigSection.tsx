@@ -28,12 +28,12 @@ interface ServiceConfigSectionProps {
 
 export default function ServiceConfigSection(props: ServiceConfigSectionProps) {
     const categories = [
-        { label: "Service Categories", count: props.serviceCategories.length, icon: Wrench, color: "text-blue-500", bg: "bg-blue-50", border: "border-blue-100" },
-        { label: "Shop Categories", count: props.shopCategories.length, icon: ShoppingBag, color: "text-emerald-500", bg: "bg-emerald-50", border: "border-emerald-100" },
-        { label: "TV Brands", count: props.tvBrands.length, icon: Tv, color: "text-purple-500", bg: "bg-purple-50", border: "border-purple-100" },
-        { label: "TV Sizes", count: props.tvInches.length, icon: Ruler, color: "text-amber-500", bg: "bg-amber-50", border: "border-amber-100" },
-        { label: "Common Symptoms", count: props.commonSymptoms.length, icon: AlertCircle, color: "text-rose-500", bg: "bg-rose-50", border: "border-rose-100" },
-        { label: "Service Filter", count: props.serviceFilterCategories.length, icon: Filter, color: "text-cyan-500", bg: "bg-cyan-50", border: "border-cyan-100" },
+        { label: "Service Categories", shortLabel: "Service", count: props.serviceCategories.length, icon: Wrench, color: "text-blue-500", bg: "bg-blue-50", border: "border-blue-100" },
+        { label: "Shop Categories", shortLabel: "Shop", count: props.shopCategories.length, icon: ShoppingBag, color: "text-emerald-500", bg: "bg-emerald-50", border: "border-emerald-100" },
+        { label: "TV Brands", shortLabel: "Brands", count: props.tvBrands.length, icon: Tv, color: "text-purple-500", bg: "bg-purple-50", border: "border-purple-100" },
+        { label: "TV Sizes", shortLabel: "Sizes", count: props.tvInches.length, icon: Ruler, color: "text-amber-500", bg: "bg-amber-50", border: "border-amber-100" },
+        { label: "Common Symptoms", shortLabel: "Symptoms", count: props.commonSymptoms.length, icon: AlertCircle, color: "text-rose-500", bg: "bg-rose-50", border: "border-rose-100" },
+        { label: "Service Filter", shortLabel: "Filters", count: props.serviceFilterCategories.length, icon: Filter, color: "text-cyan-500", bg: "bg-cyan-50", border: "border-cyan-100" },
     ];
 
     const totalTags = categories.reduce((sum, cat) => sum + cat.count, 0);
@@ -61,7 +61,7 @@ export default function ServiceConfigSection(props: ServiceConfigSectionProps) {
                             <div key={i} className={`flex items-center justify-between p-3 rounded-xl border ${cat.border} ${cat.bg} group-hover:bg-white group-hover:border-slate-200 transition-colors`}>
                                 <div className="flex items-center gap-2 overflow-hidden pr-2">
                                     <cat.icon className={`w-4 h-4 shrink-0 ${cat.color}`} />
-                                    <span className="text-xs font-semibold text-slate-700 truncate">{cat.label}</span>
+                                    <span className="text-xs font-semibold text-slate-700 truncate"><span className="md:hidden">{cat.shortLabel}</span><span className="hidden md:inline">{cat.label}</span></span>
                                 </div>
                                 <Badge variant="secondary" className="bg-white font-bold shrink-0">{cat.count}</Badge>
                             </div>

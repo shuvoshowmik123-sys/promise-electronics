@@ -826,17 +826,17 @@ export default function UsersTab() {
 
             {/* EDIT USER DIALOG - Similar pattern */}
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-                <DialogContent className="sm:max-w-[425px] rounded-[2rem] border-none shadow-2xl p-0 overflow-hidden">
-                    <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-8 text-white relative overflow-hidden">
+                <DialogContent className="!left-0 !right-0 !top-auto !bottom-0 !translate-x-0 !translate-y-0 !max-h-none !max-w-none w-full rounded-t-[2rem] rounded-b-none border-none shadow-2xl p-0 overflow-hidden h-auto md:!left-[50%] md:!right-auto md:!top-[50%] md:!bottom-auto md:!translate-x-[-50%] md:!translate-y-[-50%] md:!max-h-[calc(100dvh-2rem)] md:!max-w-[425px] md:rounded-[2rem]">
+                    <div className="bg-gradient-to-br from-indigo-600 to-violet-700 p-6 md:p-8 text-white relative overflow-hidden">
                         <Edit className="absolute top-[-20%] right-[-10%] w-48 h-48 text-white/10 rotate-12" />
                         <DialogHeader>
                             <DialogTitle className="text-2xl font-black tracking-tighter">Edit Staff Profile</DialogTitle>
                             <DialogDescription className="text-white/70 font-medium">Update account information for {selectedUser?.name}.</DialogDescription>
                         </DialogHeader>
                     </div>
-                    <div className="p-8 space-y-4">
+                    <div className="p-6 md:p-8 space-y-4 overflow-y-auto">
                         {isSuperAdmin && (
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="space-y-2">
                                     <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Username</Label>
                                     <Input
@@ -893,7 +893,7 @@ export default function UsersTab() {
                             </div>
                         </div>
                     </div>
-                    <div className="p-8 pt-0 flex gap-3">
+                    <div className="p-6 md:p-8 pt-0 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-8 flex gap-3">
                         <Button variant="ghost" className="flex-1 rounded-xl h-12 font-bold text-slate-500" onClick={() => setIsEditOpen(false)}>Cancel</Button>
                         <Button
                             className="flex-[2] rounded-xl h-12 font-black uppercase tracking-widest bg-violet-600 hover:bg-violet-700 shadow-lg shadow-violet-500/20"

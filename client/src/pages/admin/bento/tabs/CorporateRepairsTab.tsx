@@ -502,10 +502,10 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
         const batchDays = `${client.defaultBatchClearanceDays || 7} days batch`;
 
         return [
-            { label: "Type", value: clientType },
-            { label: "Service Warranty", value: serviceWarrantyDays },
-            { label: "Payment", value: paymentTerms },
-            { label: "Clearance", value: batchDays },
+            { label: "Type", mobileLabel: "Type", value: clientType },
+            { label: "Service Warranty", mobileLabel: "Warranty", value: serviceWarrantyDays },
+            { label: "Payment", mobileLabel: "Pay", value: paymentTerms },
+            { label: "Clearance", mobileLabel: "Batch", value: batchDays },
         ];
     }, [client]);
 
@@ -627,10 +627,10 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                         <p className="text-xs font-bold text-slate-500">B2B full-page control room</p>
                     </div>
                 </div>
-                <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar">
+                <div className="flex items-center gap-2 overflow-x-auto hide-scrollbar px-1 scroll-px-2 lg:px-0">
                     {clientRuleChips.slice(0, 4).map((chip) => (
-                        <span key={chip.label} className="shrink-0 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-slate-700">
-                            {chip.label}: <span className="capitalize text-slate-950">{chip.value}</span>
+                        <span key={chip.label} className="shrink-0 whitespace-nowrap rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black text-slate-700">
+                            <span className="md:hidden">{chip.mobileLabel}</span><span className="hidden md:inline">{chip.label}</span>: <span className="capitalize text-slate-950">{chip.value}</span>
                         </span>
                     ))}
                     <span className="shrink-0 inline-flex items-center rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-black text-emerald-700">
@@ -762,23 +762,23 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                         </div>
 
                         <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                            <div className="flex gap-2 overflow-x-auto hide-scrollbar lg:flex-wrap">
+                            <div className="flex gap-2 overflow-x-auto hide-scrollbar px-1 scroll-px-3 lg:flex-wrap lg:px-0">
                                 {[
                                     { key: "pending", label: "Pending", value: cockpitCards.find(c => c.key === "pending")?.value || 0, className: "bg-amber-50 text-amber-800 border-amber-200" },
                                     { key: "ready", label: "Ready", value: cockpitCards.find(c => c.key === "ready")?.value || 0, className: "bg-emerald-50 text-emerald-800 border-emerald-200" },
                                     { key: "delivered", label: "Delivered", value: cockpitCards.find(c => c.key === "delivered")?.value || 0, className: "bg-blue-50 text-blue-800 border-blue-200" },
-                                    { key: "bill-pending", label: "Bill Pending", value: cockpitCards.find(c => c.key === "bill-pending")?.value || 0, className: "bg-violet-50 text-violet-800 border-violet-200" },
+                                    { key: "bill-pending", label: "Bill Due", value: cockpitCards.find(c => c.key === "bill-pending")?.value || 0, className: "bg-violet-50 text-violet-800 border-violet-200" },
                                     { key: "crr", label: "CRR", value: cockpitCards.find(c => c.key === "crr")?.value || 0, className: "bg-rose-50 text-rose-800 border-rose-200" },
                                 ].map((chip) => (
-                                    <button key={chip.key} type="button" onClick={() => setCockpitFilter(chip.key)} className={`shrink-0 rounded-full border px-3 py-1 text-xs font-black transition hover:shadow-sm ${chip.className} ${quickFilter === chip.key ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}>
+                                    <button key={chip.key} type="button" onClick={() => setCockpitFilter(chip.key)} className={`shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-black transition hover:shadow-sm ${chip.className} ${quickFilter === chip.key ? "ring-2 ring-blue-500 ring-offset-1" : ""}`}>
                                         {chip.value} {chip.label}
                                     </button>
                                 ))}
-                                <button type="button" onClick={() => setActiveTab("dashboard")} className="shrink-0 rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-black text-red-800 hover:shadow-sm">
+                                <button type="button" onClick={() => setActiveTab("dashboard")} className="shrink-0 whitespace-nowrap rounded-full border border-red-200 bg-red-50 px-3 py-1 text-xs font-black text-red-800 hover:shadow-sm">
                                     {batchSummary.dueSoon + batchSummary.overdue} Batch Risk
                                 </button>
-                                <button type="button" onClick={() => setActiveTab("service-warranty")} className="shrink-0 rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-800 hover:shadow-sm">
-                                    {batchSummary.extensionPending} Extension Wait
+                                <button type="button" onClick={() => setActiveTab("service-warranty")} className="shrink-0 whitespace-nowrap rounded-full border border-cyan-200 bg-cyan-50 px-3 py-1 text-xs font-black text-cyan-800 hover:shadow-sm">
+                                    {batchSummary.extensionPending} Ext Wait
                                 </button>
                             </div>
 
@@ -810,11 +810,11 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                         </div>
 
                         <Tabs value={activeTab} onValueChange={setActiveTab} className="shrink-0">
-                            <TabsList className="flex h-auto w-full gap-1 overflow-x-auto hide-scrollbar rounded-2xl bg-slate-100 p-1 md:w-auto md:overflow-visible">
+                            <TabsList className="flex h-auto w-full gap-1 overflow-x-auto hide-scrollbar scroll-px-2 rounded-2xl bg-slate-100 p-1 md:w-auto md:overflow-visible">
                                 <TabsTrigger value="work" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">Work</TabsTrigger>
                                 <TabsTrigger value="dashboard" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">Batch</TabsTrigger>
                                 <TabsTrigger value="billing" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">Billing</TabsTrigger>
-                                <TabsTrigger value="portal-access" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">Portal Access</TabsTrigger>
+                                <TabsTrigger value="portal-access" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">Portal</TabsTrigger>
                                 <TabsTrigger value="service-warranty" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">CRR</TabsTrigger>
                                 <TabsTrigger value="history" className="shrink-0 whitespace-nowrap rounded-xl px-3 py-1 text-xs font-bold">History</TabsTrigger>
                             </TabsList>

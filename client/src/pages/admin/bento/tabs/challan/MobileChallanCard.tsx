@@ -70,39 +70,36 @@ export function MobileChallanCard({ challan, searchQuery, onView, onPreviewPdf, 
                     </div>
                 </div>
             </button>
-            <div className="grid grid-cols-5 gap-1 border-t border-blue-100 bg-blue-50/70 p-2">
-                <Button variant="ghost" className="h-10 rounded-xl bg-blue-100 px-1 text-[10px] font-black text-blue-800 hover:bg-blue-200" onClick={() => onView(challan)}>
-                    <Eye className="mr-1 h-3.5 w-3.5" /> View
+            <div className="grid grid-cols-3 gap-1.5 border-t border-blue-100 bg-blue-50/70 p-2">
+                <Button variant="ghost" className="h-9 rounded-xl bg-blue-100 px-2 text-[11px] font-black text-blue-800 hover:bg-blue-200" onClick={() => onView(challan)}>
+                    <Eye className="mr-1.5 h-3.5 w-3.5" /> View
                 </Button>
-                <Button variant="ghost" className="h-10 rounded-xl bg-indigo-100 px-1 text-[10px] font-black text-indigo-800 hover:bg-indigo-200" onClick={() => onPreviewPdf(challan)}>
-                    <Download className="mr-1 h-3.5 w-3.5" /> PDF
+                <Button variant="ghost" className="h-9 rounded-xl bg-indigo-100 px-2 text-[11px] font-black text-indigo-800 hover:bg-indigo-200" onClick={() => onPreviewPdf(challan)}>
+                    <Download className="mr-1.5 h-3.5 w-3.5" /> PDF
                 </Button>
                 <Button
                     variant="ghost"
-                    className="h-10 rounded-xl bg-sky-100 px-1 text-[10px] font-black text-sky-800 hover:bg-sky-200 disabled:bg-slate-100 disabled:text-slate-300"
+                    className="h-9 rounded-xl bg-sky-100 px-2 text-[11px] font-black text-sky-800 hover:bg-sky-200 disabled:bg-slate-100 disabled:text-slate-300"
                     disabled={challan.status !== "Pending"}
                     onClick={() => onSend(challan)}
                 >
-                    <Send className="mr-1 h-3.5 w-3.5" />
-                    Send
+                    <Send className="mr-1.5 h-3.5 w-3.5" /> Send
                 </Button>
                 <Button
                     variant="ghost"
-                    className="h-10 rounded-xl bg-cyan-100 px-1 text-[10px] font-black text-cyan-800 hover:bg-cyan-200 disabled:bg-slate-100 disabled:text-slate-300"
+                    className="col-span-2 h-9 rounded-xl bg-cyan-100 px-2 text-[11px] font-black text-cyan-800 hover:bg-cyan-200 disabled:bg-slate-100 disabled:text-slate-300"
                     disabled={challan.status !== "Delivered"}
                     onClick={() => onReceive(challan)}
                 >
-                    <CheckCircle2 className="mr-1 h-3.5 w-3.5" />
-                    Receive
+                    <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" /> Receive
                 </Button>
                 <Button
                     variant="ghost"
-                    className="h-10 rounded-xl bg-blue-100 px-1 text-[10px] font-black text-blue-800 hover:bg-blue-200 disabled:bg-slate-100 disabled:text-slate-300"
+                    className="h-9 rounded-xl bg-blue-100 px-2 text-[11px] font-black text-blue-800 hover:bg-blue-200 disabled:bg-slate-100 disabled:text-slate-300"
                     disabled={challan.status === "Pending"}
                     onClick={() => onReset(challan)}
                 >
-                    <RotateCcw className="mr-1 h-3.5 w-3.5" />
-                    Reset
+                    <RotateCcw className="mr-1.5 h-3.5 w-3.5" /> Reset
                 </Button>
             </div>
         </div>
