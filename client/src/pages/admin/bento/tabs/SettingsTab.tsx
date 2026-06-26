@@ -15,7 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import { drawerApi, settingsApi } from "@/lib/api";
 import { containerVariants, itemVariants, MobileScrollContent, MobileTabHeader, MobileTabLayout, MobileMarqueeText, MobileSegmentTabs } from "../shared";
 import { BentoCard } from "../shared/BentoCard";
-import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
+import { MobileBottomSheetFrame, MobileBottomSheetDragHandle } from "@/components/ui/mobile-bottom-sheet";
 
 // Sections
 import GeneralSection from "./settings/GeneralSection";
@@ -824,7 +824,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm"
                         />
                         <MobileBottomSheetFrame onClose={() => setSelectedPanel(null)} dragHandleOnly className="relative flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] border border-slate-200 bg-white shadow-2xl md:hidden">
-                            <div className="pt-3" />
+                            <MobileBottomSheetDragHandle onClose={() => setSelectedPanel(null)} />
                             <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-white px-4 py-3">
                                 <h2 className="flex min-w-0 items-center gap-2 text-base font-black text-slate-900">
                                     {selectedPanel === "cmshome" ? <LayoutTemplate className="w-5 h-5 text-indigo-500" /> : <Building2 className="w-5 h-5 text-emerald-500" />}
@@ -971,7 +971,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             className="absolute inset-0 bg-slate-900/40"
                         />
                         <MobileBottomSheetFrame onClose={() => setActiveSheet(null)} dragHandleOnly className="relative z-10 flex h-auto max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
-                            <div className="pt-3" />
+                            <MobileBottomSheetDragHandle onClose={() => setActiveSheet(null)} />
                             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                                 <div>
                                     <h2 className="flex items-center gap-2 text-base font-black text-slate-900">
@@ -1077,7 +1077,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             className="absolute inset-0 bg-slate-900/40"
                         />
                         <MobileBottomSheetFrame onClose={() => setActiveSheet(null)} dragHandleOnly className="relative z-10 flex h-auto max-h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
-                            <div className="pt-3" />
+                            <MobileBottomSheetDragHandle onClose={() => setActiveSheet(null)} />
                             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                                 <div>
                                     <h2 className="flex items-center gap-2 text-base font-black text-slate-900">
@@ -1203,7 +1203,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             className="absolute inset-0 bg-slate-900/40"
                         />
                         <MobileBottomSheetFrame onClose={() => setActiveSheet(null)} dragHandleOnly className="relative z-10 flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
-                            <div className="pt-3" />
+                            <MobileBottomSheetDragHandle onClose={() => setActiveSheet(null)} />
                             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 px-4 py-3">
                                 <div>
                                     <h2 className="flex items-center gap-2 text-base font-black text-slate-900">

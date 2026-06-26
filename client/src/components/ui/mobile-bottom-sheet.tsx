@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { motion, type PanInfo } from "framer-motion";
 import { cn } from "@/lib/utils";
 
@@ -63,4 +63,35 @@ export function MobileBottomSheetFrame({
 
 export function MobileBottomSheetHandle({ className }: { className?: string }) {
     return <div className={cn("mx-auto h-1.5 w-10 rounded-full bg-slate-300", className)} aria-hidden />;
+}
+
+interface MobileBottomSheetDragHandleProps {
+    className?: string;
+    onClose: () => void;
+    closeOffset?: number;
+    closeVelocity?: number;
+}
+
+export function MobileBottomSheetDragHandle({
+    className,
+    onClose,
+    closeOffset = 80,
+    closeVelocity = 500,
+}: MobileBottomSheetDragHandleProps) {
+    const handleDragEnd = (_: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) => {
+        if (info.offset.y > closeOffset || info.velocity.y > closeVelocity) onClose();
+    };
+
+    return (
+        <motion.div
+            drag="y"
+            dragDirectionLock
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0, bottom: 0.4 }}
+            onDragEnd={handleDragEnd}
+            className={cn("flex shrink-0 cursor-grab items-center justify-center py-2.5 active:cursor-grabbing", className)}
+        >
+            <div className="h-1.5 w-10 rounded-full bg-slate-300" aria-hidden />
+        </motion.div>
+    );
 }
