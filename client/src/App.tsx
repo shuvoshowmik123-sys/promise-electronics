@@ -19,8 +19,7 @@ import { ModuleProvider } from "@/contexts/ModuleContext";
 import { IdleTimeoutProvider } from "@/components/auth/IdleTimeoutProvider";
 import { lazy, Suspense, useEffect } from "react";
 
-// Admin Pages - Only login page separately, rest handled by AdminRouter
-const AdminLoginPage = lazy(() => import("@/pages/admin/login"));
+// Admin Pages - All handled by AdminRouter (including login)
 const AdminRouter = lazy(() => import("@/components/layout/AdminRouter").then(m => ({ default: m.AdminRouter })));
 import { CorporateRouter } from "@/components/layout/CorporateRouter";
 import { TechRouter } from "@/components/layout/TechRouter";
@@ -58,11 +57,11 @@ function Router() {
     });
   }, [setLocation]);
 
-  const isAdminRoute = location.startsWith("/admin") && location !== "/admin/login";
+  const isAdminRoute = location.startsWith("/admin");
   const isCorporateRoute = location.startsWith("/corporate");
   const isTechRoute = location.startsWith("/tech");
 
-  // For admin routes (except login), render AdminRouter which has its own stable layout
+  // All /admin/* routes (including /admin/login) share one AdminAuthProvider
   if (isAdminRoute) {
     return (
       <AdminAuthProvider>
@@ -88,16 +87,6 @@ function Router() {
       <AdminAuthProvider>
         <TechRouter />
       </AdminAuthProvider>
-    );
-  }
-
-  if (location === "/admin/login") {
-    return (
-      <Suspense fallback={<PageSkeleton />}>
-        <AdminAuthProvider>
-          <AdminLoginPage />
-        </AdminAuthProvider>
-      </Suspense>
     );
   }
 

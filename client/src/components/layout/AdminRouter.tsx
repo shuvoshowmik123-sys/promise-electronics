@@ -4,9 +4,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { AdminAIChatLauncher } from "@/components/AdminAIChatLauncher";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { Loader2 } from "lucide-react";
 
 // The new unified Admin SPA
 const DesignConcept = lazy(() => import("@/pages/admin/design-concept"));
+
+// Admin Login
+const AdminLoginPage = lazy(() => import("@/pages/admin/login"));
 
 // Standalone Print Views (Not part of the Bento Dashboard Shell)
 const CorporateBillPrint = lazy(() => import("@/pages/admin/corporate-bill-print"));
@@ -51,8 +55,30 @@ export function AdminRouter() {
     const [location] = useLocation();
     const { status } = useAdminAuth();
 
-    if (status === "unauthenticated" && location !== "/admin/login") {
+    // While checking auth, show a spinner (prevents flash-redirect)
+    if (status === "pending") {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-100">
+                <Loader2 className="w-8 h-8 animate-spin text-primary" />
+            </div>
+        );
+    }
+
+    // Show login page when unauthenticated
+    if (status === "unauthenticated") {
+        if (location === "/admin/login") {
+            return (
+                <Suspense fallback={<AdminContentSkeleton />}>
+                    <AdminLoginPage />
+                </Suspense>
+            );
+        }
         return <Redirect to="/admin/login" />;
+    }
+
+    // Authenticated user on login page → redirect to admin
+    if (location === "/admin/login") {
+        return <Redirect to="/admin" />;
     }
 
     // Standalone Routes
