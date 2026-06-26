@@ -619,26 +619,84 @@ Checks run:
 - npx vite build --mode development (PASS, 17.19s)
 - git diff --check (PASS)
 
-## Phase 4C: Job Tab Sync
+## Phase 4C: Job Status Sync Audit
+
+Status: DONE (audit only, no code changes)
+Completed: 2026-06-27
+
+Files inspected:
+
+- server/routes/jobs.routes.ts (advance-status lines 242-399, PATCH lines 597-735, record-payment lines 931-971, verify-rollback lines 530-555)
+- server/services/job.service.ts (syncLinkedServiceRequestFromJob lines 141-181, recordJobPayment lines 102-139)
+- server/services/customer-repair-journey.service.ts (syncJobStatusToJourney lines 774-833, syncPaymentToJourney)
+- server/services/repair-case.service.ts (buildWarnings)
+
+### Answers to 10 questions
+
+1. **Which job statuses exist?**
+Linear progression: Pending → In Progress → Ready → Completed. Also: Diagnosing, Pending Parts, Waiting on Parts (legacy, all map to In Progress on advance). Terminal: Completed, Delivered, Cancelled, Not OK. Status field is free text but state machine enforces linear advance.
+
+2. **Which status changes are linear/enforced?**
+`POST /advance-status` enforces: Pending→In Progress→Ready→Completed. Legacy statuses (Diagnosing, Pending Parts) map to In Progress. PATCH route strips status changes entirely (lines 612-617). Only advance-status can move forward. Rollback requires Super Admin approval. So progression IS strictly enforced.
+
+3. **Which status changes update customer journey today?**
+Only `advance-status` calls `syncJobStatusToJourney()` (line 390). Maps: Pending→device_received, Diagnosing→inspection_started, Pending Parts/In Progress/On Workbench→repair_in_progress, Ready/Completed→repair_completed, Delivered→delivered, Cancelled→cancelled. Warranty event added on Ready/Completed if warrantyExpiryDate exists.
+
+4. **Which status changes update source service request today?**
+Only `advance-status` calls `syncLinkedServiceRequestFromJob()` (line 376). Maps job status to SR trackingStatus and status. PATCH only syncs on technician assignment changes (lines 709-724). Payment does NOT sync SR. Rollback does NOT sync SR or journey.
+
+5. **When a job reaches Ready/Completed/Delivered, what does the customer see?**
+Ready: notification created if `trigger_notify_ready` setting enabled (line 353-371). Journey updated to "repair_completed" with message "Your device is ready!". Completed: journey updated to "repair_completed", warranty event created. Delivered: journey updated to "delivered". Customer sees these in portal "My Repairs" if journey exists and is linked to their account.
+
+6. **Does admin need manual intervention after job completion?**
+NO for SR/journey sync — advance-status handles it automatically. YES for: delivery scheduling (no automatic logistics task created), invoice printing (manual action), and device handover (OTP custody flow is service-request-only, not job-level).
+
+7. **Is delivery-required-but-missing detected anywhere?**
+NO. `pickup_required` exists on journey but no code checks whether a job marked Ready/Completed has a pending delivery logistics task. The repair-case contract has `MISSING_PICKUP` warning for SR-level pickup but nothing for delivery-from-job.
+
+8. **Are notifications sent to customer/admin on job status changes?**
+advance-status: YES — SSE to admin (publishJobTicketEvent), SSE to customer if SR linked and changed (notifyCustomerUpdate), push notification on Ready. PATCH: SSE to admin YES, push to customer only on status change (which is normally blocked). Payment: SSE to admin YES, journey event YES, but no customer push. Rollback: NO sync, NO notification.
+
+9. **What is the safest Phase 4D implementation path?**
+Central sync helper called after every status mutation:
+a. `syncLinkedServiceRequestFromJob()` — already exists, already called by advance-status. Missing from: rollback approval, bulk-update.
+b. `syncJobStatusToJourney()` — already exists, already called by advance-status. Missing from: rollback approval, bulk-update.
+c. Add delivery-required warning to repair-case contract: when job is Ready/Completed, source SR has servicePreference=pickup, and no pickup_schedule with status=Delivered exists.
+d. Do NOT touch logistics model yet.
+
+10. **What must not be changed yet?**
+- Do not add a delivery/logistics task creation — Phase 7-8 scope.
+- Do not make rollback sync automatic without Inspector approval (rollback is intentionally restricted).
+- Do not change linear advance-status state machine.
+- Do not add customer-facing delivery tracking.
+- Do not touch corporate job sync.
+
+### Gap summary
+
+| Mutation path | Syncs SR | Syncs Journey | Notifies customer | Notifies admin |
+|---|---|---|---|---|
+| advance-status | ✓ | ✓ | ✓ (Ready: push+SSE, others: SSE if SR linked) | ✓ SSE |
+| PATCH (technician) | ✓ | ✗ | ✓ SSE if SR linked | ✓ SSE |
+| PATCH (other fields) | ✗ | ✗ | ✗ | ✓ SSE |
+| record-payment | ✗ | ✓ (payment event) | ✗ | ✓ SSE |
+| verify-rollback (approved) | ✗ | ✗ | ✗ | ✓ SSE |
+| bulk-update | ✗ | ✗ | ✗ | ✓ SSE |
+
+### Recommended Phase 4D implementation
+
+1. Add `DELIVERY_NEEDED` repair-case warning: when job status is Ready/Completed, source SR has pickup preference, and no delivered pickup_schedule exists. Backend only, no UI.
+
+2. Add SR+journey sync to `verify-rollback` (when approved and status changes). Low risk — rollback already changes job status.
+
+3. Add journey sync to `bulk-update` if status changes. Medium risk — bulk-update touches many jobs.
+
+4. Consider adding journey sync to PATCH technician assignment (currently only SR syncs). Low risk.
+
+Inspector: which of items 1-4 should proceed to Phase 4D?
+
+## Phase 4D: Job Sync Implementation
 
 Status: NOT STARTED
-
-Goal: job status automatically updates customer-facing state and source request state.
-
-Sync rules:
-
-- Job Ready -> Journey repair completed / ready message
-- Job Completed -> Journey completed and Service Request completed
-- Job Delivered -> delivery complete
-- Job Cancelled -> closed softly
-- Warranty active -> Journey warranty event
-
-Tasks:
-
-- centralize sync in job service
-- remove need for manual service request updates after conversion
-- notify customer when linked
-- notify admin if delivery is required but missing
 
 Done when:
 
