@@ -1,11 +1,8 @@
-import { neon } from "@neondatabase/serverless";
+import { db } from "../db.js";
+import { sql } from "drizzle-orm";
 
 export async function migrateManualPaymentTables() {
-    const url = process.env.DATABASE_URL;
-    if (!url) throw new Error("DATABASE_URL not configured");
-
-    const sql = neon(url);
-    await sql`CREATE TABLE IF NOT EXISTS manual_payments (
+    await db.execute(sql`CREATE TABLE IF NOT EXISTS manual_payments (
         id TEXT PRIMARY KEY,
         job_ticket_id TEXT,
         service_request_id TEXT,
@@ -28,12 +25,12 @@ export async function migrateManualPaymentTables() {
         applied_at TIMESTAMP,
         created_at TIMESTAMP NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-    )`;
-    await sql`ALTER TABLE manual_payments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'admin_manual'`;
-    await sql`CREATE INDEX IF NOT EXISTS idx_manual_payments_status ON manual_payments (status)`;
-    await sql`CREATE INDEX IF NOT EXISTS idx_manual_payments_source ON manual_payments (source)`;
-    await sql`CREATE INDEX IF NOT EXISTS idx_manual_payments_job_ticket ON manual_payments (job_ticket_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS idx_manual_payments_service_request ON manual_payments (service_request_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS idx_manual_payments_transaction ON manual_payments (transaction_id)`;
-    await sql`CREATE INDEX IF NOT EXISTS idx_manual_payments_created_at ON manual_payments (created_at DESC)`;
+    )`);
+    await db.execute(sql`ALTER TABLE manual_payments ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'admin_manual'`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_manual_payments_status ON manual_payments (status)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_manual_payments_source ON manual_payments (source)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_manual_payments_job_ticket ON manual_payments (job_ticket_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_manual_payments_service_request ON manual_payments (service_request_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_manual_payments_transaction ON manual_payments (transaction_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_manual_payments_created_at ON manual_payments (created_at DESC)`);
 }

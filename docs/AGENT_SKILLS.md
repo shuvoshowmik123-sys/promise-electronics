@@ -35,7 +35,7 @@ Use when editing Express routes, services, repositories, auth, DB access, billin
 Must apply:
 
 - ESM `.js` imports
-- raw Neon DDL for migrations
+- idempotent DDL via `db.execute(sql`...`)` on the standard PostgreSQL client
 - route auth and ownership checks
 - no sensitive response fields
 - no schema guessing

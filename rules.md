@@ -48,7 +48,7 @@ Before backend work, read:
 - No sensitive fields in responses: password, passwordHash, temporaryPassword, resetSecret, otpSecret, codeHash.
 - Customer/corporate routes must be ownership-scoped.
 - Admin routes must use the right auth and permission middleware.
-- DB DDL must use raw Neon client, not Drizzle.
+- DB DDL must use `db.execute(sql`...`)` from drizzle-orm (standard pg). Do NOT use `neon()` for `DATABASE_URL` — only brain services use `neon()` with `BRAIN_DATABASE_URL`.
 
 ## Completion
 

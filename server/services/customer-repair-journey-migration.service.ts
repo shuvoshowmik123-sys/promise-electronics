@@ -1,12 +1,8 @@
-import { neon } from "@neondatabase/serverless";
+import { db } from "../db.js";
+import { sql } from "drizzle-orm";
 
 export async function migrateCustomerRepairJourneyTables() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL not configured");
-
-  const sql = neon(url);
-
-  await sql`CREATE TABLE IF NOT EXISTS customer_repair_journeys (
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS customer_repair_journeys (
     id TEXT PRIMARY KEY,
     customer_id TEXT,
     service_request_id TEXT,
@@ -25,9 +21,9 @@ export async function migrateCustomerRepairJourneyTables() {
     admin_note TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-  )`;
+  )`);
 
-  await sql`CREATE TABLE IF NOT EXISTS customer_repair_journey_events (
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS customer_repair_journey_events (
     id TEXT PRIMARY KEY,
     journey_id TEXT NOT NULL,
     event_type TEXT NOT NULL,
@@ -38,9 +34,9 @@ export async function migrateCustomerRepairJourneyTables() {
     metadata JSONB DEFAULT '{}',
     is_customer_visible BOOLEAN NOT NULL DEFAULT TRUE,
     created_at TIMESTAMP NOT NULL DEFAULT NOW()
-  )`;
+  )`);
 
-  await sql`CREATE TABLE IF NOT EXISTS customer_repair_schedules (
+  await db.execute(sql`CREATE TABLE IF NOT EXISTS customer_repair_schedules (
     id TEXT PRIMARY KEY,
     journey_id TEXT NOT NULL,
     schedule_type TEXT NOT NULL,
@@ -53,26 +49,26 @@ export async function migrateCustomerRepairJourneyTables() {
     admin_note TEXT,
     created_at TIMESTAMP NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP NOT NULL DEFAULT NOW()
-  )`;
+  )`);
 
-  await sql`CREATE INDEX IF NOT EXISTS idx_crj_customer_id ON customer_repair_journeys (customer_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_crj_service_request_id ON customer_repair_journeys (service_request_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_crj_quote_request_id ON customer_repair_journeys (quote_request_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_crj_job_ticket_id ON customer_repair_journeys (job_ticket_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_crj_current_stage ON customer_repair_journeys (current_stage)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_crj_created_at ON customer_repair_journeys (created_at DESC)`;
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_crj_customer_id ON customer_repair_journeys (customer_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_crj_service_request_id ON customer_repair_journeys (service_request_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_crj_quote_request_id ON customer_repair_journeys (quote_request_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_crj_job_ticket_id ON customer_repair_journeys (job_ticket_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_crj_current_stage ON customer_repair_journeys (current_stage)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_crj_created_at ON customer_repair_journeys (created_at DESC)`);
 
-  await sql`CREATE INDEX IF NOT EXISTS idx_crje_journey_id ON customer_repair_journey_events (journey_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_crje_created_at ON customer_repair_journey_events (created_at DESC)`;
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_crje_journey_id ON customer_repair_journey_events (journey_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_crje_created_at ON customer_repair_journey_events (created_at DESC)`);
 
-  await sql`CREATE INDEX IF NOT EXISTS idx_crs_journey_id ON customer_repair_schedules (journey_id)`;
-  await sql`CREATE INDEX IF NOT EXISTS idx_crs_status ON customer_repair_schedules (status)`;
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_crs_journey_id ON customer_repair_schedules (journey_id)`);
+  await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_crs_status ON customer_repair_schedules (status)`);
 
-  await sql`ALTER TABLE customer_repair_schedules ADD COLUMN IF NOT EXISTS assigned_driver_id TEXT`;
-  await sql`ALTER TABLE customer_repair_schedules ADD COLUMN IF NOT EXISTS zone TEXT`;
-  await sql`ALTER TABLE customer_repair_schedules ADD COLUMN IF NOT EXISTS route_order INTEGER`;
-  await sql`ALTER TABLE customer_repair_schedules ADD COLUMN IF NOT EXISTS customer_confirmed_at TIMESTAMP`;
-  await sql`ALTER TABLE customer_repair_schedules ADD COLUMN IF NOT EXISTS pickup_schedule_id TEXT`;
+  await db.execute(sql`ALTER TABLE customer_repair_schedules ADD COLUMN IF NOT EXISTS assigned_driver_id TEXT`);
+  await db.execute(sql`ALTER TABLE customer_repair_schedules ADD COLUMN IF NOT EXISTS zone TEXT`);
+  await db.execute(sql`ALTER TABLE customer_repair_schedules ADD COLUMN IF NOT EXISTS route_order INTEGER`);
+  await db.execute(sql`ALTER TABLE customer_repair_schedules ADD COLUMN IF NOT EXISTS customer_confirmed_at TIMESTAMP`);
+  await db.execute(sql`ALTER TABLE customer_repair_schedules ADD COLUMN IF NOT EXISTS pickup_schedule_id TEXT`);
 
-  await sql`ALTER TABLE customer_repair_journeys ADD COLUMN IF NOT EXISTS warranty_claim_id TEXT`;
+  await db.execute(sql`ALTER TABLE customer_repair_journeys ADD COLUMN IF NOT EXISTS warranty_claim_id TEXT`);
 }
