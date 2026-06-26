@@ -168,7 +168,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
                     title="Data & Backups"
                     icon={<Shield className="w-5 h-5 text-blue-500" />}
                     variant="glass"
-                    layoutId="card-data"
                     onClick={() => setDataDialog(true)}
                 >
                     <div className="absolute top-0 right-0 w-32 h-32 bg-blue-50/50 rounded-full blur-3xl -mr-10 -mt-10 group-hover:bg-blue-100/50 transition-colors" />
@@ -190,7 +189,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
                     title="Maintenance Mode"
                     icon={<AlertTriangle className={`w-5 h-5 ${maintenanceMode ? "text-red-600" : "text-slate-500"}`} />}
                     variant="glass"
-                    layoutId="card-maintenance"
                     onClick={() => setMaintenanceDialog(true)}
                 >
                     <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 transition-colors ${maintenanceMode ? "bg-red-100/60" : "bg-slate-100/50 group-hover:bg-red-50"}`} />
@@ -211,7 +209,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
                     title="User Registrations"
                     icon={<Users className={`w-5 h-5 ${allowRegistrations ? "text-emerald-600" : "text-slate-500"}`} />}
                     variant="glass"
-                    layoutId="card-registration"
                     onClick={() => setRegistrationDialog(true)}
                 >
                     <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 transition-colors ${allowRegistrations ? "bg-emerald-100/60" : "bg-slate-100/50 group-hover:bg-emerald-50"}`} />
@@ -232,7 +229,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
                     title="Developer Mode"
                     icon={<Code2 className={`w-5 h-5 ${developerMode ? "text-amber-600" : "text-slate-500"}`} />}
                     variant="glass"
-                    layoutId="card-developer"
                     onClick={() => { setDeveloperDialog(true); setIsDevCountdownActive(true); setDevCountdown(5); }}
                 >
                     <div className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-3xl -mr-10 -mt-10 transition-colors ${developerMode ? "bg-amber-100/60" : "bg-slate-100/50 group-hover:bg-amber-50"}`} />
@@ -259,7 +255,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
                     icon={<Building2 className="w-5 h-5 text-blue-500" />}
                     variant="glass"
                     onClick={() => document.dispatchEvent(new CustomEvent('open-sheet', { detail: 'identity' }))}
-                    layoutId="card-identity"
                 >
                     <div className="flex flex-col md:flex-row gap-6 items-start h-full pb-2 mt-2">
                         {/* Logo Preview */}
@@ -313,7 +308,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
                     icon={<Percent className="w-5 h-5 text-amber-500" />}
                     variant="glass"
                     onClick={() => document.dispatchEvent(new CustomEvent('open-sheet', { detail: 'finance' }))}
-                    layoutId="card-finance"
                 >
                     <div className="flex flex-col h-full justify-between pb-2 mt-2">
                         <div className="space-y-4">
@@ -484,7 +478,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
 
                         {/* Desktop dialog — unchanged */}
                         <motion.div
-                            layoutId="card-data"
                             className="hidden md:flex bg-white rounded-3xl overflow-hidden shadow-2xl flex-col relative z-10 w-full sm:max-w-xl max-h-[90vh]"
                         >
                             <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
@@ -641,7 +634,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
 
                         {/* Desktop dialog — unchanged */}
                         <motion.div
-                            layoutId="card-maintenance"
                             className="hidden md:flex bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-md max-h-[90vh]"
                         >
                             <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
@@ -792,7 +784,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
 
                         {/* Desktop dialog — unchanged */}
                         <motion.div
-                            layoutId="card-registration"
                             className="hidden md:flex bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-md max-h-[90vh]"
                         >
                             <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
@@ -958,7 +949,6 @@ export default function GeneralSection(props: GeneralSectionProps) {
 
                         {/* Desktop dialog — unchanged */}
                         <motion.div
-                            layoutId="card-developer"
                             className="hidden md:flex bg-white rounded-3xl overflow-hidden shadow-2xl flex flex-col relative z-10 w-full sm:max-w-md max-h-[90vh]"
                         >
                             <div className="px-6 pt-6 pb-4 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">

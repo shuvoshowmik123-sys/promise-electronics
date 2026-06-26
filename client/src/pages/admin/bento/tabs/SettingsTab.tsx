@@ -1011,7 +1011,6 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
                         {/* Desktop popup — unchanged */}
                         <motion.div
-                            layoutId="card-identity"
                             className="relative z-10 hidden md:flex h-auto max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
                         >
                             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-6">
@@ -1128,7 +1127,6 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
                         {/* Desktop popup — unchanged */}
                         <motion.div
-                            layoutId="card-finance"
                             className="relative z-10 hidden md:flex h-auto max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
                         >
                             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-6">
@@ -1260,7 +1258,6 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
                         {/* Desktop popup — unchanged */}
                         <motion.div
-                            layoutId="card-catalog"
                             className="relative z-10 hidden md:flex h-auto max-h-[90vh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
                         >
                             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-6">
