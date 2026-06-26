@@ -369,7 +369,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                     <div className="fixed inset-0 z-[260] flex items-end justify-center md:hidden" style={{ pointerEvents: 'auto' }}>
                         <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/50" onClick={() => { setShowDeleteDialog(false); setDeleteConfirmation(""); }} />
                         <MobileBottomSheetFrame onClose={() => { setShowDeleteDialog(false); setDeleteConfirmation(""); }} className="bg-white rounded-t-[2rem] shadow-2xl flex flex-col relative z-10 w-full max-h-[80vh]" dragHandleOnly>
-                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="pt-3" />
                             <div className="px-4 pt-3 pb-3 border-b border-red-100">
                                 <h2 className="text-base font-bold text-red-700 flex items-center gap-2"><AlertTriangle className="w-5 h-5" /> Delete All Business Data</h2>
                                 <p className="text-xs text-red-500 mt-1">This will permanently delete ALL data. This action cannot be undone.</p>
@@ -430,7 +430,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                             onClick={handleCloseDialogs}
                         />
                         <MobileBottomSheetFrame onClose={handleCloseDialogs} dragHandleOnly className="bg-white rounded-t-[2rem] overflow-hidden shadow-2xl flex flex-col relative z-10 w-full max-h-[90vh] md:hidden">
-                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="pt-3" />
                             <div className="px-4 pt-3 pb-3 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
                                 <div className="flex items-center gap-3 text-blue-600">
                                     <div className="p-2 bg-blue-100 rounded-xl">
@@ -570,7 +570,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                             onClick={handleCloseDialogs}
                         />
                         <MobileBottomSheetFrame onClose={handleCloseDialogs} dragHandleOnly className="bg-white rounded-t-[2rem] overflow-hidden shadow-2xl flex flex-col relative z-10 w-full max-h-[90vh] md:hidden">
-                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="pt-3" />
                             <div className="px-4 pt-3 pb-3 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
                                 <div className="flex items-center gap-3 text-red-600">
                                     <div className="p-2 bg-red-100 rounded-xl">
@@ -720,7 +720,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                             onClick={handleCloseDialogs}
                         />
                         <MobileBottomSheetFrame onClose={handleCloseDialogs} dragHandleOnly className="bg-white rounded-t-[2rem] overflow-hidden shadow-2xl flex flex-col relative z-10 w-full max-h-[90vh] md:hidden">
-                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="pt-3" />
                             <div className="px-4 pt-3 pb-3 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
                                 <div className="flex items-center gap-3 text-emerald-600">
                                     <div className="p-2 bg-emerald-100 rounded-xl">
@@ -876,7 +876,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                             onClick={handleCloseDialogs}
                         />
                         <MobileBottomSheetFrame onClose={handleCloseDialogs} dragHandleOnly className="bg-white rounded-t-[2rem] overflow-hidden shadow-2xl flex flex-col relative z-10 w-full max-h-[90vh] md:hidden">
-                            <MobileBottomSheetHandle className="mt-2 mb-1" />
+                            <div className="pt-3" />
                             <div className="px-4 pt-3 pb-3 border-b border-slate-100 flex items-start justify-between bg-slate-50/50">
                                 <div className="flex items-center gap-3 text-amber-600">
                                     <div className="p-2 bg-amber-100 rounded-xl">
