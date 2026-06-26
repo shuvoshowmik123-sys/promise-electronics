@@ -109,7 +109,7 @@ function getStatusChangeWarning(type: 'internal' | 'tracking', from: string, to:
         color: 'bg-blue-50 border-blue-200 text-blue-800',
     };
 }
-import { serviceRequestsApi, adminQuotesApi, adminStageApi, jobTicketsApi, settingsApi, adminPickupsApi } from "@/lib/api";
+import { serviceRequestsApi, adminQuotesApi, adminStageApi, jobTicketsApi, settingsApi, adminPickupsApi, repairCaseApi, callAttemptsApi } from "@/lib/api";
 import { useRollback } from "@/contexts/RollbackContext";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { cn } from "@/lib/utils";
@@ -127,6 +127,35 @@ import {
     MobileSegmentTabs,
 } from "../shared";
 import { toast } from "sonner";
+
+type IntakeLane = 'all' | 'new_intake' | 'needs_call' | 'needs_reply' | 'quote_sent' | 'schedule_needed' | 'waiting_customer' | 'ready_to_receive' | 'converted_to_job' | 'rejected_closed';
+
+const LANE_CONFIG: { value: IntakeLane; label: string; shortLabel: string; tone: string }[] = [
+    { value: "all", label: "All", shortLabel: "All", tone: "slate" },
+    { value: "new_intake", label: "New Intake", shortLabel: "New", tone: "blue" },
+    { value: "needs_reply", label: "Needs Reply", shortLabel: "Reply", tone: "amber" },
+    { value: "quote_sent", label: "Quote Sent", shortLabel: "Quote", tone: "violet" },
+    { value: "schedule_needed", label: "Schedule", shortLabel: "Sched", tone: "cyan" },
+    { value: "waiting_customer", label: "Waiting", shortLabel: "Wait", tone: "orange" },
+    { value: "ready_to_receive", label: "Ready", shortLabel: "Ready", tone: "emerald" },
+    { value: "converted_to_job", label: "Job", shortLabel: "Job", tone: "indigo" },
+    { value: "rejected_closed", label: "Closed", shortLabel: "Closed", tone: "rose" },
+];
+
+function classifyLane(sr: ServiceRequest): IntakeLane {
+    if (sr.convertedJobId) return 'converted_to_job';
+    const closed = ['Cancelled', 'Declined', 'Closed', 'Unrepairable'];
+    if (closed.includes(sr.status)) return 'rejected_closed';
+    const ready = ['picked_up', 'device_received'];
+    if (sr.stage && ready.includes(sr.stage)) return 'ready_to_receive';
+    if ((sr as any).quoteStatus === 'Quoted') return 'quote_sent';
+    const sched = ['pickup_scheduled', 'awaiting_dropoff'];
+    if (sr.stage && sched.includes(sr.stage)) return 'schedule_needed';
+    if ((sr as any).isQuote && (!(sr as any).quoteStatus || (sr as any).quoteStatus === 'Pending')) return 'needs_reply';
+    if (!sr.adminInteracted && sr.status === 'Pending') return 'new_intake';
+    if (sr.status === 'Pending' || sr.status === 'Under Review') return 'needs_reply';
+    return 'new_intake';
+}
 
 const LEGACY_ADMIN_STATUS_MAP: Record<string, string> = {
     Pending: "New",
@@ -242,6 +271,8 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
 
     const [srSearchQuery, setSrSearchQuery] = useState(initialSearchQuery || "");
     const [srStatusFilter, setSrStatusFilter] = useState("all");
+    const [laneFilter, setLaneFilter] = useState<IntakeLane>("all");
+    const [showCallLogDialog, setShowCallLogDialog] = useState(false);
 
     // Update search query when initialSearchQuery changes (e.g., from deep link)
     useEffect(() => {
@@ -287,14 +318,14 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
     const [custodyOtpCode, setCustodyOtpCode] = useState("");
 
     useEffect(() => {
-        const anyOpen = !!selectedRequest || showDeleteDialog || showStatusConfirmDialog || showQuotePriceDialog || showVerifyDialog || showRollbackDialog || showMobileMoreActions;
+        const anyOpen = !!selectedRequest || showDeleteDialog || showStatusConfirmDialog || showQuotePriceDialog || showVerifyDialog || showRollbackDialog || showMobileMoreActions || showCallLogDialog;
         if (isMobile && anyOpen) {
             window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
             return () => {
                 window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
             };
         }
-    }, [isMobile, selectedRequest, showDeleteDialog, showStatusConfirmDialog, showQuotePriceDialog, showVerifyDialog, showRollbackDialog, showMobileMoreActions]);
+    }, [isMobile, selectedRequest, showDeleteDialog, showStatusConfirmDialog, showQuotePriceDialog, showVerifyDialog, showRollbackDialog, showMobileMoreActions, showCallLogDialog]);
 
     const queryClient = useQueryClient();
 
@@ -317,6 +348,26 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
         enabled: !!selectedRequest?.convertedJobId,
     });
 
+    const { data: repairCase } = useQuery({
+        queryKey: ["repair-case", selectedRequest?.id],
+        queryFn: () => selectedRequest ? repairCaseApi.getByServiceRequest(selectedRequest.id) : null,
+        enabled: !!selectedRequest?.id,
+    });
+    const { data: callAttempts = [] } = useQuery({
+        queryKey: ["call-attempts", selectedRequest?.id],
+        queryFn: () => selectedRequest ? callAttemptsApi.list(selectedRequest.id) : [],
+        enabled: !!selectedRequest?.id,
+    });
+    const callLogMutation = useMutation({
+        mutationFn: (data: { serviceRequestId: string; callType: string; outcome?: string; notes?: string; customerMood?: string; callbackAt?: string }) =>
+            callAttemptsApi.create(data.serviceRequestId, data),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["call-attempts", selectedRequest?.id] });
+            queryClient.invalidateQueries({ queryKey: ["repair-case", selectedRequest?.id] });
+            toast.success("Call logged");
+            setShowCallLogDialog(false);
+        },
+    });
     const developerMode = settings.find((s: any) => s.key === "developer_mode")?.value === "true";
     const getCurrencySymbol = () => settings?.find((s: any) => s.key === "currency_symbol")?.value || "৳";
 
@@ -640,8 +691,18 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             ...getSymptoms(r.symptoms),
             r.id
         );
-        return ms && (srStatusFilter === 'all' || r.status === srStatusFilter);
+        const statusMatch = srStatusFilter === 'all' || r.status === srStatusFilter;
+        const laneMatch = laneFilter === 'all' || classifyLane(r) === laneFilter;
+        return ms && statusMatch && laneMatch;
     });
+    const laneCounts = useMemo(() => {
+        const counts: Record<string, number> = { all: serviceRequests.length };
+        for (const sr of serviceRequests) {
+            const lane = classifyLane(sr);
+            counts[lane] = (counts[lane] || 0) + 1;
+        }
+        return counts;
+    }, [serviceRequests]);
     const paginated = filtered.slice((srPage - 1) * 12, srPage * 12);
     const totalPages = Math.ceil(filtered.length / 12);
 
@@ -835,27 +896,24 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 <div className="space-y-2">
                     <MobileKpiGrid
                         collapsible
-                        summaryLabel="Request pulse"
+                        summaryLabel="Intake pulse"
                         items={[
-                            { label: "All", value: serviceRequests.length, meta: "total", tone: "slate", onClick: () => selectStatusFilter("all") },
-                            { label: "New", value: statusCounts.New || 0, meta: "unread queue", tone: "blue", onClick: () => selectStatusFilter("New") },
-                            { label: "Review", value: statusCounts["Under Review"] || 0, meta: "staff check", tone: "amber", onClick: () => selectStatusFilter("Under Review") },
-                            { label: "Work", value: statusCounts["Work Order"] || 0, meta: "job linked", tone: "violet", onClick: () => selectStatusFilter("Work Order") },
+                            { label: "All", value: serviceRequests.length, meta: "total", tone: "slate", onClick: () => { setLaneFilter("all"); setSrStatusFilter("all"); } },
+                            { label: "New", value: laneCounts.new_intake || 0, meta: "unread", tone: "blue", onClick: () => { setLaneFilter("new_intake"); setSrStatusFilter("all"); } },
+                            { label: "Reply", value: laneCounts.needs_reply || 0, meta: "staff action", tone: "amber", onClick: () => { setLaneFilter("needs_reply"); setSrStatusFilter("all"); } },
+                            { label: "Job", value: laneCounts.converted_to_job || 0, meta: "converted", tone: "violet", onClick: () => { setLaneFilter("converted_to_job"); setSrStatusFilter("all"); } },
                         ]}
                     />
-                    <MobileCommandRail
-                        items={[
-                            { key: "new", title: "New", badge: statusCounts.New || 0, tone: "blue", icon: <MessageSquare className="h-3.5 w-3.5" />, onClick: () => selectStatusFilter("New") },
-                            { key: "quotes", title: "Quotes", badge: pendingQuoteCount, tone: "amber", icon: <FileText className="h-3.5 w-3.5" />, onClick: () => selectStatusFilter("Under Review") },
-                            { key: "work", title: "Work", badge: statusCounts["Work Order"] || 0, tone: "violet", icon: <Tv className="h-3.5 w-3.5" />, onClick: () => selectStatusFilter("Work Order") },
-                        ]}
-                    />
-                    <MobileSegmentTabs
-                        value={srStatusFilter as (typeof STATUS_FILTERS)[number]}
-                        items={mobileStatusItems}
-                        onChange={selectStatusFilter}
-                        tone="blue"
-                    />
+                    <div className="flex gap-1.5 overflow-x-auto hide-scrollbar px-1">
+                        {LANE_CONFIG.map(lane => (
+                            <button key={lane.value} type="button" onClick={() => { setLaneFilter(lane.value); setSrStatusFilter("all"); setSrPage(1); }}
+                                className={cn("shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-bold transition",
+                                    laneFilter === lane.value ? "border-blue-300 bg-blue-50 text-blue-800 ring-1 ring-blue-400" : "border-slate-200 bg-white text-slate-600"
+                                )}>
+                                {lane.shortLabel} {(laneCounts[lane.value] || 0) > 0 && <span className="ml-1 font-black">{laneCounts[lane.value]}</span>}
+                            </button>
+                        ))}
+                    </div>
                 </div>
                 {paginated.length === 0 ? (
                     <div className="mt-2 flex min-h-48 flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-white px-4 text-center text-slate-500 shadow-sm">
@@ -1117,6 +1175,25 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                 </div>
 
                                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 space-y-2">
+                                    {/* Intake lane + call summary */}
+                                    <div className="flex items-center gap-2 flex-wrap">
+                                        {(() => {
+                                            const lane = classifyLane(selectedRequest);
+                                            const laneConf = LANE_CONFIG.find(l => l.value === lane);
+                                            return laneConf ? <Badge className="rounded-full border border-blue-200 bg-blue-50 text-blue-800 text-[10px] font-black shadow-none px-2 py-0">{laneConf.label}</Badge> : null;
+                                        })()}
+                                        {repairCase?.intake?.callSummary?.callAttemptCount > 0 && (
+                                            <span className="text-[10px] font-bold text-slate-500">{repairCase.intake.callSummary.callAttemptCount} call{repairCase.intake.callSummary.callAttemptCount > 1 ? 's' : ''}{repairCase.intake.callSummary.lastCallOutcome ? ` · ${repairCase.intake.callSummary.lastCallOutcome.replace(/_/g, ' ')}` : ''}</span>
+                                        )}
+                                        <Button variant="outline" size="sm" className="ml-auto h-7 rounded-lg text-[10px] font-bold gap-1" onClick={() => setShowCallLogDialog(true)}>
+                                            <Phone className="h-3 w-3" /> Log Call
+                                        </Button>
+                                    </div>
+                                    {repairCase?.intake?.needsStaffAction && (
+                                        <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+                                            ⚡ Staff action needed — {repairCase.intake.lane.replace(/_/g, ' ')}
+                                        </div>
+                                    )}
                                     <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                                         <div className="grid grid-cols-2 gap-2 text-sm">
                                             <div>
@@ -1961,6 +2038,91 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
 
             {/* Media Viewer */}
             <Suspense fallback={null}><MediaViewer urls={currentMediaUrls} initialIndex={mediaViewerIndex} isOpen={mediaViewerOpen} onClose={() => setMediaViewerOpen(false)} /></Suspense>
+
+            {/* Call Log Dialog */}
+            <Dialog open={showCallLogDialog} onOpenChange={setShowCallLogDialog}>
+                <DialogContent className="sm:max-w-[400px] rounded-2xl">
+                    <DialogHeader><DialogTitle className="flex items-center gap-2"><Phone className="w-4 h-4" /> Log Call</DialogTitle></DialogHeader>
+                    <form onSubmit={(e) => {
+                        e.preventDefault();
+                        if (!selectedRequest) return;
+                        const fd = new FormData(e.currentTarget);
+                        callLogMutation.mutate({
+                            serviceRequestId: selectedRequest.id,
+                            callType: fd.get('callType') as string || 'follow_up',
+                            outcome: fd.get('outcome') as string || undefined,
+                            customerMood: fd.get('customerMood') as string || undefined,
+                            notes: fd.get('notes') as string || undefined,
+                            callbackAt: fd.get('callbackAt') as string || undefined,
+                        });
+                    }} className="space-y-3">
+                        <div className="grid grid-cols-2 gap-3">
+                            <div>
+                                <Label className="text-xs">Call Type</Label>
+                                <Select name="callType" defaultValue="follow_up">
+                                    <SelectTrigger className="h-9 rounded-xl text-xs"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="consultation">Consultation</SelectItem>
+                                        <SelectItem value="quote">Quote</SelectItem>
+                                        <SelectItem value="schedule">Schedule</SelectItem>
+                                        <SelectItem value="follow_up">Follow-up</SelectItem>
+                                        <SelectItem value="payment">Payment</SelectItem>
+                                        <SelectItem value="delivery">Delivery</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div>
+                                <Label className="text-xs">Outcome</Label>
+                                <Select name="outcome">
+                                    <SelectTrigger className="h-9 rounded-xl text-xs"><SelectValue placeholder="Select..." /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="accepted">Accepted</SelectItem>
+                                        <SelectItem value="scheduled">Scheduled</SelectItem>
+                                        <SelectItem value="callback_requested">Callback</SelectItem>
+                                        <SelectItem value="no_answer">No Answer</SelectItem>
+                                        <SelectItem value="phone_off">Phone Off</SelectItem>
+                                        <SelectItem value="rejected">Rejected</SelectItem>
+                                        <SelectItem value="asked_for_time">Asked for Time</SelectItem>
+                                        <SelectItem value="wrong_number">Wrong Number</SelectItem>
+                                        <SelectItem value="hung_up">Hung Up</SelectItem>
+                                        <SelectItem value="converted_to_pickup">→ Pickup</SelectItem>
+                                        <SelectItem value="converted_to_service_center">→ Center</SelectItem>
+                                        <SelectItem value="converted_to_quote">→ Quote</SelectItem>
+                                        <SelectItem value="closed_no_response">Closed</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                        </div>
+                        <div>
+                            <Label className="text-xs">Customer Mood</Label>
+                            <Select name="customerMood">
+                                <SelectTrigger className="h-9 rounded-xl text-xs"><SelectValue placeholder="Optional..." /></SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="normal">Normal</SelectItem>
+                                    <SelectItem value="interested">Interested</SelectItem>
+                                    <SelectItem value="confused">Confused</SelectItem>
+                                    <SelectItem value="angry">Angry</SelectItem>
+                                    <SelectItem value="not_interested">Not Interested</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div>
+                            <Label className="text-xs">Callback At</Label>
+                            <Input type="datetime-local" name="callbackAt" className="h-9 rounded-xl text-xs" />
+                        </div>
+                        <div>
+                            <Label className="text-xs">Notes</Label>
+                            <Textarea name="notes" placeholder="Call notes..." rows={2} className="rounded-xl text-xs" />
+                        </div>
+                        <DialogFooter>
+                            <Button type="button" variant="outline" onClick={() => setShowCallLogDialog(false)} className="rounded-xl">Cancel</Button>
+                            <Button type="submit" disabled={callLogMutation.isPending} className="rounded-xl">
+                                {callLogMutation.isPending ? <><Loader2 className="w-4 h-4 mr-1 animate-spin" />Saving...</> : "Save Call"}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
         </motion.div>
     );
 }

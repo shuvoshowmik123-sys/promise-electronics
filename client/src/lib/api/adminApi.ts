@@ -498,6 +498,41 @@ export const serviceRequestsApi = {
         }),
 };
 
+export const repairCaseApi = {
+    getByServiceRequest: (id: string) => fetchApi<any>(`/admin/service-requests/${id}/repair-case`),
+    getByJobTicket: (id: string) => fetchApi<any>(`/admin/job-tickets/${id}/repair-case`),
+};
+
+export const callAttemptsApi = {
+    list: (serviceRequestId: string) => fetchApi<any[]>(`/admin/service-requests/${serviceRequestId}/call-attempts`),
+    create: (serviceRequestId: string, data: {
+        callType: string;
+        scheduledAt?: string;
+        calledAt?: string;
+        outcome?: string;
+        nextAction?: string;
+        callbackAt?: string;
+        customerMood?: string;
+        notes?: string;
+        customerVisibleMessage?: string;
+    }) => fetchApi<any>(`/admin/service-requests/${serviceRequestId}/call-attempts`, {
+        method: "POST",
+        body: JSON.stringify(data),
+    }),
+    update: (serviceRequestId: string, attemptId: string, data: {
+        calledAt?: string;
+        outcome?: string;
+        nextAction?: string;
+        callbackAt?: string;
+        customerMood?: string;
+        notes?: string;
+        customerVisibleMessage?: string;
+    }) => fetchApi<any>(`/admin/service-requests/${serviceRequestId}/call-attempts/${attemptId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+    }),
+};
+
 export const adminRepairJourneysApi = {
     getAll: (filters?: { stage?: string; status?: string; limit?: number }) => {
         const params = new URLSearchParams();

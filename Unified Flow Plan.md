@@ -272,9 +272,43 @@ Remaining Phase 2B (UI):
 - Guided action sheet/wizard for intake processing
 - Show linked job status when converted
 
-## Phase 2B: Service Request Tab Redesign As Intake Queue
+## Phase 2B: Service Request Tab Intake Queue UI
 
-Status: NOT STARTED
+Status: PARTIAL
+Started: 2026-06-26
+
+Files changed:
+
+- client/src/lib/api/adminApi.ts — added repairCaseApi and callAttemptsApi helpers
+- client/src/pages/admin/bento/tabs/ServiceRequestsTab.tsx — added lane classifier, lane filter chips, repair-case query on selection, call attempt query, call log dialog, intake lane badge + staff action banner in detail view
+
+### UI behavior added
+
+- Lane filter chips replace old status-only KPI. 9 lanes: New Intake, Needs Reply, Quote Sent, Schedule, Waiting, Ready, Job, Closed.
+- Lane counts computed client-side from SR fields (no per-row API call).
+- Selected request detail shows: intake lane badge, call summary (count + last outcome), "Log Call" button, staff-action-needed banner.
+- Call Log dialog: structured form with call type, outcome, customer mood, callback time, notes. Creates call attempt via API.
+- Repair case data loaded on selection for lane + call summary context.
+- Call attempts list loaded on selection.
+- Existing filters (search, status) still work alongside lane filter.
+- All existing actions preserved: review, convert, quote, stage, custody, rollback, delete.
+
+### What was NOT done (remaining Phase 2B polish)
+
+- Full lane board/kanban view (currently filter chips, not columns)
+- Call panel showing full call history list in detail view
+- "Needs Call" lane using backend call summary (currently uses SR fields only)
+- Guided action sheet/wizard for intake processing
+- Converted request visual distinction (currently same card style)
+- Desktop layout refinement for lane chips
+- Visual QA not run in this pass
+
+Checks run:
+
+- npx tsc --noEmit --pretty false (PASS)
+- npx vite build --mode development (PASS, 36.09s)
+- git diff --check (PASS)
+- Visual QA: NOT RUN
 
 Goal: turn Service Request into a clean intake workflow, not a dropdown status table.
 
