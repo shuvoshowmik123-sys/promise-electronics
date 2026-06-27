@@ -1,55 +1,14 @@
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, CheckCircle2, Clock3, FileText, MessageSquare, RefreshCw, Wrench } from "lucide-react";
+import { CalendarClock, CheckCircle2, FileText, MessageSquare, RefreshCw, Wrench } from "lucide-react";
 import { toast } from "sonner";
 import { adminRepairJourneysApi } from "@/lib/api/adminApi";
-import type { CustomerJourneyStage, CustomerRepairJourney, CustomerRepairJourneyDetail, CustomerRepairSchedule } from "@/lib/api/customerApi";
+import type { CustomerRepairJourney, CustomerRepairJourneyDetail } from "@/lib/api/customerApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { MobileKpiGrid, MobileScrollContent, MobileSegmentTabs, MobileTabHeader, MobileTabLayout } from "../shared";
-
-const STAGES: CustomerJourneyStage[] = [
-  "quote_requested",
-  "quote_sent",
-  "quote_accepted",
-  "schedule_requested",
-  "schedule_confirmed",
-  "device_waiting",
-  "device_received",
-  "inspection_waiting",
-  "inspection_started",
-  "diagnosis_ready",
-  "repair_approval_required",
-  "repair_approved",
-  "repair_in_progress",
-  "repair_completed",
-  "delivery_scheduled",
-  "delivered",
-  "cancelled",
-];
-
-const DEFAULT_FRIENDLY: Record<string, string> = {
-  draft: "We received your request. Our team will review it soon.",
-  quote_requested: "Your quote request is being reviewed by our team.",
-  quote_sent: "Your quote is ready. Please review and accept when convenient.",
-  quote_accepted: "Quote accepted! We will schedule your service shortly.",
-  schedule_requested: "Pickup requested. We will confirm a time slot shortly.",
-  schedule_confirmed: "Your pickup is confirmed. We will be there at the scheduled time.",
-  device_waiting: "Your TV is waiting for inspection. No action is needed from you right now.",
-  device_received: "We have received your TV. It is safely in our queue.",
-  inspection_waiting: "We are a little busy today, but your TV is safely in our queue.",
-  inspection_started: "Inspection has started. We will share findings soon.",
-  diagnosis_ready: "Diagnosis is ready. Please review before repair starts.",
-  repair_approval_required: "We need your approval to proceed with the repair.",
-  repair_approved: "Repair has been approved and will begin shortly.",
-  repair_in_progress: "Repair is in progress.",
-  repair_completed: "Your TV is ready! We will arrange delivery or you can pick it up.",
-  delivery_scheduled: "Delivery is scheduled. Your TV is on its way!",
-  delivered: "Your TV has been delivered. Thank you for choosing Promise Electronics!",
-  cancelled: "This repair journey has been cancelled.",
-};
 
 type Filter = "all" | "active" | "quotes" | "done";
 
@@ -82,42 +41,21 @@ function matchesFilter(journey: CustomerRepairJourney, filter: Filter) {
 
 function JourneyDetailPanel({
   detail,
-  onStage,
   onConfirmSchedule,
   onEvent,
   busy,
 }: {
   detail: CustomerRepairJourneyDetail & { adminNote?: string | null };
-  onStage: (payload: { stage: CustomerJourneyStage; adminNote?: string; customerFriendlyStatus?: string }) => void;
   onConfirmSchedule: (payload: { scheduleId: string; confirmedDate: string; confirmedTimeWindow: string; adminNote?: string }) => void;
   onEvent: (payload: { eventType: string; title: string; message?: string; isCustomerVisible?: boolean }) => void;
   busy: boolean;
 }) {
-  const [stage, setStage] = useState<CustomerJourneyStage>(detail.currentStage);
-  const [friendly, setFriendly] = useState(detail.customerFriendlyStatus || "");
-  const [adminNote, setAdminNote] = useState("");
   const [scheduleId, setScheduleId] = useState(detail.schedules[0]?.id || "");
   const [confirmedDate, setConfirmedDate] = useState("");
   const [confirmedTimeWindow, setConfirmedTimeWindow] = useState("");
+  const [adminNote, setAdminNote] = useState("");
   const [eventTitle, setEventTitle] = useState("");
   const [eventMessage, setEventMessage] = useState("");
-
-  useEffect(() => {
-    setStage(detail.currentStage);
-    setFriendly(detail.customerFriendlyStatus || "");
-    setAdminNote("");
-    setScheduleId(detail.schedules[0]?.id || "");
-  }, [detail.id, detail.currentStage, detail.customerFriendlyStatus, detail.schedules]);
-
-  const handleStageChange = (newStage: CustomerJourneyStage) => {
-    setStage(newStage);
-    setFriendly(DEFAULT_FRIENDLY[newStage] || "");
-  };
-
-  const submitStage = (event: FormEvent) => {
-    event.preventDefault();
-    onStage({ stage, adminNote, customerFriendlyStatus: friendly });
-  };
 
   const submitSchedule = (event: FormEvent) => {
     event.preventDefault();
@@ -183,7 +121,7 @@ function JourneyDetailPanel({
                 </div>
               ))}
             </div>
-            <p className="mt-2 text-[11px] text-amber-600">Use "Customer-visible update" below to reply.</p>
+            <p className="mt-2 text-[11px] text-amber-600">Use "Customer-visible update" above to reply.</p>
           </div>
         ) : null;
       })()}
@@ -230,11 +168,6 @@ export default function CustomerRepairJourneysTab() {
     if (selected) queryClient.invalidateQueries({ queryKey: ["adminRepairJourney", selected] });
   };
 
-  const stageMutation = useMutation({
-    mutationFn: (payload: { stage: CustomerJourneyStage; adminNote?: string; customerFriendlyStatus?: string }) => adminRepairJourneysApi.updateStage(selected || "", payload),
-    onSuccess: () => { toast.success("Journey updated"); invalidate(); },
-    onError: (error: Error) => toast.error(error.message || "Failed to update journey"),
-  });
   const scheduleMutation = useMutation({
     mutationFn: (payload: { scheduleId: string; confirmedDate: string; confirmedTimeWindow: string; adminNote?: string }) => adminRepairJourneysApi.confirmSchedule(selected || "", payload),
     onSuccess: () => { toast.success("Schedule confirmed"); invalidate(); },
@@ -253,7 +186,7 @@ export default function CustomerRepairJourneysTab() {
     { label: "Done", value: journeys.filter((item) => item.currentStage === "delivered").length, tone: "emerald" as const, icon: <CheckCircle2 className="h-4 w-4" /> },
   ];
 
-  const busy = stageMutation.isPending || scheduleMutation.isPending || eventMutation.isPending;
+  const busy = scheduleMutation.isPending || eventMutation.isPending;
 
   return (
     <>
@@ -292,7 +225,6 @@ export default function CustomerRepairJourneysTab() {
           {detailQuery.data && (
             <JourneyDetailPanel
               detail={detailQuery.data}
-              onStage={(payload) => stageMutation.mutate(payload)}
               onConfirmSchedule={(payload) => scheduleMutation.mutate(payload)}
               onEvent={(payload) => eventMutation.mutate(payload)}
               busy={busy}
@@ -342,7 +274,6 @@ export default function CustomerRepairJourneysTab() {
           {detailQuery.data ? (
             <JourneyDetailPanel
               detail={detailQuery.data}
-              onStage={(payload) => stageMutation.mutate(payload)}
               onConfirmSchedule={(payload) => scheduleMutation.mutate(payload)}
               onEvent={(payload) => eventMutation.mutate(payload)}
               busy={busy}

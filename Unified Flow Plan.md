@@ -868,6 +868,22 @@ Checks run:
 - npx vite build --mode development (PASS, 13.64s)
 - git diff --check (PASS)
 
+### Hotfix: remove dead stage override code (2026-06-27)
+
+Removed from CustomerRepairJourneysTab.tsx:
+- STAGES constant (17 stages list)
+- DEFAULT_FRIENDLY constant (stage-to-message map)
+- onStage prop from JourneyDetailPanel
+- stage/friendly/handleStageChange/submitStage state+functions
+- stageMutation useMutation
+- stageMutation.isPending from busy calculation
+- onStage prop passing in both mobile and desktop panel calls
+- CustomerJourneyStage import (no longer needed — detail type infers it)
+- useEffect that synced stage/friendly state from detail
+- Clock3 import (unused after stage form removal)
+
+Kept: schedule confirmation, admin event/update form, customer question highlighting, timeline.
+
 Remaining Phase 5 issues:
 
 - Walk-in jobs have no journey — customer portal cannot show them (deferred)
