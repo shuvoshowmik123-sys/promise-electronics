@@ -437,13 +437,18 @@ router.post('/api/job-tickets/bulk-update', requireAdminAuth, requirePermission(
                 req: req
             });
 
-            // Project linked service request status from job status change.
+            // Project linked service request + journey from job status change.
             if (updates.status && updatedJob) {
                 try {
                     await jobService.syncLinkedServiceRequestFromJob(id, "System Projection");
                 } catch (syncErr) {
                     console.error('[Projection] Failed to project SR from bulk-update:', syncErr);
                 }
+                repairJourneyService.syncJobStatusToJourney(id, updates.status, {
+                    device: (updatedJob as any)?.device,
+                    warrantyDays: (updatedJob as any)?.warrantyDays,
+                    warrantyExpiryDate: (updatedJob as any)?.warrantyExpiryDate,
+                }).catch((err) => console.error('[RepairJourney] Bulk-update journey sync failed:', (err as Error).message));
             }
 
             return updatedJob;
@@ -562,6 +567,12 @@ router.post('/api/job-tickets/:id/verify-rollback', requireAdminAuth, requirePer
                     status: rollback.targetStatus,
                 },
             });
+
+            jobService.syncLinkedServiceRequestFromJob(rollback.jobTicketId, "System Projection")
+                .catch((err) => console.error('[Projection] Rollback SR sync failed:', (err as Error).message));
+
+            repairJourneyService.syncJobStatusToJourney(rollback.jobTicketId, rollback.targetStatus)
+                .catch((err) => console.error('[RepairJourney] Rollback journey sync failed:', (err as Error).message));
         } else {
             await auditLogger.log({
                 userId: req.session?.adminUserId || 'system',

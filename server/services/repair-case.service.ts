@@ -129,6 +129,14 @@ function buildWarnings(sr: ServiceRequest | null, job: JobTicket | null, journey
         warnings.push({ code: 'JOURNEY_LINK_BROKEN', message: `Journey exists but is not linked to converted job ${job.id} — journey.jobTicketId is ${journey.jobTicketId || 'null'}` });
     }
 
+    if (job && sr && (sr.serviceMode === 'pickup' || sr.servicePreference === 'pickup' || sr.servicePreference === 'home_pickup')) {
+        const jobReady = job.status === 'Ready' || job.status === 'Completed';
+        const deliveryDone = pickup && pickup.status === 'Delivered';
+        if (jobReady && !deliveryDone) {
+            warnings.push({ code: 'DELIVERY_NEEDED', message: `Repair is ${job.status.toLowerCase()} but return delivery is not confirmed. Customer expects pickup/delivery service.` });
+        }
+    }
+
     return warnings;
 }
 

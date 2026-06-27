@@ -680,7 +680,7 @@ d. Do NOT touch logistics model yet.
 | PATCH (other fields) | ✗ | ✗ | ✗ | ✓ SSE |
 | record-payment | ✗ | ✓ (payment event) | ✗ | ✓ SSE |
 | verify-rollback (approved) | ✗ | ✗ | ✗ | ✓ SSE |
-| bulk-update | ✗ | ✗ | ✗ | ✓ SSE |
+| bulk-update | ✓ (when status changes) | ✗ | ✗ | ✓ SSE |
 
 ### Recommended Phase 4D implementation
 
@@ -694,9 +694,48 @@ d. Do NOT touch logistics model yet.
 
 Inspector: which of items 1-4 should proceed to Phase 4D?
 
-## Phase 4D: Job Sync Implementation
+## Phase 4D: Job Sync Hardening
 
-Status: NOT STARTED
+Status: DONE
+Completed: 2026-06-27
+
+Files changed:
+
+- server/services/repair-case.service.ts — added DELIVERY_NEEDED warning
+- server/routes/jobs.routes.ts — added SR+journey sync to rollback approval, added journey sync to bulk-update
+
+### Changes
+
+1. **DELIVERY_NEEDED repair-case warning:** When job is Ready/Completed, source SR has pickup preference, and no delivered pickup schedule exists. Warning: "Repair is ready/completed but return delivery is not confirmed." No logistics task created.
+
+2. **Rollback approval sync:** After approved rollback changes job status, now calls `syncLinkedServiceRequestFromJob()` and `syncJobStatusToJourney()`. Fire-and-forget with catch/log, matching existing advance-status pattern.
+
+3. **Bulk-update journey sync:** When bulk-update includes a status change, now calls `syncJobStatusToJourney()` per job. Fire-and-forget with catch/log per job. No customer push notifications for bulk updates.
+
+4. **Phase 4C doc fix:** Corrected bulk-update SR sync column from ✗ to ✓ (it already called syncLinkedServiceRequestFromJob when status changes).
+
+### Updated sync gap table
+
+| Mutation path | Syncs SR | Syncs Journey | Notifies customer | Notifies admin |
+|---|---|---|---|---|
+| advance-status | ✓ | ✓ | ✓ | ✓ SSE |
+| PATCH (technician) | ✓ | ✗ | ✓ SSE | ✓ SSE |
+| PATCH (other fields) | ✗ | ✗ | ✗ | ✓ SSE |
+| record-payment | ✗ | ✓ | ✗ | ✓ SSE |
+| verify-rollback (approved) | ✓ (new) | ✓ (new) | ✗ | ✓ SSE |
+| bulk-update | ✓ | ✓ (new) | ✗ | ✓ SSE |
+
+Checks run:
+
+- npx tsc --noEmit --pretty false (PASS)
+- npx vite build --mode development (PASS, 17.31s)
+- git diff --check (PASS)
+
+Remaining sync gaps (deferred):
+
+- PATCH technician assignment: syncs SR but not journey — low priority since technician change is not a customer-facing event
+- record-payment: syncs journey but not SR — payment status is job-level, not SR-relevant
+- No customer push notifications for bulk-update or rollback — intentional for staff-only operations
 
 Done when:
 
