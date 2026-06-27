@@ -51,12 +51,13 @@ router.get(
 );
 
 /**
- * POST /api/admin/customer-repair-journeys/:id/stage — update journey stage
+ * POST /api/admin/customer-repair-journeys/:id/stage — manual stage override (restricted)
+ * Requires settings permission — normal stage changes happen via job status sync.
  */
 router.post(
   "/api/admin/customer-repair-journeys/:id/stage",
   requireAdminAuth,
-  requirePermission("serviceRequests"),
+  requirePermission("settings"),
   async (req: Request, res: Response) => {
     try {
       const { stage, adminNote, customerFriendlyStatus } = req.body;

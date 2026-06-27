@@ -830,9 +830,49 @@ d. Journey events overlap with SR timeline events — same conversion/status inf
    - Event creation mechanism
    - Unified repair case contract
 
-## Phase 5B: Journey Cleanup Implementation
+## Phase 5B: Journey Admin Safety Cleanup
 
-Status: NOT STARTED
+Status: DONE
+Completed: 2026-06-27
+
+Files changed:
+
+- client/src/pages/admin/bento/tabs/CustomerRepairJourneysTab.tsx — removed manual stage override form, added read-only stage display, added customer question highlight section, highlighted question events in timeline
+- server/routes/admin-repair-journey.routes.ts — upgraded manual stage endpoint from serviceRequests to settings permission
+
+### Changes
+
+1. **Manual stage override removed from UI:** The "Stage update" form with dropdown + friendly message + submit button replaced with a read-only "Current stage" info box explaining: "Stage is managed automatically by job status sync. Use Service Requests or Jobs tab for operational changes."
+
+2. **Backend stage endpoint restricted:** `POST /api/admin/customer-repair-journeys/:id/stage` now requires `settings` permission (Super Admin only). Normal staff cannot manually override journey stages. System-generated sync (job status, conversion, payment) still works because those functions call `updateJourneyStage()` directly, not through the route.
+
+3. **Customer question highlighting:** When the selected journey has `customer_question` events, a prominent amber section appears above the timeline showing all unanswered questions with a note to use the "Customer-visible update" form to reply. Question events are also highlighted in the timeline with amber background and ❓ prefix.
+
+### Kept unchanged
+
+- Customer-visible update form (for answering questions and adding notes)
+- Schedule confirm form
+- Timeline event display
+- Journey list/filter UI
+- Customer portal journey UI
+- System-generated journey sync behavior
+
+### Visual QA (2026-06-27)
+
+Desktop 1440x900: read-only stage box visible, no override form, schedule + update forms present ✓
+Mobile 390x844: journey list clean, KPI visible, no overlap ✓
+
+Checks run:
+
+- npx tsc --noEmit --pretty false (PASS)
+- npx vite build --mode development (PASS, 13.64s)
+- git diff --check (PASS)
+
+Remaining Phase 5 issues:
+
+- Walk-in jobs have no journey — customer portal cannot show them (deferred)
+- No structured question-answer threading — questions and answers are separate timeline events
+- Schedule confirm form in journey tab duplicates pickup tab management
 
 ## Phase 6: Billing Flow
 

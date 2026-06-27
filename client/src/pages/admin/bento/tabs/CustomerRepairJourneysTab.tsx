@@ -146,15 +146,11 @@ function JourneyDetailPanel({
         </div>
       </div>
 
-      <form onSubmit={submitStage} className="rounded-2xl border border-slate-100 bg-white p-4 space-y-3">
-        <p className="text-xs font-black uppercase tracking-wide text-slate-400">Stage update</p>
-        <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-bold" value={stage} onChange={(event) => handleStageChange(event.target.value as CustomerJourneyStage)}>
-          {STAGES.map((item) => <option key={item} value={item}>{formatStage(item)}</option>)}
-        </select>
-        <Textarea value={friendly} onChange={(event) => setFriendly(event.target.value)} className="min-h-20 rounded-xl" placeholder="Customer-friendly status" />
-        <Textarea value={adminNote} onChange={(event) => setAdminNote(event.target.value)} className="min-h-20 rounded-xl" placeholder="Private admin note" />
-        <Button disabled={busy} className="w-full rounded-xl bg-blue-600 hover:bg-blue-700">Update stage</Button>
-      </form>
+      <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-4 space-y-2">
+        <p className="text-xs font-black uppercase tracking-wide text-blue-400">Current stage</p>
+        <p className="text-sm font-black text-blue-800">{formatStage(detail.currentStage)}</p>
+        <p className="text-xs text-blue-600">Stage is managed automatically by job status sync. Use Service Requests or Jobs tab for operational changes.</p>
+      </div>
 
       <form onSubmit={submitSchedule} className="rounded-2xl border border-slate-100 bg-white p-4 space-y-3">
         <p className="text-xs font-black uppercase tracking-wide text-slate-400">Confirm schedule</p>
@@ -174,18 +170,39 @@ function JourneyDetailPanel({
         <Button disabled={busy} variant="outline" className="w-full rounded-xl">Add update</Button>
       </form>
 
+      {(() => {
+        const questions = detail.events.filter((e) => e.eventType === "customer_question");
+        return questions.length > 0 ? (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+            <p className="text-xs font-black uppercase tracking-wide text-amber-600 flex items-center gap-1.5"><MessageSquare className="h-3.5 w-3.5" /> Customer questions ({questions.length})</p>
+            <div className="mt-2 space-y-2">
+              {questions.map((q) => (
+                <div key={q.id} className="rounded-xl bg-white border border-amber-100 p-3">
+                  <p className="text-sm font-semibold text-slate-900">{q.message || q.title}</p>
+                  <span className="text-[10px] font-bold text-amber-500">{formatDate(q.createdAt)}</span>
+                </div>
+              ))}
+            </div>
+            <p className="mt-2 text-[11px] text-amber-600">Use "Customer-visible update" below to reply.</p>
+          </div>
+        ) : null;
+      })()}
+
       <div className="rounded-2xl border border-slate-100 bg-white p-4">
         <p className="text-xs font-black uppercase tracking-wide text-slate-400">Timeline</p>
         <div className="mt-3 space-y-3">
-          {detail.events.map((event) => (
-            <div key={event.id} className="rounded-xl bg-slate-50 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-black text-slate-900">{event.title}</p>
-                <span className="text-[11px] font-bold text-slate-400">{formatDate(event.createdAt)}</span>
+          {detail.events.map((event) => {
+            const isQuestion = event.eventType === "customer_question";
+            return (
+              <div key={event.id} className={`rounded-xl p-3 ${isQuestion ? "bg-amber-50 border border-amber-100" : "bg-slate-50"}`}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className={`text-sm font-black ${isQuestion ? "text-amber-800" : "text-slate-900"}`}>{isQuestion ? "❓ " : ""}{event.title}</p>
+                  <span className="text-[11px] font-bold text-slate-400">{formatDate(event.createdAt)}</span>
+                </div>
+                <p className="mt-1 text-xs leading-5 text-slate-500">{event.message}</p>
               </div>
-              <p className="mt-1 text-xs leading-5 text-slate-500">{event.message}</p>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>
