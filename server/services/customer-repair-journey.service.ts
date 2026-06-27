@@ -1077,11 +1077,14 @@ export const repairJourneyService = {
       return;
     }
 
+    const hasAmount = typeof opts.amount === 'number' && opts.amount > 0;
     await this.addJourneyEvent({
       journeyId,
       eventType: "bill_ready",
       title: "Bill Ready",
-      message: "Your bill is ready. Please review the amount before delivery or pickup.",
+      message: hasAmount
+        ? `Your bill is ready: ৳${opts.amount!.toLocaleString()}. Please review before delivery or pickup.`
+        : "Your bill is ready. Please review the amount before delivery or pickup.",
       actorType: "system",
       isCustomerVisible: true,
       metadata: {

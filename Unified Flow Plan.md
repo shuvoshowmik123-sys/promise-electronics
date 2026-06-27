@@ -977,7 +977,32 @@ Current ownership is already mostly correct:
 
 Inspector: should items 1-2 proceed to Phase 6B?
 
-## Phase 6B: Billing Hardening
+## Phase 6B-lite: Customer Bill Amount Message
+
+Status: DONE
+Completed: 2026-06-27
+
+Files changed:
+
+- server/services/customer-repair-journey.service.ts — syncBillToJourney message includes amount
+
+### Change
+
+`syncBillToJourney()` now shows the bill amount in the customer-visible message when `opts.amount` is a valid positive number. Message becomes: "Your bill is ready: ৳{amount}. Please review before delivery or pickup." Falls back to generic message when no amount exists.
+
+The POS call site already passes `amount: validated.total`, so this works immediately for POS-linked bills.
+
+### Deferred
+
+Quote acceptance auto-advancing SR stage is deferred. The PATCH /api/service-requests/:id/quote-response path accepts/rejects a quote without specifying servicePreference — the system cannot determine whether to advance to pickup_scheduled or awaiting_dropoff. This would need the customer to provide servicePreference during acceptance (the journey accept-quote path already does this, but the direct SR path does not). Fixing this requires adding servicePreference to the quote-response body, which is an API shape change better handled in a dedicated phase.
+
+Checks run:
+
+- npx tsc --noEmit --pretty false (PASS)
+- npx vite build --mode development (PASS, 18.20s)
+- git diff --check (PASS)
+
+## Phase 6C: Billing Hardening
 
 Status: NOT STARTED
 
