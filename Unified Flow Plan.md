@@ -890,30 +890,96 @@ Remaining Phase 5 issues:
 - No structured question-answer threading — questions and answers are separate timeline events
 - Schedule confirm form in journey tab duplicates pickup tab management
 
-## Phase 6: Billing Flow
+## Phase 6A: Billing Flow Audit
+
+Status: DONE (audit only, no code changes)
+Completed: 2026-06-27
+
+Files inspected:
+
+- shared/schema.ts (SR quote fields lines 1063-1070, job billing fields lines 193-221)
+- server/routes/service-requests.routes.ts (send-quote lines 986-1049, quote-response lines 1054-1113)
+- server/services/job.service.ts (conversion estimate transfer line 307, recordJobPayment lines 102-139)
+- server/routes/jobs.routes.ts (ready-for-billing lines 108-121, generate-invoice lines 989-1040, record-payment lines 931-971)
+- server/services/customer-repair-journey.service.ts (syncBillToJourney lines 1056-1104, syncPaymentToJourney lines 1106-1143)
+- server/routes/customer-repair-journey.routes.ts (accept-quote lines 127-156)
+- client/src/pages/my-repair-detail.tsx (quote accept UI)
+
+### Answers to 10 questions
+
+1. **Where is quote/estimate stored before job creation?**
+On `service_requests`: `quoteAmount` (real), `quoteNotes` (text), `quoteStatus` (Pending/Quoted/Accepted/Declined), `quotedAt`, `quoteExpiresAt`, `acceptedAt`. Only populated when `isQuote=true` and admin sends quote via POST /api/admin/service-requests/:id/send-quote.
+
+2. **How does customer accept/reject quote today?**
+Two paths:
+a. PATCH /api/service-requests/:id/quote-response — customer or admin sends `{ response: 'accepted' | 'rejected' }`. Updates SR status to "Quote Accepted" or "Quote Rejected". No auth required beyond ownership check.
+b. POST /api/customer/repair-journeys/:id/accept-quote — customer accepts via journey detail. Delegates to `repairJourneyService.acceptQuoteForJourney()` which also accepts servicePreference, pickupTier, address. Updates both SR and journey.
+
+3. **Does quote acceptance change SR stage/tracking correctly?**
+PARTIALLY. Quote response changes SR `status` to "Quote Accepted" or "Quote Rejected" but does NOT update `stage` or `trackingStatus`. The stage flow expects authorized → pickup_scheduled/awaiting_dropoff, but quote acceptance doesn't auto-advance the stage. Staff must manually move the SR forward after quote acceptance.
+
+4. **During conversion, what estimate/billing fields move into Job?**
+Only `estimatedCost = request.quoteAmount` (line 307 of job.service.ts). No other billing fields transfer — quoteNotes, quoteStatus, acceptedAt are not copied to the job. The job starts with estimatedCost as the only pre-conversion billing context.
+
+5. **Where is final bill stored after repair starts?**
+On `job_tickets`: `charges` (jsonb array of {description, amount, type}), `estimatedCost` (initial estimate), `paidAmount`, `remainingAmount`, `paymentStatus` (unpaid/paid/partial/incomplete/written_off), `billingStatus` (pending/billed/invoiced/delivered). The `charges` array is the actual line-item bill. `estimatedCost` is the pre-repair quote seed.
+
+6. **What marks a job ready for billing?**
+GET /api/job-tickets/ready-for-billing returns jobs where `status === 'Completed' || status === 'Ready'`. This is a simple filter — no explicit "ready for billing" flag. The advance-status flow (Pending→In Progress→Ready→Completed) implicitly makes jobs billable when they reach Ready.
+
+7. **What records payment?**
+POST /api/job-tickets/:id/record-payment. Called by POS after transaction. Requires `paymentId`, `amount`, `method`. Updates `paidAmount`, `remainingAmount`, `paymentStatus`, `lastPaymentAt`. Calls `syncPaymentToJourney()` which creates "payment_received" journey event when fully paid.
+
+8. **What creates invoice?**
+POST /api/job-tickets/:id/generate-invoice. Requires payment status "paid" or "partial" — cannot generate invoice for unpaid jobs. Updates `billingStatus` to "invoiced", stamps `invoicePrintedAt`/`invoicePrintedBy`, increments `invoicePrintCount`. Max 2 prints unless Super Admin. The actual invoice HTML is generated client-side via `generatePrintHtml()`.
+
+9. **What does customer see in portal/journey when bill is ready or paid?**
+a. Bill ready: `syncBillToJourney()` creates a "bill_ready" event with message "Your bill is ready. Please review the amount before delivery or pickup." Sets nextAction to "review_bill". Deduplication prevents duplicate events.
+b. Payment received: `syncPaymentToJourney()` creates "payment_received" event when paymentStatus becomes "paid". Clears nextAction.
+c. Customer sees these as timeline events in My Repair Detail.
+d. There is NO customer-visible quote amount or bill amount in the journey events — only the event titles/messages.
+
+10. **What duplicate/confusing billing ownership exists between SR, Job, Journey, and POS?**
+a. **Quote amount lives on SR** (`quoteAmount`) and is copied to Job (`estimatedCost`) during conversion. After conversion, both fields exist independently — if the estimate changes on the job, the SR quote stays stale. This is correct behavior but could confuse staff who see different numbers.
+b. **No "final bill total" field on job** — the `charges` jsonb array must be summed client-side. `estimatedCost` is the seed/estimate, not the final total.
+c. **Journey shows payment events but not amounts** — customer sees "Payment received" but not how much. The metadata includes amount but the message doesn't display it.
+d. **POS transaction is separate** — payment is recorded on the job via `record-payment`, but the POS transaction itself lives in `pos_transactions` table. The job stores `paymentId` as a reference.
+e. **Corporate billing is fully separate** — `corporate_bills` table with its own line items, payment tracking, and print system. Not mixed with walk-in billing.
+
+### Billing ownership assessment
+
+Current ownership is already mostly correct:
+
+| Phase | Owner | Stored where |
+|---|---|---|
+| Pre-job quote | Service Request | SR.quoteAmount, quoteStatus, quoteNotes |
+| Quote acceptance | Service Request | SR.status → "Quote Accepted" |
+| Initial estimate on job | Job Ticket | JT.estimatedCost (copied from SR.quoteAmount) |
+| Final charges | Job Ticket | JT.charges jsonb array |
+| Payment recording | Job Ticket | JT.paidAmount, paymentStatus, paymentId |
+| Invoice generation | Job Ticket | JT.billingStatus, invoicePrintedAt |
+| Customer bill visibility | Journey | Events: "bill_ready", "payment_received" |
+| POS transaction | POS | pos_transactions table, linked via JT.paymentId |
+
+### Gaps identified
+
+1. **Quote acceptance doesn't advance SR stage** — customer accepts, but staff must manually move from quote_accepted to pickup_scheduled or awaiting_dropoff.
+2. **No customer-visible amount in journey** — "Bill Ready" event doesn't show the amount. Customer must call or visit to know the price.
+3. **No "final bill total" computed field on job** — charges array must be summed every time. Frontend does this but it's not a stored value.
+4. **estimatedCost vs charges disconnect** — estimatedCost is the quote seed, charges is the actual work. If charges differ significantly from estimatedCost, there's no automatic alert to the customer.
+
+### Recommended Phase 6B
+
+1. **Quote acceptance should auto-advance SR stage** — when customer accepts quote, move to authorized or schedule_needed depending on service mode. Low risk.
+2. **Add amount to journey bill_ready event message** — show the customer the approximate bill amount. Low risk.
+3. **Do not add computed "final bill total" field** — charges array summation is fine client-side. Adding a stored total creates sync risk.
+4. **Do not change corporate billing** — separate system, separate phase.
+
+Inspector: should items 1-2 proceed to Phase 6B?
+
+## Phase 6B: Billing Hardening
 
 Status: NOT STARTED
-
-Goal: separate estimate before job from final bill after job.
-
-Rules:
-
-- Service Request owns quote/estimate before job.
-- Job Ticket owns final bill after repair starts.
-- Payments can reference request before conversion.
-- Final invoice should reference Job Ticket.
-
-Tasks:
-
-- inspect current quote/payment/manual payment flow
-- ensure quote accepted transfers estimate into job
-- ensure final bill does not depend on Service Request after conversion
-- ensure customer portal shows bill ready at the right stage
-
-Done when:
-
-- customer billing is understandable from request through job completion
-- admin can see quote vs final bill clearly
 
 ## Phase 7: Logistics Data Model
 
