@@ -652,17 +652,16 @@ Ready: notification created if `trigger_notify_ready` setting enabled (line 353-
 NO for SR/journey sync — advance-status handles it automatically. YES for: delivery scheduling (no automatic logistics task created), invoice printing (manual action), and device handover (OTP custody flow is service-request-only, not job-level).
 
 7. **Is delivery-required-but-missing detected anywhere?**
-NO. `pickup_required` exists on journey but no code checks whether a job marked Ready/Completed has a pending delivery logistics task. The repair-case contract has `MISSING_PICKUP` warning for SR-level pickup but nothing for delivery-from-job.
+Phase 4D added `DELIVERY_NEEDED` repair-case warning: fires when job is Ready/Completed, source SR has pickup preference, and no delivered pickup schedule exists. No logistics task creation.
 
 8. **Are notifications sent to customer/admin on job status changes?**
-advance-status: YES — SSE to admin (publishJobTicketEvent), SSE to customer if SR linked and changed (notifyCustomerUpdate), push notification on Ready. PATCH: SSE to admin YES, push to customer only on status change (which is normally blocked). Payment: SSE to admin YES, journey event YES, but no customer push. Rollback: NO sync, NO notification.
+advance-status: YES — SSE to admin, SSE to customer if SR linked, push on Ready. PATCH: SSE to admin, push to customer on status change (normally blocked). Payment: SSE to admin, journey event, no push. Rollback: SR + journey sync added in Phase 4D, no customer notification. Bulk-update: SR + journey sync (Phase 4D), no customer push.
 
-9. **What is the safest Phase 4D implementation path?**
-Central sync helper called after every status mutation:
-a. `syncLinkedServiceRequestFromJob()` — already exists, already called by advance-status. Missing from: rollback approval, bulk-update.
-b. `syncJobStatusToJourney()` — already exists, already called by advance-status. Missing from: rollback approval, bulk-update.
-c. Add delivery-required warning to repair-case contract: when job is Ready/Completed, source SR has servicePreference=pickup, and no pickup_schedule with status=Delivered exists.
-d. Do NOT touch logistics model yet.
+9. **What was implemented in Phase 4D?**
+a. `DELIVERY_NEEDED` repair-case warning added.
+b. Rollback approval now syncs SR + journey (fire-and-forget).
+c. Bulk-update now syncs journey on status changes (fire-and-forget).
+d. Bulk-update SR sync was already present before Phase 4D.
 
 10. **What must not be changed yet?**
 - Do not add a delivery/logistics task creation — Phase 7-8 scope.
@@ -671,7 +670,9 @@ d. Do NOT touch logistics model yet.
 - Do not add customer-facing delivery tracking.
 - Do not touch corporate job sync.
 
-### Gap summary
+### Gap summary (before Phase 4D)
+
+This table reflects the state before Phase 4D. See Phase 4D for the updated table after hardening.
 
 | Mutation path | Syncs SR | Syncs Journey | Notifies customer | Notifies admin |
 |---|---|---|---|---|
@@ -679,20 +680,10 @@ d. Do NOT touch logistics model yet.
 | PATCH (technician) | ✓ | ✗ | ✓ SSE if SR linked | ✓ SSE |
 | PATCH (other fields) | ✗ | ✗ | ✗ | ✓ SSE |
 | record-payment | ✗ | ✓ (payment event) | ✗ | ✓ SSE |
-| verify-rollback (approved) | ✗ | ✗ | ✗ | ✓ SSE |
-| bulk-update | ✓ (when status changes) | ✗ | ✗ | ✓ SSE |
+| verify-rollback (approved) | ✗ (fixed in 4D) | ✗ (fixed in 4D) | ✗ | ✓ SSE |
+| bulk-update | ✓ | ✗ (fixed in 4D) | ✗ | ✓ SSE |
 
-### Recommended Phase 4D implementation
-
-1. Add `DELIVERY_NEEDED` repair-case warning: when job status is Ready/Completed, source SR has pickup preference, and no delivered pickup_schedule exists. Backend only, no UI.
-
-2. Add SR+journey sync to `verify-rollback` (when approved and status changes). Low risk — rollback already changes job status.
-
-3. Add journey sync to `bulk-update` if status changes. Medium risk — bulk-update touches many jobs.
-
-4. Consider adding journey sync to PATCH technician assignment (currently only SR syncs). Low risk.
-
-Inspector: which of items 1-4 should proceed to Phase 4D?
+Items 1-3 were implemented in Phase 4D. Item 4 (PATCH technician journey sync) deferred as low priority.
 
 ## Phase 4D: Job Sync Hardening
 
@@ -741,23 +732,107 @@ Done when:
 
 - no separate staff intervention is needed to reflect completed job in Service Request or Customer Journey
 
-## Phase 5: Customer Repair Journey Cleanup
+## Phase 5A: Customer Repair Journey Cleanup Audit
+
+Status: DONE (audit only, no code changes)
+Completed: 2026-06-27
+
+Files inspected:
+
+- server/services/customer-repair-journey.service.ts (~1150 lines, 20+ functions)
+- server/routes/customer-repair-journey.routes.ts (customer endpoints)
+- server/routes/admin-repair-journey.routes.ts (admin endpoints)
+- client/src/pages/admin/bento/tabs/CustomerRepairJourneysTab.tsx (admin tab, 315 lines)
+- client/src/pages/my-repairs.tsx (customer portal list)
+- client/src/pages/my-repair-detail.tsx (customer portal detail)
+- server/routes/service-requests.routes.ts (journey creation on SR/quote creation)
+- server/services/repair-case.service.ts (journey in unified case)
+
+### Answers to 10 questions
+
+1. **What creates a journey today?**
+Two paths:
+a. `createJourneyFromServiceRequest()` — called when a public service request is created (POST /api/service-requests). Sets stage=device_waiting, links service_request_id + customer_id.
+b. `createJourneyFromQuote()` — called when a quote request is created (POST /api/quotes). Sets stage=quote_requested, links quote_request_id + customer_id.
+Neither path creates a journey for direct walk-in jobs (POST /api/job-tickets).
+
+2. **What updates journey stage today?**
+a. `syncJobStatusToJourney()` — called by advance-status, rollback approval (4D), bulk-update (4D). Maps job status to journey stage.
+b. `syncJobConversionToJourney()` — called during SR-to-job conversion. Sets stage=device_received, links job_ticket_id.
+c. `syncPaymentToJourney()` — called by recordJobPayment. Adds payment event.
+d. Admin manual: `POST /api/admin/customer-repair-journeys/:id/stage` — admin can set any valid stage + custom friendly message.
+e. Schedule confirm: `confirmScheduleWithPickup()` — updates stage to schedule_confirmed.
+
+3. **Which admin screens treat Journey as work queue?**
+The Repair Journeys admin tab (CustomerRepairJourneysTab.tsx) acts as a mini work queue:
+- Lists all journeys with stage filters (All, Active, Quotes, Done)
+- Detail panel allows: manual stage changes via dropdown, custom friendly messages, schedule confirmation, adding admin events
+- Staff can manually change journey stage at will — duplicating work that SR/Job already handle
+
+4. **Which customer screens depend on Journey?**
+a. My Repairs page (`/my-repairs`) — lists customer_repair_journeys, shows stage/status/friendly message
+b. My Repair Detail (`/my-repair-detail/:id`) — shows timeline events, schedule status, allows customer to: accept quote, request schedule, ask question
+c. If no journey exists, customer sees nothing in My Repairs (walk-in jobs invisible)
+
+5. **Which events are customer-visible?**
+Events with `is_customer_visible = true`: service_request_created, quote_requested, job_created, all job status syncs (device_received, inspection_started, repair_in_progress, repair_completed, delivered, cancelled), warranty_active, payment_received, schedule events, customer questions.
+Admin-added events can be marked customer-visible or internal.
+
+6. **Where can customer ask questions?**
+POST /api/customer/repair-journeys/:id/ask-question — creates a journey event with eventType="customer_question", actorType="customer", isCustomerVisible=true.
+UI: My Repair Detail page has a "question" sheet with textarea.
+
+7. **Where can staff answer questions?**
+POST /api/admin/customer-repair-journeys/:id/event — admin adds an event with custom eventType/title/message. Can mark as customer-visible.
+UI: admin journey detail panel has "Add Event" form with title, message, and visibility toggle.
+There is NO structured question-answer thread — questions and answers are separate events in the timeline.
+
+8. **What duplicate work exists between SR, Job, and Journey tabs?**
+a. Staff can manually change journey stage to any value — but job status sync already does this automatically. Manual changes can conflict with automatic sync.
+b. Journey admin tab shows schedule confirmation — but pickup tab also manages pickups. Dual management.
+c. Journey tab shows quote-related stages — but SR tab owns the quote workflow. Staff might try to manage quotes from journey tab.
+d. Journey events overlap with SR timeline events — same conversion/status information recorded in both.
+
+9. **What Journey should keep after cleanup?**
+- Customer-facing timeline: all system-generated events (auto-sync from SR, Job, Pickup, Payment)
+- Customer questions and admin answers
+- Friendly customer-visible status messages
+- Schedule request/confirmation
+- Exception monitoring: admin sees journeys that are stuck, have unanswered questions, or have stale stages
+- Warranty tracking events
+
+10. **What Journey should stop owning?**
+- Manual stage management: admin should NOT manually set journey stages when job status sync already handles this
+- Quote workflow: SR owns quotes, journey should only show timeline events
+- Pickup schedule management: logistics/pickup tab should own this, journey shows events
+- Being a third operational queue: journey tab should become read-mostly + exception list, not another work board
+
+### Recommended Phase 5B implementation
+
+1. **Admin journey tab becomes monitoring/exceptions view:**
+   - Show unanswered customer questions prominently
+   - Show stuck journeys (stage hasn't changed in X days)
+   - Remove or restrict manual stage override (or hide behind developer mode)
+   - Keep admin event creation for answering questions and adding notes
+
+2. **Journey stays as customer timeline:**
+   - All events continue to be system-generated from SR/Job/Payment/Schedule sync
+   - Customer portal continues to use journey for My Repairs
+   - No change to customer question flow
+
+3. **Walk-in jobs get optional journey creation:**
+   - When a walk-in job has a phone that matches an existing user account, create a journey (deferred from Phase 4A)
+   - This makes the repair visible in customer portal
+
+4. **Do not change in Phase 5B:**
+   - Journey schema
+   - Customer portal UI
+   - Event creation mechanism
+   - Unified repair case contract
+
+## Phase 5B: Journey Cleanup Implementation
 
 Status: NOT STARTED
-
-Goal: make Journey a timeline, not another operations tab.
-
-Tasks:
-
-- keep customer questions and timeline
-- reduce admin journey tab to monitoring/exceptions
-- ensure system creates events from service request, job, logistics, billing, warranty
-- customer-facing messages must be friendly
-
-Done when:
-
-- staff does not need to manage Journey as a separate job queue
-- customer can understand full repair story in portal
 
 ## Phase 6: Billing Flow
 
