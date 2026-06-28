@@ -70,6 +70,7 @@ import firebaseAuthRoutes from './firebase-auth.routes.js'; // Firebase Auth
 import technicianWorkbenchRoutes from './technician-workbench.routes.js';
 import customerRepairJourneyRoutes from './customer-repair-journey.routes.js';
 import adminRepairJourneyRoutes from './admin-repair-journey.routes.js';
+import logisticsTasksRoutes from './logistics-tasks.routes.js';
 
 /**
  * Register all routes with the Express application.
@@ -256,6 +257,9 @@ export async function registerRoutes(
     app.use(customerRepairJourneyRoutes);
     app.use(adminRepairJourneyRoutes);
     routeLog('[Routes] ✓ Customer repair journey routes registered');
+
+    app.use(logisticsTasksRoutes);
+    routeLog('[Routes] ✓ Logistics tasks routes registered');
 
     app.use(reviewsRoutes);
     routeLog('[Routes] ✓ Reviews routes registered');

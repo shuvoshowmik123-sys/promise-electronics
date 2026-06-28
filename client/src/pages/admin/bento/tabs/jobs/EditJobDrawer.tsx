@@ -96,6 +96,18 @@ export function EditJobDrawer({
         onError: () => toast.error("Failed to advance job status"),
     });
 
+    const outcomeMutation = useMutation({
+        mutationFn: ({ id, outcome, reason }: { id: string; outcome: string; reason?: string }) =>
+            jobTicketsApi.setOutcome(id, { outcome, reason }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+            setIsAdvanceDialogOpen(false);
+            toast.success("Repair outcome recorded");
+            onClose();
+        },
+        onError: (e: Error) => toast.error(e.message || "Failed to set outcome"),
+    });
+
     const rollbackMutation = useMutation({
         mutationFn: ({ id, targetStatus, reason }: { id: string; targetStatus: string; reason: string }) =>
             jobTicketsApi.requestRollback(id, reason, targetStatus),
@@ -222,6 +234,20 @@ export function EditJobDrawer({
                                 <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Original Issue</div>
                                 <div className="text-sm text-slate-600 mt-1">{editFormData.issue}</div>
                             </div>
+                            {((job as any)?.modelNumber || (job as any)?.tvSerialNumber || (job as any)?.serialNumber) && (
+                                <div className="flex flex-wrap gap-2 pt-1">
+                                    {((job as any)?.modelNumber || (job as any)?.tvSerialNumber) && (
+                                        <span className="inline-block rounded-full bg-blue-50 px-3 py-1 text-xs font-mono text-blue-700 border border-blue-100">
+                                            Model: {(job as any)?.modelNumber || (job as any)?.tvSerialNumber}
+                                        </span>
+                                    )}
+                                    {(job as any)?.serialNumber && (
+                                        <span className="inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-mono text-emerald-700 border border-emerald-100">
+                                            S/N: {(job as any)?.serialNumber}
+                                        </span>
+                                    )}
+                                </div>
+                            )}
                         </div>
 
                         <div className="space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
@@ -313,7 +339,10 @@ export function EditJobDrawer({
                         onConfirm={() => {
                             advanceStatusMutation.mutate(job.id);
                         }}
-                        isPending={advanceStatusMutation.isPending}
+                        onSetOutcome={(outcome, reason) => {
+                            outcomeMutation.mutate({ id: job.id, outcome, reason });
+                        }}
+                        isPending={advanceStatusMutation.isPending || outcomeMutation.isPending}
                     />
 
                     <RequestRollbackDialog

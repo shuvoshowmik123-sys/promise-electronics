@@ -1,7 +1,7 @@
 import { FormEvent, ReactNode, useMemo, useState } from "react";
 import { Link, useLocation, useRoute } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CalendarClock, CheckCircle2, Clock3, HelpCircle, MessageSquare, Truck, Wrench } from "lucide-react";
+import { ArrowLeft, CalendarClock, CheckCircle2, Clock3, CreditCard, HelpCircle, MessageSquare, Truck, Wrench } from "lucide-react";
 import { customerRepairJourneysApi, type AcceptJourneyQuotePayload, type CustomerRepairSchedule, type JourneySchedulePayload } from "@/lib/api/customerApi";
 import { useCustomerLanguage, type CustomerLang } from "@/contexts/CustomerLanguageContext";
 import { PillButton, RefBadge, SectionEyebrow, StatusChip, toneForStatus } from "@/components/customer/mobile-kit";
@@ -52,7 +52,7 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-function QuoteForm({ onSubmit, busy }: { onSubmit: (payload: AcceptJourneyQuotePayload) => void; busy: boolean }) {
+function QuoteForm({ onSubmit, busy, quoteAmount }: { onSubmit: (payload: AcceptJourneyQuotePayload) => void; busy: boolean; quoteAmount?: number | null }) {
   const { t } = useCustomerLanguage();
   const [servicePreference, setServicePreference] = useState<"home_pickup" | "service_center">("home_pickup");
   const [pickupTier, setPickupTier] = useState<"Regular" | "Priority" | "Emergency">("Regular");
@@ -71,6 +71,12 @@ function QuoteForm({ onSubmit, busy }: { onSubmit: (payload: AcceptJourneyQuoteP
 
   return (
     <form onSubmit={submit} className="space-y-3">
+      {quoteAmount != null && quoteAmount > 0 && (
+        <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4 text-center">
+          <p className="text-xs font-bold uppercase text-emerald-600">Estimated Cost</p>
+          <p className="text-3xl font-black text-slate-950 mt-1">৳{quoteAmount.toLocaleString()}</p>
+        </div>
+      )}
       <Field label={t("journey.schedule")}>
         <select className="h-12 w-full rounded-2xl border border-emerald-100 bg-white px-3 text-sm font-bold" value={servicePreference} onChange={(event) => setServicePreference(event.target.value as AcceptJourneyQuotePayload["servicePreference"])}>
           <option value="home_pickup">{t("journey.homePickup")}</option>
@@ -191,6 +197,35 @@ function QuestionForm({ onSubmit, busy }: { onSubmit: (question: string) => void
   );
 }
 
+function extractBillAmount(message: string | null): string | null {
+  if (!message) return null;
+  const match = message.match(/৳[\d,]+/);
+  return match ? match[0] : null;
+}
+
+function BillingSummary({ events }: { events: { eventType: string; title: string; message: string | null }[] }) {
+  const billEvent = events.find(e => e.eventType === "bill_ready");
+  const paymentEvent = events.find(e => e.eventType === "payment_received");
+  if (!billEvent) return null;
+
+  const amount = extractBillAmount(billEvent.message);
+  const isPaid = Boolean(paymentEvent);
+
+  return (
+    <section className="rounded-[1.75rem] border border-emerald-100 bg-white p-4">
+      <SectionEyebrow><CreditCard className="inline h-3.5 w-3.5 mr-1" />Billing</SectionEyebrow>
+      <div className="mt-3 flex items-center justify-between">
+        <div>
+          {amount && <p className="text-2xl font-black text-slate-950">{amount}</p>}
+          <p className="text-sm text-slate-500 mt-1">{billEvent.message}</p>
+        </div>
+        <StatusChip tone={isPaid ? "done" : "pending"}>{isPaid ? "Paid" : "Unpaid"}</StatusChip>
+      </div>
+      {paymentEvent && <p className="mt-2 text-xs text-emerald-600 font-bold">{paymentEvent.message}</p>}
+    </section>
+  );
+}
+
 export default function MyRepairDetailPage() {
   const [, params] = useRoute("/my-repairs/:id");
   const [, setLocation] = useLocation();
@@ -258,7 +293,7 @@ export default function MyRepairDetailPage() {
 
   const form = (
     <>
-      {sheet === "quote" && <QuoteForm busy={acceptQuote.isPending} onSubmit={(payload) => acceptQuote.mutate(payload)} />}
+      {sheet === "quote" && <QuoteForm busy={acceptQuote.isPending} onSubmit={(payload) => acceptQuote.mutate(payload)} quoteAmount={detail?.quoteAmount} />}
       {sheet === "schedule" && <ScheduleForm busy={schedule.isPending} onSubmit={(payload) => schedule.mutate(payload)} />}
       {sheet === "reschedule" && <RescheduleForm schedules={detail.schedules} busy={reschedule.isPending} onSubmit={(payload) => reschedule.mutate(payload)} />}
       {sheet === "question" && <QuestionForm busy={askQuestion.isPending} onSubmit={(question) => askQuestion.mutate(question)} />}
@@ -297,6 +332,8 @@ export default function MyRepairDetailPage() {
               </button>
             ))}
           </section>
+
+          <BillingSummary events={detail.events} />
 
           <section className="rounded-[1.75rem] border border-emerald-100 bg-white p-4">
             <SectionEyebrow>{t("journey.timeline")}</SectionEyebrow>
@@ -342,6 +379,7 @@ export default function MyRepairDetailPage() {
             <Button variant="ghost" className="rounded-full" onClick={() => setLocation("/my-repairs")}><ArrowLeft className="mr-2 h-4 w-4" />{t("journey.title")}</Button>
             <h1 className="mt-6 text-4xl font-black text-slate-950">{stageLabel}</h1>
             <p className="mt-3 max-w-2xl text-slate-500">{friendlyLabel}</p>
+            <div className="mt-6"><BillingSummary events={detail.events} /></div>
             <div className="mt-8 rounded-3xl border border-slate-100 p-5">
               <SectionEyebrow>{t("journey.timeline")}</SectionEyebrow>
               <div className="mt-5 space-y-5">

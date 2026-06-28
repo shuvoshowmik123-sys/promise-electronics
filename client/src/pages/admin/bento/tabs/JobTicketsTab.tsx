@@ -282,6 +282,8 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
             (j as any).assistedByNames,
             j.screenSize,
             (j as any).tvSerialNumber,
+            (j as any).modelNumber,
+            (j as any).serialNumber,
             (j as any).corporateJobNumber,
             (j as any).ticketType,
         );
@@ -312,6 +314,8 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                 job.technician,
                 (job as any).assistedByNames,
                 (job as any).tvSerialNumber,
+                (job as any).modelNumber,
+                (job as any).serialNumber,
                 (job as any).corporateJobNumber,
             ))
             .sort((a, b) => jobSortScore(a) - jobSortScore(b))
@@ -363,6 +367,17 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
             setIsAdvanceDialogOpen(false);
             toast.success("Job advanced to next stage successfully");
         }
+    });
+
+    const outcomeMutation = useMutation({
+        mutationFn: ({ id, outcome, reason }: { id: string; outcome: string; reason?: string }) =>
+            jobTicketsApi.setOutcome(id, { outcome, reason }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+            setIsAdvanceDialogOpen(false);
+            toast.success("Repair outcome recorded");
+        },
+        onError: (e: Error) => toast.error(e.message || "Failed to set outcome"),
     });
 
     const handleExport = () => {
@@ -1179,7 +1194,10 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                     onConfirm={() => {
                         if (selectedJob) advanceStatusMutation.mutate(selectedJob.id);
                     }}
-                    isPending={advanceStatusMutation.isPending}
+                    onSetOutcome={(outcome, reason) => {
+                        if (selectedJob) outcomeMutation.mutate({ id: selectedJob.id, outcome, reason });
+                    }}
+                    isPending={advanceStatusMutation.isPending || outcomeMutation.isPending}
                 />
             </Suspense>
 

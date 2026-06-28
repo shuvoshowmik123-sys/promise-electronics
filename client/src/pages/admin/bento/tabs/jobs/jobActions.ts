@@ -35,10 +35,10 @@ export function getPrimaryAction(job: JobTicket, canEdit: boolean): PrimaryActio
     if (!hasTechnician && !["Delivered", "Completed", "Cancelled", "Abandoned", "Forfeited"].includes(status)) {
         return { label: "Assign Technician", type: "edit", Icon: UserCheck };
     }
-    if (["Pending", "Diagnosing"].includes(status)) return { label: "Start Repair", type: "advance", Icon: Play };
+    if (status === "Pending") return { label: "Start Repair", type: "advance", Icon: Play };
+    if (["Diagnosing", "In Progress", "On Workbench"].includes(status)) return { label: "Report Result", type: "advance", Icon: CheckCircle2 };
     if (["Pending Parts", "Waiting on Parts"].includes(status)) return { label: "Parts Arrived", type: "advance", Icon: PackageCheck };
-    if (["In Progress", "On Workbench"].includes(status)) return { label: "Mark Ready", type: "advance", Icon: CheckCircle2 };
-    if (status === "Ready") return { label: "Take Payment", type: "advance", Icon: CreditCard };
+    if (status === "Ready") return { label: "Complete & Bill", type: "advance", Icon: CreditCard };
     if (status === "Completed") return { label: "Print & Deliver", type: "print", Icon: Truck };
     return { label: "View Job", type: "view", Icon: Eye };
 }

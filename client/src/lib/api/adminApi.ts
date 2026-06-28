@@ -56,6 +56,11 @@ export const jobTicketsApi = {
         fetchApi<JobTicket>(`/job-tickets/${id}/advance-status`, {
             method: "POST",
         }),
+    setOutcome: (id: string, data: { outcome: string; reason?: string; notes?: string }) =>
+        fetchApi<JobTicket>(`/job-tickets/${id}/set-outcome`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
     requestRollback: (id: string, reason: string, targetStatus: string) =>
         fetchApi<any>(`/job-tickets/${id}/request-rollback`, {
             method: "POST",
@@ -537,14 +542,36 @@ export const callAttemptsApi = {
     }),
 };
 
+export interface AdminJourneyListItem extends CustomerRepairJourney {
+    adminNote: string | null;
+    sourceType: "service_request" | "quote_request" | "walk_in" | "warranty" | "unknown";
+    customerName: string | null;
+    customerPhone: string | null;
+    deviceBrand: string | null;
+    deviceModel: string | null;
+    screenSize: string | null;
+    serialNumber: string | null;
+    srTicketNumber: string | null;
+    quoteStatus: string | null;
+    quoteAmount: number | null;
+    billingStatus: string | null;
+    lastEventTitle: string | null;
+    lastEventAt: string | null;
+}
+
 export const adminRepairJourneysApi = {
-    getAll: (filters?: { stage?: string; status?: string; limit?: number }) => {
+    getAll: (filters?: { stage?: string; status?: string; limit?: number; search?: string; sourceType?: string; hasQuote?: string; dateFrom?: string; dateTo?: string }) => {
         const params = new URLSearchParams();
         if (filters?.stage && filters.stage !== "all") params.set("stage", filters.stage);
         if (filters?.status && filters.status !== "all") params.set("status", filters.status);
         if (filters?.limit) params.set("limit", String(filters.limit));
+        if (filters?.search) params.set("search", filters.search);
+        if (filters?.sourceType) params.set("sourceType", filters.sourceType);
+        if (filters?.hasQuote) params.set("hasQuote", filters.hasQuote);
+        if (filters?.dateFrom) params.set("dateFrom", filters.dateFrom);
+        if (filters?.dateTo) params.set("dateTo", filters.dateTo);
         const query = params.toString();
-        return fetchApi<(CustomerRepairJourney & { adminNote?: string | null })[]>(`/admin/customer-repair-journeys${query ? `?${query}` : ""}`);
+        return fetchApi<AdminJourneyListItem[]>(`/admin/customer-repair-journeys${query ? `?${query}` : ""}`);
     },
     getOne: (id: string) => fetchApi<CustomerRepairJourneyDetail & { adminNote?: string | null }>(`/admin/customer-repair-journeys/${id}`),
     updateStage: (id: string, data: { stage: CustomerJourneyStage; adminNote?: string; customerFriendlyStatus?: string }) =>
@@ -864,6 +891,71 @@ export const adminPickupsApi = {
             method: "PATCH",
             body: JSON.stringify({ status }),
         }),
+};
+
+export interface LogisticsTask {
+    id: string;
+    taskType: "pickup" | "delivery" | "transfer" | "manual";
+    sourceType: "service_request" | "job_ticket" | "manual";
+    serviceRequestId: string | null;
+    jobTicketId: string | null;
+    customerId: string | null;
+    customerName: string;
+    customerPhone: string | null;
+    customerPhoneNormalized: string | null;
+    pickupAddress: string | null;
+    deliveryAddress: string | null;
+    scheduledDate: string | null;
+    timeWindow: string | null;
+    status: "pending" | "assigned" | "en_route" | "completed" | "failed" | "cancelled" | "rescheduled";
+    assignedDriverId: string | null;
+    assignedDriverName: string | null;
+    zone: string | null;
+    routeOrder: number | null;
+    latitude: number | null;
+    longitude: number | null;
+    proofPhotoUrl: string | null;
+    signatureUrl: string | null;
+    notes: string | null;
+    failureReason: string | null;
+    rescheduleReason: string | null;
+    completedAt: string | null;
+    cancelledAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+    legacyPickupScheduleId: string | null;
+}
+
+export interface LogisticsDriver {
+    id: string;
+    name: string;
+    role: string;
+}
+
+export const adminLogisticsApi = {
+    listDrivers: () => fetchApi<LogisticsDriver[]>("/admin/logistics-tasks/drivers"),
+    list: (filters?: Record<string, string>) => {
+        const params = new URLSearchParams();
+        if (filters) for (const [k, v] of Object.entries(filters)) { if (v) params.append(k, v); }
+        const q = params.toString();
+        return fetchApi<LogisticsTask[]>(`/admin/logistics-tasks${q ? `?${q}` : ""}`);
+    },
+    create: (data: Record<string, unknown>) =>
+        fetchApi<LogisticsTask>("/admin/logistics-tasks", { method: "POST", body: JSON.stringify(data) }),
+    update: (id: string, data: Record<string, unknown>) =>
+        fetchApi<LogisticsTask>(`/admin/logistics-tasks/${id}`, { method: "PATCH", body: JSON.stringify(data) }),
+    setStatus: (id: string, data: { status: string; failureReason?: string; notes?: string; proofPhotoUrl?: string }) =>
+        fetchApi<LogisticsTask>(`/admin/logistics-tasks/${id}/status`, { method: "POST", body: JSON.stringify(data) }),
+    assign: (id: string, data: { driverId: string; driverName: string; zone?: string; routeOrder?: number }) =>
+        fetchApi<LogisticsTask>(`/admin/logistics-tasks/${id}/assign`, { method: "POST", body: JSON.stringify(data) }),
+    reschedule: (id: string, data: { scheduledDate: string; timeWindow?: string; reason?: string }) =>
+        fetchApi<LogisticsTask>(`/admin/logistics-tasks/${id}/reschedule`, { method: "POST", body: JSON.stringify(data) }),
+    cancel: (id: string, data?: { reason?: string }) =>
+        fetchApi<LogisticsTask>(`/admin/logistics-tasks/${id}/cancel`, { method: "POST", body: JSON.stringify(data || {}) }),
+    batchAssign: (data: { taskIds: string[]; driverId: string; driverName: string; zone?: string }) =>
+        fetchApi<{ updated: number; tasks: LogisticsTask[] }>("/admin/logistics-tasks/batch-assign", { method: "POST", body: JSON.stringify(data) }),
+    batchReorder: (data: { tasks: { id: string; routeOrder: number }[] }) =>
+        fetchApi<{ updated: number; tasks: LogisticsTask[] }>("/admin/logistics-tasks/batch-reorder", { method: "POST", body: JSON.stringify(data) }),
 };
 
 export interface Policy {

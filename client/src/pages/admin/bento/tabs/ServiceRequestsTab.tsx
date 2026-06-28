@@ -696,6 +696,15 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
         setDraggedRequestId(null);
     };
 
+    const laneCounts = useMemo(() => {
+        const counts: Record<string, number> = { all: serviceRequests.length };
+        for (const sr of serviceRequests) {
+            const lane = getLane(sr);
+            counts[lane] = (counts[lane] || 0) + 1;
+        }
+        return counts;
+    }, [serviceRequests, intakeLaneMap]);
+
     if (isLoading) return <DashboardSkeleton />;
 
     const filtered = serviceRequests.filter((r: any) => {
@@ -715,14 +724,6 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
         const laneMatch = laneFilter === 'all' || getLane(r) === laneFilter;
         return ms && statusMatch && laneMatch;
     });
-    const laneCounts = useMemo(() => {
-        const counts: Record<string, number> = { all: serviceRequests.length };
-        for (const sr of serviceRequests) {
-            const lane = getLane(sr);
-            counts[lane] = (counts[lane] || 0) + 1;
-        }
-        return counts;
-    }, [serviceRequests, intakeLaneMap]);
     const paginated = filtered.slice((srPage - 1) * 12, srPage * 12);
     const totalPages = Math.ceil(filtered.length / 12);
 

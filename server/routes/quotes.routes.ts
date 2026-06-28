@@ -15,6 +15,7 @@ import { jobService } from '../services/job.service.js';
 
 import { serviceRequestLimiter } from './middleware/rate-limit.js';
 import { repairJourneyService } from '../services/customer-repair-journey.service.js';
+import { syncPickupScheduleToLogisticsTask } from '../services/logistics-task.service.js';
 import { db } from '../db.js';
 import { sql } from 'drizzle-orm';
 
@@ -373,6 +374,8 @@ router.post('/api/admin/service-requests/:id/transfer-to-pickup', requireAdminAu
         // Idempotent — return the existing pickup if already transferred
         const existing = await storage.getPickupScheduleByServiceRequestId(sr.id);
         if (existing) {
+            syncPickupScheduleToLogisticsTask(existing.id)
+                .catch((err) => console.error('[Logistics] Transfer self-heal sync failed:', (err as Error).message));
             return res.json({ pickup: existing, alreadyExisted: true });
         }
 
@@ -390,6 +393,9 @@ router.post('/api/admin/service-requests/:id/transfer-to-pickup', requireAdminAu
             data: pickup,
             updatedAt: new Date().toISOString()
         });
+
+        syncPickupScheduleToLogisticsTask(pickup.id)
+            .catch((err) => console.error('[Logistics] Transfer-to-pickup sync failed:', (err as Error).message));
 
         res.status(201).json({ pickup, alreadyExisted: false });
     } catch (error: any) {
@@ -501,6 +507,14 @@ router.patch('/api/admin/pickups/:id', requireAdminAuth, async (req: Request, re
             updatedAt: new Date().toISOString()
         });
 
+        syncPickupScheduleToLogisticsTask(pickup.id)
+            .catch((err) => console.error('[Logistics] Pickup sync failed:', (err as Error).message));
+
+        if (updates.status && ['Scheduled', 'PickedUp', 'Delivered'].includes(updates.status)) {
+            repairJourneyService.syncPickupStatusToJourney(pickup.serviceRequestId, updates.status)
+                .catch((err) => console.error('[RepairJourney] Pickup PATCH journey sync failed:', (err as Error).message));
+        }
+
         res.json(pickup);
     } catch (error) {
         res.status(500).json({ error: 'Failed to update pickup schedule' });
@@ -549,6 +563,9 @@ router.patch('/api/admin/pickups/:id/status', requireAdminAuth, async (req: Requ
 
         repairJourneyService.syncPickupStatusToJourney(pickup.serviceRequestId, status)
             .catch((err) => console.error('[RepairJourney] Pickup sync failed:', (err as Error).message));
+
+        syncPickupScheduleToLogisticsTask(pickup.id)
+            .catch((err) => console.error('[Logistics] Pickup status sync failed:', (err as Error).message));
 
         res.json(pickup);
     } catch (error) {

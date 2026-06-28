@@ -239,11 +239,23 @@ export function JobDetailsSheet({
                                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
                                     <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Device</p>
                                     <p className="text-lg font-bold text-slate-900 mt-0.5">{job.device}</p>
-                                    {job.screenSize && (
-                                        <span className="mt-2 inline-block rounded-full bg-slate-100 px-3 py-1 text-xs font-mono text-slate-600 border border-slate-200">
-                                            {job.screenSize} inch
-                                        </span>
-                                    )}
+                                    <div className="mt-2 flex flex-wrap gap-2">
+                                        {job.screenSize && (
+                                            <span className="inline-block rounded-full bg-slate-100 px-3 py-1 text-xs font-mono text-slate-600 border border-slate-200">
+                                                {job.screenSize}"
+                                            </span>
+                                        )}
+                                        {(job.modelNumber || job.tvSerialNumber) && (
+                                            <span className="inline-block rounded-full bg-blue-50 px-3 py-1 text-xs font-mono text-blue-700 border border-blue-100">
+                                                Model: {job.modelNumber || job.tvSerialNumber}
+                                            </span>
+                                        )}
+                                        {job.serialNumber && (
+                                            <span className="inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-mono text-emerald-700 border border-emerald-100">
+                                                S/N: {job.serialNumber}
+                                            </span>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* Reported problem */}
@@ -262,6 +274,17 @@ export function JobDetailsSheet({
                                     </div>
                                     <p className="text-[15px] leading-relaxed text-slate-700">{job.issue}</p>
                                 </div>
+
+                                {/* Repair outcome */}
+                                {job.repairOutcome && (
+                                    <div className={`rounded-2xl border p-4 ${job.repairOutcome === 'repair_ok' ? 'bg-emerald-50 border-emerald-200' : job.repairOutcome === 'needs_parts' ? 'bg-amber-50 border-amber-200' : 'bg-rose-50 border-rose-200'}`}>
+                                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">Repair Outcome</p>
+                                        <p className="text-sm font-bold text-slate-800">
+                                            {job.repairOutcome === 'repair_ok' ? 'Repair Successful' : job.repairOutcome === 'needs_parts' ? 'Needs Parts' : job.repairOutcome === 'not_repairable' ? 'Not Repairable' : job.repairOutcome === 'customer_declined' ? 'Customer Declined' : job.repairOutcome}
+                                        </p>
+                                        {job.closureReason && <p className="text-xs text-slate-600 mt-1">{job.closureReason}</p>}
+                                    </div>
+                                )}
 
                                 {/* Technician notes */}
                                 {job.notes && (
@@ -616,7 +639,11 @@ export function JobDetailsSheet({
                                 <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col gap-1.5 transition-all hover:shadow-md">
                                     <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5"><Monitor className="w-3.5 h-3.5" /> Device</span>
                                     <span className="font-bold text-slate-800 text-lg leading-tight mt-1 truncate">{job.device}</span>
-                                    {job.screenSize && <span className="font-mono text-xs text-slate-500 bg-slate-50 w-fit px-2 py-0.5 rounded border border-slate-100 mt-1">Size: {job.screenSize}"</span>}
+                                    <div className="flex flex-wrap gap-1.5 mt-1">
+                                        {job.screenSize && <span className="font-mono text-xs text-slate-500 bg-slate-50 w-fit px-2 py-0.5 rounded border border-slate-100">{job.screenSize}"</span>}
+                                        {(job.modelNumber || job.tvSerialNumber) && <span className="font-mono text-xs text-blue-600 bg-blue-50 w-fit px-2 py-0.5 rounded border border-blue-100">{job.modelNumber || job.tvSerialNumber}</span>}
+                                        {job.serialNumber && <span className="font-mono text-xs text-emerald-600 bg-emerald-50 w-fit px-2 py-0.5 rounded border border-emerald-100">S/N: {job.serialNumber}</span>}
+                                    </div>
                                 </div>
                             </div>
 

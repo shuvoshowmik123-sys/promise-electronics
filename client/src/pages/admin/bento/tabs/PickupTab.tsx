@@ -1,466 +1,423 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import {
-    Clock, Calendar, Truck, Search, Briefcase, MoreVertical, Eye,
-    CheckCircle, User, Zap, AlertCircle, Package, X, Phone, ShieldCheck,
-    HandMetal, Loader2, Tv, ArrowRight
+    Truck, Search, Calendar, Phone, User, CheckCircle, X, XCircle,
+    Clock, MapPin, ArrowRight, MoreVertical, AlertTriangle, RotateCcw,
+    Play, Package, RefreshCw, Plus, Navigation, List, Route, Save,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/components/ui/select";
-import {
-    DropdownMenu,
-    DropdownMenuContent,
-    DropdownMenuItem,
-    DropdownMenuLabel,
-    DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-    Dialog,
-    DialogContent,
-    DialogDescription,
-    DialogFooter,
-    DialogHeader,
-    DialogTitle,
-} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as CalendarUI } from "@/components/ui/calendar";
-import { adminPickupsApi, serviceRequestsApi } from "@/lib/api";
+import {
+    DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+    DropdownMenuLabel, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { adminLogisticsApi, type LogisticsTask } from "@/lib/api/adminApi";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
-import { BentoCard, DashboardSkeleton, MobileTabLayout, MobileTabHeader, MobileScrollContent } from "../shared";
-import { HandoverSheet } from "./pickup/HandoverSheet";
+import {
+    DashboardSkeleton, MobileTabLayout, MobileTabHeader,
+    MobileScrollContent, MobileSegmentTabs, MobileKpiGrid,
+} from "../shared";
+import { HandoverSheet, type HandoverTarget } from "./pickup/HandoverSheet";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
-import type { PickupSchedule } from "@shared/schema";
 
-type PickupWithServiceRequest = PickupSchedule & {
-    serviceRequest?: {
-        id: string;
-        brand?: string;
-        customerName?: string;
-        phone?: string;
-        ticketNumber?: string;
-        totalAmount?: number;
-        paymentStatus?: string;
-        stage?: string | null;
-        convertedJobId?: string | null;
-        expectedPickupDate?: string | Date | null;
-        expectedReturnDate?: string | Date | null;
-        expectedReadyDate?: string | Date | null;
+type Lane = "all" | "today" | "pickups" | "deliveries" | "assigned" | "en_route" | "failed" | "completed";
+
+function isToday(d: string | null): boolean {
+    if (!d) return false;
+    const task = new Date(d);
+    const now = new Date();
+    return task.getFullYear() === now.getFullYear() && task.getMonth() === now.getMonth() && task.getDate() === now.getDate();
+}
+
+function matchLane(t: LogisticsTask, lane: Lane): boolean {
+    if (lane === "all") return true;
+    if (lane === "today") return isToday(t.scheduledDate) && !["completed", "cancelled"].includes(t.status);
+    if (lane === "pickups") return t.taskType === "pickup" && !["completed", "cancelled"].includes(t.status);
+    if (lane === "deliveries") return t.taskType === "delivery" && !["completed", "cancelled"].includes(t.status);
+    if (lane === "assigned") return t.status === "assigned";
+    if (lane === "en_route") return t.status === "en_route";
+    if (lane === "failed") return t.status === "failed" || t.status === "rescheduled";
+    if (lane === "completed") return t.status === "completed";
+    return true;
+}
+
+function navigateUrl(t: LogisticsTask): string | null {
+    const addr = t.pickupAddress || t.deliveryAddress;
+    if (!addr) return null;
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addr)}`;
+}
+
+function routeSortKey(t: LogisticsTask): number[] {
+    const todayFirst = isToday(t.scheduledDate) ? 0 : 1;
+    const order = t.routeOrder ?? 999999;
+    const sched = t.scheduledDate ? new Date(t.scheduledDate).getTime() : Number.MAX_SAFE_INTEGER;
+    const created = new Date(t.createdAt).getTime();
+    return [todayFirst, order, sched, -created];
+}
+
+function compareRouteSort(a: LogisticsTask, b: LogisticsTask): number {
+    const ka = routeSortKey(a);
+    const kb = routeSortKey(b);
+    for (let i = 0; i < ka.length; i++) {
+        if (ka[i] !== kb[i]) return ka[i] - kb[i];
+    }
+    return 0;
+}
+
+function statusBadge(status: string) {
+    const map: Record<string, { className: string; label: string }> = {
+        pending: { className: "bg-amber-50 text-amber-700 border-amber-200", label: "Pending" },
+        assigned: { className: "bg-blue-50 text-blue-700 border-blue-200", label: "Assigned" },
+        en_route: { className: "bg-orange-50 text-orange-700 border-orange-200", label: "En Route" },
+        completed: { className: "bg-emerald-50 text-emerald-700 border-emerald-200", label: "Completed" },
+        failed: { className: "bg-rose-50 text-rose-700 border-rose-200", label: "Failed" },
+        cancelled: { className: "bg-slate-100 text-slate-500 border-slate-200", label: "Cancelled" },
+        rescheduled: { className: "bg-violet-50 text-violet-700 border-violet-200", label: "Rescheduled" },
     };
-};
+    const m = map[status] || { className: "bg-slate-100 text-slate-600 border-slate-200", label: status };
+    return <Badge variant="outline" className={m.className}>{m.label}</Badge>;
+}
 
-// Mask a phone for at-a-glance display: 017***** keeps prefix, hides rest
-function maskPhone(phone?: string): string {
-    if (!phone) return "—";
-    const digits = phone.replace(/\s+/g, "");
-    if (digits.length <= 3) return digits;
-    return digits.slice(0, 3) + "*****";
+function typeIcon(taskType: string) {
+    if (taskType === "delivery") return <Package className="h-3.5 w-3.5 text-violet-500" />;
+    if (taskType === "transfer") return <ArrowRight className="h-3.5 w-3.5 text-slate-500" />;
+    return <Truck className="h-3.5 w-3.5 text-blue-500" />;
+}
+
+function typeAccent(taskType: string): string {
+    if (taskType === "delivery") return "bg-violet-500";
+    if (taskType === "transfer") return "bg-slate-400";
+    if (taskType === "manual") return "bg-amber-500";
+    return "bg-blue-500";
+}
+
+function formatDateShort(d: string | null): string {
+    if (!d) return "—";
+    try { return format(new Date(d), "d MMM"); } catch { return "—"; }
+}
+
+function address(t: LogisticsTask): string {
+    return t.pickupAddress || t.deliveryAddress || "No address";
 }
 
 export default function PickupTab() {
     const queryClient = useQueryClient();
     const { user } = useAdminAuth();
     const isMobile = useIsMobile();
-    // Drivers see only pickups assigned to them (scoped by assignedStaff name)
     const isDriver = user?.role === "Driver";
-    const [pickupSearchQuery, setPickupSearchQuery] = useState("");
-    const [pickupFilterStatus, setPickupFilterStatus] = useState("all");
-    const [pickupFilterTier, setPickupFilterTier] = useState("all");
 
-    // Dialog States
-    const [selectedPickup, setSelectedPickup] = useState<PickupWithServiceRequest | null>(null);
-    const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
-    const [viewDialogOpen, setViewDialogOpen] = useState(false);
-
-    // Form States
-    const [scheduledDate, setScheduledDate] = useState<Date | undefined>(undefined);
-    const [assignedStaff, setAssignedStaff] = useState("");
-    const [pickupNotes, setPickupNotes] = useState("");
-
-    // Mobile: leg-based filter + handover sheet target
-    const [mobileLeg, setMobileLeg] = useState<"all" | "collect" | "return" | "done">("all");
-    const [handoverTarget, setHandoverTarget] = useState<import("./pickup/HandoverSheet").HandoverTarget | null>(null);
+    const [lane, setLane] = useState<Lane>("all");
+    const [search, setSearch] = useState("");
 
     useEffect(() => {
-        const anySheetOpen = scheduleDialogOpen || viewDialogOpen || !!handoverTarget;
+        if (isDriver && lane === "all") setLane("today");
+    }, [isDriver]);
+    const [selectedTask, setSelectedTask] = useState<LogisticsTask | null>(null);
+    const [handoverTarget, setHandoverTarget] = useState<HandoverTarget | null>(null);
+
+    // Sheets
+    const [assignOpen, setAssignOpen] = useState(false);
+    const [scheduleOpen, setScheduleOpen] = useState(false);
+    const [failOpen, setFailOpen] = useState(false);
+
+    // Desktop view toggle
+    const [desktopView, setDesktopView] = useState<"operations" | "routePlan">("operations");
+
+    // Route plan state (desktop only)
+    const [rpDate, setRpDate] = useState(format(new Date(), "yyyy-MM-dd"));
+    const [rpZone, setRpZone] = useState("");
+    const [rpDriverId, setRpDriverId] = useState("");
+    const [rpDriverName, setRpDriverName] = useState("");
+    const [rpSelected, setRpSelected] = useState<Set<string>>(new Set());
+    const [rpOrders, setRpOrders] = useState<Record<string, number>>({});
+
+    // Form state
+    const [assignDriverId, setAssignDriverId] = useState("");
+    const [assignDriverName, setAssignDriverName] = useState("");
+    const [assignZone, setAssignZone] = useState("");
+    const [schedDate, setSchedDate] = useState("");
+    const [schedWindow, setSchedWindow] = useState("");
+    const [schedReason, setSchedReason] = useState("");
+    const [failReason, setFailReason] = useState("");
+
+    const anySheetOpen = assignOpen || scheduleOpen || failOpen || !!handoverTarget || !!selectedTask;
+    useEffect(() => {
         if (isMobile && anySheetOpen) {
             window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
-            return () => {
-                window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
-            };
+            return () => { window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } })); };
         }
-    }, [scheduleDialogOpen, viewDialogOpen, handoverTarget, isMobile]);
+    }, [anySheetOpen, isMobile]);
 
-    const { data: serviceRequestsData } = useQuery({
-        queryKey: ["service-requests"],
-        queryFn: () => serviceRequestsApi.getAll()
+    const { data: tasks, isLoading } = useQuery({
+        queryKey: ["logisticsTasks"],
+        queryFn: () => adminLogisticsApi.list(),
     });
 
-    const { data: pickupsData, isLoading: isPickupsLoading } = useQuery({
-        queryKey: ["adminPickups"],
-        queryFn: () => adminPickupsApi.getAll()
+    const { data: drivers = [] } = useQuery({
+        queryKey: ["logistics-drivers"],
+        queryFn: () => adminLogisticsApi.listDrivers(),
+        enabled: !isDriver,
+        staleTime: 60_000,
     });
 
-    const updatePickupMutation = useMutation({
-        mutationFn: ({ id, data }: { id: string; data: Partial<PickupSchedule> }) =>
-            adminPickupsApi.update(id, data),
-        onSuccess: () => {
-            toast.success("Pickup schedule updated successfully");
-            queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
-            queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
-            queryClient.invalidateQueries({ queryKey: ["service-requests"] });
-            setScheduleDialogOpen(false);
-            setSelectedPickup(null);
-        },
-        onError: (error: Error) => {
-            toast.error(error.message || "Failed to update pickup schedule");
-        },
-    });
-
-    const updateStatusMutation = useMutation({
-        mutationFn: ({ id, status }: { id: string; status: string }) =>
-            adminPickupsApi.updateStatus(id, status),
-        onSuccess: () => {
-            toast.success("Status updated successfully");
-            queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
-            queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
-            queryClient.invalidateQueries({ queryKey: ["service-requests"] });
-        },
-        onError: (error: Error) => {
-            toast.error(error.message || "Failed to update status");
-        },
-    });
-
-    if (isPickupsLoading) return <DashboardSkeleton />;
-
-    const serviceRequests = serviceRequestsData?.items || [];
-    const rawPickups = pickupsData || [];
-
-    const enrichedPickups: PickupWithServiceRequest[] = rawPickups.map((pickup: any) => {
-        const sr = serviceRequests.find((r: any) => r.id === pickup.serviceRequestId);
-        return {
-            ...pickup,
-            serviceRequest: sr ? {
-                id: sr.id,
-                brand: sr.brand,
-                customerName: sr.customerName,
-                phone: sr.phone,
-                ticketNumber: sr.ticketNumber,
-                totalAmount: sr.totalAmount,
-                paymentStatus: sr.paymentStatus,
-                stage: sr.stage,
-                convertedJobId: sr.convertedJobId,
-                expectedPickupDate: sr.expectedPickupDate,
-                expectedReturnDate: sr.expectedReturnDate,
-                expectedReadyDate: sr.expectedReadyDate,
-            } : undefined,
-        };
-    });
-
-    // Driver scope: only pickups assigned to the logged-in driver
-    const scopedPickups = isDriver
-        ? enrichedPickups.filter((p) => p.assignedStaff && user?.name && p.assignedStaff === user.name)
-        : enrichedPickups;
-
-    const pickups = scopedPickups.filter(pickup => {
-        const matchesSearch =
-            pickupSearchQuery === "" ||
-            pickup.serviceRequest?.customerName?.toLowerCase().includes(pickupSearchQuery.toLowerCase()) ||
-            pickup.serviceRequest?.phone?.includes(pickupSearchQuery) ||
-            pickup.serviceRequestId.toLowerCase().includes(pickupSearchQuery.toLowerCase()) ||
-            pickup.pickupAddress?.toLowerCase().includes(pickupSearchQuery.toLowerCase());
-
-        const matchesStatus = pickupFilterStatus === "all" || pickup.status === pickupFilterStatus;
-        const matchesTier = pickupFilterTier === "all" || pickup.tier === pickupFilterTier;
-
-        return matchesSearch && matchesStatus && matchesTier;
-    });
-
-    const getTierBadge = (tier: string) => {
-        switch (tier) {
-            case "Emergency":
-                return <Badge variant="destructive" className="flex items-center gap-1"><Zap className="w-3 h-3" /> Emergency</Badge>;
-            case "Priority":
-                return <Badge className="bg-orange-500 hover:bg-orange-600 flex items-center gap-1"><AlertCircle className="w-3 h-3" /> Priority</Badge>;
-            default:
-                return <Badge variant="outline" className="flex items-center gap-1 text-slate-600 border-slate-200"><Package className="w-3 h-3" /> Regular</Badge>;
+    const allTasks = useMemo(() => {
+        let list = tasks || [];
+        if (isDriver && user?.id) {
+            const driverName = (user as any).name || "";
+            list = list.filter(t =>
+                t.assignedDriverId === user.id ||
+                (!t.assignedDriverId && t.assignedDriverName && driverName && t.assignedDriverName === driverName)
+            );
         }
+        return list;
+    }, [tasks, isDriver, user?.id, user]);
+
+    const filtered = useMemo(() => {
+        const q = search.toLowerCase();
+        return allTasks.filter(t => {
+            if (!matchLane(t, lane)) return false;
+            if (q && !(
+                t.customerName.toLowerCase().includes(q) ||
+                t.customerPhone?.includes(search) ||
+                t.id.toLowerCase().includes(q) ||
+                (t.pickupAddress || "").toLowerCase().includes(q) ||
+                (t.deliveryAddress || "").toLowerCase().includes(q) ||
+                (t.zone || "").toLowerCase().includes(q)
+            )) return false;
+            return true;
+        }).sort(compareRouteSort);
+    }, [allTasks, lane, search]);
+
+    const laneCounts = useMemo(() => ({
+        all: allTasks.length,
+        today: allTasks.filter(t => matchLane(t, "today")).length,
+        pickups: allTasks.filter(t => matchLane(t, "pickups")).length,
+        deliveries: allTasks.filter(t => matchLane(t, "deliveries")).length,
+        assigned: allTasks.filter(t => matchLane(t, "assigned")).length,
+        en_route: allTasks.filter(t => matchLane(t, "en_route")).length,
+        failed: allTasks.filter(t => matchLane(t, "failed")).length,
+        completed: allTasks.filter(t => matchLane(t, "completed")).length,
+    }), [allTasks]);
+
+    const invalidate = () => {
+        queryClient.invalidateQueries({ queryKey: ["logisticsTasks"] });
+        queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
+        queryClient.invalidateQueries({ queryKey: ["service-requests"] });
     };
 
-    const getStatusBadge = (status: string) => {
-        switch (status) {
-            case "Pending":
-                return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200"><Clock className="w-3 h-3 mr-1" /> Pending</Badge>;
-            case "Scheduled":
-                return <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200"><Calendar className="w-3 h-3 mr-1" /> Scheduled</Badge>;
-            case "PickedUp":
-                return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200"><Truck className="w-3 h-3 mr-1" /> Picked Up</Badge>;
-            case "Delivered":
-                return <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200"><CheckCircle className="w-3 h-3 mr-1" /> Delivered</Badge>;
-            default:
-                return <Badge variant="secondary">{status}</Badge>;
+    const statusMutation = useMutation({
+        mutationFn: ({ id, status, failureReason }: { id: string; status: string; failureReason?: string }) =>
+            adminLogisticsApi.setStatus(id, { status, failureReason }),
+        onSuccess: () => { toast.success("Status updated"); invalidate(); },
+        onError: (e: Error) => toast.error(e.message),
+    });
+
+    const assignMutation = useMutation({
+        mutationFn: ({ id, driverId, driverName, zone, routeOrder }: { id: string; driverId: string; driverName: string; zone?: string; routeOrder?: number }) =>
+            adminLogisticsApi.assign(id, { driverId, driverName, zone, routeOrder }),
+        onSuccess: () => { toast.success("Driver assigned"); invalidate(); setAssignOpen(false); },
+        onError: (e: Error) => toast.error(e.message),
+    });
+
+    const rescheduleMutation = useMutation({
+        mutationFn: ({ id, scheduledDate, timeWindow, reason }: { id: string; scheduledDate: string; timeWindow?: string; reason?: string }) =>
+            adminLogisticsApi.reschedule(id, { scheduledDate, timeWindow, reason }),
+        onSuccess: () => { toast.success("Rescheduled"); invalidate(); setScheduleOpen(false); },
+        onError: (e: Error) => toast.error(e.message),
+    });
+
+    const cancelMutation = useMutation({
+        mutationFn: ({ id, reason }: { id: string; reason?: string }) =>
+            adminLogisticsApi.cancel(id, { reason }),
+        onSuccess: () => { toast.success("Task cancelled"); invalidate(); },
+        onError: (e: Error) => toast.error(e.message),
+    });
+
+    const batchAssignMutation = useMutation({
+        mutationFn: (data: { taskIds: string[]; driverId: string; driverName: string; zone?: string }) =>
+            adminLogisticsApi.batchAssign(data),
+        onSuccess: (res) => { toast.success(`Assigned ${res.updated} tasks`); invalidate(); setRpSelected(new Set()); },
+        onError: (e: Error) => toast.error(e.message),
+    });
+
+    const batchReorderMutation = useMutation({
+        mutationFn: (data: { tasks: { id: string; routeOrder: number }[] }) =>
+            adminLogisticsApi.batchReorder(data),
+        onSuccess: (res) => { toast.success(`Reordered ${res.updated} tasks`); invalidate(); setRpOrders({}); },
+        onError: (e: Error) => toast.error(e.message),
+    });
+
+    // ── ROUTE PLAN computed lists (hooks must be above early return) ────────
+    const rpMatchDate = (t: LogisticsTask): boolean => {
+        if (!rpDate) return true;
+        if (!t.scheduledDate) return false;
+        try { return format(new Date(t.scheduledDate), "yyyy-MM-dd") === rpDate; } catch { return false; }
+    };
+
+    const rpUnassigned = useMemo(() => {
+        return (tasks || []).filter(t => {
+            if (["completed", "cancelled"].includes(t.status)) return false;
+            if (!rpMatchDate(t)) return false;
+            if (rpZone && t.zone && t.zone !== rpZone) return false;
+            return !t.assignedDriverId;
+        }).sort(compareRouteSort);
+    }, [tasks, rpDate, rpZone]);
+
+    const rpAssigned = useMemo(() => {
+        if (!rpDriverId) return [];
+        return (tasks || []).filter(t => {
+            if (["completed", "cancelled"].includes(t.status)) return false;
+            if (t.assignedDriverId !== rpDriverId) return false;
+            if (!rpMatchDate(t)) return false;
+            if (rpZone && t.zone !== rpZone) return false;
+            return true;
+        }).sort((a, b) => (a.routeOrder ?? 999) - (b.routeOrder ?? 999));
+    }, [tasks, rpDriverId, rpDate, rpZone]);
+
+    if (isLoading) return <DashboardSkeleton />;
+
+    const openHandover = (t: LogisticsTask) => {
+        if (!t.serviceRequestId || !t.legacyPickupScheduleId) {
+            statusMutation.mutate({ id: t.id, status: "completed" });
+            return;
         }
-    };
-
-    const handleOpenScheduleDialog = (pickup: PickupWithServiceRequest) => {
-        setSelectedPickup(pickup);
-        setScheduledDate(pickup.scheduledDate ? new Date(pickup.scheduledDate) : undefined);
-        setAssignedStaff(pickup.assignedStaff || "");
-        setPickupNotes(pickup.pickupNotes || "");
-        setScheduleDialogOpen(true);
-    };
-
-    const handleSaveSchedule = () => {
-        if (!selectedPickup) return;
-        updatePickupMutation.mutate({
-            id: selectedPickup.id,
-            data: {
-                scheduledDate: scheduledDate || null,
-                assignedStaff: assignedStaff || null,
-                pickupNotes: pickupNotes || null,
-                status: scheduledDate ? "Scheduled" : selectedPickup.status,
-            } as any,
+        setHandoverTarget({
+            serviceRequestId: t.serviceRequestId,
+            pickupId: t.legacyPickupScheduleId,
+            device: t.taskType === "delivery" ? "Return Device" : "Pickup Device",
+            customerName: t.customerName,
+            phone: t.customerPhone || undefined,
+            amountDue: 0,
+            mode: t.taskType === "delivery" ? "delivery" : "receive",
         });
     };
 
-    // ── Mobile leg model ──────────────────────────────────────────────
-    // collect = device still with customer (Pending/Scheduled) → receive OTP
-    // shop    = device in our shop (PickedUp) → ready to deliver → delivery OTP
-    // done    = Delivered
-    const legOf = (pickup: PickupWithServiceRequest): "collect" | "return" | "done" => {
-        const stage = pickup.serviceRequest?.stage || "";
-        if (stage === "completed" || stage === "closed" || pickup.status === "Delivered") return "done";
-        if (["picked_up", "device_received", "in_repair", "ready", "out_for_delivery"].includes(stage) || pickup.status === "PickedUp") return "return";
-        return "collect";
+    const openAssign = (t: LogisticsTask) => {
+        setSelectedTask(t);
+        setAssignDriverId(t.assignedDriverId || "");
+        setAssignDriverName(t.assignedDriverName || "");
+        setAssignZone(t.zone || "");
+        setAssignOpen(true);
     };
 
-    const mobilePickups = scopedPickups.filter((p) => {
-        const q = pickupSearchQuery.toLowerCase();
-        const matchesSearch = q === "" ||
-            p.serviceRequest?.customerName?.toLowerCase().includes(q) ||
-            p.serviceRequest?.phone?.includes(pickupSearchQuery) ||
-            p.serviceRequest?.ticketNumber?.toLowerCase().includes(q);
-        const matchesLeg = mobileLeg === "all" || legOf(p) === mobileLeg;
-        return matchesSearch && matchesLeg;
-    });
-    const collectCount = scopedPickups.filter((p) => legOf(p) === "collect").length;
-    const returnCount = scopedPickups.filter((p) => legOf(p) === "return").length;
-    const doneCount = scopedPickups.filter((p) => legOf(p) === "done").length;
+    const openSchedule = (t: LogisticsTask) => {
+        setSelectedTask(t);
+        setSchedDate(t.scheduledDate ? format(new Date(t.scheduledDate), "yyyy-MM-dd") : "");
+        setSchedWindow(t.timeWindow || "");
+        setSchedReason("");
+        setScheduleOpen(true);
+    };
 
-    const mobileLegChips: { key: typeof mobileLeg; label: string }[] = [
-        { key: "all", label: `All ${scopedPickups.length}` },
-        { key: "collect", label: `Collect ${collectCount}` },
-        { key: "return", label: `Return ${returnCount}` },
-        { key: "done", label: `Done ${doneCount}` },
+    const openFail = (t: LogisticsTask) => {
+        setSelectedTask(t);
+        setFailReason("");
+        setFailOpen(true);
+    };
+
+    const primaryAction = (t: LogisticsTask) => {
+        if (t.status === "completed" || t.status === "cancelled") return null;
+        if (t.status === "pending" || t.status === "assigned" || t.status === "rescheduled")
+            return { label: "Start Route", icon: <Play className="h-4 w-4" />, onClick: () => statusMutation.mutate({ id: t.id, status: "en_route" }) };
+        if (t.status === "en_route")
+            return { label: t.taskType === "delivery" ? "Deliver" : "Receive", icon: <CheckCircle className="h-4 w-4" />, onClick: () => openHandover(t) };
+        return null;
+    };
+
+    // ── LANE CHIPS ───────────────────────────────────────────────
+    const laneItems: { label: string; value: Lane }[] = [
+        ...(isDriver ? [{ label: `Today ${laneCounts.today}`, value: "today" as Lane }] : []),
+        { label: `All ${laneCounts.all}`, value: "all" },
+        { label: `Pickups ${laneCounts.pickups}`, value: "pickups" },
+        { label: `Deliveries ${laneCounts.deliveries}`, value: "deliveries" },
+        { label: `Assigned ${laneCounts.assigned}`, value: "assigned" },
+        { label: `En Route ${laneCounts.en_route}`, value: "en_route" },
+        { label: `Failed ${laneCounts.failed}`, value: "failed" },
+        { label: `Done ${laneCounts.completed}`, value: "completed" },
     ];
 
-    // Card accent + action per leg
-    const formatStage = (stage?: string | null) => {
-        const m: Record<string, string> = {
-            intake: "Intake",
-            assessment: "Assessment",
-            authorized: "Authorized",
-            pickup_scheduled: "Pickup set",
-            picked_up: "Collected",
-            device_received: "Received",
-            in_repair: "Repairing",
-            ready: "Ready",
-            out_for_delivery: "Out",
-            completed: "Done",
-            closed: "Closed",
-        };
-        return m[stage || ""] || "Pending";
+    const kpis = [
+        { label: "Pickups", value: laneCounts.pickups, tone: "blue" as const, icon: <Truck className="h-4 w-4" /> },
+        { label: "Deliveries", value: laneCounts.deliveries, tone: "violet" as const, icon: <Package className="h-4 w-4" /> },
+        { label: "En Route", value: laneCounts.en_route, tone: "amber" as const, icon: <Play className="h-4 w-4" /> },
+        { label: "Done", value: laneCounts.completed, tone: "emerald" as const, icon: <CheckCircle className="h-4 w-4" /> },
+    ];
+
+    const rpToggleSelect = (id: string) => {
+        setRpSelected(prev => { const next = new Set(prev); if (next.has(id)) next.delete(id); else next.add(id); return next; });
     };
 
-    const legVisual = (pickup: PickupWithServiceRequest) => {
-        const leg = legOf(pickup);
-        const stage = pickup.serviceRequest?.stage || "";
-        if (leg === "done") return { accent: "bg-emerald-500", pill: "bg-emerald-100 text-emerald-700", label: "Delivered" };
-        if (leg === "return") return { accent: stage === "ready" || stage === "out_for_delivery" ? "bg-emerald-500" : "bg-blue-500", pill: stage === "ready" || stage === "out_for_delivery" ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700", label: formatStage(stage) };
-        if (pickup.status === "Scheduled" || stage === "pickup_scheduled") return { accent: "bg-amber-500", pill: "bg-amber-100 text-amber-700", label: "Pickup set" };
-        return { accent: "bg-slate-400", pill: "bg-slate-100 text-slate-600", label: formatStage(stage) };
+    const rpSelectAll = () => {
+        setRpSelected(new Set(rpUnassigned.map(t => t.id)));
     };
 
-    const openHandover = (p: PickupWithServiceRequest) => {
-        if (!p.serviceRequest?.id) { toast.error("No linked service request"); return; }
-        const leg = legOf(p);
-        setHandoverTarget({
-            serviceRequestId: p.serviceRequest.id,
-            pickupId: p.id,
-            device: p.serviceRequest.brand || "Device",
-            customerName: p.serviceRequest.customerName,
-            phone: p.serviceRequest.phone,
-            ticketNumber: p.serviceRequest.ticketNumber,
-            amountDue: (p.serviceRequest.paymentStatus || "").toLowerCase() === "paid" ? 0 : Number(p.serviceRequest.totalAmount || 0),
-            mode: leg === "return" ? "delivery" : "receive",
-        });
-    };
-    const mobileDateValue = scheduledDate ? format(scheduledDate, "yyyy-MM-dd") : "";
-
-    const mobileAction = (p: PickupWithServiceRequest) => {
-        const leg = legOf(p);
-        const stage = p.serviceRequest?.stage || "";
-        if (leg === "done") return null;
-        if (leg === "collect" && !p.scheduledDate) return { label: "Schedule Pickup", disabled: false, onClick: () => handleOpenScheduleDialog(p), icon: <Calendar className="h-4 w-4" /> };
-        if (leg === "collect") return { label: "Receive with Customer OTP", disabled: false, onClick: () => openHandover(p), icon: <HandMetal className="h-4 w-4" /> };
-        if (stage === "ready" || stage === "out_for_delivery") return { label: "Hand Over to Customer", disabled: false, onClick: () => openHandover(p), icon: <HandMetal className="h-4 w-4" /> };
-        if (p.serviceRequest?.convertedJobId) return { label: "Open Job", disabled: false, onClick: () => { window.location.hash = `jobs?search=${encodeURIComponent(p.serviceRequest?.convertedJobId || "")}`; }, icon: <ArrowRight className="h-4 w-4" /> };
-        return { label: "Create Job from Service Request", disabled: false, onClick: () => { window.location.hash = `service-requests?search=${encodeURIComponent(p.serviceRequest?.ticketNumber || p.serviceRequestId)}`; }, icon: <ShieldCheck className="h-4 w-4" /> };
+    const rpSetOrder = (id: string, val: string) => {
+        const n = parseInt(val, 10);
+        if (!val) { setRpOrders(prev => { const next = { ...prev }; delete next[id]; return next; }); return; }
+        if (Number.isFinite(n) && n > 0) setRpOrders(prev => ({ ...prev, [id]: n }));
     };
 
-    return (
-        <MobileTabLayout>
-            {/* ─── MOBILE HEADER ─── */}
-            <MobileTabHeader>
-                <div className="flex items-center justify-between pt-1">
-                    <div className="min-w-0">
-                        <h1 className="truncate text-xl font-black text-slate-900">Pickup & Delivery</h1>
-                        <p className="truncate text-[11px] font-semibold text-slate-500">Schedule first, OTP at handover</p>
-                    </div>
-                    <Truck className="h-5 w-5 text-blue-600" />
-                </div>
-                <div className="relative">
-                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                    <input
-                        className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                        placeholder="Search device, customer, ticket…"
-                        value={pickupSearchQuery}
-                        onChange={(e) => setPickupSearchQuery(e.target.value)}
-                    />
-                </div>
-                <div className="overflow-x-auto -mx-0.5 pb-0.5" style={{ scrollbarWidth: "none" }}>
-                    <div className="flex gap-1 px-0.5 min-w-max">
-                        {mobileLegChips.map((c) => (
-                            <button
-                                key={c.key}
-                                type="button"
-                                onClick={() => setMobileLeg(c.key)}
-                                className={cn(
-                                    "h-7 px-3 rounded-lg border text-[11px] font-bold transition-colors",
-                                    mobileLeg === c.key ? "bg-slate-800 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-500",
-                                )}
-                            >
-                                {c.label}
-                            </button>
-                        ))}
-                    </div>
-                </div>
-            </MobileTabHeader>
+    const rpHasOrderEdits = Object.keys(rpOrders).length > 0;
 
-            {/* ─── MOBILE CARD LIST ─── */}
-            <MobileScrollContent className="md:hidden space-y-2 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
-                {mobilePickups.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16 gap-3">
-                        <Truck className="h-10 w-10 text-slate-200" />
-                        <p className="text-sm font-medium text-slate-400">No pickups here</p>
-                    </div>
-                ) : mobilePickups.map((p) => {
-                    const v = legVisual(p);
-                    const sr = p.serviceRequest;
-                    const due = Number(sr?.totalAmount || 0);
-                    const leg = legOf(p);
-                    const action = mobileAction(p);
-                    const dateSource = leg === "collect" ? (sr?.expectedPickupDate || p.scheduledDate) : (sr?.expectedReturnDate || sr?.expectedReadyDate || p.scheduledDate);
-                    const when = dateSource ? format(new Date(dateSource), "d MMM") : null;
-                    return (
-                        <div key={p.id} className="relative bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                            <div className={cn("absolute left-0 top-0 bottom-0 w-[3px]", v.accent)} />
-                            <div className="pl-4 pr-3 py-3">
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0">
-                                        <p className="font-black text-slate-900 text-[15px] truncate">{sr?.brand || "Device"}</p>
-                                        {sr?.ticketNumber && <p className="font-mono text-[11px] text-slate-400">#{sr.ticketNumber}</p>}
-                                    </div>
-                                    <span className={cn("shrink-0 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold", v.pill)}>{v.label}</span>
-                                </div>
-                                <div className="mt-2 flex items-center justify-between gap-2">
-                                    <div className="min-w-0 text-xs text-slate-500">
-                                        <div className="flex items-center gap-1.5"><User className="h-3 w-3 shrink-0" /> <span className="truncate">{sr?.customerName || "Unknown"}</span></div>
-                                        <div className="flex items-center gap-1.5 mt-0.5"><Phone className="h-3 w-3 shrink-0" /> {maskPhone(sr?.phone)}</div>
-                                    </div>
-                                    <div className="text-right shrink-0">
-                                        {due > 0 && <div className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-black text-slate-700 tabular-nums">৳ {due.toLocaleString()}</div>}
-                                        {when && <div className="mt-1 text-[10px] text-slate-400">{leg === "done" ? "Done" : "Sched"} {when}</div>}
-                                    </div>
-                                </div>
-                                {action && (
-                                    <button
-                                        type="button"
-                                        onClick={action.onClick}
-                                        disabled={action.disabled}
-                                        className="mt-3 w-full h-11 rounded-xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:bg-slate-200 disabled:text-slate-500"
-                                    >
-                                        {action.icon}
-                                        {action.label}
-                                    </button>
-                                )}
-                            </div>
-                        </div>
-                    );
-                })}
-            </MobileScrollContent>
+    const rpSaveOrders = () => {
+        const items = Object.entries(rpOrders).map(([id, routeOrder]) => ({ id, routeOrder }));
+        if (items.length > 0) batchReorderMutation.mutate({ tasks: items });
+    };
 
-            {/* ─── HANDOVER OTP SHEET ─── */}
-            <HandoverSheet target={handoverTarget} onClose={() => setHandoverTarget(null)} />
+    const rpBatchAssign = () => {
+        const ids = Array.from(rpSelected);
+        if (ids.length === 0 || !rpDriverId) return;
+        batchAssignMutation.mutate({ taskIds: ids, driverId: rpDriverId, driverName: rpDriverName, zone: rpZone || undefined });
+    };
 
+    // ── MOBILE BOTTOM SHEETS (portaled) ──────────────────────────
+    const sheetPortal = (
+        <>
+            {/* Assign Driver Sheet */}
             {createPortal(
                 <AnimatePresence>
-                    {isMobile && scheduleDialogOpen && selectedPickup && (
-                        <div className="fixed inset-0 z-[205] md:hidden">
-                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setScheduleDialogOpen(false)} />
-                            <MobileBottomSheetFrame onClose={() => setScheduleDialogOpen(false)} className="absolute inset-x-0 bottom-0 flex max-h-[90dvh] flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl">
-                                <div className="flex-none px-4 pb-3 pt-3">
+                    {isMobile && assignOpen && selectedTask && (
+                        <div className="fixed inset-0 z-[205]">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setAssignOpen(false)} />
+                            <MobileBottomSheetFrame onClose={() => setAssignOpen(false)} className="absolute inset-x-0 bottom-0 flex max-h-[85dvh] flex-col rounded-t-[2rem] bg-white shadow-2xl">
+                                <div className="flex-none px-4 pb-2 pt-3">
                                     <MobileBottomSheetHandle />
-                                    <h3 className="mt-4 text-lg font-black text-slate-950">Schedule Pickup</h3>
-                                    <p className="mt-1 text-xs font-semibold text-slate-500">
-                                        {selectedPickup.serviceRequest?.ticketNumber ? `#${selectedPickup.serviceRequest.ticketNumber} · ` : ""}
-                                        {selectedPickup.serviceRequest?.customerName || "Customer"}
-                                    </p>
+                                    <h3 className="mt-3 text-lg font-black text-slate-950">Assign Driver</h3>
                                 </div>
                                 <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 space-y-3">
-                                    <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                                        <p className="text-[10px] font-black uppercase text-slate-400">Device</p>
-                                        <p className="mt-1 text-sm font-black text-slate-900">{selectedPickup.serviceRequest?.brand || "Device"}</p>
-                                        <p className="mt-1 text-xs font-semibold text-slate-500">{selectedPickup.pickupAddress || "No pickup address"}</p>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-black uppercase text-slate-500">Driver</Label>
+                                        <select
+                                            className="h-12 w-full rounded-2xl border border-slate-200 px-3 text-sm font-bold"
+                                            value={assignDriverId}
+                                            onChange={(e) => {
+                                                const d = drivers.find((u: any) => u.id === e.target.value);
+                                                setAssignDriverId(e.target.value);
+                                                setAssignDriverName(d?.name || "");
+                                            }}
+                                        >
+                                            <option value="">Select driver</option>
+                                            {drivers.map((d: any) => <option key={d.id} value={d.id}>{d.name} ({d.role})</option>)}
+                                        </select>
                                     </div>
                                     <div className="space-y-1.5">
-                                        <Label className="text-xs font-black uppercase text-slate-500">Pickup Date</Label>
-                                        <Input
-                                            type="date"
-                                            value={mobileDateValue}
-                                            min={format(new Date(), "yyyy-MM-dd")}
-                                            onChange={(event) => setScheduledDate(event.target.value ? new Date(`${event.target.value}T12:00:00`) : undefined)}
-                                            className="h-12 rounded-2xl border-slate-200 text-base font-bold"
-                                        />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label className="text-xs font-black uppercase text-slate-500">Driver / Staff</Label>
-                                        <Input value={assignedStaff} onChange={(e) => setAssignedStaff(e.target.value)} placeholder="Driver name" className="h-12 rounded-2xl border-slate-200 text-base font-bold" />
-                                    </div>
-                                    <div className="space-y-1.5">
-                                        <Label className="text-xs font-black uppercase text-slate-500">Notes</Label>
-                                        <Textarea value={pickupNotes} onChange={(e) => setPickupNotes(e.target.value)} placeholder="Gate, timing, customer instruction..." className="min-h-24 rounded-2xl border-slate-200" />
+                                        <Label className="text-xs font-black uppercase text-slate-500">Zone</Label>
+                                        <Input value={assignZone} onChange={(e) => setAssignZone(e.target.value)} placeholder="N, S, E, W..." className="h-12 rounded-2xl" />
                                     </div>
                                 </div>
                                 <div className="grid flex-none grid-cols-2 gap-2 border-t border-slate-100 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-                                    <Button variant="outline" className="h-11 rounded-2xl font-black" onClick={() => setScheduleDialogOpen(false)}>Cancel</Button>
-                                    <Button className="h-11 rounded-2xl bg-blue-600 font-black hover:bg-blue-700" onClick={handleSaveSchedule} disabled={!scheduledDate || updatePickupMutation.isPending}>
-                                        {updatePickupMutation.isPending ? "Saving..." : "Save"}
+                                    <Button variant="outline" className="h-11 rounded-2xl font-black" onClick={() => setAssignOpen(false)}>Cancel</Button>
+                                    <Button className="h-11 rounded-2xl bg-blue-600 font-black" disabled={!assignDriverId || assignMutation.isPending}
+                                        onClick={() => assignMutation.mutate({ id: selectedTask.id, driverId: assignDriverId, driverName: assignDriverName, zone: assignZone || undefined })}>
+                                        {assignMutation.isPending ? "Saving..." : "Assign"}
                                     </Button>
                                 </div>
                             </MobileBottomSheetFrame>
@@ -470,262 +427,544 @@ export default function PickupTab() {
                 document.body
             )}
 
-            {/* ─── DESKTOP (unchanged) ─── */}
-            <div className="hidden md:grid grid-cols-1 md:grid-cols-4 gap-6 pb-24 md:pb-0 animate-in fade-in slide-in-from-bottom-4 duration-500 overflow-y-auto">
-            <BentoCard className="col-span-1 md:col-span-1 h-full min-h-[200px] bg-gradient-to-br from-cyan-500 to-blue-600" title="Pending Pickups" icon={<Clock size={24} className="text-white" />} variant="vibrant">
-                <div className="flex-1 flex flex-col justify-end">
-                    <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{pickups.filter((p: any) => p.status === 'Pending').length}</div>
-                    <div className="text-white/80 text-sm mt-2">Needs Scheduling</div>
-                </div>
-            </BentoCard>
-            <BentoCard className="col-span-1 md:col-span-1 h-full min-h-[200px] bg-gradient-to-br from-blue-500 to-indigo-600" title="Scheduled" icon={<Calendar size={24} className="text-white" />} variant="vibrant">
-                <div className="flex-1 flex flex-col justify-end">
-                    <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{pickups.filter((p: any) => p.status === 'Scheduled').length}</div>
-                    <div className="text-white/80 text-sm mt-2">Upcoming</div>
-                </div>
-            </BentoCard>
-            <BentoCard className="col-span-1 md:col-span-2 h-full min-h-[200px] bg-gradient-to-br from-purple-500 to-fuchsia-600" title="Completed" icon={<Truck size={24} className="text-white" />} variant="vibrant">
-                <div className="flex-1 flex justify-between items-end">
-                    <div>
-                        <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{pickups.filter((p: any) => ['PickedUp', 'Delivered'].includes(p.status)).length}</div>
-                        <div className="text-white/80 text-sm mt-2">Total Completed</div>
-                    </div>
-                    <div className="text-right">
-                        <div className="text-2xl font-bold text-white/90">{pickups.filter((p: any) => p.status === 'Delivered').length}</div>
-                        <div className="text-white/60 text-xs">Delivered Successfully</div>
-                    </div>
-                </div>
-            </BentoCard>
-
-            <BentoCard className="col-span-1 md:col-span-4 min-h-[600px] bg-white border-slate-200 shadow-sm" title="Pickup Schedule" icon={<Truck size={24} className="text-blue-600" />} variant="ghost" disableHover>
-                <div className="h-full flex flex-col p-4 space-y-4">
-                    <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-3xl border border-slate-100 shadow-sm">
-                        <div className="relative flex-1 w-full md:w-auto">
-                            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 w-4 h-4" />
-                            <Input
-                                placeholder="Search customer, phone, address..."
-                                className="pl-10 bg-white border-slate-200"
-                                value={pickupSearchQuery}
-                                onChange={(e) => setPickupSearchQuery(e.target.value)}
-                            />
-                        </div>
-                        <div className="flex items-center gap-2 w-full md:w-auto overflow-x-auto">
-                            <Select value={pickupFilterStatus} onValueChange={setPickupFilterStatus}>
-                                <SelectTrigger className="w-[140px] bg-white border-slate-200">
-                                    <SelectValue placeholder="Status" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Status</SelectItem>
-                                    <SelectItem value="Pending">Pending</SelectItem>
-                                    <SelectItem value="Scheduled">Scheduled</SelectItem>
-                                    <SelectItem value="PickedUp">Picked Up</SelectItem>
-                                    <SelectItem value="Delivered">Delivered</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <Select value={pickupFilterTier} onValueChange={setPickupFilterTier}>
-                                <SelectTrigger className="w-[140px] bg-white border-slate-200">
-                                    <SelectValue placeholder="Tier" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="all">All Tiers</SelectItem>
-                                    <SelectItem value="Regular">Regular</SelectItem>
-                                    <SelectItem value="Priority">Priority</SelectItem>
-                                    <SelectItem value="Emergency">Emergency</SelectItem>
-                                </SelectContent>
-                            </Select>
-                            <Button variant="outline" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ["adminPickups"] })} className="bg-white border-slate-200">
-                                <Briefcase className="w-4 h-4" />
-                            </Button>
-                        </div>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto pr-2 space-y-2 scrollbar-thin scrollbar-thumb-slate-200">
-                        <div className="grid grid-cols-12 gap-4 px-4 py-3 text-xs font-bold text-slate-500 uppercase tracking-wider bg-white rounded-lg mb-2 sticky top-0 z-10 border-b border-slate-100">
-                            <div className="col-span-3">Customer</div>
-                            <div className="col-span-3">Address</div>
-                            <div className="col-span-1">Tier</div>
-                            <div className="col-span-2">Scheduled</div>
-                            <div className="col-span-2">Status</div>
-                            <div className="col-span-1 text-right">Actions</div>
-                        </div>
-                        {pickups.map((pickup: any) => (
-                            <div key={pickup.id} className="grid grid-cols-12 gap-4 items-center p-4 bg-white hover:bg-slate-50 rounded-xl transition-all group border border-slate-100 hover:border-blue-200 shadow-sm hover:shadow-md">
-                                <div className="col-span-3">
-                                    <div className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">{pickup.serviceRequest?.customerName || "Unknown"}</div>
-                                    <div className="text-xs text-slate-500">{pickup.serviceRequest?.phone}</div>
+            {/* Schedule / Reschedule Sheet */}
+            {createPortal(
+                <AnimatePresence>
+                    {isMobile && scheduleOpen && selectedTask && (
+                        <div className="fixed inset-0 z-[205]">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setScheduleOpen(false)} />
+                            <MobileBottomSheetFrame onClose={() => setScheduleOpen(false)} className="absolute inset-x-0 bottom-0 flex max-h-[85dvh] flex-col rounded-t-[2rem] bg-white shadow-2xl">
+                                <div className="flex-none px-4 pb-2 pt-3">
+                                    <MobileBottomSheetHandle />
+                                    <h3 className="mt-3 text-lg font-black text-slate-950">{selectedTask.scheduledDate ? "Reschedule" : "Schedule"}</h3>
                                 </div>
-                                <div className="col-span-3 text-slate-600 text-xs truncate" title={pickup.pickupAddress}>
-                                    {pickup.pickupAddress || "\u2014"}
-                                </div>
-                                <div className="col-span-1">
-                                    {getTierBadge(pickup.tier)}
-                                </div>
-                                <div className="col-span-2 text-xs text-slate-500 font-mono">
-                                    {pickup.scheduledDate ? (
-                                        <div>
-                                            <div className="font-medium text-slate-700">{format(new Date(pickup.scheduledDate), 'MMM d, yyyy')}</div>
-                                            <div className="text-[10px] opacity-70">{format(new Date(pickup.scheduledDate), 'h:mm a')}</div>
+                                <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 space-y-3">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-black uppercase text-slate-500">Date</Label>
+                                        <Input type="date" value={schedDate} min={format(new Date(), "yyyy-MM-dd")} onChange={(e) => setSchedDate(e.target.value)} className="h-12 rounded-2xl text-base font-bold" />
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-black uppercase text-slate-500">Time Window</Label>
+                                        <Input value={schedWindow} onChange={(e) => setSchedWindow(e.target.value)} placeholder="10 AM - 1 PM" className="h-12 rounded-2xl" />
+                                    </div>
+                                    {selectedTask.scheduledDate && (
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs font-black uppercase text-slate-500">Reason</Label>
+                                            <Textarea value={schedReason} onChange={(e) => setSchedReason(e.target.value)} placeholder="Why reschedule?" className="min-h-20 rounded-2xl" />
                                         </div>
-                                    ) : <span className="text-slate-400 italic">Not Set</span>}
+                                    )}
                                 </div>
-                                <div className="col-span-2">
-                                    {getStatusBadge(pickup.status)}
-                                    {pickup.assignedStaff && <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1"><User className="w-3 h-3" /> {pickup.assignedStaff}</div>}
+                                <div className="grid flex-none grid-cols-2 gap-2 border-t border-slate-100 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                    <Button variant="outline" className="h-11 rounded-2xl font-black" onClick={() => setScheduleOpen(false)}>Cancel</Button>
+                                    <Button className="h-11 rounded-2xl bg-blue-600 font-black" disabled={!schedDate || rescheduleMutation.isPending}
+                                        onClick={() => rescheduleMutation.mutate({ id: selectedTask.id, scheduledDate: schedDate, timeWindow: schedWindow || undefined, reason: schedReason || undefined })}>
+                                        {rescheduleMutation.isPending ? "Saving..." : "Save"}
+                                    </Button>
                                 </div>
-                                <div className="col-span-1 text-right">
-                                    <DropdownMenu>
-                                        <DropdownMenuTrigger asChild>
-                                            <Button variant="ghost" className="h-8 w-8 p-0">
-                                                <MoreVertical className="h-4 w-4 text-slate-400" />
-                                            </Button>
-                                        </DropdownMenuTrigger>
-                                        <DropdownMenuContent align="end">
-                                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                                            <DropdownMenuItem onClick={() => { setSelectedPickup(pickup); setViewDialogOpen(true); }}>
-                                                <Eye className="w-4 h-4 mr-2" /> View Details
-                                            </DropdownMenuItem>
-                                            {pickup.status === "Pending" && (
-                                                <DropdownMenuItem onClick={() => handleOpenScheduleDialog(pickup)}>
-                                                    <Calendar className="w-4 h-4 mr-2" /> Schedule
-                                                </DropdownMenuItem>
-                                            )}
-                                            {pickup.status === "Scheduled" && (
-                                                <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ id: pickup.id, status: "PickedUp" })}>
-                                                    <Truck className="w-4 h-4 mr-2" /> Mark Picked Up
-                                                </DropdownMenuItem>
-                                            )}
-                                            {pickup.status === "PickedUp" && (
-                                                <DropdownMenuItem onClick={() => updateStatusMutation.mutate({ id: pickup.id, status: "Delivered" })}>
-                                                    <CheckCircle className="w-4 h-4 mr-2" /> Mark Delivered
-                                                </DropdownMenuItem>
-                                            )}
-                                        </DropdownMenuContent>
-                                    </DropdownMenu>
+                            </MobileBottomSheetFrame>
+                        </div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
+
+            {/* Mark Failed Sheet */}
+            {createPortal(
+                <AnimatePresence>
+                    {isMobile && failOpen && selectedTask && (
+                        <div className="fixed inset-0 z-[205]">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setFailOpen(false)} />
+                            <MobileBottomSheetFrame onClose={() => setFailOpen(false)} className="absolute inset-x-0 bottom-0 flex max-h-[85dvh] flex-col rounded-t-[2rem] bg-white shadow-2xl">
+                                <div className="flex-none px-4 pb-2 pt-3">
+                                    <MobileBottomSheetHandle />
+                                    <h3 className="mt-3 text-lg font-black text-slate-950">Mark Failed</h3>
                                 </div>
-                            </div>
-                        ))}
-                        {pickups.length === 0 && (
-                            <div className="text-center py-12 text-slate-400 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
-                                No pickups match your filters.
-                            </div>
-                        )}
+                                <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 space-y-3">
+                                    <div className="space-y-1.5">
+                                        <Label className="text-xs font-black uppercase text-slate-500">Reason</Label>
+                                        <Textarea value={failReason} onChange={(e) => setFailReason(e.target.value)} placeholder="Customer unavailable, wrong address, phone unreachable..." className="min-h-28 rounded-2xl" />
+                                    </div>
+                                </div>
+                                <div className="grid flex-none grid-cols-2 gap-2 border-t border-slate-100 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                    <Button variant="outline" className="h-11 rounded-2xl font-black" onClick={() => setFailOpen(false)}>Cancel</Button>
+                                    <Button className="h-11 rounded-2xl bg-rose-600 font-black text-white" disabled={!failReason.trim() || statusMutation.isPending}
+                                        onClick={() => { statusMutation.mutate({ id: selectedTask.id, status: "failed", failureReason: failReason.trim() }); setFailOpen(false); }}>
+                                        {statusMutation.isPending ? "Saving..." : "Mark Failed"}
+                                    </Button>
+                                </div>
+                            </MobileBottomSheetFrame>
+                        </div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
+
+            {/* Detail Sheet (mobile) */}
+            {createPortal(
+                <AnimatePresence>
+                    {isMobile && selectedTask && !assignOpen && !scheduleOpen && !failOpen && (
+                        <div className="fixed inset-0 z-[205]">
+                            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm" onClick={() => setSelectedTask(null)} />
+                            <MobileBottomSheetFrame onClose={() => setSelectedTask(null)} className="absolute inset-x-0 bottom-0 flex max-h-[90dvh] flex-col rounded-t-[2rem] bg-white shadow-2xl">
+                                <div className="flex-none px-4 pb-2 pt-3">
+                                    <MobileBottomSheetHandle />
+                                    <div className="mt-3 flex items-center justify-between">
+                                        <h3 className="text-lg font-black text-slate-950">{selectedTask.taskType === "delivery" ? "Delivery" : "Pickup"} Task</h3>
+                                        {statusBadge(selectedTask.status)}
+                                    </div>
+                                    <p className="text-xs font-mono text-slate-400 mt-1">{selectedTask.id}</p>
+                                </div>
+                                <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-3 space-y-3">
+                                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 space-y-2">
+                                        <div className="flex items-center gap-2 text-sm"><User className="h-3.5 w-3.5 text-slate-400" /> <span className="font-bold text-slate-900">{selectedTask.customerName || "Unknown"}</span></div>
+                                        {selectedTask.customerPhone && (
+                                            <a href={`tel:${selectedTask.customerPhone}`} className="flex items-center gap-2 text-sm text-blue-600 font-bold">
+                                                <Phone className="h-3.5 w-3.5" /> {selectedTask.customerPhone}
+                                            </a>
+                                        )}
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 text-sm text-slate-600 min-w-0"><MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" /> <span className="truncate">{address(selectedTask)}</span></div>
+                                            {navigateUrl(selectedTask) && (
+                                                <a href={navigateUrl(selectedTask)!} target="_blank" rel="noopener noreferrer" className="shrink-0 h-8 w-8 rounded-lg bg-blue-50 border border-blue-200 flex items-center justify-center">
+                                                    <Navigation className="h-3.5 w-3.5 text-blue-600" />
+                                                </a>
+                                            )}
+                                        </div>
+                                    </div>
+                                    {selectedTask.scheduledDate && (
+                                        <div className="flex items-center gap-2 text-sm"><Calendar className="h-3.5 w-3.5 text-slate-400" /> {format(new Date(selectedTask.scheduledDate), "PPP")} {selectedTask.timeWindow && `· ${selectedTask.timeWindow}`}</div>
+                                    )}
+                                    {selectedTask.assignedDriverName && (
+                                        <div className="flex items-center gap-2 text-sm"><User className="h-3.5 w-3.5 text-slate-400" /> Driver: {selectedTask.assignedDriverName}</div>
+                                    )}
+                                    {selectedTask.zone && <div className="flex items-center gap-2 text-sm"><MapPin className="h-3.5 w-3.5 text-slate-400" /> Zone: {selectedTask.zone} {selectedTask.routeOrder != null && `· Route #${selectedTask.routeOrder}`}</div>}
+                                    {selectedTask.notes && <div className="rounded-xl bg-amber-50 border border-amber-100 p-3 text-sm text-amber-800">{selectedTask.notes}</div>}
+                                    {selectedTask.failureReason && <div className="rounded-xl bg-rose-50 border border-rose-100 p-3 text-sm text-rose-800">Failed: {selectedTask.failureReason}</div>}
+                                    {selectedTask.rescheduleReason && <div className="rounded-xl bg-violet-50 border border-violet-100 p-3 text-sm text-violet-800">Rescheduled: {selectedTask.rescheduleReason}</div>}
+                                </div>
+                                {selectedTask.status !== "completed" && selectedTask.status !== "cancelled" && (
+                                    <div className="flex-none border-t border-slate-100 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] space-y-2">
+                                        {(() => { const a = primaryAction(selectedTask); return a ? (
+                                            <button type="button" onClick={a.onClick} className="w-full h-12 rounded-2xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98]">
+                                                {a.icon} {a.label}
+                                            </button>
+                                        ) : null; })()}
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {!isDriver && <Button variant="outline" className="h-10 rounded-xl text-xs font-bold" onClick={() => openAssign(selectedTask)}><User className="h-3.5 w-3.5 mr-1" />Assign</Button>}
+                                            <Button variant="outline" className="h-10 rounded-xl text-xs font-bold" onClick={() => openSchedule(selectedTask)}><Calendar className="h-3.5 w-3.5 mr-1" />{selectedTask.scheduledDate ? "Resched" : "Sched"}</Button>
+                                            <Button variant="outline" className="h-10 rounded-xl text-xs font-bold text-rose-600 border-rose-200" onClick={() => openFail(selectedTask)}><XCircle className="h-3.5 w-3.5 mr-1" />Failed</Button>
+                                        </div>
+                                    </div>
+                                )}
+                            </MobileBottomSheetFrame>
+                        </div>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
+        </>
+    );
+
+    return (
+        <MobileTabLayout>
+            {/* ── MOBILE ── */}
+            <MobileTabHeader>
+                <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-500">Logistics</p>
+                            <h1 className="text-2xl font-black text-slate-950">Pickup & Delivery</h1>
+                        </div>
+                        <Button size="icon" variant="outline" className="rounded-2xl" onClick={() => queryClient.invalidateQueries({ queryKey: ["logisticsTasks"] })}><RefreshCw className="h-4 w-4" /></Button>
+                    </div>
+                    <MobileKpiGrid items={kpis} collapsible summaryLabel="Logistics pulse" />
+                    <MobileSegmentTabs value={lane} onChange={(v) => setLane(v as Lane)} items={laneItems} />
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                        <input className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20" placeholder="Customer, address, zone…" value={search} onChange={(e) => setSearch(e.target.value)} />
                     </div>
                 </div>
+            </MobileTabHeader>
 
-                {/* Dialogs */}
-                <Dialog open={scheduleDialogOpen && !isMobile} onOpenChange={setScheduleDialogOpen}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Schedule Pickup</DialogTitle>
-                            <DialogDescription>Set the pickup date and assign staff.</DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                            {selectedPickup?.serviceRequest && (
-                                <div className="bg-slate-50 p-3 rounded-lg text-sm border border-slate-100">
-                                    <p className="font-semibold text-slate-700">{selectedPickup.serviceRequest.customerName}</p>
-                                    <p className="text-slate-500">{selectedPickup.serviceRequest.phone}</p>
-                                    <p className="text-slate-500">{selectedPickup.serviceRequest.brand}</p>
+            <MobileScrollContent className="md:hidden space-y-2 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
+                {filtered.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 gap-3">
+                        <Truck className="h-10 w-10 text-slate-200" />
+                        <p className="text-sm font-medium text-slate-400">No tasks here</p>
+                    </div>
+                ) : filtered.map((t) => {
+                    const action = primaryAction(t);
+                    return (
+                        <div key={t.id} onClick={() => setSelectedTask(t)} className="w-full text-left relative bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden active:scale-[0.99] transition-transform cursor-pointer">
+                            <div className={cn("absolute left-0 top-0 bottom-0 w-[3px]", typeAccent(t.taskType))} />
+                            <div className="pl-4 pr-3 py-3">
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center gap-1.5">
+                                            {typeIcon(t.taskType)}
+                                            <span className="font-black text-slate-900 text-[15px] truncate">{t.customerName || "Unknown"}</span>
+                                        </div>
+                                        <p className="text-xs text-slate-500 truncate mt-0.5">{address(t)}</p>
+                                    </div>
+                                    <div className="shrink-0 flex flex-col items-end gap-1">
+                                        {statusBadge(t.status)}
+                                        {t.zone && <span className="text-[10px] font-bold text-slate-400">{t.zone}{t.routeOrder != null ? ` #${t.routeOrder}` : ""}</span>}
+                                    </div>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-3 text-xs text-slate-500">
+                                        {t.scheduledDate && <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> {formatDateShort(t.scheduledDate)}</span>}
+                                        {t.timeWindow && <span>{t.timeWindow}</span>}
+                                        {t.assignedDriverName && <span className="flex items-center gap-1"><User className="h-3 w-3" /> {t.assignedDriverName}</span>}
+                                    </div>
+                                    {t.customerPhone && (
+                                        <a href={`tel:${t.customerPhone}`} onClick={(e) => e.stopPropagation()} className="shrink-0 h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-200 flex items-center justify-center">
+                                            <Phone className="h-3.5 w-3.5 text-emerald-600" />
+                                        </a>
+                                    )}
+                                </div>
+                                {action && (
+                                    <button type="button" onClick={(e) => { e.stopPropagation(); action.onClick(); }}
+                                        className="mt-3 w-full h-11 rounded-xl bg-blue-600 text-white font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
+                                        {action.icon} {action.label}
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </MobileScrollContent>
+
+            {/* ── HANDOVER SHEET ── */}
+            <HandoverSheet target={handoverTarget} onClose={() => { setHandoverTarget(null); invalidate(); }} onVerified={() => invalidate()} />
+
+            {sheetPortal}
+
+            {/* ── DESKTOP ── */}
+            <div className={cn("hidden h-full md:grid gap-5 p-5", desktopView === "operations" ? "grid-cols-[minmax(0,1fr)_380px]" : "grid-cols-1")}>
+                {desktopView === "routePlan" && !isDriver ? (
+                    /* ── ROUTE PLAN VIEW ── */
+                    <section className="flex flex-col rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                        <div className="p-5 space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-500">Logistics</p>
+                                    <h1 className="mt-1 text-3xl font-black text-slate-950">Route Planning</h1>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <Button variant="outline" className="rounded-full" onClick={() => setDesktopView("operations")}><List className="mr-2 h-4 w-4" />Operations</Button>
+                                    <Button variant="outline" className="rounded-full" onClick={() => queryClient.invalidateQueries({ queryKey: ["logisticsTasks"] })}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
+                                </div>
+                            </div>
+                            <div className="flex flex-wrap items-end gap-3">
+                                <div className="space-y-1">
+                                    <Label className="text-xs font-bold text-slate-500">Date</Label>
+                                    <Input type="date" value={rpDate} onChange={(e) => setRpDate(e.target.value)} className="w-40" />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-xs font-bold text-slate-500">Zone</Label>
+                                    <Input value={rpZone} onChange={(e) => setRpZone(e.target.value)} placeholder="All zones" className="w-32" />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-xs font-bold text-slate-500">Driver</Label>
+                                    <select className="h-10 w-48 rounded-lg border border-slate-200 px-3 text-sm" value={rpDriverId} onChange={(e) => { const d = drivers.find((u: any) => u.id === e.target.value); setRpDriverId(e.target.value); setRpDriverName(d?.name || ""); }}>
+                                        <option value="">Select driver</option>
+                                        {drivers.map((d: any) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <div className="flex-1 overflow-y-auto px-5 pb-5">
+                            <div className="grid grid-cols-2 gap-5">
+                                {/* Unassigned tasks */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h3 className="text-sm font-black text-slate-700">Unassigned ({rpUnassigned.length})</h3>
+                                        <div className="flex items-center gap-2">
+                                            {rpUnassigned.length > 0 && <Button variant="outline" size="sm" className="text-xs rounded-lg" onClick={rpSelectAll}>Select All</Button>}
+                                            {rpSelected.size > 0 && rpDriverId && (
+                                                <Button size="sm" className="text-xs rounded-lg bg-blue-600" disabled={batchAssignMutation.isPending} onClick={rpBatchAssign}>
+                                                    Assign {rpSelected.size} → {rpDriverName || "Driver"}
+                                                </Button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        {rpUnassigned.map(t => (
+                                            <label key={t.id} className={cn("flex items-center gap-3 rounded-xl border p-3 cursor-pointer transition-colors", rpSelected.has(t.id) ? "border-blue-300 bg-blue-50" : "border-slate-100 bg-white hover:border-slate-200")}>
+                                                <input type="checkbox" checked={rpSelected.has(t.id)} onChange={() => rpToggleSelect(t.id)} className="h-4 w-4 rounded border-slate-300" />
+                                                <div className="min-w-0 flex-1">
+                                                    <div className="flex items-center gap-1.5">
+                                                        {typeIcon(t.taskType)}
+                                                        <span className="text-sm font-bold text-slate-800 truncate">{t.customerName || "Unknown"}</span>
+                                                    </div>
+                                                    <p className="text-xs text-slate-400 truncate">{address(t)}</p>
+                                                </div>
+                                                <div className="text-right shrink-0">
+                                                    {t.scheduledDate && <span className="text-[10px] text-slate-400">{formatDateShort(t.scheduledDate)}</span>}
+                                                    {t.zone && <span className="block text-[10px] font-bold text-slate-500">{t.zone}</span>}
+                                                </div>
+                                            </label>
+                                        ))}
+                                        {rpUnassigned.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No unassigned tasks for this date/zone.</p>}
+                                    </div>
+                                </div>
+
+                                {/* Assigned route */}
+                                <div>
+                                    <div className="flex items-center justify-between mb-3">
+                                        <h3 className="text-sm font-black text-slate-700">
+                                            {rpDriverName ? `${rpDriverName}'s Route` : "Select a driver"} ({rpAssigned.length})
+                                        </h3>
+                                        {rpHasOrderEdits && (
+                                            <Button size="sm" className="text-xs rounded-lg bg-emerald-600" disabled={batchReorderMutation.isPending} onClick={rpSaveOrders}>
+                                                <Save className="h-3.5 w-3.5 mr-1" /> Save Order
+                                            </Button>
+                                        )}
+                                    </div>
+                                    {rpDriverId ? (
+                                        <div className="space-y-1.5">
+                                            {rpAssigned.map(t => (
+                                                <div key={t.id} className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
+                                                    <input
+                                                        type="number"
+                                                        min={1}
+                                                        className="h-8 w-12 rounded-lg border border-slate-200 text-center text-sm font-bold"
+                                                        value={rpOrders[t.id] ?? t.routeOrder ?? ""}
+                                                        onChange={(e) => rpSetOrder(t.id, e.target.value)}
+                                                        placeholder="#"
+                                                    />
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex items-center gap-1.5">
+                                                            {typeIcon(t.taskType)}
+                                                            <span className="text-sm font-bold text-slate-800 truncate">{t.customerName || "Unknown"}</span>
+                                                        </div>
+                                                        <p className="text-xs text-slate-400 truncate">{address(t)}</p>
+                                                    </div>
+                                                    <div className="text-right shrink-0">
+                                                        {statusBadge(t.status)}
+                                                        {t.zone && <span className="block mt-1 text-[10px] font-bold text-slate-500">{t.zone}</span>}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                            {rpAssigned.length === 0 && <p className="py-8 text-center text-sm text-slate-400">No tasks assigned to this driver.</p>}
+                                        </div>
+                                    ) : (
+                                        <p className="py-8 text-center text-sm text-slate-400">Select a driver to see their route.</p>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                ) : (<>
+                {/* ── OPERATIONS VIEW ── */}
+                <section className="flex flex-col rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                    <div className="p-5 space-y-4">
+                        <div className="flex items-center justify-between">
+                            <div>
+                                <p className="text-xs font-black uppercase tracking-[0.2em] text-blue-500">Logistics</p>
+                                <h1 className="mt-1 text-3xl font-black text-slate-950">Pickup & Delivery</h1>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                {!isDriver && <Button variant="outline" className="rounded-full" onClick={() => setDesktopView("routePlan")}><Route className="mr-2 h-4 w-4" />Route Plan</Button>}
+                                <Button variant="outline" className="rounded-full" onClick={() => queryClient.invalidateQueries({ queryKey: ["logisticsTasks"] })}><RefreshCw className="mr-2 h-4 w-4" />Refresh</Button>
+                            </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                            {laneItems.map((l) => (
+                                <button key={l.value} type="button" onClick={() => setLane(l.value)}
+                                    className={cn("h-8 px-3 rounded-lg border text-xs font-bold transition-colors", lane === l.value ? "bg-slate-800 border-slate-800 text-white" : "bg-white border-slate-200 text-slate-500 hover:border-slate-300")}>
+                                    {l.label}
+                                </button>
+                            ))}
+                        </div>
+                        <div className="relative">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                            <Input className="pl-10" placeholder="Search customer, address, zone..." value={search} onChange={(e) => setSearch(e.target.value)} />
+                        </div>
+                    </div>
+                    <div className="flex-1 overflow-y-auto">
+                        <table className="w-full text-left text-sm">
+                            <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500 sticky top-0">
+                                <tr>
+                                    <th className="px-4 py-3 w-8">Type</th>
+                                    <th className="px-4 py-3">Customer</th>
+                                    <th className="px-4 py-3">Zone</th>
+                                    <th className="px-4 py-3">Scheduled</th>
+                                    <th className="px-4 py-3">Driver</th>
+                                    <th className="px-4 py-3">Status</th>
+                                    <th className="px-4 py-3 w-8"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filtered.map((t) => (
+                                    <tr key={t.id} onClick={() => setSelectedTask(t)} className={cn("border-t border-slate-100 cursor-pointer hover:bg-blue-50/50 transition-colors", selectedTask?.id === t.id && "bg-blue-50")}>
+                                        <td className="px-4 py-3">{typeIcon(t.taskType)}</td>
+                                        <td className="px-4 py-3">
+                                            <div className="font-bold text-slate-800">{t.customerName || "Unknown"}</div>
+                                            <div className="text-xs text-slate-400 truncate max-w-[200px]">{address(t)}</div>
+                                        </td>
+                                        <td className="px-4 py-3 text-xs font-bold text-slate-600">{t.zone || "—"}{t.routeOrder != null ? ` #${t.routeOrder}` : ""}</td>
+                                        <td className="px-4 py-3 text-xs text-slate-500 font-mono">{formatDateShort(t.scheduledDate)}{t.timeWindow ? ` · ${t.timeWindow}` : ""}</td>
+                                        <td className="px-4 py-3 text-xs text-slate-500">{t.assignedDriverName || "—"}</td>
+                                        <td className="px-4 py-3">{statusBadge(t.status)}</td>
+                                        <td className="px-4 py-3">
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild><Button variant="ghost" className="h-8 w-8 p-0"><MoreVertical className="h-4 w-4 text-slate-400" /></Button></DropdownMenuTrigger>
+                                                <DropdownMenuContent align="end">
+                                                    <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                                    {t.status !== "completed" && t.status !== "cancelled" && (
+                                                        <>
+                                                            {(t.status === "pending" || t.status === "assigned" || t.status === "rescheduled") && (
+                                                                <DropdownMenuItem onClick={() => statusMutation.mutate({ id: t.id, status: "en_route" })}><Play className="w-4 h-4 mr-2" /> Start Route</DropdownMenuItem>
+                                                            )}
+                                                            {t.status === "en_route" && (
+                                                                <DropdownMenuItem onClick={() => openHandover(t)}><CheckCircle className="w-4 h-4 mr-2" /> {t.taskType === "delivery" ? "Deliver" : "Receive"}</DropdownMenuItem>
+                                                            )}
+                                                            <DropdownMenuItem onClick={() => openAssign(t)}><User className="w-4 h-4 mr-2" /> Assign Driver</DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => openSchedule(t)}><Calendar className="w-4 h-4 mr-2" /> {t.scheduledDate ? "Reschedule" : "Schedule"}</DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => openFail(t)} className="text-rose-600"><AlertTriangle className="w-4 h-4 mr-2" /> Mark Failed</DropdownMenuItem>
+                                                            <DropdownMenuItem onClick={() => cancelMutation.mutate({ id: t.id })} className="text-slate-500"><XCircle className="w-4 h-4 mr-2" /> Cancel</DropdownMenuItem>
+                                                        </>
+                                                    )}
+                                                    {t.customerPhone && (
+                                                        <DropdownMenuItem asChild><a href={`tel:${t.customerPhone}`}><Phone className="w-4 h-4 mr-2" /> Call Customer</a></DropdownMenuItem>
+                                                    )}
+                                                    {navigateUrl(t) && (
+                                                        <DropdownMenuItem asChild><a href={navigateUrl(t)!} target="_blank" rel="noopener noreferrer"><Navigation className="w-4 h-4 mr-2" /> Navigate</a></DropdownMenuItem>
+                                                    )}
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {filtered.length === 0 && (
+                                    <tr><td colSpan={7} className="px-4 py-12 text-center text-slate-400">No tasks match your filters.</td></tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+
+                {/* Right: detail panel */}
+                <aside className="overflow-y-auto">
+                    {selectedTask ? (
+                        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                            <div className="flex items-start justify-between gap-3">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        {typeIcon(selectedTask.taskType)}
+                                        <span className="text-xs font-bold uppercase text-slate-400">{selectedTask.taskType}</span>
+                                    </div>
+                                    <h2 className="mt-2 text-xl font-black text-slate-950">{selectedTask.customerName || "Unknown"}</h2>
+                                    <p className="text-xs font-mono text-slate-400 mt-1">{selectedTask.id}</p>
+                                </div>
+                                {statusBadge(selectedTask.status)}
+                            </div>
+                            <div className="space-y-2 text-sm">
+                                {selectedTask.customerPhone && (
+                                    <a href={`tel:${selectedTask.customerPhone}`} className="flex items-center gap-2 text-blue-600 font-bold"><Phone className="h-4 w-4" /> {selectedTask.customerPhone}</a>
+                                )}
+                                <div className="flex items-center justify-between gap-2">
+                                    <div className="flex items-center gap-2 text-slate-600 min-w-0"><MapPin className="h-4 w-4 text-slate-400 shrink-0" /> <span className="truncate">{address(selectedTask)}</span></div>
+                                    {navigateUrl(selectedTask) && (
+                                        <a href={navigateUrl(selectedTask)!} target="_blank" rel="noopener noreferrer" className="shrink-0 text-xs font-bold text-blue-600 flex items-center gap-1 hover:underline">
+                                            <Navigation className="h-3.5 w-3.5" /> Navigate
+                                        </a>
+                                    )}
+                                </div>
+                                {selectedTask.scheduledDate && <div className="flex items-center gap-2 text-slate-600"><Calendar className="h-4 w-4 text-slate-400" /> {format(new Date(selectedTask.scheduledDate), "PPP")} {selectedTask.timeWindow && `· ${selectedTask.timeWindow}`}</div>}
+                                {selectedTask.assignedDriverName && <div className="flex items-center gap-2 text-slate-600"><User className="h-4 w-4 text-slate-400" /> {selectedTask.assignedDriverName}</div>}
+                                {selectedTask.zone && <div className="flex items-center gap-2 text-slate-600"><MapPin className="h-4 w-4 text-slate-400" /> Zone: {selectedTask.zone}{selectedTask.routeOrder != null ? ` · Route #${selectedTask.routeOrder}` : ""}</div>}
+                            </div>
+                            {selectedTask.notes && <div className="rounded-xl bg-amber-50 border border-amber-100 p-3 text-sm text-amber-800">{selectedTask.notes}</div>}
+                            {selectedTask.failureReason && <div className="rounded-xl bg-rose-50 border border-rose-100 p-3 text-sm text-rose-800">Failed: {selectedTask.failureReason}</div>}
+                            {selectedTask.rescheduleReason && <div className="rounded-xl bg-violet-50 border border-violet-100 p-3 text-sm text-violet-800">Rescheduled: {selectedTask.rescheduleReason}</div>}
+                            {selectedTask.status !== "completed" && selectedTask.status !== "cancelled" && (
+                                <div className="space-y-2 pt-2 border-t border-slate-100">
+                                    {(() => { const a = primaryAction(selectedTask); return a ? (
+                                        <Button className="w-full rounded-xl bg-blue-600 hover:bg-blue-700" onClick={a.onClick}>{a.icon}<span className="ml-2">{a.label}</span></Button>
+                                    ) : null; })()}
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <Button variant="outline" className="rounded-xl" onClick={() => openAssign(selectedTask)}><User className="h-4 w-4 mr-1" />Assign</Button>
+                                        <Button variant="outline" className="rounded-xl" onClick={() => openSchedule(selectedTask)}><Calendar className="h-4 w-4 mr-1" />{selectedTask.scheduledDate ? "Reschedule" : "Schedule"}</Button>
+                                        <Button variant="outline" className="rounded-xl text-rose-600 border-rose-200" onClick={() => openFail(selectedTask)}><AlertTriangle className="h-4 w-4 mr-1" />Failed</Button>
+                                        <Button variant="outline" className="rounded-xl text-slate-500" onClick={() => cancelMutation.mutate({ id: selectedTask.id })}><XCircle className="h-4 w-4 mr-1" />Cancel</Button>
+                                    </div>
                                 </div>
                             )}
-                            <div className="space-y-2">
-                                <Label>Pickup Date</Label>
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <Button variant="outline" className={cn("w-full justify-start text-left font-normal", !scheduledDate && "text-muted-foreground")}>
-                                            <Calendar className="mr-2 h-4 w-4" />
-                                            {scheduledDate ? format(scheduledDate, "PPP") : "Select date"}
-                                        </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-auto p-0" align="start">
-                                        <CalendarUI
-                                            mode="single"
-                                            selected={scheduledDate}
-                                            onSelect={(date) => setScheduledDate(date)}
-                                            disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
-                                            initialFocus
-                                        />
-                                    </PopoverContent>
-                                </Popover>
+                        </div>
+                    ) : (
+                        <div className="rounded-3xl border border-slate-200 bg-white p-6 text-center text-sm text-slate-500">Select a task to view details</div>
+                    )}
+                </aside>
+                </>)}
+            </div>
+
+            {/* Desktop sheets use dialogs — reuse the same portaled sheets above, they only render when isMobile */}
+            {!isMobile && assignOpen && selectedTask && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    <div className="fixed inset-0 bg-black/30" onClick={() => setAssignOpen(false)} />
+                    <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl space-y-4">
+                        <h3 className="text-lg font-black text-slate-900">Assign Driver</h3>
+                        <div className="space-y-3">
+                            <div className="space-y-1.5">
+                                <Label>Driver</Label>
+                                <select className="h-10 w-full rounded-lg border border-slate-200 px-3 text-sm" value={assignDriverId} onChange={(e) => { const d = drivers.find((u: any) => u.id === e.target.value); setAssignDriverId(e.target.value); setAssignDriverName(d?.name || ""); }}>
+                                    <option value="">Select driver</option>
+                                    {drivers.map((d: any) => <option key={d.id} value={d.id}>{d.name} ({d.role})</option>)}
+                                </select>
                             </div>
-                            <div className="space-y-2">
-                                <Label>Assigned Staff</Label>
-                                <Input
-                                    value={assignedStaff}
-                                    onChange={(e) => setAssignedStaff(e.target.value)}
-                                    placeholder="Enter staff name"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Notes</Label>
-                                <Textarea
-                                    value={pickupNotes}
-                                    onChange={(e) => setPickupNotes(e.target.value)}
-                                    placeholder="Special instructions..."
-                                />
+                            <div className="space-y-1.5">
+                                <Label>Zone</Label>
+                                <Input value={assignZone} onChange={(e) => setAssignZone(e.target.value)} placeholder="N, S, E, W..." />
                             </div>
                         </div>
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setScheduleDialogOpen(false)}>Cancel</Button>
-                            <Button onClick={handleSaveSchedule} disabled={updatePickupMutation.isPending}>
-                                {updatePickupMutation.isPending ? "Saving..." : "Save Schedule"}
+                        <div className="flex justify-end gap-2">
+                            <Button variant="outline" onClick={() => setAssignOpen(false)}>Cancel</Button>
+                            <Button disabled={!assignDriverId || assignMutation.isPending} onClick={() => assignMutation.mutate({ id: selectedTask.id, driverId: assignDriverId, driverName: assignDriverName, zone: assignZone || undefined })}>
+                                {assignMutation.isPending ? "Saving..." : "Assign"}
                             </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
+                        </div>
+                    </div>
+                </div>
+            )}
 
-                <Dialog open={viewDialogOpen && !isMobile} onOpenChange={setViewDialogOpen}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Pickup Details</DialogTitle>
-                        </DialogHeader>
-                        {selectedPickup && (
-                            <div className="space-y-4 py-4">
-                                <div className="flex items-center justify-between">
-                                    {getTierBadge(selectedPickup.tier)}
-                                    {getStatusBadge(selectedPickup.status)}
-                                </div>
-                                {selectedPickup.serviceRequest && (
-                                    <div className="bg-slate-50 p-4 rounded-lg space-y-2 border border-slate-100">
-                                        <div className="flex items-center gap-2 text-sm text-slate-700">
-                                            <User className="w-4 h-4 text-slate-400" />
-                                            <span className="font-medium">{selectedPickup.serviceRequest.customerName}</span>
-                                        </div>
-                                        <div className="flex items-center gap-2 text-sm text-slate-700">
-                                            <Truck className="w-4 h-4 text-slate-400" />
-                                            <span>{selectedPickup.pickupAddress || "No address"}</span>
-                                        </div>
-                                    </div>
-                                )}
-                                {selectedPickup.scheduledDate && (
-                                    <div className="flex items-center gap-2 text-sm">
-                                        <Calendar className="w-4 h-4 text-slate-400" />
-                                        <span>Scheduled: {format(new Date(selectedPickup.scheduledDate), "PPP")}</span>
-                                    </div>
-                                )}
-                                {selectedPickup.assignedStaff && (
-                                    <div className="flex items-center gap-2 text-sm">
-                                        <User className="w-4 h-4 text-slate-400" />
-                                        <span>Staff: {selectedPickup.assignedStaff}</span>
-                                    </div>
-                                )}
-                                {selectedPickup.pickupNotes && (
-                                    <div className="bg-amber-50 p-3 rounded-lg border border-amber-100 text-sm">
-                                        <p className="font-medium text-amber-800 mb-1">Notes:</p>
-                                        <p className="text-amber-700">{selectedPickup.pickupNotes}</p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                        <DialogFooter>
-                            <Button variant="outline" onClick={() => setViewDialogOpen(false)}>Close</Button>
-                            <Button onClick={() => { setViewDialogOpen(false); handleOpenScheduleDialog(selectedPickup!); }}>
-                                Edit Schedule
+            {!isMobile && scheduleOpen && selectedTask && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    <div className="fixed inset-0 bg-black/30" onClick={() => setScheduleOpen(false)} />
+                    <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl space-y-4">
+                        <h3 className="text-lg font-black text-slate-900">{selectedTask.scheduledDate ? "Reschedule" : "Schedule"}</h3>
+                        <div className="space-y-3">
+                            <div className="space-y-1.5"><Label>Date</Label><Input type="date" value={schedDate} min={format(new Date(), "yyyy-MM-dd")} onChange={(e) => setSchedDate(e.target.value)} /></div>
+                            <div className="space-y-1.5"><Label>Time Window</Label><Input value={schedWindow} onChange={(e) => setSchedWindow(e.target.value)} placeholder="10 AM - 1 PM" /></div>
+                            {selectedTask.scheduledDate && <div className="space-y-1.5"><Label>Reason</Label><Textarea value={schedReason} onChange={(e) => setSchedReason(e.target.value)} placeholder="Why reschedule?" /></div>}
+                        </div>
+                        <div className="flex justify-end gap-2">
+                            <Button variant="outline" onClick={() => setScheduleOpen(false)}>Cancel</Button>
+                            <Button disabled={!schedDate || rescheduleMutation.isPending} onClick={() => rescheduleMutation.mutate({ id: selectedTask.id, scheduledDate: schedDate, timeWindow: schedWindow || undefined, reason: schedReason || undefined })}>
+                                {rescheduleMutation.isPending ? "Saving..." : "Save"}
                             </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-            </BentoCard>
-            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {!isMobile && failOpen && selectedTask && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center">
+                    <div className="fixed inset-0 bg-black/30" onClick={() => setFailOpen(false)} />
+                    <div className="relative z-10 w-full max-w-md rounded-2xl bg-white p-6 shadow-xl space-y-4">
+                        <h3 className="text-lg font-black text-slate-900">Mark Failed</h3>
+                        <div className="space-y-1.5"><Label>Reason</Label><Textarea value={failReason} onChange={(e) => setFailReason(e.target.value)} placeholder="Customer unavailable, wrong address..." /></div>
+                        <div className="flex justify-end gap-2">
+                            <Button variant="outline" onClick={() => setFailOpen(false)}>Cancel</Button>
+                            <Button variant="destructive" disabled={!failReason.trim() || statusMutation.isPending} onClick={() => { statusMutation.mutate({ id: selectedTask.id, status: "failed", failureReason: failReason.trim() }); setFailOpen(false); }}>
+                                {statusMutation.isPending ? "Saving..." : "Mark Failed"}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </MobileTabLayout>
     );
 }

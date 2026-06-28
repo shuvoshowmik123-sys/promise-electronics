@@ -1,13 +1,13 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { CalendarClock, ChevronRight, Clock3, FileText, Wrench } from "lucide-react";
-import { customerRepairJourneysApi, type CustomerRepairJourney } from "@/lib/api/customerApi";
+import { CalendarClock, ChevronRight, Clock3, Monitor, Wrench } from "lucide-react";
+import { customerRepairJourneysApi, type CustomerRepairJourneyEnriched } from "@/lib/api/customerApi";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 import { PillButton, RefBadge, SectionEyebrow, SegmentedToggle, StatusChip, toneForStatus } from "@/components/customer/mobile-kit";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatJourneyRef, labelJourneyFriendly, labelJourneyStage, labelJourneyStatus, labelNextAction, labelServiceMode } from "@/lib/customerRepairJourneyLabels";
+import { labelJourneyFriendly, labelJourneyStage, labelJourneyStatus, labelNextAction, labelServiceMode } from "@/lib/customerRepairJourneyLabels";
 
 type Filter = "active" | "quotes" | "done" | "all";
 
@@ -18,48 +18,67 @@ function formatDate(value?: string | null) {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-function filterJourney(journey: CustomerRepairJourney, filter: Filter) {
+function filterJourney(journey: CustomerRepairJourneyEnriched, filter: Filter) {
   if (filter === "all") return true;
   if (filter === "quotes") return journey.currentStage.includes("quote");
   if (filter === "done") return ["delivered", "cancelled", "repair_completed"].includes(journey.currentStage);
   return !["delivered", "cancelled"].includes(journey.currentStage);
 }
 
-function JourneyCard({ journey, onOpen }: { journey: CustomerRepairJourney; onOpen: () => void }) {
+function safeRef(journey: CustomerRepairJourneyEnriched): string {
+  if (journey.srTicketNumber) return journey.srTicketNumber;
+  if (journey.jobTicketId) return journey.jobTicketId.length > 12 ? `JOB-${journey.jobTicketId.slice(-6).toUpperCase()}` : journey.jobTicketId;
+  return `Repair #${journey.id.slice(-6).toUpperCase()}`;
+}
+
+function deviceLabel(journey: CustomerRepairJourneyEnriched): string {
+  const parts = [journey.deviceBrand, journey.deviceModel].filter(Boolean);
+  if (parts.length > 0) return parts.join(" ");
+  return "Repair request";
+}
+
+function JourneyCard({ journey, onOpen }: { journey: CustomerRepairJourneyEnriched; onOpen: () => void }) {
   const { t, language } = useCustomerLanguage();
   const stageLabel = labelJourneyStage(journey.currentStage, t);
   const friendlyLabel = labelJourneyFriendly(journey.currentStage, journey.customerFriendlyStatus, t);
-  const statusLabel = labelJourneyStatus(journey.currentStatus, stageLabel, t);
-  const serviceModeLabel = labelServiceMode(journey.serviceMode, t);
   const nextActionLabel = labelNextAction(journey.nextAction, journey.nextActionLabel, t, language);
+  const serviceModeLabel = labelServiceMode(journey.serviceMode, t);
+  const device = deviceLabel(journey);
+  const ref = safeRef(journey);
 
   return (
     <button
       type="button"
       onClick={onOpen}
       className="w-full rounded-[1.75rem] border border-emerald-100 bg-white p-4 text-left shadow-sm shadow-emerald-50 transition active:scale-[0.99]"
-      data-testid={"button-open-journey-" + journey.id}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <RefBadge>{formatJourneyRef(journey)}</RefBadge>
-          <h3 className="mt-2 line-clamp-2 text-lg font-black text-slate-950">{stageLabel}</h3>
+          <div className="flex items-center gap-2">
+            <Monitor className="h-4 w-4 shrink-0 text-emerald-600" />
+            <h3 className="truncate text-base font-black text-slate-950">{device}</h3>
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-400">
+            <RefBadge>{ref}</RefBadge>
+            {journey.serialNumber && <span>S/N {journey.serialNumber}</span>}
+            {journey.screenSize && <span>{journey.screenSize}"</span>}
+          </div>
         </div>
-        <StatusChip tone={toneForStatus(journey.currentStage)}>{statusLabel}</StatusChip>
+        <StatusChip tone={toneForStatus(journey.currentStage)}>{labelJourneyStatus(journey.currentStatus, stageLabel, t)}</StatusChip>
       </div>
       <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-500">{friendlyLabel}</p>
-      <div className="mt-4 grid grid-cols-2 gap-2 text-xs font-bold text-slate-500">
-        <span className="inline-flex items-center gap-1 rounded-2xl bg-slate-50 px-3 py-2">
+      <div className="mt-3 flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
+        <span className="inline-flex items-center gap-1">
           <Clock3 className="h-3.5 w-3.5 text-emerald-600" />
-          {formatDate(journey.updatedAt)}
+          {journey.lastEventTitle ? `${journey.lastEventTitle} · ${formatDate(journey.lastEventAt)}` : formatDate(journey.updatedAt)}
         </span>
-        <span className="inline-flex items-center gap-1 rounded-2xl bg-slate-50 px-3 py-2">
-          <CalendarClock className="h-3.5 w-3.5 text-emerald-600" />
+        <span className="inline-flex items-center gap-1 text-slate-400">
+          <CalendarClock className="h-3.5 w-3.5" />
           {serviceModeLabel}
         </span>
       </div>
       {(journey.nextAction || journey.nextActionLabel) && (
-        <div className="mt-4 flex items-center justify-between rounded-2xl bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-700">
+        <div className="mt-3 flex items-center justify-between rounded-2xl bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-700">
           <span>{nextActionLabel}</span>
           <ChevronRight className="h-4 w-4" />
         </div>
@@ -153,9 +172,9 @@ export default function MyRepairsPage() {
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                   <tr>
-                    <th className="px-4 py-3">{t("common.details")}</th>
+                    <th className="px-4 py-3">Device</th>
                     <th className="px-4 py-3">{t("journey.status")}</th>
-                    <th className="px-4 py-3">{t("journey.nextAction")}</th>
+                    <th className="px-4 py-3">Last Update</th>
                     <th className="px-4 py-3"></th>
                   </tr>
                 </thead>
@@ -163,13 +182,16 @@ export default function MyRepairsPage() {
                   {data.map((journey) => {
                     const stageLabel = labelJourneyStage(journey.currentStage, t);
                     return (
-                      <tr key={journey.id} className="border-t border-slate-100">
+                      <tr key={journey.id} className="border-t border-slate-100 hover:bg-emerald-50/30">
                         <td className="px-4 py-4">
-                          <RefBadge>{formatJourneyRef(journey)}</RefBadge>
-                          <div className="mt-1 font-bold text-slate-900">{stageLabel}</div>
+                          <div className="font-bold text-slate-900">{deviceLabel(journey)}</div>
+                          <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
+                            <span>{safeRef(journey)}</span>
+                            {journey.serialNumber && <span>· S/N {journey.serialNumber}</span>}
+                          </div>
                         </td>
                         <td className="px-4 py-4"><StatusChip tone={toneForStatus(journey.currentStage)}>{labelJourneyStatus(journey.currentStatus, stageLabel, t)}</StatusChip></td>
-                        <td className="px-4 py-4 text-slate-500">{labelNextAction(journey.nextAction, journey.nextActionLabel, t, language)}</td>
+                        <td className="px-4 py-4 text-xs text-slate-500">{journey.lastEventTitle ? `${journey.lastEventTitle} · ${formatDate(journey.lastEventAt)}` : formatDate(journey.updatedAt)}</td>
                         <td className="px-4 py-4 text-right">
                           <Button variant="outline" className="rounded-full" onClick={() => setLocation("/my-repairs/" + journey.id)}>
                             {t("journey.open")}
@@ -186,8 +208,9 @@ export default function MyRepairsPage() {
           <aside className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             {selected ? (
               <div>
-                <FileText className="h-8 w-8 text-emerald-600" />
-                <h2 className="mt-4 text-2xl font-black text-slate-950">{labelJourneyStage(selected.currentStage, t)}</h2>
+                <Monitor className="h-8 w-8 text-emerald-600" />
+                <h2 className="mt-4 text-2xl font-black text-slate-950">{deviceLabel(selected)}</h2>
+                <p className="mt-1 text-xs font-bold text-slate-400">{safeRef(selected)}</p>
                 <p className="mt-3 text-sm leading-6 text-slate-500">{labelJourneyFriendly(selected.currentStage, selected.customerFriendlyStatus, t)}</p>
                 <Button className="mt-6 w-full rounded-full bg-emerald-600 hover:bg-emerald-700" onClick={() => setLocation("/my-repairs/" + selected.id)}>
                   {t("journey.details")}

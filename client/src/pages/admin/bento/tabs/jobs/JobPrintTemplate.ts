@@ -291,9 +291,15 @@ export function generatePrintHtml(
                 <div class="value">${escapeHtml(job.screenSize || "Not specified")}</div>
               </div>
             </div>
-            <div class="section" style="margin-top: 10px; margin-bottom: 0;">
-              <div class="label">Serial / Model</div>
-              <div class="value">${escapeHtml(job.tvSerialNumber || "Not specified")}</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
+              <div>
+                <div class="label">Model</div>
+                <div class="value">${escapeHtml(job.modelNumber || job.tvSerialNumber || "Not specified")}</div>
+              </div>
+              <div>
+                <div class="label">Serial No.</div>
+                <div class="value">${escapeHtml(job.serialNumber || "Not recorded")}</div>
+              </div>
             </div>
           </div>
 

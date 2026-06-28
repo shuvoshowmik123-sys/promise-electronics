@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { storage } from '../storage.js';
 import { userRepo, analyticsRepo, orderRepo, serviceRequestRepo, jobRepo, employmentRepo } from '../repositories/index.js';
+import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 import { insertUserSchema } from '../../shared/schema.js';
 import {
     requireAdminAuth,
@@ -308,7 +309,7 @@ router.get('/api/admin/users', requireAnyPermission(['users', 'canAssignTechnici
         if (corporateClientId) {
             filteredUsers = users.filter(user => user.corporateClientId === corporateClientId && user.role === 'Corporate');
         } else {
-            const staffRoles = ['Super Admin', 'Manager', 'Cashier', 'Technician'];
+            const staffRoles = ['Super Admin', 'Manager', 'Cashier', 'Technician', 'Driver'];
             filteredUsers = users.filter(user => staffRoles.includes(user.role));
         }
 
@@ -848,9 +849,12 @@ router.get('/api/admin/customers/:id', requireAdminAuth, requirePermission('user
             return res.status(404).json({ error: 'User not found' });
         }
 
-        const orders = await orderRepo.getOrdersByCustomerId(user.id);
-        const serviceRequests = await serviceRequestRepo.getServiceRequestsByCustomerId(user.id);
-        const jobTickets = await jobRepo.getJobTicketsByCustomerPhone(user.phone || '');
+        const [orders, serviceRequests, jobTickets, journeys] = await Promise.all([
+            orderRepo.getOrdersByCustomerId(user.id),
+            serviceRequestRepo.getServiceRequestsByCustomerId(user.id),
+            jobRepo.getJobTicketsByCustomerPhone(user.phone || ''),
+            repairJourneyService.getAdminJourneysByCustomer(user.id),
+        ]);
 
         const ordersWithItems = await Promise.all(
             orders.map(async (order) => {
@@ -864,6 +868,7 @@ router.get('/api/admin/customers/:id', requireAdminAuth, requirePermission('user
             orders: ordersWithItems,
             serviceRequests,
             jobTickets,
+            journeys,
         });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch customer details' });

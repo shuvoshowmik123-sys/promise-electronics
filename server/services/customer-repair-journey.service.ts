@@ -170,6 +170,33 @@ function toAdminView(row: JourneyRow) {
   };
 }
 
+function deriveSourceType(row: any): string {
+  if (row.warranty_claim_id) return "warranty";
+  if (row.service_request_id) return "service_request";
+  if (row.quote_request_id) return "quote_request";
+  if (row.job_ticket_id) return "walk_in";
+  return "unknown";
+}
+
+function toEnrichedAdminView(row: any) {
+  return {
+    ...toAdminView(row as JourneyRow),
+    sourceType: deriveSourceType(row),
+    customerName: row.customer_name_joined ?? null,
+    customerPhone: row.customer_phone_joined ?? null,
+    deviceBrand: row.device_brand ?? row.job_device ?? null,
+    deviceModel: row.device_model ?? null,
+    screenSize: row.sr_screen_size ?? null,
+    serialNumber: row.serial_number ?? null,
+    srTicketNumber: row.sr_ticket_number ?? null,
+    quoteStatus: row.quote_status ?? null,
+    quoteAmount: row.quote_amount != null ? Number(row.quote_amount) : null,
+    billingStatus: row.job_payment_status ?? row.sr_payment_status ?? null,
+    lastEventTitle: row.last_event_title ?? null,
+    lastEventAt: row.last_event_at ?? null,
+  };
+}
+
 function toEventView(row: EventRow, forCustomer: boolean) {
   if (forCustomer && !row.is_customer_visible) return null;
   return {
@@ -496,11 +523,31 @@ export const repairJourneyService = {
 
   async getCustomerJourneys(customerId: string) {
     const rows = await db.execute(sql`
-      SELECT * FROM customer_repair_journeys
-      WHERE customer_id = ${customerId}
-      ORDER BY created_at DESC
+      SELECT j.*,
+        sr.ticket_number AS sr_ticket_number,
+        sr.brand AS device_brand,
+        COALESCE(jt.model_number, sr.model_number) AS device_model,
+        sr.screen_size AS sr_screen_size,
+        COALESCE(jt.serial_number, jt.tv_serial_number) AS serial_number,
+        jt.device AS job_device,
+        (SELECT title FROM customer_repair_journey_events WHERE journey_id = j.id AND is_customer_visible = true ORDER BY created_at DESC LIMIT 1) AS last_event_title,
+        (SELECT created_at FROM customer_repair_journey_events WHERE journey_id = j.id AND is_customer_visible = true ORDER BY created_at DESC LIMIT 1) AS last_event_at
+      FROM customer_repair_journeys j
+      LEFT JOIN service_requests sr ON sr.id = COALESCE(j.service_request_id, j.quote_request_id)
+      LEFT JOIN job_tickets jt ON jt.id = j.job_ticket_id
+      WHERE j.customer_id = ${customerId}
+      ORDER BY j.updated_at DESC
     `);
-    return (rows.rows as unknown as JourneyRow[]).map(toCustomerView);
+    return (rows.rows as any[]).map((row) => ({
+      ...toCustomerView(row as JourneyRow),
+      deviceBrand: row.device_brand ?? row.job_device ?? null,
+      deviceModel: row.device_model ?? null,
+      screenSize: row.sr_screen_size ?? null,
+      serialNumber: row.serial_number ?? null,
+      srTicketNumber: row.sr_ticket_number ?? null,
+      lastEventTitle: row.last_event_title ?? null,
+      lastEventAt: row.last_event_at ?? null,
+    }));
   },
 
   async getJourneyDetail(journeyId: string, customerId: string) {
@@ -523,8 +570,17 @@ export const repairJourneyService = {
       ORDER BY created_at DESC
     `);
 
+    let quoteAmount: number | null = null;
+    const srId = journey.service_request_id || journey.quote_request_id;
+    if (srId) {
+      const srRows = await db.execute(sql`SELECT quote_amount, total_amount FROM service_requests WHERE id = ${srId} LIMIT 1`);
+      const sr = srRows.rows[0] as any;
+      if (sr) quoteAmount = sr.quote_amount != null ? Number(sr.quote_amount) : (sr.total_amount != null ? Number(sr.total_amount) : null);
+    }
+
     return {
       ...toCustomerView(journey),
+      quoteAmount,
       events: (eventRows.rows as unknown as EventRow[])
         .map((e) => toEventView(e, true))
         .filter(Boolean),
@@ -562,36 +618,92 @@ export const repairJourneyService = {
     };
   },
 
-  async getAdminJourneys(filters?: { stage?: string; status?: string; limit?: number }) {
+  async getAdminJourneys(filters?: { stage?: string; status?: string; limit?: number; search?: string; sourceType?: string; hasQuote?: string; dateFrom?: string; dateTo?: string }) {
     const limit = filters?.limit || 100;
-    let rows;
+    const conditions: ReturnType<typeof sql>[] = [];
 
-    if (filters?.stage && filters?.status) {
-      rows = await db.execute(sql`
-        SELECT * FROM customer_repair_journeys
-        WHERE current_stage = ${filters.stage} AND current_status = ${filters.status}
-        ORDER BY created_at DESC LIMIT ${limit}
-      `);
-    } else if (filters?.stage) {
-      rows = await db.execute(sql`
-        SELECT * FROM customer_repair_journeys
-        WHERE current_stage = ${filters.stage}
-        ORDER BY created_at DESC LIMIT ${limit}
-      `);
-    } else if (filters?.status) {
-      rows = await db.execute(sql`
-        SELECT * FROM customer_repair_journeys
-        WHERE current_status = ${filters.status}
-        ORDER BY created_at DESC LIMIT ${limit}
-      `);
-    } else {
-      rows = await db.execute(sql`
-        SELECT * FROM customer_repair_journeys
-        ORDER BY created_at DESC LIMIT ${limit}
-      `);
+    if (filters?.stage) conditions.push(sql`j.current_stage = ${filters.stage}`);
+    if (filters?.status) conditions.push(sql`j.current_status = ${filters.status}`);
+    if (filters?.dateFrom) conditions.push(sql`j.created_at >= ${new Date(filters.dateFrom)}`);
+    if (filters?.dateTo) conditions.push(sql`j.created_at <= ${new Date(filters.dateTo + "T23:59:59")}`);
+    if (filters?.sourceType) {
+      if (filters.sourceType === "warranty") conditions.push(sql`j.warranty_claim_id IS NOT NULL`);
+      else if (filters.sourceType === "service_request") conditions.push(sql`j.service_request_id IS NOT NULL AND j.warranty_claim_id IS NULL`);
+      else if (filters.sourceType === "quote_request") conditions.push(sql`j.quote_request_id IS NOT NULL AND j.service_request_id IS NULL`);
+      else if (filters.sourceType === "walk_in") conditions.push(sql`j.job_ticket_id IS NOT NULL AND j.service_request_id IS NULL AND j.quote_request_id IS NULL AND j.warranty_claim_id IS NULL`);
+    }
+    if (filters?.hasQuote === "true") conditions.push(sql`sr.quote_amount IS NOT NULL`);
+    if (filters?.hasQuote === "false") conditions.push(sql`sr.quote_amount IS NULL`);
+    if (filters?.search) {
+      const q = `%${filters.search}%`;
+      conditions.push(sql`(
+        u.name ILIKE ${q} OR u.phone ILIKE ${q}
+        OR sr.brand ILIKE ${q} OR sr.model_number ILIKE ${q}
+        OR sr.ticket_number ILIKE ${q}
+        OR jt.device ILIKE ${q}
+        OR jt.tv_serial_number ILIKE ${q}
+        OR jt.model_number ILIKE ${q}
+        OR jt.serial_number ILIKE ${q}
+        OR j.job_ticket_id ILIKE ${q}
+        OR j.id ILIKE ${q}
+      )`);
     }
 
-    return (rows.rows as unknown as JourneyRow[]).map(toAdminView);
+    const whereClause = conditions.length > 0 ? sql`WHERE ${sql.join(conditions, sql` AND `)}` : sql``;
+
+    const rows = await db.execute(sql`
+      SELECT j.*,
+        sr.ticket_number AS sr_ticket_number,
+        sr.brand AS device_brand,
+        COALESCE(jt.model_number, sr.model_number) AS device_model,
+        sr.screen_size AS sr_screen_size,
+        sr.quote_amount AS quote_amount,
+        sr.quote_status AS quote_status,
+        sr.payment_status AS sr_payment_status,
+        COALESCE(jt.serial_number, jt.tv_serial_number) AS serial_number,
+        jt.status AS job_status,
+        jt.payment_status AS job_payment_status,
+        jt.device AS job_device,
+        u.name AS customer_name_joined,
+        u.phone AS customer_phone_joined,
+        (SELECT title FROM customer_repair_journey_events WHERE journey_id = j.id ORDER BY created_at DESC LIMIT 1) AS last_event_title,
+        (SELECT created_at FROM customer_repair_journey_events WHERE journey_id = j.id ORDER BY created_at DESC LIMIT 1) AS last_event_at
+      FROM customer_repair_journeys j
+      LEFT JOIN service_requests sr ON sr.id = COALESCE(j.service_request_id, j.quote_request_id)
+      LEFT JOIN job_tickets jt ON jt.id = j.job_ticket_id
+      LEFT JOIN users u ON u.id = j.customer_id
+      ${whereClause}
+      ORDER BY j.updated_at DESC
+      LIMIT ${limit}
+    `);
+
+    return (rows.rows as any[]).map(toEnrichedAdminView);
+  },
+
+  async getAdminJourneysByCustomer(customerId: string) {
+    const rows = await db.execute(sql`
+      SELECT j.*,
+        sr.ticket_number AS sr_ticket_number,
+        sr.brand AS device_brand,
+        COALESCE(jt.model_number, sr.model_number) AS device_model,
+        sr.screen_size AS sr_screen_size,
+        sr.quote_amount AS quote_amount,
+        sr.quote_status AS quote_status,
+        sr.payment_status AS sr_payment_status,
+        COALESCE(jt.serial_number, jt.tv_serial_number) AS serial_number,
+        jt.status AS job_status,
+        jt.payment_status AS job_payment_status,
+        jt.device AS job_device,
+        (SELECT title FROM customer_repair_journey_events WHERE journey_id = j.id ORDER BY created_at DESC LIMIT 1) AS last_event_title,
+        (SELECT created_at FROM customer_repair_journey_events WHERE journey_id = j.id ORDER BY created_at DESC LIMIT 1) AS last_event_at
+      FROM customer_repair_journeys j
+      LEFT JOIN service_requests sr ON sr.id = COALESCE(j.service_request_id, j.quote_request_id)
+      LEFT JOIN job_tickets jt ON jt.id = j.job_ticket_id
+      WHERE j.customer_id = ${customerId}
+      ORDER BY j.updated_at DESC
+      LIMIT 50
+    `);
+    return (rows.rows as any[]).map(toEnrichedAdminView);
   },
 
   async addCustomerQuestion(journeyId: string, customerId: string, question: string) {
@@ -782,6 +894,7 @@ export const repairJourneyService = {
       "Pending":        { stage: "device_received",     title: "Device Received",          message: "Your device has been received and a work order has been created." },
       "Diagnosing":     { stage: "inspection_started",  title: "Inspection Started",       message: "Our technician has started inspecting your device." },
       "Pending Parts":  { stage: "repair_in_progress",  title: "Waiting for Parts",        message: "We are sourcing the parts needed for your repair." },
+      "Waiting on Parts": { stage: "repair_in_progress", title: "Parts Needed",             message: "Your repair needs additional parts. Our team will update you when the parts are available." },
       "In Progress":    { stage: "repair_in_progress",  title: "Repair In Progress",       message: "Your device is being repaired." },
       "On Workbench":   { stage: "repair_in_progress",  title: "Repair In Progress",       message: "Your device is on the workbench." },
       "Ready":          { stage: "repair_completed",    title: "Repair Completed",         message: "Your device is ready! We will arrange delivery or you can pick it up." },

@@ -15,11 +15,16 @@ router.get(
   requirePermission("serviceRequests"),
   async (req: Request, res: Response) => {
     try {
-      const { stage, status, limit } = req.query;
+      const { stage, status, limit, search, sourceType, hasQuote, dateFrom, dateTo } = req.query;
       const journeys = await repairJourneyService.getAdminJourneys({
         stage: stage as string | undefined,
         status: status as string | undefined,
         limit: limit ? parseInt(limit as string, 10) : undefined,
+        search: search as string | undefined,
+        sourceType: sourceType as string | undefined,
+        hasQuote: hasQuote as string | undefined,
+        dateFrom: dateFrom as string | undefined,
+        dateTo: dateTo as string | undefined,
       });
       res.json(journeys);
     } catch (error: any) {

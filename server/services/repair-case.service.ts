@@ -3,6 +3,7 @@ import { sql } from 'drizzle-orm';
 import { jobRepo, serviceRequestRepo, pickupRepo } from '../repositories/index.js';
 import type { ServiceRequest, JobTicket, PickupSchedule } from '../../shared/schema.js';
 import { getCallSummary, deriveIntakeLane, type CallSummary, type IntakeLane } from './call-attempt.service.js';
+import { getTasksByServiceRequest, getTasksByJobTicket, type LogisticsTask } from './logistics-task.service.js';
 
 interface JourneySummary {
     id: string;
@@ -31,6 +32,7 @@ export interface UnifiedRepairCase {
     jobTicket: JobTicket | null;
     journey: JourneySummary | null;
     pickup: PickupSchedule | null;
+    logisticsTasks: LogisticsTask[];
     customer: {
         id: string | null;
         name: string;
@@ -147,6 +149,10 @@ export async function loadRepairCaseByServiceRequest(serviceRequestId: string): 
     const job = sr.convertedJobId ? await jobRepo.getJobTicket(sr.convertedJobId) : null;
     const journey = await getJourneySummary(sr.id, job?.id ?? null);
     const pickup = await pickupRepo.getPickupScheduleByServiceRequestId(sr.id) ?? null;
+    const srTasks = await getTasksByServiceRequest(sr.id);
+    const jobTasks = job ? await getTasksByJobTicket(job.id) : [];
+    const seenIds = new Set(srTasks.map(t => t.id));
+    const logisticsTasks = [...srTasks, ...jobTasks.filter(t => !seenIds.has(t.id))];
 
     return {
         operationalOwner: determineOwner(sr, job ?? null),
@@ -154,6 +160,7 @@ export async function loadRepairCaseByServiceRequest(serviceRequestId: string): 
         jobTicket: job ?? null,
         journey,
         pickup,
+        logisticsTasks,
         customer: {
             id: sr.customerId,
             name: sr.customerName,
@@ -189,6 +196,11 @@ export async function loadRepairCaseByJobTicket(jobTicketId: string): Promise<Un
     const journey = await getJourneySummary(sr?.id ?? null, job.id);
     const pickup = sr ? (await pickupRepo.getPickupScheduleByServiceRequestId(sr.id) ?? null) : null;
 
+    const srTasks = sr ? await getTasksByServiceRequest(sr.id) : [];
+    const jobTasks = await getTasksByJobTicket(job.id);
+    const seenIds = new Set(srTasks.map(t => t.id));
+    const logisticsTasks = [...srTasks, ...jobTasks.filter(t => !seenIds.has(t.id))];
+
     const customerName = sr?.customerName || job.customer || '';
     const customerPhone = sr?.phone || job.customerPhone || '';
 
@@ -198,6 +210,7 @@ export async function loadRepairCaseByJobTicket(jobTicketId: string): Promise<Un
         jobTicket: job,
         journey,
         pickup,
+        logisticsTasks,
         customer: {
             id: sr?.customerId ?? null,
             name: customerName,

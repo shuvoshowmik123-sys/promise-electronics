@@ -76,7 +76,18 @@ export interface CustomerRepairSchedule {
     updatedAt: string;
 }
 
+export interface CustomerRepairJourneyEnriched extends CustomerRepairJourney {
+    deviceBrand: string | null;
+    deviceModel: string | null;
+    screenSize: string | null;
+    serialNumber: string | null;
+    srTicketNumber: string | null;
+    lastEventTitle: string | null;
+    lastEventAt: string | null;
+}
+
 export interface CustomerRepairJourneyDetail extends CustomerRepairJourney {
+    quoteAmount: number | null;
     events: CustomerRepairJourneyEvent[];
     schedules: CustomerRepairSchedule[];
 }
@@ -161,7 +172,7 @@ export const customerServiceRequestsApi = {
 export const customerOrdersApi = customerServiceRequestsApi;
 
 export const customerRepairJourneysApi = {
-    getAll: () => fetchApi<CustomerRepairJourney[]>("/customer/repair-journeys"),
+    getAll: () => fetchApi<CustomerRepairJourneyEnriched[]>("/customer/repair-journeys"),
     getOne: (id: string) => fetchApi<CustomerRepairJourneyDetail>(`/customer/repair-journeys/${id}`),
     requestSchedule: (id: string, data: JourneySchedulePayload) =>
         fetchApi<{ scheduleId: string; status: string }>(`/customer/repair-journeys/${id}/schedule`, {

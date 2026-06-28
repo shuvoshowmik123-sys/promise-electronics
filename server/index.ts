@@ -25,6 +25,8 @@ import { migrateStaffResetCodes } from "./services/staff-reset-migration.service
 import { migratePasswordChangedAt } from "./services/password-changed-at-migration.service.js";
 import { migrateOperationalFields } from "./services/operational-fields-migration.service.js";
 import { migrateCallAttempts } from "./services/call-attempt.service.js";
+import { migrateLogisticsTasks } from "./services/logistics-task-migration.service.js";
+import { backfillPickupSchedulesToLogisticsTasks } from "./services/logistics-task.service.js";
 import { markMigrationsComplete, startReadinessChecks } from "./services/db-readiness.js";
 
 // ── Crash guards ────────────────────────────────────────────────────────────
@@ -89,6 +91,20 @@ async function runStartupMigrations(): Promise<boolean> {
     runStartupTask("password_changed_at migration", migratePasswordChangedAt, 2),
     runStartupTask("operational fields migration", migrateOperationalFields, 2),
     runStartupTask("call attempts migration", migrateCallAttempts, 2),
+    runStartupTask("logistics tasks migration + backfill", async () => {
+      await migrateLogisticsTasks();
+      await backfillPickupSchedulesToLogisticsTasks();
+    }, 2),
+    runStartupTask("job model+serial+outcome migration", async () => {
+      const { db } = await import("./db.js");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS model_number TEXT`);
+      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS serial_number TEXT`);
+      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS repair_outcome TEXT`);
+      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS closure_reason TEXT`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_job_tickets_model ON job_tickets (model_number)`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_job_tickets_serial ON job_tickets (serial_number)`);
+    }, 2),
     runStartupTask("firebase_uid migration", async () => {
       const { db } = await import("./db.js");
       const { sql } = await import("drizzle-orm");

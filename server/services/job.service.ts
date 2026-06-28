@@ -296,6 +296,7 @@ export class JobService {
             customerAddress: request.address || undefined,
             device: `${request.brand} TV`,
             tvSerialNumber: request.modelNumber || undefined,
+            modelNumber: request.modelNumber || undefined,
             issue: request.primaryIssue,
             status: "Pending", // Starts as Pending until Technician picks it up
             priority: priority,

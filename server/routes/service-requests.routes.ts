@@ -218,7 +218,7 @@ router.post('/api/admin/service-requests/sync-job/:jobId', requireAdminAuth, asy
 /**
  * POST /api/service-requests - Create service request (rate limited - 10/hour)
  */
-router.post('/api/service-requests', serviceRequestLimiter, async (req: Request, res: Response) => {
+router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ? [serviceRequestLimiter] : []), async (req: Request, res: Response) => {
     try {
         const validated = insertServiceRequestSchema.parse(req.body);
 
@@ -526,6 +526,27 @@ router.post('/api/admin/service-requests/:id/transition-stage', requireAdminAuth
             },
         });
 
+        const STAGE_TO_JOURNEY: Record<string, { stage: string; title: string; message: string }> = {
+            'authorized': { stage: 'quote_accepted', title: 'Request Authorized', message: 'Your repair request has been authorized. We will schedule service shortly.' },
+            'pickup_scheduled': { stage: 'schedule_confirmed', title: 'Pickup Scheduled', message: 'Your pickup has been scheduled.' },
+            'in_repair': { stage: 'repair_in_progress', title: 'Repair Started', message: 'Your device is being repaired.' },
+        };
+        const journeySync = STAGE_TO_JOURNEY[stage];
+        if (journeySync) {
+            repairJourneyService.findJourneyByServiceRequest(req.params.id).then(async (journeyId) => {
+                if (!journeyId) return;
+                await repairJourneyService.updateJourneyStage(journeyId, journeySync.stage as any);
+                await repairJourneyService.addJourneyEvent({
+                    journeyId,
+                    eventType: `stage_${stage}`,
+                    title: journeySync.title,
+                    message: journeySync.message,
+                    actorType: 'admin',
+                    isCustomerVisible: true,
+                });
+            }).catch((err) => console.error('[RepairJourney] Stage transition sync failed:', (err as Error).message));
+        }
+
         res.json(result);
     } catch (error: any) {
         logRouteError('ServiceRequests.TransitionStage', req, error);
@@ -575,8 +596,11 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
             message: `Promise Electronics ${label} OTP for ${request.ticketNumber || request.id}: ${code}. Valid for 5 minutes.`,
         });
 
-        if (!sms.success) {
+        if (!sms.success && process.env.NODE_ENV === 'production') {
             return res.status(500).json({ error: 'Failed to send custody OTP' });
+        }
+        if (!sms.success) {
+            console.log(`[CustodyOTP][DEV] Code for ${normalizedPhone}: ${code} (SMS not configured — dev fallback)`);
         }
 
         await serviceRequestRepo.createServiceRequestEvent({
@@ -592,6 +616,7 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
             targetStage,
             expiresAt: expiresAt.toISOString(),
             phone: `+${normalizedPhone.slice(0, 5)}*****${normalizedPhone.slice(-2)}`,
+            ...(process.env.NODE_ENV !== 'production' ? { _testCode: code } : {}),
         });
     } catch (error: any) {
         logRouteError('ServiceRequests.SendCustodyOtp', req, error);
@@ -935,6 +960,30 @@ router.post('/api/admin/service-requests/:id/action', requireAdminAuth, requireP
                     status: updatedRequest.status,
                 },
             });
+
+            const ACTION_JOURNEY_EVENTS: Record<string, { stage: string; title: string; message: string }> = {
+                decline: { stage: 'cancelled', title: 'Request Declined', message: 'We\'re sorry, we cannot proceed with this request at this time. Please contact us if you have questions.' },
+                cancel: { stage: 'cancelled', title: 'Request Cancelled', message: 'This repair request has been cancelled. Please contact us if you need further assistance.' },
+                mark_unrepairable: { stage: 'cancelled', title: 'Not Repairable', message: 'After review, we\'ve determined this device cannot be repaired. Please contact us to discuss options.' },
+                close: { stage: 'delivered', title: 'Request Closed', message: 'This repair request has been completed and closed.' },
+                start_review: { stage: 'inspection_started', title: 'Under Review', message: 'Our team is reviewing your request. We\'ll update you shortly.' },
+                approve: { stage: 'quote_accepted', title: 'Request Approved', message: 'Your repair request has been approved. We\'ll schedule your service shortly.' },
+            };
+            const journeyEvent = ACTION_JOURNEY_EVENTS[actionId];
+            if (journeyEvent) {
+                repairJourneyService.findJourneyByServiceRequest(req.params.id).then(async (journeyId) => {
+                    if (!journeyId) return;
+                    await repairJourneyService.updateJourneyStage(journeyId, journeyEvent.stage as any);
+                    await repairJourneyService.addJourneyEvent({
+                        journeyId,
+                        eventType: `admin_${actionId}`,
+                        title: journeyEvent.title,
+                        message: req.body.reason ? `${journeyEvent.message} Reason: ${req.body.reason}` : journeyEvent.message,
+                        actorType: 'admin',
+                        isCustomerVisible: true,
+                    });
+                }).catch((err) => console.error('[RepairJourney] Action sync failed:', (err as Error).message));
+            }
         }
 
         res.json(updatedRequest);
@@ -1104,6 +1153,22 @@ router.patch('/api/service-requests/:id/quote-response', async (req: Request, re
             if (!isAdmin) {
                 // ... (Admin notification logic could go here)
             }
+
+            const jStage = response === 'accepted' ? 'quote_accepted' as const : 'cancelled' as const;
+            repairJourneyService.findJourneyByServiceRequest(req.params.id).then(async (journeyId) => {
+                if (!journeyId) return;
+                await repairJourneyService.updateJourneyStage(journeyId, jStage);
+                await repairJourneyService.addJourneyEvent({
+                    journeyId,
+                    eventType: `quote_${response}`,
+                    title: response === 'accepted' ? 'Quote Accepted' : 'Quote Rejected',
+                    message: response === 'accepted'
+                        ? 'Quote accepted! We will schedule your service shortly.'
+                        : 'Quote was declined by the customer.',
+                    actorType: isAdmin ? 'admin' : 'customer',
+                    isCustomerVisible: true,
+                });
+            }).catch((err) => console.error('[RepairJourney] Quote response sync failed:', (err as Error).message));
         }
 
         res.json(updatedRequest);
@@ -1111,6 +1176,23 @@ router.patch('/api/service-requests/:id/quote-response', async (req: Request, re
         res.status(500).json({ error: error.message || 'Failed to process quote response' });
     }
 });
+
+// ─── Test-only: OTP retrieval for e2e tests (dev only) ───
+if (process.env.NODE_ENV !== 'production') {
+    router.get('/api/test/custody-otp/:phone', requireAdminAuth, async (req: Request, res: Response) => {
+        const phone = smsService.normalizePhoneNumber(req.params.phone);
+        const records = await db.select().from(otpCodes)
+            .where(and(eq(otpCodes.phone, phone), gt(otpCodes.expiresAt, new Date())))
+            .orderBy(desc(otpCodes.createdAt))
+            .limit(1);
+        if (!records[0]) return res.status(404).json({ error: 'No active OTP' });
+        const allCodes = await db.select().from(otpCodes)
+            .where(eq(otpCodes.phone, phone))
+            .orderBy(desc(otpCodes.createdAt))
+            .limit(5);
+        res.json({ hint: 'Use server console log [CustodyOTP][DEV] for the actual code. This endpoint confirms an OTP exists.', count: allCodes.length, expiresAt: records[0].expiresAt });
+    });
+}
 
 // ─── Intake Summary (bulk lane classification) ───
 

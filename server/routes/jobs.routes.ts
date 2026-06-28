@@ -19,7 +19,7 @@ import { bindCustomerToJob, recordJobClosed } from '../services/canonical-custom
 import { db } from '../db.js';
 import { localPurchases } from '../../shared/schema.js';
 import { repairJourneyService } from '../services/customer-repair-journey.service.js';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { loadRepairCaseByJobTicket } from '../services/repair-case.service.js';
 import { normalizePhone } from '../utils/phone.js';
 
@@ -229,6 +229,37 @@ router.post('/api/job-tickets', requireAdminAuth, requirePermission('jobs'), asy
             req: req
         });
 
+        // Auto-create repair journey for walk-in jobs when customer has an account
+        if (job.customerPhone) {
+            const norm = normalizePhone(job.customerPhone);
+            if (norm) {
+                db.execute(sql`SELECT id FROM users WHERE role = 'Customer' AND right(regexp_replace(phone, '[^0-9]', '', 'g'), 10) = ${norm} LIMIT 1`)
+                    .then(async (rows) => {
+                        const customerId = (rows.rows[0] as any)?.id;
+                        if (!customerId) return;
+                        const existingJourney = await db.execute(sql`SELECT id FROM customer_repair_journeys WHERE job_ticket_id = ${job.id} LIMIT 1`);
+                        if (existingJourney.rows.length > 0) return;
+                        const { nanoid } = await import('nanoid');
+                        const journeyId = nanoid();
+                        await db.execute(sql`
+                            INSERT INTO customer_repair_journeys (id, customer_id, job_ticket_id, current_stage, current_status,
+                                customer_friendly_status, service_mode, pickup_required, dropoff_required, created_at, updated_at)
+                            VALUES (${journeyId}, ${customerId}, ${job.id}, 'device_received', 'active',
+                                'Your device has been received and a work order has been created.', 'drop_off', false, false, NOW(), NOW())
+                        `);
+                        await repairJourneyService.addJourneyEvent({
+                            journeyId,
+                            eventType: 'walk_in_created',
+                            title: 'Walk-in Repair Started',
+                            message: 'Your device has been received at our service center.',
+                            actorType: 'system',
+                            isCustomerVisible: true,
+                        });
+                    })
+                    .catch((err) => console.error('[RepairJourney] Walk-in auto-create failed:', (err as Error).message));
+            }
+        }
+
         res.status(201).json(job);
     } catch (error: any) {
         console.error('Job ticket validation error:', error.message);
@@ -250,13 +281,17 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requirePerm
         // Linear Progression State Machine Map
         const stateMachine: Record<string, string> = {
             'Pending': 'In Progress',
-            'In Progress': 'Ready',
             'Ready': 'Completed',
         };
         // Handle alternate/legacy states mapping nicely
         stateMachine['Diagnosing'] = 'In Progress';
         stateMachine['Pending Parts'] = 'In Progress';
         stateMachine['Waiting on Parts'] = 'In Progress';
+
+        // Work/diagnosis statuses require set-outcome instead of blind advance
+        if (['In Progress', 'On Workbench', 'Diagnosing'].includes(currentStatus)) {
+            return res.status(400).json({ error: 'Jobs in repair/diagnosis must use set-outcome to report repair result (OK, needs parts, not repairable, etc.) instead of blind advance.' });
+        }
 
         const nextStatus = stateMachine[currentStatus];
 
@@ -396,6 +431,86 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requirePerm
         res.json(updatedJob);
     } catch (error: any) {
         res.status(500).json({ error: 'Failed to advance job status', details: error.message });
+    }
+});
+
+/**
+ * POST /api/job-tickets/:id/set-outcome - Set repair outcome with branching status
+ * Used when a job is In Progress / On Workbench and technician reports result.
+ */
+router.post('/api/job-tickets/:id/set-outcome', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+    try {
+        const jobId = req.params.id;
+        const { outcome, reason, notes } = req.body;
+
+        const validOutcomes = ['repair_ok', 'needs_parts', 'not_repairable', 'customer_declined', 'cancelled'];
+        if (!outcome || !validOutcomes.includes(outcome)) {
+            return res.status(400).json({ error: `outcome must be one of: ${validOutcomes.join(', ')}` });
+        }
+
+        const job = await jobRepo.getJobTicket(jobId);
+        if (!job) return res.status(404).json({ error: 'Job ticket not found' });
+
+        const workStatuses = ['In Progress', 'On Workbench', 'Diagnosing'];
+        if (!workStatuses.includes(job.status)) {
+            return res.status(400).json({ error: `set-outcome only applies to jobs In Progress/On Workbench/Diagnosing, current: ${job.status}` });
+        }
+
+        if (['not_repairable', 'customer_declined', 'cancelled'].includes(outcome) && !reason) {
+            return res.status(400).json({ error: 'reason is required for this outcome' });
+        }
+
+        const OUTCOME_STATUS: Record<string, string> = {
+            'repair_ok': 'Ready',
+            'needs_parts': 'Waiting on Parts',
+            'not_repairable': 'Cancelled',
+            'customer_declined': 'Cancelled',
+            'cancelled': 'Cancelled',
+        };
+
+        const nextStatus = OUTCOME_STATUS[outcome];
+        const patch: Record<string, unknown> = {
+            status: nextStatus,
+            repairOutcome: outcome,
+        };
+        if (reason) patch.closureReason = reason;
+        if (notes) patch.notes = ((job.notes || '') + '\n' + notes).trim();
+
+        const updatedJob = await jobRepo.updateJobTicket(jobId, patch as any);
+        if (!updatedJob) return res.status(500).json({ error: 'Failed to update job' });
+
+        await auditLogger.log({
+            userId: req.session?.adminUserId || 'system',
+            action: 'SET_REPAIR_OUTCOME',
+            entity: 'JobTicket',
+            entityId: jobId,
+            details: `Outcome: ${outcome}${reason ? ` — ${reason}` : ''}`,
+            oldValue: { status: job.status },
+            newValue: { status: nextStatus, repairOutcome: outcome },
+            req,
+        });
+
+        publishJobTicketEvent({
+            action: 'status_changed',
+            entityId: updatedJob.id,
+            invalidate: [...JOB_REALTIME_TAGS],
+            permissions: ['jobs'],
+            payload: { jobId: updatedJob.id, status: nextStatus },
+        });
+
+        try {
+            await jobService.syncLinkedServiceRequestFromJob(jobId, "System Projection");
+        } catch (syncErr) {
+            console.error('[Projection] Failed to project SR from set-outcome:', (syncErr as Error).message);
+        }
+
+        repairJourneyService.syncJobStatusToJourney(jobId, nextStatus, {
+            device: (updatedJob as any)?.device,
+        }).catch((err) => console.error('[RepairJourney] Outcome journey sync failed:', (err as Error).message));
+
+        res.json(updatedJob);
+    } catch (error: any) {
+        res.status(500).json({ error: 'Failed to set outcome', details: error.message });
     }
 });
 

@@ -867,6 +867,28 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
                                             )}
                                         </div>
                                         {ticketType === "full_device" && (
+                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                <div className="space-y-2">
+                                                    <Label>Model Number</Label>
+                                                    <Input
+                                                        placeholder="e.g. UA55BU8000"
+                                                        value={(formData as any).modelNumber || ""}
+                                                        onChange={e => setFormData({ ...formData, modelNumber: e.target.value } as any)}
+                                                        className="h-12 rounded-xl bg-white shadow-sm sm:h-10 sm:bg-slate-50 sm:shadow-none font-mono"
+                                                    />
+                                                </div>
+                                                <div className="space-y-2">
+                                                    <Label>Serial Number</Label>
+                                                    <Input
+                                                        placeholder="Optional — enter if visible"
+                                                        value={(formData as any).serialNumber || ""}
+                                                        onChange={e => setFormData({ ...formData, serialNumber: e.target.value } as any)}
+                                                        className="h-12 rounded-xl bg-white shadow-sm sm:h-10 sm:bg-slate-50 sm:shadow-none font-mono"
+                                                    />
+                                                </div>
+                                            </div>
+                                        )}
+                                        {ticketType === "full_device" && (
                                             <div className="space-y-2">
                                                 <Label>Screen Size</Label>
                                                 <div className="flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0">

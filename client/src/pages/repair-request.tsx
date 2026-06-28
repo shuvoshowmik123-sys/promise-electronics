@@ -1031,8 +1031,8 @@ export default function RepairRequestPage() {
                     <Link href="/">
                       <Button variant="outline" size="lg" data-testid="button-home">Return Home</Button>
                     </Link>
-                    <Link href={`/track-order?order=${ticketNumber}&type=service`}>
-                      <Button size="lg" data-testid="button-track">Track Status</Button>
+                    <Link href={isAuthenticated ? "/my-repairs" : `/track-order?order=${ticketNumber}&type=service`}>
+                      <Button size="lg" data-testid="button-track">{isAuthenticated ? "My Repairs" : "Track Status"}</Button>
                     </Link>
                   </div>
                 </div>
