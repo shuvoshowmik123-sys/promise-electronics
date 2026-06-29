@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type UIEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Search, MoreHorizontal, Shield, Mail, Loader2,
@@ -240,6 +240,12 @@ export default function UsersTab() {
     );
 
     const isSuperAdmin = currentUser?.role === "Super Admin";
+    const handleMobileScroll = (event: UIEvent<HTMLDivElement>) => {
+        if (window.innerWidth >= 768) return;
+        window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {
+            detail: { scrollTop: event.currentTarget.scrollTop },
+        }));
+    };
 
     if (isLoading) return <DashboardSkeleton />;
 
@@ -248,7 +254,8 @@ export default function UsersTab() {
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8"
+            onScroll={handleMobileScroll}
+            className="h-full min-h-0 space-y-6 overflow-y-auto overflow-x-hidden px-3 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:h-auto md:overflow-visible md:px-0 md:pb-8"
         >
             <MobileKpiGrid
                 collapsible
