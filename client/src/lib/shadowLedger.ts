@@ -92,6 +92,11 @@ class ShadowLedger {
         }
         await tx.done;
     }
+
+    async clearAll(): Promise<void> {
+        const db = await this.dbPromise;
+        await db.clear('transactions');
+    }
 }
 
 export const shadowLedger = new ShadowLedger();

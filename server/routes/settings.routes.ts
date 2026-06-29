@@ -466,7 +466,7 @@ router.get('/api/admin/services', requireAdminAuth, async (req: Request, res: Re
 /**
  * POST /api/admin/services - Create service
  */
-router.post('/api/admin/services', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/admin/services', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         const validated = insertServiceCatalogSchema.parse(req.body);
         const service = await storage.createServiceCatalogItem(validated);
@@ -480,7 +480,7 @@ router.post('/api/admin/services', requireAdminAuth, async (req: Request, res: R
 /**
  * PATCH /api/admin/services/:id - Update service
  */
-router.patch('/api/admin/services/:id', requireAdminAuth, async (req: Request, res: Response) => {
+router.patch('/api/admin/services/:id', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         // Validate + whitelist like the POST route does — raw req.body let callers
         // set arbitrary columns (e.g. negative prices, unknown fields).
@@ -501,7 +501,7 @@ router.patch('/api/admin/services/:id', requireAdminAuth, async (req: Request, r
 /**
  * DELETE /api/admin/services/:id - Delete service
  */
-router.delete('/api/admin/services/:id', requireAdminAuth, async (req: Request, res: Response) => {
+router.delete('/api/admin/services/:id', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         const success = await storage.deleteServiceCatalogItem(req.params.id);
         if (!success) {
@@ -532,7 +532,7 @@ router.get('/api/service-categories', async (req: Request, res: Response) => {
 /**
  * POST /api/admin/service-categories - Create service category
  */
-router.post('/api/admin/service-categories', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/admin/service-categories', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         const { name, displayOrder } = req.body;
         if (!name || typeof name !== 'string' || name.trim() === '') {
@@ -555,7 +555,7 @@ router.post('/api/admin/service-categories', requireAdminAuth, async (req: Reque
 /**
  * PATCH /api/admin/service-categories/:id - Update service category
  */
-router.patch('/api/admin/service-categories/:id', requireAdminAuth, async (req: Request, res: Response) => {
+router.patch('/api/admin/service-categories/:id', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         const category = await storage.updateServiceCategory(req.params.id, req.body);
         if (!category) {
@@ -570,7 +570,7 @@ router.patch('/api/admin/service-categories/:id', requireAdminAuth, async (req: 
 /**
  * DELETE /api/admin/service-categories/:id - Delete service category
  */
-router.delete('/api/admin/service-categories/:id', requireAdminAuth, async (req: Request, res: Response) => {
+router.delete('/api/admin/service-categories/:id', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         const success = await storage.deleteServiceCategory(req.params.id);
         if (!success) {
@@ -601,7 +601,7 @@ router.get('/api/products/:productId/variants', async (req: Request, res: Respon
 /**
  * POST /api/admin/products/:productId/variants - Create product variant
  */
-router.post('/api/admin/products/:productId/variants', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/admin/products/:productId/variants', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         const validated = insertProductVariantSchema.parse({
             ...req.body,
@@ -618,7 +618,7 @@ router.post('/api/admin/products/:productId/variants', requireAdminAuth, async (
 /**
  * PATCH /api/admin/products/:productId/variants/:variantId - Update product variant
  */
-router.patch('/api/admin/products/:productId/variants/:variantId', requireAdminAuth, async (req: Request, res: Response) => {
+router.patch('/api/admin/products/:productId/variants/:variantId', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         const updates = insertProductVariantSchema.partial().parse(req.body);
         const variant = await storage.updateProductVariant(req.params.variantId, updates);
@@ -637,7 +637,7 @@ router.patch('/api/admin/products/:productId/variants/:variantId', requireAdminA
 /**
  * DELETE /api/admin/products/:productId/variants/:variantId - Delete product variant
  */
-router.delete('/api/admin/products/:productId/variants/:variantId', requireAdminAuth, async (req: Request, res: Response) => {
+router.delete('/api/admin/products/:productId/variants/:variantId', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         const success = await storage.deleteProductVariant(req.params.variantId);
         if (!success) {
@@ -652,7 +652,7 @@ router.delete('/api/admin/products/:productId/variants/:variantId', requireAdmin
 /**
  * DELETE /api/admin/products/:productId/variants - Delete all product variants
  */
-router.delete('/api/admin/products/:productId/variants', requireAdminAuth, async (req: Request, res: Response) => {
+router.delete('/api/admin/products/:productId/variants', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         await storage.deleteProductVariantsByProductId(req.params.productId);
         res.status(204).send();
@@ -739,7 +739,7 @@ router.get('/api/admin/policies/:slug', requireAdminAuth, async (req: Request, r
 /**
  * POST /api/admin/policies - Create/update policy (admin)
  */
-router.post('/api/admin/policies', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/admin/policies', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         const { slug, title, content, isPublished, isPublishedApp } = req.body;
         if (!slug || !validPolicySlugs.includes(slug)) {
@@ -767,7 +767,7 @@ router.post('/api/admin/policies', requireAdminAuth, async (req: Request, res: R
 /**
  * DELETE /api/admin/policies/:slug - Delete policy (admin)
  */
-router.delete('/api/admin/policies/:slug', requireAdminAuth, async (req: Request, res: Response) => {
+router.delete('/api/admin/policies/:slug', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         const { slug } = req.params;
         if (!validPolicySlugs.includes(slug as any)) {

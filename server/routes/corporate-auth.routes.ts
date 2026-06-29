@@ -158,9 +158,16 @@ router.post('/login', authLimiter, validate(corporateLoginSchema), async (req: R
                     });
                 }).catch(err => {
                     console.error("Failed to issue trust token", err);
-                    // Still log them in if token issuance specifically failed
                     res.json({
-                        user: { ...user, corporateClientShortCode: corporateClient?.shortCode, corporateClientName: corporateClient?.companyName },
+                        user: {
+                            id: user.id,
+                            name: user.name,
+                            email: user.email,
+                            role: user.role,
+                            corporateClientId: user.corporateClientId,
+                            corporateClientShortCode: corporateClient?.shortCode,
+                            corporateClientName: corporateClient?.companyName
+                        },
                         csrfToken: newCsrfToken,
                         trustedDeviceIssued: false
                     });

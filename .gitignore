@@ -58,6 +58,10 @@ cookies-*.txt
 login.json
 pos_data*.json
 client/dist-check/
+.codex-*.log
+.codex-logs/
+server-*.log
+coverage/
 
 # OS files
 .DS_Store

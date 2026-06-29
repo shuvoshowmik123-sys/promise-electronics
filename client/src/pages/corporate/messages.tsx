@@ -288,7 +288,6 @@ export default function CorporateMessagesPage() {
     // Mutations
     const sendMessage = useMutation({
         mutationFn: (data: { content?: string; messageType?: string; attachments?: any[] }) => {
-            console.log('[Mutation] Sending message:', { threadId, data });
             if (!threadId) throw new Error("No thread ID available");
             return corporateMessagesApi.sendMessage(threadId, data);
         },
@@ -320,7 +319,6 @@ export default function CorporateMessagesPage() {
         },
         onSuccess: (data, variables, context) => {
             playSent();
-            console.log('[Mutation] Message sent successfully');
 
             // Replace optimistic message with real one
             setMessages(prev => prev.map(msg =>

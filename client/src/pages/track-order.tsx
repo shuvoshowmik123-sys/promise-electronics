@@ -618,7 +618,7 @@ export default function TrackOrderPage() {
                   </Badge>
                   <div>
                     <p className="text-sm font-bold uppercase tracking-wide text-slate-400">Reference</p>
-                    <h2 className="mt-1 text-2xl font-black text-slate-950">#{anonymousLookup.ticketNumber || selectedOrderId}</h2>
+                    <h2 className="mt-1 text-2xl font-black text-slate-950">#{anonymousLookup.ticketNumber || "Verified repair"}</h2>
                   </div>
                   <p className="text-sm leading-6 text-slate-600">
                     Sign in to see the full timeline, service notes, warranty, and private repair details.
@@ -842,7 +842,7 @@ export default function TrackOrderPage() {
               <div className="max-w-2xl mx-auto">
                 <Card className="border-none shadow-lg">
                   <CardHeader>
-                    <CardTitle>Tracking: #{anonymousLookup.ticketNumber}</CardTitle>
+                    <CardTitle>Tracking: #{anonymousLookup.ticketNumber || "Verified repair"}</CardTitle>
                     <CardDescription>{anonymousLookup.brand} — {anonymousLookup.primaryIssue}</CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -864,7 +864,7 @@ export default function TrackOrderPage() {
                 <XCircle className="w-16 h-16 mx-auto mb-4 text-red-400" />
                 <h3 className="text-xl font-bold mb-2">Ticket Not Found</h3>
                 <p className="text-muted-foreground mb-6">
-                  No repair request found for "{selectedOrderId}".
+                  No repair request was found for this reference.
                 </p>
                 <Button variant="outline" onClick={() => setLocation("/home")}>Return Home</Button>
               </div>

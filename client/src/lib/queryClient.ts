@@ -5,6 +5,7 @@ import { Capacitor } from "@capacitor/core";
 import { Preferences } from "@capacitor/preferences";
 import { persistQueryClient } from "@tanstack/react-query-persist-client";
 import { createSyncStoragePersister } from "@tanstack/query-sync-storage-persister";
+import { shadowLedger } from "./shadowLedger";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -262,4 +263,22 @@ export function initQueryPersistence() {
     },
   });
 
+}
+
+export async function clearPersistedClientState() {
+  queryClient.clear();
+
+  try {
+    syncStorage.removeItem(STORAGE_KEY);
+    if (typeof localStorage !== "undefined") {
+      localStorage.removeItem("adminDashboardSnapshot");
+      localStorage.removeItem("pending_messages");
+    }
+    if (Capacitor.isNativePlatform()) {
+      await Preferences.remove({ key: "pending_messages" });
+    }
+    await shadowLedger.clearAll();
+  } catch (error) {
+    console.warn("[Persistence] clear failed:", error);
+  }
 }

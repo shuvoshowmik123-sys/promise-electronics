@@ -69,7 +69,7 @@ async function sendSms(options: SendSmsOptions): Promise<SmsResponse> {
     }
 
     try {
-        console.log(`[SMS] Sending to ${normalizedPhone}: "${options.message.substring(0, 50)}..."`);
+        console.log(`[SMS] Sending to ***${normalizedPhone.slice(-4)}`);
 
         const response = await fetch(apiUrl, {
             method: 'POST',
@@ -85,7 +85,7 @@ async function sendSms(options: SendSmsOptions): Promise<SmsResponse> {
 
         const result = await response.json();
 
-        console.log('[SMS] API Response:', JSON.stringify(result));
+        console.log(`[SMS] API Response: status=${result.error ?? result.status}, msgId=${result.msg_id || result.message_id || 'none'}`);
 
         // SMS.net.bd returns error code 0 for success
         if (result.error === 0 || result.error === '0' || result.status === 'success') {

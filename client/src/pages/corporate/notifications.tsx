@@ -311,7 +311,7 @@ export default function CorporateNotificationsPage() {
 
                                     {notification.jobId && (
                                         <div className="notification-job-reference">
-                                            Job ID: {notification.jobId}
+                                            Job Ref: {notification.jobId.length > 12 ? notification.jobId.slice(-6).toUpperCase() : notification.jobId}
                                         </div>
                                     )}
 

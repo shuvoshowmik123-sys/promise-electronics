@@ -30,8 +30,7 @@ const options = {
 
 const openapiSpecification = swaggerJsdoc(options);
 
-// Output the snapshot to the project root
-const outputPath = path.join(__dirname, '../api-contract-snapshot.json');
+const outputPath = path.join(__dirname, '../docs/api-contract-snapshot.json');
 fs.writeFileSync(outputPath, JSON.stringify(openapiSpecification, null, 2));
 
 console.log(`API Contract Snapshot successfully generated at: ${outputPath}`);

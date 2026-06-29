@@ -2,10 +2,11 @@ import { Router, Request, Response } from 'express';
 import { db } from '../db.js';
 import { eq, sql } from 'drizzle-orm';
 import { inventoryItems, jobTickets, posTransactions } from '../../shared/schema.js';
+import { requireAdminAuth } from './middleware/auth.js';
 
 const router = Router();
 
-router.post('/sync', async (req: Request, res: Response) => {
+router.post('/sync', requireAdminAuth, async (req: Request, res: Response) => {
     const { entries } = req.body;
     if (!Array.isArray(entries)) {
         return res.status(400).json({ error: "Expected an array of entries" });

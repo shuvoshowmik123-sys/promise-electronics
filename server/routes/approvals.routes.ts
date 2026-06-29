@@ -2,8 +2,11 @@
 import { Router } from "express";
 import { storage } from "../storage.js";
 import { z } from "zod";
+import { requireAdminAuth } from "./middleware/auth.js";
 
 const router = Router();
+
+router.use(requireAdminAuth);
 
 // Create an approval request
 const createApprovalRequestSchema = z.object({
@@ -18,7 +21,10 @@ const createApprovalRequestSchema = z.object({
 
 router.post("/request", async (req, res) => {
     try {
+        const actor = (req as any).user;
         const data = createApprovalRequestSchema.parse(req.body);
+        data.requestedBy = actor.id;
+        data.requestedByName = actor.name;
         const approval = await storage.createApprovalRequest(data);
         res.status(201).json(approval);
     } catch (error) {
@@ -57,10 +63,8 @@ router.get("/my-requests", async (req, res) => {
 // Approve a request
 router.post("/:id/approve", async (req, res) => {
     try {
-        const { reviewedBy } = req.body;
-        if (!reviewedBy) {
-            return res.status(400).json({ message: "reviewedBy is required" });
-        }
+        const actor = (req as any).user;
+        const reviewedBy = actor.id;
 
         const approval = await storage.approveRequest(req.params.id, reviewedBy);
         if (!approval) {
@@ -76,10 +80,9 @@ router.post("/:id/approve", async (req, res) => {
 // Reject a request
 router.post("/:id/reject", async (req, res) => {
     try {
-        const { reviewedBy, reason } = req.body;
-        if (!reviewedBy) {
-            return res.status(400).json({ message: "reviewedBy is required" });
-        }
+        const actor = (req as any).user;
+        const reviewedBy = actor.id;
+        const { reason } = req.body;
 
         const approval = await storage.rejectRequest(req.params.id, reviewedBy, reason);
         if (!approval) {

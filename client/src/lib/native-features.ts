@@ -118,7 +118,6 @@ export async function initPushNotifications(): Promise<string | null> {
             // Listen for registration token
             return new Promise((resolve) => {
                 PushNotifications.addListener('registration', (token) => {
-                    console.log('Push registration token:', token.value);
                     resolve(token.value);
                 });
 
@@ -151,12 +150,11 @@ export async function registerPushTokenWithBackend(userId: string, token: string
         });
 
         if (response.status === 200) {
-            console.log('[Push] Token registered with backend');
             return true;
         }
         return false;
-    } catch (error) {
-        console.error('[Push] Failed to register token with backend:', error);
+    } catch {
+        console.error('[Push] Failed to register token with backend');
         return false;
     }
 }
@@ -176,12 +174,11 @@ export async function unregisterPushTokenFromBackend(userId: string, token?: str
         });
 
         if (response.status === 200) {
-            console.log('[Push] Token unregistered from backend');
             return true;
         }
         return false;
-    } catch (error) {
-        console.error('[Push] Failed to unregister token from backend:', error);
+    } catch {
+        console.error('[Push] Failed to unregister token from backend');
         return false;
     }
 }

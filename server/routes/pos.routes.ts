@@ -61,7 +61,7 @@ router.get('/api/pos-transactions/summary', requireAdminAuth, requirePermission(
 /**
  * GET /api/pos-transactions/:id - Get POS transaction by ID
  */
-router.get('/api/pos-transactions/:id', async (req: Request, res: Response) => {
+router.get('/api/pos-transactions/:id', requireAdminAuth, requirePermission('pos'), async (req: Request, res: Response) => {
     try {
         const transaction = await posRepo.getPosTransaction(req.params.id);
         if (!transaction) {

@@ -3,10 +3,13 @@ import { storage } from '../storage.js';
 import { financeRepo, posRepo, userRepo, notificationRepo } from '../repositories/index.js';
 import { insertDrawerSessionSchema } from '../../shared/schema.js';
 import { auditLogger } from '../utils/auditLogger.js';
-import { requireAdminAuth } from './middleware/auth.js';
+import { requireAdminAuth, requireAnyPermission } from './middleware/auth.js';
 import { runDrawerDayCloseNow } from '../services/drawer-day-close.service.js';
 
 export const drawerRouter = Router();
+
+drawerRouter.use(requireAdminAuth);
+drawerRouter.use(requireAnyPermission(['pos', 'finance']));
 
 function appendRouteNote(existing: string | null | undefined, note: string): string {
     const base = (existing ?? '').trim();
@@ -39,7 +42,7 @@ function withOpeningVariance<T extends { startingFloat: number }>(
 }
 
 // Get active drawer session
-drawerRouter.get('/api/drawer/active', requireAdminAuth, async (req: Request, res: Response) => {
+drawerRouter.get('/api/drawer/active', async (req: Request, res: Response) => {
     try {
         const activeDrawer = await posRepo.getCurrentDrawerSession();
         if (!activeDrawer) {
@@ -55,7 +58,7 @@ drawerRouter.get('/api/drawer/active', requireAdminAuth, async (req: Request, re
 });
 
 // Get drawer history
-drawerRouter.get('/api/drawer/history', requireAdminAuth, async (req: Request, res: Response) => {
+drawerRouter.get('/api/drawer/history', async (req: Request, res: Response) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 10;
@@ -68,7 +71,7 @@ drawerRouter.get('/api/drawer/history', requireAdminAuth, async (req: Request, r
 });
 
 // Manual QA trigger for drawer day-end pipeline (Admin only)
-drawerRouter.post('/api/drawer/day-close/run-now', requireAdminAuth, async (req: Request, res: Response) => {
+drawerRouter.post('/api/drawer/day-close/run-now', async (req: Request, res: Response) => {
     try {
         const user = (req as any).user;
         const actorId = user?.id || req.session?.adminUserId || 'system';
@@ -87,7 +90,7 @@ drawerRouter.post('/api/drawer/day-close/run-now', requireAdminAuth, async (req:
 });
 
 // Direct POS close-day endpoint
-drawerRouter.post('/api/drawer/:id/close-day', requireAdminAuth, async (req: Request, res: Response) => {
+drawerRouter.post('/api/drawer/:id/close-day', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { mode, note } = req.body ?? {};
@@ -186,7 +189,7 @@ drawerRouter.post('/api/drawer/:id/close-day', requireAdminAuth, async (req: Req
 });
 
 // Open a new register session
-drawerRouter.post('/api/drawer/open', requireAdminAuth, async (req: Request, res: Response) => {
+drawerRouter.post('/api/drawer/open', async (req: Request, res: Response) => {
     try {
         const data = insertDrawerSessionSchema.parse(req.body);
 
@@ -260,7 +263,7 @@ drawerRouter.post('/api/drawer/open', requireAdminAuth, async (req: Request, res
 });
 
 // Perform a Blind Drop (Cashier closes shift)
-drawerRouter.post('/api/drawer/:id/drop', requireAdminAuth, async (req: Request, res: Response) => {
+drawerRouter.post('/api/drawer/:id/drop', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { declaredCash } = req.body;
@@ -331,7 +334,7 @@ drawerRouter.post('/api/drawer/:id/drop', requireAdminAuth, async (req: Request,
 });
 
 // Reconcile Drawer (Manager verifies counts)
-drawerRouter.patch('/api/drawer/:id/reconcile', requireAdminAuth, async (req: Request, res: Response) => {
+drawerRouter.patch('/api/drawer/:id/reconcile', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { status, notes, closedBy, closedByName } = req.body;
@@ -387,7 +390,7 @@ drawerRouter.get('/api/drawer/:id/summary', requireAdminAuth, async (req: Reques
 });
 
 // Super Admin: Justify a shortage (add unrecorded expense)
-drawerRouter.post('/api/drawer/:id/justify', requireAdminAuth, async (req: Request, res: Response) => {
+drawerRouter.post('/api/drawer/:id/justify', async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
         const { amount, description } = req.body;

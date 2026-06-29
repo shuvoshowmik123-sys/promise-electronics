@@ -1,11 +1,12 @@
 import { Route, Switch, useLocation } from "wouter";
-import { useEffect } from "react";
+import { useEffect, lazy, Suspense } from "react";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { useModules } from "@/contexts/ModuleContext";
 import { TechLayout } from "./TechLayout";
-import { TechDashboard } from "@/pages/tech/TechDashboard";
 import { Loader2 } from "lucide-react";
 import { StaffOnboardingGuide } from "@/components/admin/StaffOnboardingGuide";
+
+const TechDashboard = lazy(() => import("@/pages/tech/TechDashboard").then(m => ({ default: m.TechDashboard })));
 
 function TechModuleGuard({ module, children }: { module: string, children: React.ReactNode }) {
     const { isEnabled } = useModules();
@@ -50,7 +51,9 @@ export function TechRouter() {
             <Switch>
                 <Route path="/tech">
                     <TechModuleGuard module="technician_view">
-                        <TechDashboard />
+                        <Suspense fallback={<div className="flex items-center justify-center min-h-[60vh]"><Loader2 className="h-8 w-8 animate-spin text-blue-500" /></div>}>
+                            <TechDashboard />
+                        </Suspense>
                     </TechModuleGuard>
                 </Route>
                 <Route>

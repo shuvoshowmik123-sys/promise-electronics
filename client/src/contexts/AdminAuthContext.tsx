@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import type { User, UserPermissions } from "@shared/schema";
 import { getDefaultPermissionsForRole } from "@shared/admin-permissions";
 import { adminAuthApi } from "@/lib/api";
+import { clearPersistedClientState } from "@/lib/queryClient";
 
 type SafeUser = Omit<User, "password">;
 
@@ -50,6 +51,9 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
       }
       setUser(null);
       setStatus("unauthenticated");
+      if (error?.statusCode === 401) {
+        await clearPersistedClientState();
+      }
     }
   };
 
@@ -59,6 +63,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (username: string, password: string, rememberMe: boolean = false): Promise<SafeUser> => {
     const data = await adminAuthApi.login({ username, password, rememberMe });
+    await clearPersistedClientState();
     setUser(data);
     setStatus("authenticated");
     return data;
@@ -72,7 +77,7 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
     }
     setUser(null);
     setStatus("unauthenticated");
-    localStorage.removeItem("adminDashboardSnapshot");
+    await clearPersistedClientState();
     window.location.href = '/admin/login';
   };
 

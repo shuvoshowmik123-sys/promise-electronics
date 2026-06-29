@@ -19,11 +19,10 @@ import { ModuleProvider } from "@/contexts/ModuleContext";
 import { IdleTimeoutProvider } from "@/components/auth/IdleTimeoutProvider";
 import { lazy, Suspense, useEffect } from "react";
 
-// Admin Pages - All handled by AdminRouter (including login)
 const AdminRouter = lazy(() => import("@/components/layout/AdminRouter").then(m => ({ default: m.AdminRouter })));
-import { CorporateRouter } from "@/components/layout/CorporateRouter";
-import { TechRouter } from "@/components/layout/TechRouter";
-import { CustomerRouter } from "@/components/layout/CustomerRouter";
+const CorporateRouter = lazy(() => import("@/components/layout/CorporateRouter").then(m => ({ default: m.CorporateRouter })));
+const TechRouter = lazy(() => import("@/components/layout/TechRouter").then(m => ({ default: m.TechRouter })));
+const CustomerRouter = lazy(() => import("@/components/layout/CustomerRouter").then(m => ({ default: m.CustomerRouter })));
 
 import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 
@@ -77,7 +76,9 @@ function Router() {
   if (isCorporateRoute) {
     return (
       <CorporateAuthProvider>
-        <CorporateRouter />
+        <Suspense fallback={<PageSkeleton />}>
+          <CorporateRouter />
+        </Suspense>
       </CorporateAuthProvider>
     );
   }
@@ -85,26 +86,24 @@ function Router() {
   if (isTechRoute) {
     return (
       <AdminAuthProvider>
-        <TechRouter />
+        <Suspense fallback={<PageSkeleton />}>
+          <TechRouter />
+        </Suspense>
       </AdminAuthProvider>
     );
   }
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-[var(--background)]">
-
-      {/* Main Content Area */}
       <CustomerAuthProvider>
         <CartProvider>
           <PushNotificationProvider>
             <AppOpeningProvider>
               <div className="flex-1 relative overflow-hidden flex flex-col">
-                {/* <IdleTimeoutProvider timeoutMinutes={10}> */}
-                <CustomerRouter />
-                {/* </IdleTimeoutProvider> */}
+                <Suspense fallback={<PageSkeleton />}>
+                  <CustomerRouter />
+                </Suspense>
               </div>
-
-              {/* DaktarVai Chatbot - Web Only */}
               <DaktarVaiChat />
             </AppOpeningProvider>
           </PushNotificationProvider>

@@ -58,7 +58,7 @@ router.get('/api/upload/imagekit-auth', uploadAuthLimiter, (req: Request, res: R
 /**
  * POST /api/imagekit/upload - Server-side upload (rate limited - 20/hour)
  */
-router.post('/api/imagekit/upload', uploadLimiter, async (req: Request, res: Response) => {
+router.post('/api/imagekit/upload', requireAdminAuth, uploadLimiter, async (req: Request, res: Response) => {
     try {
         const imagekit = getImageKit();
         if (!imagekit) {
@@ -101,7 +101,7 @@ router.post('/api/imagekit/upload', uploadLimiter, async (req: Request, res: Res
 /**
  * POST /api/objects/upload - Get upload URL (legacy)
  */
-router.post('/api/objects/upload', async (req: Request, res: Response) => {
+router.post('/api/objects/upload', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const objectStorageService = new ObjectStorageService();
         const uploadURL = await objectStorageService.getObjectEntityUploadURL();
@@ -189,7 +189,7 @@ router.post('/api/cloudinary/upload-params', requireAdminAuth, async (req: Reque
 /**
  * POST /api/cloudinary/upload - Server-side upload
  */
-router.post('/api/cloudinary/upload', async (req: Request, res: Response) => {
+router.post('/api/cloudinary/upload', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
         const apiKey = process.env.CLOUDINARY_API_KEY;

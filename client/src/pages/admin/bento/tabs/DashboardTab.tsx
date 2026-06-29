@@ -568,81 +568,26 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                     </BentoCard>
                 </motion.div>
 
-                {/* ROW 2: KPIs */}
-                <motion.div layoutId="card-revenue" variants={itemVariants} className="col-span-1">
-                    <BentoCard
-                        className="cursor-pointer bg-gradient-to-br from-emerald-500 to-teal-600 h-full"
-                        title="Total Revenue"
-                        icon={<DollarSign size={18} className="text-white" />}
-                        variant="vibrant"
-                        onClick={() => setSelectedCard('revenue')}
-                        spotlightColor="rgba(255, 255, 255, 0.2)"
-                    >
-                        <div className="text-3xl font-bold text-white mt-2">৳ {(data.totalRevenue ?? 0).toLocaleString()}</div>
-                        <div className="text-xs font-medium text-white/80 mt-1 flex items-center gap-1">
-                            Revenue This Month
-                        </div>
-                    </BentoCard>
-                </motion.div>
-                <motion.div layoutId="card-active" variants={itemVariants} className="col-span-1">
-                    <BentoCard
-                        className="cursor-pointer bg-gradient-to-br from-blue-500 to-cyan-600 h-full"
-                        title="Active Jobs"
-                        icon={<Activity size={18} className="text-white" />}
-                        variant="vibrant"
-                        onClick={() => setSelectedCard('active')}
-                        spotlightColor="rgba(255, 255, 255, 0.2)"
-                    >
-                        <div className="text-3xl font-bold text-white mt-2">{data.activeCount ?? 0}</div>
-                        <div className="text-xs font-medium text-white/80 mt-1">
-                            {(data.activeJobsList ?? []).length} requiring update
-                        </div>
-                    </BentoCard>
-                </motion.div>
-                <motion.div layoutId="card-pending" variants={itemVariants} className="col-span-1">
-                    <BentoCard
-                        className="cursor-pointer bg-gradient-to-br from-orange-500 to-amber-600 h-full"
-                        title="Pending Actions"
-                        icon={<AlertCircle size={18} className="text-white" />}
-                        variant="vibrant"
-                        onClick={() => setSelectedCard('pending')}
-                        spotlightColor="rgba(255, 255, 255, 0.2)"
-                    >
-                        <div className="text-3xl font-bold text-white mt-2">{data.pendingCount ?? 0}</div>
-                        <div className="text-xs font-medium text-white/80 mt-1">
-                            Requires attention
-                        </div>
-                    </BentoCard>
-                </motion.div>
-                <motion.div layoutId="card-parts" variants={itemVariants} className="col-span-1">
-                    <BentoCard
-                        className="cursor-pointer bg-gradient-to-br from-rose-500 to-red-600 h-full"
-                        title="Parts Low"
-                        icon={<AlertCircle size={18} className="text-white" />}
-                        variant="vibrant"
-                        onClick={() => setSelectedCard('parts')}
-                        spotlightColor="rgba(255, 255, 255, 0.2)"
-                    >
-                        <div className="text-3xl font-bold text-white mt-2">{data.lowStockCount ?? 0}</div>
-                        <div className="text-xs font-medium text-white/80 mt-1">
-                            Restock <Package size={12} className="inline ml-1" />
-                        </div>
-                    </BentoCard>
-                </motion.div>
-                <motion.div layoutId="card-wastage" variants={itemVariants} className="col-span-1">
-                    <BentoCard
-                        className="cursor-pointer bg-gradient-to-br from-red-600 to-rose-700 h-full"
-                        title="Wastage Loss"
-                        icon={<TrendingUp size={18} className="text-white" />}
-                        variant="vibrant"
-                        onClick={() => setSelectedCard('wastage')}
-                        spotlightColor="rgba(255, 255, 255, 0.2)"
-                    >
-                        <div className="text-3xl font-bold text-white mt-2">৳{((data.totalWastageLoss ?? 0) / 1000).toFixed(1)}k</div>
-                        <div className="text-xs font-medium text-white/80 mt-1">
-                            {data.wastageCount ?? 0} Items Defaulted
-                        </div>
-                    </BentoCard>
+                {/* ROW 2: Compact KPI Strip */}
+                <motion.div variants={itemVariants} className="col-span-1 md:col-span-2 lg:col-span-4">
+                    <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+                        {[
+                            { label: "Revenue", value: `৳${(data.totalRevenue ?? 0).toLocaleString()}`, sub: "This month", icon: <DollarSign size={16} />, color: "text-emerald-600 bg-emerald-50 border-emerald-200", card: "revenue" },
+                            { label: "Active Jobs", value: String(data.activeCount ?? 0), sub: `${(data.activeJobsList ?? []).length} need update`, icon: <Activity size={16} />, color: "text-blue-600 bg-blue-50 border-blue-200", card: "active" },
+                            { label: "Pending", value: String(data.pendingCount ?? 0), sub: "Need attention", icon: <AlertCircle size={16} />, color: "text-amber-600 bg-amber-50 border-amber-200", card: "pending" },
+                            { label: "Parts Low", value: String(data.lowStockCount ?? 0), sub: "Restock", icon: <Package size={16} />, color: "text-rose-600 bg-rose-50 border-rose-200", card: "parts" },
+                            { label: "Wastage", value: `৳${((data.totalWastageLoss ?? 0) / 1000).toFixed(1)}k`, sub: `${data.wastageCount ?? 0} items`, icon: <TrendingUp size={16} />, color: "text-red-600 bg-red-50 border-red-200", card: "wastage" },
+                        ].map(kpi => (
+                            <button key={kpi.card} onClick={() => setSelectedCard(kpi.card)}
+                                className={`flex items-center gap-3 rounded-xl border ${kpi.color} px-3 py-2.5 text-left hover:shadow-sm transition-shadow`}>
+                                <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${kpi.color.split(" ").slice(1).join(" ")}`}>{kpi.icon}</div>
+                                <div className="min-w-0">
+                                    <p className="text-lg font-black leading-tight">{kpi.value}</p>
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider opacity-60">{kpi.label}</p>
+                                </div>
+                            </button>
+                        ))}
+                    </div>
                 </motion.div>
 
                 {/* ROW 3: LISTS */}

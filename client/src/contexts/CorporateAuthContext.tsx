@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from "react";
 import type { User } from "@shared/schema";
+import { clearPersistedClientState } from "@/lib/queryClient";
 
 type SafeUser = Omit<User, "password"> & {
     corporateClientShortCode?: string;
@@ -33,6 +34,9 @@ export function CorporateAuthProvider({ children }: { children: ReactNode }) {
                 setUser(data);
             } else {
                 setUser(null);
+                if (res.status === 401) {
+                    await clearPersistedClientState();
+                }
             }
         } catch (error) {
             if (version !== authVersionRef.current) return;
@@ -57,18 +61,13 @@ export function CorporateAuthProvider({ children }: { children: ReactNode }) {
     const login = async (username: string, password: string, trustDevice: boolean = false) => {
         authVersionRef.current += 1;
         setIsLoading(true);
-        console.log("[Auth] Starting login process...");
 
         // Ensure we have a CSRF token
         if (!getCookie('XSRF-TOKEN')) {
-            console.log("[Auth] No CSRF cookie found, fetching new one...");
             await fetch("/api/corporate/auth/csrf-token", { credentials: "include" });
-        } else {
-            console.log("[Auth] CSRF cookie found:", getCookie('XSRF-TOKEN'));
         }
 
         const csrfToken = getCookie('XSRF-TOKEN');
-        console.log("[Auth] Using CSRF token for request:", csrfToken);
 
         const res = await fetch("/api/corporate/auth/login", {
             method: "POST",
@@ -89,21 +88,27 @@ export function CorporateAuthProvider({ children }: { children: ReactNode }) {
         if (!data?.user) {
             throw new Error("Login response is invalid");
         }
+        await clearPersistedClientState();
         setUser(data.user);
         setIsLoading(false);
     };
 
     const logout = async () => {
         const csrfToken = getCookie('XSRF-TOKEN');
-        await fetch("/api/corporate/auth/logout", {
-            method: "POST",
-            headers: {
-                "X-XSRF-TOKEN": csrfToken || ""
-            },
-            credentials: "include",
-            body: JSON.stringify({}) // Send empty body for POST
-        });
+        try {
+            await fetch("/api/corporate/auth/logout", {
+                method: "POST",
+                headers: {
+                    "X-XSRF-TOKEN": csrfToken || ""
+                },
+                credentials: "include",
+                body: JSON.stringify({})
+            });
+        } catch {
+            // Local state still clears if the network logout request fails.
+        }
         authVersionRef.current += 1;
+        await clearPersistedClientState();
         setUser(null);
         setIsLoading(false);
     };

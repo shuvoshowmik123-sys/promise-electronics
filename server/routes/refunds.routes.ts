@@ -13,8 +13,12 @@ import type { Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { settingsRepo, notificationRepo, systemRepo, userRepo, jobRepo, serviceRequestRepo, warrantyRepo, hrRepo, posRepo } from '../repositories/index.js';
 import { auditLogger } from '../utils/auditLogger.js';
+import { requireAdminAuth, requireAnyPermission } from './middleware/auth.js';
 
 const router = Router();
+
+router.use(requireAdminAuth);
+router.use(requireAnyPermission(['finance', 'pos']));
 
 // Refund approval threshold setting key
 const REFUND_THRESHOLD_KEY = 'refund_approval_threshold';
@@ -60,16 +64,17 @@ router.get('/api/refunds/:id', async (req: Request, res: Response) => {
 // Request a refund (from job or POS transaction)
 router.post('/api/refunds', async (req: Request, res: Response) => {
     try {
+        const actor = (req as any).user;
         const {
             type, // 'job' | 'pos' | 'warranty'
             referenceId, // Job ID or POS Transaction ID
             refundAmount,
             reason,
-            requestedBy,
-            requestedByName,
-            requestedByRole,
             notes
         } = req.body;
+        const requestedBy = actor.id;
+        const requestedByName = actor.name;
+        const requestedByRole = actor.role;
 
         // Validate source exists
         let customer = 'Unknown';
@@ -152,7 +157,10 @@ router.post('/api/refunds', async (req: Request, res: Response) => {
 // Approve refund
 router.patch('/api/refunds/:id/approve', async (req: Request, res: Response) => {
     try {
-        const { approvedBy, approvedByName, approvedByRole } = req.body;
+        const actor = (req as any).user;
+        const approvedBy = actor.id;
+        const approvedByName = actor.name;
+        const approvedByRole = actor.role;
 
         const refund = await warrantyRepo.getRefund(req.params.id);
         if (!refund) {
@@ -163,12 +171,10 @@ router.patch('/api/refunds/:id/approve', async (req: Request, res: Response) => 
             return res.status(400).json({ error: `Cannot approve refund with status: ${refund.status}` });
         }
 
-        // Role check
-        if (!['Manager', 'Super Admin', 'Admin'].includes(approvedByRole)) {
-            return res.status(403).json({ error: 'Only Manager or Admin can approve refunds' });
+        if (!['Manager', 'Super Admin'].includes(approvedByRole)) {
+            return res.status(403).json({ error: 'Only Manager or Super Admin can approve refunds' });
         }
 
-        // Super Admin check for high amounts
         const threshold = await getRefundThreshold();
         if (refund.refundAmount > threshold && approvedByRole !== 'Super Admin') {
             return res.status(403).json({
@@ -203,7 +209,11 @@ router.patch('/api/refunds/:id/approve', async (req: Request, res: Response) => 
 // Reject refund
 router.patch('/api/refunds/:id/reject', async (req: Request, res: Response) => {
     try {
-        const { approvedBy, approvedByName, approvedByRole, rejectionReason } = req.body;
+        const actor = (req as any).user;
+        const approvedBy = actor.id;
+        const approvedByName = actor.name;
+        const approvedByRole = actor.role;
+        const { rejectionReason } = req.body;
 
         const refund = await warrantyRepo.getRefund(req.params.id);
         if (!refund) {
@@ -214,8 +224,8 @@ router.patch('/api/refunds/:id/reject', async (req: Request, res: Response) => {
             return res.status(400).json({ error: `Cannot reject refund with status: ${refund.status}` });
         }
 
-        if (!['Manager', 'Super Admin', 'Admin'].includes(approvedByRole)) {
-            return res.status(403).json({ error: 'Only Manager or Admin can reject refunds' });
+        if (!['Manager', 'Super Admin'].includes(approvedByRole)) {
+            return res.status(403).json({ error: 'Only Manager or Super Admin can reject refunds' });
         }
 
         const updated = await storage.updateRefund(req.params.id, {
@@ -246,7 +256,11 @@ router.patch('/api/refunds/:id/reject', async (req: Request, res: Response) => {
 // Process (finalize) an approved refund - creates negative petty cash entry
 router.patch('/api/refunds/:id/process', async (req: Request, res: Response) => {
     try {
-        const { processedBy, processedByName, processedByRole, refundMethod } = req.body;
+        const actor = (req as any).user;
+        const processedBy = actor.id;
+        const processedByName = actor.name;
+        const processedByRole = actor.role;
+        const { refundMethod } = req.body;
 
         const refund = await warrantyRepo.getRefund(req.params.id);
         if (!refund) {
@@ -257,9 +271,8 @@ router.patch('/api/refunds/:id/process', async (req: Request, res: Response) => 
             return res.status(400).json({ error: 'Only approved refunds can be processed' });
         }
 
-        // Role check (only Manager+ can process)
-        if (!['Manager', 'Super Admin', 'Admin'].includes(processedByRole)) {
-            return res.status(403).json({ error: 'Only Manager or Admin can process refunds' });
+        if (!['Manager', 'Super Admin'].includes(processedByRole)) {
+            return res.status(403).json({ error: 'Only Manager or Super Admin can process refunds' });
         }
 
         // Phase N — Cash refund drawer balance check

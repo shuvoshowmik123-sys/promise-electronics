@@ -55,8 +55,6 @@ export const CorporateNotificationsBell: React.FC = () => {
     // Handle real-time SSE events
     useEffect(() => {
         if (latestEvent && latestEvent.type === 'corporate_notification') {
-            console.log('[CorporateNotificationsBell] New notification via SSE:', latestEvent.data);
-
             // Play notification sound based on preference
             try {
                 const prefs = JSON.parse(user?.preferences || "{}");

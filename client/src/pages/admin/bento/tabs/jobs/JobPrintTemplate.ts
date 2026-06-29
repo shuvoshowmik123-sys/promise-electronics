@@ -25,6 +25,7 @@ export function generatePrintHtml(
         : "To be assessed";
     const safeLogoUrl = escapeHtml(logoUrl || "");
     const safeTrackingUrl = escapeHtml(trackingUrl);
+    const jobNo = escapeHtml((job as any).ticketNumber || job.id.slice(-6).toUpperCase());
 
     return `
       <!DOCTYPE html>
@@ -256,7 +257,7 @@ export function generatePrintHtml(
 
             <div class="meta">
               <div class="meta-title">Claim Slip</div>
-              <div class="meta-row"><span class="label">Job No</span><strong>${escapeHtml(job.id)}</strong></div>
+              <div class="meta-row"><span class="label">Job No</span><strong>${jobNo}</strong></div>
               <div class="meta-row"><span class="label">Printed</span><span>${printedOn}</span></div>
             </div>
           </div>
@@ -362,7 +363,7 @@ export function generatePrintHtml(
             <div class="qr-panel">
               <img src="${escapeHtml(qrUrl)}" alt="Tracking QR Code" class="qr-img" />
               <div class="qr-label">Track Online</div>
-              <div class="qr-url">Job No: ${escapeHtml(job.id)}</div>
+              <div class="qr-url">Job No: ${jobNo}</div>
             </div>
           </div>
         </div>

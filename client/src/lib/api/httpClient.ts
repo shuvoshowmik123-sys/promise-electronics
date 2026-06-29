@@ -25,13 +25,6 @@ type FetchApiOptions = RequestInit & { timeoutMs?: number };
 export async function fetchApi<T>(url: string, options?: FetchApiOptions): Promise<T> {
     const fullUrl = `${API_BASE}${url}`;
 
-    // Use import.meta.env.DEV since Vite handles this
-    // In a vanilla TS environment you'd use something else,
-    // but this project uses Vite.
-    if (import.meta.env?.DEV) {
-        console.log(`[API] Fetching: ${fullUrl}`);
-    }
-
     const { timeoutMs, ...requestOptions } = options || {};
     const csrfToken = getCsrfToken();
     const baseHeaders = {
@@ -69,16 +62,7 @@ export async function fetchApi<T>(url: string, options?: FetchApiOptions): Promi
     }
     const contentType = response.headers.get("content-type") || "";
 
-    if (import.meta.env?.DEV) {
-        console.log(`[API] Response status: ${response.status} ${response.statusText}`);
-    }
-
-    // Get raw text first for debugging
     const rawText = await response.text();
-
-    if (import.meta.env?.DEV) {
-        console.log(`[API] Raw response (first 200 chars): ${rawText.substring(0, 200)}`);
-    }
 
     if (!response.ok) {
         let errorData;
@@ -153,13 +137,8 @@ async function nativeFetchApi<T>(fullUrl: string, options?: FetchApiOptions): Pr
             response = await CapacitorHttp.get(httpOptions);
         }
     } catch (err: unknown) {
-        console.error(`[Native API] Request failed:`, err);
+        console.error(`[Native API] Request failed`);
         throw new ApiError(err instanceof Error ? err.message : 'Network request failed');
-    }
-
-    if (import.meta.env?.DEV) {
-        console.log(`[Native API] Response status: ${response.status}`);
-        console.log(`[Native API] Response data:`, JSON.stringify(response.data).substring(0, 200));
     }
 
     if (response.status >= 400) {

@@ -59,7 +59,6 @@ export function useCorporateSSE(options: UseCorporateSSEOptions = {}) {
             });
 
             es.onopen = () => {
-                console.log('[CorporateSSE] Connection opened');
                 setIsConnected(true);
                 setError(null);
                 retryCountRef.current = 0; // Reset retry count on successful connection
@@ -68,7 +67,6 @@ export function useCorporateSSE(options: UseCorporateSSEOptions = {}) {
             es.onmessage = (event) => {
                 try {
                     const parsedData = JSON.parse(event.data);
-                    console.log('[CorporateSSE] Message received:', parsedData);
 
                     setLatestEvent({
                         type: parsedData.type || 'message',
@@ -90,7 +88,6 @@ export function useCorporateSSE(options: UseCorporateSSEOptions = {}) {
                 // Attempt reconnection if under retry limit
                 if (retryCountRef.current < maxRetries) {
                     const delay = Math.min(1000 * Math.pow(2, retryCountRef.current), 30000);
-                    console.log(`[CorporateSSE] Reconnecting in ${delay}ms (attempt ${retryCountRef.current + 1}/${maxRetries})...`);
 
                     retryCountRef.current++;
                     reconnectTimeoutRef.current = setTimeout(() => {
@@ -107,7 +104,6 @@ export function useCorporateSSE(options: UseCorporateSSEOptions = {}) {
             es.addEventListener('corporate_notification', (event: MessageEvent) => {
                 try {
                     const parsedData = JSON.parse(event.data);
-                    console.log('[CorporateSSE] Corporate notification received:', parsedData);
 
                     setLatestEvent({
                         type: 'corporate_notification',
@@ -122,7 +118,6 @@ export function useCorporateSSE(options: UseCorporateSSEOptions = {}) {
             es.addEventListener('chat_message', (event: MessageEvent) => {
                 try {
                     const parsedData = JSON.parse(event.data);
-                    console.log('[CorporateSSE] Chat message received:', parsedData);
 
                     setLatestEvent({
                         type: 'chat_message',
@@ -143,13 +138,11 @@ export function useCorporateSSE(options: UseCorporateSSEOptions = {}) {
     }, [cleanup, maxRetries]);
 
     const disconnect = useCallback(() => {
-        console.log('[CorporateSSE] Manual disconnect');
         cleanup();
         setIsConnected(false);
     }, [cleanup]);
 
     const reconnect = useCallback(() => {
-        console.log('[CorporateSSE] Manual reconnect');
         retryCountRef.current = 0; // Reset retry count
         connect();
     }, [connect]);

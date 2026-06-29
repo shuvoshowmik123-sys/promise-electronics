@@ -57,10 +57,6 @@ export function ProfileCompletionModal({
       toast.success("Profile saved! Your details will be auto-filled for future orders.");
       onComplete?.();
     } catch (error: any) {
-      console.log("Profile save error:", error);
-      console.log("Error code:", error?.code);
-      console.log("Error message:", error?.message);
-      
       // Check for duplicate phone error - check both the code and message
       if (error?.code === "PHONE_EXISTS" || 
           error?.message?.toLowerCase().includes("already in use") ||

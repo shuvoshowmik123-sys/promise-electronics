@@ -21,7 +21,6 @@ export function usePushNotifications(options: PushNotificationHookOptions = {}) 
     // Register device token with backend
     const registerTokenWithBackend = useCallback(async (token: string) => {
         if (!userId) {
-            console.log('[Push] No userId, skipping token registration');
             return;
         }
 
@@ -39,12 +38,12 @@ export function usePushNotifications(options: PushNotificationHookOptions = {}) 
             });
 
             if (response.status === 200) {
-                console.log('[Push] Token registered with backend');
+                return;
             } else {
-                console.error('[Push] Failed to register token:', response.data);
+                console.error('[Push] Failed to register token');
             }
-        } catch (error) {
-            console.error('[Push] Error registering token:', error);
+        } catch {
+            console.error('[Push] Error registering token');
         }
     }, [userId]);
 
@@ -81,26 +80,20 @@ export function usePushNotifications(options: PushNotificationHookOptions = {}) 
         try {
             // Check current permission status
             let permStatus = await PushNotifications.checkPermissions();
-            console.log('[Push] Permission status:', permStatus.receive);
-
             // Request permission if not granted
             if (permStatus.receive === 'prompt') {
                 permStatus = await PushNotifications.requestPermissions();
             }
 
             if (permStatus.receive !== 'granted') {
-                console.log('[Push] Notification permission denied');
                 return;
             }
 
             // Register for push notifications
             await PushNotifications.register();
             hasRegistered.current = true;
-            console.log('[Push] Registration initiated');
-
             // Listen for registration success
             PushNotifications.addListener('registration', (token: Token) => {
-                console.log('[Push] Device token:', token.value);
                 registerTokenWithBackend(token.value);
             });
 
@@ -111,8 +104,6 @@ export function usePushNotifications(options: PushNotificationHookOptions = {}) 
 
             // Listen for foreground notifications
             PushNotifications.addListener('pushNotificationReceived', (notification: PushNotificationSchema) => {
-                console.log('[Push] Notification received in foreground:', notification);
-
                 // Show in-app toast for foreground notifications
                 toast({
                     title: notification.title || 'New Notification',
@@ -124,8 +115,6 @@ export function usePushNotifications(options: PushNotificationHookOptions = {}) 
 
             // Listen for notification tap/action
             PushNotifications.addListener('pushNotificationActionPerformed', (action: ActionPerformed) => {
-                console.log('[Push] Notification tapped:', action);
-
                 // Handle navigation
                 handleNotificationNavigation(action.notification.data);
 

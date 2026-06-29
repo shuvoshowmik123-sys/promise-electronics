@@ -17,8 +17,9 @@ Before backend work, read:
 
 1. `AGENTS.md`
 2. `docs/AGENT_CURRENT_CONTEXT.md`
-3. The route/service/repository files directly involved in the task
-4. `docs/AGENT_HANDOFF_TEMPLATE.md`
+3. `docs/AGENT_BACKEND_PLAYBOOK.md`
+4. The route/service/repository files directly involved in the task
+5. `docs/AGENT_HANDOFF_TEMPLATE.md`
 
 ## Ownership
 

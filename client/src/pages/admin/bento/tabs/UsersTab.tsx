@@ -1,16 +1,15 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    Search, UserPlus, MoreHorizontal, Shield, Mail, Loader2,
-    Trash2, Edit, Eye, EyeOff, Users, UserCheck, UserCog, HardHat,
-    Activity, Zap, Truck, Link, Copy, RefreshCw, X, Clock, CheckCircle
+    Search, MoreHorizontal, Shield, Mail, Loader2,
+    Trash2, Edit, Users, UserCheck, UserCog, HardHat,
+    Activity, Truck, Link, Copy, RefreshCw, X, Clock, CheckCircle
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminUsersApi, staffInvitesApi, type SafeUser, type StaffInvite } from "@/lib/api";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import type { UserPermissions } from "@shared/schema";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -61,124 +60,26 @@ import {
     AlertDialogHeader,
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Checkbox } from "@/components/ui/checkbox";
 import { CoverageHealth } from "@/components/admin/CoverageHealth";
 import { PermissionDesigner } from "@/components/admin/PermissionDesigner";
 import { InviteWizard } from "@/components/admin/InviteWizard";
 
 const ROLES = ["Super Admin", "Manager", "Cashier", "Technician", "Driver"] as const;
 
-const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
-    "Super Admin": {
-        dashboard: true, jobs: true, inventory: true, pos: true, challans: true,
-        finance: true, attendance: true, reports: true, serviceRequests: true,
-        orders: true, technician: true, inquiries: true, systemHealth: true,
-        users: true, settings: true, canCreate: true, canEdit: true, canDelete: true, canExport: true,
-        canViewFullJobDetails: true, canPrintJobTickets: true, process_payment: true,
-        corporate: true, notifications: true, knowledgeBase: true, warrantyClaims: true, refunds: true,
-        canAssignTechnician: true, canSetPriority: true, canSetDeadline: true,
-        canSetWarranty: true, canViewCustomerPhone: true, canAddAssistedBy: true,
-    },
-    "Manager": {
-        dashboard: true, jobs: true, inventory: true, pos: true, challans: true,
-        finance: true, attendance: true, reports: true, serviceRequests: true,
-        orders: true, technician: false, inquiries: true, systemHealth: false,
-        users: false, settings: false, canCreate: true, canEdit: true, canDelete: false, canExport: true,
-        canViewFullJobDetails: true, canPrintJobTickets: true, process_payment: true,
-        corporate: true, notifications: true, knowledgeBase: true, warrantyClaims: true, refunds: true,
-        canAssignTechnician: true, canSetPriority: true, canSetDeadline: true,
-        canSetWarranty: true, canViewCustomerPhone: true, canAddAssistedBy: true,
-    },
-    "Cashier": {
-        dashboard: true, jobs: false, inventory: true, pos: true, challans: false,
-        finance: false, attendance: true, reports: false, serviceRequests: false,
-        orders: true, technician: false, inquiries: false, systemHealth: false,
-        users: false, settings: false, canCreate: true, canEdit: false, canDelete: false, canExport: false,
-        canViewFullJobDetails: false, canPrintJobTickets: false, process_payment: true,
-        canAssignTechnician: false, canSetPriority: false, canSetDeadline: false,
-        canSetWarranty: false, canViewCustomerPhone: true, canAddAssistedBy: false,
-    },
-    "Technician": {
-        dashboard: false, jobs: true, inventory: false, pos: false, challans: true,
-        finance: false, attendance: true, reports: false, serviceRequests: true,
-        orders: false, technician: true, inquiries: false, systemHealth: false,
-        users: false, settings: false, canCreate: false, canEdit: true, canDelete: false, canExport: false,
-        canViewFullJobDetails: false, canPrintJobTickets: false, process_payment: false,
-        canAssignTechnician: false, canSetPriority: false, canSetDeadline: false,
-        canSetWarranty: false, canViewCustomerPhone: false, canAddAssistedBy: true,
-    },
-    "Driver": {
-        dashboard: false, jobs: false, inventory: false, pos: false, challans: false,
-        finance: false, attendance: true, reports: false, pickup: true, serviceRequests: false,
-        orders: false, technician: false, inquiries: false, systemHealth: false,
-        users: false, settings: false, canCreate: false, canEdit: true, canDelete: false, canExport: false,
-        canViewFullJobDetails: false, canPrintJobTickets: false, process_payment: true,
-        canAssignTechnician: false, canSetPriority: false, canSetDeadline: false,
-        canSetWarranty: false, canViewCustomerPhone: true, canAddAssistedBy: false,
-    },
-};
-
-const PERMISSION_LABELS: Record<keyof UserPermissions, string> = {
-    dashboard: "Dashboard",
-    jobs: "Job Management",
-    inventory: "Inventory",
-    pos: "Point of Sale",
-    challans: "Challans",
-    finance: "Finance",
-    attendance: "Attendance",
-    reports: "Reports",
-    pickup: "Pickup & Delivery",
-    serviceRequests: "Service Requests",
-    orders: "Shop Orders",
-    technician: "Technician View",
-    inquiries: "Inquiries",
-    systemHealth: "System Health",
-    warrantyClaims: "Warranty Claims",
-    refunds: "Refunds",
-    corporate: "Managed Clients",
-    notifications: "Notifications",
-    knowledgeBase: "Knowledge Base",
-    users: "User Management",
-    settings: "Settings",
-    canCreate: "Can Create",
-    canEdit: "Can Edit",
-    canDelete: "Can Delete",
-    canExport: "Can Export",
-    canViewFullJobDetails: "View Full Job Details",
-    canPrintJobTickets: "Print Job Tickets",
-    process_payment: "Process Payment",
-    canAssignTechnician: "Assign Technician",
-    canSetPriority: "Set Priority",
-    canSetDeadline: "Set Deadline",
-    canSetWarranty: "Set Warranty",
-    canViewCustomerPhone: "View Customer Phone",
-    canAddAssistedBy: "Add Assisted By",
-    quality: "Quality Control",
-    salary: "Salary & HR",
-    purchasing: "Purchasing",
-    wastage: "Wastage Management",
-    auditLogs: "Audit Logs",
-    brain: "System Brain Analytics",
-    canViewUsers: "View Users List",
-};
-
 export default function UsersTab() {
     const queryClient = useQueryClient();
     const { user: currentUser, hasPermission, refreshUser } = useAdminAuth();
     const [searchTerm, setSearchTerm] = useState("");
-    const [isCreateOpen, setIsCreateOpen] = useState(false);
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
-    const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<SafeUser | null>(null);
-    const [showPassword, setShowPassword] = useState(false);
     const [isInviteOpen, setIsInviteOpen] = useState(false);
     const [showLinkDialog, setShowLinkDialog] = useState(false);
     const [designerTarget, setDesignerTarget] = useState<{ id: string; name: string; role: string } | null>(null);
     const isMobile = useIsMobile();
 
     useEffect(() => {
-        const anyDialogOpen = isCreateOpen || isEditOpen || isDeleteOpen || isPermissionsOpen || isInviteOpen || showLinkDialog;
+        const anyDialogOpen = isEditOpen || isDeleteOpen || isInviteOpen || showLinkDialog;
         // eslint-disable-next-line -- all dialog states used in deps below
         if (isMobile && anyDialogOpen) {
             window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
@@ -186,27 +87,14 @@ export default function UsersTab() {
                 window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
             };
         }
-    }, [isCreateOpen, isEditOpen, isDeleteOpen, isPermissionsOpen, isInviteOpen, showLinkDialog, isMobile]);
+    }, [isEditOpen, isDeleteOpen, isInviteOpen, showLinkDialog, isMobile]);
 
     const [formData, setFormData] = useState({
         username: "",
         name: "",
         email: "",
-        password: "",
         role: "Cashier" as typeof ROLES[number],
-        employmentType: "full_time" as "full_time" | "part_time",
-        joinDate: format(new Date(), "yyyy-MM-dd"),
-        initialSalary: {
-            basicSalary: 0,
-            houseRentAllowance: 0,
-            medicalAllowance: 0,
-            conveyanceAllowance: 0,
-            otherAllowances: 0,
-            incomeTaxPercent: 0,
-        }
     });
-
-    const [editPermissions, setEditPermissions] = useState<UserPermissions>({});
 
     // Invite state
     const [inviteRole, setInviteRole] = useState<string>("Cashier");
@@ -270,19 +158,6 @@ export default function UsersTab() {
 
     const inviteRoles = ["Manager", "Cashier", "Technician", "Driver"] as const;
 
-    const createMutation = useMutation({
-        mutationFn: adminUsersApi.create,
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["admin-users"] });
-            toast.success("User created successfully");
-            setIsCreateOpen(false);
-            resetForm();
-        },
-        onError: (error: Error) => {
-            toast.error(error.message);
-        },
-    });
-
     const updateMutation = useMutation({
         mutationFn: ({ id, data }: { id: string; data: Parameters<typeof adminUsersApi.update>[1] }) =>
             adminUsersApi.update(id, data),
@@ -293,13 +168,8 @@ export default function UsersTab() {
                 await refreshUser();
             }
 
-            if (variables.data.permissions) {
-                toast.success("Permissions updated successfully");
-                setIsPermissionsOpen(false);
-            } else {
-                toast.success("User updated successfully");
-                setIsEditOpen(false);
-            }
+            toast.success("User updated successfully");
+            setIsEditOpen(false);
             setSelectedUser(null);
         },
         onError: (error: Error) => {
@@ -320,40 +190,6 @@ export default function UsersTab() {
         },
     });
 
-    const resetForm = () => {
-        setFormData({
-            username: "", name: "", email: "", password: "", role: "Cashier",
-            employmentType: "full_time",
-            joinDate: format(new Date(), "yyyy-MM-dd"),
-            initialSalary: { basicSalary: 0, houseRentAllowance: 0, medicalAllowance: 0, conveyanceAllowance: 0, otherAllowances: 0, incomeTaxPercent: 0 }
-        });
-        setShowPassword(false);
-    };
-
-    const handleCreate = () => {
-        if (!formData.username || !formData.name || !formData.email || !formData.password) {
-            toast.error("Please fill in all fields");
-            return;
-        }
-
-        const payload: any = {
-            username: formData.username,
-            name: formData.name,
-            email: formData.email,
-            password: formData.password,
-            role: formData.role,
-            permissions: JSON.stringify(DEFAULT_PERMISSIONS[formData.role]),
-        };
-
-        if (formData.role !== "Super Admin" && formData.initialSalary.basicSalary > 0) {
-            payload.employmentType = formData.employmentType;
-            payload.joinDate = formData.joinDate;
-            payload.initialSalary = { ...formData.initialSalary, effectiveFrom: formData.joinDate };
-        }
-
-        createMutation.mutate(payload);
-    };
-
     const handleEdit = () => {
         if (!selectedUser) return;
         const updates: Parameters<typeof adminUsersApi.update>[1] = {};
@@ -361,16 +197,7 @@ export default function UsersTab() {
         if (formData.email && formData.email !== selectedUser.email) updates.email = formData.email;
         if (formData.username && formData.username !== selectedUser.username) updates.username = formData.username;
         if (formData.role && formData.role !== selectedUser.role) updates.role = formData.role;
-        if (formData.password) updates.password = formData.password;
         updateMutation.mutate({ id: selectedUser.id, data: updates });
-    };
-
-    const handleSavePermissions = () => {
-        if (!selectedUser) return;
-        updateMutation.mutate({
-            id: selectedUser.id,
-            data: { permissions: JSON.stringify(editPermissions) },
-        });
     };
 
     const handleToggleStatus = (user: SafeUser) => {
@@ -384,25 +211,9 @@ export default function UsersTab() {
             username: user.username || "",
             name: user.name,
             email: user.email || "",
-            password: "",
             role: user.role as typeof ROLES[number],
-            employmentType: "full_time",
-            joinDate: format(new Date(), "yyyy-MM-dd"),
-            initialSalary: { basicSalary: 0, houseRentAllowance: 0, medicalAllowance: 0, conveyanceAllowance: 0, otherAllowances: 0, incomeTaxPercent: 0 }
         });
         setIsEditOpen(true);
-    };
-
-    const openPermissionsDialog = (user: SafeUser) => {
-        setSelectedUser(user);
-        try {
-            const storedPerms = typeof user.permissions === "string" ? JSON.parse(user.permissions) : user.permissions;
-            const defaultPerms = DEFAULT_PERMISSIONS[user.role] || {};
-            setEditPermissions({ ...defaultPerms, ...(storedPerms || {}) });
-        } catch {
-            setEditPermissions(DEFAULT_PERMISSIONS[user.role] || {});
-        }
-        setIsPermissionsOpen(true);
     };
 
     const getInitials = (name: string) => {
@@ -450,52 +261,22 @@ export default function UsersTab() {
                 ]}
             />
 
-            {/* KPI ROW */}
-            <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
-                <motion.div variants={itemVariants}>
-                    <BentoCard
-                        variant="vibrant"
-                        className="bg-gradient-to-br from-blue-500 to-blue-600 shadow-blue-500/30 h-full"
-                        title="Total Users"
-                        icon={<Users size={20} className="text-white" />}
-                    >
-                        <div className="text-3xl font-bold text-white mt-2">{users.length}</div>
-                        <div className="text-xs font-medium text-white/80 mt-1">Total system accounts</div>
-                    </BentoCard>
-                </motion.div>
-                <motion.div variants={itemVariants}>
-                    <BentoCard
-                        variant="vibrant"
-                        className="bg-gradient-to-br from-emerald-500 to-emerald-600 shadow-emerald-500/30 h-full"
-                        title="Active Now"
-                        icon={<UserCheck size={20} className="text-white" />}
-                    >
-                        <div className="text-3xl font-bold text-white mt-2">{users.filter(u => (u.employmentStatus === "active" || (!u.employmentStatus && u.status === "Active"))).length}</div>
-                        <div className="text-xs font-medium text-white/80 mt-1">Users with active status</div>
-                    </BentoCard>
-                </motion.div>
-                <motion.div variants={itemVariants}>
-                    <BentoCard
-                        variant="vibrant"
-                        className="bg-gradient-to-br from-violet-500 to-violet-600 shadow-violet-500/30 h-full"
-                        title="Drivers"
-                        icon={<Truck size={20} className="text-white" />}
-                    >
-                        <div className="text-3xl font-bold text-white mt-2">{users.filter(u => u.role === "Driver").length}</div>
-                        <div className="text-xs font-medium text-white/80 mt-1">Pickup & delivery staff</div>
-                    </BentoCard>
-                </motion.div>
-                <motion.div variants={itemVariants}>
-                    <BentoCard
-                        variant="vibrant"
-                        className="bg-gradient-to-br from-orange-500 to-orange-600 shadow-orange-500/30 h-full"
-                        title="Technicians"
-                        icon={<HardHat size={20} className="text-white" />}
-                    >
-                        <div className="text-3xl font-bold text-white mt-2">{users.filter(u => u.role === "Technician").length}</div>
-                        <div className="text-xs font-medium text-white/80 mt-1">Repair & service staff</div>
-                    </BentoCard>
-                </motion.div>
+            {/* Compact KPI Strip */}
+            <div className="hidden md:flex gap-3">
+                {[
+                    { label: "Total Users", value: users.length, sub: "System accounts", icon: <Users size={16} />, color: "text-blue-600 bg-blue-50 border-blue-200" },
+                    { label: "Active", value: users.filter(u => (u.employmentStatus === "active" || (!u.employmentStatus && u.status === "Active"))).length, sub: "Available", icon: <UserCheck size={16} />, color: "text-emerald-600 bg-emerald-50 border-emerald-200" },
+                    { label: "Drivers", value: users.filter(u => u.role === "Driver").length, sub: "Pickup staff", icon: <Truck size={16} />, color: "text-violet-600 bg-violet-50 border-violet-200" },
+                    { label: "Technicians", value: users.filter(u => u.role === "Technician").length, sub: "Repair staff", icon: <HardHat size={16} />, color: "text-amber-600 bg-amber-50 border-amber-200" },
+                ].map(kpi => (
+                    <div key={kpi.label} className={`flex items-center gap-3 rounded-xl border ${kpi.color} px-3 py-2.5 flex-1`}>
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${kpi.color.split(" ").slice(1).join(" ")}`}>{kpi.icon}</div>
+                        <div className="min-w-0">
+                            <p className="text-lg font-black leading-tight">{kpi.value}</p>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider opacity-60">{kpi.label}</p>
+                        </div>
+                    </div>
+                ))}
             </div>
 
             {/* COVERAGE HEALTH (Super Admin only) */}
@@ -601,11 +382,6 @@ export default function UsersTab() {
                                                                 <Edit className="w-4 h-4 text-blue-500" /> Edit Profile
                                                             </DropdownMenuItem>
                                                         )}
-                                                        {isSuperAdmin && (
-                                                            <DropdownMenuItem onClick={() => openPermissionsDialog(user)} className="rounded-xl flex items-center gap-2 py-2.5 px-3 cursor-pointer">
-                                                                <Shield className="w-4 h-4 text-violet-500" /> Permissions
-                                                            </DropdownMenuItem>
-                                                        )}
                                                         {isSuperAdmin && user.id !== currentUser?.id && user.role !== "Super Admin" && (
                                                             <DropdownMenuItem onClick={() => setDesignerTarget({ id: user.id, name: user.name, role: user.role })} className="rounded-xl flex items-center gap-2 py-2.5 px-3 cursor-pointer">
                                                                 <UserCog className="w-4 h-4 text-blue-500" /> Edit Access
@@ -698,218 +474,6 @@ export default function UsersTab() {
                 </BentoCard>
             </motion.div>
 
-            {/* CREATE/EDIT/DELETE DIALOGS - Matching design-concept style */}
-            <Dialog open={isCreateOpen} onOpenChange={setIsCreateOpen}>
-                <DialogContent className={cn(
-                    "rounded-[2rem] border-none shadow-2xl p-0 overflow-hidden transition-all duration-300",
-                    formData.role === "Super Admin" ? "sm:max-w-[425px]" : "sm:max-w-[700px] lg:max-w-[800px]"
-                )}>
-                    <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-8 text-white relative overflow-hidden">
-                        <Zap className="absolute top-[-20%] right-[-10%] w-48 h-48 text-white/10 rotate-12" />
-                        <DialogHeader>
-                            <DialogTitle className="text-2xl font-black tracking-tighter">Add New Staff</DialogTitle>
-                            <DialogDescription className="text-white/70 font-medium">Create a new user account with role-based access.</DialogDescription>
-                        </DialogHeader>
-                    </div>
-                    <div className={cn("p-8 gap-8", formData.role === "Super Admin" ? "space-y-4" : "grid grid-cols-1 md:grid-cols-2")}>
-                        {/* LEFT COLUMN: Personal Details */}
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Username</Label>
-                                    <Input
-                                        value={formData.username}
-                                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                                        placeholder="johndoe"
-                                        className="rounded-xl bg-slate-50 border-slate-100 focus:bg-white"
-                                    />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Role</Label>
-                                    <Select
-                                        value={formData.role}
-                                        onValueChange={(value) => setFormData({ ...formData, role: value as typeof ROLES[number] })}
-                                    >
-                                        <SelectTrigger className="rounded-xl bg-slate-50 border-slate-100">
-                                            <SelectValue />
-                                        </SelectTrigger>
-                                        <SelectContent className="rounded-2xl border-slate-100 shadow-xl">
-                                            {ROLES.filter(r => r !== "Super Admin").map((role) => (
-                                                <SelectItem key={role} value={role} className="rounded-xl">{role}</SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Full Name</Label>
-                                <Input
-                                    value={formData.name}
-                                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                                    placeholder="John Doe"
-                                    className="rounded-xl bg-slate-50 border-slate-100 focus:bg-white"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Email</Label>
-                                <Input
-                                    type="email"
-                                    value={formData.email}
-                                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                                    placeholder="john@example.com"
-                                    className="rounded-xl bg-slate-50 border-slate-100 focus:bg-white"
-                                />
-                            </div>
-                            <div className="space-y-2">
-                                <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Password</Label>
-                                <div className="relative">
-                                    <Input
-                                        type={showPassword ? "text" : "password"}
-                                        value={formData.password}
-                                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                        placeholder="Min 6 characters"
-                                        className="rounded-xl bg-slate-50 border-slate-100 focus:bg-white pr-10"
-                                    />
-                                    <Button
-                                        type="button"
-                                        variant="ghost"
-                                        size="icon"
-                                        className="absolute right-0 top-0 h-full hover:bg-transparent text-slate-400"
-                                        onClick={() => setShowPassword(!showPassword)}
-                                    >
-                                        {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* RIGHT COLUMN: Salary Details (Conditional) */}
-                        {formData.role !== "Super Admin" && (
-                            <div className="space-y-4 border-t md:border-t-0 md:border-l border-slate-100 md:pl-8 pt-6 md:pt-0">
-                                <div className="mb-4">
-                                    <h4 className="text-sm font-bold tracking-tight text-slate-800 flex items-center gap-2">
-                                        <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                                            <Activity className="w-3.5 h-3.5" />
-                                        </div>
-                                        Salary Setup (Optional)
-                                    </h4>
-                                    <p className="text-[11px] text-slate-500 font-medium leading-relaxed mt-1.5">
-                                        If left blank, the employee will be marked as <span className="font-bold text-amber-600 bg-amber-50 px-1 rounded">Pending Compensation</span>.
-                                    </p>
-                                </div>
-
-                                <div className="space-y-2">
-                                    <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Join Date</Label>
-                                    <Input
-                                        type="date"
-                                        value={formData.joinDate}
-                                        onChange={(e) => setFormData({ ...formData, joinDate: e.target.value })}
-                                        className="rounded-xl bg-slate-50 border-slate-100 focus:bg-white h-10"
-                                    />
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4 pt-1">
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Basic Salary</Label>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-semibold">৳</span>
-                                            <Input
-                                                type="number"
-                                                value={formData.initialSalary.basicSalary || ""}
-                                                onChange={(e) => setFormData({ ...formData, initialSalary: { ...formData.initialSalary, basicSalary: Number(e.target.value) } })}
-                                                placeholder="0"
-                                                className="pl-7 rounded-xl bg-slate-50 border-slate-100 focus:bg-white h-10 shadow-sm"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">HRA</Label>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-semibold">৳</span>
-                                            <Input
-                                                type="number"
-                                                value={formData.initialSalary.houseRentAllowance || ""}
-                                                onChange={(e) => setFormData({ ...formData, initialSalary: { ...formData.initialSalary, houseRentAllowance: Number(e.target.value) } })}
-                                                placeholder="0"
-                                                className="pl-7 rounded-xl bg-slate-50 border-slate-100 focus:bg-white h-10 shadow-sm"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Medical</Label>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-semibold">৳</span>
-                                            <Input
-                                                type="number"
-                                                value={formData.initialSalary.medicalAllowance || ""}
-                                                onChange={(e) => setFormData({ ...formData, initialSalary: { ...formData.initialSalary, medicalAllowance: Number(e.target.value) } })}
-                                                placeholder="0"
-                                                className="pl-7 rounded-xl bg-slate-50 border-slate-100 focus:bg-white h-10 shadow-sm"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Conveyance</Label>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-semibold">৳</span>
-                                            <Input
-                                                type="number"
-                                                value={formData.initialSalary.conveyanceAllowance || ""}
-                                                onChange={(e) => setFormData({ ...formData, initialSalary: { ...formData.initialSalary, conveyanceAllowance: Number(e.target.value) } })}
-                                                placeholder="0"
-                                                className="pl-7 rounded-xl bg-slate-50 border-slate-100 focus:bg-white h-10 shadow-sm"
-                                            />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-4">
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Other</Label>
-                                        <div className="relative">
-                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-semibold">৳</span>
-                                            <Input
-                                                type="number"
-                                                value={formData.initialSalary.otherAllowances || ""}
-                                                onChange={(e) => setFormData({ ...formData, initialSalary: { ...formData.initialSalary, otherAllowances: Number(e.target.value) } })}
-                                                placeholder="0"
-                                                className="pl-7 rounded-xl bg-slate-50 border-slate-100 focus:bg-white h-10 shadow-sm"
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">Tax %</Label>
-                                        <div className="relative">
-                                            <Input
-                                                type="number"
-                                                value={formData.initialSalary.incomeTaxPercent || ""}
-                                                onChange={(e) => setFormData({ ...formData, initialSalary: { ...formData.initialSalary, incomeTaxPercent: Number(e.target.value) } })}
-                                                placeholder="0"
-                                                className="pr-7 rounded-xl bg-slate-50 border-slate-100 focus:bg-white h-10 shadow-sm"
-                                            />
-                                            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs font-semibold">%</span>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                    <div className="p-8 pt-0 flex gap-3">
-                        <Button variant="ghost" className="flex-1 rounded-xl h-12 font-bold text-slate-500" onClick={() => setIsCreateOpen(false)}>Cancel</Button>
-                        <Button
-                            className="flex-[2] rounded-xl h-12 font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20"
-                            onClick={handleCreate}
-                            disabled={createMutation.isPending}
-                        >
-                            {createMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : "Verify & Create"}
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
             {/* EDIT USER DIALOG - Similar pattern */}
             <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
                 <DialogContent className="!left-0 !right-0 !top-auto !bottom-0 !translate-x-0 !translate-y-0 !max-h-none !max-w-none w-full rounded-t-[2rem] rounded-b-none border-none shadow-2xl p-0 overflow-hidden h-auto md:!left-[50%] md:!right-auto md:!top-[50%] md:!bottom-auto md:!translate-x-[-50%] md:!translate-y-[-50%] md:!max-h-[calc(100dvh-2rem)] md:!max-w-[425px] md:rounded-[2rem]">
@@ -957,27 +521,6 @@ export default function UsersTab() {
                                 className="rounded-xl bg-slate-50 border-slate-100 focus:bg-white"
                             />
                         </div>
-                        <div className="space-y-2">
-                            <Label className="text-[10px] font-black uppercase text-slate-400 tracking-widest pl-1">New Password</Label>
-                            <div className="relative">
-                                <Input
-                                    type={showPassword ? "text" : "password"}
-                                    value={formData.password}
-                                    onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-                                    placeholder="Leave blank to keep current"
-                                    className="rounded-xl bg-slate-50 border-slate-100 focus:bg-white pr-10"
-                                />
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    size="icon"
-                                    className="absolute right-0 top-0 h-full hover:bg-transparent text-slate-400"
-                                    onClick={() => setShowPassword(!showPassword)}
-                                >
-                                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                                </Button>
-                            </div>
-                        </div>
                     </div>
                     <div className="p-6 md:p-8 pt-0 pb-[calc(1.5rem+env(safe-area-inset-bottom))] md:pb-8 flex gap-3">
                         <Button variant="ghost" className="flex-1 rounded-xl h-12 font-bold text-slate-500" onClick={() => setIsEditOpen(false)}>Cancel</Button>
@@ -987,81 +530,6 @@ export default function UsersTab() {
                             disabled={updateMutation.isPending}
                         >
                             {updateMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : "Save Changes"}
-                        </Button>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* PERMISSIONS DIALOG */}
-            <Dialog open={isPermissionsOpen} onOpenChange={setIsPermissionsOpen}>
-                <DialogContent className="sm:max-w-[500px] rounded-[2rem] border-none shadow-2xl p-0 overflow-hidden max-h-[90vh] flex flex-col">
-                    <div className="bg-gradient-to-br from-violet-600 to-indigo-700 p-8 text-white relative shrink-0">
-                        <Shield className="absolute top-[-20%] right-[-10%] w-48 h-48 text-white/10 rotate-12" />
-                        <DialogHeader>
-                            <DialogTitle className="text-2xl font-black tracking-tighter">Access Control</DialogTitle>
-                            <DialogDescription className="text-white/70 font-medium">Fine-tune system permissions for {selectedUser?.name}.</DialogDescription>
-                        </DialogHeader>
-                    </div>
-                    <div className="p-8 overflow-y-auto space-y-6">
-                        <div className="space-y-4">
-                            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Module Access</h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                {(["dashboard", "jobs", "inventory", "pos", "challans", "finance", "attendance", "reports", "serviceRequests", "orders", "technician", "inquiries", "systemHealth", "users", "settings"] as const).map((key) => (
-                                    <div key={key} className="flex items-center space-x-3 p-3 rounded-2xl bg-slate-50/50 border border-slate-100 hover:bg-slate-50 transition-colors">
-                                        <Checkbox
-                                            id={`perm-${key}`}
-                                            checked={editPermissions[key] === true}
-                                            onCheckedChange={(checked) => setEditPermissions(prev => ({ ...prev, [key]: checked === true }))}
-                                            className="h-5 w-5 rounded-lg border-slate-300 data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-                                        />
-                                        <Label htmlFor={`perm-${key}`} className="text-sm font-semibold text-slate-600 cursor-pointer">{PERMISSION_LABELS[key]}</Label>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Action Rights</h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                {(["canCreate", "canEdit", "canDelete", "canExport", "process_payment"] as const).map((key) => (
-                                    <div key={key} className="flex items-center space-x-3 p-3 rounded-2xl bg-amber-50/10 border border-amber-100/50 hover:bg-amber-50/20 transition-colors">
-                                        <Checkbox
-                                            id={`perm-${key}`}
-                                            checked={editPermissions[key] === true}
-                                            onCheckedChange={(checked) => setEditPermissions(prev => ({ ...prev, [key]: checked === true }))}
-                                            className="h-5 w-5 rounded-lg border-amber-300 data-[state=checked]:bg-amber-500 data-[state=checked]:border-amber-500"
-                                        />
-                                        <Label htmlFor={`perm-${key}`} className="text-sm font-bold text-amber-900/70 cursor-pointer">{PERMISSION_LABELS[key]}</Label>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-
-                        <div className="space-y-4">
-                            <h4 className="text-[10px] font-black uppercase text-slate-400 tracking-[0.2em]">Advanced Modules</h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-                                {(["corporate", "warrantyClaims", "refunds", "notifications", "knowledgeBase"] as const).map((key) => (
-                                    <div key={key} className="flex items-center space-x-3 p-3 rounded-2xl bg-indigo-50/30 border border-indigo-100/50 hover:bg-indigo-50/50 transition-colors">
-                                        <Checkbox
-                                            id={`perm-${key}`}
-                                            checked={editPermissions[key] === true}
-                                            onCheckedChange={(checked) => setEditPermissions(prev => ({ ...prev, [key]: checked === true }))}
-                                            className="h-5 w-5 rounded-lg border-indigo-300 data-[state=checked]:bg-indigo-600 data-[state=checked]:border-indigo-600"
-                                        />
-                                        <Label htmlFor={`perm-${key}`} className="text-sm font-bold text-indigo-900/70 cursor-pointer">{PERMISSION_LABELS[key]}</Label>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </div>
-                    <div className="p-8 pt-0 flex gap-3 shrink-0">
-                        <Button variant="ghost" className="flex-1 rounded-xl h-12 font-bold text-slate-500" onClick={() => setIsPermissionsOpen(false)}>Cancel</Button>
-                        <Button
-                            className="flex-[2] rounded-xl h-12 font-black uppercase tracking-widest bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20"
-                            onClick={handleSavePermissions}
-                            disabled={updateMutation.isPending}
-                        >
-                            {updateMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : "Authorize & Save"}
                         </Button>
                     </div>
                 </DialogContent>

@@ -118,7 +118,6 @@ export default function IntakeWizardPage() {
      * Called when AI Chat extracts booking data
      */
     const handleAIBookingIntent = useCallback((data: AIBookingData) => {
-        console.log("[IntakeWizard] AI Booking Data Received:", data);
         // Prefill form fields
         if (data.brand) setBrand(data.brand);
         if (data.model) setModelNumber(data.model);

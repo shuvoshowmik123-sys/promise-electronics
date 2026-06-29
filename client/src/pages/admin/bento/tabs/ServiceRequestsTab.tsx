@@ -1007,32 +1007,23 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                     </div>
                 )}
             </MobileScrollContent>
-            {/* KPI Row */}
-            <div className="hidden md:grid grid-cols-1 md:grid-cols-4 gap-6 shrink-0">
-                <motion.div variants={itemVariants} className="col-span-1 h-full min-h-[200px]">
-                    <BentoCard className="h-full bg-gradient-to-br from-blue-500 to-indigo-600" title="New Intake" icon={<MessageSquare size={24} className="text-white" />} variant="vibrant" onClick={() => { setLaneFilter("new_intake"); setSrStatusFilter("all"); }}>
-                        <div className="flex-1 flex flex-col justify-end">
-                            <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{laneCounts.new_intake || 0}</div>
-                            <div className="text-white/80 text-sm mt-2">Unreviewed</div>
+            {/* Compact KPI Strip */}
+            <div className="hidden md:flex gap-3 shrink-0">
+                {([
+                    { label: "New Intake", value: laneCounts.new_intake || 0, sub: "Unreviewed", icon: <MessageSquare size={16} />, color: "text-blue-600 bg-blue-50 border-blue-200", lane: "new_intake" as IntakeLane },
+                    { label: "Needs Reply", value: laneCounts.needs_reply || 0, sub: "Staff action", icon: <Clock size={16} />, color: "text-amber-600 bg-amber-50 border-amber-200", lane: "needs_reply" as IntakeLane },
+                    { label: "Quotes Sent", value: laneCounts.quote_sent || 0, sub: "Awaiting response", icon: <FileText size={16} />, color: "text-violet-600 bg-violet-50 border-violet-200", lane: "quote_sent" as IntakeLane },
+                    { label: "Schedule", value: laneCounts.schedule_needed || 0, sub: "Needs scheduling", icon: <Clock size={16} />, color: "text-fuchsia-600 bg-fuchsia-50 border-fuchsia-200", lane: "schedule_needed" as IntakeLane },
+                ]).map(kpi => (
+                    <button key={kpi.lane} onClick={() => { setLaneFilter(kpi.lane); setSrStatusFilter("all"); }}
+                        className={`flex items-center gap-3 rounded-xl border ${kpi.color} px-3 py-2.5 text-left hover:shadow-sm transition-shadow flex-1`}>
+                        <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${kpi.color.split(" ").slice(1).join(" ")}`}>{kpi.icon}</div>
+                        <div className="min-w-0">
+                            <p className="text-lg font-black leading-tight">{kpi.value}</p>
+                            <p className="text-[10px] font-semibold uppercase tracking-wider opacity-60">{kpi.label}</p>
                         </div>
-                    </BentoCard>
-                </motion.div>
-                <motion.div variants={itemVariants} className="col-span-1 h-full min-h-[200px]">
-                    <BentoCard className="h-full bg-gradient-to-br from-amber-500 to-orange-600" title="Needs Reply" icon={<Clock size={24} className="text-white" />} variant="vibrant" onClick={() => { setLaneFilter("needs_reply"); setSrStatusFilter("all"); }}>
-                        <div className="flex-1 flex flex-col justify-end">
-                            <div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{laneCounts.needs_reply || 0}</div>
-                            <div className="text-white/80 text-sm mt-2">Staff action</div>
-                        </div>
-                    </BentoCard>
-                </motion.div>
-                <motion.div variants={itemVariants} className="col-span-1 md:col-span-2 h-full min-h-[200px]">
-                    <BentoCard className="h-full bg-gradient-to-br from-purple-500 to-fuchsia-600" title="Quote & Schedule" icon={<FileText size={24} className="text-white" />} variant="vibrant">
-                        <div className="flex-1 flex justify-between items-end">
-                            <div><div className="text-3xl font-black tracking-tighter text-white drop-shadow-md font-mono mt-4">{laneCounts.quote_sent || 0}</div><div className="text-white/80 text-sm mt-2">Quotes Sent</div></div>
-                            <div className="text-right"><div className="text-2xl font-bold text-white/90">{laneCounts.schedule_needed || 0}</div><div className="text-white/60 text-xs">Schedule Needed</div></div>
-                        </div>
-                    </BentoCard>
-                </motion.div>
+                    </button>
+                ))}
             </div>
 
             {/* Filter Toolbar */}

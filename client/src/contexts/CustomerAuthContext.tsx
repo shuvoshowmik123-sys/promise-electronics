@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, type ReactNode } from "
 import { customerAuthApi, type CustomerSession } from "@/lib/api";
 import { fetchApi } from "@/lib/api/httpClient";
 import { storeAuthSession, clearAuthSession, getStoredAuthSession } from "@/lib/authStorage";
+import { clearPersistedClientState } from "@/lib/queryClient";
 import { Capacitor } from "@capacitor/core";
 import { GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut } from "firebase/auth";
 import { auth } from "@/lib/firebase";
@@ -32,6 +33,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       setCustomer(session);
     } catch {
       setCustomer(null);
+      await clearPersistedClientState();
     } finally {
       setIsLoading(false);
     }
@@ -58,10 +60,12 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
       // If server session expired, clear stored auth
       await clearAuthSession();
+      await clearPersistedClientState();
       return false;
     } catch {
       // Session invalid, clear stored auth
       await clearAuthSession();
+      await clearPersistedClientState();
       return false;
     }
   };
@@ -72,6 +76,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (phone: string, password: string) => {
     const session = await customerAuthApi.login({ phone, password });
+    await clearPersistedClientState();
     setCustomer(session);
 
     // Store auth for persistent session on native
@@ -92,11 +97,13 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       method: "POST",
       body: JSON.stringify({ idToken }),
     });
+    await clearPersistedClientState();
     setCustomer(user as CustomerSession);
   };
 
   const register = async (data: { name: string; phone: string; email?: string; address?: string; password: string }) => {
     const session = await customerAuthApi.register(data);
+    await clearPersistedClientState();
     setCustomer(session);
 
     // Store auth for persistent session on native
@@ -123,14 +130,13 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       await clearAuthSession();
     }
 
+    await clearPersistedClientState();
     setCustomer(null);
   };
 
   const updateProfile = async (data: { phone?: string; address?: string; name?: string; email?: string; profileImageUrl?: string; preferences?: string }) => {
-    console.log("updateProfile called with:", data);
     try {
       const updated = await customerAuthApi.updateProfile(data);
-      console.log("updateProfile response:", updated);
       setCustomer(updated);
     } catch (error) {
       console.error("updateProfile error:", error);

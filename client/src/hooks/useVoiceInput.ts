@@ -81,15 +81,9 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
                     // Auto-detect doesn't work well with empty string on all browsers
                     recognition.lang = language || 'en-US';
 
-                    recognition.onstart = () => {
-                        console.log('[VoiceInput] Started listening');
-                        setIsListening(true);
-                    };
+                    recognition.onstart = () => setIsListening(true);
 
-                    recognition.onend = () => {
-                        console.log('[VoiceInput] Stopped listening');
-                        setIsListening(false);
-                    };
+                    recognition.onend = () => setIsListening(false);
 
                     recognition.onerror = (event: any) => {
                         console.error('[VoiceInput] Error:', event.error);
@@ -102,7 +96,6 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
 
                         // "no-speech" happens if user doesn't speak - restart listening
                         if (event.error === 'no-speech') {
-                            console.log('[VoiceInput] No speech detected, continuing...');
                             return;
                         }
 
@@ -127,7 +120,6 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
                         }
 
                         const currentText = finalTranscript || interimTranscript;
-                        console.log('[VoiceInput] Transcript:', currentText);
                         setTranscript(currentText);
 
                         if (finalTranscript) {
@@ -163,8 +155,6 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
         setError(null);
         setTranscript('');
 
-        console.log('[VoiceInput] Starting...', { isNative });
-
         try {
             if (isNative) {
                 // Native: Use Capacitor plugin
@@ -172,7 +162,6 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
 
                 // Add listener for partial results BEFORE starting
                 SpeechRecognition.addListener('partialResults', (data: any) => {
-                    console.log('[VoiceInput Native] Partial:', data);
                     if (data.matches && data.matches.length > 0) {
                         const text = data.matches[0];
                         setTranscript(text);
@@ -184,8 +173,6 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
                     partialResults: true,
                     popup: false,
                 });
-
-                console.log('[VoiceInput Native] Final result:', result);
 
                 // Final result
                 if (result.matches && result.matches.length > 0) {
@@ -201,7 +188,6 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
                 if (webRecognitionRef.current) {
                     try {
                         webRecognitionRef.current.start();
-                        console.log('[VoiceInput Web] Started');
                     } catch (err: any) {
                         // If already started, stop and restart
                         if (err.message?.includes('already started')) {
@@ -227,7 +213,6 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     }, [isNative, language]);
 
     const stopListening = useCallback(async () => {
-        console.log('[VoiceInput] Stopping...');
         try {
             if (isNative) {
                 await SpeechRecognition.stop();
@@ -242,7 +227,6 @@ export function useVoiceInput(options: UseVoiceInputOptions = {}): UseVoiceInput
     }, [isNative]);
 
     const toggleListening = useCallback(async () => {
-        console.log('[VoiceInput] Toggle, currently listening:', isListening);
         if (isListening) {
             await stopListening();
         } else {
