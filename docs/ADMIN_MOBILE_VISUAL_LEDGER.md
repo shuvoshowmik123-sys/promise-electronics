@@ -67,7 +67,7 @@ These need functional-clean behavior before launch, not full native redesign unl
 
 | Tab | Status | Last Tested | Evidence | Remaining |
 | --- | --- | --- | --- | --- |
-| Repair Journeys | Functional Clean | 2026-06-25 | `raw/repair-journeys-*.json` + screenshots | Inline detail ✓, schedule/update/timeline actions ✓, dock clears ✓. |
+| Repair Journeys | Native Complete | 2026-06-28 | `test-results/repair-journey-profile-browser/*` | Customer profile browser: two-column mobile profile cards, portaled profile bottom sheet with Active/History/Warranty/Timeline, desktop profile/detail split. Verified 390x844, 430x932, 584x918, and 1440x900 with no overflow. |
 | Customers | Functional Clean | 2026-06-25 | `raw/customers-*.json` + screenshots | Detail sheet ✓, chrome hides/restores ✓, Escape ✓. User visual confirm needed. |
 | Users | Functional Clean | 2026-06-25 | `raw/users-*.json` + screenshots | Edit dialog ✓, chrome hides/restores ✓, Escape ✓. Centered Radix style. |
 | B2B / Corporate Area | Functional Clean | 2026-06-25 | `raw/b2b-*.json` + screenshots | Client list ✓, workspace overlay ✓, back ✓. Chrome stays visible (correct). |

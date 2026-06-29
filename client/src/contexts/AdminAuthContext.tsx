@@ -111,3 +111,12 @@ export function useAdminAuth() {
   }
   return context;
 }
+
+export function getRoleLandingPath(role: string): string {
+  switch (role) {
+    case "Technician": return "/tech";
+    case "Driver": return "/admin#pickup";
+    case "Cashier": return "/admin#pos";
+    default: return "/admin";
+  }
+}

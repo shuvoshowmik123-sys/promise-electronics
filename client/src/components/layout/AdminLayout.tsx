@@ -1,6 +1,6 @@
 import { Link, useLocation } from "wouter";
-import { adminNavGroups } from "@/lib/mock-data";
-import { LogOut, Settings, Menu, Loader2 } from "lucide-react";
+import { adminNavGroups } from "@/lib/app-config";
+import { LogOut, UserCog, Menu, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -167,16 +167,16 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
                 </SidebarGroupContent>
               </SidebarGroup>
             ))}
-            <div className="mt-auto p-4 border-t border-sidebar-border">
-              <div className="flex items-center gap-3 mb-4">
+            <div className="mt-auto p-4 border-t border-sidebar-border space-y-2">
+              <Link href="/admin/account" className="flex items-center gap-3 rounded-md p-2 -mx-2 hover:bg-sidebar-accent cursor-pointer transition-colors">
                 <Avatar>
                   <AvatarFallback>{user ? getInitials(user.name) : "AD"}</AvatarFallback>
                 </Avatar>
-                <div>
-                  <p className="text-sm font-medium">{user?.name || "Admin User"}</p>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium truncate">{user?.name || "Admin User"}</p>
                   <p className="text-xs text-muted-foreground">{user?.role || "User"}</p>
                 </div>
-              </div>
+              </Link>
               <Button
                 variant="outline"
                 className="w-full justify-start bg-sidebar-accent/10 border-sidebar-border hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
@@ -199,9 +199,11 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
             </div>
             <div className="flex items-center gap-2">
               <ReminderBell />
-              <Button variant="ghost" size="icon">
-                <Settings className="h-5 w-5" />
-              </Button>
+              <Link href="/admin/account">
+                <Button variant="ghost" size="icon" title="My Account">
+                  <UserCog className="h-5 w-5" />
+                </Button>
+              </Link>
             </div>
           </header>
           <main className="flex-1 p-5 overflow-auto">

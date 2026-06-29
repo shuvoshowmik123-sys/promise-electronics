@@ -152,7 +152,7 @@ const ADMIN_SIDEBAR_NAV_GROUPS: SidebarGroup[] = [
     {
         title: "System",
         items: [
-            { label: "Settings", id: "settings", icon: Settings, color: "slate", layout: "fixed" },
+            { label: "System Settings", id: "settings", icon: Settings, color: "slate", layout: "fixed" },
             { label: "Audit Logs", id: "audit-logs", icon: ShieldAlert, color: "rose", layout: "fixed" },
             { label: "AI Brain", id: "brain", icon: Brain, color: "fuchsia", layout: "scroll" },
         ]
@@ -424,7 +424,7 @@ export default function DesignConcept() {
         'jobs': 'Job Tickets', 'pickup': 'Pickups', 'challans': 'Challans',
         'pos': 'Point of Sale', 'orders': 'Orders', 'inventory': 'Inventory',
         'finance': 'Finance', 'b2b': 'B2B Workspace', 'corp-msg': 'Corp. Messages',
-        'users': 'User Management', 'settings': 'Settings',
+        'users': 'User Management', 'settings': 'System Settings',
         'reports': 'Reports', 'quality': 'Quality Analytics', 'attendance': 'Staff Attendance',
         'customers': 'Customers', 'inquiries': 'Inquiries', 'quotations': 'Quotations',
         'workflow-demo': 'Workflow Design Demo',
@@ -742,6 +742,12 @@ export default function DesignConcept() {
                                         </div>
                                     </DropdownMenuLabel>
                                     <DropdownMenuSeparator className="bg-slate-100/80 mb-1" />
+                                    <Link href="/admin/account">
+                                        <DropdownMenuItem className="cursor-pointer focus:bg-slate-50 text-slate-700 font-medium rounded-lg px-3 py-2">
+                                            <User className="mr-3 h-4 w-4 text-slate-400" />
+                                            My Account
+                                        </DropdownMenuItem>
+                                    </Link>
                                     {user?.role === "Super Admin" && (
                                         <Link href="/admin/workbench">
                                             <DropdownMenuItem className="cursor-pointer focus:bg-slate-50 text-slate-700 font-medium rounded-lg px-3 py-2">

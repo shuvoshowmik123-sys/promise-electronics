@@ -4,7 +4,7 @@ import { conversations, sessions, brainConfig } from "../brain/schema.js";
 import { desc, eq, sql, count, ilike, or } from "drizzle-orm";
 import { brainService } from "../brain/brain.service.js";
 import { logModelCase } from "../brain/kg.service.js";
-import { requireAdminAuth } from "./middleware/auth.js";
+import { requireAdminAuth, requireGranularPermission } from "./middleware/auth.js";
 
 const router = Router();
 
@@ -14,6 +14,7 @@ const router = Router();
 // Automatic AI replies run via the webhook → brainService directly, not here, so
 // requiring an admin session does not affect the live chat pipeline.
 router.use(requireAdminAuth);
+router.use(requireGranularPermission("aiBrain.view"));
 
 // Detect channel from session key (wa_ prefix = WhatsApp, otherwise Messenger)
 function detectChannel(senderPsid: string): "whatsapp" | "messenger" {
@@ -435,7 +436,7 @@ router.get("/sessions/:psid/messages", async (req: Request, res: Response) => {
  * POST /sessions/:psid/send — staff sends custom reply
  * Auto-detects channel, logs to history, optionally claims session
  */
-router.post("/sessions/:psid/send", async (req: Request, res: Response) => {
+router.post("/sessions/:psid/send", requireGranularPermission("aiBrain.manage"), async (req: Request, res: Response) => {
     try {
         const { psid } = req.params;
         const { text, userId, userName } = req.body as { text?: string; userId?: string; userName?: string };
@@ -497,7 +498,7 @@ router.get("/media/:imageId", async (req: Request, res: Response) => {
  * POST /import-conversations — bulk insert conversation pairs as good examples
  * Body: { pairs: [{customerMessage, ourReply, source?}] }
  */
-router.post("/import-conversations", async (req: Request, res: Response) => {
+router.post("/import-conversations", requireGranularPermission("aiBrain.manage"), async (req: Request, res: Response) => {
     try {
         const { pairs } = req.body;
         if (!Array.isArray(pairs) || pairs.length === 0) {
@@ -522,7 +523,7 @@ router.post("/import-conversations", async (req: Request, res: Response) => {
  * POST /media/cleanup — delete expired entries from brain_media
  * Call periodically (e.g. from admin or cron).
  */
-router.post("/media/cleanup", async (req: Request, res: Response) => {
+router.post("/media/cleanup", requireGranularPermission("aiBrain.manage"), async (req: Request, res: Response) => {
     const deleted = await brainService.cleanupExpiredMedia();
     res.json({ success: true, deleted });
 });
@@ -557,7 +558,7 @@ router.get("/sessions/:psid/images", async (req: Request, res: Response) => {
 // POST /api/brain/cases/backfill
 // Reads all Completed job tickets from main DB → creates kg_facts
 // ==========================================
-router.post("/cases/backfill", async (req: Request, res: Response) => {
+router.post("/cases/backfill", requireGranularPermission("aiBrain.manage"), async (req: Request, res: Response) => {
     try {
         const { db } = await import("../db.js");
         const { jobTickets } = await import("../../shared/schema.js");

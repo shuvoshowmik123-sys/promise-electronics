@@ -15,6 +15,7 @@ import { storage } from '../../storage.js';
 import { db } from '../../db.js';
 import { requireCsrf } from './csrf.js';
 import { getDefaultPermissionsForRole } from '../../../shared/admin-permissions.js';
+import { LEGACY_TO_GRANULAR } from '../../../shared/permission-catalog.js';
 
 // ============================================
 // Session Type Extensions
@@ -45,7 +46,7 @@ export const adminCreateUserSchema = z.object({
     name: z.string().min(2, 'Name is required'),
     email: z.string().email('Valid email is required'),
     password: z.string().min(6, 'Password must be at least 6 characters').max(13, 'Password is too long'),
-    role: z.enum(['Super Admin', 'Manager', 'Cashier', 'Technician', 'Corporate']),
+    role: z.enum(['Super Admin', 'Manager', 'Cashier', 'Technician', 'Driver', 'Corporate']),
     permissions: z.string().optional(),
     // Employment & Salary Optional Fields
     employmentStatus: z.enum(['active', 'inactive', 'on_leave', 'terminated', 'resigned']).optional(),
@@ -65,7 +66,7 @@ export const adminUpdateUserSchema = z.object({
     name: z.string().min(2).optional(),
     email: z.string().email().optional(),
     password: z.string().min(6).max(13).optional(),
-    role: z.enum(['Super Admin', 'Manager', 'Cashier', 'Technician', 'Corporate']).optional(),
+    role: z.enum(['Super Admin', 'Manager', 'Cashier', 'Technician', 'Driver', 'Corporate']).optional(),
     status: z.enum(['Active', 'Inactive']).optional(),
     permissions: z.string().optional(),
 });
@@ -199,6 +200,60 @@ export const requireAnyPermission = (permissionsToCheck: string[]) => async (req
     }
 };
 
+
+/**
+ * Check if a user has a granular permission (e.g. "jobs.writeOff").
+ * Resolution order:
+ * 1. Wildcard `*` (Super Admin) → always allowed
+ * 2. Direct granular key in user permissions → allowed
+ * 3. Legacy broad permission that maps to the granular key via LEGACY_TO_GRANULAR → allowed
+ */
+function hasGranularPerm(effectivePermissions: Record<string, any>, granularKey: string): boolean {
+    if (effectivePermissions['*']) return true;
+    if (effectivePermissions[granularKey]) return true;
+    for (const [legacyKey, granularKeys] of Object.entries(LEGACY_TO_GRANULAR)) {
+        if (granularKeys.includes(granularKey) && effectivePermissions[legacyKey]) return true;
+    }
+    return false;
+}
+
+export const requireGranularPermission = (granularKey: string) => async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.session?.adminUserId) {
+        return res.status(401).json({ error: 'Admin authentication required' });
+    }
+    try {
+        const user = await storage.getUser(req.session.adminUserId);
+        if (!user) return res.status(401).json({ error: 'User not found' });
+        const effectivePermissions = getEffectivePermissionsForUser(user);
+        if (!hasGranularPerm(effectivePermissions, granularKey)) {
+            return res.status(403).json({ error: `Access denied: Missing permission ${granularKey}` });
+        }
+        (req as any).user = user;
+        next();
+    } catch (error) {
+        console.error('[Auth] Granular permission check error:', (error as Error).message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
+
+export const requireAnyGranularPermission = (granularKeys: string[]) => async (req: Request, res: Response, next: NextFunction) => {
+    if (!req.session?.adminUserId) {
+        return res.status(401).json({ error: 'Admin authentication required' });
+    }
+    try {
+        const user = await storage.getUser(req.session.adminUserId);
+        if (!user) return res.status(401).json({ error: 'User not found' });
+        const effectivePermissions = getEffectivePermissionsForUser(user);
+        if (!granularKeys.some(k => hasGranularPerm(effectivePermissions, k))) {
+            return res.status(403).json({ error: `Access denied: Missing one of ${granularKeys.join(', ')}` });
+        }
+        (req as any).user = user;
+        next();
+    } catch (error) {
+        console.error('[Auth] Granular permission check error:', (error as Error).message);
+        res.status(500).json({ error: 'Internal server error' });
+    }
+};
 
 /**
  * Middleware to require customer authentication.

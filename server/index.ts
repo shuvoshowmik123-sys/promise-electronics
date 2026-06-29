@@ -25,6 +25,7 @@ import { migrateStaffResetCodes } from "./services/staff-reset-migration.service
 import { migratePasswordChangedAt } from "./services/password-changed-at-migration.service.js";
 import { migrateOperationalFields } from "./services/operational-fields-migration.service.js";
 import { migrateCallAttempts } from "./services/call-attempt.service.js";
+import { migrateStaffInvitations } from "./services/staff-invite.service.js";
 import { migrateLogisticsTasks } from "./services/logistics-task-migration.service.js";
 import { backfillPickupSchedulesToLogisticsTasks } from "./services/logistics-task.service.js";
 import { markMigrationsComplete, startReadinessChecks } from "./services/db-readiness.js";
@@ -91,6 +92,7 @@ async function runStartupMigrations(): Promise<boolean> {
     runStartupTask("password_changed_at migration", migratePasswordChangedAt, 2),
     runStartupTask("operational fields migration", migrateOperationalFields, 2),
     runStartupTask("call attempts migration", migrateCallAttempts, 2),
+    runStartupTask("staff invitations migration", migrateStaffInvitations, 2),
     runStartupTask("logistics tasks migration + backfill", async () => {
       await migrateLogisticsTasks();
       await backfillPickupSchedulesToLogisticsTasks();

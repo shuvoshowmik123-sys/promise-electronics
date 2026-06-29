@@ -10,7 +10,7 @@ import { insertJobTicketSchema } from '../../shared/schema.js';
 
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { auditLogger } from '../utils/auditLogger.js';
-import { requireAdminAuth, requirePermission } from './middleware/auth.js';
+import { requireAdminAuth, requirePermission, requireGranularPermission } from './middleware/auth.js';
 import { pushService } from '../pushService.js';
 import { jobService } from '../services/job.service.js';
 import { publishAdminNotificationEvent, publishJobTicketEvent } from '../services/admin-realtime.service.js';
@@ -1173,16 +1173,11 @@ router.post('/api/job-tickets/:id/generate-invoice', requireAdminAuth, requirePe
  * POST /api/job-tickets/:id/write-off - Write off bad debt (Manager/Super Admin only)
  * Requires: Admin auth + Manager or Super Admin role
  */
-router.post('/api/job-tickets/:id/write-off', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/job-tickets/:id/write-off', requireAdminAuth, requireGranularPermission('jobs.writeOff'), async (req: Request, res: Response) => {
     try {
         const userId = req.session?.adminUserId;
         if (!userId) {
             return res.status(401).json({ error: "Unauthorized" });
-        }
-        const user = await userRepo.getUser(userId);
-        const userRole = user?.role;
-        if (userRole !== 'Manager' && userRole !== 'Super Admin') {
-            return res.status(403).json({ error: "Unauthorized. Requires Manager or Super Admin role." });
         }
 
         const { reason } = req.body;

@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
-import { Search, ChevronRight, LogOut } from "lucide-react";
+import { Search, ChevronRight, LogOut, UserCog } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useLocation } from "wouter";
 
 type NavItem = { label: string; id: string; icon: any; color?: string };
 type NavGroup = { title: string; items: NavItem[] };
@@ -41,6 +42,7 @@ export function MobileMoreMenu({
     onSelect: (id: string) => void;
     onLogout: () => void;
 }) {
+    const [, setLocation] = useLocation();
     const [query, setQuery] = useState("");
 
     // Drop dock items, then apply search
@@ -114,6 +116,15 @@ export function MobileMoreMenu({
                         </div>
                     </div>
                 ))}
+
+                {/* My Account */}
+                <button
+                    type="button"
+                    onClick={() => setLocation("/admin/account")}
+                    className="w-full h-13 py-3.5 rounded-2xl border border-slate-200 bg-white text-slate-700 font-bold flex items-center justify-center gap-2 active:scale-[0.98] transition-transform"
+                >
+                    <UserCog className="h-5 w-5" /> My Account
+                </button>
 
                 {/* Logout */}
                 <button

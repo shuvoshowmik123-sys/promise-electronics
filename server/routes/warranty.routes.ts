@@ -16,7 +16,7 @@ import { auditLogger } from '../utils/auditLogger.js';
 import { nanoid } from 'nanoid';
 import { db } from '../db.js';
 import { sql } from 'drizzle-orm';
-import { requireAdminAuth } from './middleware/auth.js';
+import { requireAdminAuth, requireGranularPermission } from './middleware/auth.js';
 
 const router = Router();
 
@@ -123,7 +123,7 @@ router.get('/api/warranty-claims/check-serial/:serial', async (req: Request, res
 });
 
 // Create warranty claim
-router.post('/api/warranty-claims', async (req: Request, res: Response) => {
+router.post('/api/warranty-claims', requireGranularPermission('warranty.create'), async (req: Request, res: Response) => {
     try {
         const {
             originalJobId,
@@ -179,7 +179,7 @@ router.post('/api/warranty-claims', async (req: Request, res: Response) => {
 });
 
 // Approve warranty claim
-router.patch('/api/warranty-claims/:id/approve', async (req: Request, res: Response) => {
+router.patch('/api/warranty-claims/:id/approve', requireGranularPermission('warranty.approve'), async (req: Request, res: Response) => {
     try {
         const claim = await warrantyRepo.getWarrantyClaim(req.params.id);
         if (!claim) {
@@ -233,7 +233,7 @@ router.patch('/api/warranty-claims/:id/approve', async (req: Request, res: Respo
 });
 
 // Reject warranty claim
-router.patch('/api/warranty-claims/:id/reject', async (req: Request, res: Response) => {
+router.patch('/api/warranty-claims/:id/reject', requireGranularPermission('warranty.approve'), async (req: Request, res: Response) => {
     try {
         const { rejectionReason } = req.body;
 
@@ -282,7 +282,7 @@ router.patch('/api/warranty-claims/:id/reject', async (req: Request, res: Respon
 });
 
 // Create linked warranty job from approved claim
-router.post('/api/warranty-claims/:id/create-job', async (req: Request, res: Response) => {
+router.post('/api/warranty-claims/:id/create-job', requireGranularPermission('warranty.approve'), async (req: Request, res: Response) => {
     try {
         const claim = await warrantyRepo.getWarrantyClaim(req.params.id);
         if (!claim) {

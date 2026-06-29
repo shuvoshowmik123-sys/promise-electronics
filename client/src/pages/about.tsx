@@ -2,7 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { PillButton, SectionEyebrow } from "@/components/customer/mobile-kit";
 import { useQuery } from "@tanstack/react-query";
 import { publicSettingsApi } from "@/lib/api";
-import { images } from "@/lib/mock-data";
+import { images } from "@/lib/app-config";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { Award, CheckCircle, Clock, Mail, MapPin, Phone, ShieldCheck, Tv, Users, Wrench } from "lucide-react";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";

@@ -2091,7 +2091,6 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                     ))}
                                 </SelectContent>
                             </Select>
-                            {/* Hidden input to hold state since we don't want to add a new useState just for this if we can avoid it. Actually we can just add a state but since I am outside the component root, I'll use a hack or just add state via useState during next iteration if needed. Let's just create a ref or rely on an onboard state string. Oh wait, I didn't declare rollbackTarget. I'll read from DOM. */}
                             <input type="hidden" id="rollback-target-val" value="" />
                         </div>
                         <div className="grid gap-2">

@@ -2,7 +2,9 @@ import { Switch, Route, useLocation, Redirect } from "wouter";
 import { Suspense, lazy } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AdminAIChatLauncher } from "@/components/AdminAIChatLauncher";
-import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { AdminLayout } from "@/components/layout/AdminLayout";
+import { StaffOnboardingGuide } from "@/components/admin/StaffOnboardingGuide";
+import { useAdminAuth, getRoleLandingPath } from "@/contexts/AdminAuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { Loader2 } from "lucide-react";
 
@@ -12,8 +14,14 @@ const DesignConcept = lazy(() => import("@/pages/admin/design-concept"));
 // Admin Login
 const AdminLoginPage = lazy(() => import("@/pages/admin/login"));
 
+// Staff Setup (public — no auth required)
+const StaffSetupPage = lazy(() => import("@/pages/admin/staff-setup"));
+
 // Standalone Print Views (Not part of the Bento Dashboard Shell)
 const CorporateBillPrint = lazy(() => import("@/pages/admin/corporate-bill-print"));
+
+// Account Settings (inside admin shell)
+const AccountSettingsPage = lazy(() => import("@/pages/admin/account-settings"));
 
 // Super Admin Workbench (Standalone)
 const SuperAdminWorkbench = lazy(() => import("@/pages/admin/workbench"));
@@ -53,7 +61,18 @@ function AdminContentSkeleton() {
 
 export function AdminRouter() {
     const [location] = useLocation();
-    const { status } = useAdminAuth();
+    const { status, user } = useAdminAuth();
+
+    // Public setup page (no auth required — render before auth check)
+    if (location.startsWith("/admin/setup/")) {
+        return (
+            <Suspense fallback={<AdminContentSkeleton />}>
+                <Switch>
+                    <Route path="/admin/setup/:token" component={StaffSetupPage} />
+                </Switch>
+            </Suspense>
+        );
+    }
 
     // While checking auth, show a spinner (prevents flash-redirect)
     if (status === "pending") {
@@ -76,9 +95,9 @@ export function AdminRouter() {
         return <Redirect to="/admin/login" />;
     }
 
-    // Authenticated user on login page → redirect to admin
+    // Authenticated user on login page → redirect to role-based landing
     if (location === "/admin/login") {
-        return <Redirect to="/admin" />;
+        return <Redirect to={getRoleLandingPath(user?.role || "")} />;
     }
 
     // Standalone Routes
@@ -95,6 +114,18 @@ export function AdminRouter() {
     // Legacy Redirects
     if (location.startsWith("/admin/repairs")) {
         return <Redirect to="/admin#jobs" />;
+    }
+
+    // Account Settings Route (inside admin layout)
+    if (location === "/admin/account") {
+        return (
+            <AdminLayout>
+                <Suspense fallback={<AdminContentSkeleton />}>
+                    <AccountSettingsPage />
+                </Suspense>
+                <AdminAIChatLauncher />
+            </AdminLayout>
+        );
     }
 
     // Super Admin Workbench Route
@@ -116,6 +147,7 @@ export function AdminRouter() {
                     </ErrorBoundary>
                 </Suspense>
                 <AdminAIChatLauncher />
+                <StaffOnboardingGuide />
             </>
         );
     }

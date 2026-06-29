@@ -4851,6 +4851,281 @@ Command: `npx playwright test e2e/daily-life/ --project=desktop-chrome --retries
 
 16/16 automated tests pass. All production safety guards verified. No release-blocking issues. All critical daily-life flows — from customer request through quote, OTP custody, job repair outcomes, logistics notifications, to customer-visible journey updates — are tested and working.
 
+## Phase 15: Staff Invite-Based Onboarding
+
+### Phase 15A — Staff Onboarding Audit (COMPLETE)
+
+Status: COMPLETE (audit only — no code changes)
+
+#### Q1. Which files create staff users today?
+
+| Route | File | Auth | Notes |
+|-------|------|------|-------|
+| `POST /api/users` | users.routes.ts:223 | requireAdminAuth + `users` perm | Original route — validates via `insertUserSchema`, hashes password, Super Admin escalation guard |
+| `POST /api/admin/users` | users.routes.ts:339 | `canCreate` perm | Newer route — validates via `adminCreateUserSchema`, checks duplicate username/email, hashes password, assigns salary structure optionally |
+
+Both routes require the caller to set the password. The admin literally types a password for the new staff member.
+
+#### Q2. Which backend routes validate staff role/password today?
+
+| Route | Validation |
+|-------|-----------|
+| `POST /api/admin/login` | `authService.authenticateAdmin(username, password)` — bcrypt compare against stored hash |
+| `POST /api/admin/users` | `adminCreateUserSchema` — role enum: Super Admin/Manager/Cashier/Technician/Driver/Corporate; password 6-13 chars |
+| `PATCH /api/admin/users/:id` | `adminUpdateUserSchema` — optional password; role/permissions change restricted to Super Admin |
+| Self-edit | `PATCH /api/admin/users/:id` where `currentUser.id === targetUserId` — non-Super Admin can only update password (unless `canEdit`) |
+
+#### Q3. Where are permissions stored and parsed?
+
+- Stored on `users.permissions` as TEXT (JSON string, e.g. `'{"dashboard":true,"jobs":true,"pickup":true}'`)
+- Parsed in `getEffectivePermissionsForUser()` (auth.ts:128) — parses JSON, falls back to `getDefaultPermissions(role)` if empty/invalid
+- Default permissions per role defined in `shared/admin-permissions.ts` via `getDefaultPermissionsForRole(role)`
+- Runtime check: `requirePermission(name)` middleware reads user from session, parses permissions, checks boolean flag
+
+#### Q4. How does login route staff after authentication?
+
+- `POST /api/admin/login` → `authService.authenticateAdmin()` → stores `req.session.adminUserId = user.id`
+- Frontend `AdminAuthContext` calls `GET /api/admin/me` → returns user data → stores in React context
+- No role-based redirect after login — all roles go to `/admin` → the sidebar/tabs are filtered by permissions
+
+#### Q5. Where can staff currently edit their own password/profile?
+
+- `PATCH /api/admin/users/:id` (users.routes.ts:424) — staff can update their own password
+- Non-Super Admin self-edit: password only (unless `canEdit` permission)
+- **No dedicated "My Profile" page exists** — staff must go to Users tab and find/edit themselves
+- No admin profile section in the admin shell (only logout button in user dropdown)
+
+#### Q6. What corporate invite/reset patterns can be reused?
+
+| Pattern | File | Reusable? |
+|---------|------|-----------|
+| `staff_reset_codes` table | staff-reset-migration.service.ts | YES — same schema concept (id, code_hash, user_id, expires_at, attempts, used) |
+| `corporatePasswordResetService` | corporate-password-reset.service.ts | YES — `generateCode()`, bcrypt hash, expiry, attempt tracking, DB operations |
+| `createHash('sha256')` for OTP | service-requests.routes.ts:36 | YES — SHA-256 hashing pattern for tokens |
+| `crypto.randomBytes` | Various | YES — for invite token generation |
+
+#### Q7. What schema fields already exist for invitation/account status?
+
+**None.** The `users` table has no `invitedBy`, `inviteToken`, `accountStatus`, or `onboardingComplete` fields. There is no `staff_invitations` table. The `status` field on users (Active/Inactive) is the only account state.
+
+#### Q8. What exact frontend screens must change?
+
+| Screen | Current | Must change to |
+|--------|---------|---------------|
+| Users tab ("Add User") | Modal with username/name/email/password/role/permissions | "Invite Staff" → role/email/phone/permissions → generates link |
+| New: Accept Invite page | Does not exist | `/admin/accept-invite/:token` → public page for staff to set their own credentials |
+| New: My Profile | Does not exist | Section in admin shell for self-service name/email/phone/password |
+| Admin login | Stays the same | No change needed |
+| Admin shell user dropdown | Only shows logout | Add "My Profile" / "Account Settings" link |
+
+#### Q9. What release risks exist?
+
+| Risk | Severity | Mitigation |
+|------|----------|-----------|
+| Breaking existing login for current users | HIGH | Keep `POST /api/admin/users` working during transition; don't modify user table schema destructively |
+| Super Admin losing access | HIGH | Never touch the seed Super Admin account; invite system is additive |
+| Invite token leakage | MEDIUM | Store only SHA-256 hash; return raw token once; use HTTPS in production |
+| Permission escalation via invite | MEDIUM | Invite permissions come from creator (Super Admin only); validate role in accept |
+| Session conflicts during accept | LOW | Accept page is unauthenticated; no session conflict |
+
+#### Q10. What is the safest implementation order?
+
+1. **Phase 15B**: Backend — `staff_invitations` table + service + routes (no frontend changes, existing flow untouched)
+2. **Phase 15C**: Frontend — Accept Invite page (new public route, no existing UI changes)
+3. **Phase 15D**: Frontend — Users Tab redesign (replace "Add User" with "Invite Staff", keep edit)
+4. **Phase 15E**: Frontend — My Profile / Account Settings (self-service password/name/email)
+5. **Phase 15F**: Role-based landing (redirect after login by role)
+6. **Phase 15G**: Strict QA (end-to-end invite → accept → login → role experience)
+
+Each phase is independently deployable. Phase B adds the backend with no frontend dependency. Phase C adds a new page with no existing page changes. Phase D modifies the Users tab only after the backend and accept page are proven.
+
+### Phase 15B — Staff Invite Backend (COMPLETE)
+
+Status: COMPLETE
+
+**Files created:**
+- `server/services/staff-invite.service.ts` — migration + CRUD: `createStaffInvite()`, `listStaffInvites()`, `getStaffInviteByToken()`, `acceptStaffInvite()`, `revokeStaffInvite()`, `regenerateStaffInvite()`. Token: `crypto.randomBytes(32)`, stored as SHA-256 hash. Expiry: 5 minutes. Accept creates real user with role/permissions from invite.
+- `server/routes/staff-invites.routes.ts` — 6 routes: admin CRUD (list/create/revoke/regenerate, `users` permission) + public setup (GET info / POST accept, no auth).
+
+**Files modified:**
+- `server/index.ts` — registered `migrateStaffInvitations` startup migration
+- `server/routes/index.ts` — registered `staffInviteRoutes`
+- `client/src/lib/api/adminApi.ts` — added `StaffInvite`, `StaffInviteCreateResponse` types + `staffInvitesApi` with 6 methods
+
+**Token security:**
+- Raw token returned ONLY in create/regenerate response
+- DB stores SHA-256 hash only
+- 5-minute expiry enforced on accept
+- Duplicate username/phone/email blocked
+- Super Admin role cannot be invited
+- Audit logged: create, revoke, regenerate, accept
+
+### Phase 15C — Staff Setup Page (COMPLETE)
+
+Status: COMPLETE
+
+**Files created:**
+- `client/src/pages/admin/staff-setup.tsx` — public page at `/admin/setup/:token`. Shows role badge, 5-minute countdown, form (name/username/phone/email/password/confirm). Handles expired/used/revoked states. Success redirects to login.
+
+**Files modified:**
+- `client/src/components/layout/AdminRouter.tsx` — added `StaffSetupPage` lazy import + route before auth check (public page accessible without login)
+
+**Visual design:** Matches admin login page visual language — dark gradient background, white card, blue header with role badge + countdown timer.
+
+### Phase 15B/C Hotfix — Staff Setup Link Hardening (COMPLETE)
+
+Status: COMPLETE — verified via API end-to-end
+
+#### Fixes Applied
+
+| # | Fix | Verified |
+|---|-----|----------|
+| 1 | Removed `tokenHash` from `StaffInvite` interface + `rowToInvite()` | **PASS** — list response has no `tokenHash` key |
+| 2 | Setup route renders before auth pending check in AdminRouter | **PASS** — setup page loads without waiting for `/api/admin/me` |
+| 3 | Atomic double-use via `UPDATE ... WHERE status = 'pending' RETURNING` — sets `accepting` state, rolls back on validation failure | **PASS** — second accept returns "already been used" |
+| 4 | Phone normalization via `normalizePhone()` — stores `phone_normalized` on user creation | **PASS** — user created with normalized phone |
+
+#### End-to-End API Test Results
+
+| Step | Result |
+|------|--------|
+| Create Driver invite | PASS — returns ID, rawToken, setupUrl. No tokenHash in invite. |
+| List invites | PASS — no tokenHash key in any invite object |
+| Setup page loads (unauthenticated) | PASS — role: Driver, status: pending, expired: false |
+| Accept setup with name/username/password | PASS — "Account created successfully" |
+| Reuse same link | PASS — "This setup link has already been used." |
+| Login as created Driver | PASS — Name: Test Driver QA, Role: Driver, Status: Active |
+
+#### Test Data Created
+
+- Invite `CVZOvTHDv3POYf7kyAKg2` — Driver, phone 01555000111, status: accepted
+- User `qa-driver-15b` — Driver role, created via invite
+
+### Phase 15D — Users Tab Setup Link Redesign (COMPLETE)
+
+Status: COMPLETE
+
+#### Changes
+
+**File**: `client/src/pages/admin/bento/tabs/UsersTab.tsx`
+
+1. **Main CTA replaced**: "Add User" → "Create Setup Link" (blue button with Link icon)
+2. **Create Setup Link dialog**: Role selector (Manager/Cashier/Technician/Driver), optional phone/email/note, generates link via `staffInvitesApi.create()`. Auto-applies role default permissions.
+3. **Copy Link dialog**: Shows generated URL, copy button, warning "link expires in 5 minutes and will not be shown again"
+4. **Setup Links list section**: Below active staff table. Shows all invites with status badges (Pending/Accepted/Expired/Revoked), role, phone, creation/expiry dates. Regenerate button for pending/expired, Revoke button for pending.
+5. **Existing staff table**: Unchanged — edit, permissions, delete actions all preserved
+6. **Old password-based "Add User"**: Dialog still exists in code (`isCreateOpen`) but CTA removed from primary UI. Available only by directly setting `isCreateOpen` programmatically — preserved for emergency backward compatibility.
+
+#### API Integration
+
+- `staffInvitesApi.list()` → fetches invites for Super Admin
+- `staffInvitesApi.create()` → generates invite, returns rawToken → builds full URL → shows copy dialog
+- `staffInvitesApi.revoke()` → revokes pending invite
+- `staffInvitesApi.regenerate()` → invalidates old, creates new → shows copy dialog with new URL
+
+### Phase 15D Hotfix — Setup Link UI Hardening (COMPLETE)
+
+Status: COMPLETE
+
+#### Fixes Applied
+
+| # | Fix | File |
+|---|-----|------|
+| 1 | Invite create/revoke/regenerate routes require `requireSuperAdmin` (not just `users` permission) | `staff-invites.routes.ts` |
+| 2 | Mobile chrome hide effect dependencies include `isInviteOpen` + `showLinkDialog` | `UsersTab.tsx` |
+| 3 | Moved `isInviteOpen`/`showLinkDialog` state before `useEffect` (fixes block-scoped variable error) | `UsersTab.tsx` |
+| 4 | Setup Links section: empty state ("No setup links yet"), status labels (Pending/Accepted/Expired/Revoked/Regenerated), note display, compact mobile-friendly card layout with `h-7` buttons | `UsersTab.tsx` |
+| 5 | "Uses default permissions for {role}" note in invite form | `UsersTab.tsx` |
+| 6 | Regenerate button available on expired/revoked/regenerated invites (not just pending) | `UsersTab.tsx` |
+| 7 | Active count badge on Setup Links header | `UsersTab.tsx` |
+
+#### Deferred
+
+- Full mobile bottom sheet for create/copy dialogs (using standard Dialog which renders as overlay — acceptable but not native sheet)
+- Mobile Staff/Setup Links segment tabs (invites list renders below staff table on all viewports)
+- Old password-based create dialog (`isCreateOpen`) remains in code but CTA removed — preserved for emergency backward compatibility
+- Custom permissions editor in invite form (documented as post-setup edit)
+
+### Phase 15D Visual QA — Users Setup Link Ecosystem (COMPLETE)
+
+Status: COMPLETE — **all visual checks pass, 0 console errors**
+
+#### Playwright MCP Visual QA Results
+
+| # | Check | Viewport | Result |
+|---|-------|----------|--------|
+| 1 | Users tab — "Create Setup Link" CTA visible | Desktop 1440x900 | **PASS** — blue button with link icon |
+| 2 | Users tab — old "Add User" CTA NOT visible | Desktop 1440x900 | **PASS** — replaced |
+| 3 | Staff Directory table usable | Desktop 1440x900 | **PASS** — 7 users, roles, status, activity |
+| 4 | Setup Links section visible with badge | Desktop 1440x900 | **PASS** — "1 active" badge |
+| 5 | Create Setup Link dialog fits | Desktop 1440x900 | **PASS** — role picker, phone/email/note, permissions note |
+| 6 | Default permissions note visible | Desktop 1440x900 | **PASS** — "Uses default permissions for Driver" |
+| 7 | Copy link dialog fits | Desktop 1440x900 | **PASS** — URL visible, copy button, expiry warning |
+| 8 | Setup page loads unauthenticated | Desktop 1440x900 | **PASS** — Driver badge, 3m countdown, form |
+| 9 | Setup page mobile | Mobile 390x844 | **PASS** — clean layout, countdown, all fields fit |
+| 10 | Users tab mobile | Mobile 390x844 | **PASS** — KPI, search, Create Setup Link button, staff cards |
+| 11 | No horizontal overflow mobile | Mobile 390x844 | **PASS** |
+| 12 | Bottom dock clearance | Mobile 390x844 | **PASS** |
+| 13 | Console errors | All viewports | **PASS** — 0 errors |
+
+#### Screenshots Captured (cleaned up after review)
+
+- Desktop Users tab: staff table + "Create Setup Link" + Setup Links section
+- Create Setup Link dialog: role picker, permissions note, fields
+- Copy Link dialog: URL + copy + expiry warning
+- Desktop setup page: blue header, Driver badge, 3m countdown, form
+- Mobile setup page 390x844: clean mobile form
+- Mobile Users tab 390x844: KPI, cards, Create Setup Link button
+
+#### Bugs Found
+
+None. All views render correctly.
+
+### Phase 15E — Staff Invite Permission Hardening + Post-Setup Direction (COMPLETE)
+
+Status: COMPLETE — **permission injection blocked, role-specific success screen added**
+
+#### Permission Hardening
+
+**Problem**: Frontend sent raw `permissions` JSON to `createStaffInvite()`. A modified request could inject `{"users":true,"settings":true,"*":true}` on a Driver invite.
+
+**Fix**: Added `ROLE_PERMISSION_CEILING` map and `sanitizePermissions()` function:
+- Each role (Driver/Technician/Cashier/Manager) has a ceiling of allowed permissions
+- `BLOCKED_PERMISSIONS` = `["users", "settings", "systemHealth", "canDelete", "*"]` — always stripped
+- Sanitization runs BOTH on invite creation AND on invite acceptance (defense in depth)
+
+**Verified via API test:**
+- Created Driver invite with malicious permissions: `{"users":true,"settings":true,"*":true,"pickup":true,"canDelete":true,"systemHealth":true}`
+- Stored permissions (after sanitization): `{"pickup":true,"attendance":true,"process_payment":true,"canViewCustomerPhone":true,"canEdit":true}`
+- Created user permissions: same — `users`, `settings`, `*`, `canDelete`, `systemHealth` all **blocked**
+- `pickup` correctly retained
+
+#### Role Permission Ceilings
+
+| Role | Allowed Permissions |
+|------|-------------------|
+| Driver | pickup, attendance, process_payment, canViewCustomerPhone, canEdit |
+| Technician | jobs, technician, serviceRequests, attendance, canEdit, canAssignTechnician, canAddAssistedBy |
+| Cashier | pos, orders, inventory, finance, process_payment, canEdit, canViewFullJobDetails, canPrintJobTickets |
+| Manager | dashboard, jobs, inventory, pos, challans, finance, attendance, reports, serviceRequests, orders, technician, inquiries, pickup, corporate, notifications, warrantyClaims, refunds, canCreate, canEdit, canExport, canAssignTechnician, canSetPriority, canSetDeadline, canSetWarranty, canViewCustomerPhone, canViewFullJobDetails, canPrintJobTickets, canAddAssistedBy, process_payment |
+
+#### Post-Setup Success Screen
+
+Role-specific success page with 3 tips:
+- **Driver**: pickup tasks, call/navigate, OTP custody
+- **Technician**: assigned jobs, diagnosis, repair result
+- **Cashier**: POS, payment, billing
+- **Manager**: service requests, coordination, monitoring
+
+Button: "Continue to Sign In"
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/services/staff-invite.service.ts` | Added `ROLE_PERMISSION_CEILING`, `BLOCKED_PERMISSIONS`, `sanitizePermissions()`. Applied in `createStaffInvite()` and `acceptStaffInvite()`. |
+| `client/src/pages/admin/staff-setup.tsx` | Role-specific success screen with tips and "Continue to Sign In" button |
+
 ## Claude Plot Prompt
 
 Use this prompt when handing a phase to Claude Code:
@@ -4925,3 +5200,1807 @@ Status: BLOCKED
 Blocking reason:
 - exact reason
 ```
+
+### Phase 15F — Dedicated Staff Setup Experience Desktop + Mobile (COMPLETE)
+
+Status: COMPLETE — **full-page onboarding UX with progress indicator, role-specific layouts, all state screens**
+
+#### What Changed
+
+Redesigned `/admin/setup/:token` from a centered floating card into a dedicated staff onboarding page:
+
+**Desktop (md+):** Two-column full-page layout
+- Left panel (480px): role-specific gradient (Driver=blue, Technician=indigo, Cashier=emerald, Manager=violet), Promise Electronics identity, role badge with Lucide icon (Truck/Wrench/Receipt/ClipboardList), live countdown, admin note, "What you will do" bullets, security footer
+- Right panel: 4-step progress indicator (Invite → Profile → Password → Ready), form with full name/username/phone/email/password/confirm, "Complete Setup" CTA
+
+**Mobile (<md):** Stacked full-screen layout
+- Gradient header with role icon, countdown pill, "Staff Setup" title
+- Tips card with role-specific bullets
+- Form card with centered progress indicator, all fields, submit button
+- Security note footer
+
+**Progress Indicator:** 4-step visual (Invite ✓ → Profile → Password → Ready)
+- Step 1 (Invite) auto-completed on page load
+- Step 2 (Profile) active while filling name/username
+- Step 3 (Ready) shown on success
+
+**State Screens:** Shared `StateScreen` component for all terminal states:
+- Invalid link: rose warning icon
+- Already Used: green checkmark icon
+- Link Revoked/Regenerated: rose X icon
+- Link Expired: amber clock icon
+- All show clear message + "Go to Sign In" button
+
+**Success Screen:** Emerald gradient header with checkmark, "Your {role} Account is Ready", role-specific tips, "Continue to Sign In" CTA
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `client/src/pages/admin/staff-setup.tsx` | Full rewrite: two-column desktop, stacked mobile, StepIndicator component, StateScreen component, role-specific ROLE_TIPS map, countdown timer |
+
+#### Checks Run
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Visual QA Results
+
+| State | Viewport | Result |
+|-------|----------|--------|
+| Setup form | Desktop 1440x900 | PASS — two-column, gradient left, form right, progress indicator visible |
+| Setup form | Mobile 390x844 | PASS — stacked, no overflow, progress indicator centered |
+| Setup form | Mobile 430x932 | PASS — same layout, scales well |
+| Success | Desktop 1440x900 | PASS — emerald card, role tips, CTA |
+| Already Used | Desktop 1440x900 | PASS — green check, clear message |
+| Invalid Link | Desktop 1440x900 | PASS — rose warning, clear message |
+| Revoked | Desktop 1440x900 | PASS — rose X, explains revoked/regenerated |
+| Driver role | Desktop 1440x900 | PASS — blue gradient, truck icon, Driver tips |
+
+#### Console Errors
+
+- Only expected 401 on `/api/admin/me` (public page, no admin session) — harmless
+
+#### Bugs Found
+
+None.
+
+#### Polish Hotfix — Remove Cartoon Role Icons
+
+**Change:** Replaced all emoji role icons with professional Lucide SVG icons:
+- Driver: 🚚 → `Truck`
+- Technician: 🔧 → `Wrench`
+- Cashier: 💰 → `Receipt`
+- Manager: 📋 → `ClipboardList`
+- Fallback: 👤 → `User`
+
+**Also:** Scaled down state screen icons (h-16→h-12 container, h-8→h-6 icons) and success checkmark (h-14→h-10) for restraint.
+
+**Checks:** `tsc --noEmit` PASS, `vite build` PASS, `git diff --check` PASS
+
+**Visual QA:** Desktop 1440 setup (Wrench icon), mobile 390 (Wrench icon), success screen (smaller checkmark), used/invalid states (smaller icons) — all PASS.
+
+#### Browser-act Human Visual QA
+
+**Method:** Browser-act CLI with real Chrome browser, testing as three personas.
+
+**Persona 1 — New Driver (Rahim Uddin):**
+- Opened setup link with admin note "New pickup driver for Mirpur zone"
+- Blue gradient left panel with Truck icon — professional, not cartoonish
+- Countdown "4m 44s remaining" clearly visible
+- "What you will do" bullets specific to Driver role — understandable by non-technical staff
+- Filled form: name, username, phone, password — all fields clear
+- Progress indicator advanced correctly: Invite ✓ → Profile ✓ → Password active
+- Submitted → "Your Driver Account is Ready" with role tips and "Continue to Sign In"
+- Revisited same link → "Already Used" state, polite and clear
+
+**Persona 2 — New Technician:**
+- Opened separate Technician setup link with note "TV board-level repair specialist"
+- Indigo gradient with Wrench icon — fits the role
+- Technician-specific tips: diagnose, repair result, Needs Parts/OK/Not Repairable
+- Form identical structure, clear for any literacy level
+
+**Persona 3 — Super Admin reviewing:**
+- Users tab shows "Create Setup Link" button prominently
+- Staff directory clean with role badges and status
+- Setup page looks like a real onboarding product, not a dev form
+- Icons are small SVGs, not decorative or playful
+- State screens (used/invalid) are polite and direct
+
+**Human UX Verdict: PASS**
+
+| Question | Answer |
+|----------|--------|
+| Does it feel professional? | Yes — two-column layout, gradient branding, restrained icons |
+| Are icons cartoonish? | No — small Lucide SVG icons (Truck, Wrench, Receipt, ClipboardList) |
+| Is countdown clear? | Yes — "4m 44s remaining" with clock icon |
+| Does it explain the role? | Yes — role-specific bullets under "What you will do" |
+| Is the form understandable? | Yes — labeled fields, placeholders, clear required markers |
+| Is next step obvious? | Yes — "Complete Setup" button, then "Continue to Sign In" |
+| Any confusing wording? | No |
+| Does staff know what to do after? | Yes — success screen shows role tips + sign-in CTA |
+
+**Browser-act Limitations:**
+- Cannot resize viewport (no mobile testing — relied on existing Playwright 390/430 evidence)
+- Radix dialog not always accessible to browser-act clicks (used API for invite creation)
+- No `close` command for session cleanup
+
+**Bugs Found:** None.
+
+### Phase 15G — Staff My Profile / Account Settings (COMPLETE)
+
+Status: COMPLETE — **self-service profile editing, password change, read-only role/permissions view**
+
+#### Backend
+
+Added 3 authenticated endpoints to `auth.routes.ts`:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/api/admin/account` | GET | Return safe user fields (id, username, name, email, phone, role, status, permissions, joinedAt) |
+| `/api/admin/account/profile` | PATCH | Update name, email, phone with duplicate checks |
+| `/api/admin/account/change-password` | POST | Validate current password, hash new password, update password_changed_at |
+
+**Security:**
+- All routes require `requireAdminAuth`
+- Cannot update role, permissions, status, username, or password via profile PATCH
+- Duplicate email/phone checks exclude current user and Customer accounts
+- Password change validates current password via bcrypt
+- `password_changed_at` updated on change
+- Audit events logged for profile updates and password changes
+
+#### Frontend
+
+| File | Change |
+|------|--------|
+| `client/src/pages/admin/account-settings.tsx` | NEW: Account Settings page with Profile, Change Password, and Role & Access sections |
+| `client/src/lib/api/adminApi.ts` | Added `accountApi` (get, updateProfile, changePassword) |
+| `client/src/components/layout/AdminRouter.tsx` | Added `/admin/account` route with AdminLayout wrapper |
+| `client/src/components/layout/AdminLayout.tsx` | Made sidebar user info clickable (links to `/admin/account`), wired Settings gear icon |
+| `server/routes/auth.routes.ts` | Added account self-service endpoints (GET/PATCH/POST) |
+
+#### Functional QA Results
+
+| Test | Result |
+|------|--------|
+| GET /account as Driver | PASS — returns safe fields, no password/hash |
+| PATCH profile (name+email) | PASS — updated, audit logged |
+| Change password (wrong current) | PASS — rejected with clear error |
+| Change password (correct) | PASS — accepted, password_changed_at updated |
+| Login old password | PASS — rejected |
+| Login new password | PASS — accepted |
+| Super Admin Users tab still works | PASS — unaffected |
+| Role/permissions not editable | PASS — read-only display with badges |
+
+#### Visual QA Results
+
+| Viewport | Result |
+|----------|--------|
+| Desktop 1440x900 | PASS — three clean card sections, 2-column grid for fields |
+| Mobile 390x844 | PASS — stacked cards, no overflow, permission badges wrap |
+| Mobile 430x932 | PASS — same clean stacked layout |
+
+#### Console Errors
+
+- 403 on `/api/users/presence` and `/api/settings` — expected for Driver role (no `users`/`settings` permissions)
+
+#### Checks Run
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Bugs Found
+
+None.
+
+### Phase 15H — Role-Based Landing After Login (COMPLETE)
+
+Status: COMPLETE — **each role redirects to their most useful workspace on login**
+
+#### What Changed
+
+Created `getRoleLandingPath(role)` helper in AdminAuthContext:
+- Super Admin → `/admin` (dashboard)
+- Manager → `/admin` (dashboard)
+- Cashier → `/admin#pos`
+- Technician → `/tech`
+- Driver → `/admin#pickup`
+
+Applied in 3 redirect points:
+1. Login page `handleSubmit` success → role-based path
+2. Login page `useEffect` (already authenticated) → role-based path
+3. AdminRouter authenticated-user-on-login-page → role-based redirect
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `client/src/contexts/AdminAuthContext.tsx` | Added `getRoleLandingPath()` export |
+| `client/src/pages/admin/login.tsx` | Replaced hardcoded Technician check with `getRoleLandingPath()` |
+| `client/src/components/layout/AdminRouter.tsx` | Used `getRoleLandingPath()` for auth redirect on `/admin/login` |
+
+#### Functional QA Results
+
+| Role | Expected Landing | Actual | Result |
+|------|-----------------|--------|--------|
+| Driver (rahim_driver) | `/admin#pickup` | `/admin#pickup` | PASS |
+| Cashier (qa_cashier) | `/admin#pos` | `/admin#pos` | PASS |
+| Technician (qatech02) | `/tech` | `/tech` | PASS |
+| Super Admin (admin) | `/admin` | `/admin#dashboard` | PASS |
+
+#### Visual QA
+
+| Viewport | Role | Result |
+|----------|------|--------|
+| Desktop 1440 | Driver | PASS — Pickup tab with Today lane, no Route Plan |
+| Mobile 390 | Driver | PASS — Pickup & Delivery mobile layout |
+| Desktop 1440 | Cashier | PASS — POS with product grid and cart |
+| Desktop 1440 | Technician | PASS — TechPortal Quick Workbench |
+
+#### Checks Run
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Bugs Found
+
+None.
+
+### Phase 15I — First-Login Role Guide (COMPLETE)
+
+Status: COMPLETE — **role-specific onboarding guide on first login, persisted via preferences**
+
+#### What Changed
+
+**Backend:**
+- `acceptStaffInvite()` now sets `preferences.staffOnboarding = { version: "staff-v1", completed: false }` on user creation
+- Added `POST /api/admin/account/onboarding-complete` endpoint — marks `staffOnboarding.completed=true` with timestamp
+- Added `preferences` to account safe fields
+
+**Frontend:**
+- `StaffOnboardingGuide` component: centered modal overlay with role-specific header color/icon, 4-step content, progress bars, Skip/Back/Next/Got It navigation
+- Mounted in AdminRouter (Bento SPA catch-all) and TechRouter
+- Shows only when: role is Driver/Technician/Cashier/Manager AND `staffOnboarding.completed !== true`
+- Super Admin always skipped
+- On Finish or Skip: calls onboarding-complete API, dismisses modal, never shows again
+
+**Role guide content (4 steps each):**
+- Driver: Today's Tasks → Navigate & Call → OTP Custody → Failed Attempts
+- Technician: Job Queue → Device Details → Report Result → Parts Requests
+- Cashier: Point of Sale → Link to Job → Payment → Receipt & History
+- Manager: Dashboard Overview → Assign & Monitor → Pickup Coordination → Customer Follow-up
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/services/staff-invite.service.ts` | Set `staffOnboarding` preferences on invite acceptance |
+| `server/routes/auth.routes.ts` | Added onboarding-complete endpoint, `preferences` in safe fields |
+| `client/src/components/admin/StaffOnboardingGuide.tsx` | NEW: role guide modal component |
+| `client/src/lib/api/adminApi.ts` | Added `completeOnboarding` to accountApi |
+| `client/src/components/layout/AdminRouter.tsx` | Mounted `StaffOnboardingGuide` in Bento SPA |
+| `client/src/components/layout/TechRouter.tsx` | Mounted `StaffOnboardingGuide` in Tech portal |
+
+#### Functional QA Results
+
+| Test | Result |
+|------|--------|
+| New Driver login → shows Driver guide | PASS |
+| Step through 4 steps → Got It closes guide | PASS |
+| Logout/re-login Driver → guide does NOT reappear | PASS |
+| New Technician login → shows Technician guide | PASS |
+| New Cashier login → shows Cashier guide | PASS |
+| Super Admin login → NO guide | PASS |
+| Skip guide → persists completed=true | PASS |
+
+#### Visual QA Results
+
+| Viewport | Role | Result |
+|----------|------|--------|
+| Desktop 1440 | Driver | PASS — blue modal over Pickup tab, progress bars, Skip/Next |
+| Mobile 390 | Driver | PASS — modal centered, no overflow |
+| Desktop 1440 | Technician | PASS — indigo modal over TechPortal |
+| Mobile 430 | Cashier | PASS — emerald modal over POS |
+
+#### Checks Run
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Deferred
+
+- "Reopen Guide" button in Account Settings — deferred to future polish
+
+#### Bugs Found
+
+None.
+
+### Phase 15J — Full Staff Onboarding Regression QA (COMPLETE)
+
+Status: COMPLETE — **51/51 tests pass, 0 bugs, GO verdict**
+
+#### Automated Regression (API)
+
+| Category | Tests | Result |
+|----------|-------|--------|
+| Super Admin login | 1 | PASS |
+| Permission injection (users/settings/*/canDelete blocked, pickup retained) | 5 | PASS |
+| Super Admin invite rejected | 1 | PASS |
+| Token hash not exposed in API | 1 | PASS |
+| Driver: create→accept→used→login→onboarding→persist→profile→password→old-rejected→new-works→403 | 11 | PASS |
+| Technician: same flow | 11 | PASS |
+| Cashier: same flow | 11 | PASS |
+| Manager: same flow | 11 | PASS |
+| **TOTAL** | **51** | **51 PASS, 0 FAIL** |
+
+#### Visual QA
+
+| Screen | Viewport | Result |
+|--------|----------|--------|
+| Users tab (Super Admin) | Desktop 1440 | PASS — all roles listed, Create Setup Link visible |
+| Setup page (Manager) | Mobile 390 | PASS — violet gradient, ClipboardList icon, progress indicator, no overflow |
+| Account Settings (Super Admin) | Mobile 430 | PASS — 3 sections stacked, permission badges wrap |
+| Role landings (all) | Verified in 15H | PASS |
+| First-login guide (all) | Verified in 15I | PASS |
+
+#### Security Checklist
+
+| Check | Result |
+|-------|--------|
+| Malicious permission injection blocked | PASS |
+| Super Admin cannot be invite-created | PASS |
+| tokenHash not in list response | PASS |
+| Driver/Technician/Cashier/Manager cannot access staff-invites (403) | PASS |
+| Raw setup URL only visible at create/regenerate | PASS |
+| Password change invalidates old credentials | PASS |
+
+#### Build Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Bugs Found
+
+None.
+
+#### Final Verdict
+
+**GO** — The full staff onboarding ecosystem (Phases 15A–15I) is release-ready. All roles tested end-to-end: invite creation → setup → login → role landing → first-login guide → profile management → password change. Security hardening verified. No code changes required.
+
+### Phase 16A — Permission System Audit (COMPLETE)
+
+Status: COMPLETE — **audit only, no code changes**
+
+#### 1. Current Permission Architecture
+
+**Three overlapping systems:**
+
+| Layer | Location | Mechanism |
+|-------|----------|-----------|
+| Type definition | `shared/schema.ts:122` | `UserPermissions` type (33 optional boolean fields) |
+| Role defaults | `shared/admin-permissions.ts` | `getDefaultPermissionsForRole()` — 6 role presets |
+| Invite ceiling | `server/services/staff-invite.service.ts:13` | `ROLE_PERMISSION_CEILING` + `BLOCKED_PERMISSIONS` |
+
+**Permission resolution chain:**
+1. `getEffectivePermissionsForUser()` in `auth.ts:129`
+2. Super Admin → `{ '*': true }` (wildcard bypass)
+3. If `user.permissions` JSON has keys → use those
+4. Else → `getDefaultPermissionsForRole(user.role)`
+
+**27 unique permission strings** used across routes: `dashboard`, `jobs`, `inventory`, `pos`, `challans`, `finance`, `attendance`, `reports`, `serviceRequests`, `orders`, `technician`, `inquiries`, `systemHealth`, `users`, `settings`, `corporate`, `canCreate`, `canEdit`, `canDelete`, `canExport`, `process_payment`, `view_financials`, `auditLogs`, `canAssignTechnician`, `pickup`, `warrantyClaims`, `refunds`
+
+#### 2. Backend Enforcement Table
+
+**Well-protected routes (requirePermission):**
+
+| Module | Permission | Routes Protected |
+|--------|-----------|-----------------|
+| Jobs | `jobs` | GET/POST/PATCH/DELETE job-tickets (14 endpoints) |
+| Jobs | `process_payment` | POST record-payment |
+| Service Requests | `serviceRequests` | GET/POST/PATCH service-requests (12 endpoints) |
+| Inventory | `inventory` | GET/POST/PATCH/DELETE inventory (12 endpoints) |
+| POS | `pos`, `process_payment` | GET/POST pos-transactions (3 endpoints) |
+| Finance | `finance`, `process_payment` | POST/PATCH/DELETE cash, due-records, payments (10 endpoints) |
+| Corporate | `corporate`, `jobs` | POST/PATCH clients, bills, challans (17 endpoints) |
+| Logistics | `pickup` | GET/POST logistics-tasks (10 endpoints) |
+| Users | `users` | GET staff-invites list |
+| Staff Invites | Super Admin only | Create/revoke/regenerate invites |
+| Repair Journey | `serviceRequests` | POST/GET admin repair journey (6 endpoints) |
+| Attendance | `attendance` OR `reports` | GET attendance (3 endpoints) |
+| Audit | `auditLogs` | GET audit-logs |
+
+**UNPROTECTED routes (auth-only, no permission check):**
+
+| Module | Route | Risk | Current Protection |
+|--------|-------|------|-------------------|
+| Challans | POST/PATCH/DELETE /api/challans | **CRITICAL** — financial records | requireAdminAuth only |
+| Analytics | ALL /api/analytics/* | **CRITICAL** — revenue data | requireAdminAuth only |
+| Brain/AI | ALL /api/brain/*, /api/kg/* | **CRITICAL** — customer PII, messaging | requireAdminAuth only |
+| Warranty | POST/PATCH /api/warranty-claims | **HIGH** — financial commitment | Hardcoded role check in handler |
+| Job Write-off | POST /api/job-tickets/:id/write-off | **HIGH** — financial | Hardcoded Manager/SA role check |
+| SR Mark-interacted | POST /api/admin/service-requests/:id/mark-interacted | **MEDIUM** | requireAdminAuth only |
+| SR Sync-job | POST /api/admin/service-requests/sync-job/:jobId | **MEDIUM** | requireAdminAuth only |
+| Leave | POST/PATCH /api/admin/leave/* | **MEDIUM** | Hardcoded role check in handler |
+| Payroll | ALL /api/payroll/* (35+ endpoints) | **MEDIUM** | Hardcoded Super Admin check |
+| KG Facts | POST/DELETE /api/kg/facts | **MEDIUM** | requireAdminAuth only |
+| Push Notifications | POST register/unregister | **LOW** | requireAdminAuth only |
+
+**Hardcoded role checks (should use permission framework):**
+
+| File | Count | Roles Checked |
+|------|-------|---------------|
+| payroll.routes.ts | 35+ | Super Admin only |
+| leave.routes.ts | 6 | Super Admin |
+| warranty.routes.ts | 4 | Manager, Super Admin |
+| jobs.routes.ts | 1 | Manager, Super Admin |
+| drawer.routes.ts | 3 | Super Admin, Admin (case-inconsistent) |
+| mobile.routes.ts | 11 | Super Admin, Manager, Technician |
+
+#### 3. Frontend Visibility Table
+
+**Tab-to-permission mapping (`design-concept.tsx`):**
+
+| Tab | Permission Required |
+|-----|-------------------|
+| Dashboard | `dashboard` |
+| Jobs | `jobs` |
+| Service Requests | `serviceRequests` |
+| Repair Journeys | `serviceRequests` |
+| POS | `pos` |
+| Inventory | `inventory` |
+| Customers | `users` |
+| Users | `users` |
+| Settings | `settings` |
+| Pickup | `pickup` OR `jobs` |
+| Finance | `finance` |
+| Challans | `challans` |
+| Corporate B2B | `corporate` |
+| Attendance | `attendance` |
+| Reports | `reports` |
+| System Health | `systemHealth` |
+| Audit Logs | `auditLogs` |
+
+**Action button checks:**
+
+| Component | Action | Permission Check |
+|-----------|--------|-----------------|
+| JobTicketsTab | Create job | `canCreate` |
+| JobTicketsTab | Edit job | `canEdit` |
+| ServiceRequestsTab | Verify & Convert | `serviceRequests` AND `jobs` AND `canCreate` |
+| InventoryTab | Add item | `canCreate` |
+| InventoryTab | Export | `canExport` |
+| InventoryTab | Edit item | `canEdit` |
+| InventoryTab | Delete item | `canDelete` |
+| UsersTab | Edit user | Super Admin OR `canEdit` |
+| UsersTab | Delete user | Super Admin only |
+| PosTab | Close register | Super Admin only (hardcoded) |
+
+#### 4. Broad/Dangerous Permissions
+
+| Permission | Problem |
+|-----------|---------|
+| `canEdit` | Global — applies to ALL modules. A Driver with `canEdit` can theoretically edit jobs, inventory, users (if tab visible) |
+| `canCreate` | Global — no module scoping |
+| `canDelete` | Global — blocked for invite roles but dangerous if granted |
+| `jobs` | View AND create AND edit AND delete — no separation |
+| `serviceRequests` | View AND reply AND quote AND transition — no separation |
+| `finance` | View AND create AND modify AND delete — no separation |
+| `users` | View users AND manage invites AND access customer tab |
+| `corporate` | View AND message AND manage clients AND billing |
+
+**Dangerous combinations:**
+
+| Combination | Risk |
+|-------------|------|
+| `users` + `canDelete` | Can delete staff accounts |
+| `finance` + `process_payment` | Full financial access without audit separation |
+| `jobs` + `canEdit` | Can modify any job status/assignment/outcome |
+| `corporate` + `finance` | Can create corporate bills and modify financials |
+
+#### 5. Per-Module Action Breakdown (Current vs Needed)
+
+**Service Requests:**
+- Current: single `serviceRequests` permission
+- Needed: view, reply, logCall, sendQuote, approve, reject, transitionStage, convertToJob
+
+**Jobs:**
+- Current: single `jobs` permission
+- Needed: view, create, assignTechnician, reportOutcome, advanceStatus, writeOff, recordPayment
+
+**Pickup/Delivery:**
+- Current: single `pickup` permission
+- Needed: viewAssigned, viewAll, assignDriver, reschedule, cancel, routePlan
+
+**POS/Billing:**
+- Current: `pos` + `process_payment`
+- Needed: viewRegister, openRegister, closeRegister, processPayment, refund, voidTransaction
+
+**Inventory:**
+- Current: `inventory` + `canCreate`/`canEdit`/`canDelete`
+- Needed: view, addItem, editItem, adjustStock, deleteItem, export
+
+**Users/Staff:**
+- Current: `users` + Super Admin check
+- Needed: viewDirectory, inviteStaff, editPermissions, deactivate, viewCustomers
+
+#### 6. Recommended Phase 16B Permission Vocabulary
+
+```
+── Module Permissions (view/action scoped) ──
+serviceRequests.view
+serviceRequests.reply
+serviceRequests.quote
+serviceRequests.transitionStage
+serviceRequests.convertToJob
+
+jobs.view
+jobs.create
+jobs.assignTechnician
+jobs.reportOutcome
+jobs.advanceStatus
+jobs.writeOff
+jobs.recordPayment
+
+pickup.viewAssigned
+pickup.viewAll
+pickup.assignDriver
+pickup.reschedule
+pickup.routePlan
+
+pos.view
+pos.processPayment
+pos.openRegister
+pos.closeRegister
+pos.refund
+
+inventory.view
+inventory.addItem
+inventory.editItem
+inventory.adjustStock
+inventory.deleteItem
+inventory.export
+
+finance.view
+finance.createRecord
+finance.editRecord
+finance.deleteRecord
+finance.export
+
+corporate.view
+corporate.manageClients
+corporate.message
+corporate.billing
+
+users.viewDirectory
+users.inviteStaff
+users.editPermissions
+users.deactivate
+users.viewCustomers
+
+repairJourney.view
+repairJourney.customerUpdate
+
+reports.view
+reports.export
+
+settings.manage
+systemHealth.view
+auditLogs.view
+
+── Legacy compatibility ──
+attendance.view
+attendance.checkIn
+challans.view
+challans.manage
+warranty.view
+warranty.approve
+```
+
+#### 7. Recommended Implementation Order
+
+1. **Phase 16B**: Define permission vocabulary + migration strategy (backwards compatible)
+2. **Phase 16C**: Backend enforcement — add missing permission checks to unprotected routes (challans, analytics, brain, warranty, write-off)
+3. **Phase 16D**: Permission wizard UI — Super Admin assigns per-module permissions
+4. **Phase 16E**: Frontend tab/action visibility migration to new vocabulary
+5. **Phase 16F**: Role preset migration (map old defaults to new vocabulary)
+6. **Phase 16G**: Regression QA + permission boundary testing
+
+#### 8. Release Risks
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Challans/Analytics/Brain routes unprotected | **CRITICAL** | Phase 16C: add requirePermission before any UI work |
+| `canEdit` grants global edit across all modules | **HIGH** | Phase 16D: replace with per-module action permissions |
+| Payroll has 35+ hardcoded Super Admin checks | **MEDIUM** | Phase 16F: convert to `payroll.manage` permission |
+| Drawer routes have case-inconsistent role checks | **LOW** | Phase 16C: normalize to permission framework |
+| Coverage gaps: at least one user must have SR reply, quote, job assign, pickup assign, POS payment | **HIGH** | Phase 16D: wizard warns if critical actions unassigned |
+
+#### 9. Coverage Requirements (Shop Cannot Get Stuck)
+
+At least one active staff member must have:
+- `serviceRequests.reply` — respond to customer inquiries
+- `serviceRequests.quote` — send repair quotes
+- `jobs.assignTechnician` — assign work
+- `jobs.reportOutcome` — close repair jobs
+- `pickup.assignDriver` — schedule pickups/deliveries
+- `pos.processPayment` — collect payments
+- `corporate.message` — respond to B2B clients
+- `users.inviteStaff` — add new staff when someone leaves
+
+#### Checks Run
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Code Changes
+
+None — audit only.
+
+### Phase 16B — Permission Vocabulary + Compatibility Map (COMPLETE)
+
+Status: COMPLETE — **65 granular permissions defined, catalog code created, no enforcement changes**
+
+#### Deliverable
+
+Created `shared/permission-catalog.ts` exporting:
+- `PERMISSION_CATALOG` — 65 permissions across 20 modules with key, label, risk, description, consequence, suggested roles, coverage-critical flag
+- `LEGACY_TO_GRANULAR` — maps 30 old broad permissions to new granular equivalents
+- `ROLE_PRESETS` — 5 role presets (Driver/Technician/Cashier/Manager/Super Admin)
+- `CUSTOM_PACKS` — 5 optional packs (driver-service-reply, tech-journey-view, cashier-job-detail, manager-corporate-msg, senior-tech)
+- `COVERAGE_CRITICAL_PERMISSIONS` — 10 permissions that must always be assigned to at least one active user
+- `DEPRECATED_BROAD_PERMISSIONS` — 14 broad permissions to phase out
+- Helper functions: `getModules()`, `getPermissionsByModule()`, `getPermissionsByRisk()`
+
+#### Permission Catalog Summary (65 permissions, 20 modules)
+
+| Module | Permissions | Risk Range |
+|--------|------------|------------|
+| dashboard | 1 | low |
+| serviceRequests | 6 | low–high |
+| jobs | 9 | low–critical |
+| repairJourney | 2 | low–high |
+| pickup | 6 | low–high |
+| pos | 5 | low–critical |
+| finance | 5 | medium–critical |
+| corporate | 3 | low–high |
+| corporateMessages | 2 | low–high |
+| challans | 2 | low–high |
+| customers | 2 | low–medium |
+| inventory | 6 | low–critical |
+| warranty | 3 | low–critical |
+| reports | 2 | medium |
+| analytics | 1 | medium |
+| aiBrain | 2 | low–high |
+| users | 5 | low–critical |
+| settings | 1 | critical |
+| attendance | 2 | low |
+| notifications | 2 | low–medium |
+
+#### Old → New Compatibility Map (key examples)
+
+| Old Permission | New Granular Equivalents |
+|---------------|------------------------|
+| `serviceRequests` | `serviceRequests.view` + `.reply` + `.logCall` + `.quote` + `.transitionStage` + `.convertToJob` |
+| `jobs` | `jobs.view` + `.create` + `.assignTechnician` + `.reportOutcome` + `.advanceStatus` + `.edit` |
+| `pickup` | `pickup.viewAssigned` (Driver) or full set (Manager) |
+| `pos` | `pos.view` + `.processPayment` + `.openRegister` |
+| `canCreate` | Deprecated → module-specific create permissions |
+| `canEdit` | Deprecated → module-specific edit permissions |
+| `canDelete` | Deprecated → module-specific delete permissions |
+| `process_payment` | `pos.processPayment` + `jobs.recordPayment` |
+| `users` | `users.viewStaff` (default) or full set (Super Admin) |
+
+#### Role Presets
+
+| Preset | Permission Count | Key Capabilities |
+|--------|-----------------|-----------------|
+| Driver Basic | 3 | pickup.viewAssigned, attendance.checkIn, notifications.view |
+| Technician Basic | 7 | jobs.view/reportOutcome/advanceStatus, serviceRequests.view, repairJourney.view, attendance, notifications |
+| Cashier Basic | 7 | pos.view/processPayment/openRegister, inventory.view, finance.view, attendance, notifications |
+| Manager Basic | 47 | All module view+action permissions except delete/settings/user-management |
+| Super Admin | `*` | Wildcard — all permissions |
+
+#### Custom Packs
+
+| Pack | Base + Additions |
+|------|-----------------|
+| Driver + Service Reply | Driver + serviceRequests.view + serviceRequests.reply |
+| Technician + Journey View | Technician + repairJourney.view |
+| Cashier + Job Details | Cashier + jobs.view |
+| Manager + Corporate Msg | Manager + corporateMessages.view + corporateMessages.reply |
+| Senior Technician | Technician + jobs.edit + inventory.view + serviceRequests.reply |
+
+#### Route Protection Plan (for Phase 16C)
+
+| Unprotected Route | Recommended Permission | Priority |
+|-------------------|----------------------|----------|
+| POST/PATCH/DELETE /api/challans | `challans.manage` | CRITICAL |
+| GET /api/analytics/* | `analytics.view` | CRITICAL |
+| GET/POST/DELETE /api/brain/*, /api/kg/* | `aiBrain.view` / `aiBrain.manage` | CRITICAL |
+| POST/PATCH /api/warranty-claims | `warranty.create` / `warranty.approve` | HIGH |
+| POST /api/job-tickets/:id/write-off | `jobs.writeOff` | HIGH |
+| POST /api/admin/service-requests/:id/mark-interacted | `serviceRequests.view` | MEDIUM |
+| POST /api/admin/service-requests/sync-job/:jobId | `serviceRequests.transitionStage` | MEDIUM |
+| POST/DELETE /api/kg/facts | `aiBrain.manage` | MEDIUM |
+
+#### UI Notes for Codex/Inspector
+
+- Permission wizard UI is NOT implemented in this phase
+- The catalog is ready for a wizard that groups by module, shows risk badges, warns on coverage gaps
+- Suggested wizard layout: module cards → expand to show action toggles → risk color coding → coverage warnings
+- Final wizard UI design ownership: Codex/Inspector
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `shared/permission-catalog.ts` | NEW: permission catalog, role presets, compatibility map, helpers |
+
+#### Checks Run
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+### Phase 16C — Backend Enforcement Bridge + Critical Route Protection (COMPLETE)
+
+Status: COMPLETE — **6 route groups protected, backward-compatible granular middleware, 17/17 tests pass**
+
+#### Architecture
+
+Added to `server/routes/middleware/auth.ts`:
+- `hasGranularPerm(effectivePermissions, granularKey)` — checks wildcard → direct key → legacy compatibility via `LEGACY_TO_GRANULAR`
+- `requireGranularPermission(key)` — middleware for single granular permission
+- `requireAnyGranularPermission(keys)` — middleware for any-of-set
+
+**Resolution order:** Super Admin `*` wildcard → direct granular key → legacy broad permission mapped via `LEGACY_TO_GRANULAR`
+
+Example: User has `challans: true` (legacy) → route requires `challans.manage` → allowed because `LEGACY_TO_GRANULAR.challans` includes `challans.manage`.
+
+#### Route Protection Table
+
+| Route Group | Old Protection | New Permission | Legacy Compat | Risk |
+|-------------|---------------|----------------|---------------|------|
+| POST/PATCH/DELETE /api/challans | auth-only | `challans.manage` | `challans: true` → allowed | CRITICAL |
+| ALL /api/analytics/* | auth-only | `analytics.view` OR `reports.view` | `reports: true` → allowed | CRITICAL |
+| ALL /api/brain/* | auth-only | `aiBrain.view` (read) / `aiBrain.manage` (write) | No legacy map → SA only | CRITICAL |
+| POST/DELETE /api/kg/facts* | auth-only | `aiBrain.view` (read) / `aiBrain.manage` (write) | No legacy map → SA only | HIGH |
+| POST /api/warranty-claims | hardcoded role | `warranty.create` | `warrantyClaims: true` → allowed | HIGH |
+| PATCH /api/warranty-claims/:id/approve/reject | hardcoded role | `warranty.approve` | `warrantyClaims: true` → NOT mapped (requires explicit grant) | HIGH |
+| POST /api/warranty-claims/:id/create-job | hardcoded role | `warranty.approve` | Same as above | HIGH |
+| POST /api/job-tickets/:id/write-off | hardcoded Manager/SA | `jobs.writeOff` | `jobs: true` → NOT mapped (new permission required) | CRITICAL |
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/routes/middleware/auth.ts` | Added `hasGranularPerm`, `requireGranularPermission`, `requireAnyGranularPermission` |
+| `server/routes/challans.routes.ts` | POST/PATCH/DELETE → `requireGranularPermission('challans.manage')` |
+| `server/routes/analytics.routes.ts` | Router-level `requireAnyGranularPermission(['analytics.view', 'reports.view'])` |
+| `server/routes/brain.routes.ts` | Router-level `aiBrain.view` + write ops `aiBrain.manage` |
+| `server/routes/kg.routes.ts` | GET → `aiBrain.view`, POST/DELETE → `aiBrain.manage` |
+| `server/routes/warranty.routes.ts` | POST → `warranty.create`, approve/reject/create-job → `warranty.approve` |
+| `server/routes/jobs.routes.ts` | write-off → `requireGranularPermission('jobs.writeOff')`, removed hardcoded role check |
+
+#### Functional QA (17/17 pass)
+
+| Test | Result |
+|------|--------|
+| Super Admin GET challans | PASS (200) |
+| Super Admin POST challans | PASS (400 — validation, not 403) |
+| Super Admin analytics | PASS (200) |
+| Super Admin brain stats | PASS (200) |
+| Super Admin KG facts | PASS (200) |
+| Super Admin warranty claims | PASS (200) |
+| Super Admin write-off | PASS (200 — not 403) |
+| Manager GET challans (legacy `challans: true`) | PASS (200) |
+| Manager POST challans (legacy compat) | PASS (400 — not 403) |
+| Manager analytics (legacy `reports: true`) | PASS (200) |
+| Driver POST challans | PASS (403) |
+| Driver analytics | PASS (403) |
+| Driver brain | PASS (403) |
+| Driver KG | PASS (403) |
+| Driver warranty create | PASS (403) |
+| Driver write-off | PASS (403) |
+| Public health endpoint | PASS (200) |
+
+#### Checks Run
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### What Was NOT Changed
+
+- No frontend visibility changes
+- No stored user permission migrations
+- No old permission removal
+- Customer/corporate portal routes unchanged
+- Existing requirePermission middleware unchanged
+
+### Phase 16C-2 — Account vs System Settings Separation (COMPLETE)
+
+Status: COMPLETE — **clear label separation, My Account accessible to all roles, System Settings restricted**
+
+#### Changes
+
+| Item | Before | After |
+|------|--------|-------|
+| Header gear icon | `Settings` (gear) → `/admin/account` | `UserCog` icon → `/admin/account` with title="My Account" |
+| Settings tab label | "Settings" | "System Settings" |
+| Settings header title | "Settings" | "System Settings" |
+| User dropdown | Workbench (SA only) + Logout | **My Account** + Workbench (SA only) + Logout |
+| Mobile More menu | No account entry | **My Account** button before Logout |
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `client/src/components/layout/AdminLayout.tsx` | Gear icon → `UserCog` icon with "My Account" title |
+| `client/src/pages/admin/design-concept.tsx` | Added "My Account" to user dropdown, renamed Settings tab/header to "System Settings" |
+| `client/src/pages/admin/bento/shared/MobileMoreMenu.tsx` | Added "My Account" button before Logout |
+
+#### Functional QA
+
+| Test | Result |
+|------|--------|
+| Driver `/api/settings` | 403 |
+| Driver `/api/admin/account` | 200 |
+| Technician `/api/settings` | 403 |
+| Technician `/api/admin/account` | 200 |
+| Super Admin `/api/settings` | 200 |
+| Super Admin `/api/admin/account` | 200 |
+
+#### Visual QA
+
+| Screen | Result |
+|--------|--------|
+| Driver mobile More menu | PASS — shows Pickups, Attendance, My Account, Logout. No System Settings |
+| Super Admin desktop System Settings | PASS — header says "System Settings", tab loaded |
+| Super Admin user dropdown | PASS — shows My Account + Workbench + Log out |
+
+#### Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+### Phase 16D — Permission Designer UI Spec (COMPLETE)
+
+Status: COMPLETE — **spec only, no production code**
+
+Source of truth: `shared/permission-catalog.ts` — 67 permissions, 20 modules, 4 risk levels.
+
+---
+
+#### 1. Entry Points
+
+| Entry | Context | Mode |
+|-------|---------|------|
+| Users tab → staff row → "Edit Access" button | Existing user | Full edit wizard |
+| Invite Staff flow → "Customize Access" link | During invite creation | Wizard opens in dialog |
+| Account Settings → Role & Access section | Self-service | Read-only summary |
+
+---
+
+#### 2. Wizard Steps
+
+**Step 1: Choose Base Role**
+
+| Preset | Permissions | Description |
+|--------|------------|-------------|
+| Driver Basic | 3 | Pickup tasks, attendance, notifications |
+| Technician Basic | 7 | Job queue, repair outcomes, service requests |
+| Cashier Basic | 7 | POS register, payments, inventory view |
+| Manager Basic | 47 | Full operations except delete/settings/user-management |
+
+Super Admin is manual-only (not available via invite wizard). Selection pre-fills Step 2–3.
+
+**Step 2: Choose Work Areas**
+
+Visual card grid (3 columns desktop, 2 mobile). Each card = one module:
+
+| Work Area | Icon | Color |
+|-----------|------|-------|
+| Service Requests | MessageSquare | blue |
+| Jobs | ClipboardList | indigo |
+| Repair Journeys | Heart | violet |
+| Pickup & Delivery | Truck | sky |
+| POS / Billing | ShoppingCart | emerald |
+| Corporate Clients | Building2 | teal |
+| Corporate Messages | MessageCircle | cyan |
+| Customers | Users | amber |
+| Inventory | Package | orange |
+| Warranty | ShieldCheck | rose |
+| Reports & Analytics | BarChart3 | slate |
+| AI Brain | Brain | fuchsia |
+| Staff / Users | UserCog | pink |
+| System Settings | Settings | slate |
+
+Card states: **Off** (greyed) / **On** (colored border + checkmark). Tapping toggles.
+
+**Step 3: Choose Action Level**
+
+For each enabled work area, show action-level selector:
+
+| Level | Label | Meaning | Risk |
+|-------|-------|---------|------|
+| 0 | No Access | Module hidden | — |
+| 1 | View Only | See data, cannot modify | Low |
+| 2 | Work on Assigned | Own tasks only | Low–Medium |
+| 3 | Create / Update | Add and edit records | Medium–High |
+| 4 | Approve / Control | Approve, assign, transition | High |
+| 5 | Admin Power | Delete, write-off, system changes | Critical |
+
+Desktop: slider or segmented toggle per module row. Mobile: tap to cycle through levels.
+
+**Step 4: Special Permission Packs**
+
+Optional cards that add specific cross-module capabilities:
+
+| Pack | Adds | For |
+|------|------|-----|
+| Driver + Service Reply | serviceRequests.view, .reply | Drivers who handle customer pickup inquiries |
+| Tech + Journey View | repairJourney.view | Technicians who need repair history context |
+| Cashier + Job Detail | jobs.view | Cashiers who verify job before billing |
+| Manager + Corp. Messages | corporateMessages.view, .reply | Managers handling B2B communication |
+| Senior Technician | jobs.edit, inventory.view, serviceRequests.reply | Lead technicians with parts authority |
+
+**Step 5: Risk Review**
+
+Risk summary bar:
+
+```
+[19 low ●] [19 medium ●●] [19 high ●●●] [10 critical ●●●●]
+```
+
+For each **high** permission: show one-line consequence.
+For each **critical** permission: show consequence + require checkbox confirmation.
+
+Example critical confirmations:
+- "☐ I confirm: this person can **permanently delete** inventory items."
+- "☐ I confirm: this person can **write off** job tickets as financial loss."
+- "☐ I confirm: this person can **process refunds** and return money."
+- "☐ I confirm: this person can **change system settings** for the whole shop."
+
+**Step 6: Coverage Check**
+
+Show coverage health for 10 critical permissions:
+
+| Permission | Assigned To | Status |
+|------------|------------|--------|
+| serviceRequests.reply | Manager A, Admin | ✓ Covered |
+| serviceRequests.quote | Admin only | ⚠ Single person |
+| jobs.assignTechnician | Manager A, Admin | ✓ Covered |
+| pickup.assignDriver | (none) | ✗ MISSING |
+| pos.processPayment | Cashier B, Admin | ✓ Covered |
+| corporateMessages.reply | (none) | ✗ MISSING |
+
+Warnings:
+- Red: "No one can [action]. Shop will get stuck."
+- Amber: "Only one person can [action]. No backup."
+- Green: "2+ staff can [action]."
+
+**Step 7: Review & Save**
+
+Final summary grouped by module:
+```
+Service Requests: View, Reply, Quote
+Jobs: View, Create, Assign Technician, Report Outcome
+Pickup: View Assigned
+POS: View, Process Payment
+```
+
+Plain language summary:
+> "This Driver can view their pickup tasks, check in for attendance, and reply to customer service requests."
+
+Save button disabled if critical confirmations incomplete.
+
+---
+
+#### 3. Desktop Layout
+
+```
+┌──────────────────────────────────────────────────┐
+│  Permission Designer — Edit Access for [Name]     │
+├────────┬─────────────────────────┬───────────────┤
+│ Steps  │  Work Area              │  Impact Panel  │
+│        │                         │                │
+│ 1 Role │  [Module Cards Grid]    │  Risk Summary  │
+│ 2 Areas│  or                     │  ─────────     │
+│ 3 Level│  [Action Level Rows]    │  High: 3       │
+│ 4 Packs│  or                     │  Critical: 1   │
+│ 5 Risk │  [Risk Confirmations]   │  ─────────     │
+│ 6 Cover│  or                     │  Coverage: 8/10│
+│ 7 Save │  [Final Summary]        │  Missing: 2    │
+│        │                         │                │
+├────────┴─────────────────────────┴───────────────┤
+│  [Back]                            [Next / Save]  │
+└──────────────────────────────────────────────────┘
+```
+
+- Left rail: 160px, step indicator (vertical dots + labels)
+- Center: flex-1, scrollable content area
+- Right panel: 280px, sticky impact/risk summary
+- No nested cards inside cards
+
+---
+
+#### 4. Mobile Layout
+
+```
+┌─────────────────────┐
+│ ← Edit Access       │
+│ Step 2 of 7         │
+│ ═══════●━━━━━━━━━━  │
+├─────────────────────┤
+│                     │
+│  [Module Card]      │
+│  [Module Card]      │
+│  [Module Card]      │
+│  [Module Card]      │
+│                     │
+├─────────────────────┤
+│  [Back]    [Next →] │
+└─────────────────────┘
+```
+
+- Full-screen step flow (not bottom sheet — too many steps)
+- One decision per screen
+- Large tappable cards (min 56px height)
+- Sticky footer with Back/Next
+- Risk review: stacked confirmation cards
+- Coverage: vertical list with status badges
+- Bottom dock clearance: pb-24
+
+---
+
+#### 5. Permission Card Anatomy
+
+```
+┌─────────────────────────────────────┐
+│  🔧 Service Requests          [●●] │  ← risk dots
+│  ─────────────────────────────────  │
+│  View and respond to customer       │
+│  repair intake requests.            │
+│                                     │
+│  Recommended: Manager, Super Admin  │
+│                                     │
+│  ▸ Why this matters                 │  ← expandable
+│    "Customer-facing: bad replies     │
+│     can damage trust."              │
+│                                     │
+│  [○ Off] [● View] [● Reply] [Quote]│  ← action toggles
+└─────────────────────────────────────┘
+```
+
+---
+
+#### 6. Risk Language Examples
+
+| Risk | Language |
+|------|----------|
+| Low | "Read-only: this person can see data but cannot change anything." |
+| Medium | "Customer-facing: this person can send messages customers will see." |
+| Medium | "Operational: this person can update job notes and status." |
+| High | "Financial: this person can collect or change payment records." |
+| High | "Operational: this person can assign work to other staff." |
+| Critical | "Destructive: this person can permanently delete records." |
+| Critical | "System: this person can change shop-wide settings." |
+| Critical | "Privilege: this person can create accounts and change access." |
+
+---
+
+#### 7. Coverage Dashboard Spec (Users Tab)
+
+Small card at the top of Users tab (Super Admin only):
+
+```
+┌─────────────────────────────────────────┐
+│  Coverage Health                   80%  │
+│  ═══════════════════════●━━━━━━━        │
+│                                         │
+│  ✓ 8 critical actions covered           │
+│  ⚠ 1 action has only one person         │
+│  ✗ 1 action has no one assigned         │
+│                                         │
+│  [View Details]                         │
+└─────────────────────────────────────────┘
+```
+
+Warning examples:
+- "⚠ Only Super Admin can send repair quotes. Add a backup."
+- "✗ No one can reply to corporate messages. B2B clients will be ignored."
+- "ℹ 3 staff can edit permissions — review if intentional."
+
+---
+
+#### 8. Backend/API Needs (Not Implemented Yet)
+
+| Endpoint | Purpose | Phase |
+|----------|---------|-------|
+| GET /api/admin/permission-catalog | Return PERMISSION_CATALOG from shared module | 16E |
+| GET /api/admin/coverage-analysis | Return coverage status for critical permissions | 16E |
+| PATCH /api/admin/users/:id/permissions | Save granular permissions for user | 16E |
+| GET /api/admin/role-presets | Return ROLE_PRESETS for wizard | 16E |
+| POST /api/admin/permissions/preview | Preview what a permission set allows | 16F |
+
+---
+
+#### 9. Migration Strategy
+
+1. **Read path**: When wizard loads existing user, translate `user.permissions` through `LEGACY_TO_GRANULAR` to show current state in granular terms
+2. **Write path**: On save, store **granular** permission keys (e.g., `{"jobs.view":true,"jobs.create":true}`) instead of broad keys
+3. **Compatibility**: `requireGranularPermission` middleware (Phase 16C) already resolves both legacy AND granular keys — so mixed-state users work
+4. **Old users**: Continue working with legacy permissions until Admin opens their profile and saves via the wizard
+5. **No forced migration**: Never bulk-convert stored permissions — let wizard handle individual users on-demand
+
+---
+
+#### 10. QA Plan
+
+| Test | Expected |
+|------|----------|
+| Driver Basic preset selected → check permitted tabs | Pickup only |
+| Driver + Service Reply pack → check tabs | Pickup + Service Requests (view+reply only) |
+| Technician + Journey View → check tabs | Jobs + SR + Repair Journeys (view only) |
+| Cashier Basic → refund attempt | Blocked (pos.refund not in preset) |
+| Manager Basic → write-off attempt | Allowed (jobs.writeOff in preset) |
+| Critical permission without confirmation → save | Save button disabled |
+| Critical permission with confirmation → save | Save succeeds |
+| Coverage missing → warning shown | Red warning for uncovered critical action |
+| Single-person coverage → warning shown | Amber warning |
+| Legacy user opens wizard → permissions displayed | Translated via LEGACY_TO_GRANULAR |
+
+---
+
+#### Codex UI Direction
+
+**Design principles for the Permission Designer:**
+
+1. **No checkbox soup** — permissions are grouped into visual work-area cards, not a flat list of 67 toggles
+2. **Visual role/workflow mapping** — staff sees modules as colored cards matching the admin sidebar, not abstract permission keys
+3. **Impact-first permission granting** — every permission shows its consequence before enabling; risk badges are always visible
+4. **Risk review before save** — critical permissions require explicit checkbox confirmation with consequence text
+5. **Mobile-native step flow** — full-screen steps with one decision per screen, large tappable cards, sticky navigation footer
+6. **Coverage-aware** — wizard warns when granting/removing a permission would leave a critical action uncovered
+7. **Plain language** — "This Driver can view pickup tasks and reply to customer requests" not "pickup=true, serviceRequests.reply=true"
+
+---
+
+#### Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Code Changes
+
+None — spec only.
+
+### Phase 16E — Permission Designer Backend API + Coverage Analysis (COMPLETE)
+
+Status: COMPLETE — **5 endpoints, 19/19 tests pass, frontend types added**
+
+#### Endpoints
+
+| Endpoint | Method | Auth | Purpose |
+|----------|--------|------|---------|
+| `/api/admin/permissions/catalog` | GET | Admin auth | Returns catalog, presets, packs, coverage critical, deprecated list |
+| `/api/admin/users/:id/permission-profile` | GET | Super Admin | Returns stored/legacy/granular/effective permissions, risk summary, suggested preset |
+| `/api/admin/users/:id/permission-profile` | PATCH | Super Admin | Save granular permissions (validates keys, blocks self-edit, blocks wildcard, audit logged) |
+| `/api/admin/permissions/coverage` | GET | Super Admin | Returns coverage analysis: missing/single-person/covered, deprecated users, health % |
+| `/api/admin/permissions/preview` | POST | Super Admin | Preview preset + packs + manual → final keys, risk summary, consequences, plain summary |
+
+#### Security Rules
+
+| Rule | Implementation |
+|------|---------------|
+| Catalog visible to all admin users | `requireAdminAuth` only |
+| Profile/Coverage/Preview/Save require Super Admin | `requireSuperAdmin` middleware |
+| Self-edit blocked | `actorId === targetId` → 400 |
+| Super Admin permissions immutable | `target.role === "Super Admin"` → 400 |
+| Invalid permission keys rejected | Validated against `VALID_PERMISSION_KEYS` from catalog |
+| Wildcard `*` save blocked | Explicit check → 400 |
+| Changes audit logged | `UPDATE_USER_PERMISSIONS` action with key list |
+
+#### Coverage Analysis Logic
+
+1. Fetch all active non-Customer users
+2. For each coverage-critical permission, check which users have it (direct granular OR legacy-mapped OR wildcard)
+3. Classify: missing (0 users), singlePerson (1 user), covered (2+ users)
+4. Health percentage = `(total - missing) / total * 100`
+5. Also reports users still on deprecated broad permissions
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/routes/auth.routes.ts` | Added 5 permission designer endpoints + helper functions |
+| `client/src/lib/api/adminApi.ts` | Added `permissionsApi` + response types |
+
+#### Functional QA (19/19 pass)
+
+| Test | Result |
+|------|--------|
+| Catalog returns 60+ permissions | PASS |
+| Catalog includes Driver Basic preset | PASS |
+| Catalog has 10+ coverage critical | PASS |
+| User profile returns role=Driver | PASS |
+| User profile has effective granular perms | PASS |
+| User profile has risk summary | PASS |
+| Preview: Driver Basic + Service Reply → includes serviceRequests.reply | PASS |
+| Preview: includes pickup.viewAssigned from preset | PASS |
+| Preview: has plain-language summary | PASS |
+| Save granular permissions succeeds | PASS |
+| Saved perm appears in profile | PASS |
+| Non-Super Admin save blocked (403) | PASS |
+| Self-edit blocked | PASS |
+| Coverage has health percentage | PASS |
+| Coverage has missing list | PASS |
+| Coverage has single-person list | PASS |
+| Legacy Manager translates to 10+ granular perms | PASS |
+| Invalid permission key rejected | PASS |
+| Wildcard `*` save rejected | PASS |
+
+#### Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Known Limitations
+
+- Coverage endpoint fetches up to 200 users (pagination limit) — sufficient for small/medium shops
+- No real-time notification to target user on permission change (future: SSE event or session invalidation)
+- Preview does not validate business-rule conflicts (e.g., "cashier should not have delete")
+
+### Phase 16F — Permission Designer UI v1 (COMPLETE)
+
+Status: COMPLETE — **6-step visual wizard + Coverage Health dashboard, portal-rendered, desktop + mobile**
+
+#### What Shipped
+
+**Permission Designer** — 6-step wizard opened via "Edit Access" from Users tab:
+
+| Step | Content |
+|------|---------|
+| 1. Profile | Staff info, current perm count, deprecated warning, preset quick-start cards |
+| 2. Work Areas | 20 module cards with icons, active/total counts, highest risk badge |
+| 3. Actions | Expandable module sections with per-permission toggles, risk badges, consequence text |
+| 4. Packs | 5 permission pack cards with add/applied state |
+| 5. Risk Review | Risk summary badges (low/medium/high/critical), critical confirmation checkboxes |
+| 6. Save | Plain-language summary, grouped permissions by module, Save Access button |
+
+**Coverage Health Dashboard** — Added to Users tab (Super Admin only):
+- Health percentage with color-coded bar
+- Missing critical permission warnings (red)
+- Single-person coverage warnings (amber)
+- Deprecated broad permission user count
+- Updates after permission saves
+
+**Entry points:**
+- Desktop: staff row → ⋯ dropdown → "Edit Access"
+- Mobile: staff card → blue UserCog icon button
+
+#### Architecture
+
+- Modal rendered via `createPortal(node, document.body)` to escape Bento scroll container
+- Uses Phase 16E APIs: catalog, getUserProfile, preview, saveUserProfile, coverage
+- Preset application replaces full permission set; packs add incrementally
+- Critical permissions require explicit checkbox confirmation before save is enabled
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `client/src/components/admin/PermissionDesigner.tsx` | NEW: 6-step permission wizard with portal rendering |
+| `client/src/components/admin/CoverageHealth.tsx` | NEW: Coverage Health dashboard component |
+| `client/src/pages/admin/bento/tabs/UsersTab.tsx` | Added CoverageHealth, Edit Access menu/button, PermissionDesigner integration |
+
+#### Visual QA
+
+| Screen | Viewport | Result |
+|--------|----------|--------|
+| Coverage Health dashboard | Desktop 1440 | PASS — 100% bar, 5 single-person warnings, legacy user count |
+| Permission Designer Step 1 (Profile) | Desktop 1440 | PASS — staff info, preset cards, progress bar |
+| Permission Designer Step 2 (Work Areas) | Desktop 1440 | PASS — 20 module cards with icons/counts/risk badges |
+| Permission Designer Step 5 (Risk Review) | Desktop 1440 | PASS — risk summary badges, critical confirmation |
+| Permission Designer Step 1 (Profile) | Mobile 390 | PASS — portal overlay, no overflow, preset cards visible |
+| Coverage Health + mobile cards | Mobile 390 | PASS — UserCog button visible on staff cards |
+
+#### Bug Fixed
+
+- **Portal rendering**: `fixed` positioning inside Bento scroll container caused modal to render off-screen. Fixed by wrapping in `createPortal(node, document.body)`.
+
+#### Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Known Limitations
+
+- Coverage dashboard step not implemented as separate wizard step (coverage info is in Users tab dashboard instead — simpler UX)
+- Invite flow integration deferred to Phase 16G
+- No real-time session invalidation on permission change
+
+### Phase 16G — Invite Flow Permission Designer Integration (COMPLETE)
+
+Status: COMPLETE — **5-step invite wizard with granular permissions, backend sanitizer upgraded, 13/13 tests pass**
+
+#### What Changed
+
+**1. Backend sanitizer upgraded** (`staff-invite.service.ts`):
+- Detects granular permissions (keys containing `.`) vs legacy broad permissions
+- Granular: validates against catalog, strips `settings.manage`, `users.inviteStaff`, `users.editPermissions`, `users.deactivate`, all legacy blocked keys
+- Legacy (no `.` keys): auto-applies role preset from `ROLE_PRESETS` (e.g., Driver → Driver Basic)
+- Accept flow re-sanitizes with same logic before creating user
+- Regenerate preserves the sanitized permissions
+
+**2. Invite Wizard UI** (`InviteWizard.tsx`):
+- Replaced old simple role+phone dialog with 5-step wizard
+- Step 1: Role selector + role summary + phone/email/note
+- Step 2: Access plan summary showing preset permissions by module
+- Step 3: Permission packs (5 cards with Add buttons)
+- Step 4: Risk review (risk badges, critical confirmations, Generate Link button)
+- Step 5: Generated link with copy button + expiry warning
+- Portal-rendered to escape Bento scroll container
+
+**3. UI polish**:
+- CoverageHealth: replaced text `✗` marker with `XCircle` Lucide icon
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/services/staff-invite.service.ts` | Upgraded sanitizer to support granular permissions, role presets, blocked dangerous keys |
+| `client/src/components/admin/InviteWizard.tsx` | NEW: 5-step invite wizard with permission packs, risk review, link generation |
+| `client/src/components/admin/CoverageHealth.tsx` | Replaced text symbol with XCircle Lucide icon |
+| `client/src/pages/admin/bento/tabs/UsersTab.tsx` | Replaced old invite dialog with InviteWizard |
+
+#### Permission Safety
+
+| Rule | Implementation |
+|------|---------------|
+| `settings.manage` blocked | Stripped in `BLOCKED_GRANULAR` |
+| `users.inviteStaff` blocked | Stripped in `BLOCKED_GRANULAR` |
+| `users.editPermissions` blocked | Stripped in `BLOCKED_GRANULAR` |
+| `users.deactivate` blocked | Stripped in `BLOCKED_GRANULAR` |
+| Legacy `*` blocked | Stripped in `BLOCKED_LEGACY` |
+| Legacy `users`/`settings`/`systemHealth`/`canDelete` blocked | Stripped in `BLOCKED_LEGACY` |
+| Empty permissions → role preset | Auto-applied via `ROLE_PRESET_MAP` |
+| Re-sanitization on accept | Same function called in `acceptStaffInvite()` |
+
+#### Functional QA (13/13 pass)
+
+| Test | Result |
+|------|--------|
+| Driver default invite has pickup.viewAssigned | PASS |
+| Driver default invite has attendance.checkIn | PASS |
+| Driver + Service Reply pack includes serviceRequests.reply | PASS |
+| Driver + Service Reply pack includes serviceRequests.view | PASS |
+| Malicious settings.manage stripped | PASS |
+| Malicious users.inviteStaff stripped | PASS |
+| Malicious users.editPermissions stripped | PASS |
+| Legitimate pickup.viewAssigned retained | PASS |
+| Accepted user has serviceRequests.reply | PASS |
+| Accepted user blocked settings.manage | PASS |
+| Manager invite has 30+ granular perms | PASS |
+| Manager invite no wildcard | PASS |
+| Non-Super Admin create blocked (403) | PASS |
+
+#### Visual QA
+
+| Screen | Viewport | Result |
+|--------|----------|--------|
+| Invite wizard Step 1 (Role) | Desktop 1440 | PASS — role dropdown, summary, fields |
+| Invite wizard Step 3 (Packs) | Desktop 1440 | PASS — 5 pack cards with Add buttons |
+| Invite wizard Step 4 (Risk Review) | Desktop 1440 | PASS — risk badges, Generate Link button |
+| Invite wizard Step 1 | Mobile 390 | PASS — portal overlay, no overflow |
+
+#### Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Backward Compatibility
+
+- Existing pending invites with legacy permissions still work (accept flow detects no `.` keys → applies role preset)
+- Existing accepted users unaffected
+- Old manual permission editing via Permissions dialog remains as fallback
+
+#### Phase 16G Hotfix — React State + Text Polish + QA Rule
+
+**React fix:** Moved `setState` during render in `InviteWizard.tsx` into `useEffect` (catalog/role dependency).
+
+**Text polish:** Replaced emoji `⚠` and `⚡` symbols in `PermissionDesigner.tsx` with `AlertTriangle` Lucide icons. CoverageHealth `✗` text was already fixed to `XCircle` in Phase 16G.
+
+**Visual QA (Playwright — Browser-act unavailable due to Chrome session disconnect):**
+- Desktop 1440: Users tab loads, 0 console errors
+- Mobile 390: wizard portal overlay, no overflow, footer usable
+- Mobile 430: same clean layout, all fields visible
+
+**Build checks:** `tsc` PASS, `vite build` PASS, `git diff --check` PASS
+
+---
+
+#### Permanent QA Rule
+
+| Tool | Use For |
+|------|---------|
+| **Browser-act CLI** | Desktop 1440x900 visual/human QA (real Chrome) |
+| **Playwright MCP** | Mobile viewport QA (390x844, 430x932) |
+| **Playwright MCP** | Strict automated regression tests |
+
+- Do not use Playwright for desktop visual QA unless Browser-act is blocked/unavailable.
+- Do not claim mobile Browser-act QA unless Chrome DevTools device emulation was explicitly used.
+- Document when Browser-act is unavailable and Playwright was used as fallback.
+
+### Phase 16H — Full Permission System Regression QA (COMPLETE)
+
+Status: COMPLETE — **37/37 API tests pass, 0 console errors, desktop + mobile visual QA clean**
+
+#### API Regression (37/37 pass)
+
+| Section | Tests | Pass | Fail |
+|---------|-------|------|------|
+| 1. Backend enforcement (SA wildcard, Driver 403, legacy compat) | 13 | 13 | 0 |
+| 2. Permission Designer (catalog, profile, save, self-edit, invalid key, wildcard, coverage) | 7 | 7 | 0 |
+| 3. Invite Wizard (presets, packs, malicious strip, accept, SA reject, non-SA block) | 9 | 9 | 0 |
+| 4. Account/Settings separation (Driver/Tech/Cashier/SA access) | 8 | 8 | 0 |
+| **TOTAL** | **37** | **37** | **0** |
+
+Note: Initial run showed 3 failures due to test script using `.items` on an array API response. After fixing the test lookup, all 37 pass. No code changes needed.
+
+#### Visual QA
+
+| Screen | Tool | Viewport | Result |
+|--------|------|----------|--------|
+| Users tab + Coverage Health | Browser-act | Desktop 1440 | PASS |
+| Invite wizard portal | Browser-act | Desktop 1440 | Wizard state confirmed open, but portal content not captured in Browser-act screenshot (known limitation) |
+| Users tab + staff cards | Playwright | Mobile 390 | PASS — no overflow, bottom dock visible |
+| Invite wizard portal | Playwright | Mobile 390 | PASS — portal overlay, footer usable |
+| Permission Designer portal | Playwright | Mobile 430 | PASS — preset cards, progress bar, no overflow |
+| Console errors | Playwright | All viewports | 0 errors across entire session |
+
+#### Browser-act Limitation
+
+Browser-act screenshots do not capture React `createPortal` content rendered to `document.body`. The wizard/designer portals are confirmed functional via Browser-act's `state` command (which reads the full DOM), but the screenshot only shows the underlying page. Playwright captures portals correctly.
+
+#### Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Bugs Found
+
+None. All 3 initial test failures were test-script bugs (wrong API response shape), not code bugs.
+
+#### Final Verdict
+
+**GO** — The full permission system (Phases 16A–16G) is regression-tested and release-ready:
+- Backend enforcement: 6 critical route groups protected with backward-compatible granular middleware
+- Permission Designer: 6-step visual wizard for existing staff
+- Invite Wizard: 5-step wizard with granular permissions, packs, risk review
+- Account/Settings separation: clear labels, correct access controls
+- Coverage Health: real-time dashboard with missing/single-person warnings
+- 67 granular permissions across 20 modules
+- Legacy compatibility maintained through LEGACY_TO_GRANULAR map
+
+### Phase 17A — Safe Repo Cleanliness Cleanup (COMPLETE)
+
+Status: COMPLETE — **15 junk files deleted, .gitignore hardened, dev-chatter comment removed, no behavior changes**
+
+#### .gitignore Additions
+
+```
+cookies-*.txt
+*_cookies.txt
+client/dist-check/
+```
+
+#### Deleted Local Artifacts (untracked)
+
+| File | Reason |
+|------|--------|
+| `cookies.txt` | Session cookie file — security risk |
+| `cookies-admin.txt` | Session cookie file |
+| `cookies-driver.txt` | Session cookie file |
+| `cookies-driver2.txt` | Session cookie file |
+| `cookies-gd.txt` | Session cookie file |
+| `cookies-od.txt` | Session cookie file |
+| `cookies-tmp.txt` | Session cookie file |
+| `cust_cookies.txt` | Customer session cookie file |
+| `karim_cookies.txt` | Test customer session cookie file |
+| `client/dist-check/` | Local build artifact directory |
+
+#### Deleted Tracked Orphan Files
+
+| File | Verified Unused | Reason |
+|------|-----------------|--------|
+| `main.py` | No runtime imports (only benchmark JSON refs) | Python stub from early project |
+| `server/routes/refactor_payroll.py` | Zero references | Python refactor scratch file |
+| `server/routes.ts_snippet` | Zero references | Code snippet, not a module |
+| `server/test_audit.ts` | Zero references | Test scratch file |
+| `client/src/pages/admin/bento/DesignConceptShell.demo.tsx` | Only in PROJECT_MEMORY.md | Demo file, not imported |
+| `client/src/lib/admin-query-options.ts` | Zero references | Unused query options file |
+
+#### Dev-Chatter Comment Removed
+
+`ServiceRequestsTab.tsx:2094` — removed a 4-line thinking-out-loud JSX comment about rollback state management. Hidden input element preserved; behavior unchanged.
+
+#### Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Not Changed
+
+- No production behavior modified
+- No large component refactors
+- Unified Flow Plan.md preserved
+- mock-data.ts not renamed
+- design_references not moved
+
+### Phase 17B — Planning Docs + Source Tree Hygiene Audit (COMPLETE)
+
+Status: COMPLETE — **audit only, no code changes**
+
+---
+
+#### 1. Root Planning Docs
+
+| File | Size | Last Modified | Status | Recommendation |
+|------|------|---------------|--------|----------------|
+| `Unified Flow Plan.md` | 362 KB | Active (today) | **Active** — implementation ledger | Stay root. Do not move during active phases. |
+| `Customer Portal Unified Flow.md` | 11 KB | Jun 26 | **Active** — referenced by phase instructions | Stay root until portal work completes. |
+| `AGENTS.md` | 3 KB | Jun 26 | **Active** — agent instruction file | Stay root. |
+| `rules.md` | 3 KB | Jun 26 | **Active** — build rules | Stay root. |
+| `README.md` | 137 B | Jun 17 | **Active** — standard readme | Stay root. |
+| `PROJECT_MEMORY.md` | 85 KB | May 27 | **Stale** — last touched 33 days ago | Move to `docs/archive/` in Phase 17C. |
+| `HUMAN_READY_AUDIT.md` | 71 KB | Jun 2 | **Stale** — pre-Phase 15 snapshot | Move to `docs/archive/`. |
+| `AUDIT_STATUS.md` | 4 KB | Jun 1 | **Stale** — pre-onboarding checklist | Move to `docs/archive/`. |
+| `SESSION_HANDOFF.md` | 4 KB | May 30 | **Stale** — session handoff note | Move to `docs/archive/`. |
+| `HANDOFF_PAYMENTS_FINANCE.md` | 5 KB | Jun 2 | **Stale** — payment handoff | Move to `docs/archive/`. |
+
+---
+
+#### 2. design_references
+
+- **Location**: `client/src/design_references/`
+- **Files**: 74 (HTML mockups + PNG screenshots in 37 subfolders)
+- **Imported by code**: No — zero references in `*.ts`/`*.tsx`/`*.json`
+- **Included in Vite build**: No — not imported, so tree-shaken out
+- **Risk of moving now**: Low — no runtime dependency
+- **Recommendation**: Move to `docs/design-references/` in Phase 17C. Not urgent.
+
+---
+
+#### 3. mock-data.ts
+
+- **Location**: `client/src/lib/mock-data.ts`
+- **Exports**: 9 (`products`, `jobs`, `inventoryItems`, `challans`, `financeRecords`, `navItems`, `adminNavGroups`, `adminNavItems`, `images`)
+
+| Export | Used By | Status |
+|--------|---------|--------|
+| `adminNavGroups` | `AdminLayout.tsx` | **Active** — sidebar navigation |
+| `navItems` | `PublicLayout.tsx` | **Active** — public site nav |
+| `images` | `about.tsx`, `home.tsx`, `login.tsx`, `my-profile.tsx`, `PublicLayout.tsx` | **Active** — brand assets |
+| `adminNavItems` | Derived from `adminNavGroups` | **Active** (indirect) |
+| `products` | None | **Dead** — unused mock data |
+| `jobs` | None | **Dead** — unused mock data |
+| `inventoryItems` | None | **Dead** — unused mock data |
+| `challans` | None | **Dead** — unused mock data |
+| `financeRecords` | None | **Dead** — unused mock data |
+
+- **Filename misleading**: Yes — contains real config (`navItems`, `images`, `adminNavGroups`) mixed with dead mock arrays
+- **Recommended plan** (Phase 17C):
+  1. Delete 5 dead exports (`products`, `jobs`, `inventoryItems`, `challans`, `financeRecords`)
+  2. Rename file to `app-config.ts` or `static-config.ts`
+  3. Update 6 import paths
+
+---
+
+#### 4. Largest Files
+
+| Rank | File | Lines | Area | Split Risk | Recommendation |
+|------|------|-------|------|------------|----------------|
+| 1 | `shared/schema.ts` | 2,698 | DB schema + types | Medium | Split types to `shared/types.ts` later |
+| 2 | `ServiceRequestsTab.tsx` | 2,220 | Admin SR tab | High | Complex state; split after feature freeze |
+| 3 | `CorporateRepairsTab.tsx` | 1,924 | B2B repairs | Medium | Isolated; can split dialogs out |
+| 4 | `PosTab.tsx` | 1,762 | POS | High | Cart + payment + register state coupled |
+| 5 | `home.tsx` | 1,756 | Public landing | Low | Marketing page; low change frequency |
+| 6 | `ai.service.ts` | 1,694 | AI/Brain | Medium | Can extract prompt templates |
+| 7 | `track-order-detail.tsx` | 1,509 | Customer tracking | Low | Stable; rarely changed |
+| 8 | `my-profile.tsx` | 1,435 | Customer profile | Low | Stable |
+| 9 | `GlobalSearch.tsx` | 1,318 | Admin search | Medium | Can extract result renderers |
+| 10 | `service-requests.routes.ts` | 1,301 | SR API | Medium | Can extract helpers |
+
+---
+
+#### 5. Type Safety Audit
+
+| Pattern | Client | Server | Total |
+|---------|--------|--------|-------|
+| `as any` | ~38 | ~168 | **~206** |
+| `@ts-ignore` | 0 | 3 | **3** |
+| `@ts-expect-error` | 0 | 2 | **2** |
+
+**Top `as any` files (server):**
+- `jobs.routes.ts`: 33
+- `customer-repair-journey.service.ts`: 21
+- `corporate-portal.routes.ts`: 11
+- `ai.routes.ts`: 10
+- `firebase-auth.routes.ts`: 9
+
+**Recommended low-risk cleanup (later):**
+- `client/src/lib/queryClient.ts` (8) — type query defaults
+- `server/routes/auth.routes.ts` (3) — our own code, easy to type
+- `shared/permission-catalog.ts` helpers — already well-typed
+
+---
+
+#### 6. Recommended Phase 17C Plan
+
+**Safe now (post-release):**
+1. Move 5 stale planning docs to `docs/archive/`
+2. Move `client/src/design_references/` to `docs/design-references/`
+3. Delete 5 dead mock-data exports, rename file to `app-config.ts`
+4. Update 6 import paths
+
+**Must wait (after feature freeze):**
+- Large file splits (ServiceRequestsTab, PosTab, CorporateRepairsTab)
+- `as any` cleanup in jobs.routes.ts (33 instances — needs careful typing)
+- schema.ts split (types vs table defs)
+
+---
+
+#### Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+
+#### Code Changes
+
+None — audit only.
+
+### Phase 17C — Safe Docs + Source Hygiene Move (COMPLETE)
+
+Status: COMPLETE — **5 docs archived, 74 design files relocated, mock-data renamed + cleaned, 6 imports updated**
+
+#### 1. Stale Docs Archived
+
+Moved to `docs/archive/`:
+
+| File | Size | Last Modified |
+|------|------|---------------|
+| `PROJECT_MEMORY.md` | 85 KB | May 27 |
+| `HUMAN_READY_AUDIT.md` | 71 KB | Jun 2 |
+| `AUDIT_STATUS.md` | 4 KB | Jun 1 |
+| `SESSION_HANDOFF.md` | 4 KB | May 30 |
+| `HANDOFF_PAYMENTS_FINANCE.md` | 5 KB | Jun 2 |
+
+Root still has: `Unified Flow Plan.md`, `Customer Portal Unified Flow.md`, `AGENTS.md`, `rules.md`, `README.md`
+
+#### 2. Design References Relocated
+
+Moved `client/src/design_references/` (74 files) → `docs/design-references/`
+
+Verified: zero code imports before move. Vite build unaffected.
+
+#### 3. mock-data.ts → app-config.ts
+
+| Action | Detail |
+|--------|--------|
+| Deleted 5 dead exports | `products`, `jobs`, `inventoryItems`, `challans`, `financeRecords` |
+| Kept 4 active exports | `navItems`, `adminNavGroups`, `adminNavItems`, `images` |
+| Renamed file | `mock-data.ts` → `app-config.ts` |
+| Updated 6 imports | `my-profile.tsx`, `PublicLayout.tsx`, `login.tsx`, `home.tsx`, `about.tsx`, `AdminLayout.tsx` |
+
+Verified: `rg "mock-data"` returns zero matches after update.
+
+#### Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |
+| `rg "mock-data" client` | 0 matches |
+| `rg "design_references" client` | 0 matches |
+
+#### Production Behavior
+
+Unchanged. No UI, API, or logic changes. Only file locations and dead code removal.
+
+---
+
+### Phase 15A — Repair Journey Profile Browser Redesign
+
+Status: COMPLETE
+
+#### What Changed
+
+The Admin Repair Journeys tab was rebuilt from a journey-record list into a customer profile browser:
+
+- Desktop now uses a profile list on the left and profile detail/index on the right.
+- Mobile now shows two compact customer profile cards per row.
+- Selecting a mobile profile opens a portaled native bottom sheet with `Active`, `History`, `Warranty`, and `Timeline` sub-tabs.
+- The first profile view is an index/overview; full journey detail appears only after selecting a specific repair/warranty/SR/job record.
+- Existing customer-visible update and schedule-confirm actions remain inside focused journey detail, not the profile list.
+
+#### Behavior Notes
+
+- Profiles sort by staff attention first, then latest activity.
+- Attention signals include active quotes, customer-question-like latest events, rejection/cancel activity, and active repair count.
+- Safe references are preserved: SR ticket, safe job/SR/quote suffix, device/model/serial; raw full IDs are not primary labels.
+- No backend changes were required; the existing enriched admin journey list and detail APIs were sufficient for this redesign.
+
+#### Files Changed
+
+| File | Change |
+|------|--------|
+| `client/src/pages/admin/bento/tabs/CustomerRepairJourneysTab.tsx` | Full profile-browser rewrite with desktop split view and mobile two-column profile cards + bottom-sheet profile index |
+| `docs/ADMIN_MOBILE_VISUAL_LEDGER.md` | Repair Journeys moved to `Patched Needs Retest` pending visual evidence |
+
+#### Required QA
+
+- Desktop 1440x900: profile list left, selected profile detail right, journey row selection reveals focused timeline/detail.
+- Mobile 390x844 / 430x932 / 584x918: two profile cards per row, no horizontal overflow, final card clears bottom dock, bottom sheet opens and scrolls cleanly.
+- Functional: search by customer/phone/model/serial/SR/job, recent activity sorting, source/warranty/quote/rejection indicators, no raw full UUID as primary label.
+
+#### QA Results
+
+- TypeScript: `npx tsc --noEmit --pretty false` — PASS
+- Build: `npx vite build --mode development` — PASS
+- Diff hygiene: `git diff --check` — PASS
+- Visual probe: desktop 1440x900 — PASS, no horizontal overflow, profile list/detail markers present.
+- Visual probe: mobile 390x844 / 430x932 / 584x918 — PASS, two profile cards per row, bottom sheet opens with Active/History/Warranty/Timeline, no horizontal overflow.
+- Evidence: `test-results/repair-journey-profile-browser/*`
+
+#### Current Verdict
+
+GO — Repair Journeys is now a native profile-browser tab with required mobile and desktop evidence.

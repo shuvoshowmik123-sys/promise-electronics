@@ -5,6 +5,7 @@ import { useModules } from "@/contexts/ModuleContext";
 import { TechLayout } from "./TechLayout";
 import { TechDashboard } from "@/pages/tech/TechDashboard";
 import { Loader2 } from "lucide-react";
+import { StaffOnboardingGuide } from "@/components/admin/StaffOnboardingGuide";
 
 function TechModuleGuard({ module, children }: { module: string, children: React.ReactNode }) {
     const { isEnabled } = useModules();
@@ -52,7 +53,6 @@ export function TechRouter() {
                         <TechDashboard />
                     </TechModuleGuard>
                 </Route>
-                {/* Add more tech-specific routes here as we build them out */}
                 <Route>
                     <div className="flex flex-col items-center justify-center min-h-[60vh]">
                         <h1 className="text-2xl font-bold text-slate-800 mb-2">404 - Tech Portal Module Not Found</h1>
@@ -60,6 +60,7 @@ export function TechRouter() {
                     </div>
                 </Route>
             </Switch>
+            <StaffOnboardingGuide />
         </TechLayout>
     );
 }

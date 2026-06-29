@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { useAdminAuth, getRoleLandingPath } from "@/contexts/AdminAuthContext";
 import { toast } from "sonner";
 import { Loader2, Lock, User, Zap, Eye, EyeOff, ShieldCheck } from "lucide-react";
 import { motion } from "framer-motion";
@@ -20,11 +20,7 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     if (!authLoading && isAuthenticated && user) {
-      if (user.role === 'Technician') {
-        setLocation("/tech");
-      } else {
-        setLocation("/admin");
-      }
+      setLocation(getRoleLandingPath(user.role));
     }
   }, [authLoading, isAuthenticated, user, setLocation]);
 
@@ -43,11 +39,7 @@ export default function AdminLoginPage() {
     try {
       const loggedInUser = await login(username, password, rememberMe);
       toast.success("Login successful!");
-      if (loggedInUser && loggedInUser.role === 'Technician') {
-        setLocation("/tech");
-      } else {
-        setLocation("/admin");
-      }
+      setLocation(getRoleLandingPath(loggedInUser.role));
     } catch (error: unknown) {
       setHasError(true);
       toast.error(error instanceof Error ? error.message : "Login failed");

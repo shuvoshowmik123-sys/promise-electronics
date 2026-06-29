@@ -8,7 +8,7 @@ import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { financeRepo, posRepo, userRepo } from '../repositories/index.js';
 import { insertChallanSchema } from '../../shared/schema.js';
-import { requireAdminAuth } from './middleware/auth.js';
+import { requireAdminAuth, requireGranularPermission } from './middleware/auth.js';
 
 const router = Router();
 
@@ -51,7 +51,7 @@ router.get('/api/challans/:id', async (req: Request, res: Response) => {
 /**
  * POST /api/challans - Create challan
  */
-router.post('/api/challans', async (req: Request, res: Response) => {
+router.post('/api/challans', requireGranularPermission('challans.manage'), async (req: Request, res: Response) => {
     try {
         const validated = insertChallanSchema.parse(req.body);
         const challan = await financeRepo.createChallan(validated);
@@ -64,7 +64,7 @@ router.post('/api/challans', async (req: Request, res: Response) => {
 /**
  * PATCH /api/challans/:id - Update challan
  */
-router.patch('/api/challans/:id', async (req: Request, res: Response) => {
+router.patch('/api/challans/:id', requireGranularPermission('challans.manage'), async (req: Request, res: Response) => {
     try {
         // Validate + whitelist fields (was raw req.body).
         const updates = insertChallanSchema.partial().parse(req.body);
@@ -84,7 +84,7 @@ router.patch('/api/challans/:id', async (req: Request, res: Response) => {
 /**
  * DELETE /api/challans/:id - Delete challan
  */
-router.delete('/api/challans/:id', async (req: Request, res: Response) => {
+router.delete('/api/challans/:id', requireGranularPermission('challans.manage'), async (req: Request, res: Response) => {
     try {
         const success = await financeRepo.deleteChallan(req.params.id);
         if (!success) {

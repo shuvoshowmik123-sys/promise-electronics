@@ -10,7 +10,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { Mail, Lock, User, Phone, ArrowLeft, Loader2, MapPin, ShieldCheck, Sparkles, Wrench, HelpCircle, MessageCircle } from "lucide-react";
-import { images } from "@/lib/mock-data";
+import { images } from "@/lib/app-config";
 
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";

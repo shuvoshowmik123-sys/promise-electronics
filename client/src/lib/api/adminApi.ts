@@ -661,7 +661,7 @@ export const adminUsersApi = {
         name: string;
         email: string;
         password: string;
-        role: "Super Admin" | "Manager" | "Cashier" | "Technician";
+        role: "Super Admin" | "Manager" | "Cashier" | "Technician" | "Driver";
         permissions?: string;
     }) =>
         fetchApi<SafeUser>("/admin/users", {
@@ -673,7 +673,7 @@ export const adminUsersApi = {
         name: string;
         email: string;
         password: string;
-        role: "Super Admin" | "Manager" | "Cashier" | "Technician";
+        role: "Super Admin" | "Manager" | "Cashier" | "Technician" | "Driver";
         status: "Active" | "Inactive";
         permissions: string;
     }>) =>
@@ -931,6 +931,95 @@ export interface LogisticsDriver {
     name: string;
     role: string;
 }
+
+export interface StaffInvite {
+    id: string;
+    role: string;
+    permissions: string;
+    phone: string | null;
+    email: string | null;
+    note: string | null;
+    status: string;
+    expiresAt: string;
+    createdBy: string;
+    redeemedBy: string | null;
+    createdAt: string;
+    redeemedAt: string | null;
+    revokedAt: string | null;
+    regeneratedFromId: string | null;
+}
+
+export interface StaffInviteCreateResponse {
+    invite: StaffInvite;
+    rawToken: string;
+    setupUrl: string;
+}
+
+export const staffInvitesApi = {
+    list: () => fetchApi<StaffInvite[]>("/admin/staff-invites"),
+    create: (data: { role: string; permissions: string; phone?: string; email?: string; note?: string }) =>
+        fetchApi<StaffInviteCreateResponse>("/admin/staff-invites", { method: "POST", body: JSON.stringify(data) }),
+    revoke: (id: string) =>
+        fetchApi<{ success: boolean }>(`/admin/staff-invites/${id}/revoke`, { method: "POST" }),
+    regenerate: (id: string) =>
+        fetchApi<StaffInviteCreateResponse>(`/admin/staff-invites/${id}/regenerate`, { method: "POST" }),
+    getSetup: (token: string) =>
+        fetchApi<{ role: string; phone?: string; email?: string; note?: string; status: string; expired: boolean; expiresAt?: string; message?: string }>(`/admin/staff-invites/setup/${token}`),
+    acceptSetup: (token: string, data: { name: string; username: string; password: string; phone?: string; email?: string }) =>
+        fetchApi<{ success: boolean; message: string }>(`/admin/staff-invites/setup/${token}`, { method: "POST", body: JSON.stringify(data) }),
+};
+
+export const accountApi = {
+    get: () => fetchApi<{ id: string; username: string; name: string; email: string | null; phone: string | null; role: string; status: string; permissions: string; joinedAt: string; profileImageUrl: string | null }>("/admin/account"),
+    updateProfile: (data: { name?: string; email?: string | null; phone?: string | null }) =>
+        fetchApi<Record<string, any>>("/admin/account/profile", { method: "PATCH", body: JSON.stringify(data) }),
+    changePassword: (data: { currentPassword: string; newPassword: string; confirmPassword: string }) =>
+        fetchApi<{ success: boolean; message: string }>("/admin/account/change-password", { method: "POST", body: JSON.stringify(data) }),
+    completeOnboarding: () =>
+        fetchApi<{ success: boolean }>("/admin/account/onboarding-complete", { method: "POST" }),
+};
+
+export interface PermissionProfileResponse {
+    id: string;
+    name: string;
+    role: string;
+    storedPermissions: Record<string, any>;
+    legacyKeys: string[];
+    granularDirect: string[];
+    granularFromLegacy: string[];
+    effectiveGranular: string[];
+    riskSummary: { low: number; medium: number; high: number; critical: number };
+    deprecatedPresent: string[];
+    suggestedPreset: string | null;
+}
+
+export interface CoverageResponse {
+    coverage: Record<string, { permission: string; users: { id: string; name: string; role: string }[] }>;
+    missing: string[];
+    singlePerson: string[];
+    covered: string[];
+    deprecatedUsers: { id: string; name: string; role: string }[];
+    healthPercentage: number;
+    totalCritical: number;
+}
+
+export interface PreviewResponse {
+    permissions: string[];
+    riskSummary: { low: number; medium: number; high: number; critical: number };
+    consequences: { key: string; risk: string; consequence: string }[];
+    criticalConfirmations: { key: string; risk: string; consequence: string }[];
+    summary: string;
+}
+
+export const permissionsApi = {
+    getCatalog: () => fetchApi<{ catalog: any[]; modules: any[]; presets: Record<string, string[]>; packs: Record<string, any>; coverageCritical: string[]; deprecated: string[] }>("/admin/permissions/catalog"),
+    getUserProfile: (userId: string) => fetchApi<PermissionProfileResponse>(`/admin/users/${userId}/permission-profile`),
+    saveUserProfile: (userId: string, permissions: Record<string, boolean>) =>
+        fetchApi<{ success: boolean; permissionCount: number }>(`/admin/users/${userId}/permission-profile`, { method: "PATCH", body: JSON.stringify({ permissions }) }),
+    getCoverage: () => fetchApi<CoverageResponse>("/admin/permissions/coverage"),
+    preview: (data: { basePreset?: string; customPacks?: string[]; manualPermissions?: string[] }) =>
+        fetchApi<PreviewResponse>("/admin/permissions/preview", { method: "POST", body: JSON.stringify(data) }),
+};
 
 export const adminLogisticsApi = {
     listDrivers: () => fetchApi<LogisticsDriver[]>("/admin/logistics-tasks/drivers"),

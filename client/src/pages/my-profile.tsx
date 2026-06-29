@@ -21,7 +21,7 @@ import { motion } from "framer-motion";
 import { useToast } from "@/hooks/use-toast";
 import { PillButton, SegmentedToggle, StatusChip, RefBadge, SectionEyebrow } from "@/components/customer/mobile-kit";
 import type { StatusTone } from "@/components/customer/mobile-kit";
-import { images } from "@/lib/mock-data";
+import { images } from "@/lib/app-config";
 import {
   User,
   Phone,

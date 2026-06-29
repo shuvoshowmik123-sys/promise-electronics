@@ -6,7 +6,7 @@ import ExcelJS from "exceljs";
 import { simpleCache } from "../utils/cache.js";
 import { getJobOverview } from "../repositories/analytics.repository.js";
 import { logRouteError } from "../utils/route-error.js";
-import { requireAdminAuth } from "./middleware/auth.js";
+import { requireAdminAuth, requireAnyGranularPermission } from "./middleware/auth.js";
 
 const router = Router();
 
@@ -15,6 +15,7 @@ const router = Router();
 // session auth" intent below — anyone could read shop revenue. Require an admin
 // session for the whole router. (All consumers are admin-panel tabs.)
 router.use(requireAdminAuth);
+router.use(requireAnyGranularPermission(["analytics.view", "reports.view"]));
 
 // GET /analytics/workload — Tech Workload: all active jobs grouped by technician
 // Uses admin session auth (NOT corporate portal auth). Returns combined retail + corporate.

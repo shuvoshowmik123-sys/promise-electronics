@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { navItems, images } from "@/lib/mock-data";
+import { navItems, images } from "@/lib/app-config";
 import { CustomerLanguageProvider } from "@/contexts/CustomerLanguageContext";
 import { Search, ShoppingCart, User, Menu, LogOut, UserCircle, Globe, Shield, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 import { Button } from "@/components/ui/button";

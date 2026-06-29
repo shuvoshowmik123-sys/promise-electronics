@@ -3,7 +3,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, CheckCircle2, Clock, ShieldCheck, Wrench, Package, Users, ChevronLeft, ChevronRight, ShoppingCart, MessageSquare, Calendar, Search, Truck, MapPin, Phone, Mail, Star, HelpCircle, Award, Zap, Heart, Power, MonitorOff, Maximize, VolumeX, WifiOff, AlignJustify, type LucideIcon } from "lucide-react";
 import { Link, useLocation } from "wouter";
-import { images } from "@/lib/mock-data";
+import { images } from "@/lib/app-config";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence, useInView, useMotionValue, useTransform, animate } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";

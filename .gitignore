@@ -53,8 +53,11 @@ build_error.log
 *.tar.gz
 sqlite.db
 cookies.txt
+cookies-*.txt
+*_cookies.txt
 login.json
 pos_data*.json
+client/dist-check/
 
 # OS files
 .DS_Store

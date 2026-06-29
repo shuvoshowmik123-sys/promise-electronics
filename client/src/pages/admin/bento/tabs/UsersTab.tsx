@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
     Search, UserPlus, MoreHorizontal, Shield, Mail, Loader2,
     Trash2, Edit, Eye, EyeOff, Users, UserCheck, UserCog, HardHat,
-    Activity, Zap
+    Activity, Zap, Truck, Link, Copy, RefreshCw, X, Clock, CheckCircle
 } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { adminUsersApi, type SafeUser } from "@/lib/api";
+import { adminUsersApi, staffInvitesApi, type SafeUser, type StaffInvite } from "@/lib/api";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -62,8 +62,11 @@ import {
     AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { CoverageHealth } from "@/components/admin/CoverageHealth";
+import { PermissionDesigner } from "@/components/admin/PermissionDesigner";
+import { InviteWizard } from "@/components/admin/InviteWizard";
 
-const ROLES = ["Super Admin", "Manager", "Cashier", "Technician"] as const;
+const ROLES = ["Super Admin", "Manager", "Cashier", "Technician", "Driver"] as const;
 
 const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
     "Super Admin": {
@@ -103,6 +106,15 @@ const DEFAULT_PERMISSIONS: Record<string, UserPermissions> = {
         canViewFullJobDetails: false, canPrintJobTickets: false, process_payment: false,
         canAssignTechnician: false, canSetPriority: false, canSetDeadline: false,
         canSetWarranty: false, canViewCustomerPhone: false, canAddAssistedBy: true,
+    },
+    "Driver": {
+        dashboard: false, jobs: false, inventory: false, pos: false, challans: false,
+        finance: false, attendance: true, reports: false, pickup: true, serviceRequests: false,
+        orders: false, technician: false, inquiries: false, systemHealth: false,
+        users: false, settings: false, canCreate: false, canEdit: true, canDelete: false, canExport: false,
+        canViewFullJobDetails: false, canPrintJobTickets: false, process_payment: true,
+        canAssignTechnician: false, canSetPriority: false, canSetDeadline: false,
+        canSetWarranty: false, canViewCustomerPhone: true, canAddAssistedBy: false,
     },
 };
 
@@ -160,17 +172,21 @@ export default function UsersTab() {
     const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
     const [selectedUser, setSelectedUser] = useState<SafeUser | null>(null);
     const [showPassword, setShowPassword] = useState(false);
+    const [isInviteOpen, setIsInviteOpen] = useState(false);
+    const [showLinkDialog, setShowLinkDialog] = useState(false);
+    const [designerTarget, setDesignerTarget] = useState<{ id: string; name: string; role: string } | null>(null);
     const isMobile = useIsMobile();
 
     useEffect(() => {
-        const anyDialogOpen = isCreateOpen || isEditOpen || isDeleteOpen || isPermissionsOpen;
+        const anyDialogOpen = isCreateOpen || isEditOpen || isDeleteOpen || isPermissionsOpen || isInviteOpen || showLinkDialog;
+        // eslint-disable-next-line -- all dialog states used in deps below
         if (isMobile && anyDialogOpen) {
             window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
             return () => {
                 window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
             };
         }
-    }, [isCreateOpen, isEditOpen, isDeleteOpen, isPermissionsOpen, isMobile]);
+    }, [isCreateOpen, isEditOpen, isDeleteOpen, isPermissionsOpen, isInviteOpen, showLinkDialog, isMobile]);
 
     const [formData, setFormData] = useState({
         username: "",
@@ -192,12 +208,67 @@ export default function UsersTab() {
 
     const [editPermissions, setEditPermissions] = useState<UserPermissions>({});
 
+    // Invite state
+    const [inviteRole, setInviteRole] = useState<string>("Cashier");
+    const [invitePhone, setInvitePhone] = useState("");
+    const [inviteEmail, setInviteEmail] = useState("");
+    const [inviteNote, setInviteNote] = useState("");
+    const [copiedLink, setCopiedLink] = useState<string | null>(null);
+
     const { data: users = [], isLoading, isError, error, refetch } = useQuery({
         queryKey: ["admin-users"],
         queryFn: adminUsersApi.getAll,
         enabled: !!currentUser,
         retry: false,
     });
+
+    const isSuperAdminEarly = currentUser?.role === "Super Admin";
+    const { data: invites = [] } = useQuery({
+        queryKey: ["staff-invites"],
+        queryFn: staffInvitesApi.list,
+        enabled: !!currentUser && isSuperAdminEarly,
+    });
+
+    const createInviteMutation = useMutation({
+        mutationFn: staffInvitesApi.create,
+        onSuccess: (result) => {
+            queryClient.invalidateQueries({ queryKey: ["staff-invites"] });
+            setIsInviteOpen(false);
+            const fullUrl = `${window.location.origin}${result.setupUrl}`;
+            setCopiedLink(fullUrl);
+            setShowLinkDialog(true);
+            setInviteRole("Cashier");
+            setInvitePhone("");
+            setInviteEmail("");
+            setInviteNote("");
+        },
+        onError: (e: Error) => toast.error(e.message || "Failed to create setup link"),
+    });
+
+    const revokeInviteMutation = useMutation({
+        mutationFn: staffInvitesApi.revoke,
+        onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["staff-invites"] }); toast.success("Setup link revoked"); },
+        onError: (e: Error) => toast.error(e.message),
+    });
+
+    const regenerateInviteMutation = useMutation({
+        mutationFn: staffInvitesApi.regenerate,
+        onSuccess: (result) => {
+            queryClient.invalidateQueries({ queryKey: ["staff-invites"] });
+            const fullUrl = `${window.location.origin}${result.setupUrl}`;
+            setCopiedLink(fullUrl);
+            setShowLinkDialog(true);
+            toast.success("New setup link generated");
+        },
+        onError: (e: Error) => toast.error(e.message),
+    });
+
+    const copyLink = async () => {
+        if (!copiedLink) return;
+        try { await navigator.clipboard.writeText(copiedLink); toast.success("Link copied!"); } catch { toast.error("Copy failed"); }
+    };
+
+    const inviteRoles = ["Manager", "Cashier", "Technician", "Driver"] as const;
 
     const createMutation = useMutation({
         mutationFn: adminUsersApi.create,
@@ -374,7 +445,7 @@ export default function UsersTab() {
                 items={[
                     { label: "Total", value: users.length, meta: "System accounts", icon: <Users className="h-4 w-4" />, tone: "blue" },
                     { label: "Active", value: users.filter(u => (u.employmentStatus === "active" || (!u.employmentStatus && u.status === "Active"))).length, meta: "Available", icon: <UserCheck className="h-4 w-4" />, tone: "emerald" },
-                    { label: "Admins", value: users.filter(u => u.role === "Super Admin").length, meta: "Full access", icon: <UserCog className="h-4 w-4" />, tone: "violet" },
+                    { label: "Drivers", value: users.filter(u => u.role === "Driver").length, meta: "Pickup staff", icon: <Truck className="h-4 w-4" />, tone: "violet" },
                     { label: "Techs", value: users.filter(u => u.role === "Technician").length, meta: "Repair staff", icon: <HardHat className="h-4 w-4" />, tone: "amber" },
                 ]}
             />
@@ -407,11 +478,11 @@ export default function UsersTab() {
                     <BentoCard
                         variant="vibrant"
                         className="bg-gradient-to-br from-violet-500 to-violet-600 shadow-violet-500/30 h-full"
-                        title="Admins"
-                        icon={<UserCog size={20} className="text-white" />}
+                        title="Drivers"
+                        icon={<Truck size={20} className="text-white" />}
                     >
-                        <div className="text-3xl font-bold text-white mt-2">{users.filter(u => u.role === "Super Admin").length}</div>
-                        <div className="text-xs font-medium text-white/80 mt-1">Full system access</div>
+                        <div className="text-3xl font-bold text-white mt-2">{users.filter(u => u.role === "Driver").length}</div>
+                        <div className="text-xs font-medium text-white/80 mt-1">Pickup & delivery staff</div>
                     </BentoCard>
                 </motion.div>
                 <motion.div variants={itemVariants}>
@@ -426,6 +497,13 @@ export default function UsersTab() {
                     </BentoCard>
                 </motion.div>
             </div>
+
+            {/* COVERAGE HEALTH (Super Admin only) */}
+            {isSuperAdmin && (
+                <motion.div variants={itemVariants}>
+                    <CoverageHealth />
+                </motion.div>
+            )}
 
             {/* MAIN CONTENT Area */}
             <motion.div variants={itemVariants}>
@@ -450,9 +528,9 @@ export default function UsersTab() {
                                 />
                             </div>
                             {isSuperAdmin && (
-                                <Button className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20 gap-2" onClick={() => setIsCreateOpen(true)}>
-                                    <UserPlus className="w-4 h-4" />
-                                    <span className="hidden sm:inline">Add User</span>
+                                <Button className="h-10 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20 gap-2" onClick={() => setIsInviteOpen(true)}>
+                                    <Link className="w-4 h-4" />
+                                    <span className="hidden sm:inline">Create Setup Link</span>
                                 </Button>
                             )}
                         </div>
@@ -493,6 +571,7 @@ export default function UsersTab() {
                                                         "p-1.5 rounded-lg",
                                                         user.role === "Super Admin" ? "bg-indigo-50 text-indigo-600" :
                                                             user.role === "Technician" ? "bg-orange-50 text-orange-600" :
+                                                                user.role === "Driver" ? "bg-blue-50 text-blue-600" :
                                                                 "bg-slate-100 text-slate-600"
                                                     )}>
                                                         <Shield size={14} />
@@ -525,6 +604,11 @@ export default function UsersTab() {
                                                         {isSuperAdmin && (
                                                             <DropdownMenuItem onClick={() => openPermissionsDialog(user)} className="rounded-xl flex items-center gap-2 py-2.5 px-3 cursor-pointer">
                                                                 <Shield className="w-4 h-4 text-violet-500" /> Permissions
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        {isSuperAdmin && user.id !== currentUser?.id && user.role !== "Super Admin" && (
+                                                            <DropdownMenuItem onClick={() => setDesignerTarget({ id: user.id, name: user.name, role: user.role })} className="rounded-xl flex items-center gap-2 py-2.5 px-3 cursor-pointer">
+                                                                <UserCog className="w-4 h-4 text-blue-500" /> Edit Access
                                                             </DropdownMenuItem>
                                                         )}
                                                         {(isSuperAdmin || hasPermission("canEdit")) && (
@@ -587,14 +671,16 @@ export default function UsersTab() {
                                     >
                                         Edit
                                     </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        className="px-3 rounded-xl h-9 border-slate-200 text-slate-600"
-                                        onClick={() => openPermissionsDialog(user)}
-                                    >
-                                        <Shield size={16} />
-                                    </Button>
+                                    {isSuperAdmin && user.id !== currentUser?.id && user.role !== "Super Admin" && (
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="px-3 rounded-xl h-9 border-blue-100 text-blue-600 hover:bg-blue-50"
+                                            onClick={() => setDesignerTarget({ id: user.id, name: user.name, role: user.role })}
+                                        >
+                                            <UserCog size={16} />
+                                        </Button>
+                                    )}
                                     {isSuperAdmin && user.id !== currentUser?.id && (
                                         <Button
                                             variant="outline"
@@ -1004,6 +1090,85 @@ export default function UsersTab() {
                     </AlertDialogFooter>
                 </AlertDialogContent>
             </AlertDialog>
+
+            {/* SETUP LINK INVITES LIST */}
+            {isSuperAdmin && (
+                <motion.div variants={itemVariants}>
+                    <BentoCard variant="ghost" className="bg-white border-slate-200 shadow-sm mt-6" disableHover>
+                        <div className="flex items-center justify-between mb-4">
+                            <h3 className="text-lg font-bold text-slate-800">Setup Links</h3>
+                            <Badge variant="outline" className="text-xs">{invites.filter(i => i.status === "pending" && new Date(i.expiresAt) > new Date()).length} active</Badge>
+                        </div>
+                        {invites.length === 0 ? (
+                            <div className="py-8 text-center text-sm text-slate-400">
+                                <Link className="mx-auto h-8 w-8 text-slate-300 mb-2" />
+                                <p>No setup links yet. Create one to onboard new staff.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {invites.slice(0, 20).map((inv) => {
+                                    const expired = new Date(inv.expiresAt) < new Date();
+                                    const isPending = inv.status === "pending" && !expired;
+                                    const statusLabel = isPending ? "Pending" : inv.status === "accepted" ? "Accepted" : expired && inv.status === "pending" ? "Expired" : inv.status.charAt(0).toUpperCase() + inv.status.slice(1);
+                                    return (
+                                        <div key={inv.id} className={cn("rounded-xl border p-3", isPending ? "border-blue-200 bg-blue-50/30" : inv.status === "accepted" ? "border-emerald-100 bg-emerald-50/30" : "border-slate-100")}>
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="min-w-0">
+                                                    <div className="flex flex-wrap items-center gap-1.5">
+                                                        <Badge variant="outline" className={cn("h-5 px-1.5 text-[10px]", inv.status === "accepted" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : isPending ? "bg-blue-50 text-blue-700 border-blue-200" : "bg-slate-100 text-slate-500")}>{statusLabel}</Badge>
+                                                        <span className="text-sm font-bold text-slate-700">{inv.role}</span>
+                                                        {inv.phone && <span className="text-xs text-slate-400 truncate">{inv.phone}</span>}
+                                                        {inv.email && <span className="text-xs text-slate-400 truncate">{inv.email}</span>}
+                                                    </div>
+                                                    {inv.note && <p className="text-[11px] text-slate-500 mt-1 truncate">{inv.note}</p>}
+                                                    <p className="text-[10px] text-slate-400 mt-1">
+                                                        {format(new Date(inv.createdAt), "MMM d, h:mm a")}
+                                                        {isPending && <> · expires {format(new Date(inv.expiresAt), "h:mm:ss a")}</>}
+                                                        {inv.status === "accepted" && inv.redeemedAt && <> · used {format(new Date(inv.redeemedAt), "MMM d")}</>}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    {(isPending || expired || inv.status === "regenerated" || inv.status === "revoked") && (
+                                                        <Button size="sm" variant="outline" className="h-7 text-[11px] rounded-lg px-2" onClick={() => regenerateInviteMutation.mutate(inv.id)} disabled={regenerateInviteMutation.isPending}>
+                                                            <RefreshCw className="h-3 w-3 mr-1" />New
+                                                        </Button>
+                                                    )}
+                                                    {isPending && (
+                                                        <Button size="sm" variant="outline" className="h-7 text-[11px] rounded-lg px-2 text-rose-600 border-rose-200" onClick={() => revokeInviteMutation.mutate(inv.id)} disabled={revokeInviteMutation.isPending}>
+                                                            <X className="h-3 w-3" />
+                                                        </Button>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                    </BentoCard>
+                </motion.div>
+            )}
+
+            {/* INVITE WIZARD */}
+            {isInviteOpen && (
+                <InviteWizard
+                    onClose={() => setIsInviteOpen(false)}
+                    onCreated={() => {
+                        queryClient.invalidateQueries({ queryKey: ["staffInvites"] });
+                        queryClient.invalidateQueries({ queryKey: ["permCoverage"] });
+                    }}
+                />
+            )}
+            {/* PERMISSION DESIGNER */}
+            {designerTarget && (
+                <PermissionDesigner
+                    userId={designerTarget.id}
+                    userName={designerTarget.name}
+                    userRole={designerTarget.role}
+                    onClose={() => setDesignerTarget(null)}
+                    onSaved={() => queryClient.invalidateQueries({ queryKey: ["permCoverage"] })}
+                />
+            )}
         </motion.div>
     );
 }

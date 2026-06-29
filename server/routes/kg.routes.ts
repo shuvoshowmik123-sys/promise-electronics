@@ -9,7 +9,7 @@
  * POST   /api/kg/test-extract     debug: extract entities from text
  */
 import { Router, type Request, type Response } from 'express';
-import { requireAdminAuth } from './middleware/auth.js';
+import { requireAdminAuth, requireGranularPermission } from './middleware/auth.js';
 import {
     addFact, listFacts, deleteFact, countFacts,
     bulkImportFacts, extractEntities, getRelevantFacts,
@@ -17,7 +17,7 @@ import {
 
 const router = Router();
 
-router.get('/api/kg/facts', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/kg/facts', requireAdminAuth, requireGranularPermission('aiBrain.view'), async (req: Request, res: Response) => {
     try {
         const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
         const offset = parseInt(req.query.offset as string) || 0;
@@ -29,7 +29,7 @@ router.get('/api/kg/facts', requireAdminAuth, async (req: Request, res: Response
     }
 });
 
-router.post('/api/kg/facts', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/kg/facts', requireAdminAuth, requireGranularPermission('aiBrain.manage'), async (req: Request, res: Response) => {
     try {
         const { subject, predicate, value, tags, confidence, expiresAt } = req.body;
         if (!subject || !predicate || !value) {
@@ -49,7 +49,7 @@ router.post('/api/kg/facts', requireAdminAuth, async (req: Request, res: Respons
     }
 });
 
-router.delete('/api/kg/facts/:id', requireAdminAuth, async (req: Request, res: Response) => {
+router.delete('/api/kg/facts/:id', requireAdminAuth, requireGranularPermission('aiBrain.manage'), async (req: Request, res: Response) => {
     try {
         await deleteFact(req.params.id);
         res.json({ success: true });
@@ -58,7 +58,7 @@ router.delete('/api/kg/facts/:id', requireAdminAuth, async (req: Request, res: R
     }
 });
 
-router.post('/api/kg/facts/import', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/kg/facts/import', requireAdminAuth, requireGranularPermission('aiBrain.manage'), async (req: Request, res: Response) => {
     try {
         const { csv } = req.body;
         if (typeof csv !== 'string' || !csv.trim()) {
