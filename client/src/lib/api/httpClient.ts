@@ -20,13 +20,32 @@ function getCsrfToken(): string | undefined {
     return match ? match[2] : undefined;
 }
 
+async function ensureCsrfToken(method: string): Promise<string | undefined> {
+    const upperMethod = method.toUpperCase();
+    if (["GET", "HEAD", "OPTIONS", "TRACE"].includes(upperMethod)) return undefined;
+
+    const existing = getCsrfToken();
+    if (existing) return existing;
+    if (typeof window === "undefined") return undefined;
+
+    const response = await fetch(`${API_BASE}/admin/csrf-token`, {
+        credentials: "include",
+        headers: { "Accept": "application/json" },
+    });
+    if (!response.ok) return undefined;
+
+    const data = await response.json().catch(() => null);
+    return data?.csrfToken || getCsrfToken();
+}
+
 type FetchApiOptions = RequestInit & { timeoutMs?: number };
 
 export async function fetchApi<T>(url: string, options?: FetchApiOptions): Promise<T> {
     const fullUrl = `${API_BASE}${url}`;
 
     const { timeoutMs, ...requestOptions } = options || {};
-    const csrfToken = getCsrfToken();
+    const method = requestOptions.method || "GET";
+    const csrfToken = await ensureCsrfToken(method);
     const baseHeaders = {
         "Content-Type": "application/json",
         ...requestOptions.headers,
