@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { CommandPalette } from "@/components/admin/shared/CommandPalette";
 import { ReminderBell } from "@/components/admin/ReminderBell";
 import { TeamChatPanel } from "@/components/admin/TeamChatPanel";
+import { AdminPwaInstallPrompt } from "@/components/admin/AdminPwaInstallPrompt";
 
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
@@ -212,6 +213,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
         </div>
         <CommandPalette />
         <TeamChatPanel />
+        <AdminPwaInstallPrompt />
       </div>
     </SidebarProvider>
   );

@@ -1,0 +1,54 @@
+{
+  "id": "promise-corporate",
+  "name": "Promise Corporate",
+  "short_name": "Corporate",
+  "description": "Corporate partner portal — jobs, messages, notifications, intake.",
+  "start_url": "/corporate",
+  "scope": "/corporate",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#1e40af",
+  "orientation": "portrait-primary",
+  "lang": "en",
+  "categories": ["business"],
+  "icons": [
+    {
+      "src": "/icons/corporate-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/corporate-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/corporate-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/corporate-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Jobs",
+      "short_name": "Jobs",
+      "url": "/corporate/jobs",
+      "icons": [{ "src": "/icons/corporate-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Messages",
+      "short_name": "Messages",
+      "url": "/corporate/messages",
+      "icons": [{ "src": "/icons/corporate-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

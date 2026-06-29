@@ -55,13 +55,30 @@
   <link rel="apple-touch-icon" sizes="180x180" href="https://www.promiseelectronics.com/favicon.png" />
   <link rel="shortcut icon" href="https://www.promiseelectronics.com/favicon.ico" />
 
-  <!-- PWA Manifest -->
-  <link rel="manifest" href="/manifest.json" />
-  <meta name="theme-color" content="#000000" />
+  <!-- PWA Manifest — portal-aware switching before React boot -->
+  <link rel="manifest" href="/manifest.json" id="pwa-manifest" />
+  <meta name="theme-color" content="#0ea5e9" id="pwa-theme-color" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-  <meta name="apple-mobile-web-app-title" content="Promise Electronics" />
+  <meta name="apple-mobile-web-app-title" content="Promise Electronics" id="pwa-app-title" />
+  <script>
+    (function() {
+      var p = location.pathname;
+      var m = document.getElementById('pwa-manifest');
+      var t = document.getElementById('pwa-theme-color');
+      var a = document.getElementById('pwa-app-title');
+      if (p.indexOf('/admin') === 0 || p.indexOf('/tech') === 0) {
+        m.href = '/manifest-admin.json';
+        t.content = '#0f172a';
+        a.content = 'Promise Admin';
+      } else if (p.indexOf('/corporate') === 0) {
+        m.href = '/manifest-corporate.json';
+        t.content = '#1e40af';
+        a.content = 'Promise Corporate';
+      }
+    })();
+  </script>
 
   <!-- Fonts -->
   <link rel="preconnect" href="https://fonts.googleapis.com">

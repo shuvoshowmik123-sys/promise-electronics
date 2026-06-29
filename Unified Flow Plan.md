@@ -7801,6 +7801,639 @@ Completed: 2026-06-29
 
 ---
 
+## Phase 20E — Portal-Specific PWA Icons + Splash Polish
+
+Status: DONE
+Completed: 2026-06-29
+
+### Assets Created
+
+12 PNG icons in `client/public/icons/`:
+
+| File | Portal | Size | Purpose | Background |
+|------|--------|------|---------|------------|
+| `customer-192.png` | Customer | 192x192 | any | Sky blue `#0ea5e9`, rounded corners |
+| `customer-512.png` | Customer | 512x512 | any | Sky blue `#0ea5e9`, rounded corners |
+| `customer-maskable-192.png` | Customer | 192x192 | maskable | Sky blue `#0ea5e9`, full bleed |
+| `customer-maskable-512.png` | Customer | 512x512 | maskable | Sky blue `#0ea5e9`, full bleed |
+| `admin-192.png` | Admin | 192x192 | any | Dark navy `#0f172a`, rounded corners |
+| `admin-512.png` | Admin | 512x512 | any | Dark navy `#0f172a`, rounded corners |
+| `admin-maskable-192.png` | Admin | 192x192 | maskable | Dark navy `#0f172a`, full bleed |
+| `admin-maskable-512.png` | Admin | 512x512 | maskable | Dark navy `#0f172a`, full bleed |
+| `corporate-192.png` | Corporate | 192x192 | any | Blue `#1e40af`, rounded corners |
+| `corporate-512.png` | Corporate | 512x512 | any | Blue `#1e40af`, rounded corners |
+| `corporate-maskable-192.png` | Corporate | 192x192 | maskable | Blue `#1e40af`, full bleed |
+| `corporate-maskable-512.png` | Corporate | 512x512 | maskable | Blue `#1e40af`, full bleed |
+
+All icons use the existing PE circuit-board logo mark (`logo-mark-white.png`, white on transparent) composited onto portal-colored backgrounds. Regular icons have 18% corner radius. Maskable icons have 55% logo scale for safe-zone compliance.
+
+Generated via `scripts/generate-pwa-icons.cjs` using `sharp`. Sharp was installed temporarily for generation and then removed from dependencies.
+
+### Manifest Icon Mapping
+
+| Manifest | Icon Prefix |
+|----------|------------|
+| `manifest.json` | `/icons/customer-*` |
+| `manifest-admin.json` | `/icons/admin-*` |
+| `manifest-corporate.json` | `/icons/corporate-*` |
+
+All manifests updated with 4 icon entries each (192 any, 512 any, 192 maskable, 512 maskable) plus shortcut icons using the 192px variant.
+
+### Splash/Theme Polish
+
+Each manifest already has correct `background_color` (#f8fafc), `theme_color`, `name`, `short_name`, and `icons` for Android splash screen generation. No additional splash screen components needed — Android uses manifest fields automatically.
+
+### Build Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS (16.64s) |
+| `git diff --check` | PASS (CRLF warnings only) |
+
+### QA
+
+| Check | Result |
+|-------|--------|
+| All 12 icon files serve with HTTP 200 | PASS |
+| Customer manifest references `/icons/customer-*` | PASS |
+| Admin manifest references `/icons/admin-*` | PASS |
+| Corporate manifest references `/icons/corporate-*` | PASS |
+| `/home` loads without errors | PASS |
+| `/admin` loads without errors | PASS (0 console errors) |
+| `/corporate/login` loads | PASS |
+| `/tech` loads | PASS |
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `client/public/icons/*.png` (12 files) | NEW: portal-specific PWA icons |
+| `client/public/manifest.json` | Updated icon paths to `/icons/customer-*` |
+| `client/public/manifest-admin.json` | Updated icon paths to `/icons/admin-*` |
+| `client/public/manifest-corporate.json` | Updated icon paths to `/icons/corporate-*` |
+| `scripts/generate-pwa-icons.cjs` | NEW: icon generation script (reusable for future regeneration) |
+| `Unified Flow Plan.md` | Phase 20E results |
+
+### PWA Phase 20 Complete Summary
+
+| Phase | What | Status |
+|-------|------|--------|
+| 20A | PWA audit | DONE |
+| 20B | 3 manifests + dynamic switching | DONE |
+| 20C | Portal-aware install prompts | DONE |
+| 20D | Server-side manifest fidelity | DONE |
+| 20E | Portal-specific icons + splash | DONE |
+
+### Remaining (Long-Term)
+
+- **Subdomain migration**: `www.` / `admin.` / `b2b.` for full iOS multi-PWA isolation
+- **Apple touch icon**: Per-portal apple-touch-icon injection (currently all portals use the same `favicon.png` for iOS home screen; visual difference is minimal since iOS uses screenshot-based splash, not manifest icons)
+
+### Verdict
+
+**GO** — Multi-portal PWA system complete. 3 manifests with distinct identities, 12 professional portal-specific icons, dynamic manifest switching (client + server-side), portal-aware install prompts with per-portal dismiss. Ready for real-device testing.
+
+---
+
+## Phase 20D — iOS / Server-Side Manifest Fidelity
+
+Status: DONE
+Completed: 2026-06-29
+
+### Audit Findings
+
+#### How the Backend Serves HTML
+
+| Mode | File | Mechanism | Transform Possible? |
+|------|------|-----------|-------------------|
+| **Development** | `server/vite.ts` | Reads `client/index.html` from disk, runs `vite.transformIndexHtml(url, template)`, sends as response | **Yes** — `url` is `req.originalUrl`, can inject route-aware meta |
+| **Production (Render)** | `server/static.ts` | `express.static(distPath)` for assets, `sendFile(index.html)` fallback for SPA routes | **Yes** — can read HTML once and apply route-aware string replacements per request |
+| **Vercel (static)** | `vercel.json` | Static build (`npx vite build`), SPA rewrites to `/index.html` | **No** — Vercel serves pre-built HTML, no server-side transform possible |
+
+#### iOS Safari Behavior on Same Domain
+
+- iOS Safari reads `<link rel="manifest">` at initial HTML parse time, **before JavaScript runs**
+- The Phase 20B client-side `<script>` in `<head>` **does execute** before `beforeinstallprompt` on Chrome/Android, but on iOS the manifest is resolved from the HTTP response HTML, not from DOM mutations
+- Server-side HTML transform is the only reliable way to give iOS Safari the correct manifest for admin/corporate routes
+- **However**: iOS still limits to one PWA identity per domain (based on origin, not manifest `id`). A second "Add to Home Screen" from `/admin` will replace the customer PWA on the same domain. True iOS multi-PWA requires subdomains.
+
+#### Production Deployment
+
+The app deploys to **Render** (Express serves both API + frontend). `vercel.json` exists but is secondary. On Render, `NODE_ENV=production` triggers `serveStatic()` which now applies `applyPortalMeta()` — server-side transform works in production.
+
+### Implementation
+
+Created `server/lib/portalMeta.ts` with `applyPortalMeta(url, html)`:
+- `/admin*` or `/tech*` → replaces manifest link with `/manifest-admin.json`, theme `#0f172a`, apple title "Promise Admin"
+- `/corporate*` → replaces manifest link with `/manifest-corporate.json`, theme `#1e40af`, apple title "Promise Corporate"
+- All other URLs → no change (customer defaults)
+
+Integrated into both serving paths:
+- `server/vite.ts` (dev) — `template = applyPortalMeta(url, template)` before `vite.transformIndexHtml`
+- `server/static.ts` (prod) — reads `index.html` once at startup, applies `applyPortalMeta(req.originalUrl, indexHtml)` per request
+
+The Phase 20B client-side `<script>` remains as a fallback for:
+- Vercel static hosting (no server-side transform)
+- Edge cases where HTML is served from CDN cache
+
+### Two-Layer Defense
+
+| Layer | Covers | iOS Safari? | Android Chrome? |
+|-------|--------|-------------|-----------------|
+| Server-side `applyPortalMeta` | Render production + dev | **Yes** | Yes |
+| Client-side `<head>` script | Vercel static + CDN | No | Yes |
+
+### Build Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS (17.62s) |
+| `git diff --check` | PASS (CRLF warnings only) |
+
+### QA
+
+- Client-side manifest switching verified via Playwright runtime eval on all 4 portals (unchanged from 20B/20C)
+- Server-side transform requires server restart to activate (dev server caches imported modules); transform code is TypeScript-verified correct
+- All portal routes still load without errors
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/lib/portalMeta.ts` | NEW: route-aware HTML meta transform function |
+| `server/vite.ts` | Import + call `applyPortalMeta` before Vite HTML transform |
+| `server/static.ts` | Read HTML at startup, apply `applyPortalMeta` per request instead of raw `sendFile` |
+| `Unified Flow Plan.md` | Phase 20D results |
+
+### iOS Conclusion
+
+Server-side transform provides the **best-effort** iOS Safari fidelity on same domain. iOS will see the correct manifest/theme/title for each portal. However, iOS still treats the origin as the PWA identity — only one PWA can be installed per domain. Full iOS multi-PWA requires subdomains.
+
+### Subdomain Recommendation (Future)
+
+| Subdomain | Portal | PWA ID |
+|-----------|--------|--------|
+| `www.promiseelectronics.com` | Customer | `promise-customer` |
+| `admin.promiseelectronics.com` | Admin + Tech | `promise-admin` |
+| `b2b.promiseelectronics.com` | Corporate | `promise-corporate` |
+
+This eliminates all same-domain scope conflicts and enables true iOS multi-PWA. Requires DNS config, cookie domain `.promiseelectronics.com`, and reverse proxy routing.
+
+### Remaining
+
+| Phase | Work |
+|-------|------|
+| **20E** | Portal-specific icon artwork (12 PNGs: 3 portals x 2 sizes x 2 purposes) |
+| **Future** | Subdomain migration for full iOS PWA isolation |
+
+### Verdict
+
+**GO** — Server-side manifest fidelity implemented for both dev and Render production. Two-layer defense (server + client) ensures correct manifest on all platforms except Vercel static (where client-side fallback covers Android/Chrome). iOS same-domain limitation documented; subdomain migration recommended for future.
+
+---
+
+## Phase 20C — Admin + Corporate PWA Install Prompts
+
+Status: DONE
+Completed: 2026-06-29
+
+### What Was Done
+
+1. **Shared hook** `client/src/hooks/usePwaInstallPrompt.ts`:
+   - Accepts portal type (`"customer" | "admin" | "corporate"`)
+   - Listens for `beforeinstallprompt`, stores deferred prompt
+   - Detects standalone mode (Chrome + iOS Safari)
+   - Per-portal dismiss with 7-day cooldown (`pwa-install-dismissed-{portal}`)
+   - Backward-compatible with old `pwa-install-dismissed` key for customer
+   - Returns `{ canShow, isIOS, install, dismiss, hasNativePrompt }`
+
+2. **Customer prompt** (`PWAInstallPrompt.tsx`):
+   - Rewritten to use shared hook
+   - Only renders on customer pages + homepage
+   - iOS instructions dialog preserved
+   - Behavior unchanged from user perspective
+
+3. **Admin prompt** (`AdminPwaInstallPrompt.tsx`):
+   - Compact dark card (matches admin `#0f172a` theme)
+   - Role-aware copy: Driver → pickup tasks, Cashier → POS, Technician → workbench, generic for Manager/SA
+   - Renders inside `AdminLayout` (after `TeamChatPanel`) and `TechRouter`
+   - Only shows when user is authenticated (component checks `user`)
+   - Fixed bottom-right, non-blocking
+
+4. **Corporate prompt** (`CorporatePwaInstallPrompt.tsx`):
+   - Compact blue card (matches corporate `#1e40af` theme)
+   - Text: "Track repairs, messages, and approvals from a dedicated app"
+   - Renders inside `CorporateLayoutShell`
+   - Only shows when corporate user is authenticated
+   - Fixed bottom-right, non-blocking
+
+### Prompt Rules
+
+| Context | Prompt | Portal Key |
+|---------|--------|------------|
+| Customer homepage (`/`, `/home`) | Customer prompt (sky gradient) | `pwa-install-dismissed-customer` |
+| Other customer pages | None | — |
+| Admin login `/admin/login` | None (not authenticated) | — |
+| Authenticated admin `/admin/*` | Admin prompt (dark) | `pwa-install-dismissed-admin` |
+| Tech portal `/tech` | Admin prompt (dark) | `pwa-install-dismissed-admin` |
+| Corporate login `/corporate/login` | None (not authenticated) | — |
+| Authenticated corporate `/corporate/*` | Corporate prompt (blue) | `pwa-install-dismissed-corporate` |
+| Already standalone | None (all prompts suppressed) | — |
+
+### Build Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS (16.52s) |
+| `git diff --check` | PASS (CRLF warnings only) |
+
+### QA Verification (Playwright)
+
+| Portal | Loads | Manifest | Console Errors | Prompt Component Wired |
+|--------|-------|----------|----------------|----------------------|
+| `/home` | PASS | `/manifest.json` | 0 | PWAInstallPrompt (customer) |
+| `/admin` | PASS | `/manifest-admin.json` | 0 | AdminPwaInstallPrompt |
+| `/corporate/login` | PASS | `/manifest-corporate.json` | 0 | CorporatePwaInstallPrompt (post-login) |
+| `/tech` | PASS | `/manifest-admin.json` | 0 | AdminPwaInstallPrompt |
+
+Note: `beforeinstallprompt` does not fire in Playwright (headless Chrome), so prompts are not visually visible during automated testing. The components are confirmed wired in, and the hook logic is unit-testable. Real device testing required for visual verification.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `client/src/hooks/usePwaInstallPrompt.ts` | NEW: shared PWA install hook |
+| `client/src/components/PWAInstallPrompt.tsx` | Rewritten to use shared hook |
+| `client/src/components/admin/AdminPwaInstallPrompt.tsx` | NEW: admin install prompt |
+| `client/src/components/corporate/CorporatePwaInstallPrompt.tsx` | NEW: corporate install prompt |
+| `client/src/components/layout/AdminLayout.tsx` | Added AdminPwaInstallPrompt |
+| `client/src/components/layout/TechRouter.tsx` | Added AdminPwaInstallPrompt |
+| `client/src/components/layout/CorporateLayoutShell.tsx` | Added CorporatePwaInstallPrompt |
+| `Unified Flow Plan.md` | Phase 20C results |
+
+### Remaining
+
+| Phase | Work |
+|-------|------|
+| **20D** | Server-side manifest serving for iOS Safari fidelity |
+| **20E** | Portal-specific icon artwork (12 PNGs) |
+| **Future** | Subdomain migration for full iOS PWA isolation |
+
+### Verdict
+
+**GO** — All three portal-aware install prompts implemented with shared hook, per-portal dismiss cooldown, standalone detection, role-aware copy. Customer prompt unchanged. No prompts on login pages or in standalone mode.
+
+---
+
+## Phase 20B — Multi-Portal PWA Manifests + Dynamic Manifest Switching
+
+Status: DONE
+Completed: 2026-06-29
+
+### What Was Done
+
+1. **Created 3 manifest files** in `client/public/`:
+
+| Manifest | `id` | `start_url` | `scope` | `theme_color` | Shortcuts |
+|----------|------|-------------|---------|---------------|-----------|
+| `manifest.json` | `promise-customer` | `/home` | `/` | `#0ea5e9` | Book Repair, Track Repair, Shop |
+| `manifest-admin.json` | `promise-admin` | `/admin` | `/admin` | `#0f172a` | Dashboard, Jobs, POS, Pickup |
+| `manifest-corporate.json` | `promise-corporate` | `/corporate` | `/corporate` | `#1e40af` | Jobs, Messages |
+
+2. **Added manifest switching script** in `client/index.html` `<head>`:
+   - Runs before React boot (synchronous, inline)
+   - Switches `<link rel="manifest">`, `<meta name="theme-color">`, and `<meta name="apple-mobile-web-app-title">` based on `location.pathname`
+   - `/admin*` or `/tech*` → admin manifest
+   - `/corporate*` → corporate manifest
+   - Everything else → customer manifest
+
+3. **Updated service worker** (`client/public/sw.js`):
+   - Added `manifest-admin.json` and `manifest-corporate.json` to precache list
+   - Bumped cache version to `v4`
+
+4. **Updated `PWAInstallPrompt.tsx`**:
+   - Customer install prompt now only renders on customer pages (`!isAdminOrStaff && !isCorporate`)
+   - Still gated to homepage (`/`, `""`, `/home`)
+   - Admin/corporate install prompts are Phase 20C
+
+5. **Icons**: All three manifests reuse `/favicon.png` for now. Portal-specific icon artwork is Phase 20E.
+
+6. **Tech portal** (`/tech`) uses admin manifest — confirmed at runtime.
+
+### Runtime Verification (Playwright)
+
+| Portal Path | Manifest Served | Theme Color | App Title |
+|-------------|----------------|-------------|-----------|
+| `/home` | `/manifest.json` | `#0ea5e9` | Promise Electronics |
+| `/admin` | `/manifest-admin.json` | `#0f172a` | Promise Admin |
+| `/corporate/login` | `/manifest-corporate.json` | `#1e40af` | Promise Corporate |
+| `/tech` | `/manifest-admin.json` | `#0f172a` | Promise Admin |
+
+All 3 manifest files serve correctly via HTTP (`curl` verified).
+
+### Build Checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS (13.81s) |
+| `git diff --check` | PASS (CRLF warnings only) |
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `client/public/manifest.json` | Rewritten: added `id`, updated `start_url`, proper icon entries, customer shortcuts |
+| `client/public/manifest-admin.json` | NEW: admin PWA manifest |
+| `client/public/manifest-corporate.json` | NEW: corporate PWA manifest |
+| `client/index.html` | Added manifest switching `<script>`, `id` attrs on meta tags |
+| `client/public/sw.js` | Added 2 manifests to precache, bumped cache to v4 |
+| `client/src/components/PWAInstallPrompt.tsx` | Portal-aware gating (customer pages only) |
+| `Unified Flow Plan.md` | Phase 20B results |
+
+### Remaining for Future Phases
+
+| Phase | Work |
+|-------|------|
+| **20C** | Admin install prompt component (post-login banner in admin layout), corporate install prompt (post-login in corporate layout) |
+| **20D** | Server-side manifest serving for iOS Safari fidelity (Express middleware inspects path, serves correct manifest) |
+| **20E** | Portal-specific icon artwork (12 PNGs: 3 portals x 2 sizes x 2 purposes) |
+| **Future** | Subdomain migration (`admin.`, `b2b.`, `www.`) for full iOS PWA isolation |
+
+### Verdict
+
+**GO** — 3 separate PWA manifests with distinct `id` fields, client-side manifest switching verified on all 4 portals, service worker updated, install prompt gated to customer pages only. Android Chrome and Desktop Chrome can now install portal-specific PWAs.
+
+---
+
+## Phase 20A — Multi-Portal PWA Audit
+
+Status: DONE
+Completed: 2026-06-29
+
+### 1. Current Manifest
+
+**File:** `client/public/manifest.json` (linked from `client/index.html` line 59)
+
+| Field | Current Value |
+|-------|---------------|
+| `name` | "Promise Electronics" |
+| `short_name` | "Promise" |
+| `start_url` | "/" |
+| `scope` | "/" |
+| `id` | (not set — defaults to `start_url`) |
+| `display` | "standalone" |
+| `theme_color` | "#0ea5e9" (sky blue — customer brand) |
+| `background_color` | "#f1f5f9" |
+| `orientation` | "portrait-primary" |
+| `icons` | Single `favicon.png` declared as both 192x192 and 512x512, `purpose: "any maskable"` |
+| `shortcuts` | Get Quote (`/get-quote`), Track Order (`/track-order`), Shop (`/shop`) — all customer-facing |
+
+**Problem:** One manifest serves all four portals. Admin users who install get a customer-branded app with customer shortcuts.
+
+### 2. Service Worker
+
+**File:** `client/public/sw.js` (registered by `client/src/lib/sw-register.ts`)
+
+- **Scope:** `/` (covers all routes — customer, admin, corporate, tech)
+- **Strategy:** Network-first with offline fallback to `/offline.html`
+- **Cache:** `promise-electronics-v3` — caches `/`, `/offline.html`, `/logo.png`, `/favicon.png`, `/manifest.json`
+- **Non-cacheable:** `/api/`, `/sse`, `/events`, `/webhook`, `/auth`, `/session`, `/login`, `/logout`, `/admin/mutations`, `/admin/data`
+- **Safety:** API routes excluded from caching. Only caches GET requests for same-origin static assets. Navigation requests fall back to `/offline.html`, not stale HTML.
+
+**Assessment:** The service worker is safe for admin/corporate routes — it doesn't cache API data or auth-sensitive content. The scope is fine to keep at `/` since the SW only provides offline fallback, not aggressive caching.
+
+### 3. Install Prompt
+
+**File:** `client/src/components/PWAInstallPrompt.tsx`
+
+- **When shown:** Only on homepage (`/` or empty), after 3s delay
+- **Dismiss:** Saved to `localStorage("pwa-install-dismissed")` for 7 days
+- **iOS:** Shows manual "Add to Home Screen" instructions
+- **Android/Desktop:** Uses `beforeinstallprompt` deferred prompt
+- **Where rendered:** `App.tsx` line 180 — rendered globally for all portals
+
+**Problems:**
+1. Only triggers on `/` (customer home). Admin/corporate users never see it.
+2. If they did, they'd install the customer-branded PWA.
+3. No portal-aware logic — one prompt for all portals.
+
+### 4. Can Multiple Manifests Work on Same Domain?
+
+**Yes, with caveats.**
+
+The W3C manifest spec allows dynamically switching `<link rel="manifest">` via JavaScript. The browser resolves the manifest at the time the user triggers "Add to Home Screen" or the `beforeinstallprompt` event fires. Key rules:
+
+- **`id` field is critical.** Chrome uses `id` (or `start_url` if `id` is absent) to identify a PWA. Two manifests with different `id` values on the same domain create two separate installable apps.
+- **`scope` determines which navigations the PWA handles.** A PWA with `scope: "/admin"` only captures navigations under `/admin/*`.
+- **Scope overlap risk:** If one PWA has `scope: "/"` and another has `scope: "/admin"`, the more specific scope wins for `/admin/*` navigations. But if the `/` PWA is installed first, it may capture `/admin` navigations before the `/admin` PWA exists.
+- **Safari/iOS limitation:** Safari ignores `<link rel="manifest">` changes after initial page load. iOS uses the manifest at first navigation only. Dynamic switching does not work on iOS — the manifest must be correct at HTML-serve time.
+
+**Recommended approach:** Server-side or build-time manifest selection based on URL path prefix, not client-side JS switching.
+
+### 5. Manifest Design
+
+#### Customer Manifest — `/manifest.json` (default)
+
+```json
+{
+  "id": "promise-customer",
+  "name": "Promise Electronics",
+  "short_name": "Promise",
+  "description": "Expert TV Repair & Electronics Service — track repairs, get quotes, shop parts.",
+  "start_url": "/home",
+  "scope": "/",
+  "display": "standalone",
+  "theme_color": "#0ea5e9",
+  "background_color": "#f1f5f9",
+  "orientation": "portrait-primary",
+  "lang": "en",
+  "categories": ["business", "utilities", "shopping"],
+  "icons": [
+    { "src": "/icons/customer-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/customer-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/customer-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/customer-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Book Repair", "url": "/repair-request", "icons": [{ "src": "/icons/customer-192.png", "sizes": "192x192" }] },
+    { "name": "Track Order", "url": "/track", "icons": [{ "src": "/icons/customer-192.png", "sizes": "192x192" }] },
+    { "name": "Shop", "url": "/shop", "icons": [{ "src": "/icons/customer-192.png", "sizes": "192x192" }] }
+  ]
+}
+```
+
+#### Admin Manifest — `/manifest-admin.json`
+
+```json
+{
+  "id": "promise-admin",
+  "name": "Promise Admin",
+  "short_name": "PE Admin",
+  "description": "Promise Electronics operations — jobs, service requests, POS, finance, staff.",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "theme_color": "#0f172a",
+  "background_color": "#0f172a",
+  "orientation": "any",
+  "lang": "en",
+  "categories": ["business", "productivity"],
+  "icons": [
+    { "src": "/icons/admin-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/admin-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/admin-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/admin-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Dashboard", "url": "/admin#dashboard", "icons": [{ "src": "/icons/admin-192.png", "sizes": "192x192" }] },
+    { "name": "Jobs", "url": "/admin#jobs", "icons": [{ "src": "/icons/admin-192.png", "sizes": "192x192" }] },
+    { "name": "POS", "url": "/admin#pos", "icons": [{ "src": "/icons/admin-192.png", "sizes": "192x192" }] }
+  ]
+}
+```
+
+#### Corporate Manifest — `/manifest-corporate.json`
+
+```json
+{
+  "id": "promise-corporate",
+  "name": "Promise B2B Portal",
+  "short_name": "PE B2B",
+  "description": "Corporate partner portal — jobs, messages, notifications, intake.",
+  "start_url": "/corporate",
+  "scope": "/corporate",
+  "display": "standalone",
+  "theme_color": "#1e40af",
+  "background_color": "#eff6ff",
+  "orientation": "portrait-primary",
+  "lang": "en",
+  "categories": ["business"],
+  "icons": [
+    { "src": "/icons/corporate-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/corporate-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icons/corporate-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable" },
+    { "src": "/icons/corporate-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Jobs", "url": "/corporate/jobs", "icons": [{ "src": "/icons/corporate-192.png", "sizes": "192x192" }] },
+    { "name": "Messages", "url": "/corporate/messages", "icons": [{ "src": "/icons/corporate-192.png", "sizes": "192x192" }] }
+  ]
+}
+```
+
+**Tech portal** uses the Admin manifest — `/tech` is within the admin auth flow and tech users are staff.
+
+### 6. Dynamic Manifest Switching
+
+Because iOS Safari ignores runtime `<link>` changes, the recommended approach is **server-side manifest selection**:
+
+**Option A — Express middleware (recommended):**
+
+Add a route in `server/index.ts`:
+```
+GET /manifest.json → inspect Referer or serve from a query param
+  - If Referer starts with /admin or /tech → serve manifest-admin.json
+  - If Referer starts with /corporate → serve manifest-corporate.json
+  - Else → serve customer manifest.json
+```
+
+**Option B — Client-side `<link>` swap in `index.html`:**
+
+```html
+<script>
+  const path = location.pathname;
+  const link = document.querySelector('link[rel="manifest"]');
+  if (path.startsWith('/admin') || path.startsWith('/tech')) {
+    link.href = '/manifest-admin.json';
+  } else if (path.startsWith('/corporate')) {
+    link.href = '/manifest-corporate.json';
+  }
+</script>
+```
+
+This runs before React mounts (in `<head>`). Works on Android Chrome and desktop Chrome. **Does NOT work on iOS Safari** (Safari reads the manifest only once, before scripts run). For iOS, Option A (server-side) is needed.
+
+**Option C — Hybrid (pragmatic):**
+
+Use Option B for now (covers 80%+ of install prompts on Android). Add Option A when iOS install fidelity matters. iOS PWA installs are rare for admin/corporate users (they use desktop or Android).
+
+### 7. Install Prompt Rules
+
+| Context | Action |
+|---------|--------|
+| Customer/public visitor (not logged in) | Show customer install prompt on `/home` after 3s. Current behavior — keep it. |
+| Logged-in customer | Show customer install prompt on `/my-repairs` or `/home` if not already installed. |
+| Admin login page `/admin/login` | Do NOT show install prompt (user hasn't proven role yet). |
+| Logged-in admin (SA/Manager/Cashier) | Show admin install prompt in admin layout (e.g., subtle banner or dropdown item). |
+| Logged-in Driver | Show admin install prompt (Drivers use admin portal). |
+| Logged-in Technician at `/tech` | Show admin install prompt (tech is admin auth). |
+| Corporate login page | Do NOT show. |
+| Logged-in corporate user | Show corporate install prompt in corporate layout. |
+| Already installed (standalone mode) | Never show any prompt. |
+
+### 8. Same-Domain Scope Risks
+
+| Risk | Severity | Mitigation |
+|------|----------|------------|
+| Customer PWA (`scope: "/"`) captures `/admin` navigations | Medium | Set customer `scope` to exclude `/admin` and `/corporate` — but W3C scope is prefix-only, not exclude. Must accept that customer PWA with `scope: "/"` will handle admin URLs if opened from customer PWA. |
+| Two PWAs installed with overlapping scopes | Low | Chrome handles this — the more-specific scope wins. Admin PWA (`scope: "/admin"`) will capture `/admin/*` even if customer PWA (`scope: "/"`) is also installed. |
+| iOS can only install one PWA per domain | High | iOS treats the domain as the PWA identity. A second "Add to Home Screen" from `/admin` replaces the customer PWA on iOS. **No workaround on same domain.** |
+
+### 9. Long-Term Subdomain Design
+
+| Subdomain | Portal | Manifest |
+|-----------|--------|----------|
+| `www.promiseelectronics.com` | Customer | Customer manifest |
+| `admin.promiseelectronics.com` | Admin + Tech | Admin manifest |
+| `b2b.promiseelectronics.com` | Corporate | Corporate manifest |
+
+Benefits:
+- Complete scope isolation — no overlap risk
+- iOS can install all three as separate PWAs
+- Separate service workers per portal
+- Cleaner analytics and security headers
+
+Requirements:
+- DNS: 3 A/CNAME records pointing to same server
+- Server: route by `Host` header or use nginx/Cloudflare reverse proxy
+- Build: same Vite build, server inspects hostname to set appropriate meta tags
+- Auth: sessions work cross-subdomain if cookie `domain` is set to `.promiseelectronics.com`
+- CORS: API at `api.promiseelectronics.com` or same-origin with each subdomain
+
+### 10. QA Matrix
+
+| Platform | Customer PWA | Admin PWA | Corporate PWA | Test |
+|----------|-------------|-----------|---------------|------|
+| Android Chrome | Install via prompt | Install via prompt (after admin login) | Install via prompt (after corp login) | Verify separate icons on home screen, correct start_url, scope isolation |
+| Desktop Chrome | Install via omnibar | Install via omnibar (admin pages) | Install via omnibar (corporate pages) | Verify separate window titles, correct shortcuts |
+| iPhone Safari | Add to Home Screen from `/home` | Add to Home Screen from `/admin` | Add to Home Screen from `/corporate` | Verify correct name/icon. Note: only one can exist per domain on iOS. |
+| iPad Safari | Same as iPhone | Same as iPhone | Same as iPhone | Same limitation |
+
+### 11. Implementation Plan Summary
+
+| Step | Phase | Description |
+|------|-------|-------------|
+| 1 | 20B | Create icon assets: 12 PNGs (3 portals x 2 sizes x 2 purposes) |
+| 2 | 20B | Create `manifest-admin.json` and `manifest-corporate.json` in `client/public/` |
+| 3 | 20B | Update existing `manifest.json` with `id: "promise-customer"` and proper icons |
+| 4 | 20B | Add `<script>` in `index.html <head>` for client-side manifest switching (Option B) |
+| 5 | 20B | Update `PWAInstallPrompt.tsx` to be portal-aware (different text/appearance per portal) |
+| 6 | 20B | Add admin install prompt component (shown post-login in admin layout) |
+| 7 | 20B | Add corporate install prompt component (shown post-login in corporate layout) |
+| 8 | 20B | Update service worker `urlsToCache` to include all three manifests |
+| 9 | 20C | QA: Android Chrome install for each portal, desktop Chrome install, iOS Add to Home Screen |
+| 10 | Future | Subdomain migration when DNS/hosting supports it |
+
+### Verdict
+
+Audit complete. Current PWA is customer-only, single-manifest, with a safe service worker. Multi-portal PWA requires 3 manifests with distinct `id` fields, client-side manifest switching (with server-side for iOS fidelity later), and portal-aware install prompts. No blockers for same-domain implementation on Android/desktop Chrome. iOS is limited to one PWA per domain until subdomain migration.
+
+---
+
 ## Phase 19C — Desktop Full Portal QA + Cache/Snappiness Check
 
 Status: DONE

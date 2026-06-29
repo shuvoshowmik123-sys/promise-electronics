@@ -30,6 +30,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { CorporateNotificationsBell } from "@/components/corporate/CorporateNotificationsBell";
 import { CorporateBrandingHeader } from "@/components/corporate/CorporateBrandingHeader";
+import { CorporatePwaInstallPrompt } from "@/components/corporate/CorporatePwaInstallPrompt";
 
 
 export function CorporateLayoutShell({ children }: { children: React.ReactNode }) {
@@ -225,6 +226,7 @@ export function CorporateLayoutShell({ children }: { children: React.ReactNode }
                     {children}
                 </div>
                 {/* Floating Chat Button used to be here */}
+                <CorporatePwaInstallPrompt />
             </main>
         </div>
     );

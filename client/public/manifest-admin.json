@@ -1,0 +1,66 @@
+{
+  "id": "promise-admin",
+  "name": "Promise Admin",
+  "short_name": "Admin",
+  "description": "Promise Electronics operations — jobs, service requests, POS, finance, staff.",
+  "start_url": "/admin",
+  "scope": "/admin",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#0f172a",
+  "orientation": "any",
+  "lang": "en",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/admin-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/admin-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/admin-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/admin-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "short_name": "Dashboard",
+      "url": "/admin",
+      "icons": [{ "src": "/icons/admin-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Jobs",
+      "short_name": "Jobs",
+      "url": "/admin#jobs",
+      "icons": [{ "src": "/icons/admin-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "POS",
+      "short_name": "POS",
+      "url": "/admin#pos",
+      "icons": [{ "src": "/icons/admin-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Pickup",
+      "short_name": "Pickup",
+      "url": "/admin#pickup",
+      "icons": [{ "src": "/icons/admin-192.png", "sizes": "192x192" }]
+    }
+  ]
+}

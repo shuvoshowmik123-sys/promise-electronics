@@ -1,4 +1,4 @@
-const CACHE_NAME = 'promise-electronics-v3';
+const CACHE_NAME = 'promise-electronics-v4';
 const OFFLINE_URL = '/offline.html';
 
 const urlsToCache = [
@@ -6,7 +6,9 @@ const urlsToCache = [
   '/offline.html',
   '/logo.png',
   '/favicon.png',
-  '/manifest.json'
+  '/manifest.json',
+  '/manifest-admin.json',
+  '/manifest-corporate.json'
 ];
 
 const NON_CACHEABLE_PATHS = [

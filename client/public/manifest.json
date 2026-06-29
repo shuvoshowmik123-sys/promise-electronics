@@ -1,70 +1,60 @@
 {
+  "id": "promise-customer",
   "name": "Promise Electronics",
   "short_name": "Promise",
-  "description": "Expert TV Repair & Electronics Service in Dhaka, Bangladesh. Free pickup & delivery.",
-  "start_url": "/",
+  "description": "Expert TV Repair & Electronics Service — track repairs, get quotes, shop parts.",
+  "start_url": "/home",
+  "scope": "/",
   "display": "standalone",
-  "background_color": "#f1f5f9",
+  "background_color": "#f8fafc",
   "theme_color": "#0ea5e9",
   "orientation": "portrait-primary",
-  "scope": "/",
   "lang": "en",
-  "categories": [
-    "business",
-    "utilities",
-    "shopping"
-  ],
+  "categories": ["business", "utilities", "shopping"],
   "icons": [
     {
-      "src": "/favicon.png",
+      "src": "/icons/customer-192.png",
       "sizes": "192x192",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
     },
     {
-      "src": "/favicon.png",
+      "src": "/icons/customer-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
-    }
-  ],
-  "screenshots": [],
-  "shortcuts": [
-    {
-      "name": "Get Quote",
-      "short_name": "Quote",
-      "description": "Request a service quote",
-      "url": "/get-quote",
-      "icons": [
-        {
-          "src": "/favicon.png",
-          "sizes": "192x192"
-        }
-      ]
+      "purpose": "any"
     },
     {
-      "name": "Track Order",
+      "src": "/icons/customer-maskable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/customer-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Book Repair",
+      "short_name": "Repair",
+      "url": "/repair-request",
+      "icons": [{ "src": "/icons/customer-192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Track Repair",
       "short_name": "Track",
-      "description": "Track your repair status",
       "url": "/track-order",
-      "icons": [
-        {
-          "src": "/favicon.png",
-          "sizes": "192x192"
-        }
-      ]
+      "icons": [{ "src": "/icons/customer-192.png", "sizes": "192x192" }]
     },
     {
       "name": "Shop",
       "short_name": "Shop",
-      "description": "Browse products",
       "url": "/shop",
-      "icons": [
-        {
-          "src": "/favicon.png",
-          "sizes": "192x192"
-        }
-      ]
+      "icons": [{ "src": "/icons/customer-192.png", "sizes": "192x192" }]
     }
   ]
 }

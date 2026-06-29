@@ -5,6 +5,7 @@ import { useModules } from "@/contexts/ModuleContext";
 import { TechLayout } from "./TechLayout";
 import { Loader2 } from "lucide-react";
 import { StaffOnboardingGuide } from "@/components/admin/StaffOnboardingGuide";
+import { AdminPwaInstallPrompt } from "@/components/admin/AdminPwaInstallPrompt";
 
 const TechDashboard = lazy(() => import("@/pages/tech/TechDashboard").then(m => ({ default: m.TechDashboard })));
 
@@ -64,6 +65,7 @@ export function TechRouter() {
                 </Route>
             </Switch>
             <StaffOnboardingGuide />
+            <AdminPwaInstallPrompt />
         </TechLayout>
     );
 }
