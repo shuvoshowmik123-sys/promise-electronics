@@ -12,6 +12,7 @@ import { ObjectStorageService, ObjectNotFoundError } from '../objectStorage.js';
 import ImageKit from 'imagekit';
 import { uploadLimiter, uploadAuthLimiter } from './middleware/rate-limit.js';
 import { requireAdminAuth } from './middleware/auth.js';
+import { getIKFolder } from '../utils/imagekit-folder.js';
 
 const router = Router();
 
@@ -77,7 +78,7 @@ router.post('/api/imagekit/upload', requireAdminAuth, uploadLimiter, async (req:
         const result = await imagekit.upload({
             file, // base64 string
             fileName,
-            folder: 'service-requests',
+            folder: getIKFolder('service-requests'),
         });
 
         res.json({

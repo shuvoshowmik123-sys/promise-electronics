@@ -6,6 +6,7 @@
  */
 
 import { getApiUrl } from "./config";
+import { getIKFolder } from "./imagekit-config";
 
 export interface ImageKitUploadResult {
     url: string;
@@ -73,9 +74,7 @@ export async function uploadToImageKit(
     formData.append("expire", authParams.expire.toString());
     formData.append("token", authParams.token);
 
-    if (options.folder) {
-        formData.append("folder", options.folder);
-    }
+    formData.append("folder", getIKFolder(options.folder ?? "uploads"));
 
     if (options.tags && options.tags.length > 0) {
         formData.append("tags", options.tags.join(","));

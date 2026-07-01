@@ -5,7 +5,7 @@ import {
 } from "date-fns";
 import {
     Calendar, Clock, Users, CheckCircle, XCircle, Download, UserCheck,
-    MapPin, AlertCircle
+    MapPin, AlertCircle, Navigation,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -23,6 +23,29 @@ import { BentoCard } from "../shared/BentoCard";
 import { containerVariants, itemVariants, tableRowVariants } from "../shared/animations";
 import { attendanceApi, adminUsersApi } from "@/lib/api";
 import type { AttendanceRecord } from "@shared/schema";
+
+function mapsUrl(lat: number, lng: number) {
+    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+}
+
+function GeofenceBadge({ status }: { status: string | null | undefined }) {
+    if (!status) return null;
+    if (status === "inside_office") return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 shrink-0">
+            <MapPin className="h-2 w-2" />In Office
+        </span>
+    );
+    if (status === "outside_office") return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 shrink-0">
+            <MapPin className="h-2 w-2" />Outside
+        </span>
+    );
+    return (
+        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 shrink-0">
+            <MapPin className="h-2 w-2" />Unverified
+        </span>
+    );
+}
 
 export default function AttendanceTab() {
     const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), "yyyy-MM"));
@@ -204,13 +227,14 @@ export default function AttendanceTab() {
                                     <div key={record.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                                         <div className="flex items-center justify-between gap-2">
                                             <div className="min-w-0">
-                                                <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-2 flex-wrap">
                                                     <span className="text-sm font-black text-slate-900">{format(parseISO(record.date), "MMM d")}</span>
                                                     {record.date === format(new Date(), "yyyy-MM-dd") && (
                                                         <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">Today</span>
                                                     )}
+                                                    <GeofenceBadge status={record.checkInGeofenceStatus} />
                                                 </div>
-                                                <div className="truncate text-xs font-medium text-slate-500">{record.userName} · {record.userRole}</div>
+                                                <div className="truncate text-xs font-medium text-slate-500">{record.userName} | {record.userRole}</div>
                                             </div>
                                             {record.checkOutTime ? (
                                                 <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700"><CheckCircle className="w-3 h-3" />Complete</span>
@@ -232,6 +256,18 @@ export default function AttendanceTab() {
                                                 <div className="text-xs font-bold text-slate-700">{calculateDuration(record.checkInTime, record.checkOutTime)}</div>
                                             </div>
                                         </div>
+                                        {record.checkInLat != null && record.checkInLng != null && (
+                                            <div className="mt-2 pt-2 border-t border-slate-100">
+                                                <a
+                                                    href={mapsUrl(record.checkInLat!, record.checkInLng!)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
+                                                >
+                                                    <Navigation className="h-2.5 w-2.5" />Open in Google Maps
+                                                </a>
+                                            </div>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -245,6 +281,7 @@ export default function AttendanceTab() {
                                             <TableHead>Check Out</TableHead>
                                             <TableHead>Duration</TableHead>
                                             <TableHead>Status</TableHead>
+                                            <TableHead>Location</TableHead>
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
@@ -291,12 +328,30 @@ export default function AttendanceTab() {
                                                             </Badge>
                                                         )}
                                                     </TableCell>
+                                                    <TableCell>
+                                                        <div className="flex flex-col gap-1 min-w-[80px]">
+                                                            <GeofenceBadge status={record.checkInGeofenceStatus} />
+                                                            {record.checkInAccuracy != null && (
+                                                                <span className="text-[10px] text-slate-400">+-{Math.round(record.checkInAccuracy as number)}m</span>
+                                                            )}
+                                                            {record.checkInLat != null && record.checkInLng != null && (
+                                                                <a
+                                                                    href={mapsUrl(record.checkInLat!, record.checkInLng!)}
+                                                                    target="_blank"
+                                                                    rel="noopener noreferrer"
+                                                                    className="flex items-center gap-0.5 text-[10px] text-blue-600 hover:underline"
+                                                                >
+                                                                    <Navigation className="h-2.5 w-2.5" />Maps
+                                                                </a>
+                                                            )}
+                                                        </div>
+                                                    </TableCell>
                                                 </motion.tr>
                                             ))}
                                         </AnimatePresence>
                                         {filteredAttendance.length === 0 && (
                                             <TableRow>
-                                                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                                                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                                                     No records found for selected filters
                                                 </TableCell>
                                             </TableRow>

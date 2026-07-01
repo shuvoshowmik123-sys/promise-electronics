@@ -28,6 +28,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { publicSettingsApi, quoteRequestsApi, serviceCatalogApi, serviceRequestsApi } from "@/lib/api";
 import { getApiUrl } from "@/lib/config";
+import { getIKFolder } from "@/lib/imagekit-config";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 import { toast } from "sonner";
@@ -212,7 +213,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
     formData.append("expire", authParams.expire.toString());
     formData.append("token", authParams.token);
     formData.append("fileName", file.name);
-    formData.append("folder", "/service-requests");
+    formData.append("folder", getIKFolder("/service-requests"));
 
     const uploadResponse = await fetch("https://upload.imagekit.io/api/v1/files/upload", {
       method: "POST",

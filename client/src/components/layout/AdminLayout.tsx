@@ -1,6 +1,7 @@
 import { Link, useLocation } from "wouter";
 import { adminNavGroups } from "@/lib/app-config";
 import { LogOut, UserCog, Menu, Loader2 } from "lucide-react";
+import { useAdminMobileMode } from "@/hooks/useAdminMobileMode";
 import { Button } from "@/components/ui/button";
 import {
   Sidebar,
@@ -26,6 +27,7 @@ import { AdminPwaInstallPrompt } from "@/components/admin/AdminPwaInstallPrompt"
 export function AdminLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading, logout, hasPermission } = useAdminAuth();
+  const isAdminMobile = useAdminMobileMode();
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -207,7 +209,10 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
               </Link>
             </div>
           </header>
-          <main className="flex-1 p-5 overflow-auto">
+          <main
+            className="flex-1 p-5 overflow-auto"
+            data-admin-mobile-mode={isAdminMobile ? "true" : undefined}
+          >
             {children}
           </main>
         </div>

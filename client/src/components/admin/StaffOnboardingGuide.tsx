@@ -15,29 +15,29 @@ const ROLE_GUIDES: Record<string, { Icon: LucideIcon; color: string; steps: Guid
         Icon: Truck,
         color: "bg-blue-600",
         steps: [
+            { title: "Check In", description: "Start your day by tapping Shift in the bottom dock and pressing Check In. Start your day from Shift so attendance and duty records stay correct." },
             { title: "Today's Tasks", description: "Your Pickup tab shows today's pickup and delivery tasks. Each card shows customer name, address, zone, and time window." },
             { title: "Navigate & Call", description: "Tap a task to see the full address. Use the call button to contact the customer before arrival." },
-            { title: "OTP Custody", description: "When you pick up or deliver a device, the customer gives you a one-time code. Enter it to confirm handover." },
-            { title: "Failed Attempts", description: "If no one is home or the customer cancels, mark the task as Failed with a reason. Your admin will follow up." },
+            { title: "OTP & Failed Attempts", description: "Enter the customer's one-time code to confirm handover. If no one is home, mark the task as Failed with a reason." },
         ],
     },
     Technician: {
         Icon: Wrench,
         color: "bg-indigo-600",
         steps: [
+            { title: "Check In", description: "Start your day by tapping Shift in the bottom dock and pressing Check In. Start your day from Shift so attendance and duty records stay correct." },
             { title: "Your Job Queue", description: "The Quick Workbench shows jobs assigned to you. Active repairs are sorted by priority — work top-down." },
             { title: "Device Details", description: "Each job shows the device type, model, serial number, and the customer's reported issue. Read them before starting." },
             { title: "Report Your Result", description: "After diagnosis, tap the outcome: Repair OK, Needs Parts, Not Repairable, or Customer Declined. Add clear notes." },
-            { title: "Parts Requests", description: "If you select Needs Parts, the system notifies the admin. The job moves to Waiting on Parts until stock arrives." },
         ],
     },
     Cashier: {
         Icon: Receipt,
         color: "bg-emerald-600",
         steps: [
+            { title: "Check In", description: "Start your day by tapping Shift in the bottom dock and pressing Check In. Start your day from Shift so attendance and duty records stay correct." },
             { title: "Point of Sale", description: "The POS screen is your workspace. Search products or scan barcodes to add items to the cart." },
             { title: "Link to Job", description: "Before billing a repair, tap Link Job to attach the sale to a job ticket. This keeps the repair history accurate." },
-            { title: "Payment", description: "Choose Cash, Card, or Mobile payment. The total updates automatically. Confirm with the customer before completing." },
             { title: "Receipt & History", description: "After payment, the receipt is generated. Payment details sync to the repair journey so the customer can see them." },
         ],
     },
@@ -45,10 +45,10 @@ const ROLE_GUIDES: Record<string, { Icon: LucideIcon; color: string; steps: Guid
         Icon: ClipboardList,
         color: "bg-violet-600",
         steps: [
+            { title: "Check In", description: "Start your day by tapping Shift in the bottom dock and pressing Check In. Start your day from Shift so attendance and duty records stay correct." },
             { title: "Dashboard Overview", description: "Your dashboard shows active service requests, job counts, and pending actions. Check it at the start of each day." },
             { title: "Assign & Monitor", description: "Open Jobs to assign technicians, set priorities, and track progress. Filter by status to find blocked work." },
-            { title: "Pickup Coordination", description: "The Pickup tab shows logistics tasks. Assign drivers, plan routes, and monitor today's pickups and deliveries." },
-            { title: "Customer Follow-up", description: "Check Repair Journeys for customer questions, quote responses, and delays. Respond promptly to keep satisfaction high." },
+            { title: "Attendance Review", description: "Check Staff Attendance under People & Staff for full team logs. Follow up with Customer Repair Journeys for any pending customer queries." },
         ],
     },
 };

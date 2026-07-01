@@ -4,7 +4,7 @@
  * Handles all database operations for job tickets (repair jobs).
  */
 
-import { db, nanoid, eq, desc, like, or, inArray, schema, sql, type JobTicket, type InsertJobTicket } from './base.js';
+import { db, nanoid, eq, desc, like, or, inArray, notInArray, count, schema, sql, type JobTicket, type InsertJobTicket } from './base.js';
 import { executeLegacyQuery, isMissingColumnError, mapLegacyJobTicketRow } from './legacy-schema.js';
 
 const JOB_TICKETS_LEGACY_COLUMNS = [
@@ -71,6 +71,48 @@ async function loadAllJobTickets(): Promise<JobTicket[]> {
 
 export async function getAllJobTickets(): Promise<JobTicket[]> {
     return loadAllJobTickets();
+}
+
+export async function getActiveJobTickets(): Promise<JobTicket[]> {
+    try {
+        return await db.select().from(schema.jobTickets)
+            .where(notInArray(schema.jobTickets.status, ['Completed', 'Cancelled']))
+            .orderBy(desc(schema.jobTickets.createdAt));
+    } catch (error) {
+        if (!isMissingJobTicketColumn(error)) throw error;
+        console.warn('[LegacySchema][job_tickets] Falling back to raw SELECT for getActiveJobTickets.', error);
+        return executeLegacyQuery(
+            sql`SELECT * FROM job_tickets WHERE status NOT IN ('Completed', 'Cancelled') ORDER BY created_at DESC`,
+            mapLegacyJobTicketRow,
+        );
+    }
+}
+
+export async function getCompletedJobTickets(limit = 25): Promise<{ jobs: JobTicket[]; total: number }> {
+    try {
+        const [jobs, [{ total }]] = await Promise.all([
+            db.select().from(schema.jobTickets)
+                .where(eq(schema.jobTickets.status, 'Completed'))
+                .orderBy(desc(schema.jobTickets.completedAt))
+                .limit(limit),
+            db.select({ total: count() }).from(schema.jobTickets)
+                .where(eq(schema.jobTickets.status, 'Completed')),
+        ]);
+        return { jobs, total: total ?? 0 };
+    } catch (error) {
+        if (!isMissingJobTicketColumn(error)) throw error;
+        console.warn('[LegacySchema][job_tickets] Falling back to raw SELECT for getCompletedJobTickets.', error);
+        const [jobs, countResult] = await Promise.all([
+            executeLegacyQuery(
+                sql`SELECT * FROM job_tickets WHERE status = 'Completed' ORDER BY completed_at DESC NULLS LAST LIMIT ${limit}`,
+                mapLegacyJobTicketRow,
+            ),
+            db.execute(sql`SELECT COUNT(*) AS total FROM job_tickets WHERE status = 'Completed'`),
+        ]);
+        const rows = (countResult as any)?.rows ?? [];
+        const total = parseInt(rows[0]?.total ?? '0', 10);
+        return { jobs, total };
+    }
 }
 
 export function isCorporateJob(job: Pick<JobTicket, "corporateClientId" | "corporateChallanId" | "corporateJobNumber" | "batchId" | "source">): boolean {

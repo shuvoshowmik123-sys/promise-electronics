@@ -315,8 +315,11 @@ export async function getJobOverview(): Promise<{
     const endOfWeek = new Date(today);
     endOfWeek.setDate(endOfWeek.getDate() + 7);
 
-    const allJobs = await jobRepo.getAllJobTickets();
-    const activeJobs = allJobs.filter((job) => !['Completed', 'Cancelled'].includes(job.status));
+    // Targeted queries: only fetch what's needed (avoids full-table scan)
+    const [activeJobs, { jobs: readyForDelivery, total: totalReadyForDelivery }] = await Promise.all([
+        jobRepo.getActiveJobTickets(),
+        jobRepo.getCompletedJobTickets(25),
+    ]);
 
     // Filter jobs by deadline
     const dueToday = activeJobs.filter(j => {
@@ -336,9 +339,6 @@ export async function getJobOverview(): Promise<{
         const deadline = new Date(j.deadline);
         return deadline >= today && deadline < endOfWeek;
     });
-
-    const readyForDelivery = allJobs.filter((job) => job.status === 'Completed').slice(0, 25);
-    const totalReadyForDelivery = allJobs.filter((job) => job.status === 'Completed').length;
 
     const inProgress = activeJobs.filter(j => j.status === 'In Progress');
 
@@ -366,7 +366,7 @@ export async function getJobOverview(): Promise<{
             totalDueToday: dueToday.length,
             totalDueTomorrow: dueTomorrow.length,
             totalDueThisWeek: dueThisWeek.length,
-            totalReadyForDelivery: totalReadyForDelivery,
+            totalReadyForDelivery,
             totalInProgress: inProgress.length,
         },
     };

@@ -693,14 +693,15 @@ export const attendanceApi = {
     getByDate: (date: string) => fetchApi<AttendanceRecord[]>(`/admin/attendance/date/${date}`),
     getByUser: (userId: string) => fetchApi<AttendanceRecord[]>(`/admin/attendance/user/${userId}`),
     getToday: () => fetchApi<AttendanceRecord | null>("/admin/attendance/today"),
-    checkIn: (notes?: string) =>
+    checkIn: (notes?: string, lat?: number, lng?: number, accuracy?: number) =>
         fetchApi<AttendanceRecord>("/admin/attendance/check-in", {
             method: "POST",
-            body: JSON.stringify({ notes }),
+            body: JSON.stringify({ notes, lat, lng, accuracy }),
         }),
-    checkOut: () =>
+    checkOut: (lat?: number, lng?: number, accuracy?: number) =>
         fetchApi<AttendanceRecord>("/admin/attendance/check-out", {
             method: "POST",
+            body: JSON.stringify({ lat, lng, accuracy }),
         }),
     getJobsByTechnician: (name: string) => fetchApi<JobTicket[]>(`/admin/jobs/technician/${encodeURIComponent(name)}`),
 };

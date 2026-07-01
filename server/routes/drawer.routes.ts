@@ -8,8 +8,8 @@ import { runDrawerDayCloseNow } from '../services/drawer-day-close.service.js';
 
 export const drawerRouter = Router();
 
-drawerRouter.use(requireAdminAuth);
-drawerRouter.use(requireAnyPermission(['pos', 'finance']));
+drawerRouter.use('/api/drawer', requireAdminAuth);
+drawerRouter.use('/api/drawer', requireAnyPermission(['pos', 'finance']));
 
 function appendRouteNote(existing: string | null | undefined, note: string): string {
     const base = (existing ?? '').trim();

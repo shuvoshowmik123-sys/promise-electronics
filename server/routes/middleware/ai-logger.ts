@@ -68,29 +68,29 @@ export const aiErrorHandler = async (
 
         const diagnosis = await aiService.diagnoseError(err, context);
 
-        // 2. Find Admins
+        // 2. Find Super Admins only — system internals must not reach Managers or below
         const admins = await db
             .select()
             .from(users)
-            .where(or(eq(users.role, "Super Admin"), eq(users.role, "Manager")));
+            .where(eq(users.role, "Super Admin"));
 
-        // 3. Notify Admins
+        // 3. Notify Super Admins with safe, non-diagnostic text
         for (const admin of admins) {
-            // Save to DB
+            // Save to DB — no raw cause/fix in the notification body
             await db.insert(notifications).values({
                 id: nanoid(),
                 userId: admin.id,
-                title: `🚨 Server Error: ${diagnosis.severity}`,
-                message: `${diagnosis.cause}\nFix: ${diagnosis.fix}`,
-                type: "warning",
-                link: "/admin/logs",
+                title: "Server Issue Detected",
+                message: "A server issue was detected. Super Admin review required.",
+                type: "system_alert",
+                link: "system-health",
                 read: false,
             });
 
-            // Send Push
+            // Push notification — keep body generic
             await pushService.sendToUser(admin.id, {
-                title: `🚨 Server Alert: ${diagnosis.severity}`,
-                body: diagnosis.cause,
+                title: "Server Issue Detected",
+                body: "A server issue requires your review. Open System Health.",
                 data: {
                     type: "server_error",
                     severity: diagnosis.severity,

@@ -21,6 +21,7 @@ import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 const CustomerAuthModal = lazy(() => import("@/components/auth/CustomerAuthModal").then(m => ({ default: m.CustomerAuthModal })));
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { getApiUrl } from "@/lib/config";
+import { getIKFolder } from "@/lib/imagekit-config";
 import { useIsMobile } from "@/hooks/use-mobile";
 const MobileServiceWizard = lazy(() => import("@/components/mobile/MobileServiceWizard").then(m => ({ default: m.MobileServiceWizard })));
 
@@ -277,7 +278,7 @@ export default function RepairRequestPage() {
     formData.append("expire", expire.toString());
     formData.append("token", token);
     formData.append("fileName", file.name);
-    formData.append("folder", "/service-requests");
+    formData.append("folder", getIKFolder("/service-requests"));
 
     const uploadResponse = await fetch(
       "https://upload.imagekit.io/api/v1/files/upload",

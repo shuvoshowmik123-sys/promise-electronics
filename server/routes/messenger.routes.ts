@@ -4,6 +4,7 @@ import { aiService } from "../services/ai.service.js";
 import { storage } from "../storage.js";
 import ImageKit from "imagekit";
 import { brainService } from "../brain/brain.service.js";
+import { getIKFolder } from "../utils/imagekit-folder.js";
 import { assignSession } from "../services/assignment.service.js";
 
 const router = Router();
@@ -176,7 +177,7 @@ async function handleMessage(sender_psid: string, message: any) {
                     await imagekit.upload({
                         file: imageBuffer.toString("base64"),
                         fileName: `messenger-${sender_psid}-${imageId}.jpg`,
-                        folder: 'messenger_uploads'
+                        folder: getIKFolder('messenger'),
                     });
                 } catch (e: any) {
                     console.warn("[Messenger] ImageKit upload failed:", e.message?.slice(0, 60));

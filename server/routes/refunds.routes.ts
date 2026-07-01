@@ -17,8 +17,8 @@ import { requireAdminAuth, requireAnyPermission } from './middleware/auth.js';
 
 const router = Router();
 
-router.use(requireAdminAuth);
-router.use(requireAnyPermission(['finance', 'pos']));
+router.use('/api/refunds', requireAdminAuth);
+router.use('/api/refunds', requireAnyPermission(['finance', 'pos']));
 
 // Refund approval threshold setting key
 const REFUND_THRESHOLD_KEY = 'refund_approval_threshold';

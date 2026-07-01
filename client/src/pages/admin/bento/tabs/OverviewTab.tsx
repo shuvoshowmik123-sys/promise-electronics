@@ -2,63 +2,298 @@ import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import {
     Clock, Calendar, Truck, Wrench, Users, AlertCircle, User, CheckCircle2,
-    PenTool, Plus, MessageSquare, TrendingUp, BarChart3, Award
+    PenTool, Plus, MessageSquare, TrendingUp, Award, RefreshCw
 } from "lucide-react";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell
 } from "recharts";
 import { Button } from "@/components/ui/button";
-import { BentoCard, DashboardSkeleton, containerVariants, itemVariants, MobileKpiGrid } from "../shared";
+import { BentoCard, DashboardSkeleton, containerVariants, itemVariants } from "../shared";
 import { analyticsApi } from "@/lib/api";
 import { fetchApi } from "@/lib/api/httpClient";
+import { useAdminMobileMode } from "@/hooks/useAdminMobileMode";
 
-// Raw fetch("/api/...") used a relative URL + no credentials → broke under the
-// split Vercel+Render deploy. fetchApi handles base URL + auth cookie + CSRF.
-const fetchJobOverview = () => fetchApi<any>("/admin/job-overview");
+const fetchJobOverview = () => fetchApi<any>("/admin/job-overview", { timeoutMs: 120_000 });
 
-export default function OverviewTab() {
-    const { data: overviewData, isLoading: isOverviewLoading, isError: isOverviewError } = useQuery({
-        queryKey: ["jobOverview"],
-        queryFn: fetchJobOverview,
-    });
-
-    // Phase E — Owner Analytics (30-day rolling)
-    const { data: analyticsData } = useQuery({
-        queryKey: ["dashboardStats", "analytics"],
-        queryFn: () => analyticsApi.getDashboard(),
-        staleTime: 30000,
-    });
-
-    if (isOverviewLoading) return <DashboardSkeleton />;
-    if (isOverviewError || !overviewData) return (
-        <div className="flex flex-col items-center justify-center h-64 gap-4">
-            <div className="p-4 bg-red-50 rounded-2xl">
-                <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+function SoftOverviewUnavailable({ onRetry, isRetrying }: { onRetry: () => void; isRetrying: boolean }) {
+    return (
+        <div className="flex min-h-[260px] items-center justify-center px-4">
+            <div className="w-full max-w-md rounded-2xl border border-amber-100 bg-amber-50/70 p-5 text-center shadow-sm">
+                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white text-amber-600 shadow-sm">
+                    <RefreshCw className={`h-5 w-5 ${isRetrying ? "animate-spin" : ""}`} />
+                </div>
+                <h3 className="text-sm font-black text-slate-900">Overview is reconnecting</h3>
+                <p className="mt-1 text-xs font-medium leading-5 text-slate-600">
+                    Shop data is taking longer than usual. Your work is safe; try again in a moment.
+                </p>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={onRetry}
+                    disabled={isRetrying}
+                    className="mt-4 border-amber-200 bg-white text-amber-700 hover:bg-amber-100"
+                >
+                    <RefreshCw className={`mr-2 h-3.5 w-3.5 ${isRetrying ? "animate-spin" : ""}`} />
+                    {isRetrying ? "Checking..." : "Retry"}
+                </Button>
             </div>
-            <p className="text-slate-500 font-medium text-sm">Failed to load overview data. Please refresh.</p>
         </div>
     );
+}
 
-    const { stats, technicianWorkloads, dueToday, readyForDelivery } = overviewData as any;
+function SoftRefreshNotice({ onRetry, isRetrying }: { onRetry: () => void; isRetrying: boolean }) {
+    return (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <span className="font-semibold">Live refresh delayed. Showing the last good overview.</span>
+            <button
+                type="button"
+                onClick={onRetry}
+                disabled={isRetrying}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-2 py-1 font-black text-amber-700 shadow-sm disabled:opacity-60"
+            >
+                <RefreshCw className={`h-3 w-3 ${isRetrying ? "animate-spin" : ""}`} />
+                Retry
+            </button>
+        </div>
+    );
+}
+
+// ─── Mobile Overview ──────────────────────────────────────────────────────────
+
+const KPI_TONES: Record<string, { bg: string; border: string; text: string }> = {
+    violet: { bg: "bg-violet-50", border: "border-violet-100", text: "text-violet-700" },
+    amber:  { bg: "bg-amber-50",  border: "border-amber-100",  text: "text-amber-700"  },
+    emerald:{ bg: "bg-emerald-50",border: "border-emerald-100",text: "text-emerald-700" },
+    blue:   { bg: "bg-blue-50",   border: "border-blue-100",   text: "text-blue-700"   },
+    rose:   { bg: "bg-rose-50",   border: "border-rose-100",   text: "text-rose-700"   },
+};
+
+function MobileKpiChip({ label, value, meta, tone }: { label: string; value: React.ReactNode; meta?: string; tone: keyof typeof KPI_TONES }) {
+    const t = KPI_TONES[tone];
+    return (
+        <div className={`rounded-xl border ${t.border} ${t.bg} px-2.5 py-2`}>
+            <span className={`text-[9px] font-bold uppercase tracking-wide ${t.text}`}>{label}</span>
+            <div className="mt-0.5 text-[15px] font-black leading-tight tracking-tight text-slate-950">{value}</div>
+            {meta && <div className="text-[10px] font-medium text-slate-500">{meta}</div>}
+        </div>
+    );
+}
+
+function MobileJobRow({ job, variant }: { job: any; variant: "urgent" | "ready" }) {
+    if (variant === "urgent") {
+        return (
+            <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-rose-100 bg-rose-50">
+                    <AlertCircle className="h-4 w-4 text-rose-600" />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold text-slate-500">{job.ticketNumber}</span>
+                        <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-rose-600">{job.priority}</span>
+                    </div>
+                    <div className="truncate text-sm font-bold text-slate-900">{job.deviceType} {job.model}</div>
+                    <div className="flex items-center gap-1 text-[10px] text-slate-500">
+                        <User className="h-3 w-3" />{job.technician || "Unassigned"}
+                    </div>
+                </div>
+            </div>
+        );
+    }
+    return (
+        <div className="flex items-center gap-3 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+            </div>
+            <div className="min-w-0 flex-1">
+                <div className="truncate text-sm font-bold text-slate-900">{job.customerName}</div>
+                <div className="text-[10px] text-slate-500">{job.deviceType} · {job.ticketNumber}</div>
+            </div>
+        </div>
+    );
+}
+
+function MobileSection({ title, count, countTone = "slate", children }: {
+    title: string;
+    count?: number;
+    countTone?: keyof typeof KPI_TONES;
+    children: React.ReactNode;
+}) {
+    const t = KPI_TONES[countTone];
+    return (
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="mb-2.5 flex items-center justify-between gap-2">
+                <h3 className="text-xs font-black uppercase tracking-wide text-slate-600">{title}</h3>
+                {count !== undefined && (
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${t?.bg ?? "bg-slate-100"} ${t?.text ?? "text-slate-500"}`}>{count}</span>
+                )}
+            </div>
+            {children}
+        </div>
+    );
+}
+
+function MobileOverviewLayout({ stats, technicianWorkloads, dueToday, readyForDelivery, analyticsData }: {
+    stats: any;
+    technicianWorkloads: any[];
+    dueToday: any[];
+    readyForDelivery: any[];
+    analyticsData: any;
+}) {
+    const maxJobs = Math.max(1, ...technicianWorkloads.map((t) => t.jobs?.length ?? 0));
 
     return (
-        <div className="space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-8">
-            {/* Mobile KPI strip — compact replacement for the oversized desktop cards */}
-            <MobileKpiGrid
-                items={[
-                    { label: "Due Today", value: stats.totalDueToday, meta: "Urgent action", icon: <Clock className="h-4 w-4" />, tone: "violet" },
-                    { label: "Due Tomorrow", value: stats.totalDueTomorrow, meta: "Upcoming", icon: <Calendar className="h-4 w-4" />, tone: "amber" },
-                    { label: "Ready Pickup", value: stats.totalReadyForDelivery, meta: "Completed", icon: <Truck className="h-4 w-4" />, tone: "emerald" },
-                    { label: "Active Repairs", value: stats.totalInProgress, meta: "On bench", icon: <Wrench className="h-4 w-4" />, tone: "blue" },
-                ]}
-            />
+        <div
+            className="bg-[#f8fafc] px-3 pt-2 space-y-3"
+            style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }}
+        >
+            {/* Header */}
+            <div className="pb-1">
+                <h1 className="text-base font-black text-slate-900">Overview</h1>
+                <p className="text-xs text-slate-500">Shop floor at a glance</p>
+            </div>
+
+            {/* KPI chips */}
+            <div className="grid grid-cols-2 gap-1.5">
+                <MobileKpiChip label="Due Today"     value={stats.totalDueToday}        meta="Urgent action" tone="violet" />
+                <MobileKpiChip label="Due Tomorrow"  value={stats.totalDueTomorrow}      meta="Upcoming"      tone="amber"  />
+                <MobileKpiChip label="Ready Pickup"  value={stats.totalReadyForDelivery} meta="Completed"     tone="emerald"/>
+                <MobileKpiChip label="Active Repairs" value={stats.totalInProgress}      meta="On bench"      tone="blue"   />
+            </div>
+
+            {/* Urgent Jobs */}
+            <MobileSection title="Urgent Jobs — Due Today" count={dueToday.length} countTone="rose">
+                {dueToday.length === 0 ? (
+                    <div className="rounded-xl bg-slate-50 px-3 py-4 text-center text-xs font-medium text-slate-500">No jobs due today</div>
+                ) : (
+                    <div className="space-y-2">
+                        {dueToday.slice(0, 8).map((job: any) => (
+                            <MobileJobRow key={job.id} job={job} variant="urgent" />
+                        ))}
+                    </div>
+                )}
+            </MobileSection>
+
+            {/* Ready for Delivery */}
+            <MobileSection title="Ready for Delivery" count={readyForDelivery.length} countTone="emerald">
+                {readyForDelivery.length === 0 ? (
+                    <div className="rounded-xl bg-slate-50 px-3 py-4 text-center text-xs font-medium text-slate-500">No completed jobs pending</div>
+                ) : (
+                    <div className="space-y-2">
+                        {readyForDelivery.slice(0, 8).map((job: any) => (
+                            <MobileJobRow key={job.id} job={job} variant="ready" />
+                        ))}
+                    </div>
+                )}
+            </MobileSection>
+
+            {/* Technician Workload — progress rows */}
+            <MobileSection title="Technician Workload">
+                {technicianWorkloads.length === 0 ? (
+                    <div className="rounded-xl bg-slate-50 px-3 py-4 text-center text-xs font-medium text-slate-500">No active technicians</div>
+                ) : (
+                    <div className="space-y-2.5">
+                        {technicianWorkloads.map((tech: any) => {
+                            const count = tech.jobs?.length ?? 0;
+                            const pct = Math.min(100, (count / maxJobs) * 100);
+                            return (
+                                <div key={tech.technician} className="flex items-center gap-3">
+                                    <div className="h-8 w-8 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-[11px] font-black">
+                                        {tech.technician.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-xs font-bold text-slate-700 truncate">{tech.technician}</span>
+                                            <span className="text-[10px] font-mono text-slate-500 shrink-0 ml-2">{count} jobs</span>
+                                        </div>
+                                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
+                                                style={{ width: `${pct}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                )}
+            </MobileSection>
+
+            {/* Owner Analytics — compact stacked */}
+            {analyticsData && (
+                <MobileSection title="30-Day Performance">
+                    <div className="grid grid-cols-2 gap-1.5 mb-3">
+                        <MobileKpiChip
+                            label="Revenue"
+                            value={`৳${((analyticsData.summary.totalRevenue ?? 0) / 1000).toFixed(1)}k`}
+                            tone="emerald"
+                        />
+                        <MobileKpiChip
+                            label="Repairs Done"
+                            value={analyticsData.summary.totalRepairs ?? 0}
+                            tone="blue"
+                        />
+                        <MobileKpiChip
+                            label="Wastage Loss"
+                            value={`৳${((analyticsData.summary.totalWastageLoss ?? 0) / 1000).toFixed(1)}k`}
+                            tone="rose"
+                        />
+                        <MobileKpiChip
+                            label="Active Staff"
+                            value={analyticsData.summary.totalStaff ?? 0}
+                            tone="amber"
+                        />
+                    </div>
+
+                    {analyticsData.technicianPerformance?.length > 0 && (
+                        <div className="space-y-2.5 border-t border-slate-100 pt-2.5">
+                            <p className="text-[10px] font-black uppercase tracking-wide text-slate-400">Top Performers</p>
+                            {analyticsData.technicianPerformance.slice(0, 5).map((tech: any) => (
+                                <div key={tech.name} className="flex items-center gap-3">
+                                    <div className="h-7 w-7 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-[10px] font-black">
+                                        {tech.name.charAt(0).toUpperCase()}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex justify-between items-center mb-1">
+                                            <span className="text-xs font-bold text-slate-700 truncate">{tech.name}</span>
+                                            <span className="text-[10px] font-bold text-indigo-600 shrink-0 ml-2">{(tech.efficiency ?? 0).toFixed(0)}%</span>
+                                        </div>
+                                        <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                            <div
+                                                className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 rounded-full"
+                                                style={{ width: `${Math.min(100, tech.efficiency ?? 0)}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </MobileSection>
+            )}
+        </div>
+    );
+}
+
+// ─── Desktop Overview (preserved) ────────────────────────────────────────────
+
+function DesktopOverviewLayout({ stats, technicianWorkloads, dueToday, readyForDelivery, analyticsData }: {
+    stats: any;
+    technicianWorkloads: any[];
+    dueToday: any[];
+    readyForDelivery: any[];
+    analyticsData: any;
+}) {
+    return (
+        <div className="space-y-6 pb-8">
             {/* KPI ROW */}
             <motion.div
                 variants={containerVariants}
                 initial="hidden"
                 whileInView="visible"
                 viewport={{ once: true, margin: "-50px" }}
-                className="hidden md:grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
+                className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6"
             >
                 <motion.div variants={itemVariants} className="col-span-1">
                     <BentoCard
@@ -146,7 +381,7 @@ export default function OverviewTab() {
                                     labelStyle={{ color: '#64748b' }}
                                 />
                                 <Bar dataKey="jobs.length" name="Active Jobs" fill="rgba(255,255,255,0.9)" radius={[6, 6, 0, 0]} barSize={40}>
-                                    {technicianWorkloads.map((entry: any, index: any) => (
+                                    {technicianWorkloads.map((_entry: any, index: any) => (
                                         <Cell key={`cell-${index}`} fill="rgba(255, 255, 255, 0.8)" />
                                     ))}
                                 </Bar>
@@ -255,6 +490,7 @@ export default function OverviewTab() {
                     </BentoCard>
                 </motion.div>
             </motion.div>
+
             {/* OWNER ANALYTICS — 30-Day Rolling */}
             {analyticsData && (
                 <motion.div
@@ -264,7 +500,6 @@ export default function OverviewTab() {
                     viewport={{ once: true, margin: "-50px" }}
                     className="space-y-4"
                 >
-                    {/* Section header */}
                     <motion.div variants={itemVariants} className="flex items-center gap-3">
                         <div className="p-2 bg-gradient-to-br from-violet-500 to-indigo-600 rounded-xl shadow-md">
                             <TrendingUp className="w-4 h-4 text-white" />
@@ -275,7 +510,6 @@ export default function OverviewTab() {
                         </div>
                     </motion.div>
 
-                    {/* KPI mini cards */}
                     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                         {[
                             { label: "Revenue", icon: <TrendingUp className="w-4 h-4" />, value: `৳${((analyticsData.summary.totalRevenue ?? 0) / 1000).toFixed(1)}k`, from: "from-emerald-500", to: "to-teal-600" },
@@ -295,12 +529,11 @@ export default function OverviewTab() {
                         ))}
                     </div>
 
-                    {/* Technician performance table */}
                     {analyticsData.technicianPerformance?.length > 0 && (
                         <motion.div variants={itemVariants}>
                             <BentoCard className="bg-white border border-slate-200" title="Technician Performance" icon={<Award className="w-4 h-4 text-indigo-600" />}>
                                 <div className="space-y-3 pt-2">
-                                    {analyticsData.technicianPerformance.slice(0, 6).map((tech) => (
+                                    {analyticsData.technicianPerformance.slice(0, 6).map((tech: any) => (
                                         <div key={tech.name} className="flex items-center gap-3">
                                             <div className="w-7 h-7 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-[10px] font-black shrink-0">
                                                 {tech.name.charAt(0).toUpperCase()}
@@ -327,5 +560,61 @@ export default function OverviewTab() {
                 </motion.div>
             )}
         </div>
+    );
+}
+
+// ─── Tab Entry Point ──────────────────────────────────────────────────────────
+
+export default function OverviewTab() {
+    const isMobile = useAdminMobileMode();
+
+    const { data: overviewData, isLoading: isOverviewLoading, isError: isOverviewError, isFetching: isOverviewFetching, refetch: refetchOverview } = useQuery({
+        queryKey: ["jobOverview"],
+        queryFn: fetchJobOverview,
+        retry: 1,
+        retryDelay: 5000,
+        staleTime: 5 * 60 * 1000,
+        refetchOnWindowFocus: false,
+    });
+
+    const { data: analyticsData } = useQuery({
+        queryKey: ["dashboardStats", "analytics"],
+        queryFn: () => analyticsApi.getDashboard(),
+        staleTime: 30000,
+        refetchOnWindowFocus: false,
+    });
+
+    if (isOverviewLoading && !overviewData) return <DashboardSkeleton />;
+    if (isOverviewError && !overviewData) return <SoftOverviewUnavailable onRetry={() => refetchOverview()} isRetrying={isOverviewFetching} />;
+
+    const { stats, technicianWorkloads, dueToday, readyForDelivery } = overviewData as any;
+    const refreshNotice = isOverviewError ? <SoftRefreshNotice onRetry={() => refetchOverview()} isRetrying={isOverviewFetching} /> : null;
+
+    if (isMobile) {
+        return (
+            <>
+                {refreshNotice}
+                <MobileOverviewLayout
+                    stats={stats}
+                    technicianWorkloads={technicianWorkloads}
+                    dueToday={dueToday}
+                    readyForDelivery={readyForDelivery}
+                    analyticsData={analyticsData}
+                />
+            </>
+        );
+    }
+
+    return (
+        <>
+            {refreshNotice}
+            <DesktopOverviewLayout
+                stats={stats}
+                technicianWorkloads={technicianWorkloads}
+                dueToday={dueToday}
+                readyForDelivery={readyForDelivery}
+                analyticsData={analyticsData}
+            />
+        </>
     );
 }

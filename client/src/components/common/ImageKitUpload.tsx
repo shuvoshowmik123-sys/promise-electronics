@@ -4,6 +4,7 @@ import { Camera, Loader2 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { cn } from "@/lib/utils";
 import { getApiUrl } from "@/lib/config";
+import { getIKFolder } from "@/lib/imagekit-config";
 
 interface UploadResult {
     url: string;
@@ -45,6 +46,7 @@ export function ImageKitUpload({
     children,
     hideError = false,
 }: ImageKitUploadProps) {
+    const resolvedFolder = getIKFolder(folder);
     const { toast } = useToast();
     const [isUploading, setIsUploading] = useState(false);
     const uploadRef = useRef<HTMLInputElement>(null);
@@ -133,7 +135,7 @@ export function ImageKitUpload({
         >
             <div ref={containerRef} className={cn("relative", className)}>
                 <IKUpload
-                    folder={folder}
+                    folder={resolvedFolder}
                     onUploadStart={() => setIsUploading(true)}
                     onSuccess={handleSuccess}
                     onError={handleError}

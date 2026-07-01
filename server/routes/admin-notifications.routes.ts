@@ -39,7 +39,8 @@ router.get('/api/admin/sse', requireAdminAuth, (req: Request, res: Response) => 
 router.get('/api/admin/notifications', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const limit = parseInt(req.query.limit as string) || 50;
-        const notifications = await buildAdminNotificationFeed(req.session.adminUserId);
+        const user = (req as any).user;
+        const notifications = await buildAdminNotificationFeed(req.session.adminUserId, {}, user);
         res.json(notifications.slice(0, limit));
     } catch (error) {
         logRouteError('AdminNotifications.List', req, error);
@@ -52,7 +53,8 @@ router.get('/api/admin/notifications', requireAdminAuth, async (req: Request, re
  */
 router.get('/api/admin/notifications/unread-count', requireAdminAuth, async (req: Request, res: Response) => {
     try {
-        const count = await getAdminNotificationUnreadCount(req.session.adminUserId);
+        const user = (req as any).user;
+        const count = await getAdminNotificationUnreadCount(req.session.adminUserId, {}, user);
         res.json({ count });
     } catch (error) {
         logRouteError('AdminNotifications.UnreadCount', req, error);

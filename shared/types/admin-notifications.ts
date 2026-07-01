@@ -11,4 +11,6 @@ export interface AdminNotificationItem {
   link: string;
   linkId?: string;
   jobId?: string | null;
+  /** Originating DB userId — 'broadcast' for shop-wide, undefined for virtual SR items */
+  userId?: string;
 }

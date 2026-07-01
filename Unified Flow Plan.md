@@ -9102,3 +9102,819 @@ Expected:
 | `npx tsc --noEmit --pretty false` | PASS |
 | `npx vite build --mode development` | PASS |
 | `git diff --check` | PASS |
+
+---
+
+## Phase 22A — Admin Mobile Mode Foundation + Rotation Audit
+
+**Status: COMPLETE** | Date: 2026-07-01
+
+### Problem
+
+Phone landscape (e.g. iPhone 14 Pro Max at 932×430) has viewport width > 768px. Tailwind `md:` breakpoint fires at 768px, so a landscape phone triggers desktop layout. Additionally, `MobileTabHeader` has `md:hidden` and `MobileScrollContent` has `md:overflow-visible` — both break at landscape widths even for legitimate mobile users.
+
+### Solution
+
+Hook-based mobile detection that uses `visualViewport` dimensions and touch-device heuristics instead of CSS breakpoints alone.
+
+#### 1. `client/src/hooks/useAdminMobileMode.ts` (new file)
+
+Returns `true` when:
+- `visualViewport.width < 768` (portrait phone — any device)
+- OR: touch device AND `visualViewport.height < 700` (landscape phone — captures 844×390, 932×430)
+
+Returns `false` for:
+- 1440×900 desktop
+- 768×1024 tablet (width ≥ 768, height ≥ 700)
+
+Listens to `resize`, `orientationchange`, and `visualViewport.resize` events. Uses lazy `useState` initializer so SSR always returns `false`.
+
+#### 2. `client/src/components/layout/AdminLayout.tsx`
+
+Added `const isAdminMobile = useAdminMobileMode()` and `data-admin-mobile-mode={isAdminMobile ? "true" : undefined}` on `<main>`. Enables future CSS/JS targeting without changing any existing layout classes.
+
+#### 3. `client/src/pages/admin/account-settings.tsx`
+
+First tab wired with full mobile/desktop branching:
+
+- **Mobile branch** (phone portrait + landscape): `MobileTabLayout` outer shell + custom header div (no `md:hidden`) + custom scroll div (no `md:overflow-visible` overrides) + one-column form fields + `env(safe-area-inset-bottom)` padding
+- **Desktop branch**: unchanged grid layout with `sm:grid-cols-2`
+- All behavior preserved: username read-only, role/permissions read-only, profile update works, password change triggers logout
+
+#### Landscape Audit: Tailwind md: Override Risk Table
+
+| Tab | File | Risk | Reason | Action |
+|-----|------|------|--------|--------|
+| My Account | account-settings.tsx | ✅ DONE | Fully hook-branched | Complete |
+| AttendanceTab | bento/staff/AttendanceTab.tsx | DONE (prior) | Already migrated to primitives | No change needed |
+| Inventory | bento/inventory/*.tsx | MEDIUM | Uses MobileTabHeader/ScrollContent — unsafe md: classes | Queue for 22B |
+| Users | bento/users/*.tsx | MEDIUM | Uses MobileTabHeader/ScrollContent — unsafe md: classes | Queue for 22B |
+| Settings | bento/settings/*.tsx | MEDIUM | Uses MobileTabHeader/ScrollContent — unsafe md: classes | Queue for 22B |
+| SalaryHR | bento/salaryhr/*.tsx | MEDIUM | Uses MobileTabHeader/ScrollContent — unsafe md: classes | Queue for 22B |
+| Dashboard/Jobs/Finance/POS | bento/*/index.tsx | LOW | Desktop-only tabs, no mobile primitives yet | Queue for 22C |
+
+**Key insight**: `MobileTabHeader` (`md:hidden`) and `MobileScrollContent` (`md:min-h-fit md:flex-none md:overflow-visible`) must NOT be used in hook-branched mobile paths. The hook already gates visibility — adding `md:` responsive overrides creates a conflict at landscape widths. Use plain divs in the mobile branch, or update the primitives to accept a `forceShow` prop.
+
+### Checks Run
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS — 0 errors |
+| `npx vite build --mode development` | PASS — built in 29s |
+| `git diff --check` | PASS (CRLF warning only, not a whitespace error) |
+
+### Phase 22B Recommendation
+
+Migrate `MobileTabHeader` and `MobileScrollContent` to accept a `forceShow?: boolean` prop that removes `md:hidden` / `md:overflow-visible` when set. Then wire Inventory, Users, Settings, and SalaryHR tabs through `useAdminMobileMode` + the updated primitives. This replaces the current `md:` breakpoint-based show/hide with explicit hook-controlled branching across all tabs.
+
+---
+
+## Phase 22A Verification QA — Playwright Mobile Rotation
+
+**Status: VERIFIED WITH BLOCKER** | Date: 2026-07-01 | Tool: Playwright MCP | Server: localhost:5082
+
+### Viewports Tested
+
+| Viewport | Result | Notes |
+|----------|--------|-------|
+| 390×844 portrait | ⚠️ PARTIAL | Mobile branch renders ✅, old AdminLayout header visible ❌ |
+| 430×932 portrait | ⚠️ PARTIAL | Same as above |
+| 844×390 landscape | ❌ FAIL | Desktop sidebar fully expands (md:flex at 844px), layout breaks |
+| 932×430 landscape | ❌ FAIL | Same — full sidebar visible |
+| 1440×900 desktop | ✅ PASS | Desktop grid, no data attribute, sidebar correct, all sections visible |
+
+### Evidence
+
+- `qa-22a-account-390x844.png` — portrait mobile card stack with old header chrome
+- `qa-22a-account-430x932.png` — portrait OK
+- `qa-22a-account-844x390.png` — full sidebar visible on landscape ❌
+- `qa-22a-account-932x430.png` — full sidebar visible ❌
+- `qa-22a-account-1440x900.png` — desktop preserved ✅
+
+### Check Results
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS — 0 errors |
+| `npx vite build --mode development` | PASS — built in 31s |
+| `git diff --check` | PASS |
+| Console React errors | 0 |
+| Console hook-order errors | 0 |
+| Console setState-during-render warnings | 0 |
+| `data-admin-mobile-mode` on portrait | "true" ✅ |
+| `data-admin-mobile-mode` on desktop | absent ✅ |
+| Username disabled | true ✅ |
+| Save disabled (unchanged profile) | true ✅ |
+| Change Password disabled (empty) | true ✅ |
+| Horizontal overflow (portrait) | false ✅ |
+
+### Bugs Found
+
+#### Bug 1 — BLOCKER: Shell Integration Gap (Landscape Fail)
+
+`/admin/account` is routed through old `AdminLayout` (line 120-129 in `AdminRouter.tsx`). The old AdminLayout sidebar uses `hidden md:flex` — at landscape phone widths (844px, 932px), `md:flex` activates and the full dark desktop navigation sidebar appears. The mobile content branch IS rendering correctly (hook works), but it is dwarfed by the 256px desktop sidebar. The layout also loses viewport-height containment: `mainScrollHeight === mainClientHeight === 1239px` on a 390px-tall viewport, meaning scroll is a full-page scroll (not a contained viewport scroll).
+
+**Root cause**: `AdminRouter.tsx` line 120–129 serves `/admin/account` inside `AdminLayout` instead of the Bento SPA (`DesignConcept`). All other `/admin/*` routes use the Bento SPA which has `hidden md:flex` on its sidebar but the correct mobile chrome (bottom dock, no-sidebar-on-phone layout) for hook-branched tabs.
+
+**Fix**: See Phase 22A-Hotfix recommendation below.
+
+#### Bug 2 — LOW: Old AdminLayout Header on Portrait
+
+Even at 390×844 portrait (where sidebar collapses), the `AdminLayout`'s sticky `<header>` remains visible: hamburger trigger, "Account" breadcrumb, bell icon, user icon. On portrait this is a minor nuisance — users get a top bar that doesn't match the Bento mobile chrome (no bottom dock, different icon arrangement). No Bento mobile bottom navigation dock is present.
+
+**Root cause**: Same shell gap — old AdminLayout wraps the page.
+
+#### Bug 3 — CLEANUP (Fixed): State Initialization During Render
+
+Original code called `setName/setEmail/setPhone/setProfileInit` directly in the render body (inside `if (account && !profileInit)`). React 19 allows setState on the current component during render for derived state (no warnings observed in console), but `useEffect` is the idiomatic, future-proof pattern. **Fixed**: moved to `useEffect([account, profileInit])`.
+
+#### Bug 4 — INFO: Password Fields Not in `<form>`
+
+Browser VERBOSE advisory: "Password field is not contained in a form." Affects browser autofill heuristics. Not a functional bug. Low priority — wrap password inputs in `<form onSubmit={e => { e.preventDefault(); passwordMutation.mutate(); }}>` in a future pass.
+
+#### Bug 5 — INFO: 403 on `/api/users/presence`
+
+Super Admin presence heartbeat returns 403. Separate permission scope issue unrelated to account settings mobile layout.
+
+### Conclusion
+
+Phase 22A page-level mobile branching is **correct** — the hook fires at the right viewports, the mobile card layout renders, and all behavioral invariants hold (disabled username, disabled buttons, no overflow on portrait). The **blocker is the shell**: `/admin/account` does not live in the Bento SPA shell, so landscape phone users see the desktop sidebar.
+
+This is a **page-level mobile** implementation, not a **native shell** integration. The page renders its content correctly, but the surrounding AdminLayout shell overrides it at landscape widths.
+
+### Phase 22A-Hotfix: Shell Fix Proposal
+
+Move `/admin/account` into the Bento SPA shell. Minimal change required:
+
+**Step 1 — `client/src/pages/admin/AdminRouter.tsx`**
+
+Remove the standalone `/admin/account` route handler (lines 120–129). Add a redirect:
+```tsx
+if (location === "/admin/account") {
+    return <Redirect to="/admin#account" />;
+}
+```
+
+**Step 2 — `client/src/pages/admin/design-concept.tsx`**
+
+Add `AccountTab` to the tab render switch:
+```tsx
+const AccountTab = lazy(() => import("@/pages/admin/account-settings"));
+```
+Add `{ label: "My Account", id: "account", icon: UserCog, layout: "scroll" }` to the People & Staff group (or as a standalone route not in nav).
+Add an `account` case to the tab render block that renders `<AccountTab />`.
+
+**Step 3 — `MobileMoreMenu`**
+
+Confirm or add a "My Account" link in the mobile More menu that navigates to `#account`.
+
+This keeps `account-settings.tsx` unchanged and resolves both the landscape sidebar bug and the portrait old-header issue in one pass.
+
+### Visual Ledger Update
+
+| Ledger row | My Account (new) |
+|---|---|
+| Previous status | Not listed |
+| New status | Patched Needs Retest |
+| Evidence | qa-22a-account-{390x844,430x932,844x390,932x430,1440x900}.png |
+| Viewports tested | 390×844 ✅, 430×932 ✅, 844×390 ❌, 932×430 ❌, 1440×900 ✅ |
+| Chrome hide/reveal | N/A (old AdminLayout — no Bento chrome) |
+| Dock clearance | N/A (no bottom dock in old shell) |
+| Detail/sheet behavior | N/A (no sheets) |
+| Desktop preservation | ✅ — desktop grid intact |
+| Remaining risk | Shell gap blocks landscape; Phase 22A-hotfix required |
+
+## Phase 22A-Hotfix — My Account Into Bento SPA (COMPLETE)
+
+**Date:** 2026-07-01
+**Status:** COMPLETE — all 5 viewports pass, no React errors, redirect confirmed
+
+### Changes Made
+
+| File | Change |
+|---|---|
+| `client/src/pages/admin/design-concept.tsx` | Added `AccountSettingsPage` lazy import; added `account` to `TAB_DISPLAY_NAMES`; added `{tabId === 'account' && <AccountSettingsPage />}` in tab render block; added `account` to fallback exclusion list; changed desktop user dropdown "My Account" from `<Link href="/admin/account">` to `onClick={() => { window.location.hash = "#account"; }}` |
+| `client/src/components/layout/AdminRouter.tsx` | Replaced standalone `/admin/account` route (old `AdminLayout` + lazy `AccountSettingsPage`) with `<Redirect to="/admin#account" />`. Removed now-unused `AdminLayout` import and `AccountSettingsPage` lazy import. |
+| `client/src/pages/admin/bento/shared/MobileMoreMenu.tsx` | Changed "My Account" button from `setLocation("/admin/account")` to `onSelect("account")`. Removed unused `useLocation`/`setLocation`. |
+| `client/src/pages/admin/account-settings.tsx` | Removed `MobileTabLayout` (incompatible with Bento scroll mode — causes h-full/overflow-hidden to trap scroll). Mobile branch now flat `<div>` with natural flow + `paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))"` for dock clearance. State init moved from render body to `useEffect([account, profileInit])` for React 19 idiom. |
+
+### Layout Compatibility Note
+
+`MobileTabLayout` uses `flex flex-col h-full overflow-hidden` — designed for Bento **fixed** layout tabs. `account` tab uses **scroll** layout (default for tabs not in `ADMIN_SIDEBAR_NAV_GROUPS`). Scroll mode requires flat flow content so the Bento `<main>` (overflow-y-auto) handles scrolling. Replacing with a flat `<div>` fixes the trapped scroll.
+
+### Build Verification
+
+- `tsc` — 0 errors
+- `vite build` — PASS
+- `git diff --check` — 0 whitespace errors
+
+### Phase 22A-Hotfix Playwright QA Results
+
+**Tool:** Playwright MCP (headless:false per preference)
+**Server:** localhost:5083
+**Route tested:** `/admin/account` (redirect test) + `/admin#account` (direct)
+
+| Viewport | Redirect | Shell | Sidebar W | Data Attr | Overflow | Mobile Branch | Scroll | Result |
+|---|---|---|---|---|---|---|---|---|
+| 390×844 | N/A (direct) | Bento | 0 (dock only) | null | false | ✅ | scrollH 1182 > clientH 808 | **PASS** |
+| 430×932 | N/A (direct) | Bento | 0 (dock only) | null | false | ✅ | scrollH 1182 > clientH 852 | **PASS** |
+| 844×390 | N/A (direct) | Bento | 80 (icon) | null | false | ✅ | scrollH 1182 > clientH 334 | **PASS** |
+| 932×430 | N/A (direct) | Bento | 80 (icon) | null | false | ✅ | scrollH 1154 > clientH 374 | **PASS** |
+| 1440×900 | ✅ `/admin/account` → `/admin#account` | Bento | 256 (full) | null | false | ❌ (desktop branch) | N/A | **PASS** |
+
+**Key checks:**
+- Old AdminLayout sidebar: not present at any viewport ✅
+- `data-admin-mobile-mode` attribute: null at all viewports ✅ (attribute lives in AdminLayout which is no longer used for this route)
+- No horizontal overflow at any viewport ✅
+- Mobile branch (`px-3 pt-2 space-y-3` flat div) renders at 390/430/844/932 ✅
+- Desktop branch (`max-w-3xl mx-auto`) renders at 1440×900 ✅
+- Content scrollable past dock at all mobile viewports ✅
+- Redirect: `/admin/account` → `/admin#account` confirmed via URL evaluation ✅
+
+**Console errors (across all viewports):**
+- `manifest-admin.json` 401 — pre-existing (fires before auth established), not related to account tab
+- Recharts `width(0)/height(0)` warnings — pre-existing (hidden dashboard tab renders charts at 0×0)
+- "Password field is not contained in a form" — pre-existing VERBOSE/DOM advisory (Change Password uses React-controlled state, not `<form>`)
+- **No React render errors, no JS exceptions, no new errors introduced**
+
+### Visual Ledger Update
+
+| Ledger row | My Account |
+|---|---|
+| Previous status | Patched Needs Retest |
+| New status | Functional Clean |
+| Evidence | `qa-22a-hotfix-{390x844,430x932,844x390,932x430,1440x900}.png` |
+| Viewports tested | 390×844 ✅, 430×932 ✅, 844×390 ✅, 932×430 ✅, 1440×900 ✅ |
+| Chrome hide/reveal | N/A (account tab has no sheets/overlays) |
+| Dock clearance | ✅ `paddingBottom: calc(5.5rem + env(safe-area-inset-bottom))` on mobile branch |
+| Detail/sheet behavior | N/A (no sheets) |
+| Desktop preservation | ✅ — 256px sidebar, 2-column grid, Profile/Password/Role sections intact |
+| Remaining risk | Landscape shows 80px icon-only Bento sidebar — systemic across all tabs at md+, not account-specific |
+
+---
+
+## Phase 22B — Overview Native Mobile Redesign
+
+**Date:** 2026-07-02
+**Scope:** `client/src/pages/admin/bento/tabs/OverviewTab.tsx`, `server/repositories/analytics.repository.ts`, `server/repositories/job.repository.ts`, `vite.config.ts`, `docs/ADMIN_MOBILE_VISUAL_LEDGER.md`
+
+### Goal
+
+Fix OverviewTab mobile layout using `useAdminMobileMode()` hook-branching. Eliminate broken `md:hidden` approach for landscape phones. Preserve desktop layout unchanged.
+
+### Changes
+
+**Frontend — OverviewTab.tsx:**
+- Added `useAdminMobileMode()` hook import and `isMobile` branch
+- Mobile branch: compact header ("Overview / Shop floor at a glance"), 2×2 KPI chip grid (violet/amber/emerald/blue tones), `MobileSection` cards for Urgent Jobs and Ready for Delivery, technician workload as progress-bar rows, owner analytics as compact stacked metrics — **no Recharts on mobile**
+- Desktop branch: original gradient BentoCards, ResponsiveContainer BarChart, Quick Actions — fully preserved
+- Added `paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))"` inline dock clearance on mobile div
+- Error state updated: `isOverviewError && !overviewData` (shows cached data on background-refetch failure instead of wiping to error)
+- Query options: `retry: 1, retryDelay: 5000, staleTime: 5 * 60 * 1000, timeoutMs: 120_000` — prevents exhausted-retry error on slow remote DB and avoids background refetch on viewport resize
+- Removed: unused `MobileKpiGrid` import (has `md:hidden` — fails on landscape phones), unused `BarChart3` import
+
+**Backend — analytics.repository.ts:**
+- `getJobOverview()` rewritten to use targeted queries instead of `getAllJobTickets()` (full table scan, 57s+ on remote DB)
+- Now calls `getActiveJobTickets()` + `getCompletedJobTickets(25)` in parallel
+
+**Backend — job.repository.ts:**
+- Added `getActiveJobTickets()`: `WHERE status NOT IN ('Completed', 'Cancelled')` with legacy-schema fallback
+- Added `getCompletedJobTickets(limit)`: parallel count + limited select (`WHERE status = 'Completed' ORDER BY completed_at DESC LIMIT n`) with legacy fallback
+- Imports: added `notInArray`, `count`
+
+**Dev infrastructure — vite.config.ts:**
+- Added `proxyTimeout: 0, timeout: 0` to the `/api` proxy — prevents Vite's `http-proxy` from closing long-running DB connections before they complete
+
+### QA Results
+
+| Viewport | Branch | No Charts | No Overflow | Dock Clear | Error Free |
+|---|---|---|---|---|---|
+| 390×844 portrait | Mobile ✅ | ✅ | ✅ | ✅ (dock visible) | ✅ |
+| 430×932 portrait | Mobile ✅ | ✅ | ✅ | ✅ (dock visible) | ✅ |
+| 844×390 landscape | Mobile ✅ | ✅ | ✅ | N/A (dock hidden at md+) | ✅ |
+| 932×430 landscape | Mobile ✅ | ✅ | ✅ | N/A (dock hidden at md+) | ✅ |
+| 1440×900 desktop | Desktop ✅ | Charts present ✅ | ✅ | N/A | ✅ |
+
+**Evidence:** `qa-22b-overview-390x844.png`, `qa-22b-overview-430x932-c.png`, `qa-22b-overview-844x390.png`, `qa-22b-overview-932x430.png`, `qa-22b-overview-1440x900.png`
+
+**Build verification:**
+- `npx tsc --noEmit --pretty false` → 0 errors
+- `npx vite build --mode development` → ✓ built in 33.65s
+- `git diff --check` → clean (LF→CRLF warnings only, no whitespace errors)
+- Console → 0 errors at all viewports
+
+### Visual Ledger Update
+
+| Ledger row | Overview |
+|---|---|
+| Previous status | Not listed |
+| New status | Native Complete |
+| Evidence | `qa-22b-overview-{390x844,430x932-c,844x390,932x430,1440x900}.png` |
+| Viewports tested | 390×844 ✅, 430×932 ✅, 844×390 ✅, 932×430 ✅, 1440×900 ✅ |
+| Chrome hide/reveal | N/A (Overview has no sheets/overlays) |
+| Dock clearance | ✅ inline paddingBottom on mobile div |
+| Detail/sheet behavior | N/A |
+| Desktop preservation | ✅ — gradient BentoCards, BarChart, Quick Actions intact |
+| Remaining risk | job-overview endpoint slow on remote DB (57s+ full scan); optimized to active+completed queries + 120s client timeout + proxy timeout disabled. Long-term fix: DB index on status confirmed in schema but may not exist on legacy prod DB. |
+
+---
+
+## Phase 22B-Hotfix - Dashboard/Overview Soft Error States
+
+**Date:** 2026-07-02
+**Scope:** `client/src/pages/admin/bento/tabs/DashboardTab.tsx`, `client/src/pages/admin/bento/tabs/OverviewTab.tsx`
+
+### Reason
+
+Inspector observed common "Failed to load data" screens in the admin Dashboard/Overview. Even when the failure is a temporary DB/network delay, the wording makes staff think the system is broken.
+
+### Changes
+
+- Replaced red full-page "Failed to load..." states with calm amber reconnect panels
+- Added Retry buttons with spinner state
+- Dashboard now keeps showing the last cached snapshot when live refresh fails
+- Overview keeps showing already-loaded data when background refresh fails
+- Added small inline notices: "Live refresh delayed. Showing the last good dashboard/overview."
+- Disabled `refetchOnWindowFocus` on Overview queries to reduce accidental focus-triggered error flicker
+- No backend behavior changed
+
+### Build verification
+
+- `npx tsc --noEmit --pretty false` - PASS
+- `npx vite build --mode development` - PASS
+- `git diff --check` - PASS (LF/CRLF warnings only)
+
+### Remaining risk
+
+This is a user-confidence and resilience fix. It does not replace the queued Phase 22C backend hardening for `/api/admin/job-overview` SQL aggregation and bounded urgent lists.
+
+---
+
+## Phase 23 — Mobile Bottom Dock: Replace Stock with Shift
+
+**Date:** 2026-07-02
+**Scope:** `client/src/pages/admin/bento/tabs/ShiftTab.tsx` (new), `client/src/pages/admin/design-concept.tsx`, `client/src/pages/admin/bento/shared/MobileMoreMenu.tsx`, `client/src/components/admin/StaffOnboardingGuide.tsx`, `server/routes/attendance.routes.ts`, `server/repositories/attendance.repository.ts` (no change), `client/src/lib/api/adminApi.ts`
+
+### Changes
+
+- Replaced Stock/inventory dock slot (position 3) with Shift tab (`id: "shift"`, icon: UserCheck, label: "Shift")
+- Created `ShiftTab.tsx` — personal check-in/out view using `attendanceApi.getToday()`, `checkIn()`, `checkOut()`
+- Updated `DOCK_IDS` in `MobileMoreMenu.tsx`: replaced `"inventory"` with `"shift"` so Stock appears in More menu
+- Added `'shift': 'attendance'` to `TAB_TO_MODULE` and `TAB_TO_PERMISSION` in `design-concept.tsx`
+- Added `'shift': 'My Shift'` to `TAB_DISPLAY_NAMES`
+- Added render case `{tabId === 'shift' && <ShiftTab />}`
+- Updated `StaffOnboardingGuide.tsx`: prepended "Check In" step for all 4 roles (Driver, Technician, Cashier, Manager)
+- Updated `attendance.routes.ts` check-in to accept and store lat/lng/accuracy
+- Updated `adminApi.ts`: checkIn now accepts lat/lng/accuracy params
+
+### Build verification
+
+- `npx tsc --noEmit` - PASS
+- `npx vite build` - PASS (32s, clean)
+- `git diff --check` - PASS
+
+---
+
+## Phase 23A — Geolocation Attendance Hardening
+
+**Date:** 2026-07-02
+**Scope:** `client/src/pages/admin/bento/tabs/ShiftTab.tsx`, `server/routes/attendance.routes.ts`, `client/src/lib/api/adminApi.ts`, `client/src/pages/admin/bento/tabs/AttendanceTab.tsx`
+
+### Goal
+
+Complete the Shift attendance flow so check-in/check-out requires geolocation, stores reliable location data, detects outside-office check-ins, and gives Super Admin visibility.
+
+### Changes
+
+#### ShiftTab.tsx (full rewrite)
+- GPS state machine: `idle` → `locating` → `ready` | `denied` | `error`
+- `captureLocation()` helper: async wrapper around `navigator.geolocation.getCurrentPosition`
+- `GpsBar` component: shows GPS state with appropriate UI (spinner/error/ready/denied)
+- `GeofenceBadge` component: Inside Office (green) / Outside Office (amber) / Unverified (slate)
+- Check-in disabled until GPS succeeds (`gpsState !== "ready"`)
+- "Location permission is required to check in." message when denied
+- Poor GPS accuracy warning (>150m threshold) with amber indicator
+- "Open in Google Maps" link using `https://www.google.com/maps/search/?api=1&query={lat},{lng}`
+- Fresh location captured on both check-in AND check-out button press
+- Check-out also blocks on GPS failure (backend enforces this too)
+- Shows geofence badge from stored `record.checkInGeofenceStatus` once checked in
+- Maps link for stored check-in location
+- Text cleanup: `-` instead of `—`, `|` instead of `·`, `...` instead of `…`
+
+#### attendance.routes.ts (full rewrite)
+- Haversine formula for distance calculation
+- `getOfficeConfig()`: reads `OFFICE_LAT`, `OFFICE_LNG`, `OFFICE_RADIUS_METERS` env vars
+- `calcGeofence()`: returns `inside_office` / `outside_office` / `unverified`
+- `validateCoords()`: rejects missing/NaN/out-of-range coordinates (400 Bad Request)
+- Check-in: validates lat/lng (required), calculates geofence, stores all location fields
+- Check-in: alerts Super Admins via notification for non-Driver outside-office check-ins (fire-and-forget)
+- Check-out: now requires lat/lng (validated), stores checkOutLat/Lng/Accuracy/GeofenceStatus/DistanceMeters
+- Driver role: outside check-in allowed, marked `outside_office`, no Super Admin alert
+- Non-Driver outside check-in: creates admin notification with distance in km (not raw coordinates)
+
+#### adminApi.ts
+- `checkOut` now accepts `(lat?, lng?, accuracy?)` and sends JSON body
+
+#### AttendanceTab.tsx
+- Added `GeofenceBadge` component (shared helper, not imported from ShiftTab)
+- Added `mapsUrl()` helper
+- Mobile card: geofence badge + Google Maps link
+- Desktop table: new "Location" column (badge + accuracy + Maps link)
+- colSpan updated from 6 to 7
+
+### Env vars required for geofence (optional — safe to omit)
+
+```
+OFFICE_LAT=23.8103
+OFFICE_LNG=90.4125
+OFFICE_RADIUS_METERS=200
+```
+
+If not set: all check-ins are `unverified`. No blocking.
+
+### Build verification
+
+See results below.
+
+### Remaining risk
+
+- No DB migration needed (all location columns already in schema)
+- 120s client timeout in OverviewTab still in place (Phase 22C pending)
+- Driver outside-office check-ins not alerted to Super Admin — by design; review if ops requires it
+- Driver outside-office check-ins not alerted to Super Admin -- by design; review if ops requires it
+
+---
+
+## Phase ImageKit Folder Isolation
+
+**Date:** 2026-07-02
+**Goal:** All ImageKit uploads go under a configurable root folder prefix, preventing file mixing on shared ImageKit accounts.
+
+### Problem
+
+All uploads went to the ImageKit root (`/`), so different projects or environments would intermix files. No folder prefix was applied server-side or client-side, making it impossible to isolate assets per project or environment.
+
+### Solution
+
+Introduce `getIKFolder(subfolder)` helpers on both server and client. Every upload call is routed through this helper, which prepends the configured root prefix. Never uploads to `/`.
+
+### Env vars
+
+#### Render (backend) - add to Render Dashboard Environment
+
+```
+# Root folder prefix for all uploads. Subfolders are appended automatically.
+# Example result: /promise-electronics/service-requests
+IMAGEKIT_FOLDER_PREFIX=/promise-electronics
+```
+
+#### Vercel (frontend build) - add to Vercel Project Settings > Environment Variables
+
+```
+# Must match the server-side IMAGEKIT_FOLDER_PREFIX above
+VITE_IMAGEKIT_FOLDER_PREFIX=/promise-electronics
+```
+
+Both variables default to `/promise-electronics` if omitted, so existing deployments are safe.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `server/utils/imagekit-folder.ts` | New. Exports `getIKFolder(subfolder): string` using `IMAGEKIT_FOLDER_PREFIX` env var |
+| `client/src/lib/imagekit-config.ts` | New. Exports `getIKFolder(subfolder): string` using `VITE_IMAGEKIT_FOLDER_PREFIX` env var |
+| `server/routes/upload.routes.ts` | `folder: 'service-requests'` -> `folder: getIKFolder('service-requests')` |
+| `server/routes/messenger.routes.ts` | `folder: 'messenger_uploads'` -> `folder: getIKFolder('messenger')` |
+| `client/src/lib/imagekit-upload.ts` | Always appends folder via `getIKFolder(options.folder ?? "uploads")` -- no more root uploads |
+| `client/src/components/common/ImageKitUpload.tsx` | Applies `getIKFolder(folder)` to `IKUpload folder` prop; default `folder="/native-uploads"` |
+| `client/src/pages/repair-request.tsx` | `"/service-requests"` -> `getIKFolder("/service-requests")` |
+| `.env.example` | Added `IMAGEKIT_FOLDER_PREFIX` and `VITE_IMAGEKIT_FOLDER_PREFIX` |
+| `.env.render.example` | Added `IMAGEKIT_FOLDER_PREFIX` |
+
+### Folder map (with default prefix)
+
+| Caller | Stored folder |
+|--------|---------------|
+| Service requests (customer + admin upload) | `/promise-electronics/service-requests` |
+| Messenger file attachments | `/promise-electronics/messenger` |
+| Corporate/admin chat (`ImageKitUpload folder="/corporate-chat"`) | `/promise-electronics/corporate-chat` |
+| Native `IKUpload` with no folder prop | `/promise-electronics/native-uploads` |
+| Programmatic uploads with no folder option | `/promise-electronics/uploads` |
+
+### Slash-normalization
+
+`getIKFolder()` strips leading/trailing slashes from the subfolder argument, so callers passing `"/corporate-chat"` or `"corporate-chat"` both produce the same result. Double slashes in the prefix are also stripped. This makes the helper safe to call with any string format.
+
+### Existing URLs
+
+Stored ImageKit URLs reference the CDN path and are unaffected by this change. Old URLs continue to resolve as before. No data migration needed.
+
+### Build verification
+
+- `npx tsc --noEmit --pretty false`: exit 0 (no errors)
+- `npx vite build --mode development`: exit 0, 4953 modules transformed
+- `git diff --check`: no trailing-whitespace errors (CRLF normalization warnings only -- expected on Windows)
+
+### Security
+
+- `IMAGEKIT_PRIVATE_KEY` is only used server-side in `server/routes/upload.routes.ts` for auth token generation. Never sent to client.
+- Client only uses `VITE_IMAGEKIT_PUBLIC_KEY` + the server-issued token/signature/expire triplet for uploads.
+
+---
+
+## Phase 23B -- Geolocation Attendance QA
+
+**Date:** 2026-07-02
+**Goal:** Pre-pilot verification of Phase 23 (dock swap) and Phase 23A (GPS hardening) in real browser conditions.
+
+### Build checks
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | Exit 0, no errors |
+| `npx vite build --mode development` | Exit 0, 4953 modules |
+| `git diff --check` | Clean (CRLF normalization warnings only) |
+
+### Visual QA results
+
+| Viewport | Tool | Shift dock | ShiftTab | AttendanceTab | Overflow |
+|----------|------|------------|----------|---------------|---------|
+| 390x844 | Playwright | PASS -- Jobs/POS/Shift/Finance/More | PASS -- Shift Complete state, dock clearance OK | PASS -- mobile cards, null-geofence handled | None |
+| 430x932 | Playwright | PASS | PASS -- identical layout, taller viewport | N/A | None |
+| 844x390 landscape | Playwright | N/A (desktop sidebar, no touch emulation) | PASS -- desktop sidebar layout | N/A | None |
+| 1440x900 | Playwright | N/A (desktop sidebar) | PASS -- full-width content, no dock | PASS -- 7-column table, Location column visible | None |
+
+**Landscape 844x390 note:** Playwright has no touch emulation so `useAdminMobileMode()` activates the desktop branch. On a real touch device the mobile dock would appear. Mark as real-device-pending.
+
+### Functional test results
+
+| Test | Result | Notes |
+|------|--------|-------|
+| Dock shows Jobs/POS/Shift/Finance/More | PASS | Verified via snapshot + screenshot |
+| Stock/Inventory in More menu | PASS | Appears as "Stock Manager" under WAREHOUSE group |
+| Shift tab opens ShiftTab | PASS | URL becomes `#shift`, heading "My Shift" appears |
+| ShiftTab Shift Complete state | PASS | Check-in/out times, duration, footer message correct |
+| ShiftTab null-coord graceful handling | PASS | No badge, no Maps link for pre-23A record |
+| GPS denied UI text | CODE REVIEW ONLY | `ShieldAlert` + "Location permission is required..." confirmed in source; visual blocked by already-checked-out account |
+| GPS locating/ready states | CODE REVIEW ONLY | State machine logic verified; visual blocked by account state |
+| Check In button disabled on denied/locating/idle | CODE REVIEW ONLY | `checkInDisabled` condition confirmed in source |
+| Backend: lat=999 rejected 400 | BLOCKED | Dev server running old routes (started before Phase 23A rewrite) |
+| Backend: missing lat/lng rejected 400 | BLOCKED | Same -- server needs restart |
+| Backend: check-out invalid coords rejected | BLOCKED | Server running old routes; check-out with lat=999 returned 200 |
+| Valid check-in stores geofenceStatus=unverified | BLOCKED | Server needs restart to load Phase 23A routes |
+| Geofence inside_office / outside_office | BLOCKED | Requires office env vars + post-23A check-in |
+| Super Admin alert for outside non-driver | BLOCKED | Requires valid check-in through new routes |
+| Driver outside -- no alert | BLOCKED | Same |
+| AttendanceTab: geofence badge on real record | PENDING | No post-23A records exist yet; badge rendering confirmed by code review |
+| AttendanceTab: Maps link on real record | PENDING | Same |
+| AttendanceTab: desktop 7-column Location header | PASS | Confirmed via screenshot + source review |
+| AttendanceTab: no horizontal overflow | PASS | scrollWidth == viewportWidth at all tested viewports |
+| StaffOnboardingGuide: Check In step | PASS | "Check In" step confirmed as first step in Driver, Technician, Cashier, Manager roles |
+| Real device / PWA geolocation | PENDING | Cannot test from dev environment; mark for real-device pilot |
+
+### Critical finding: Server restart required
+
+**Issue:** The dev server (`tsx server/index.ts`, PID 23496) was started at 2026-07-01 23:15 UTC -- BEFORE the Phase 23A `attendance.routes.ts` rewrite. `tsx` without `--watch` does not hot-reload. The server is serving the old attendance routes with no GPS coordinate validation.
+
+**Evidence:** Check-out with `{"lat":999,"lng":999}` returned HTTP 200 and stored `checkOutLat:null` (old route silently ignored unknown fields). Expected: HTTP 400 "Invalid GPS coordinates."
+
+**Fix required before pilot:**
+```
+# Stop the current server and restart
+npm run dev
+```
+
+**After restart, re-run backend tests:**
+```bash
+# Login + CSRF token
+curl -s -c /tmp/tc.txt -X POST http://localhost:5083/api/admin/login \
+  -H "Content-Type: application/json" -d '{"username":"admin","password":"admin123"}'
+TOKEN=$(curl -s http://localhost:5083/api/admin/csrf-token -b /tmp/tc.txt | grep -o '"csrfToken":"[^"]*"' | cut -d'"' -f4)
+
+# Invalid coords must return 400
+curl -s -X POST http://localhost:5083/api/admin/attendance/check-in \
+  -H "Content-Type: application/json" -H "X-CSRF-TOKEN: $TOKEN" \
+  -b /tmp/tc.txt -d '{"lat":999,"lng":999}'
+# Expected: {"error":"Invalid GPS coordinates."}
+
+# Valid coords must succeed with geofenceStatus
+curl -s -X POST http://localhost:5083/api/admin/attendance/check-in \
+  -H "Content-Type: application/json" -H "X-CSRF-TOKEN: $TOKEN" \
+  -b /tmp/tc.txt -d '{"lat":23.8103,"lng":90.4125,"accuracy":15}'
+# Expected: {"checkInGeofenceStatus":"unverified",...}
+```
+
+### Screenshots captured
+
+- `qa-23b-shift-dock-390x844.png` -- dock with Shift slot visible
+- `qa-23b-shift-tab-390x844.png` -- ShiftTab Shift Complete state
+- `qa-23b-shift-430x932.png` -- 430x932 Shift Complete
+- `qa-23b-shift-844x390.png` -- landscape desktop sidebar branch
+- `qa-23b-shift-1440x900.png` -- desktop full layout
+- `qa-23b-attendance-390x844.png` -- AttendanceTab mobile cards
+- `qa-23b-attendance-1440x900.png` -- AttendanceTab desktop 7-column table
+
+### Env vars needed for full geofence QA
+
+```
+OFFICE_LAT=23.8103
+OFFICE_LNG=90.4125
+OFFICE_RADIUS_METERS=200
+```
+
+Without these, all check-ins store `checkInGeofenceStatus=unverified`. No blocking behavior.
+
+### Remaining risk
+
+- Server must be restarted before any real staff use Phase 23A check-in/check-out
+- GPS flow (locating/ready/denied) visual pending a fresh non-checked-in account after restart
+- Real-device PWA test pending for Android Chrome geolocation permission
+- Pre-23A records (null coords) already in DB -- render correctly (no badge, no link shown)
+
+---
+
+## Phase ImageKit Folder Isolation -- Hotfix (MobileServiceWizard)
+
+**Date:** 2026-07-02
+**Scope:** Single missed upload path in `MobileServiceWizard.tsx`.
+
+### What was missed
+
+The Phase ImageKit Folder Isolation pass covered 6 upload paths but missed the programmatic ImageKit upload inside `client/src/components/mobile/MobileServiceWizard.tsx`. That file does its own `fetch` to the ImageKit upload API instead of using the shared `uploadToImageKit()` utility or the `ImageKitUpload` component. The `folder` field was still hardcoded to `"/service-requests"`.
+
+### Files changed
+
+| File | Change |
+|------|--------|
+| `client/src/components/mobile/MobileServiceWizard.tsx` | Added `import { getIKFolder } from "@/lib/imagekit-config"`. Changed `formData.append("folder", "/service-requests")` to `formData.append("folder", getIKFolder("/service-requests"))`. |
+
+### Full ImageKit upload audit (post-hotfix)
+
+| Caller | Before | After |
+|--------|--------|-------|
+| `MobileServiceWizard.tsx` | `"/service-requests"` (hardcoded) | `getIKFolder("/service-requests")` |
+| `repair-request.tsx` | `getIKFolder("/service-requests")` | unchanged |
+| `imagekit-upload.ts` | `getIKFolder(options.folder ?? "uploads")` | unchanged |
+| `ImageKitUpload.tsx` | `getIKFolder(folder)` via `resolvedFolder` | unchanged |
+| `upload.routes.ts` (server) | `getIKFolder('service-requests')` | unchanged |
+| `messenger.routes.ts` (server) | `getIKFolder('messenger')` | unchanged |
+
+Note: `upload.routes.ts:219` has `folder: 'service-requests'` in a `cloudinary.uploader.upload()` call -- correctly excluded (Cloudinary, not ImageKit).
+
+### Build verification
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | Exit 0 |
+| `npx vite build --mode development` | Exit 0, 4953 modules, 20.23s |
+| `git diff --check` | Clean |
+
+### Deployment status
+
+**NOT deployed to production yet.** This is local code only.
+
+Production verification requires:
+1. Push to GitHub
+2. Render redeploy (backend) -- picks up `IMAGEKIT_FOLDER_PREFIX`
+3. Vercel rebuild (frontend) -- bakes `VITE_IMAGEKIT_FOLDER_PREFIX` at build time
+
+### Production smoke test plan (run AFTER deploy)
+
+1. Open production customer repair request page
+2. Upload one small JPG from the service request form
+3. Submit the request
+4. Open ImageKit dashboard -- confirm file is under `/promise-electronics/service-requests/`
+5. Open admin Service Requests tab -- confirm request exists and image URL loads
+6. Repeat on mobile browser (MobileServiceWizard path):
+   - Open production on phone
+   - Upload image through mobile wizard
+   - Confirm file also lands under `/promise-electronics/service-requests/`
+
+### Required production env vars
+
+#### Render (backend dashboard)
+```
+IMAGEKIT_PUBLIC_KEY=<your key>
+IMAGEKIT_PRIVATE_KEY=<your key>
+IMAGEKIT_URL_ENDPOINT=<your endpoint>
+IMAGEKIT_FOLDER_PREFIX=/promise-electronics
+```
+
+#### Vercel (Environment Variables -- must trigger a new build)
+```
+VITE_IMAGEKIT_PUBLIC_KEY=<your key>
+VITE_IMAGEKIT_URL_ENDPOINT=<your endpoint>
+VITE_IMAGEKIT_FOLDER_PREFIX=/promise-electronics
+```
+
+`VITE_IMAGEKIT_FOLDER_PREFIX` is baked at Vite build time. Existing deployments without this var will default to `/promise-electronics` (safe -- the helper has a hardcoded default).
+
+---
+
+## Phase 23B-Retest — Geolocation Attendance Final QA (2026-07-02)
+
+### Root Bugs Fixed
+
+#### Bug 1: Technician 403 on Attendance Routes (drawer.routes.ts)
+- **Symptom**: All `/api/admin/*` routes returned 403 for Technician-role users
+- **Root cause**: `drawerRouter.use(requireAdminAuth)` and `drawerRouter.use(requireAnyPermission(['pos','finance']))` used no path prefix. `app.use(drawerRouter)` (no prefix at routes/index.ts:162) caused all incoming requests to enter the router. These two global middlewares intercepted every request before `attendanceRoutes` (registered at line 194), blocking Technicians who lack `pos`/`finance` permissions.
+- **Fix**: Added `/api/drawer` path prefix to both `router.use()` calls in `server/routes/drawer.routes.ts` (lines 11-12)
+- **Why Super Admin worked**: `effectivePermissions['*'] === true` passes any permission check
+
+#### Bug 2: Root URL / returning 401 (refunds.routes.ts)
+- **Symptom**: Playwright could not load the SPA — `GET /` returned `{"error":"Admin authentication required"}`
+- **Root cause**: Same pattern as Bug 1. `refundsRouter.use(requireAdminAuth)` without path prefix, mounted via `app.use(refundsRoutes)` at routes/index.ts:247. Blocked unauthenticated access to ALL paths including `/`, `/admin/login`, static assets.
+- **Fix**: Added `/api/refunds` path prefix to both `router.use()` calls in `server/routes/refunds.routes.ts` (lines 20-21)
+
+### API Tests (T1-T9) — All PASS
+
+| Test | Payload | Expected | Result |
+|------|---------|----------|--------|
+| T1 | lat=null | 400 "Location is required" | PASS |
+| T2 | lat="abc" | 400 "Location is required" | PASS |
+| T3 | lat=NaN | 400 "Location is required" | PASS |
+| T4 | lat=999, lng=0 | 400 "Invalid GPS coordinates" | PASS |
+| T5 | lat=23.81, lng=90.41 (valid) | 201 check-in created | PASS |
+| T6 | Check in again (duplicate) | 400 "Already checked in" | PASS |
+| T7 | GET /today | 200 with checkInLat/Lng/Accuracy/GeofenceStatus | PASS |
+| T8 | Check-out with valid coords | 200 | PASS |
+| T9 | GET /today after checkout | 200 checkOutGeofenceStatus="unverified" | PASS |
+
+Stored fields confirmed: `checkInLat`, `checkInLng`, `checkInAccuracy`, `checkInGeofenceStatus="unverified"` (correct — no OFFICE_LAT/OFFICE_LNG env vars configured).
+
+### Browser Visual Tests
+
+| State | Result | Screenshot |
+|-------|--------|------------|
+| GPS locating → ready | "Location ready (±103m)" bar, Check In enabled | `qa-23b-gps-ready-390x844.png` |
+| Shift active (post check-in) | "Shift Active" + "Unverified" geofence badge + Maps link (23.8103,90.4125) + Check Out button | `qa-23b-shift-active-390x844.png` |
+| GPS denied | Red "Location permission is required to check in." bar, Check In disabled (disabled=true, opacity=0.5) | `qa-23b-gps-denied-390x844.png` |
+| Shift complete (desktop) | Sidebar layout, Shift Complete card, Check In/Out times, Duration | `qa-23b-shift-1440x900.png` |
+| AttendanceTab (desktop) | 7-column table, "Unverified" geofence badge + accuracy + Maps link on all GPS records | `qa-23b-attendance-1440x900.png` |
+| Shift complete (mobile) | "Shift recorded — see you tomorrow" footer, no GPS bar | `qa-23b-shift-complete-390x844.png` |
+
+### GPS State Machine Verification
+
+```
+idle → locating (useEffect fires on mount)
+locating → ready (getCurrentPosition success)
+locating → denied (PositionError code=1)
+locating → error (PositionError code=2/3)
+ready → check-in flow → Shift Active
+denied → Check In button disabled, red warning bar
+```
+
+All 4 states (idle/locating/ready/denied) visually verified.
+
+### Final Status
+
+**Shift tab: Functional Clean** — GPS backend validation PASS + browser GPS allow/deny PASS.
+
+---
+
+## Phase 23C — Production GPS Attendance Geofence Test
+**Date:** 2026-07-02
+**Status:** API PASS — Browser tests pending manual QA
+
+### Root Cause (from Phase 23C block)
+Server was running without OFFICE_LAT/LNG env vars — all geofence checks returned "unverified".
+Fix: added 3 vars to .env, clean server restart (dotenv injected 30 vars, up from 27).
+
+### API Test Results (T1-T7)
+
+| Test | User | Coords | Expected | Actual | Pass? |
+|------|------|--------|----------|--------|-------|
+| T1 | qa23c_inside (Technician) | 23.8103, 90.4125 (office) | inside_office, dist=0 | inside_office, dist=0 | ✅ |
+| T2 | qa23c_inside check-out | 23.8103, 90.4125 | inside_office | inside_office, dist=0 | ✅ |
+| T3 | qa23c_outtech (Technician) | 23.7500, 90.3500 | outside_office + SA alert | outside_office, dist=9241m | ✅ |
+| T4 | qa23c_outtech check-out | 23.7500, 90.3500 | outside_office | outside_office, dist=9241m | ✅ |
+| T5 | qa23c_outdrv (Driver) | 23.7500, 90.3500 | outside_office, NO alert | outside_office, dist=9241m | ✅ |
+| T6 | qa23c_outdrv check-out | 23.7500, 90.3500 | outside_office | outside_office, dist=9241m | ✅ |
+| T7 | Super Admin notifications | — | 1 warning for T3, 0 for T5 | 1 warning notification | ✅ |
+
+### Super Admin Notification (T3)
+```json
+{
+  "title": "Outside check-in: 23C qa23c_outtech",
+  "message": "23C qa23c_outtech (Technician) checked in 9.2km away from the office.",
+  "type": "warning"
+}
+```
+No raw GPS coordinates in title or message. ✅
+
+### AttendanceTab Location Column (code-verified)
+- GeofenceBadge: "In Office" (emerald) / "Outside" (amber) / "Unverified" (slate)
+- ±{accuracy}m accuracy shown
+- "Maps" link (coords in URL, not rendered as text)
+- No raw lat/lng numbers displayed in table ✅
+
+### Build Checks
+- `npx tsc --noEmit --pretty false`: clean ✅
+- `npx vite build --mode development`: ✓ built in 28.44s ✅
+- `git diff --check`: LF→CRLF Windows warnings only (not errors) ✅
+
+### Browser/Mobile Tests (manual QA required)
+Per project rule: Playwright not run automatically. Test guide:
+1. **Mobile 390x844** (iPhone 15): Login as any Technician → ShiftTab → Allow GPS → Check In → verify "In Office" / "Outside Office" badge appears on check-in confirmation
+2. **Mobile GPS denied** (iPhone 15): Same user → ShiftTab → Deny GPS → verify yellow "GPS access denied" bar with "Open Settings" CTA
+3. **Desktop 1440x900**: Super Admin → AttendanceTab → Location column shows badge (not raw numbers) + ±Xm accuracy + Maps link

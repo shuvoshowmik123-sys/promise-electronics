@@ -2,7 +2,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { createPortal } from "react-dom";
 import {
     Activity, Package, DollarSign, Users, Clock, AlertCircle,
-    TrendingUp, CheckCircle2, ChevronRight, X, ShoppingCart, ChevronDown
+    TrendingUp, CheckCircle2, ChevronRight, X, ShoppingCart, ChevronDown, RefreshCw
 } from "lucide-react";
 import {
     AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell
@@ -33,6 +33,50 @@ interface DashboardTabProps {
     onNavigate?: (tab: string, searchQuery?: string) => void;
 }
 
+function SoftDashboardUnavailable({ onRetry, isRetrying }: { onRetry: () => void; isRetrying: boolean }) {
+    return (
+        <div className="flex min-h-[260px] items-center justify-center px-4">
+            <div className="w-full max-w-md rounded-2xl border border-amber-100 bg-amber-50/70 p-5 text-center shadow-sm">
+                <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white text-amber-600 shadow-sm">
+                    <RefreshCw className={`h-5 w-5 ${isRetrying ? "animate-spin" : ""}`} />
+                </div>
+                <h3 className="text-sm font-black text-slate-900">Dashboard is reconnecting</h3>
+                <p className="mt-1 text-xs font-medium leading-5 text-slate-600">
+                    The live summary is taking longer than usual. Nothing is lost; retry when the connection settles.
+                </p>
+                <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={onRetry}
+                    disabled={isRetrying}
+                    className="mt-4 border-amber-200 bg-white text-amber-700 hover:bg-amber-100"
+                >
+                    <RefreshCw className={`mr-2 h-3.5 w-3.5 ${isRetrying ? "animate-spin" : ""}`} />
+                    {isRetrying ? "Checking..." : "Retry"}
+                </Button>
+            </div>
+        </div>
+    );
+}
+
+function SoftDashboardRefreshNotice({ onRetry, isRetrying }: { onRetry: () => void; isRetrying: boolean }) {
+    return (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            <span className="font-semibold">Live refresh delayed. Showing the last good dashboard.</span>
+            <button
+                type="button"
+                onClick={onRetry}
+                disabled={isRetrying}
+                className="inline-flex shrink-0 items-center gap-1 rounded-lg bg-white px-2 py-1 font-black text-amber-700 shadow-sm disabled:opacity-60"
+            >
+                <RefreshCw className={`h-3 w-3 ${isRetrying ? "animate-spin" : ""}`} />
+                Retry
+            </button>
+        </div>
+    );
+}
+
 export default function DashboardTab({ onNavigate }: DashboardTabProps) {
     const { user } = useAdminAuth();
     const [selectedCard, setSelectedCard] = useState<string | null>(null);
@@ -45,7 +89,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
         onNavigate?.(tab, searchQuery);
     };
 
-    const { data: dashboardData, isLoading, isError } = useQuery<AdminAggregatedDashboard>({
+    const { data: dashboardData, isLoading, isError, isFetching, refetch } = useQuery<AdminAggregatedDashboard>({
         queryKey: ["dashboardStats", "aggregated"],
         queryFn: async () => {
             const fresh = await adminAuthApi.getAggregatedDashboard();
@@ -61,15 +105,9 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
 
     const data = dashboardData || getDashboardSnapshot();
 
-    if (isLoading) return <DashboardSkeleton />;
-    if (isError || !data) return (
-        <div className="flex flex-col items-center justify-center h-64 gap-4">
-            <div className="p-4 bg-red-50 rounded-2xl">
-                <svg className="w-8 h-8 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
-            </div>
-            <p className="text-slate-500 font-medium text-sm">Failed to load dashboard data. Please refresh.</p>
-        </div>
-    );
+    if (isLoading && !data) return <DashboardSkeleton />;
+    if (!data) return <SoftDashboardUnavailable onRetry={() => refetch()} isRetrying={isFetching} />;
+    const refreshNotice = isError ? <SoftDashboardRefreshNotice onRetry={() => refetch()} isRetrying={isFetching} /> : null;
 
     const getPopupContent = (cardId: string) => {
         switch (cardId) {
@@ -368,6 +406,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
             </MobileTabHeader>
 
             <MobileScrollContent className="pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:hidden">
+                {refreshNotice}
                 {mobileView === "overview" && (
                     <>
                         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -432,6 +471,7 @@ export default function DashboardTab({ onNavigate }: DashboardTabProps) {
                 animate="visible"
                 className="hidden md:block space-y-6 pb-8 overflow-y-auto flex-1"
             >
+            {refreshNotice}
             <div className="md:grid md:grid-cols-2 lg:grid-cols-4 gap-6">
                 {/* ROW 1: GRAPHS */}
                 <motion.div variants={itemVariants} className="col-span-1 md:col-span-2 h-full min-h-[320px]">

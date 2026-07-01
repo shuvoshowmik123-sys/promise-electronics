@@ -53,6 +53,7 @@ These tabs must be native-polished before launch:
 | Tab | Status | Last Tested | Evidence | Remaining |
 | --- | --- | --- | --- | --- |
 | Dashboard | Native Complete | 2026-06-25 | `raw/dashboard-*.json` + `screenshots/confirm-dashboard-rest.png` | Inspector approved. No blockers. |
+| Overview | Native Complete | 2026-07-02 | `qa-22b-overview-390x844.png`, `qa-22b-overview-430x932-c.png`, `qa-22b-overview-844x390.png`, `qa-22b-overview-932x430.png`, `qa-22b-overview-1440x900.png` | Phase 22B: hook-branched mobile/desktop layout. Mobile: compact header, KPI chips, urgent jobs list, ready-for-delivery list, technician progress rows — no Recharts. Desktop: gradient BentoCards + BarChart preserved. Landscape: mobile branch active (useAdminMobileMode h<700). All 5 viewports PASS. Console clean. TSC + Vite build clean. |
 | Jobs | Native Complete | 2026-06-25 | `raw/jobs-*.json` + `screenshots/confirm-jobs-{rest,detail}.png` | Inspector approved. No blockers. |
 | Stock / Inventory | Native Complete | 2026-06-25 | `raw/inventory-*.json` + `screenshots/confirm-inventory-{rest,detail}.png` | Inspector approved. No blockers. |
 | Finance | Native Complete | 2026-06-25 | `raw/finance-*.json` + `screenshots/confirm-finance-{rest,invoice}.png` | Inspector approved. No blockers. |
@@ -60,6 +61,8 @@ These tabs must be native-polished before launch:
 | Service Requests | Native Complete | 2026-06-25 | `raw/sr-mcp-*.json` + `screenshots/confirm-sr-{rest,detail}.png` | Inspector approved. No blockers. |
 | Pickups | Native Complete | 2026-06-25 | `raw/pickup-*.json` + `screenshots/confirm-pickup-{rest,action}.png` | Inspector approved. No blockers. |
 | Corporate Messages | Native Complete | 2026-06-25 | `raw/corp-msg-*.json` + `screenshots/confirm-corpmsg-{rest,chat}.png` | Inspector approved. No blockers. |
+
+| Shift (My Shift) | Functional Clean | 2026-07-02 | `qa-23b-shift-complete-390x844.png`, `qa-23b-gps-ready-390x844.png`, `qa-23b-shift-active-390x844.png`, `qa-23b-gps-denied-390x844.png`, `qa-23b-shift-1440x900.png`, `qa-23b-attendance-1440x900.png` | Phase 23B-Retest: drawer.routes.ts + refunds.routes.ts global middleware bug fixed (Technician 403 root cause). T1-T9 API tests PASS: invalid coords→400, valid check-in→201 (coords+accuracy+geofence stored), check-out→200. GPS allow: "Location ready (±103m)" + Check In enabled (qa-23b-gps-ready-390x844). GPS deny: red "Location permission is required" bar + Check In disabled=true opacity=0.5 (qa-23b-gps-denied-390x844). Shift active: "Unverified" geofence badge + Maps link lat/lng (qa-23b-shift-active-390x844). AttendanceTab 1440x900: Unverified badge + accuracy + Maps link on real post-23A records (qa-23b-attendance-1440x900). Desktop ShiftTab sidebar layout confirmed (qa-23b-shift-1440x900). All GPS states verified. |
 
 ## Secondary Tabs
 
@@ -77,6 +80,7 @@ These need functional-clean behavior before launch, not full native redesign unl
 | Orders | Not Mobile Priority | 2026-06-25 | `raw/orders-*.json` + screenshots | Module disabled — "Access Restricted". Permission-enabled retest needed. |
 | Settings | Native Complete | 2026-06-26 | `raw/settings-*.json` + `screenshots/handle-verify-finance-390.png` | Native mobile redesign: grouped rows, compact sections, portaled sheets, real drag handle, no bottom strip, no fake pill, no mobile X button. Inspector approved. |
 | Audit Logs | Not Mobile Priority | 2026-06-25 | `raw/audit-logs-*.json` + screenshots | Module disabled — "Access Restricted". Permission-enabled retest needed. |
+| My Account | Functional Clean | 2026-07-01 | `qa-22a-hotfix-*.png` | Phase 22A-Hotfix: moved into Bento SPA as `#account` tab. All 5 viewports PASS. No old AdminLayout. Redirect `/admin/account` → `/admin#account` confirmed. Mobile flat layout with dock clearance. Desktop 2-col grid preserved. No React errors. |
 
 ## Required Row Update Format
 

@@ -81,6 +81,10 @@ const SalaryHRTab = lazy(() => import("./bento/tabs/SalaryHRTab"));
 const CashierTab = lazy(() => import("./bento/tabs/CashierTab"));
 const TechnicianTab = lazy(() => import("./bento/tabs/TechnicianTab"));
 
+// Account Settings (not in sidebar nav — accessed via More menu / user dropdown)
+const AccountSettingsPage = lazy(() => import("@/pages/admin/account-settings"));
+const ShiftTab = lazy(() => import("./bento/tabs/ShiftTab"));
+
 // Tab chunk preloaders — warming these during idle (and on nav hover/touch)
 // removes the lazy-chunk download wait on first tab switch, so switching feels
 // instant. import() is module-cached, so calling it again is a no-op once loaded.
@@ -343,6 +347,7 @@ export default function DesignConcept() {
         'b2b': 'corporate',
         'corp-msg': 'corporate',
         'attendance': 'attendance',
+        'shift': 'attendance',
         'salary': 'salary_hr',
         'cashier': 'cashier',
         'reports': 'reports',
@@ -379,6 +384,7 @@ export default function DesignConcept() {
         'b2b': 'corporate',
         'corp-msg': 'corporate',
         'attendance': 'attendance',
+        'shift': 'attendance',
         'salary': 'salary',
         'cashier': 'pos',          // cashier is a POS subset
         'reports': 'reports',
@@ -425,13 +431,14 @@ export default function DesignConcept() {
         'pos': 'Point of Sale', 'orders': 'Orders', 'inventory': 'Inventory',
         'finance': 'Finance', 'b2b': 'B2B Workspace', 'corp-msg': 'Corp. Messages',
         'users': 'User Management', 'settings': 'System Settings',
-        'reports': 'Reports', 'quality': 'Quality Analytics', 'attendance': 'Staff Attendance',
+        'reports': 'Reports', 'quality': 'Quality Analytics', 'attendance': 'Staff Attendance', 'shift': 'My Shift',
         'customers': 'Customers', 'inquiries': 'Inquiries', 'quotations': 'Quotations',
         'workflow-demo': 'Workflow Design Demo',
         'salary': 'Salary & HR', 'cashier': 'Cashier Dashboard', 'technician': 'Technician View',
         'purchasing': 'Purchasing (POs)', 'warranty': 'Warranty Claims', 'refunds': 'Refunds', 'wastage': 'Wastage',
         'shipments': 'Shipments', 'procurement': 'Procurement', 'stock-manager': 'Stock Manager',
-        'audit-logs': 'Audit Logs', 'brain': 'AI Brain'
+        'audit-logs': 'Audit Logs', 'brain': 'AI Brain',
+        'account': 'My Account'
     };
 
     const sidebarNavGroups = ADMIN_SIDEBAR_NAV_GROUPS;
@@ -447,7 +454,7 @@ export default function DesignConcept() {
     const mobileNavItems = [
         { label: "Jobs", id: "jobs", icon: ClipboardList },
         { label: "POS", id: "pos", icon: ShoppingCart },
-        { label: "Stock", id: "inventory", icon: Package },
+        { label: "Shift", id: "shift", icon: UserCheck },
         { label: "Finance", id: "finance", icon: Banknote },
         { label: "More", id: "menu", icon: Menu },
     ];
@@ -742,12 +749,13 @@ export default function DesignConcept() {
                                         </div>
                                     </DropdownMenuLabel>
                                     <DropdownMenuSeparator className="bg-slate-100/80 mb-1" />
-                                    <Link href="/admin/account">
-                                        <DropdownMenuItem className="cursor-pointer focus:bg-slate-50 text-slate-700 font-medium rounded-lg px-3 py-2">
-                                            <User className="mr-3 h-4 w-4 text-slate-400" />
-                                            My Account
-                                        </DropdownMenuItem>
-                                    </Link>
+                                    <DropdownMenuItem
+                                        className="cursor-pointer focus:bg-slate-50 text-slate-700 font-medium rounded-lg px-3 py-2"
+                                        onClick={() => { window.location.hash = "#account"; }}
+                                    >
+                                        <User className="mr-3 h-4 w-4 text-slate-400" />
+                                        My Account
+                                    </DropdownMenuItem>
                                     {user?.role === "Super Admin" && (
                                         <Link href="/admin/workbench">
                                             <DropdownMenuItem className="cursor-pointer focus:bg-slate-50 text-slate-700 font-medium rounded-lg px-3 py-2">
@@ -915,6 +923,7 @@ export default function DesignConcept() {
                                                 {/* People & Staff Group */}
                                                 {tabId === 'users' && <UsersTab />}
                                                 {tabId === 'attendance' && <AttendanceTab />}
+                                                {tabId === 'shift' && <ShiftTab />}
                                                 {tabId === 'salary' && <SalaryHRTab />}
                                                 {tabId === 'cashier' && <CashierTab />}
                                                 {tabId === 'technician' && <TechnicianTab />}
@@ -926,11 +935,14 @@ export default function DesignConcept() {
                                                 />}
                                                 {tabId === 'brain' && <BrainTab />}
 
+                                                {/* Account Settings */}
+                                                {tabId === 'account' && <AccountSettingsPage />}
+
                                                 {/* Fallback */}
                                                 {tabId === 'workflow-demo' && <Suspense fallback={<DashboardSkeleton />}><PlaceholderTab tabName={tabId} /></Suspense>}
                                                 {tabId === 'audit-logs' && <Suspense fallback={<DashboardSkeleton />}><AuditLogsTab /></Suspense>}
 
-                                                {!['dashboard', 'overview', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'customers', 'quotations', 'inquiries', 'workflow-demo', 'salary', 'cashier', 'technician', 'purchasing', 'warranty', 'refunds', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain'].includes(tabId) && (
+                                                {!['dashboard', 'overview', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'shift', 'customers', 'quotations', 'inquiries', 'workflow-demo', 'salary', 'cashier', 'technician', 'purchasing', 'warranty', 'refunds', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain', 'account'].includes(tabId) && (
                                                     <Suspense fallback={<DashboardSkeleton />}>
                                                         <PlaceholderTab tabName={tabId} />
                                                     </Suspense>

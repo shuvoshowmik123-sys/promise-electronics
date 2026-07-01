@@ -2,7 +2,6 @@ import { Switch, Route, useLocation, Redirect } from "wouter";
 import { Suspense, lazy } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AdminAIChatLauncher } from "@/components/AdminAIChatLauncher";
-import { AdminLayout } from "@/components/layout/AdminLayout";
 import { StaffOnboardingGuide } from "@/components/admin/StaffOnboardingGuide";
 import { useAdminAuth, getRoleLandingPath } from "@/contexts/AdminAuthContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -19,9 +18,6 @@ const StaffSetupPage = lazy(() => import("@/pages/admin/staff-setup"));
 
 // Standalone Print Views (Not part of the Bento Dashboard Shell)
 const CorporateBillPrint = lazy(() => import("@/pages/admin/corporate-bill-print"));
-
-// Account Settings (inside admin shell)
-const AccountSettingsPage = lazy(() => import("@/pages/admin/account-settings"));
 
 // Super Admin Workbench (Standalone)
 const SuperAdminWorkbench = lazy(() => import("@/pages/admin/workbench"));
@@ -116,16 +112,9 @@ export function AdminRouter() {
         return <Redirect to="/admin#jobs" />;
     }
 
-    // Account Settings Route (inside admin layout)
+    // Account Settings — lives in the Bento SPA as #account tab
     if (location === "/admin/account") {
-        return (
-            <AdminLayout>
-                <Suspense fallback={<AdminContentSkeleton />}>
-                    <AccountSettingsPage />
-                </Suspense>
-                <AdminAIChatLauncher />
-            </AdminLayout>
-        );
+        return <Redirect to="/admin#account" />;
     }
 
     // Super Admin Workbench Route

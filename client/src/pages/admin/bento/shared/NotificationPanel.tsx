@@ -2,7 +2,7 @@ import React from 'react';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Bell, Package, AlertTriangle, MessageSquare, CheckCircle2, AlertCircle, ShieldCheck, XCircle, Check, Undo2, ChevronLeft } from "lucide-react";
+import { Bell, Package, AlertTriangle, MessageSquare, CheckCircle2, AlertCircle, ShieldCheck, XCircle, Check, Undo2, ChevronLeft, ShieldAlert } from "lucide-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { adminNotificationsApi, serviceRequestsApi } from "@/lib/api";
 import { toast } from "sonner";
@@ -184,32 +184,44 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
                                         </p>
                                     </div>
                                 ) : (
-                                    notifications.map((n) => (
+                                    notifications.map((n) => {
+                                        const isSystemAlert = n.type === 'system_alert';
+                                        const isJobType = ['job', 'job_ready', 'smart_sync_needed'].includes(n.type);
+                                        const isFinanceType = ['alert', 'payment_verified', 'payment_rejected'].includes(n.type);
+                                        return (
                                         <button
                                             key={n.id}
                                             onClick={() => handleNavigate(n)}
                                             className={cn(
                                                 "flex min-h-[76px] items-start gap-3 border-b border-slate-50 p-4 text-left transition-colors w-full active:scale-[0.995]",
+                                                isSystemAlert ? "bg-amber-50/60 hover:bg-amber-50" :
                                                 n.read ? "hover:bg-slate-50" : "bg-rose-50/40 hover:bg-rose-50/70"
                                             )}
                                         >
                                             <div className={cn(
                                                 "h-9 w-9 rounded-full flex items-center justify-center shrink-0 border",
+                                                isSystemAlert && "bg-amber-50 border-amber-200 text-amber-700",
                                                 n.type === 'service_request' && "bg-rose-50 border-rose-100 text-rose-600",
                                                 n.type === 'inventory' && "bg-orange-50 border-orange-100 text-orange-600",
-                                                n.type === 'job' && "bg-blue-50 border-blue-100 text-blue-600",
+                                                isJobType && "bg-blue-50 border-blue-100 text-blue-600",
                                                 n.type === 'message' && "bg-indigo-50 border-indigo-100 text-indigo-600",
-                                                (!['service_request', 'inventory', 'job', 'message'].includes(n.type)) && "bg-slate-50 border-slate-100 text-slate-600",
+                                                isFinanceType && !isSystemAlert && "bg-emerald-50 border-emerald-100 text-emerald-700",
+                                                (!isSystemAlert && !isJobType && !isFinanceType && !['service_request', 'inventory', 'message'].includes(n.type)) && "bg-slate-50 border-slate-100 text-slate-600",
                                             )}>
-                                                {n.type === 'service_request' && <MessageSquare size={16} />}
-                                                {n.type === 'inventory' && <Package size={16} />}
-                                                {n.type === 'job' && <AlertCircle size={16} />}
-                                                {n.type === 'message' && <MessageSquare size={16} />}
-                                                {!['service_request', 'inventory', 'job', 'message'].includes(n.type) && <Bell size={16} />}
+                                                {isSystemAlert && <ShieldAlert size={16} />}
+                                                {!isSystemAlert && n.type === 'service_request' && <MessageSquare size={16} />}
+                                                {!isSystemAlert && n.type === 'inventory' && <Package size={16} />}
+                                                {!isSystemAlert && isJobType && <AlertCircle size={16} />}
+                                                {!isSystemAlert && n.type === 'message' && <MessageSquare size={16} />}
+                                                {!isSystemAlert && isFinanceType && <AlertTriangle size={16} />}
+                                                {!isSystemAlert && !isJobType && !isFinanceType && !['service_request', 'inventory', 'message'].includes(n.type) && <Bell size={16} />}
                                             </div>
                                             <div className="flex-1 min-w-0">
                                                 <div className="flex items-center justify-between gap-2 mb-0.5">
-                                                    <span className="text-sm font-semibold text-slate-900 truncate">
+                                                    <span className={cn(
+                                                        "text-sm font-semibold truncate",
+                                                        isSystemAlert ? "text-amber-900" : "text-slate-900"
+                                                    )}>
                                                         {n.title}
                                                     </span>
                                                     <span className="text-[10px] text-slate-400 shrink-0">
@@ -219,7 +231,13 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
                                                 <p className="text-xs text-slate-500 line-clamp-2">
                                                     {n.message}
                                                 </p>
-                                                {n.priority === 'critical' && (
+                                                {isSystemAlert && (
+                                                    <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                                                        <ShieldAlert size={10} />
+                                                        View System Health
+                                                    </span>
+                                                )}
+                                                {!isSystemAlert && n.priority === 'critical' && (
                                                     <span className="inline-flex items-center gap-1 mt-2 text-[10px] font-bold text-rose-600 bg-rose-50 px-2 py-0.5 rounded-full">
                                                         <AlertTriangle size={10} />
                                                         Critical
@@ -229,12 +247,13 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
                                             <div
                                                 className={cn(
                                                     "h-2.5 w-2.5 rounded-full shrink-0 mt-1.5",
-                                                    n.read ? "bg-slate-200" : "bg-rose-500"
+                                                    n.read ? "bg-slate-200" : isSystemAlert ? "bg-amber-500" : "bg-rose-500"
                                                 )}
                                                 aria-label={n.read ? "Already interacted" : "Unread notification"}
                                             />
                                         </button>
-                                    ))
+                                        );
+                                    })
                                 )}
                             </div>
                         </TabsContent>
