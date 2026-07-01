@@ -92,7 +92,7 @@ async function handleWhatsAppMessage(
         // ── Text ──────────────────────────────────────────────────────────────
         if (message.type === "text") {
             const userText = message.text?.body ?? "";
-            console.log(`[WhatsApp] Text from ${senderPhone}: "${userText}"`);
+            console.log(`[WhatsApp] Text from ***${senderPhone.slice(-4)}, len=${userText.length}`);
 
             if (isObserveMode) {
                 await brainService.updateSession(sessionKey, userText, null);
@@ -168,7 +168,7 @@ async function handleWhatsAppMessage(
                 return;
             }
 
-            console.log(`[WhatsApp] Transcribed: "${transcribed}"`);
+            console.log(`[WhatsApp] Audio transcribed, len=${transcribed.length}`);
 
             if (isObserveMode) {
                 await brainService.updateSession(sessionKey, transcribed, null);

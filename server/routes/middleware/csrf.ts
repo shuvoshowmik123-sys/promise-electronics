@@ -16,6 +16,13 @@ export function setCsrfToken(req: Request, res: Response, next: NextFunction) {
         return next();
     }
 
+    const shouldCreateToken = req.path === '/api/admin/csrf-token'
+        || req.path === '/api/corporate/auth/csrf-token';
+
+    if (!req.session.csrfToken && !shouldCreateToken) {
+        return next();
+    }
+
     if (!req.session.csrfToken) {
         req.session.csrfToken = crypto.randomBytes(32).toString('hex');
     }

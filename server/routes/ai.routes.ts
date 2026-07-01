@@ -142,7 +142,7 @@ router.post("/chat", aiLimiter, async (req, res) => {
             try {
                 const customer = await storage.getUser((req.session as any).customerId);
                 if (customer) {
-                    console.log("[AI Context Debug] Found customer via ID:", customer.phone);
+                    console.log("[AI Context] Found customer via session ID");
                     userContext = {
                         id: customer.id,
                         name: customer.name || undefined,

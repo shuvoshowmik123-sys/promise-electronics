@@ -1,6 +1,6 @@
 # Agent Current Context
 
-Last updated: 2026-06-29
+Last updated: 2026-07-01
 
 ## Product
 
@@ -22,6 +22,8 @@ Post-security-audit, preparing for pilot with P0 fixes pending.
 - **Phase 17 (A–C)**: Repo cleanup — deleted junk files, archived stale docs, relocated design references, renamed mock-data.ts, hardened .gitignore.
 - **Phase 18 (A–G)**: Architecture audit, root tree cleanup, governance docs, lazy loading (70% chunk reduction), desktop KPI polish. GO verdict.
 - **Phase 19A-BE**: Backend security audit — 1 password hash leak found (corporate login error path), 3 unprotected financial routes (refunds, approvals, offline-sync), 4 missing-permission routes. GO WITH FIXES.
+- **Phases 19B-BE / 20A-E**: Security fixes applied. 3-portal PWA system built (manifests, icons, install prompts, server-side manifest fidelity). All pushed to GitHub.
+- **Phase 21A**: P2 security closed (lens auth, quotes convert auth, 6 PII log redactions). Production health documented. PWA real-device checklist written. TSC + Vite build pass. **GO WITH MANUAL CHECK.**
 
 ### Release Readiness
 - Permission system: **GO** — 37/37 regression tests pass.

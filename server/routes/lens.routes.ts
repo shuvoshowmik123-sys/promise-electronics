@@ -1,7 +1,10 @@
 import { Router } from "express";
 import { aiService } from "../services/ai.service.js";
+import { requireAdminAuth } from "./middleware/auth.js";
 
 const router = Router();
+
+router.use(requireAdminAuth);
 
 // POST /api/lens/identify
 router.post("/identify", async (req, res) => {

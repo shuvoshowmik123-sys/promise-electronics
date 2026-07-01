@@ -8824,3 +8824,281 @@ This phase changed leak/security surfaces only. Visual UI regression risk is low
 **GO FOR PILOT.**
 
 Frontend is now materially safer: cache retention, risky logs, old staff password UI, old checkbox permission UI, and raw display refs were fixed. Remaining frontend items are polish or future hardening, not pilot blockers.
+
+---
+
+## Phase 21A — Production Health + P2 Security Closure + PWA Real-Device Checklist
+
+Status: DONE
+Completed: 2026-07-01
+
+### 1. Production Health Audit
+
+#### Health / Ready endpoints
+
+| Endpoint | Auth | Status |
+|----------|------|--------|
+| `GET /api/ready` | Public | Returns `{ ready: true/false }` based on `isDbReady()` |
+| `GET /ready` | Public | Alias — same logic |
+| `GET /api/health` | Public | Full DB connectivity check |
+| `GET /api/admin/readiness` | requireAdminAuth | Returns readiness state + cold-start cache state |
+
+These are correctly structured. `/api/ready` and `/api/health` are intentionally public (load-balancer probes). `/api/admin/readiness` is protected.
+
+#### CSRF flow
+
+- `httpClient.ts` calls `ensureCsrfToken()` before every non-GET write. Fetches `GET /api/admin/csrf-token` if no token is cached.
+- Drawer open triggers a mutation (write) which goes through `httpClient`, so the CSRF fetch always precedes the first write.
+- No client write can bypass CSRF — the token is always fetched or already cached before the `X-XSRF-TOKEN` header is set.
+- **Status: CORRECT. No fix needed.**
+
+#### Production failure diagnosis guide (for Inspector — manual checks only)
+
+| Symptom | Likely cause | What to check |
+|---------|-------------|---------------|
+| `503 /api/ready` at cold start | Normal Render free-tier cold start (~15–30s) | Wait for warm-up; not a code bug |
+| `503 /api/ready` persisting >60s | DB network failure (Aiven firewall / connection pool exhausted) | Render env vars: `DATABASE_URL` present and valid; Aiven trusted IP includes Render outbound IP |
+| `401 /api/admin/me` after login | Session cookie not set / cookie domain mismatch | Render env: `SESSION_SECRET` set; `NODE_ENV=production`; `CORS_ORIGIN` matches frontend URL exactly |
+| `403 on /api/admin/csrf-token` | Missing session before CSRF fetch | Check login flow logs; admin login must complete before CSRF fetch |
+| DB `ECONNREFUSED` in logs | Aiven DB paused or connection limit hit | Aiven dashboard: check DB status, active connections, allowed IPs |
+| `ECONNRESET` on DB under load | Connection pool too small | Render: check if `DATABASE_POOL_MAX` env var is set; default 10 is usually OK for free tier |
+
+**Not a code bug.** DB connection pool config is correct in code (`drizzle` + `pg` with defaults). Root cause for production outages is almost always Render cold start or Aiven network/IP trust configuration.
+
+### 2. Backend Security P2 Fixes Applied
+
+#### A. `server/routes/lens.routes.ts` — AI vision endpoints
+
+**Before:** All 3 endpoints (`/identify`, `/assess`, `/barcode`) fully public. Any internet request could consume Gemini/Groq API credits.
+
+**Fix:** Added `router.use(requireAdminAuth)` at router level — covers all 3 endpoints with a single guard.
+
+The lens feature is used exclusively by admin staff (part identification, damage assessment, barcode scan in the admin panel). No customer-facing use case. No rate limiting needed beyond auth — admin users are authenticated staff.
+
+#### B. `server/routes/quotes.routes.ts` — convert endpoint
+
+**Before:** `POST /api/quotes/:id/convert` had no auth. Any unauthenticated request could convert a customer quote to a service request.
+
+**Fix:** Added `requireAdminAuth` to the route handler. This is an admin-only state transition.
+
+Public customer endpoints (`POST /api/quotes`, `POST /api/quotes/:id/accept`, `POST /api/quotes/:id/decline`) are **not changed** — they are correctly customer-auth-gated or rate-limited public.
+
+#### C. PII / Verbatim logging redactions
+
+| File | Line | Before | After |
+|------|------|--------|-------|
+| `server/routes/whatsapp.routes.ts` | ~95 | `Text from ${phone}: "${userText}"` | `Text from ***${phone.slice(-4)}, len=${userText.length}` |
+| `server/routes/whatsapp.routes.ts` | ~171 | `Transcribed: "${transcribed}"` | `Audio transcribed, len=${transcribed.length}` |
+| `server/routes/messenger.routes.ts` | ~133 | `Transcribed audio: "${transcribedText}"` | `Audio transcribed, len=${transcribedText.length}` |
+| `server/routes/messenger.routes.ts` | ~208 | `Received text: "${userText}"` | `Received text, len=${userText.length}` |
+| `server/routes/ai.routes.ts` | ~145 | `Found customer via ID: ${customer.phone}` | `Found customer via session ID` |
+| `server/services/ai.service.ts` | ~1048 | `Message: "${message.substring(0,50)}..."` | `msgLen=${message.length}` |
+
+Kept: `[Brain] [OBSERVE] WhatsApp text logged from ${senderPhone}` — this is session-key tracking, not message content. Acceptable.
+Kept: `[WhatsApp] Image from ${senderPhone}, media_id=...` — no message content, metadata only.
+Kept: all error logs — they do not contain customer message bodies.
+
+### 3. Multi-Portal PWA Real-Device Checklist
+
+**Inspector: Run this manually on real devices before wider pilot release.**
+
+---
+
+#### Android Chrome — Customer Portal
+
+1. Open Chrome → navigate to `/home`
+2. Wait for install banner or tap ⋮ → "Add to Home screen"
+3. Confirm: app name = **"Promise Electronics"**, icon = sky-blue background with white PE logo
+4. Install. Open from home screen.
+5. Confirm: runs in standalone mode (no browser chrome), opens at `/home`
+6. Confirm: theme color in status bar = `#0ea5e9` (sky blue)
+7. Confirm: `localStorage.getItem('pwa-install-dismissed-customer')` is absent before dismiss
+
+#### Android Chrome — Admin Portal
+
+1. Log in as admin → navigate to `/admin`
+2. Look for bottom-right install card (should appear after login)
+3. Tap Install (native prompt fires from `beforeinstallprompt`)
+4. Confirm: app name = **"Promise Admin"**, icon = dark navy background with white PE logo
+5. Install. Open from home screen.
+6. Confirm: opens at `/admin`, standalone mode, theme = `#0f172a` (dark navy)
+7. Confirm: shortcuts (Dashboard, Jobs, POS, Pickup) visible on long-press
+
+#### Android Chrome — Corporate Portal
+
+1. Log in as corporate user → navigate to `/corporate`
+2. Look for bottom-right install card
+3. Install.
+4. Confirm: app name = **"Promise Corporate"**, icon = blue background with white PE logo
+5. Open from home screen → opens at `/corporate`, standalone, theme = `#1e40af`
+
+#### Android — Multi-Install Overlap Check
+
+1. Install both Customer PWA (scope `/`) and Admin PWA (scope `/admin`)
+2. Open Admin PWA from home screen — confirm it stays in `/admin` and does not fall back to customer portal
+3. Chrome uses the more-specific scope (`/admin`) for `/admin/*` navigations — this should work correctly via the `id` field in each manifest
+
+---
+
+#### iOS Safari — Customer Portal
+
+1. Open Safari → navigate to `/home`
+2. Tap Share → "Add to Home Screen"
+3. Confirm: title = **"Promise Electronics"**, icon shown (should use `/icons/customer-192.png`)
+4. Add. Open from home screen.
+5. Confirm: opens at `/home`, no browser chrome (standalone)
+6. Confirm: status bar color = sky blue (limited iOS support for theme-color)
+
+#### iOS Safari — Admin Portal
+
+1. Open Safari → navigate to `/admin/login`
+2. Log in, navigate to `/admin`
+3. Tap Share → "Add to Home Screen"
+4. **Expected title**: "Promise Admin" (set by server-side `applyPortalMeta` transform)
+5. **Expected icon**: dark navy background with PE logo
+6. Add. Open from home screen. Confirm `/admin` opens directly.
+
+#### iOS Safari — Corporate Portal
+
+1. Open Safari → navigate to `/corporate`
+2. Log in, navigate to `/corporate`
+3. Share → "Add to Home Screen"
+4. **Expected title**: "Promise Corporate"
+5. Add. Open → opens `/corporate`.
+
+#### iOS — Same-Origin PWA Limitation
+
+**Document for Inspector:**
+
+iOS Safari limits **one installed PWA per origin**. Since all three portals share the same domain, a user who installs the Customer PWA and then tries to install the Admin PWA will see the second install *replace* the first, or they may both open to the same scope.
+
+**Current status:** Acceptable for pilot — most users are either customers OR staff, not both on the same device.
+
+**Required before full multi-role iOS release:** Migrate to subdomains:
+- `www.promise-electronics.com` (customer)
+- `admin.promise-electronics.com` (admin + tech)
+- `b2b.promise-electronics.com` (corporate)
+
+Each subdomain gets its own origin → true independent iOS PWA install. This is infrastructure work and does not block the current Android pilot.
+
+---
+
+### 4. Checks Run
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | **PASS** — 0 errors |
+| `npx vite build --mode development` | **PASS** — build succeeded |
+| `git diff --check` | **PASS** — no whitespace errors (CRLF warning on whatsapp.routes.ts is non-blocking, git handles it) |
+
+### 5. Files Changed
+
+| File | Change |
+|------|--------|
+| `server/routes/lens.routes.ts` | Added `requireAdminAuth` router-level guard |
+| `server/routes/quotes.routes.ts` | Added `requireAdminAuth` to `/api/quotes/:id/convert` |
+| `server/routes/whatsapp.routes.ts` | Redacted phone + verbatim message from 2 log lines |
+| `server/routes/messenger.routes.ts` | Redacted verbatim message from 2 log lines |
+| `server/routes/ai.routes.ts` | Redacted customer phone from debug log |
+| `server/services/ai.service.ts` | Redacted first-50-chars message preview from AI chat log |
+| `Unified Flow Plan.md` | This entry |
+
+### 6. Remaining Blockers / Known Issues
+
+| Item | Severity | Action |
+|------|----------|--------|
+| iOS multi-PWA same-origin limit | P2 | Subdomain migration — post-pilot infrastructure task |
+| Per-portal apple-touch-icon for iOS | P3 | All portals currently share same favicon.png for iOS add-to-home |
+| Lens endpoints: no granular permission beyond auth | P3 | Could add `requirePermission('inventory')` later for narrower scope |
+| Corporate temp password flow (no force-change flag) | P2 | Not a pilot blocker; document in onboarding |
+
+### 7. Release Recommendation
+
+**GO WITH MANUAL CHECK**
+
+Manual Inspector tasks before wider pilot:
+1. Run Android Chrome PWA install test for all 3 portals (checklist above)
+2. Verify Render environment variables: `DATABASE_URL`, `SESSION_SECRET`, `CORS_ORIGIN`, `NODE_ENV=production`
+3. Verify Aiven trusted IP includes Render outbound IP (prevents cold-start DB 503s)
+4. Confirm iOS Add to Home Screen title for admin/corporate portals shows correct name
+
+---
+
+## Phase 21B - Live Health Check + Lazy CSRF Hotfix
+
+**Status:** COMPLETE
+
+### 1. Live Endpoint Findings
+
+Checked production from Codex with `curl.exe` and PowerShell:
+
+| Endpoint | Result | Timing | Finding |
+|----------|--------|--------|---------|
+| `https://promiseelectronics.com/` | 200 | ~0.8s | Frontend customer shell loads |
+| `https://promiseelectronics.com/admin` | 200 | ~0.6s | Frontend admin shell loads |
+| `https://promise-electronics-5r25.onrender.com/health` | 200 | ~10.1s | Non-DB health was still slow |
+| `https://promiseelectronics.com/api/ready` | 200 | ~10.1s | Cached readiness says ready |
+| `https://promiseelectronics.com/api/admin/csrf-token` | 200 | ~10.2s | CSRF works but slow |
+| `https://promiseelectronics.com/api/health` | 500 | ~20.4s | DB-backed health query times out |
+| `https://promise-electronics-5r25.onrender.com/api/health` | 500 | ~20.2s | Same failure direct on Render |
+
+### 2. Root Cause Found
+
+`/health`, `/ready`, and anonymous API GETs were passing through:
+
+1. PostgreSQL session middleware
+2. global `setCsrfToken`
+
+`setCsrfToken` created a new `req.session.csrfToken` for every request, including health checks. Because production uses PostgreSQL session storage, even a simple health check could create/touch a DB-backed session.
+
+This explains the symptom:
+
+- plain `/health` waited around 10 seconds
+- DB-backed `/api/health` waited around 20 seconds
+- admin looked like a session/validation problem because CSRF/session access was also waiting on DB
+
+### 3. Fix Applied
+
+`server/routes/middleware/csrf.ts` now creates a CSRF token only for explicit token endpoints:
+
+- `/api/admin/csrf-token`
+- `/api/corporate/auth/csrf-token`
+
+For other requests, if no token exists, it does nothing and does not mutate the session.
+
+Existing-session requests that already have a CSRF token still receive the `XSRF-TOKEN` cookie.
+
+### 4. Expected Production Impact After Deploy
+
+| Area | Expected result |
+|------|-----------------|
+| `/health` | Should become fast because it no longer creates a DB session |
+| `/ready` | Should become fast because it only checks cached readiness |
+| `/api/admin/csrf-token` | Still creates token intentionally |
+| Admin writes | Still protected because frontend fetches CSRF token before non-safe methods |
+| Corporate login | Still supported via corporate CSRF endpoint |
+| `/api/health` | May still fail if the actual database connection is timing out |
+
+### 5. Remaining Production Check
+
+After deploy, retest:
+
+```bash
+curl -L -s -o NUL -w "health %{http_code} %{time_total}\n" https://promise-electronics-5r25.onrender.com/health
+curl -L -s -o NUL -w "ready %{http_code} %{time_total}\n" https://promise-electronics-5r25.onrender.com/api/ready
+curl -L -s -o NUL -w "api_health %{http_code} %{time_total}\n" https://promise-electronics-5r25.onrender.com/api/health
+```
+
+Expected:
+
+- `/health` below 1 second
+- `/api/ready` below 1 second
+- `/api/health` 200 if DB is reachable; 500 if the DB/network issue remains
+
+### 6. Checks Run
+
+| Check | Result |
+|-------|--------|
+| `npx tsc --noEmit --pretty false` | PASS |
+| `npx vite build --mode development` | PASS |
+| `git diff --check` | PASS |

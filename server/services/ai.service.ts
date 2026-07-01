@@ -1045,7 +1045,7 @@ Rules:
         adminData?: any,
         existingTicket?: any
     ) {
-        console.log(`[AI] Chat request received. Message: "${message.substring(0, 50)}...", Image present: ${!!image}, Image length: ${image?.length || 0}`);
+        console.log(`[AI] Chat request received. msgLen=${message.length}, image=${!!image}, imageLen=${image?.length || 0}`);
 
         const MAX_RETRIES = 3;
         const RETRY_DELAYS = [1000, 2000, 4000];

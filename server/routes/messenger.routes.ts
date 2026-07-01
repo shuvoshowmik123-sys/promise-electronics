@@ -130,7 +130,7 @@ async function handleMessage(sender_psid: string, message: any) {
                 return;
             }
 
-            console.log(`[Messenger] Transcribed audio: "${transcribedText}"`);
+            console.log(`[Messenger] Audio transcribed, len=${transcribedText.length}`);
 
             // In observe mode: just log the voice note content, don't reply
             if (isObserveMode) {
@@ -205,7 +205,7 @@ async function handleMessage(sender_psid: string, message: any) {
         // ─── 3. Handle Text ───────────────────────────────────────────────────
         if (message.text) {
             const userText = message.text;
-            console.log(`[Messenger] Received text: "${userText}"`);
+            console.log(`[Messenger] Received text, len=${userText.length}`);
 
             // In observe mode: log the message but send NO reply.
             // logConversation is NOT called here because we don't have a reply yet.

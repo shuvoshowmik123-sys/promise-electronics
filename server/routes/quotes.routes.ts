@@ -289,9 +289,9 @@ router.post('/api/quotes/:id/decline', requireCustomerAuth, async (req: Request,
 });
 
 /**
- * POST /api/quotes/:id/convert - Convert quote to service request
+ * POST /api/quotes/:id/convert - Convert quote to service request (admin only)
  */
-router.post('/api/quotes/:id/convert', async (req: Request, res: Response) => {
+router.post('/api/quotes/:id/convert', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const updated = await storage.convertQuoteToServiceRequest(req.params.id);
         if (!updated) {
