@@ -87,7 +87,10 @@ export function AdminAuthProvider({ children }: { children: ReactNode }) {
 
   const hasPermission = (permission: keyof UserPermissions): boolean => {
     if (user?.role === "Super Admin") return true;
-    return permissions[permission] === true;
+    if (permissions[permission] === true) return true;
+    // Granular sub-key fallback: attendance.checkIn → grants hasPermission('attendance')
+    const prefix = permission + '.';
+    return Object.keys(permissions).some(k => k.startsWith(prefix) && (permissions as any)[k] === true);
   };
 
   return (
