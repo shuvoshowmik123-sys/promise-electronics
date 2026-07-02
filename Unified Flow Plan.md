@@ -10210,3 +10210,95 @@ New 6-step wizard replacing the old 3-step flow:
 - `qa-26a-mobile-wizard-link-390x844.png` — Link step
 - `qa-26a-mobile-wizard-step1-430x932.png` — Role step 430
 - `qa-26a-mobile-wizard-step3-430x932.png` — Permissions step 430
+
+---
+
+## Phase 26B — Critical Operator Flow Inspection (Pre-Pilot Audit)
+**Date:** 2026-07-02
+**Status:** DONE — GO WITH FIXES
+
+### Scope
+Full pre-pilot inspection of all major operator flows before production deployment. No code changes unless release-blocking. One release-blocking bug found and fixed.
+
+### Pass/Fail Table
+
+| Check | Area | Result | Notes |
+|-------|------|--------|-------|
+| 1 | Users / Staff Invite / Permissions | ✅ PASS | InviteWizard generates link, all 6 steps work; SA cannot be invite-created |
+| 2 | Service Requests | ✅ PASS | SR list loads, filter tabs work, SR detail accessible |
+| 3 | Jobs flow | ✅ PASS | Job cards load, status columns visible, assign action present |
+| 4 | Pickup / OTP | ✅ PASS (partial) | OTP API flow verified; browser scanning blocked by no BarcodeDetector; Import QR fallback present |
+| 5 | Shift / Attendance | ✅ PASS | Check-in/out renders, shift clock visible, attendance table loads |
+| 6 | Notification Bell | ✅ PASS | Bell loads with 73 unread, notification list renders, mobile panel opens |
+| 7 | Mobile Tab Bar / Layout | ✅ PASS | 390×844 dock (5 tabs): clean; 430×932: clean; 844×390: switches to sidebar correctly |
+| 8 | Customer Portal | ✅ PASS | Auth redirect works; ownership scoping at list+detail route; public track returns no raw UUIDs; mobile 390×844 layout clean |
+| 9 | Production Readiness | ✅ PASS | `/api/health` OK; `/api/modules` OK; ImageKit 3 env keys present; React Query cache cleared on login; no cross-user data in persisted cache |
+
+### Bug Found (Release-Blocking)
+
+**BUG-26B-001: Invited staff see blank sidebar**
+
+- **Severity:** Release-blocking — renders invite-created staff accounts unusable
+- **Root cause:** `hasPermission(permission: keyof UserPermissions)` in `AdminAuthContext.tsx` checks `permissions[permission] === true`. Invited staff get granular keys stored (e.g. `attendance.checkIn: true`), not legacy module keys (`attendance: true`). Legacy check returned `false` → all tabs hidden.
+- **Affected users:** Any account invited via the new InviteWizard (Phase 26A) with granular permissions stored
+- **Not affected:** Super Admin (bypassed by role check), existing legacy-format staff accounts
+
+### Fix Applied
+
+**`client/src/contexts/AdminAuthContext.tsx` — lines 88-94**
+
+```ts
+// BEFORE:
+const hasPermission = (permission: keyof UserPermissions): boolean => {
+  if (user?.role === "Super Admin") return true;
+  return permissions[permission] === true;
+};
+
+// AFTER:
+const hasPermission = (permission: keyof UserPermissions): boolean => {
+  if (user?.role === "Super Admin") return true;
+  if (permissions[permission] === true) return true;
+  // Granular sub-key fallback: attendance.checkIn → grants hasPermission('attendance')
+  const prefix = permission + '.';
+  return Object.keys(permissions).some(k => k.startsWith(prefix) && (permissions as any)[k] === true);
+};
+```
+
+- Backward-compatible: existing `attendance: true` accounts unaffected
+- Sub-action restrictions inside tabs still apply
+- Server-side `requirePermission()` / `requireGranularPermission()` unchanged
+- `tsc --noEmit`: exit 0 ✅
+
+### Remaining Pilot Risks (Non-blocking)
+
+| Risk | Severity | Notes |
+|------|----------|-------|
+| OTP scanning in browser | Low | BarcodeDetector not available in Chromium desktop; Import QR Image fallback present; real devices will use mobile Chrome which supports it |
+| `pickup.viewAll` not in LEGACY_TO_GRANULAR | Low | `pickup.viewAssigned` is mapped; Driver Basic preset uses `pickup.viewAssigned`; no functional gap for current role presets |
+| Public track URL exposes full job ID in route | Informational | Server enforces ownership check; URL ID alone grants no access |
+| QR scanner FAB triggered by nav | Low | Tapping "Back to Admin" from notification panel could open QR overlay; X button dismisses it; not a data leak |
+
+### Build Gates
+- `npx tsc --noEmit`: exit 0 ✅
+- `npm run build`: ✓ built (39.97s) ✅ (run in previous phase; fix is additive, no new build needed)
+- `git diff --check`: LF→CRLF Windows warnings only ✅
+- Commit: `953dc38`
+
+### Files Changed
+- `client/src/contexts/AdminAuthContext.tsx` — `hasPermission()` granular sub-key fallback added
+
+### Visual QA
+- Admin 390×844 dashboard: dock tabs (JOBS/POS/SHIFT/FINANCE/MORE) visible ✅
+- Admin 430×932 dashboard: clean ✅
+- Admin 844×390 landscape: sidebar layout (correct responsive switch) ✅
+- Customer portal 390×844: bottom nav (Home/Shop/Repair/Track/Profile) visible ✅
+- SA dashboard post-login: all widgets loaded, no stale data ✅
+
+### Security Checks
+- No raw UUID exposed in public track endpoint ✅
+- Customer repairs scoped to session owner at list+detail level ✅
+- React Query persisted cache: only `settings` and `dashboardStats` entries; no cross-user personal data ✅
+- Dashboard snapshot: `{data, fetchedAt, version}` only, no sensitive fields ✅
+- `clearPersistedClientState()` called on both login and logout ✅
+
+### VERDICT: GO WITH FIXES
