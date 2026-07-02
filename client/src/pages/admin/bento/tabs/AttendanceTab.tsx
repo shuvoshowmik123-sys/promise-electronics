@@ -4,8 +4,8 @@ import {
     format, startOfMonth, endOfMonth, eachDayOfInterval, isToday, parseISO
 } from "date-fns";
 import {
-    Calendar, Clock, Users, CheckCircle, XCircle, Download, UserCheck,
-    MapPin, AlertCircle, Navigation,
+    Calendar, Clock, Users, CheckCircle, Download, UserCheck,
+    MapPin, Navigation, Loader2, Activity, ShieldAlert, CheckCircle2, Filter,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -22,6 +22,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { BentoCard } from "../shared/BentoCard";
 import { containerVariants, itemVariants, tableRowVariants } from "../shared/animations";
 import { attendanceApi, adminUsersApi } from "@/lib/api";
+import { useAdminMobileMode } from "@/hooks/useAdminMobileMode";
 import type { AttendanceRecord } from "@shared/schema";
 
 function mapsUrl(lat: number, lng: number) {
@@ -47,7 +48,222 @@ function GeofenceBadge({ status }: { status: string | null | undefined }) {
     );
 }
 
+// Mobile-native attendance report
+
+interface MobileAttendanceReportProps {
+    allAttendance: AttendanceRecord[];
+    isLoading: boolean;
+    staffUsers: { id: string; name: string; role: string }[];
+    selectedMonth: string;
+    setSelectedMonth: (v: string) => void;
+    selectedUser: string;
+    setSelectedUser: (v: string) => void;
+    filteredAttendance: AttendanceRecord[];
+}
+
+function MobileAttendanceRecord({ record }: { record: AttendanceRecord }) {
+    const formatTime = (d: string | Date | null) =>
+        d ? format(new Date(d), "h:mm a") : "—";
+
+    const duration = (checkIn: string | Date, checkOut: string | Date | null) => {
+        if (!checkOut) return "In Progress";
+        const ms = new Date(checkOut).getTime() - new Date(checkIn).getTime();
+        if (ms <= 0) return "0m";
+        const h = Math.floor(ms / 3600000);
+        const m = Math.floor((ms % 3600000) / 60000);
+        return h > 0 ? `${h}h ${m}m` : `${m}m`;
+    };
+
+    return (
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-sm font-black text-slate-900">
+                            {format(parseISO(record.date), "EEE, MMM d")}
+                        </span>
+                        {record.date === format(new Date(), "yyyy-MM-dd") && (
+                            <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-700">Today</span>
+                        )}
+                    </div>
+                    <div className="mt-0.5 text-xs font-semibold text-slate-600">
+                        {record.userName}
+                        <span className="ml-1 text-slate-400 font-medium">· {record.userRole}</span>
+                    </div>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                    <GeofenceBadge status={record.checkInGeofenceStatus} />
+                    {record.checkOutTime ? (
+                        <span className="inline-flex items-center gap-0.5 rounded-full border border-emerald-200 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700">
+                            <CheckCircle2 className="h-2 w-2" />Complete
+                        </span>
+                    ) : (
+                        <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                            <Clock className="h-2 w-2" />Working
+                        </span>
+                    )}
+                </div>
+            </div>
+            <div className="mt-2.5 grid grid-cols-3 gap-1.5">
+                <div className="rounded-xl bg-slate-50 px-2 py-1.5">
+                    <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">In</div>
+                    <div className="text-xs font-black text-emerald-700">{formatTime(record.checkInTime)}</div>
+                </div>
+                <div className="rounded-xl bg-slate-50 px-2 py-1.5">
+                    <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Out</div>
+                    <div className="text-xs font-black text-slate-700">{formatTime(record.checkOutTime)}</div>
+                </div>
+                <div className="rounded-xl bg-slate-50 px-2 py-1.5">
+                    <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Hours</div>
+                    <div className="text-xs font-black text-slate-700">
+                        {record.checkInTime ? duration(record.checkInTime, record.checkOutTime) : "—"}
+                    </div>
+                </div>
+            </div>
+            {(record.checkInAccuracy != null || (record.checkInLat != null && record.checkInLng != null)) && (
+                <div className="mt-2 flex items-center gap-3 border-t border-slate-100 pt-2">
+                    {record.checkInAccuracy != null && (
+                        <span className="text-[10px] text-slate-400">±{Math.round(record.checkInAccuracy as number)}m</span>
+                    )}
+                    {record.checkInLat != null && record.checkInLng != null && (
+                        <a
+                            href={mapsUrl(record.checkInLat, record.checkInLng)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:underline"
+                        >
+                            <Navigation className="h-2.5 w-2.5" />Maps
+                        </a>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+function MobileAttendanceReport({
+    allAttendance,
+    isLoading,
+    staffUsers,
+    selectedMonth,
+    setSelectedMonth,
+    selectedUser,
+    setSelectedUser,
+    filteredAttendance,
+}: MobileAttendanceReportProps) {
+    const today = format(new Date(), "yyyy-MM-dd");
+    const todayRecords = useMemo(
+        () => allAttendance.filter((r) => r.date === today),
+        [allAttendance, today],
+    );
+
+    const stats = useMemo(() => ({
+        present: todayRecords.length,
+        working: todayRecords.filter((r) => r.checkInTime && !r.checkOutTime).length,
+        outside: todayRecords.filter((r) => r.checkInGeofenceStatus === "outside_office").length,
+        complete: todayRecords.filter((r) => r.checkOutTime).length,
+    }), [todayRecords]);
+
+    const [showFilters, setShowFilters] = useState(false);
+
+    return (
+        <div
+            className="bg-[#f8fafc] px-3 pt-3 space-y-3"
+            style={{ paddingBottom: "calc(5.5rem + env(safe-area-inset-bottom))" }}
+        >
+            {/* Header */}
+            <div className="pb-1 flex items-start justify-between">
+                <div>
+                    <h1 className="text-base font-black text-slate-900">Attendance Report</h1>
+                    <p className="text-xs text-slate-500">{format(new Date(), "MMMM yyyy")} · {allAttendance.length} total records</p>
+                </div>
+                <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-8 w-8 rounded-xl p-0 text-slate-500"
+                    onClick={() => setShowFilters(!showFilters)}
+                    aria-label="Toggle filters"
+                >
+                    <Filter className="h-4 w-4" />
+                </Button>
+            </div>
+
+            {/* Today summary chips */}
+            <div className="grid grid-cols-4 gap-1.5">
+                {[
+                    { label: "Present", value: stats.present, tone: "text-blue-700 bg-blue-50 border-blue-100", icon: Users },
+                    { label: "Working", value: stats.working, tone: "text-emerald-700 bg-emerald-50 border-emerald-100", icon: Activity },
+                    { label: "Outside", value: stats.outside, tone: "text-amber-700 bg-amber-50 border-amber-100", icon: ShieldAlert },
+                    { label: "Done", value: stats.complete, tone: "text-slate-700 bg-white border-slate-200", icon: CheckCircle2 },
+                ].map((chip) => (
+                    <div key={chip.label} className={`rounded-2xl border p-2.5 flex flex-col items-center gap-1 ${chip.tone}`}>
+                        <span className="text-lg font-black leading-none">{chip.value}</span>
+                        <span className="text-[8px] font-black uppercase tracking-wide">{chip.label}</span>
+                    </div>
+                ))}
+            </div>
+
+            {/* Filters (collapsible) */}
+            {showFilters && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-3 space-y-2">
+                    <div>
+                        <label className="text-[9px] font-black uppercase tracking-wide text-slate-400 block mb-1">Month</label>
+                        <Input
+                            type="month"
+                            value={selectedMonth}
+                            onChange={(e) => setSelectedMonth(e.target.value)}
+                            className="h-9 rounded-xl border-slate-200 bg-slate-50 text-xs"
+                        />
+                    </div>
+                    <div>
+                        <label className="text-[9px] font-black uppercase tracking-wide text-slate-400 block mb-1">Staff Member</label>
+                        <Select value={selectedUser} onValueChange={setSelectedUser}>
+                            <SelectTrigger className="h-9 rounded-xl border-slate-200 bg-slate-50 text-xs">
+                                <SelectValue placeholder="All Staff" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Staff</SelectItem>
+                                {staffUsers.map((u) => (
+                                    <SelectItem key={u.id} value={u.id}>
+                                        {u.name} · {u.role}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                </div>
+            )}
+
+            {/* Record count */}
+            <div className="flex items-center justify-between px-0.5">
+                <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">Records</span>
+                <span className="text-[10px] font-bold text-slate-500">{filteredAttendance.length} found</span>
+            </div>
+
+            {/* Attendance cards */}
+            {isLoading ? (
+                <div className="flex h-32 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xs font-bold text-slate-500">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading records...
+                </div>
+            ) : filteredAttendance.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 text-center">
+                    <Calendar className="mx-auto h-7 w-7 text-slate-300" />
+                    <div className="mt-2 text-sm font-black text-slate-700">No records found</div>
+                    <p className="mt-1 text-xs text-slate-500">Try adjusting the month or staff filters.</p>
+                </div>
+            ) : (
+                <div className="space-y-2">
+                    {filteredAttendance.map((record) => (
+                        <MobileAttendanceRecord key={record.id} record={record} />
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+}
+
 export default function AttendanceTab() {
+    const isMobile = useAdminMobileMode();
     const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), "yyyy-MM"));
     const [selectedUser, setSelectedUser] = useState<string>("all");
 
@@ -61,7 +277,7 @@ export default function AttendanceTab() {
         queryFn: adminUsersApi.lookup,
     });
 
-    const staffUsers = users.filter(u => u.role === "Technician" || u.role === "Cashier" || u.role === "Manager");
+    const staffUsers = users.filter(u => ["Technician", "Cashier", "Manager", "Driver"].includes(u.role));
 
     const filteredAttendance = useMemo(() => {
         let filtered = allAttendance;
@@ -113,12 +329,27 @@ export default function AttendanceTab() {
         return `${hours}h ${minutes}m`;
     };
 
+    if (isMobile) {
+        return (
+            <MobileAttendanceReport
+                allAttendance={allAttendance}
+                isLoading={attendanceLoading}
+                staffUsers={staffUsers}
+                selectedMonth={selectedMonth}
+                setSelectedMonth={setSelectedMonth}
+                selectedUser={selectedUser}
+                setSelectedUser={setSelectedUser}
+                filteredAttendance={filteredAttendance}
+            />
+        );
+    }
+
     return (
         <motion.div
             variants={containerVariants}
             initial="hidden"
             animate="visible"
-            className="space-y-6 pb-[calc(5.5rem+env(safe-area-inset-bottom))] md:pb-0"
+            className="space-y-6 pb-0"
         >
             {/* Header */}
             <motion.div variants={itemVariants} className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -219,59 +450,7 @@ export default function AttendanceTab() {
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="p-0">
-                            {/* Mobile card list — replaces the 6-column table that overflows on phones */}
-                            <div className="md:hidden p-3 space-y-2">
-                                {filteredAttendance.length === 0 ? (
-                                    <div className="rounded-xl bg-slate-50 px-3 py-6 text-center text-xs font-medium text-slate-500">No records found for selected filters</div>
-                                ) : filteredAttendance.map((record: AttendanceRecord) => (
-                                    <div key={record.id} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                                        <div className="flex items-center justify-between gap-2">
-                                            <div className="min-w-0">
-                                                <div className="flex items-center gap-2 flex-wrap">
-                                                    <span className="text-sm font-black text-slate-900">{format(parseISO(record.date), "MMM d")}</span>
-                                                    {record.date === format(new Date(), "yyyy-MM-dd") && (
-                                                        <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-bold text-blue-700">Today</span>
-                                                    )}
-                                                    <GeofenceBadge status={record.checkInGeofenceStatus} />
-                                                </div>
-                                                <div className="truncate text-xs font-medium text-slate-500">{record.userName} | {record.userRole}</div>
-                                            </div>
-                                            {record.checkOutTime ? (
-                                                <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-green-200 bg-green-50 px-2 py-1 text-[10px] font-bold text-green-700"><CheckCircle className="w-3 h-3" />Complete</span>
-                                            ) : (
-                                                <span className="shrink-0 inline-flex items-center gap-1 rounded-full border border-yellow-200 bg-yellow-50 px-2 py-1 text-[10px] font-bold text-yellow-700"><Clock className="w-3 h-3" />Working</span>
-                                            )}
-                                        </div>
-                                        <div className="mt-2 grid grid-cols-3 gap-2">
-                                            <div className="rounded-lg bg-slate-50 px-2 py-1.5">
-                                                <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">In</div>
-                                                <div className="text-xs font-mono font-bold text-green-600">{formatTime(record.checkInTime)}</div>
-                                            </div>
-                                            <div className="rounded-lg bg-slate-50 px-2 py-1.5">
-                                                <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Out</div>
-                                                <div className="text-xs font-mono font-bold text-slate-600">{formatTime(record.checkOutTime)}</div>
-                                            </div>
-                                            <div className="rounded-lg bg-slate-50 px-2 py-1.5">
-                                                <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Hours</div>
-                                                <div className="text-xs font-bold text-slate-700">{calculateDuration(record.checkInTime, record.checkOutTime)}</div>
-                                            </div>
-                                        </div>
-                                        {record.checkInLat != null && record.checkInLng != null && (
-                                            <div className="mt-2 pt-2 border-t border-slate-100">
-                                                <a
-                                                    href={mapsUrl(record.checkInLat!, record.checkInLng!)}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
-                                                >
-                                                    <Navigation className="h-2.5 w-2.5" />Open in Google Maps
-                                                </a>
-                                            </div>
-                                        )}
-                                    </div>
-                                ))}
-                            </div>
-                            <ScrollArea className="hidden md:block h-[500px]">
+                            <ScrollArea className="h-[500px]">
                                 <Table>
                                     <TableHeader className="bg-slate-50">
                                         <TableRow>
@@ -388,7 +567,7 @@ export default function AttendanceTab() {
                                         ))}
                                         {daysInMonth.map((day, i) => {
                                             const attendance = getAttendanceForDay(selectedUser, day);
-                                            const isWeekend = day.getDay() === 0 || day.getDay() === 6; // Sun=0, Fri=5 (wait, Bangladesh is Fri/Sat? Assuming standard logic for now, keeping prod logic: 0 & 6)
+                                            const isWeekend = day.getDay() === 0 || day.getDay() === 6;
 
                                             return (
                                                 <motion.div

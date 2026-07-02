@@ -292,12 +292,23 @@ export async function getComprehensiveDashboard() {
 // Job Overview (Live Stats)
 // ============================================
 
-export async function getJobOverview(): Promise<{
-    dueToday: JobTicket[];
-    dueTomorrow: JobTicket[];
-    dueThisWeek: JobTicket[];
-    readyForDelivery: JobTicket[];
-    technicianWorkloads: { technician: string; jobs: JobTicket[] }[];
+type JobOverviewItem = {
+    id: string;
+    ticketNumber: string;
+    priority: string | null;
+    deviceType: string | null;
+    model: string | null;
+    technician: string | null;
+    customerName: string | null;
+    deadline?: Date | null;
+};
+
+type JobOverviewResult = {
+    dueToday: JobOverviewItem[];
+    dueTomorrow: JobOverviewItem[];
+    dueThisWeek: JobOverviewItem[];
+    readyForDelivery: JobOverviewItem[];
+    technicianWorkloads: { technician: string; jobs: { length: number } }[];
     stats: {
         totalDueToday: number;
         totalDueTomorrow: number;
@@ -305,71 +316,171 @@ export async function getJobOverview(): Promise<{
         totalReadyForDelivery: number;
         totalInProgress: number;
     };
-}> {
-    const now = new Date();
+};
+
+const ACTIVE_EXCLUDED = ['Completed', 'Cancelled'] as const;
+
+function dateRange(now: Date) {
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const tomorrow = new Date(today);
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const dayAfterTomorrow = new Date(tomorrow);
-    dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 1);
-    const endOfWeek = new Date(today);
-    endOfWeek.setDate(endOfWeek.getDate() + 7);
+    const tomorrow = new Date(today.getTime() + 86_400_000);
+    const dayAfterTomorrow = new Date(tomorrow.getTime() + 86_400_000);
+    const endOfWeek = new Date(today.getTime() + 7 * 86_400_000);
+    return { today, tomorrow, dayAfterTomorrow, endOfWeek };
+}
 
-    // Targeted queries: only fetch what's needed (avoids full-table scan)
-    const [activeJobs, { jobs: readyForDelivery, total: totalReadyForDelivery }] = await Promise.all([
-        jobRepo.getActiveJobTickets(),
-        jobRepo.getCompletedJobTickets(25),
-    ]);
+export async function getJobOverview(): Promise<JobOverviewResult> {
+    const { today, tomorrow, dayAfterTomorrow, endOfWeek } = dateRange(new Date());
 
-    // Filter jobs by deadline
-    const dueToday = activeJobs.filter(j => {
-        if (!j.deadline) return false;
-        const deadline = new Date(j.deadline);
-        return deadline >= today && deadline < tomorrow;
-    });
+    try {
+        const [
+            [dueTodayCount],
+            [dueTomorrowCount],
+            [dueThisWeekCount],
+            [inProgressCount],
+            dueTodayRows,
+            techWorkloadRows,
+            { jobs: completedJobs, total: totalReadyForDelivery },
+        ] = await Promise.all([
+            // Stat counts — SQL COUNT, no row data
+            db.select({ total: count() }).from(schema.jobTickets).where(
+                and(notInArray(schema.jobTickets.status, [...ACTIVE_EXCLUDED]),
+                    gte(schema.jobTickets.deadline, today),
+                    lt(schema.jobTickets.deadline, tomorrow)),
+            ),
+            db.select({ total: count() }).from(schema.jobTickets).where(
+                and(notInArray(schema.jobTickets.status, [...ACTIVE_EXCLUDED]),
+                    gte(schema.jobTickets.deadline, tomorrow),
+                    lt(schema.jobTickets.deadline, dayAfterTomorrow)),
+            ),
+            db.select({ total: count() }).from(schema.jobTickets).where(
+                and(notInArray(schema.jobTickets.status, [...ACTIVE_EXCLUDED]),
+                    gte(schema.jobTickets.deadline, today),
+                    lt(schema.jobTickets.deadline, endOfWeek)),
+            ),
+            db.select({ total: count() }).from(schema.jobTickets).where(
+                eq(schema.jobTickets.status, 'In Progress'),
+            ),
+            // Due-today display list — only columns the UI needs, capped at 20 rows
+            db.select({
+                id: schema.jobTickets.id,
+                ticketNumber: sql<string>`COALESCE(${schema.jobTickets.corporateJobNumber}, ${schema.jobTickets.id})`,
+                priority: schema.jobTickets.priority,
+                deviceType: schema.jobTickets.device,
+                model: schema.jobTickets.modelNumber,
+                technician: schema.jobTickets.technician,
+                customerName: schema.jobTickets.customer,
+                deadline: schema.jobTickets.deadline,
+            }).from(schema.jobTickets)
+                .where(and(
+                    notInArray(schema.jobTickets.status, [...ACTIVE_EXCLUDED]),
+                    gte(schema.jobTickets.deadline, today),
+                    lt(schema.jobTickets.deadline, tomorrow),
+                ))
+                .orderBy(desc(schema.jobTickets.deadline))
+                .limit(20),
+            // Technician workload — GROUP BY, no per-job data needed
+            db.select({
+                technician: sql<string>`COALESCE(${schema.jobTickets.technician}, 'Unassigned')`,
+                jobCount: count(),
+            }).from(schema.jobTickets)
+                .where(notInArray(schema.jobTickets.status, [...ACTIVE_EXCLUDED]))
+                .groupBy(sql`COALESCE(${schema.jobTickets.technician}, 'Unassigned')`)
+                .orderBy(desc(count())),
+            // Ready for delivery — already paginated with LIMIT
+            jobRepo.getCompletedJobTickets(25),
+        ]);
 
-    const dueTomorrow = activeJobs.filter(j => {
-        if (!j.deadline) return false;
-        const deadline = new Date(j.deadline);
-        return deadline >= tomorrow && deadline < dayAfterTomorrow;
-    });
+        // Map completed jobs to frontend field names
+        const readyForDelivery: JobOverviewItem[] = completedJobs.map(j => ({
+            id: j.id,
+            ticketNumber: j.corporateJobNumber || j.id,
+            priority: j.priority,
+            deviceType: j.device ?? null,
+            model: j.modelNumber ?? null,
+            technician: j.technician ?? null,
+            customerName: j.customer ?? null,
+        }));
 
-    const dueThisWeek = activeJobs.filter(j => {
-        if (!j.deadline) return false;
-        const deadline = new Date(j.deadline);
-        return deadline >= today && deadline < endOfWeek;
-    });
+        // Preserve jobs.length interface for Recharts dataKey="jobs.length" and mobile count
+        const technicianWorkloads = techWorkloadRows.map(row => ({
+            technician: row.technician,
+            jobs: { length: row.jobCount },
+        }));
 
-    const inProgress = activeJobs.filter(j => j.status === 'In Progress');
+        return {
+            dueToday: dueTodayRows,
+            dueTomorrow: [],    // counts only — not rendered as list
+            dueThisWeek: [],    // counts only — not rendered as list
+            readyForDelivery,
+            technicianWorkloads,
+            stats: {
+                totalDueToday: dueTodayCount?.total ?? 0,
+                totalDueTomorrow: dueTomorrowCount?.total ?? 0,
+                totalDueThisWeek: dueThisWeekCount?.total ?? 0,
+                totalReadyForDelivery,
+                totalInProgress: inProgressCount?.total ?? 0,
+            },
+        };
+    } catch (err) {
+        // Legacy schema fallback: if new columns are absent, compute from full scan
+        console.warn('[getJobOverview] Falling back to full-scan (legacy schema):', (err as Error).message);
+        const [activeJobs, { jobs: completedJobs, total: totalReadyForDelivery }] = await Promise.all([
+            jobRepo.getActiveJobTickets(),
+            jobRepo.getCompletedJobTickets(25),
+        ]);
 
-    // Group by technician
-    const technicianMap = new Map<string, JobTicket[]>();
-    activeJobs.forEach(job => {
-        const tech = job.technician || 'Unassigned';
-        const jobs = technicianMap.get(tech) || [];
-        jobs.push(job);
-        technicianMap.set(tech, jobs);
-    });
+        const dueToday = activeJobs.filter(j => {
+            if (!j.deadline) return false;
+            const d = new Date(j.deadline);
+            return d >= today && d < tomorrow;
+        });
+        const dueTomorrow = activeJobs.filter(j => {
+            if (!j.deadline) return false;
+            const d = new Date(j.deadline);
+            return d >= tomorrow && d < dayAfterTomorrow;
+        });
+        const dueThisWeek = activeJobs.filter(j => {
+            if (!j.deadline) return false;
+            const d = new Date(j.deadline);
+            return d >= today && d < endOfWeek;
+        });
+        const inProgress = activeJobs.filter(j => j.status === 'In Progress');
 
-    const technicianWorkloads = Array.from(technicianMap.entries()).map(([technician, jobs]) => ({
-        technician,
-        jobs,
-    }));
+        const techMap = new Map<string, number>();
+        for (const job of activeJobs) {
+            const tech = job.technician || 'Unassigned';
+            techMap.set(tech, (techMap.get(tech) ?? 0) + 1);
+        }
 
-    return {
-        dueToday,
-        dueTomorrow,
-        dueThisWeek,
-        readyForDelivery,
-        technicianWorkloads,
-        stats: {
-            totalDueToday: dueToday.length,
-            totalDueTomorrow: dueTomorrow.length,
-            totalDueThisWeek: dueThisWeek.length,
-            totalReadyForDelivery,
-            totalInProgress: inProgress.length,
-        },
-    };
+        const mapJob = (j: JobTicket): JobOverviewItem => ({
+            id: j.id,
+            ticketNumber: j.corporateJobNumber || j.id,
+            priority: j.priority ?? null,
+            deviceType: j.device ?? null,
+            model: j.modelNumber ?? null,
+            technician: j.technician ?? null,
+            customerName: j.customer ?? null,
+            deadline: j.deadline,
+        });
+
+        return {
+            dueToday: dueToday.map(mapJob),
+            dueTomorrow: [],
+            dueThisWeek: [],
+            readyForDelivery: completedJobs.map(mapJob),
+            technicianWorkloads: Array.from(techMap.entries()).map(([technician, cnt]) => ({
+                technician,
+                jobs: { length: cnt },
+            })),
+            stats: {
+                totalDueToday: dueToday.length,
+                totalDueTomorrow: dueTomorrow.length,
+                totalDueThisWeek: dueThisWeek.length,
+                totalReadyForDelivery,
+                totalInProgress: inProgress.length,
+            },
+        };
+    }
 }
 
 // ============================================

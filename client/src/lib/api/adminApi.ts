@@ -693,6 +693,7 @@ export const attendanceApi = {
     getByDate: (date: string) => fetchApi<AttendanceRecord[]>(`/admin/attendance/date/${date}`),
     getByUser: (userId: string) => fetchApi<AttendanceRecord[]>(`/admin/attendance/user/${userId}`),
     getToday: () => fetchApi<AttendanceRecord | null>("/admin/attendance/today"),
+    getMyHistory: (days = 7) => fetchApi<AttendanceRecord[]>(`/admin/attendance/my-history?days=${days}`),
     checkIn: (notes?: string, lat?: number, lng?: number, accuracy?: number) =>
         fetchApi<AttendanceRecord>("/admin/attendance/check-in", {
             method: "POST",

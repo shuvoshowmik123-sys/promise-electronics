@@ -68,6 +68,12 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
         }));
     }, [notificationItems]);
 
+    const normalizeAdminLink = (link: string) => {
+        if (link.startsWith('/admin#')) return link.slice('/admin#'.length);
+        if (link.startsWith('/admin/')) return link.slice('/admin/'.length);
+        return link;
+    };
+
     const handleNavigate = async (n: any) => {
         if (n.type === 'service_request' && n.linkId) {
             try {
@@ -79,7 +85,7 @@ export function NotificationPanel({ open, onOpenChange, onNavigate }: Notificati
                 toast.error("Failed to mark request as interacted");
             }
         }
-        onNavigate(n.link, n.linkId);
+        onNavigate(normalizeAdminLink(n.link), n.linkId);
         onOpenChange(false);
     };
 

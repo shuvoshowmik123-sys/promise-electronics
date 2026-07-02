@@ -77,7 +77,7 @@ async function alertSuperAdmins(userName: string, userRole: string, distanceMete
                     title: `Outside check-in: ${userName}`,
                     message: `${userName} (${userRole}) checked in ${distKm}km away from the office.`,
                     type: 'warning',
-                    link: '/admin#attendance',
+                    link: 'attendance',
                     contextType: 'admin',
                 }),
             ),
@@ -135,6 +135,20 @@ router.get('/api/admin/attendance/today', requireAdminAuth, async (req: Request,
         res.json(record ?? null);
     } catch {
         res.status(500).json({ error: "Failed to fetch today's attendance" });
+    }
+});
+
+router.get('/api/admin/attendance/my-history', requireAdminAuth, async (req: Request, res: Response) => {
+    try {
+        const daysRaw = parseInt(String(req.query.days ?? '7'), 10);
+        const days = Math.min(Math.max(isNaN(daysRaw) ? 7 : daysRaw, 1), 31);
+        const start = new Date();
+        start.setDate(start.getDate() - days + 1);
+        const startDate = start.toISOString().split('T')[0];
+        const records = await attendanceRepo.getAttendanceByUserId(req.session.adminUserId!);
+        res.json(records.filter((record) => record.date >= startDate).slice(0, days));
+    } catch {
+        res.status(500).json({ error: 'Failed to fetch shift history' });
     }
 });
 

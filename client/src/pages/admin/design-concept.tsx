@@ -384,7 +384,8 @@ export default function DesignConcept() {
         'b2b': 'corporate',
         'corp-msg': 'corporate',
         'attendance': 'attendance',
-        'shift': 'attendance',
+        // 'shift' intentionally omitted: shift tab is universal check-in for all staff;
+        // gated only by the 'attendance' module in TAB_TO_MODULE, not by a permission key.
         'salary': 'salary',
         'cashier': 'pos',          // cashier is a POS subset
         'reports': 'reports',
@@ -604,13 +605,13 @@ export default function DesignConcept() {
                                 <SheetTrigger asChild>
                                     <button
                                         className={cn(
-                                            "flex h-11 min-w-[3rem] flex-col items-center justify-center gap-0.5 rounded-2xl px-2 transition-all duration-200 active:scale-95",
+                                            "flex h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl px-1.5 transition-all duration-200 active:scale-95",
                                             moreOpen ? "text-blue-700" : "text-slate-400"
                                         )}
                                     >
                                         <span className={cn(
-                                            "flex h-7 w-7 items-center justify-center rounded-full transition-all",
-                                            moreOpen && "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                                            "flex h-8 w-8 items-center justify-center rounded-full transition-all",
+                                            moreOpen && "h-9 w-9 bg-blue-600 text-white shadow-md shadow-blue-500/25"
                                         )}>
                                             <item.icon size={17} strokeWidth={2.4} />
                                         </span>
@@ -642,13 +643,13 @@ export default function DesignConcept() {
                                 onPointerEnter={() => preloadTab(item.id)}
                                 onTouchStart={() => preloadTab(item.id)}
                                 className={cn(
-                                    "flex h-11 min-w-[3rem] flex-col items-center justify-center gap-0.5 rounded-2xl px-2 transition-all duration-200 active:scale-95",
+                                    "flex h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl px-1.5 transition-all duration-200 active:scale-95",
                                     activeTab === item.id ? "text-blue-700" : "text-slate-400"
                                 )}
                             >
                                 <span className={cn(
-                                    "flex h-7 w-7 items-center justify-center rounded-full transition-all",
-                                    activeTab === item.id && "bg-blue-600 text-white shadow-md shadow-blue-500/25"
+                                    "flex h-8 w-8 items-center justify-center rounded-full transition-all",
+                                    activeTab === item.id && "h-9 w-9 bg-blue-600 text-white shadow-md shadow-blue-500/25"
                                 )}>
                                     <item.icon size={17} strokeWidth={2.4} className={cn(activeTab === item.id && "fill-white/10")} />
                                 </span>

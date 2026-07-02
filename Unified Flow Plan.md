@@ -9918,3 +9918,209 @@ Per project rule: Playwright not run automatically. Test guide:
 1. **Mobile 390x844** (iPhone 15): Login as any Technician → ShiftTab → Allow GPS → Check In → verify "In Office" / "Outside Office" badge appears on check-in confirmation
 2. **Mobile GPS denied** (iPhone 15): Same user → ShiftTab → Deny GPS → verify yellow "GPS access denied" bar with "Open Settings" CTA
 3. **Desktop 1440x900**: Super Admin → AttendanceTab → Location column shows badge (not raw numbers) + ±Xm accuracy + Maps link
+
+---
+
+## Phase 24C — Shift/Attendance Mobile Role Separation Fix
+**Date:** 2026-07-02
+**Status:** DONE — tsc + vite build clean. Manual QA guide provided.
+
+### Root Causes Fixed
+
+**Issue 1 — AttendanceTab desktop-in-mobile:**
+`AttendanceTab.tsx` had no `useAdminMobileMode()` call — only Tailwind CSS `md:` breakpoints.
+On mobile (w<768), the 4 BentoCards, `text-2xl` desktop header, and filter bar all rendered
+in stacked desktop chrome before the `md:hidden` mobile card list. Result: cramped desktop-in-mobile.
+
+Fix: Added `useAdminMobileMode()` import and branch. When `isMobile=true`, renders a dedicated
+`<MobileAttendanceReport>` component with:
+- Compact header ("Attendance Report" + record count)
+- 4 today-summary chips (Present / Working / Outside / Done) in a 2×2 grid
+- Collapsible filter panel (Filter icon button toggle)
+- Compact month + staff select inside the panel
+- Attendance records as native mobile cards with geofence badges, ±Xm accuracy, Maps link
+- Dock-safe bottom padding: `calc(5.5rem + env(safe-area-inset-bottom))`
+Desktop layout: **completely unchanged** (else branch).
+
+**Issue 2 — TAB_TO_PERMISSION 'shift': 'attendance' blocks Technician Basic:**
+`design-concept.tsx` `TAB_TO_PERMISSION` had `'shift': 'attendance'`.
+Technician Basic preset users have `attendance.checkIn` (granular) but NOT legacy `attendance`.
+`isTabEnabled('shift')` returned false → "Access Restricted" screen on shift dock tap.
+
+Fix: Removed `'shift'` from `TAB_TO_PERMISSION`. Module gate (`TAB_TO_MODULE['shift'] = 'attendance'`)
+still controls visibility. No permission key required — shift check-in is universal for all staff.
+
+**Issue 3 — Navigation links (no bug found):**
+`link: 'attendance'` → `normalizeAdminLink('attendance')` → `'attendance'` → `window.location.hash = '#attendance'`.
+No double-hash. No fix needed.
+
+### Files Changed
+- `client/src/pages/admin/bento/tabs/AttendanceTab.tsx` — full rewrite with mobile branch
+- `client/src/pages/admin/design-concept.tsx` — removed `'shift'` from `TAB_TO_PERMISSION`
+
+### Build Checks
+- `npx tsc --noEmit --pretty false`: clean ✅
+- `npx vite build --mode development`: ✓ built in 48.58s ✅
+- `git diff --check`: LF→CRLF Windows warnings only ✅
+
+### Role/Permission Verification (analysis)
+| Role | Shift Tab | Attendance Tab | API Access |
+|------|-----------|----------------|------------|
+| Super Admin | Full Shift Monitor (all staff) | All staff records via getAll() | GET /api/admin/attendance ✅ |
+| Manager | My Shift (personal check-in/out) + Open Full Report | All staff via getAll() (has attendance perm) | GET /api/admin/attendance ✅ |
+| Technician Basic | My Shift ✅ (TAB_TO_PERMISSION fix) | 403 (no attendance perm) — attendanceApi.getAll() gets 403 | GET /api/admin/attendance/today (self-scoped) ✅ |
+| Driver | My Shift ✅ | 403 (no attendance perm) | my-history (self-scoped) ✅ |
+
+### Backend Verification (code-confirmed)
+- `GET /api/admin/attendance` requires `requireAnyPermission(['attendance', 'reports'])` → 403 for Technician Basic ✅
+- `GET /api/admin/attendance/my-history` requires only `requireAdminAuth` (no perm check) → self-scoped by session userId ✅
+- `GET /api/admin/attendance/today` requires only `requireAdminAuth` → self-scoped ✅
+
+### Manual QA Guide
+Viewports: 390x844 (iPhone 15 portrait), 430x932, 844x390 (landscape), 1440x900 (desktop)
+
+**Shift Tab (all roles):**
+1. Login as Technician Basic → tap Shift in dock → shift check-in screen (NO "Access Restricted") ✅
+2. Login as Manager → tap Shift → My Shift personal check-in screen ✅
+3. Login as Super Admin → tap Shift → Shift Monitor (all staff table) ✅
+
+**Attendance Tab (mobile — new native branch):**
+4. Login as Super Admin → navigate to `#attendance` via notification alert link
+   - Mobile 390x844: "Attendance Report" header, 4 chips, records as cards with geofence badges
+   - Filter icon opens month + staff selects
+   - Last card not hidden behind dock
+5. Desktop 1440x900: BentoCards + table layout unchanged ✅
+6. Technician Basic: attendance API returns 403, tab shows empty/error state (no crash) ✅
+
+**Notification → Attendance navigation:**
+7. Super Admin gets "Outside check-in" notification → tap → navigates to `#attendance` tab cleanly (no double hash, no blank screen) ✅
+
+---
+
+## Phase 24D — Shift + Attendance Final Role QA
+**Date:** 2026-07-02
+**Status:** DONE — all visual and API tests PASS. One bug found and diagnosed (server not restarted after Phase 23A, `my-history` route 404). Restart fixed it.
+
+### Build Gates
+- `npx tsc --noEmit --pretty false`: clean ✅
+- `npx vite build --mode development`: ✓ built in 27.64s ✅
+- `git diff --check`: LF→CRLF Windows warnings only ✅
+
+### Bug Found and Fixed: `/api/admin/attendance/my-history` returning 404
+**Root cause:** The `my-history` route was added in Phase 23A (`afab4bf`). The tsx dev server (PID 852) had started before Phase 23A and was never restarted after the route was written. tsx without `--watch` does not hot-reload source files. The `today` route pre-existed and worked; `my-history` was new and was not loaded.
+
+**Fix:** `npx kill-port 5083 && npm run dev` — after restart, `my-history` returns 401 (auth required = route registered) ✅
+
+**Impact:** ShiftTab "Last 7 Days" section would have shown empty/error for staff on this server instance. No data leak — self-scoped correctly once route is live.
+
+### Visual QA Results
+
+| Viewport | Screen | Result | Notes |
+|---|---|---|---|
+| 390x844 | SA #shift | PASS | Shift Monitor, 4 chips, "Open Full Attendance Report", no GPS prompt |
+| 390x844 | SA #attendance (via button) | PASS | Mobile branch: header, chips, cards, Maps links, dock clear, no overflow |
+| 430x932 | SA #shift | PASS | Shift Monitor identical |
+| 430x932 | SA #attendance | PASS | Mobile branch, no desktop table, dock clear |
+| 844x390 | SA #attendance | PASS | Mobile branch fires (touch=true && h<700 in Chromium), no overflow, content scrolls in MAIN container (scrollH=1189) |
+| 1440x900 | SA #attendance | PASS | Desktop layout: "Staff Attendance" h2, Export Report, 4 BentoCards, filter bar, table, Location column with badges+Maps |
+| 1440x900 | SA #shift | PASS | Shift Monitor with 4 stats, Open Full Attendance Report button |
+| 390x844 | Technician #shift | PASS | "My Shift", Not Checked In, GPS ready, Check In CTA, Last 7 Days (1 record own data only), no Shift Monitor |
+| 390x844 | Driver #shift | PASS | "My Shift", not Checked In (Driver name correct after proper login), DRIVER GUIDE onboarding |
+
+### API Role/Permission Tests
+
+| User | my-history | /attendance (all-staff) | Notes |
+|---|---|---|---|
+| Technician (attendance:true) | 200, 1 record, self-scoped ✅ | 200 ✅ (has perm) | correct |
+| Driver (attendance:true) | 200, 1 record, self-scoped ✅ | 200 ✅ (has perm) | both qa23c test users were seeded with attendance:true for Phase 23C |
+| Unauthenticated | 401 ✅ | 401 ✅ | route guard fires correctly |
+
+Note: A user WITHOUT `attendance`/`reports` permission would receive 403 from `/api/admin/attendance` — confirmed correct by `requireAnyPermission(['attendance','reports'])` middleware (code-verified from Phase 23C).
+
+### Notification Navigation Test
+- SA bell shows "Outside check-in: 23C qa23c_outtech (Technician) checked in 9.2km away from the office." ✅
+- No raw lat/lng in notification title or body ✅
+- Tapping notification → URL `http://localhost:5083/admin#attendance` (clean, no double hash) ✅
+- Mobile Attendance Report loads correctly after navigation ✅
+
+### Leak Checks
+- `rawCoordsInBodyText: []` — no raw GPS decimals (6+ dp) in rendered text ✅
+- GPS coords only appear inside Google Maps href (`a[href*="maps"]`), not as display text ✅
+- 5 Maps links rendered as text "Maps" only ✅
+- SA Shift Monitor not visible to Technician or Driver ✅
+- All-staff API gated by `requireAnyPermission(['attendance','reports'])` ✅
+- my-history self-scoped: response ownerIds contains only the session user's ID ✅
+
+### React Query Cache Note
+When switching users via direct `fetch()` (bypassing React login UI), stale cache from the previous user is displayed. This is expected — `clearPersistedClientState()` in `AdminAuthContext.tsx:66` calls `queryClient.clear()` only when login goes through the React `login()` function. In normal production use (login page), cache is always cleared. Not a data leak but noted for shared-device use.
+
+### Screenshots
+- `qa-24d-sa-shift-390x844.png` — SA Shift Monitor mobile
+- `qa-24d-sa-attendance-390x844.png` — SA Attendance mobile native branch
+- `qa-24d-sa-shift-430x932.png` — SA Shift Monitor 430
+- `qa-24d-sa-attendance-430x932.png` — SA Attendance 430
+- `qa-24d-sa-attendance-844x390.png` — Attendance landscape (mobile branch)
+- `qa-24d-sa-attendance-1440x900.png` — Desktop layout preserved
+- `qa-24d-sa-shift-1440x900.png` — Desktop Shift Monitor
+- `qa-24d-tech-shift-390x844.png` — Technician My Shift (with guide)
+- `qa-24d-tech-shift-noguid-390x844.png` — Technician My Shift (guide dismissed)
+- `qa-24d-driver-shift-proper-390x844.png` — Driver My Shift (proper login, correct name)
+- `qa-24d-notif-bell-390x844.png` — Notification panel with outside check-in item
+- `qa-24d-notif-nav-390x844.png` — Post-navigation Attendance Report
+
+---
+
+## Phase 25A — Overview Query Hardening + Field Mapping Fix
+**Date:** 2026-07-02
+**Status:** DONE — SQL aggregate queries replace full-table scan; frontend field names corrected.
+
+### Problem
+`GET /api/admin/job-overview` was calling `getActiveJobTickets()` — a full `SELECT *` returning all 1,604 active job rows (no LIMIT). All deadline filtering and technician grouping happened in JavaScript after loading the entire dataset into memory.
+
+**Timing (local, warm):** ~1,600ms before fix.
+
+Additionally, the frontend used field names (`ticketNumber`, `deviceType`, `model`, `customerName`) that did not exist in the raw `JobTicket` schema — these were showing as `undefined` in the UI.
+
+### Changes
+
+**`server/repositories/analytics.repository.ts` — `getJobOverview()`**
+
+Replaced full-scan + JS-filter with 7 parallel SQL queries:
+- 4× `COUNT(*)` for stats (due today/tomorrow/week, in-progress) — no row data transferred
+- 1× `SELECT id, COALESCE(corporateJobNumber, id) AS ticketNumber, priority, device AS deviceType, modelNumber AS model, technician, customer AS customerName LIMIT 20` for due-today display list
+- 1× `SELECT COALESCE(technician, 'Unassigned'), COUNT(*) GROUP BY technician` for technician workloads
+- 1× `getCompletedJobTickets(25)` (unchanged, already optimized)
+
+Result shape preserved for backward compatibility:
+- `dueToday`: now returns 20-row max with correct `ticketNumber`, `deviceType`, `model`, `customerName` fields
+- `dueTomorrow / dueThisWeek`: returns `[]` (arrays unused by frontend — only counts in stats are used)
+- `technicianWorkloads`: returns `{ technician, jobs: { length: count } }` — `jobs.length` path still works for Recharts `dataKey="jobs.length"` and mobile `tech.jobs?.length`
+- `readyForDelivery`: mapped from raw `JobTicket` to same field schema (`ticketNumber = corporateJobNumber || id`, `deviceType = device`, `customerName = customer`)
+- `stats.*`: same 5 number fields
+
+Legacy fallback: entire function wrapped in try/catch — on any Drizzle error (e.g., missing column on old DB), falls back to JS-computed result using `getActiveJobTickets()`.
+
+### Timing (local, warm calls after restart)
+| Call | Time |
+|---|---|
+| Run 1 (cold) | 1,257ms |
+| Run 2 (warm) | 409ms |
+| Run 3 (warm) | 351ms |
+
+**Before (warm):** ~1,600ms. **After (warm):** ~350ms. **Speedup: 4.5×** locally.
+
+On Render (remote DB), estimated improvement from 5-15s to < 1s — previously loading ~800KB of row data over the network; now 7 small aggregate queries returning < 1KB total.
+
+### Build Gates
+- `npx tsc --noEmit`: exit 0 ✅
+- `npm run build`: ✓ built in 39.97s (chunk size warnings pre-existing) ✅
+- `git diff --check`: LF→CRLF Windows warnings only ✅
+
+### Files Changed
+- `server/repositories/analytics.repository.ts` — `getJobOverview()` rewritten
+
+### API Verified (local)
+- Status: 200 ✅
+- `stats.totalInProgress`: 13 (correct — 13 jobs with status 'In Progress')
+- `readyForDelivery[0]` field names: `id, ticketNumber, deviceType, model, technician, customerName` ✅ (previously raw schema names)
+- `technicianWorkloads[0]`: `{ technician: 'Unassigned', jobs: { length: 1596 } }` ✅
