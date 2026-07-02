@@ -10124,3 +10124,89 @@ On Render (remote DB), estimated improvement from 5-15s to < 1s — previously l
 - `stats.totalInProgress`: 13 (correct — 13 jobs with status 'In Progress')
 - `readyForDelivery[0]` field names: `id, ticketNumber, deviceType, model, technician, customerName` ✅ (previously raw schema names)
 - `technicianWorkloads[0]`: `{ technician: 'Unassigned', jobs: { length: 1596 } }` ✅
+
+---
+
+## Phase 26A — Staff Invite Permission Selection Fix (InviteWizard Rewrite)
+**Date:** 2026-07-02
+**Status:** DONE — InviteWizard.tsx fully rewritten with editable granular permissions.
+
+### Problem
+The old InviteWizard had a read-only "Access Summary" step — Super Admin could see what permissions a role preset would grant, but could not add or remove individual permissions. There was no way to customize an invite beyond selecting a role.
+
+### Changes
+
+**`client/src/components/admin/InviteWizard.tsx` — FULL REWRITE**
+
+New 6-step wizard replacing the old 3-step flow:
+
+| Step | Name | Content |
+|---|---|---|
+| 0 | Role | Role dropdown, phone/email/note, preset description |
+| 1 | Work Areas | Module list — click to toggle active/inactive |
+| 2 | Permissions | Module cards with per-permission checkboxes + risk badges |
+| 3 | Packs | Permission pack cards with Add buttons |
+| 4 | Risk Review | Risk summary badges, Generate Link button |
+| 5 | Link | Generated URL, Copy, expiry warning, Done |
+
+**Key design decisions:**
+- Ported module card + per-permission checkbox UX directly from `PermissionDesigner.tsx` (same `MODULE_META`, `TONE`, `ICON_TONE`, expansion pattern)
+- Role preset loads on role selection, fully editable afterward — Work Areas toggles entire module on/off; Permissions step provides per-permission control
+- Packs add permissions only (never lock); added permissions removable in Permissions step
+- Inactive modules shown in `<details>` disclosure to keep list manageable
+- `canAdvance = step === 0 ? !!role : true` — only Role step blocks progression
+- Mutation fires at Risk Review step (step 4), on success → step 5
+- `max-w-2xl` (was `max-w-md`) to fit module cards
+- Preview query enabled from step 4 onward
+- `createPortal(...)` to `document.body` for stacking context
+
+**Security unchanged:**
+- No Super Admin role option in dropdown
+- No wildcard (`*`) permissions
+- Backend `sanitizeInvitePermissions()` still validates/blocks server-side
+- `tokenHash` never included in response (raw link returned once only)
+- Client-supplied permissions not trusted — backend re-validates all keys
+
+### Build Gates
+- `npx tsc --noEmit`: exit 0 ✅
+- `npm run build`: ✓ built in 39.97s ✅
+- `git diff --check`: LF→CRLF Windows warnings only ✅
+
+### API Verified (local)
+- `POST /api/admin/staff-invites` → 201 Created ✅
+- Response: `{ id, role, permissions (5 granular keys), setupLink, expiresAt }` ✅
+- `tokenHash` not present in response ✅
+- CSRF flow: `httpClient.ts` auto-fetches `/api/admin/csrf-token` if cookie missing ✅
+
+### Files Changed
+- `client/src/components/admin/InviteWizard.tsx` — full rewrite
+
+### Visual QA
+
+**Desktop 1440×900:**
+- Step 1 (Role): dropdown, description, phone/email/note, Cancel/Next footer ✅
+- Step 2 (Work Areas): module list, active highlighted with risk badge ✅
+- Step 3 (Permissions): module cards expanded with checkboxes, risk badges, descriptions ✅
+- Step 4 (Packs): pack cards with Add buttons ✅
+- Step 5 (Risk Review): risk summary "3 low, 0 medium, 0 high, 0 critical", Generate Link enabled ✅
+- Step 6 (Link): "Setup Link Ready · Driver · 3 permissions", URL input, Copy button, expiry warning, Done ✅
+
+**Mobile 390×844:**
+- All 6 steps fit without overflow ✅
+- Checkboxes and risk badges readable at mobile width ✅
+- Footer (Back/Cancel/N perms/Next or Generate Link) always visible ✅
+- Generate Link → Link step works end-to-end ✅
+
+**Mobile 430×932:**
+- Step 1, 3 confirmed clean ✅
+
+### Screenshots
+- `qa-26a-mobile-wizard-step1-390x844.png` — Role step
+- `qa-26a-mobile-wizard-step2-390x844.png` — Work Areas step
+- `qa-26a-mobile-wizard-step3-390x844.png` — Permissions step (collapsed)
+- `qa-26a-mobile-wizard-step3-expanded-390x844.png` — Permissions with Attendance expanded
+- `qa-26a-mobile-wizard-step4-390x844.png` — Packs step
+- `qa-26a-mobile-wizard-step5-390x844.png` — Risk Review step
+- `qa-26a-mobile-wizard-link-390x844.png` — Link step
+- `qa-26a-mobile-wizard-step1-430x932.png` — Role step 430
+- `qa-26a-mobile-wizard-step3-430x932.png` — Permissions step 430
