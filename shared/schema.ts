@@ -157,6 +157,13 @@ export type UserPermissions = {
   auditLogs?: boolean;        // Audit Logs
   brain?: boolean;            // System Brain / AI Analytics
 
+  // Granular-module parent keys (used by hasPermission prefix fallback)
+  repairJourney?: boolean;        // Repair Journey tab parent key
+  corporateMessages?: boolean;    // Corporate Messages tab parent key
+  customers?: boolean;            // Customers tab parent key (distinct from users.*)
+  aiBrain?: boolean;              // AI Brain tab parent key (catalog module: aiBrain)
+  warranty?: boolean;             // Warranty tab parent key (distinct from warrantyClaims)
+
   // Action / Lookup Permissions
   canViewUsers?: boolean;     // Narrow permission to view basic user list for dropdowns
   canAssignTechnician?: boolean;   // Can assign/reassign technicians to jobs

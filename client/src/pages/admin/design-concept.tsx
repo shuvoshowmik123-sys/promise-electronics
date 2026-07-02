@@ -373,16 +373,16 @@ export default function DesignConcept() {
         'overview': 'dashboard',
         'jobs': 'jobs',
         'service-requests': 'serviceRequests',
-        'repair-journeys': 'serviceRequests',
+        'repair-journeys': ['repairJourney', 'serviceRequests'], // repairJourney.* = catalog module; serviceRequests = legacy
         'pos': 'pos',
         'inventory': 'inventory',
-        'customers': 'users',        // viewing customers requires users perm
+        'customers': ['customers', 'users'], // customers.* = catalog module; users = legacy fallback
         'users': 'users',
         'settings': 'settings',
         'challans': 'challans',
         'finance': 'finance',
         'b2b': 'corporate',
-        'corp-msg': 'corporate',
+        'corp-msg': ['corporateMessages', 'corporate'], // corporateMessages.* = catalog module; corporate = legacy B2B fallback
         'attendance': 'attendance',
         // 'shift' intentionally omitted: shift tab is universal check-in for all staff;
         // gated only by the 'attendance' module in TAB_TO_MODULE, not by a permission key.
@@ -392,16 +392,16 @@ export default function DesignConcept() {
         'pickup': ['pickup', 'jobs'], // driver (pickup) or job-staff (jobs) can view
         'technician': 'technician',
         'orders': 'orders',
-        'warranty': 'warrantyClaims',
-        'refunds': 'refunds',
+        'warranty': ['warranty', 'warrantyClaims'], // warranty.* = catalog module; warrantyClaims = legacy key name
+        'refunds': ['pos', 'finance', 'refunds'],   // pos.refund = granular key; finance staff audit refunds; refunds = legacy
         'inquiries': 'inquiries',
         'quotations': 'pos',          // quotations are sales-adjacent
         'purchasing': 'purchasing',
         'wastage': 'wastage',
         'quality': 'quality',
-        'system-health': 'systemHealth',
-        'audit-logs': 'auditLogs',
-        'brain': 'brain',
+        'system-health': ['settings', 'systemHealth'], // settings.manage = only granular key for system health
+        'audit-logs': ['settings', 'auditLogs'],       // settings.manage = only granular key for audit logs
+        'brain': ['aiBrain', 'brain'], // aiBrain.* = catalog module; brain = legacy key name
     };
 
     const isTabEnabled = (tabId: string) => {

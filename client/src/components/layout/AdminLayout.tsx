@@ -92,7 +92,7 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
 
   // Check permission for a single item
   const checkPermission = (href: string) => {
-    const permissionMap: Record<string, string> = {
+    const permissionMap: Record<string, string | string[]> = {
       "/admin": "dashboard",
       "/admin/overview": "jobs",
       "/admin/jobs": "jobs",
@@ -107,14 +107,17 @@ export function AdminLayout({ children }: { children: React.ReactNode }) {
       "/admin/service-requests": "serviceRequests",
       "/admin/pickup-schedule": "serviceRequests",
       "/admin/orders": "orders",
-      "/admin/customers": "users",
-      "/admin/system-health": "systemHealth",
+      "/admin/customers": ["customers", "users"], // customers.* = catalog module; users = legacy
+      "/admin/system-health": ["settings", "systemHealth"], // settings.manage = only granular key
       "/admin/inquiries": "inquiries",
       "/admin/corporate": "corporate",
       "/admin/technician": "technician",
     };
     const permission = permissionMap[href];
     if (!permission) return true;
+    if (Array.isArray(permission)) {
+      return permission.some((p) => hasPermission(p as any));
+    }
     return hasPermission(permission as any);
   };
 
