@@ -12,6 +12,7 @@
  */
 import { backupService } from "./backup.service.js";
 import { sendPushToAllAdmins } from "./fcm.service.js";
+import { isDbReady } from "./db-readiness.js";
 
 const SYSTEM_USER_ID = "system";
 const SYSTEM_USER_NAME = "Scheduled Backup";
@@ -47,6 +48,10 @@ export function stopBackupScheduler(): void {
 }
 
 async function runIfDue(password: string): Promise<void> {
+    if (!isDbReady()) {
+        console.log('[Backup Scheduler] Skipping — DB not ready');
+        return;
+    }
     const now = new Date();
     const today = now.toISOString().slice(0, 10); // "YYYY-MM-DD"
 

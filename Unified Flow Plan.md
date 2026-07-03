@@ -10302,3 +10302,150 @@ const hasPermission = (permission: keyof UserPermissions): boolean => {
 - `clearPersistedClientState()` called on both login and logout ✅
 
 ### VERDICT: GO WITH FIXES
+
+---
+
+## Phase 26C — Granular Permission Tab Mapping Regression
+
+**Goal**: Audit and fix all `TAB_TO_PERMISSION` entries whose stale legacy key names had no granular sub-key match via the Phase 26B `hasPermission()` prefix fallback.
+
+**Commit**: `69fe398`
+
+### Mappings Changed (design-concept.tsx)
+
+| Tab | Before | After | Why |
+|-----|--------|-------|-----|
+| `repair-journeys` | `'serviceRequests'` | `['repairJourney', 'serviceRequests']` | `repairJourney.*` is catalog module name; serviceRequests = legacy fallback |
+| `customers` | `'users'` | `['customers', 'users']` | `customers.*` is distinct catalog module; users = legacy fallback |
+| `corp-msg` | `'corporate'` | `['corporateMessages', 'corporate']` | `corporateMessages.*` is catalog module name; corporate = B2B legacy |
+| `warranty` | `'warrantyClaims'` | `['warranty', 'warrantyClaims']` | `warranty.*` is catalog module; warrantyClaims = legacy DB key |
+| `refunds` | `'refunds'` | `['pos', 'finance', 'refunds']` | `pos.refund` = granular key; finance staff audit refunds |
+| `system-health` | `'systemHealth'` | `['settings', 'systemHealth']` | `settings.manage` is only granular key for systemHealth (LEGACY_TO_GRANULAR) |
+| `audit-logs` | `'auditLogs'` | `['settings', 'auditLogs']` | Same settings.manage parent key |
+| `brain` | `'brain'` | `['aiBrain', 'brain']` | `aiBrain.*` is catalog module name; brain = legacy key |
+
+### Other Files Changed
+
+- **`shared/schema.ts`**: Added 5 optional `UserPermissions` keys (`repairJourney`, `corporateMessages`, `customers`, `aiBrain`, `warranty`) so TypeScript accepts them as `keyof UserPermissions` in `hasPermission()` calls
+- **`AdminLayout.tsx`**: `checkPermission()` updated to accept `string | string[]`; `/admin/customers` and `/admin/system-health` use array form
+
+### Test Results
+
+**Unit logic (16 tests)**:
+- `repairJourney.view` → `hasPermission('repairJourney')` = true ✅
+- `corporateMessages.view` → `hasPermission('corporateMessages')` = true ✅
+- `customers.view` → `hasPermission('customers')` = true ✅
+- `aiBrain.query` → `hasPermission('aiBrain')` = true ✅
+- `warranty.view` → `hasPermission('warranty')` = true ✅
+- Legacy keys still work (`warrantyClaims: true` → `hasPermission('warrantyClaims')` = true) ✅
+- Array permission OR logic: `['repairJourney','serviceRequests']` — either satisfies ✅
+- 8 negative cases (wrong prefix, no match) = false ✅
+
+**Role-profile UI nav tests (5 passed)**:
+
+| User | Permissions | Expected Tab | Result |
+|------|-------------|-------------|--------|
+| testtech26c | `repairJourney.view` | Repair Journeys | ✅ PASS |
+| testdriver26c | `pickup.viewAssigned` | Pickups + Attendance | ✅ PASS |
+| testcorp26c | `corporateMessages.view` | Corp. Messages | ✅ PASS |
+| testcust26c | `customers.view` | Customers | ✅ PASS |
+| testwarr26c | `warranty.view` | Warranty Claims | ✅ PASS |
+
+**Negative checks**:
+- Driver: no Finance, Users, Settings, Dashboard in sidebar ✅
+- Corp/Customer/Warranty users: only their specific module shown ✅
+
+**Known issue (pre-existing, not Phase 26C)**: After programmatic login without full page reload, `ModuleContext` may stay in `isLoading:true` due to TanStack Query `persistQueryClient` hydration race. Workaround: page reload settles the cache. Root cause is `persistQueryClient` pausing queries during hydration check; `queryClient.clear()` on login clears in-memory cache but `persistQueryClient` doesn't re-trigger cleanly. Fix deferred — does not affect users logging in via the browser UI form.
+
+### Build Gates
+- `npx tsc --noEmit`: ✅ exit 0
+- `npm run build`: ✅ (vite build clean)
+- `git diff --check`: ✅ LF→CRLF Windows warnings only
+
+### Visual QA
+- Desktop 1440×900: Technician sidebar → Repair Journeys ✅
+- Desktop 1440×900: Driver sidebar → Pickups + Attendance (no Finance/Users/Settings) ✅
+- Desktop 1440×900: Corp Msg user → B2B > Corp. Messages only ✅
+- Desktop 1440×900: Customers user → Sales & CRM > Customers only ✅
+- Desktop 1440×900: Warranty user → Warehouse > Warranty Claims only ✅
+- Mobile 390×844: bottom dock shows Shift + More for limited-permission user ✅
+- Mobile 430×932: Warranty Claims content loads; dock Shift + More ✅
+
+### VERDICT: GO — all 8 mappings fixed, 16 unit tests + 5 UI role tests pass
+
+## Phase 27A — Production DB Pool Recovery + Scheduler Backoff
+
+**Goal**: Fix recurring production issue where pg Pool becomes unhealthy after Aiven failover or long idle, causing `timeout exceeded when trying to connect` on login/CSRF/scheduler routes. Redeploy was the only fix (recreates the process + pool).
+
+**Commit**: `1db8b44`
+
+### Root Cause
+- pg.Pool is a long-lived singleton; no mechanism to detect or replace a stale pool
+- db-readiness.ts was startup-only (stopped checking after first `SELECT 1` succeeded)
+- Schedulers started before DB was ready, hammering unhealthy pool during cold starts
+- All scheduler services had no in-progress guard or DB-ready check on their ticks
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/db.ts` | `resetDbPool(reason)` exports; `getDbPoolDiagnostics()` helper; `DB_POOL_MAX_LIFETIME_SECONDS` proactive timer |
+| `server/services/db-readiness.ts` | Converted to continuous 45s watchdog; ECONNRESET/ETIMEDOUT/ENOTFOUND/EAI_AGAIN → `resetDbPool()`; in-progress flag; idempotent `startReadinessChecks()` |
+| `server/index.ts` | Scheduler starts moved into `runStartupMigrations().then()`; `RUN_BACKGROUND_JOBS=false` explicit override |
+| `server/routes/auth.routes.ts` | `isDbReady()` guard on `/api/admin/login` → 503 `DB_RECONNECTING` |
+| `server/app.ts` | `/health` returns 503 + db state when degraded; `POST /_vercel/speed-insights/vitals → 204` |
+| `server/services/drawer-day-close.service.ts` | `isDbReady()` at top of `schedulerTick()` |
+| `server/services/reminder.service.ts` | `isDbReady()` + `reminderCheckInProgress` in-progress flag |
+| `server/services/abandonment.service.ts` | `isDbReady()` + `abandonmentCheckInProgress` in-progress flag |
+| `server/services/nightly-jobs.service.ts` | `isDbReady()` guard on `checkSlaBreach()`, `updateAcceptanceRatios()`, `pruneOldAuditLogs()` |
+| `.env.example` / `.env.render.example` | `DB_POOL_MAX`, `DB_POOL_MAX_LIFETIME_SECONDS`, `RUN_BACKGROUND_JOBS` documented |
+
+### Build Gates
+- `npx tsc --noEmit`: ✅ exit 0
+- `npx vite build --mode development`: ✅ exit 0
+- `git diff --check`: ✅ CRLF warnings only (Windows)
+
+### Production Env Vars to Set
+```
+DB_POOL_MAX=5
+DB_POOL_MAX_LIFETIME_SECONDS=1800
+RUN_BACKGROUND_JOBS=true
+```
+
+### VERDICT: GO
+
+---
+
+## Phase 27A-Hotfix — DB Recovery Safety Completion
+
+**Goal**: Complete the 5 remaining gaps found after Phase 27A inspection that could still cause daily 500/login timeout behavior.
+
+**Commit**: TBD
+
+### Gaps Fixed
+
+| # | Gap | Fix |
+|---|-----|-----|
+| 1 | `/api/health` still ran live `SELECT 1` (could hang 10s) | Replaced with `getReadinessState()` — same as `/health`, no DB query |
+| 2 | Pool lifetime timer stacking — old timers could reset newer healthy pools | Added `poolGeneration` counter; timer only fires if `poolGeneration === generation` at creation time |
+| 3 | `pool.on('error')` only logged idle client errors; no pool reset | Error handler now calls `resetDbPool()`; `resetInProgress` flag prevents storm |
+| 4 | `connect-pg-simple` session store timeout produced generic 500 | Error handler detects ECONNRESET/ETIMEDOUT/ENOTFOUND/timeout → returns 503 `DB_RECONNECTING` |
+| 5 | Backup scheduler had no `isDbReady()` guard | Added guard at top of `runIfDue()` |
+| 6 | `/api/admin/readiness` did not include pool diagnostics | Added `pool: getDbPoolDiagnostics()` to response |
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/routes/index.ts` | `/api/health` uses `getReadinessState()`, no DB query; removed stale `db`/`sql` imports |
+| `server/db.ts` | `poolGeneration` counter prevents timer stacking; `resetInProgress` flag prevents idle-error reset storms; `pool.on('error')` triggers `resetDbPool()` |
+| `server/routes/middleware/error-handler.ts` | `isDbConnectionError()` helper detects connection errors → 503 `DB_RECONNECTING` before generic handler |
+| `server/services/backup-scheduler.service.ts` | `isDbReady()` guard in `runIfDue()` |
+| `server/app.ts` | `/api/admin/readiness` includes `pool: getDbPoolDiagnostics()` |
+
+### Build Gates
+- `npx tsc --noEmit`: ✅ exit 0
+- `npx vite build --mode development`: ✅ exit 0
+- `git diff --check`: ✅ clean
+
+### VERDICT: GO

@@ -7,8 +7,7 @@
 
 import type { Express } from 'express';
 import type { Server } from 'http';
-import { db } from '../db.js';
-import { sql } from 'drizzle-orm';
+import { getReadinessState } from '../services/db-readiness.js';
 
 // Import customer auth setup
 import { setupCustomerAuth } from '../customerGoogleAuth.js';
@@ -112,19 +111,18 @@ export async function registerRoutes(
     // ============================================
     // Health Check Endpoint
     // ============================================
-    app.get('/api/health', async (req, res) => {
-        try {
-            await db.execute(sql`SELECT 1`);
-            res.json({
-                status: 'ok',
-                timestamp: new Date().toISOString(),
-            });
-        } catch (error: any) {
-            console.error('[Health] Check failed:', (error as Error).message);
-            res.status(500).json({
-                status: 'error',
-            });
-        }
+    app.get('/api/health', (_req, res) => {
+        const state = getReadinessState();
+        const degraded = state.state === 'degraded';
+        res.status(degraded ? 503 : 200).json({
+            status: degraded ? 'degraded' : 'ok',
+            ts: new Date().toISOString(),
+            db: {
+                state: state.state,
+                lastCheck: state.lastCheck?.toISOString() ?? null,
+                lastError: state.lastError ? state.lastError.slice(0, 80) : null,
+            },
+        });
     });
 
     // ============================================

@@ -6,6 +6,11 @@ import { ZodError } from 'zod';
  * Centralized error handler for the Express application.
  * Formats all uncaught errors into a standardized ApiErrorPayload.
  */
+function isDbConnectionError(err: any): boolean {
+    const text = `${err?.message ?? ''} ${err?.code ?? ''}`;
+    return /timeout exceeded when trying to connect|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN/i.test(text);
+}
+
 export const errorHandler = (
     err: any,
     req: Request,
@@ -15,6 +20,16 @@ export const errorHandler = (
     // If headers have already been sent, delegate to default Express error handler
     if (res.headersSent) {
         return next(err);
+    }
+
+    // DB connection errors (incl. connect-pg-simple session store failures) become
+    // 503 so the client knows to retry rather than treating it as an app bug.
+    if (isDbConnectionError(err)) {
+        console.warn(`[Error] DB connection error on ${req.method} ${req.path}:`, err?.message?.slice(0, 80));
+        return res.status(503).json({
+            error: 'Database reconnecting. Please try again in 30 seconds.',
+            code: 'DB_RECONNECTING',
+        });
     }
 
     console.error(`[Error] ${req.method} ${req.path}`, err);

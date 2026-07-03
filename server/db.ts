@@ -7,11 +7,18 @@ const { Pool } = pg;
 let _pool: pg.Pool | null = null;
 let _db: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
+// Each createPool() call gets a unique generation. The lifetime timer checks
+// this before firing so old timers can't reset a newer healthy pool.
+let poolGeneration = 0;
+// Prevents concurrent resetDbPool() calls from stacking (e.g. idle-error storms).
+let resetInProgress = false;
+
 function createPool(): pg.Pool {
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) {
     throw new Error('FATAL: DATABASE_URL is not set. Cannot initialize database pool.');
   }
+  const generation = ++poolGeneration;
   const pool = new Pool({
     connectionString: dbUrl,
     max: parseInt(process.env.DB_POOL_MAX || '5', 10),
@@ -20,17 +27,25 @@ function createPool(): pg.Pool {
     keepAlive: true,
     ssl: dbUrl.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
   });
+
   pool.on('error', (err: Error) => {
-    console.error('[DB] Unexpected error on idle client (reconnecting automatically)', err.message);
+    const safeMsg = err.message?.slice(0, 100) ?? 'unknown error';
+    console.error('[DB] Unexpected error on idle client:', safeMsg);
+    // Trigger a pool reset so the next query gets a fresh connection.
+    resetDbPool('idle client error: ' + safeMsg).catch(() => {});
   });
+
   console.log('[DB] Connection pool initialized');
 
-  // If DB_POOL_MAX_LIFETIME_SECONDS is set, schedule a proactive pool reset to prevent
-  // stale connections after Aiven failovers or long idle periods.
+  // Proactively recycle the pool after DB_POOL_MAX_LIFETIME_SECONDS to prevent
+  // stale connections after Aiven failovers. Uses generation check so an early
+  // watchdog-triggered reset won't be followed by a redundant lifetime reset.
   const lifetimeSecs = parseInt(process.env.DB_POOL_MAX_LIFETIME_SECONDS || '0', 10);
   if (lifetimeSecs > 0) {
     setTimeout(() => {
-      resetDbPool(`scheduled max-lifetime reset after ${lifetimeSecs}s`).catch(() => {});
+      if (poolGeneration === generation) {
+        resetDbPool(`scheduled max-lifetime reset after ${lifetimeSecs}s`).catch(() => {});
+      }
     }, lifetimeSecs * 1000).unref();
   }
 
@@ -65,17 +80,23 @@ export const db = new Proxy({} as ReturnType<typeof drizzle<typeof schema>>, {
 
 /** Drain the current pool and create a fresh one on the next DB call. */
 export async function resetDbPool(reason: string): Promise<void> {
-  console.log(`[DB] Pool reset triggered: ${reason}`);
-  const oldPool = _pool;
-  _pool = null;
-  _db = null;
-  if (oldPool) {
-    try {
-      await oldPool.end();
-      console.log('[DB] Old pool drained');
-    } catch (e: any) {
-      console.warn('[DB] Old pool drain warning:', e.message?.slice(0, 80));
+  if (resetInProgress) return;
+  resetInProgress = true;
+  try {
+    console.log(`[DB] Pool reset triggered: ${reason}`);
+    const oldPool = _pool;
+    _pool = null;
+    _db = null;
+    if (oldPool) {
+      try {
+        await oldPool.end();
+        console.log('[DB] Old pool drained');
+      } catch (e: any) {
+        console.warn('[DB] Old pool drain warning:', e.message?.slice(0, 80));
+      }
     }
+  } finally {
+    resetInProgress = false;
   }
 }
 

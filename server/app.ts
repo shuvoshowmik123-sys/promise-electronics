@@ -18,7 +18,7 @@ import { setupSwagger } from "./swagger.js";
 import { errorHandler } from "./routes/middleware/error-handler.js";
 import { apiLimiter } from "./routes/middleware/rate-limit.js";
 import { coldStartCacheMiddleware, getColdStartCacheState } from "./middleware/cold-start-cache.js";
-import { pool as sharedPool } from "./db.js";
+import { pool as sharedPool, getDbPoolDiagnostics } from "./db.js";
 import { getReadinessState, isDbReady } from "./services/db-readiness.js";
 import { requireAdminAuth } from "./routes/middleware/auth.js";
 
@@ -257,6 +257,7 @@ export async function createApp(): Promise<Express> {
         res.json({
             ...getReadinessState(),
             cache: getColdStartCacheState(),
+            pool: getDbPoolDiagnostics(),
             ts: new Date().toISOString(),
         });
     });
