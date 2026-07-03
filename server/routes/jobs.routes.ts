@@ -35,7 +35,7 @@ const ROLLBACK_REALTIME_TAGS = ["pendingRollbacks", "adminNotifications", "admin
 /**
  * GET /api/job-tickets/list - Lightweight list for tables (no heavy logs)
  */
-router.get('/api/job-tickets/list', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.get('/api/job-tickets/list', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
     try {
         const limit = parseInt(req.query.limit as string) || 50;
         const page = parseInt(req.query.page as string) || 1;
@@ -51,41 +51,36 @@ router.get('/api/job-tickets/list', requireAdminAuth, requirePermission('jobs'),
 /**
  * GET /api/job-tickets - Get all job tickets
  */
-router.get('/api/job-tickets', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.get('/api/job-tickets', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 50;
         const type = (req.query.type as 'all' | 'walk-in' | 'corporate') || 'walk-in';
 
-        // Access Control: Filter jobs for Technicians
-        const userId = req.session?.adminUserId;
-        if (userId) {
-            const user = await userRepo.getUser(userId);
-            if (user && user.role === 'Technician') {
-                const myJobs = jobRepo.filterJobTicketsByLane(await jobRepo.getJobTicketsByTechnician(user.name), type);
-                return res.json({
-                    items: myJobs,
-                    pagination: {
-                        total: myJobs.length,
-                        page: 1,
-                        limit: myJobs.length,
-                        pages: 1
-                    }
-                });
-            }
+        // requireGranularPermission sets (req as any).user — no extra DB fetch needed
+        const user = (req as any).user;
+        if (user?.role === 'Technician') {
+            // Scope to jobs assigned to this technician only (ID match + legacy name match)
+            const myJobs = jobRepo.filterJobTicketsByLane(
+                await jobRepo.getJobTicketsByTechnicianUser(user.id, user.name),
+                type,
+            );
+            return res.json({
+                items: myJobs,
+                pagination: { total: myJobs.length, page: 1, limit: myJobs.length, pages: 1 },
+            });
         }
 
-        // Managers/Admins view all
+        // Managers/Admins/Super Admin — see all
         const result = jobRepo.filterJobTicketsByLane(await jobRepo.getAllJobTickets(), type);
-        // Mock pagination to prevent frontend break
         res.json({
             items: result,
             pagination: {
                 total: result.length,
                 page,
                 limit,
-                pages: Math.ceil(result.length / limit) || 1
-            }
+                pages: Math.ceil(result.length / limit) || 1,
+            },
         });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch job tickets' });

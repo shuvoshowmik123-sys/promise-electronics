@@ -10691,3 +10691,86 @@ The existing tab was a plain card wrapper delegating to `WarrantyClaimsTable`. T
 | T5-T6: Duplicate claim 409 / allow after rejected | ✅ code-verified (customer path only) |
 
 ### VERDICT: PASS
+
+---
+
+## Phase 29B — Technician Job API Permission + Self-Scope Fix (2026-07-04)
+
+### Root Cause
+
+`GET /api/job-tickets` used `requirePermission('jobs')` — a LEGACY key check that reads `effectivePermissions['jobs']`. Invite-created Technician Basic users only have granular keys (`jobs.view`, `jobs.reportOutcome`, `jobs.advanceStatus`) stored in the `permissions` JSON column; the legacy `jobs` flag is never set for them. Result: these users always received 403.
+
+Additionally, `getJobTicketsByTechnician(name)` only matched `job.technician === name`. Jobs assigned via `assignedTechnicianId` but without the name field populated would not appear.
+
+### Fixes Applied
+
+#### 1. Permission Bridge — `server/routes/jobs.routes.ts`
+
+- `GET /api/job-tickets`: `requirePermission('jobs')` → `requireGranularPermission('jobs.view')`
+- `GET /api/job-tickets/list`: same swap
+- `requireGranularPermission` bridges in both directions via `LEGACY_TO_GRANULAR`:
+  - Invite-created user with granular `jobs.view` → `effectivePermissions['jobs.view'] = true` → passes
+  - Legacy role user with `jobs` flag → `LEGACY_TO_GRANULAR['jobs']` includes `jobs.view` → passes
+  - Neither `jobs.view` nor legacy `jobs` → 403 (Driver, Cashier without the flag)
+- Route now reads `(req as any).user` (set by `requireGranularPermission`) — eliminates duplicate DB fetch
+
+#### 2. Technician Self-Scope — `server/repositories/job.repository.ts`
+
+Added `getJobTicketsByTechnicianUser(userId, technicianName)`:
+- Returns jobs where `assignedTechnicianId === userId` (primary — reliable ID-based match)
+- OR `job.technician === technicianName` (legacy — name-based match for older records)
+- Union (OR), not intersection — catches both assignment methods
+
+Route handler updated to call this instead of `getJobTicketsByTechnician(user.name)`.
+
+#### 3. ShiftTab Collapsed KPI Overflow — `client/src/pages/admin/bento/tabs/ShiftTab.tsx`
+
+Chip row was `flex items-center gap-3` with a "Today" label. At 390px with 2-digit staff counts this could overflow. Fixed:
+- Removed "Today" label
+- Changed to `min-w-0 flex-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5`
+- Added `·` separators that collapse naturally on wrap
+- Chip area is now `flex-1 min-w-0` so chevron always stays visible
+
+### Security Properties Preserved
+
+- Technician cannot see another technician's jobs — scope is `assignedTechnicianId === user.id OR technician === user.name`
+- Super Admin bypass unchanged (via `effectivePermissions['*']`)
+- Manager role has legacy `jobs` flag → still sees all jobs
+- Driver/Cashier without `jobs` or `jobs.view` → still 403
+- No client-supplied role override possible — role read from `(req as any).user` set by auth middleware
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/repositories/job.repository.ts` | Added `getJobTicketsByTechnicianUser(userId, technicianName)` — assignedTechnicianId OR legacy name match |
+| `server/routes/jobs.routes.ts` | `GET /api/job-tickets` + `/list`: `requirePermission('jobs')` → `requireGranularPermission('jobs.view')`; Technician scope uses new helper + session user from middleware |
+| `client/src/pages/admin/bento/tabs/ShiftTab.tsx` | Collapsed KPI chip row: flex-wrap + min-w-0 + removed "Today" label to prevent 390px overflow |
+
+### Build Gates
+- `npx tsc --noEmit`: ✅ exit 0 (no output)
+- `npx vite build --mode development`: ✅ ~21s
+- `git diff --check`: ✅ no errors (CRLF warnings only — Windows env)
+
+### Functional QA Plan
+
+| Test | Expected | Status |
+|------|----------|--------|
+| T1: Super Admin GET /api/job-tickets?type=walk-in | 200, all jobs | ✅ code-verified |
+| T2: Manager GET /api/job-tickets | 200, all jobs | ✅ code-verified (legacy `jobs` flag → bridges to jobs.view) |
+| T3: Driver GET /api/job-tickets | 403 | ✅ code-verified |
+| T4: Cashier without jobs.view GET /api/job-tickets | 403 | ✅ code-verified |
+| T5: Technician Basic (invite, granular only) GET /api/job-tickets | 200, scoped to own jobs | ⏳ needs live invite-created Technician account |
+| T6: Technician response items all have assignedTechnicianId === user.id or technician === user.name | Pass | ⏳ needs live account |
+| T7: GET /api/job-tickets/list SA | 200 | ✅ code-verified |
+
+### Visual QA Plan (run when explicitly asked)
+
+| Check | Expected |
+|-------|----------|
+| Technician login 390×844 → #technician | "My Jobs" header, only own assigned jobs, no roster |
+| SA 390×844 → #technician | Team view, 4 KPI cards, full queue, roster visible |
+| SA 390×844 → #shift Shift Monitor collapsed | Chip row: "Present X · Working X · Outside X · Done X", no overflow, chevron visible |
+| SA 390×844 → #shift expand KPI | 2×2 toned cards appear |
+| POS closed register 390×844 | "Confirm Float & Open" button above dock |
+

@@ -181,6 +181,18 @@ export async function getJobTicketsByTechnician(technicianName: string): Promise
     return jobs.filter((job) => job.technician === technicianName);
 }
 
+export async function getJobTicketsByTechnicianUser(
+    userId: string,
+    technicianName: string | null | undefined,
+): Promise<JobTicket[]> {
+    const jobs = await loadAllJobTickets();
+    return jobs.filter(
+        (job) =>
+            job.assignedTechnicianId === userId ||
+            (technicianName && job.technician === technicianName),
+    );
+}
+
 export async function getJobTicketsByStatus(status: string): Promise<JobTicket[]> {
     const jobs = await loadAllJobTickets();
     return jobs.filter((job) => job.status === status);

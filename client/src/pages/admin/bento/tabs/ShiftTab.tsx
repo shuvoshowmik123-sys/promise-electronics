@@ -212,11 +212,13 @@ function SuperAdminShiftMonitor({ now }: { now: Date }) {
                 className="flex w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-left shadow-sm active:scale-[0.99] transition-transform"
                 aria-expanded={kpiOpen}
             >
-                <div className="flex items-center gap-3 text-[11px] font-black text-slate-600">
-                    <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wide">Today</span>
+                <div className="min-w-0 flex-1 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[11px] font-black">
                     <span className="text-blue-700">Present <span className="text-slate-950">{stats.present}</span></span>
+                    <span className="text-slate-300" aria-hidden>·</span>
                     <span className="text-emerald-700">Working <span className="text-slate-950">{stats.working}</span></span>
+                    <span className="text-slate-300" aria-hidden>·</span>
                     <span className="text-amber-700">Outside <span className="text-slate-950">{stats.outside}</span></span>
+                    <span className="text-slate-300" aria-hidden>·</span>
                     <span className="text-slate-500">Done <span className="text-slate-950">{stats.complete}</span></span>
                 </div>
                 <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${kpiOpen ? "rotate-180" : ""}`} />
