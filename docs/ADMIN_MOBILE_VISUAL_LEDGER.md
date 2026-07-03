@@ -62,7 +62,7 @@ These tabs must be native-polished before launch:
 | Pickups | Native Complete | 2026-06-25 | `raw/pickup-*.json` + `screenshots/confirm-pickup-{rest,action}.png` | Inspector approved. No blockers. |
 | Corporate Messages | Native Complete | 2026-06-25 | `raw/corp-msg-*.json` + `screenshots/confirm-corpmsg-{rest,chat}.png` | Inspector approved. No blockers. |
 
-| Shift (My Shift) | Functional Clean | 2026-07-02 | `qa-23b-shift-complete-390x844.png`, `qa-23b-gps-ready-390x844.png`, `qa-23b-shift-active-390x844.png`, `qa-23b-gps-denied-390x844.png`, `qa-23b-shift-1440x900.png`, `qa-23b-attendance-1440x900.png` | Phase 23B-Retest: drawer.routes.ts + refunds.routes.ts global middleware bug fixed (Technician 403 root cause). T1-T9 API tests PASS: invalid coords→400, valid check-in→201 (coords+accuracy+geofence stored), check-out→200. GPS allow: "Location ready (±103m)" + Check In enabled (qa-23b-gps-ready-390x844). GPS deny: red "Location permission is required" bar + Check In disabled=true opacity=0.5 (qa-23b-gps-denied-390x844). Shift active: "Unverified" geofence badge + Maps link lat/lng (qa-23b-shift-active-390x844). AttendanceTab 1440x900: Unverified badge + accuracy + Maps link on real post-23A records (qa-23b-attendance-1440x900). Desktop ShiftTab sidebar layout confirmed (qa-23b-shift-1440x900). All GPS states verified. |
+| Shift (My Shift) | Functional Clean | 2026-07-03 | Phase 23B evidence preserved. Phase 29A: Shift Monitor KPI block now collapsible — collapsed shows compact chip row (Present/Working/Outside/Done); expanded shows 2×2 grid. Default collapsed. ChevronDown toggle. My Shift path (staff roles) unchanged. TSC + Vite build clean. Manual QA required at 390×844, 430×932. | Manual Playwright QA pending for Shift Monitor collapsible KPI. |
 
 ## Secondary Tabs
 
@@ -161,3 +161,51 @@ Every frontend worker handoff that touches admin mobile must report:
 - **Cause:** tsx started before Phase 23A was written; no hot-reload without `--watch`
 - **Resolution:** Server restarted (`npx kill-port 5083 && npm run dev`); route now returns 401 (unauth) / 200 (authed) correctly
 - **Impact:** ShiftTab "Last 7 Days" would have been empty on stale server. No data leak.
+
+---
+
+## Phase 29A Update — 2026-07-03
+
+### Ledger Row: Technician Tab (TechnicianTab.tsx)
+- **Previous status:** Desktop-in-mobile (pure CSS grid breakpoints, no native branch)
+- **New status:** Patched Needs Retest (mobile branch implemented via `useAdminMobileMode()`)
+- **Evidence path:** Manual QA required — guide below
+- **Viewports to test:** 390×844, 430×932, 584×918, 844×390 (landscape), 1440×900 (desktop)
+- **Mobile branch:** `MobileTabLayout` > `MobileTabHeader` (title + live pulse + `MobileKpiGrid` collapsible + `MobileSegmentTabs`) > `MobileScrollContent` (job cards + tech roster for non-Technician roles)
+- **Role scoping:** Technician role → `isPersonalView=true` → shows only their assigned jobs, no team roster; SA/Manager → full queue + roster
+- **`usersApi.getAll()` 403 guard:** `retry: false` — if the viewer lacks `users.view`, usersList gracefully becomes `[]` and techOnly=0; job data is unaffected
+- **KPI collapse:** Collapsible by default (`defaultOpen={false}`); compact chip row shows Active/Done [/Technicians/Available for managers]
+- **Segment tabs:** All / Pending / Active / Ready / Done
+- **Desktop preservation:** Desktop branch (`else` path) identical to prior code
+- **TSC + Vite build:** PASS (clean)
+- **Remaining risk:** Manual QA pending; Playwright visual confirmation at 390×844, 430×932
+
+### Ledger Row: Shift Tab — Shift Monitor (ShiftTab.tsx)
+- **Previous status:** Functional Clean (Phase 24D)
+- **New status:** Functional Clean — Shift Monitor KPI collapsible added
+- **Change:** `SuperAdminShiftMonitor` KPI grid now collapsible. Default: collapsed. Toggle button shows compact chip row (Present X · Working X · Outside X · Done X). Expanded: 2×2 toned cards unchanged. `ChevronDown` icon rotates on open.
+- **My Shift path unchanged:** Staff/Technician/Driver `My Shift` view unmodified
+- **Desktop preservation:** ShiftTab only renders in mobile-native layout (already was native); no desktop regression
+- **Remaining risk:** Manual QA pending
+
+### POS — Open Register Button Safe Area (PosTab.tsx)
+- **Code audit result:** No change needed. Mobile form uses `pb-[calc(7rem+env(safe-area-inset-bottom))]` (7rem = 112px > dock height ~88px). Submit button is `flex-none` at bottom of flex column, denomination section is `flex-1 overflow-y-auto` (scrolls internally). Button always clears bottom dock + iOS safe area at 390×844, 430×932, 584×918.
+- **Status:** PASS (code only — visual confirmation still pending)
+
+### Manual QA Guide (run when explicitly asked)
+1. Log in as Super Admin at 390×844
+2. Navigate to `#technician` tab:
+   - Mobile branch fires (not desktop grid)
+   - KPI strip collapsed by default; tap to expand 4 cards
+   - Segment tabs scroll (All/Pending/Active/Ready/Done)
+   - Job cards render; last card above dock
+3. Navigate to `#shift` tab:
+   - Shift Monitor shows (SA branch)
+   - KPI toggle: collapsed by default showing chip row
+   - Tap toggle → 2×2 grid appears; tap again → collapses
+4. Navigate to `#pos` tab (register closed):
+   - Mobile "Open Register" form appears
+   - Submit button "Confirm Float & Open" is above bottom dock
+5. Log in as Technician at 390×844 → `#technician`:
+   - Shows "My Jobs" header, only their assigned jobs
+   - No team roster visible

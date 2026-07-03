@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    Wrench, ClipboardList, CheckCircle2, Clock, Star,
+    Wrench, ClipboardList, CheckCircle2, Star,
     AlertTriangle, ChevronDown, ChevronUp, User, Zap, Phone,
     Loader2
 } from "lucide-react";
@@ -10,12 +10,20 @@ import { cn } from "@/lib/utils";
 import { BentoCard } from "../shared/BentoCard";
 import { containerVariants, itemVariants, tableRowVariants } from "../shared/animations";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Progress } from "@/components/ui/progress";
 import { jobTicketsApi, usersApi } from "@/lib/api";
 import type { JobTicket } from "@shared/schema";
+import { useAdminMobileMode } from "@/hooks/useAdminMobileMode";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import {
+    MobileTabLayout,
+    MobileTabHeader,
+    MobileScrollContent,
+    MobileKpiGrid,
+    MobileSegmentTabs,
+} from "../shared/MobileAdminPrimitives";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function getInitials(name: string) {
@@ -37,7 +45,15 @@ const PRIORITY_DOT: Record<string, string> = {
     Normal: "bg-slate-300",
 };
 
-// ── Technician Expandable Card (Mobile) ────────────────────────────────────────
+const STATUS_SEGMENTS = [
+    { value: "all", label: "All" },
+    { value: "Pending", label: "Pending" },
+    { value: "In Progress", label: "Active" },
+    { value: "Ready", label: "Ready" },
+    { value: "Completed", label: "Done" },
+];
+
+// ── Technician Expandable Card (Mobile) ───────────────────────────────────────
 function TechCard({ tech, jobs }: { tech: any; jobs: JobTicket[] }) {
     const [open, setOpen] = useState(false);
     const myJobs = jobs.filter(j =>
@@ -102,28 +118,42 @@ function TechCard({ tech, jobs }: { tech: any; jobs: JobTicket[] }) {
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function TechnicianTab() {
     const [statusFilter, setStatusFilter] = useState("all");
+    const isMobile = useAdminMobileMode();
+    const { user: authUser } = useAdminAuth();
+    // Technician-role users see only their own jobs; managers see all
+    const isPersonalView = authUser?.role === "Technician";
 
     // ── Real API Data ──────────────────────────────────────────────────────────
     const { data: usersData, isLoading: usersLoading } = useQuery({
         queryKey: ["admin-users"],
         queryFn: () => usersApi.getAll(),
+        retry: false, // 403 for roles without users.view — handle gracefully below
     });
 
     const { data: jobsData, isLoading: jobsLoading } = useQuery({
         queryKey: ["job-tickets-technician-view"],
         queryFn: () => jobTicketsApi.getAll("walk-in"),
-        refetchInterval: 30_000, // refresh every 30s to stay current
+        refetchInterval: 30_000,
     });
 
     const isLoading = usersLoading || jobsLoading;
 
-    // Filter to only technician-role users
     const usersList = Array.isArray(usersData) ? usersData : (usersData as any)?.items ?? [];
     const techOnly = usersList.filter((u: any) => u.role === "Technician");
 
     const allJobs: JobTicket[] = jobsData?.items ?? [];
-    const activeJobsList = allJobs.filter(j => !["Completed", "Delivered"].includes(j.status ?? ""));
-    const completedToday = allJobs.filter(j => {
+
+    // Technician role: scope to their own assigned jobs only
+    const scopedJobs = isPersonalView
+        ? allJobs.filter(j =>
+            j.assignedTechnicianId === authUser?.id ||
+            (j.technician && authUser?.name &&
+                j.technician.toLowerCase().includes(authUser.name.toLowerCase()))
+          )
+        : allJobs;
+
+    const activeJobsList = scopedJobs.filter(j => !["Completed", "Delivered"].includes(j.status ?? ""));
+    const completedToday = scopedJobs.filter(j => {
         const done = j.completedAt ? new Date(j.completedAt) : null;
         const today = new Date();
         return ["Completed", "Delivered"].includes(j.status ?? "") &&
@@ -138,20 +168,18 @@ export default function TechnicianTab() {
         return !hasActive;
     }).length;
 
-    // Filter jobs to show in queue
     const filteredJobs = statusFilter === "all"
         ? activeJobsList
-        : allJobs.filter(j => j.status === statusFilter);
+        : scopedJobs.filter(j => j.status === statusFilter);
 
-    // Compute workload % per technician (active/total jobs)
     const getWorkload = (tech: any) => {
-        const myJobs = allJobs.filter(j =>
+        const techJobs = allJobs.filter(j =>
             j.assignedTechnicianId === tech.id ||
             (j.technician && j.technician.toLowerCase().includes(tech.name?.toLowerCase()))
         );
-        if (myJobs.length === 0) return 0;
-        const active = myJobs.filter(j => !["Completed", "Delivered"].includes(j.status ?? "")).length;
-        return Math.min(100, Math.round((active / Math.max(myJobs.length, 1)) * 100));
+        if (techJobs.length === 0) return 0;
+        const active = techJobs.filter(j => !["Completed", "Delivered"].includes(j.status ?? "")).length;
+        return Math.min(100, Math.round((active / Math.max(techJobs.length, 1)) * 100));
     };
 
     if (isLoading) {
@@ -163,6 +191,117 @@ export default function TechnicianTab() {
         );
     }
 
+    // ── KPI items (role-scoped) ────────────────────────────────────────────────
+    const kpiItems = isPersonalView
+        ? [
+            { label: "My Active", value: activeJobsList.length, tone: "blue" as const, icon: <Wrench className="w-3 h-3" /> },
+            { label: "Done Today", value: completedToday, tone: "emerald" as const, icon: <CheckCircle2 className="w-3 h-3" /> },
+          ]
+        : [
+            { label: "Active Jobs", value: activeJobsList.length, tone: "blue" as const, icon: <Wrench className="w-3 h-3" /> },
+            { label: "Done Today", value: completedToday, tone: "emerald" as const, icon: <CheckCircle2 className="w-3 h-3" /> },
+            { label: "Technicians", value: techOnly.length, tone: "amber" as const, icon: <Star className="w-3 h-3" /> },
+            { label: "Available", value: availableTechs, tone: "violet" as const, icon: <User className="w-3 h-3" /> },
+          ];
+
+    // ── MOBILE BRANCH ─────────────────────────────────────────────────────────
+    if (isMobile) {
+        return (
+            <MobileTabLayout>
+                <MobileTabHeader>
+                    <div className="flex items-center justify-between pt-2 pb-0.5">
+                        <div>
+                            <h1 className="text-base font-black text-slate-900">
+                                {isPersonalView ? "My Jobs" : "Technician View"}
+                            </h1>
+                            <p className="text-xs text-slate-500">
+                                {filteredJobs.length} job{filteredJobs.length !== 1 ? "s" : ""}
+                                {isPersonalView ? " assigned to me" : " · live queue"}
+                            </p>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                            <span className="text-[10px] text-slate-400 font-semibold">Live</span>
+                        </div>
+                    </div>
+                    <MobileKpiGrid
+                        items={kpiItems}
+                        collapsible
+                        defaultOpen={false}
+                        summaryLabel={isPersonalView ? "My Workload" : "Workload"}
+                    />
+                    <MobileSegmentTabs<string>
+                        value={statusFilter}
+                        items={STATUS_SEGMENTS}
+                        onChange={setStatusFilter}
+                        tone="blue"
+                    />
+                </MobileTabHeader>
+
+                <MobileScrollContent>
+                    {filteredJobs.length === 0 ? (
+                        <div className="flex flex-col items-center justify-center h-32 rounded-2xl border border-slate-200 bg-white text-slate-400 gap-2 mt-2">
+                            <AlertTriangle className="w-5 h-5" />
+                            <p className="text-sm font-medium">No jobs found</p>
+                        </div>
+                    ) : (
+                        filteredJobs.slice(0, 50).map((job) => (
+                            <div key={job.id} className="rounded-2xl border border-slate-100 bg-white p-3 shadow-sm">
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="flex items-start gap-2 min-w-0">
+                                        <div className={cn("w-2 h-2 rounded-full shrink-0 mt-1.5",
+                                            (job as any).priority === "High" ? PRIORITY_DOT.High :
+                                            (job as any).priority === "Medium" ? PRIORITY_DOT.Medium : PRIORITY_DOT.Normal
+                                        )} />
+                                        <div className="min-w-0">
+                                            <p className="font-bold text-slate-700 text-sm truncate">{job.device}</p>
+                                            <p className="text-[11px] text-slate-400 truncate">{job.customer}</p>
+                                        </div>
+                                    </div>
+                                    <div className="flex flex-col items-end gap-1 shrink-0">
+                                        <Badge variant="outline"
+                                            className={cn("text-[9px] font-bold capitalize",
+                                                STATUS_STYLES[job.status ?? ""] || "bg-slate-50 text-slate-500 border-slate-200"
+                                            )}>
+                                            {job.status}
+                                        </Badge>
+                                        {job.corporateClientId && (
+                                            <Badge variant="secondary" className="bg-[var(--corp-blue)] text-white text-[9px] font-black px-1.5 py-0 h-4 border-none">B2B</Badge>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                                    <span className="font-mono">{job.id?.slice(-6).toUpperCase()}</span>
+                                    <span className="font-semibold text-slate-500">
+                                        {job.technician ? job.technician.split(" ")[0] : "Unassigned"}
+                                    </span>
+                                    {job.deadline && (
+                                        <span>{new Date(job.deadline).toLocaleDateString("en-BD", { month: "short", day: "numeric" })}</span>
+                                    )}
+                                </div>
+                            </div>
+                        ))
+                    )}
+
+                    {/* Technician roster — only shown to non-Technician roles */}
+                    {!isPersonalView && techOnly.length > 0 && (
+                        <>
+                            <div className="pt-3 pb-1">
+                                <p className="text-xs font-black uppercase tracking-wide text-slate-500">
+                                    Technicians ({techOnly.length})
+                                </p>
+                            </div>
+                            {techOnly.map((tech: any) => (
+                                <TechCard key={tech.id} tech={tech} jobs={allJobs} />
+                            ))}
+                        </>
+                    )}
+                </MobileScrollContent>
+            </MobileTabLayout>
+        );
+    }
+
+    // ── DESKTOP BRANCH (unchanged) ─────────────────────────────────────────────
     return (
         <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-6">
             {/* Header */}
@@ -355,16 +494,7 @@ export default function TechnicianTab() {
                         )}
                     </BentoCard>
 
-                    {/* Mobile Cards */}
-                    <div className="md:hidden space-y-3">
-                        <div className="flex items-center gap-2 mb-1">
-                            <User className="w-4 h-4 text-violet-500" />
-                            <h3 className="font-bold text-slate-700 text-sm">Technicians</h3>
-                        </div>
-                        {techOnly.map((tech: any) => <TechCard key={tech.id} tech={tech} jobs={allJobs} />)}
-                    </div>
-
-                    {/* Workload Overview */}
+                    {/* Workload Overview — Desktop only */}
                     {techOnly.length > 0 && (
                         <BentoCard variant="glass" className="border-slate-200/60 bg-white hidden md:flex flex-col" disableHover>
                             <h3 className="font-bold text-slate-700 text-sm mb-4 flex items-center gap-2">

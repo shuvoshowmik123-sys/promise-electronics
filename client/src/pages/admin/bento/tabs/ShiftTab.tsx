@@ -4,7 +4,7 @@ import { format, parseISO } from "date-fns";
 import {
     UserCheck, LogOut, Clock, MapPin, CheckCircle2, AlertCircle,
     Loader2, ShieldAlert, Navigation, WifiOff, Users, CalendarDays,
-    Timer, Activity, ArrowRight,
+    Timer, Activity, ArrowRight, ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { attendanceApi } from "@/lib/api";
@@ -166,6 +166,8 @@ function HistoryCard({ record, now }: { record: AttendanceRecord; now: Date }) {
 }
 
 function SuperAdminShiftMonitor({ now }: { now: Date }) {
+    const [kpiOpen, setKpiOpen] = useState(false);
+
     const { data: allAttendance = [], isLoading } = useQuery({
         queryKey: ["allAttendance"],
         queryFn: attendanceApi.getAll,
@@ -186,6 +188,13 @@ function SuperAdminShiftMonitor({ now }: { now: Date }) {
         complete: todayRecords.filter((record: AttendanceRecord) => record.checkOutTime).length,
     }), [todayRecords]);
 
+    const kpiItems = [
+        { label: "Present", value: stats.present, icon: Users, tone: "text-blue-700 bg-blue-50 border-blue-100" },
+        { label: "Working", value: stats.working, icon: Activity, tone: "text-emerald-700 bg-emerald-50 border-emerald-100" },
+        { label: "Outside", value: stats.outside, icon: ShieldAlert, tone: "text-amber-700 bg-amber-50 border-amber-100" },
+        { label: "Complete", value: stats.complete, icon: CheckCircle2, tone: "text-slate-700 bg-white border-slate-200" },
+    ];
+
     return (
         <div
             className="bg-[#f8fafc] px-3 pt-3 space-y-3"
@@ -196,22 +205,35 @@ function SuperAdminShiftMonitor({ now }: { now: Date }) {
                 <p className="text-xs text-slate-500">{format(now, "EEEE, d MMM yyyy")} | {format(now, "h:mm a")}</p>
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
-                {[
-                    { label: "Present", value: stats.present, icon: Users, tone: "text-blue-700 bg-blue-50 border-blue-100" },
-                    { label: "Working", value: stats.working, icon: Activity, tone: "text-emerald-700 bg-emerald-50 border-emerald-100" },
-                    { label: "Outside", value: stats.outside, icon: ShieldAlert, tone: "text-amber-700 bg-amber-50 border-amber-100" },
-                    { label: "Complete", value: stats.complete, icon: CheckCircle2, tone: "text-slate-700 bg-white border-slate-200" },
-                ].map((item) => (
-                    <div key={item.label} className={`rounded-2xl border p-3 ${item.tone}`}>
-                        <div className="flex items-center justify-between">
-                            <item.icon className="h-4 w-4" />
-                            <span className="text-xl font-black">{item.value}</span>
+            {/* Collapsible KPI block */}
+            <button
+                type="button"
+                onClick={() => setKpiOpen(v => !v)}
+                className="flex w-full items-center justify-between gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2.5 text-left shadow-sm active:scale-[0.99] transition-transform"
+                aria-expanded={kpiOpen}
+            >
+                <div className="flex items-center gap-3 text-[11px] font-black text-slate-600">
+                    <span className="text-slate-400 font-bold text-[10px] uppercase tracking-wide">Today</span>
+                    <span className="text-blue-700">Present <span className="text-slate-950">{stats.present}</span></span>
+                    <span className="text-emerald-700">Working <span className="text-slate-950">{stats.working}</span></span>
+                    <span className="text-amber-700">Outside <span className="text-slate-950">{stats.outside}</span></span>
+                    <span className="text-slate-500">Done <span className="text-slate-950">{stats.complete}</span></span>
+                </div>
+                <ChevronDown className={`h-4 w-4 shrink-0 text-slate-400 transition-transform duration-200 ${kpiOpen ? "rotate-180" : ""}`} />
+            </button>
+            {kpiOpen && (
+                <div className="grid grid-cols-2 gap-2">
+                    {kpiItems.map((item) => (
+                        <div key={item.label} className={`rounded-2xl border p-3 ${item.tone}`}>
+                            <div className="flex items-center justify-between">
+                                <item.icon className="h-4 w-4" />
+                                <span className="text-xl font-black">{item.value}</span>
+                            </div>
+                            <div className="mt-2 text-[10px] font-black uppercase tracking-wide">{item.label}</div>
                         </div>
-                        <div className="mt-2 text-[10px] font-black uppercase tracking-wide">{item.label}</div>
-                    </div>
-                ))}
-            </div>
+                    ))}
+                </div>
+            )}
 
             <Button
                 type="button"
