@@ -10416,6 +10416,36 @@ RUN_BACKGROUND_JOBS=true
 
 ---
 
+## Phase 27B — Stale Chunk Recovery Fix
+
+**Goal**: Stop production users from getting stuck on `Failed to fetch dynamically imported module` after Vercel deployments.
+
+### Root Cause
+
+The app lazy-loads the admin shell and admin tabs using hashed Vite chunks such as `design-concept-DUqfuDCP.js`. After a new deployment, old chunk files can disappear while an already-open browser tab, PWA service worker, or runtime cache still points to the old filename. Reloading works because the browser fetches the new `index.html` and new chunk graph.
+
+### Fixes Applied
+
+| File | Change |
+|------|--------|
+| `client/public/sw.js` | Bumped cache to `promise-electronics-v5`; excluded `/assets/` from service-worker runtime caching so hashed JS/CSS chunks are always handled by the browser/CDN instead of mixed old service-worker cache |
+| `client/src/lib/app-update-recovery.ts` | Added stale-build detector for dynamic import/chunk-load failures; clears CacheStorage, updates service workers, reloads once |
+| `client/src/main.tsx` | Installs global stale-build recovery for early lazy-load failures |
+| `client/src/components/ErrorBoundary.tsx` | Handles stale-build errors with an "Updating app" screen and automatic refresh instead of raw error text |
+
+### Build Gates
+- `npx tsc --noEmit --pretty false`: ✅ exit 0
+- `npx vite build --mode development`: ✅ exit 0
+- `git diff --check`: ✅ clean (Windows CRLF warnings only)
+
+### Deploy Note
+
+After this deploy, existing users may need one final reload so their browser receives `sw.js` v5. From then on, runtime JS chunks are no longer cached by our service worker, and stale chunk failures auto-recover with one refresh.
+
+### VERDICT: GO
+
+---
+
 ## Phase 27A-Hotfix — DB Recovery Safety Completion
 
 **Goal**: Complete the 5 remaining gaps found after Phase 27A inspection that could still cause daily 500/login timeout behavior.
@@ -10449,3 +10479,45 @@ RUN_BACKGROUND_JOBS=true
 - `git diff --check`: ✅ clean
 
 ### VERDICT: GO
+
+---
+
+## Phase 27C — Warranty Claims Native Mobile Redesign
+
+**Goal**: Replace the desktop-style `WarrantyClaimsTab` with a launch-quality native mobile experience while preserving the existing desktop table unchanged.
+
+**Commit**: Phase 27C (pending commit)
+
+### Problem
+
+The existing tab was a plain card wrapper delegating to `WarrantyClaimsTable`. The table's `md:hidden` mobile cards used `claim.id.slice(0,8)` as the primary label (raw DB UUID fragment — not human-readable), had no status filtering, no search, and no bottom-sheet detail/action UX.
+
+### Implementation
+
+| File | Change |
+|------|--------|
+| `client/src/pages/admin/bento/tabs/WarrantyClaimsTab.tsx` | Full rewrite — `useAdminMobileMode()` branch; mobile: `MobileTabLayout` + `MobileTabHeader` + `MobileScrollContent` + `MobileSegmentTabs`; cards with `Job #originalJobId` primary; portaled `MobileBottomSheetFrame` detail/action sheet; desktop: unchanged Card + `WarrantyClaimsTable` |
+| `docs/ADMIN_MOBILE_VISUAL_LEDGER.md` | Warranty Claims row: "Functional Clean" → "Patched Needs Retest" |
+
+### Mobile Branch Details
+
+- **Hook**: `useAdminMobileMode()` — handles portrait <768px AND landscape phone (touch + height <700px)
+- **Status chips**: All / Pending / Approved / Rejected / Linked Job (amber tone, badge shows pending count)
+- **Search**: filters by originalJobId, newJobId, claimReason, claimType, status
+- **Cards**: primary label = `Job #${claim.originalJobId}`, type badge, date, reason preview, "Tap to review" affordance for pending
+- **Detail sheet**: portaled to `document.body` via `createPortal`; dispatches `admin:mobile-chrome { hidden: true }` on mount, `false` on cleanup; drag-to-close via `MobileBottomSheetFrame`
+- **Approve path**: `warrantyClaimsApi.approve()` → `warrantyClaimsApi.createJob()` in sequence; invalidates `warranty-claims` + `job-tickets` queries
+- **Reject path**: inline rejection-reason textarea within sheet; `warrantyClaimsApi.reject()` with optional reason
+- **Loading / empty / error**: full-height states with retry button and clear-filters affordance
+
+### Build Gates
+- `npx tsc --noEmit --pretty false`: ✅ exit 0
+- `npx vite build --mode development`: ✅ exit 0
+
+### Visual QA Required
+- 390×844 (iPhone 15 portrait)
+- 430×932 (iPhone 15 Plus portrait)
+- 844×390 (landscape — must show mobile branch, not desktop)
+- 1440×900 (desktop — must show unchanged table)
+
+### VERDICT: GO — Needs Visual QA
