@@ -22,22 +22,30 @@ import {
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
-type StatusFilter = 'all' | 'pending' | 'approved' | 'rejected' | 'linked';
+type StatusFilter = 'all' | 'pending' | 'in_repair' | 'rejected' | 'linked';
 
 const STATUS_CHIPS: { value: StatusFilter; label: string }[] = [
     { value: 'all', label: 'All' },
     { value: 'pending', label: 'Pending' },
-    { value: 'approved', label: 'Approved' },
+    { value: 'in_repair', label: 'In Repair' },
     { value: 'rejected', label: 'Rejected' },
-    { value: 'linked', label: 'Linked Job' },
+    { value: 'linked', label: 'Linked' },
 ];
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 function statusChipClass(status: string) {
-    if (status === 'approved') return 'bg-emerald-50 border-emerald-200 text-emerald-700';
-    if (status === 'rejected') return 'bg-rose-50 border-rose-200 text-rose-700';
-    return 'bg-amber-50 border-amber-200 text-amber-700';
+    if (status === 'approved')   return 'bg-emerald-50 border-emerald-200 text-emerald-700';
+    if (status === 'in_repair')  return 'bg-blue-50 border-blue-200 text-blue-700';
+    if (status === 'completed')  return 'bg-teal-50 border-teal-200 text-teal-700';
+    if (status === 'rejected')   return 'bg-rose-50 border-rose-200 text-rose-700';
+    return 'bg-amber-50 border-amber-200 text-amber-700'; // pending + unknown
+}
+
+function statusLabel(status: string) {
+    if (status === 'in_repair') return 'In Repair';
+    if (status === 'completed') return 'Completed';
+    return status.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
 function claimTypeLabel(type: string) {
@@ -45,6 +53,18 @@ function claimTypeLabel(type: string) {
     if (type === 'crr') return 'CRR';
     if (type === 'reservice') return 'Reservice';
     return type.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Returns the human-safe job label from backend-enriched fields or falls back to last 6 chars. */
+function safeJobRef(claim: any, kind: 'original' | 'new'): string | null {
+    if (kind === 'original') {
+        if (claim.originalJobSafeRef) return claim.originalJobSafeRef as string;
+        const id = claim.originalJobId as string | undefined;
+        return id ? id.slice(-6).toUpperCase() : null;
+    }
+    if (claim.newJobSafeRef) return claim.newJobSafeRef as string;
+    const id = claim.newJobId as string | undefined;
+    return id ? id.slice(-6).toUpperCase() : null;
 }
 
 function DetailRow({
@@ -98,6 +118,9 @@ function MobileWarrantyClaimSheet({
     const [rejectReason, setRejectReason] = useState('');
     const [showRejectForm, setShowRejectForm] = useState(false);
 
+    const origRef = safeJobRef(claim, 'original') ?? '—';
+    const newRef = safeJobRef(claim, 'new');
+
     // Hide bottom dock while sheet is open
     useEffect(() => {
         window.dispatchEvent(new CustomEvent('admin:mobile-chrome', { detail: { hidden: true } }));
@@ -107,7 +130,6 @@ function MobileWarrantyClaimSheet({
     }, []);
 
     const isPending = claim.status === 'pending';
-    const isApproved = claim.status === 'approved';
 
     return createPortal(
         <AnimatePresence>
@@ -126,14 +148,14 @@ function MobileWarrantyClaimSheet({
                 {/* Scrollable body */}
                 <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-2">
                     {/* Status + type badges */}
-                    <div className="mb-4 flex items-center flex-wrap gap-2">
+                    <div className="mb-4 flex flex-wrap items-center gap-2">
                         <span
                             className={[
-                                'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-bold capitalize',
+                                'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-bold',
                                 statusChipClass(claim.status),
                             ].join(' ')}
                         >
-                            {claim.status}
+                            {statusLabel(claim.status)}
                         </span>
                         <span className="inline-flex items-center rounded-full border border-slate-200 bg-slate-50 px-2.5 py-0.5 text-[11px] font-bold text-slate-600">
                             {claimTypeLabel(claim.claimType)}
@@ -147,18 +169,9 @@ function MobileWarrantyClaimSheet({
 
                     {/* Detail rows */}
                     <div className="space-y-3">
-                        <DetailRow
-                            label="Original Job"
-                            value={`#${claim.originalJobId ?? '—'}`}
-                            mono
-                        />
-                        {claim.newJobId && (
-                            <DetailRow
-                                label="Linked Job"
-                                value={`#${claim.newJobId}`}
-                                mono
-                                accent
-                            />
+                        <DetailRow label="Original Job" value={`#${origRef}`} mono />
+                        {claim.newJobId && newRef && (
+                            <DetailRow label="Linked Job" value={`#${newRef}`} mono accent />
                         )}
                         <DetailRow
                             label="Claimed"
@@ -222,29 +235,39 @@ function MobileWarrantyClaimSheet({
                         </div>
                     )}
 
-                    {/* Approved status block */}
-                    {isApproved && claim.newJobId && (
-                        <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
-                            <div className="mb-1 text-[10px] font-bold uppercase tracking-wide text-emerald-600">
+                    {/* Status info blocks */}
+                    {(claim.status === 'in_repair' || (claim.status === 'approved' && claim.newJobId)) && newRef && (
+                        <div className="mt-4 rounded-2xl border border-blue-100 bg-blue-50 p-3">
+                            <div className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-blue-500">
                                 Linked Job Created
                             </div>
-                            <div className="font-mono text-sm font-black text-emerald-700">
-                                #{claim.newJobId}
+                            <div className="font-mono text-sm font-black text-blue-700">
+                                #{newRef}
                             </div>
                         </div>
                     )}
-                    {isApproved && !claim.newJobId && (
+                    {claim.status === 'approved' && !claim.newJobId && (
                         <div className="mt-4 rounded-2xl border border-emerald-100 bg-emerald-50 p-3">
                             <div className="text-[10px] font-bold uppercase tracking-wide text-emerald-600">
-                                Claim Approved
+                                Claim Approved — Job Not Yet Created
+                            </div>
+                        </div>
+                    )}
+                    {claim.status === 'completed' && (
+                        <div className="mt-4 rounded-2xl border border-teal-100 bg-teal-50 p-3">
+                            <div className="text-[10px] font-bold uppercase tracking-wide text-teal-600">
+                                Warranty Job Completed
                             </div>
                         </div>
                     )}
                     {claim.status === 'rejected' && (
                         <div className="mt-4 rounded-2xl border border-rose-100 bg-rose-50 p-3">
-                            <div className="text-[10px] font-bold uppercase tracking-wide text-rose-500">
+                            <div className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-rose-500">
                                 Claim Rejected
                             </div>
+                            {claim.rejectionReason && (
+                                <p className="text-xs text-rose-700">{claim.rejectionReason}</p>
+                            )}
                         </div>
                     )}
                 </div>
@@ -311,6 +334,8 @@ function MobileWarrantyCard({
     onTap: (claim: any) => void;
 }) {
     const isPending = claim.status === 'pending';
+    const origRef = safeJobRef(claim, 'original') ?? '—';
+    const newRef = safeJobRef(claim, 'new');
 
     return (
         <button
@@ -318,25 +343,25 @@ function MobileWarrantyCard({
             onClick={() => onTap(claim)}
             className="w-full rounded-2xl border border-slate-200 bg-white p-3.5 text-left shadow-sm transition-transform active:scale-[0.98]"
         >
-            {/* Primary row: job reference + status badge */}
+            {/* Primary row: safe job reference + status badge */}
             <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                     <span className="text-sm font-black text-slate-900">
-                        Job #{claim.originalJobId ?? '—'}
+                        Job #{origRef}
                     </span>
-                    {claim.newJobId && (
+                    {claim.newJobId && newRef && (
                         <span className="ml-2 inline-flex items-center gap-0.5 rounded-full border border-blue-200 bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-700">
-                            <Link2 className="h-2 w-2" />#{claim.newJobId}
+                            <Link2 className="h-2 w-2" />#{newRef}
                         </span>
                     )}
                 </div>
                 <span
                     className={[
-                        'shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-bold capitalize',
+                        'shrink-0 rounded-full border px-1.5 py-0.5 text-[9px] font-bold',
                         statusChipClass(claim.status),
                     ].join(' ')}
                 >
-                    {claim.status}
+                    {statusLabel(claim.status)}
                 </span>
             </div>
 
@@ -376,7 +401,6 @@ export default function WarrantyClaimsTab() {
     const queryClient = useQueryClient();
     const { user } = useAdminAuth();
 
-    // Shared state (used by mobile branch; desktop uses WarrantyClaimsTable internally)
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [search, setSearch] = useState('');
     const [selectedClaim, setSelectedClaim] = useState<any | null>(null);
@@ -384,7 +408,7 @@ export default function WarrantyClaimsTab() {
     const { data, isLoading, error, refetch } = useQuery<any>({
         queryKey: ['warranty-claims'],
         queryFn: () => warrantyClaimsApi.getAll(),
-        enabled: isMobile, // desktop branch re-fetches inside WarrantyClaimsTable
+        enabled: isMobile,
     });
 
     const allClaims: any[] = useMemo(
@@ -432,22 +456,33 @@ export default function WarrantyClaimsTab() {
     const filteredClaims = useMemo(() => {
         let list: any[] = allClaims;
 
-        if (statusFilter === 'pending') list = list.filter((c) => c.status === 'pending');
-        else if (statusFilter === 'approved') list = list.filter((c) => c.status === 'approved');
-        else if (statusFilter === 'rejected') list = list.filter((c) => c.status === 'rejected');
+        if (statusFilter === 'pending')
+            list = list.filter((c) => c.status === 'pending');
+        else if (statusFilter === 'in_repair')
+            // "In Repair" catches both approved (transient) and in_repair states
+            list = list.filter((c) => c.status === 'in_repair' || c.status === 'approved');
+        else if (statusFilter === 'rejected')
+            list = list.filter((c) => c.status === 'rejected');
         else if (statusFilter === 'linked')
-            list = list.filter((c) => c.status === 'approved' && c.newJobId);
+            // Any claim that has a linked new job, regardless of status
+            list = list.filter((c) => Boolean(c.newJobId));
 
         const q = search.trim().toLowerCase();
         if (q) {
-            list = list.filter(
-                (c) =>
+            list = list.filter((c) => {
+                const orig = safeJobRef(c, 'original') ?? '';
+                const linked = safeJobRef(c, 'new') ?? '';
+                return (
+                    orig.toLowerCase().includes(q) ||
+                    linked.toLowerCase().includes(q) ||
                     String(c.originalJobId ?? '').toLowerCase().includes(q) ||
                     String(c.newJobId ?? '').toLowerCase().includes(q) ||
                     String(c.claimReason ?? '').toLowerCase().includes(q) ||
                     String(c.claimType ?? '').toLowerCase().includes(q) ||
-                    String(c.status ?? '').toLowerCase().includes(q),
-            );
+                    String(c.status ?? '').toLowerCase().includes(q) ||
+                    String(c.customer ?? '').toLowerCase().includes(q)
+                );
+            });
         }
 
         return list;

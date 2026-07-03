@@ -10521,3 +10521,41 @@ The existing tab was a plain card wrapper delegating to `WarrantyClaimsTable`. T
 - 1440×900 (desktop — must show unchanged table)
 
 ### VERDICT: GO — Needs Visual QA
+
+---
+
+## Phase 27C-Hotfix — Warranty Claims Safe References + Access Fix
+
+**Goal**: Fix three issues found by Codex after Phase 27C: raw DB IDs displayed in UI, wrong linked-job filter, and unprotected read routes.
+
+### Issues Fixed
+
+| # | Issue | Fix |
+|---|-------|-----|
+| 1 | Mobile UI showed `claim.originalJobId` / `claim.newJobId` (nanoid, 21 chars) as primary card label | Backend: `warrantyRepo.getAllWarrantyClaims` now does LEFT JOIN to `job_tickets` twice; returns `originalJobSafeRef` = `COALESCE(corporate_job_number, UPPER(RIGHT(id, 6)))`, same for `newJobSafeRef`. Frontend: `safeJobRef()` helper uses enriched fields, falls back to last 6 chars if missing. |
+| 2 | Linked Job filter used `status === 'approved' && newJobId` — missed `in_repair` claims (the real state after create-job) | Fixed to `Boolean(c.newJobId)` regardless of status. Added "In Repair" chip catching `in_repair \| approved`. |
+| 3 | `GET /api/warranty-claims` and `GET /api/warranty-claims/:id` had no granular permission guard (auth-only) | Added `requireGranularPermission('warranty.view')` to list + single. Added `requireAnyGranularPermission(['warranty.view', 'warranty.create'])` to check/:jobId and check-serial/:serial. |
+| 4 | Route order bug: `GET /:id` was registered before `/check/:jobId` — "check" would be captured as `:id` | Fixed by moving `/check/:jobId` and `/check-serial/:serial` before `/:id`. |
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/repositories/warranty.repository.ts` | `getAllWarrantyClaims` uses raw SQL with LEFT JOIN for safe refs; new `getWarrantyClaimWithRefs()` for single-claim endpoint; added `WarrantyClaimWithRefs` export type |
+| `server/routes/warranty.routes.ts` | Added `requireAnyGranularPermission` import; fixed route order; added permission guards to all read routes |
+| `client/src/pages/admin/bento/tabs/WarrantyClaimsTab.tsx` | `safeJobRef()` helper; fixed linked filter; `in_repair`/`completed` status colors + chips; search includes safe refs; rejectionReason shown in rejected block |
+| `docs/ADMIN_MOBILE_VISUAL_LEDGER.md` | Updated Warranty Claims row notes |
+
+### Build Gates
+- `npx tsc --noEmit --pretty false`: ✅ exit 0
+- `npx vite build --mode development`: ✅ exit 0
+- `git diff --check`: ✅ CRLF warnings only
+
+### Visual QA Required
+- 390×844: cards show `Job #XXXXXX` (6 chars) not raw UUID; tap → sheet shows same safe ref
+- 430×932: same
+- 844×390 landscape: mobile branch active
+- 1440×900 desktop: table unchanged
+- "Linked" chip includes in_repair claims that have newJobId
+
+### VERDICT: GO — Needs Visual QA
