@@ -136,15 +136,12 @@ async function runStartupMigrations(): Promise<boolean> {
 (async () => {
   const app = await createApp();
   const httpServer = getHttpServer();
-  const runBackgroundJobs = process.env.NODE_ENV === "production" || process.env.RUN_BACKGROUND_JOBS === "true";
-  if (runBackgroundJobs) {
-    startDrawerDayCloseScheduler();
-    startAbandonmentScheduler();
-    startReminderScheduler();
-    startBackupScheduler();
-    initNightlyJobs();
-  } else {
-    console.log("[Startup] Background schedulers disabled in local dev. Set RUN_BACKGROUND_JOBS=true to enable.");
+  // RUN_BACKGROUND_JOBS=false lets ops disable schedulers on a specific dyno without changing NODE_ENV.
+  const runBackgroundJobs = process.env.RUN_BACKGROUND_JOBS === "false"
+    ? false
+    : (process.env.NODE_ENV === "production" || process.env.RUN_BACKGROUND_JOBS === "true");
+  if (!runBackgroundJobs) {
+    console.log("[Startup] Background schedulers disabled. Set RUN_BACKGROUND_JOBS=true to enable.");
   }
 
   if (process.env.NODE_ENV === "production" && process.env.GROQ_API_KEY) {
@@ -194,7 +191,17 @@ async function runStartupMigrations(): Promise<boolean> {
       startReadinessChecks();
       void runStartupMigrations().then((complete) => {
         if (complete) markMigrationsComplete();
-        startReadinessChecks();
+        startReadinessChecks(); // idempotent — starts watchdog if not running
+        // Start schedulers only after migrations so they don't race DB setup.
+        // Each scheduler also guards with isDbReady() on every tick.
+        if (runBackgroundJobs) {
+          startDrawerDayCloseScheduler();
+          startAbandonmentScheduler();
+          startReminderScheduler();
+          startBackupScheduler();
+          initNightlyJobs();
+          console.log("[Startup] Background schedulers started after migrations.");
+        }
       });
     },
   );

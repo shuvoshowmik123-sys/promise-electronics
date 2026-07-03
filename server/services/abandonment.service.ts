@@ -11,6 +11,7 @@ import { db } from "../db.js";
 import { eq, and, lt, isNull, inArray } from "drizzle-orm";
 import { jobTickets } from "../../shared/schema.js";
 import { smsService } from "./sms.service.js";
+import { isDbReady } from "./db-readiness.js";
 
 const SCHEDULER_INTERVAL_MS = 60 * 60 * 1000; // run every hour
 const ABANDON_AFTER_DAYS = 90;
@@ -27,6 +28,7 @@ const ABANDONABLE_STATUSES = [
 ];
 
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
+let abandonmentCheckInProgress = false;
 
 export function startAbandonmentScheduler(): void {
     if (schedulerTimer) return;
@@ -46,6 +48,13 @@ export function stopAbandonmentScheduler(): void {
 }
 
 export async function runAbandonmentCheck(): Promise<{ abandoned: number; forfeited: number }> {
+    if (!isDbReady()) {
+        console.log('[Abandonment] Skipping tick — DB not ready');
+        return { abandoned: 0, forfeited: 0 };
+    }
+    if (abandonmentCheckInProgress) return { abandoned: 0, forfeited: 0 };
+    abandonmentCheckInProgress = true;
+    try {
     const now = new Date();
     let abandoned = 0;
     let forfeited = 0;
@@ -112,4 +121,7 @@ export async function runAbandonmentCheck(): Promise<{ abandoned: number; forfei
     }
 
     return { abandoned, forfeited };
+    } finally {
+        abandonmentCheckInProgress = false;
+    }
 }

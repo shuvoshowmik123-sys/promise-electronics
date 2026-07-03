@@ -218,13 +218,27 @@ export async function createApp(): Promise<Express> {
     });
 
     // ─── 7. Health check (Render keep-alive + load balancer probe) ───────────
+    // Returns 503 when DB watchdog marks the pool as degraded so Render's health
+    // check can restart the dyno instead of continuing to serve broken responses.
     app.get('/health', (_req, res) => {
-        res.json({
-            status: 'ok',
+        const state = getReadinessState();
+        const degraded = state.state === 'degraded';
+        res.status(degraded ? 503 : 200).json({
+            status: degraded ? 'degraded' : 'ok',
             ts: new Date().toISOString(),
             uptime: Math.floor(process.uptime()),
             env: process.env.NODE_ENV,
+            db: {
+                state: state.state,
+                lastCheck: state.lastCheck?.toISOString() ?? null,
+                lastError: state.lastError ? state.lastError.slice(0, 80) : null,
+            },
         });
+    });
+
+    // Vercel Speed Insights — absorbs POST vitals pings without errors or AI watchdog noise
+    app.post('/_vercel/speed-insights/vitals', (_req, res) => {
+        res.status(204).end();
     });
 
     app.get('/ready', (_req: Request, res: Response) => {

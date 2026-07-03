@@ -1,6 +1,7 @@
 import { notificationRepo, posRepo, settingsRepo, userRepo } from "../repositories/index.js";
 import { auditLogger } from "../utils/auditLogger.js";
 import { broadcastAdminEvent } from "../routes/middleware/sse-broker.js";
+import { isDbReady } from "./db-readiness.js";
 
 const DAY_CLOSE_ENABLED_KEY = "drawer_day_close_enabled";
 const DAY_CLOSE_TIME_KEY = "drawer_day_close_time";
@@ -282,6 +283,10 @@ export async function runScheduledDrawerDayCloseTick(): Promise<DrawerDayCloseRu
 
 async function schedulerTick(): Promise<void> {
   if (schedulerTickInProgress) return;
+  if (!isDbReady()) {
+    console.log('[Drawer Day-Close] Skipping tick — DB not ready');
+    return;
+  }
   schedulerTickInProgress = true;
   try {
     const result = await runScheduledDrawerDayCloseTick();

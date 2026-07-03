@@ -14,6 +14,7 @@ import { staffPresence, jobTickets, users, auditLogs } from '../../shared/schema
 import { eq, and, sql, lt } from 'drizzle-orm';
 import { brainService } from '../brain/brain.service.js';
 import { upsertPresence } from './assignment.service.js';
+import { isDbReady } from './db-readiness.js';
 
 type SlaState = 'ok' | 'at-risk' | 'breached';
 const lastSlaStates = new Map<string, SlaState>();
@@ -22,6 +23,10 @@ let lastSlaSummary = '';
 // ─── SLA breach check ─────────────────────────────────────────────────────────
 
 export async function checkSlaBreach() {
+    if (!isDbReady()) {
+        console.log('[SLA] Skipping tick — DB not ready');
+        return;
+    }
     const now = new Date();
     const twoDaysMs = 2 * 24 * 60 * 60 * 1000;
 
@@ -83,6 +88,10 @@ export async function checkSlaBreach() {
 // ─── Acceptance ratio update ──────────────────────────────────────────────────
 
 export async function updateAcceptanceRatios() {
+    if (!isDbReady()) {
+        console.log('[Phase I] Skipping acceptance ratio update — DB not ready');
+        return;
+    }
     try {
         // Get all staff (admin users excluding customers)
         const staffRows = await db.select({ id: users.id, name: users.name })
@@ -157,6 +166,10 @@ export async function updateAcceptanceRatios() {
 // Runs once per 24h. Typical batch: 0-500 rows. ~200ms.
 
 export async function pruneOldAuditLogs() {
+    if (!isDbReady()) {
+        console.log('[NightlyJobs] Skipping audit log prune — DB not ready');
+        return;
+    }
     try {
         const cutoff = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000);
         const result = await db.delete(auditLogs)

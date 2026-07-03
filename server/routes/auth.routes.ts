@@ -16,6 +16,7 @@ import { AUDIT_ACTIONS } from '../../shared/constants.js';
 import { storage } from '../storage.js';
 import { db } from '../db.js';
 import { sql } from 'drizzle-orm';
+import { isDbReady } from '../services/db-readiness.js';
 import { normalizePhone } from '../utils/phone.js';
 import {
     PERMISSION_CATALOG, ROLE_PRESETS, CUSTOM_PACKS,
@@ -145,6 +146,12 @@ router.get('/api/admin/me', async (req: Request, res: Response) => {
  *         description: Too many login attempts
  */
 router.post('/api/admin/login', authLimiter, validate(adminLoginSchema), async (req: Request, res: Response) => {
+    if (!isDbReady()) {
+        return res.status(503).json({
+            error: 'Database reconnecting. Please try again in 30 seconds.',
+            code: 'DB_RECONNECTING',
+        });
+    }
     try {
         console.log('Admin login attempt for:', req.body.username);
         const { username, password, rememberMe } = req.body;
