@@ -40,7 +40,17 @@ router.get('/api/job-tickets/list', requireAdminAuth, requireGranularPermission(
         const limit = parseInt(req.query.limit as string) || 50;
         const page = parseInt(req.query.page as string) || 1;
 
-        // This will be implemented in storage.ts next
+        const user = (req as any).user;
+        if (user?.role === 'Technician') {
+            // Correctness over optimization: scope to assigned jobs only.
+            // TODO: replace with an indexed lightweight query when job_tickets grows large.
+            const myJobs = await jobRepo.getJobTicketsByTechnicianUser(user.id, user.name);
+            return res.json({
+                items: myJobs,
+                pagination: { total: myJobs.length, page: 1, limit: myJobs.length, pages: 1 },
+            });
+        }
+
         const result = await jobRepo.getJobTicketsList(page, limit);
         res.json(result);
     } catch (error) {
