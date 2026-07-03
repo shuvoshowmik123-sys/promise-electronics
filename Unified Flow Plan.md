@@ -10634,3 +10634,60 @@ The existing tab was a plain card wrapper delegating to `WarrantyClaimsTable`. T
 - Gaps: no duplicate-claim prevention (both admin + customer paths); admin approve/reject never syncs to customer_repair_journeys (customer never sees rejection); claim device field not set by admin route.
 - Permissions verified live: Driver→403, SA→200+safeRef, customer routes 401 unauth, ownership check in journey service (phone match), expired-warranty override Super Admin-only.
 - Build gates: tsc ✅, vite build ✅, git diff --check ✅ (CRLF warnings only).
+
+---
+
+## Phase 28B — Warranty Workflow Hardening (2026-07-03)
+
+**Goal**: Fix critical warranty workflow gaps found in Phase 28A audit.
+
+### Issues Fixed
+
+| # | Issue | Fix |
+|---|-------|-----|
+| A | Ownership check skipped when job had no customerPhone | Always require job.customerPhone; 403 if missing |
+| A | Phone match was exact string, not normalized | Normalize both phones with `normalizePhone()` (last-10-digits) before comparing |
+| B | No duplicate active claim guard (customer path) | SQL check before INSERT: blocks if pending/approved/in_repair on same job; allows if rejected/completed → 409 |
+| C | Admin POST hardcoded `claimType: 'general'` | Validate and pass through body's claimType (service/parts/crr/reservice/general) |
+| D | Admin POST used client-supplied claimedBy/claimedByName/claimedByRole | Session actor only: `(req as any).user` |
+| D | create-job audit used `req.body.createdBy` | Session actor only |
+| E (approve) | No customer-visible outcome on approval | Journey stage→repair_approved + event "Warranty Claim Approved" |
+| E (reject) | No customer-visible outcome on rejection | Journey stage→cancelled + event "Warranty Claim Rejected" with safe reason (truncated to 200 chars) |
+| E (create-job) | Journey not linked to new warranty job | job_ticket_id updated; stage→repair_in_progress; event "Warranty Repair Started" |
+| F | `/check-serial/:serial` → 500 (SQL selected `updated_at`, column doesn't exist on job_tickets) | Changed to `completed_at as "completedAt"` |
+| + | `create-job` always 500 (pre-existing: `id: undefined` → null constraint) | Added `nanoid()` import; set `id: nanoid()` on new job creation |
+
+### Deferred (from Phase 28A gaps)
+
+- Separate service vs parts warranty expiry periods — deferred
+- Corporate CRR naming cleanup — deferred
+- Duplicate check on admin-originated claims — admin path intentionally not gated (staff can create multiple tracking entries; corporate CRR flow depends on this)
+- Customer-visible journey events for admin-created claims (no journey row when claim is admin-originated) — safe no-op via `if (journey)` guard
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/services/customer-repair-journey.service.ts` | Added `normalizePhone` import; hardened ownership check (always require job phone, normalize both); added duplicate active claim guard (409) |
+| `server/routes/warranty.routes.ts` | Added `nanoid` + `repairJourneyService` imports; C (claimType preserved); D (session actor in create + create-job); E (journey sync on approve/reject/create-job); F (check-serial uses completed_at); pre-existing create-job id:undefined crash fixed with nanoid() |
+
+### Build Gates
+- `npx tsc --noEmit`: ✅ exit 0
+- `npx vite build --mode development`: ✅ 19s
+- `git diff --check`: ✅ clean
+
+### API Tests
+
+| Test | Result |
+|------|--------|
+| T7: Admin create preserves claimType='service' | ✅ live (was 'general' before) |
+| T8: Admin create uses session actor, ignores malicious body | ✅ live (claimedByName='Super Administrator', not 'MALICIOUS') |
+| T9: Approve returns 200; journey event fire-and-forget (no journey for admin-created claim → safe) | ✅ live |
+| T10: Reject returns 200; rejectionReason stored; journey event fire-and-forget | ✅ live |
+| T11: create-job returns 201 with valid nanoid job ID | ✅ live (was always 500 before) |
+| T12: check-serial returns 200 with {hasWarranty,jobs} shape | ✅ live (was 500) |
+| T13: Driver → 403 on list and check routes | ✅ live |
+| T1-T4: Customer ownership/normalization | ✅ code-verified (no customer session in test env) |
+| T5-T6: Duplicate claim 409 / allow after rejected | ✅ code-verified (customer path only) |
+
+### VERDICT: PASS

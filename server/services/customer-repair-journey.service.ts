@@ -5,6 +5,7 @@ import { serviceRequestRepo, jobRepo, warrantyRepo } from "../repositories/index
 import { notifyAdminUpdate, notifyCustomerUpdate } from "../routes/middleware/sse-broker.js";
 import { pushService } from "../pushService.js";
 import { storage } from "../storage.js";
+import { normalizePhone } from "../utils/phone.js";
 
 // ── Stage constants ──
 
@@ -1102,11 +1103,15 @@ export const repairJourneyService = {
       return { success: false, error: "Job not found", status: 404 };
     }
 
-    if ((job as any).customerPhone) {
-      const customer = await storage.getCustomer(opts.customerId);
-      if (!customer?.phone || customer.phone !== (job as any).customerPhone) {
-        return { success: false, error: "This job does not belong to your account", status: 403 };
-      }
+    // A: always require job to have a customer phone — no phone means ownership cannot be verified
+    if (!(job as any).customerPhone) {
+      return { success: false, error: "This job does not belong to your account", status: 403 };
+    }
+    const customer = await storage.getCustomer(opts.customerId);
+    const jobPhone = normalizePhone((job as any).customerPhone);
+    const custPhone = normalizePhone(customer?.phone);
+    if (!custPhone || !jobPhone || custPhone !== jobPhone) {
+      return { success: false, error: "This job does not belong to your account", status: 403 };
     }
 
     const now = new Date();
@@ -1119,7 +1124,18 @@ export const repairJourneyService = {
       return { success: false, error: "Claim type must be 'service' or 'parts'", status: 400 };
     }
 
-    const customer = await storage.getCustomer(opts.customerId);
+    // B: block duplicate active claims
+    const dupeRows = await db.execute(sql`
+      SELECT id FROM warranty_claims
+      WHERE original_job_id = ${opts.jobId}
+        AND status IN ('pending', 'approved', 'in_repair')
+      LIMIT 1
+    `);
+    const dupes = ((dupeRows as any).rows ?? dupeRows) as any[];
+    if (dupes.length > 0) {
+      return { success: false, error: "A warranty claim is already active for this repair.", status: 409 };
+    }
+
     const claimId = nanoid();
 
     await db.execute(sql`

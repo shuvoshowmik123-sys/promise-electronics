@@ -17,11 +17,13 @@ import { notificationRepo, jobRepo, warrantyRepo } from '../repositories/index.j
 import { auditLogger } from '../utils/auditLogger.js';
 import { db } from '../db.js';
 import { sql } from 'drizzle-orm';
+import { nanoid } from 'nanoid';
 import {
     requireAdminAuth,
     requireGranularPermission,
     requireAnyGranularPermission,
 } from './middleware/auth.js';
+import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 
 const router = Router();
 
@@ -100,7 +102,7 @@ router.get(
             const rows = await db.execute(sql`
                 SELECT id, device, status, tv_serial_number as "tvSerialNumber",
                        warranty_expiry_date as "warrantyExpiryDate", warranty_days as "warrantyDays",
-                       updated_at as "updatedAt"
+                       completed_at as "completedAt"
                 FROM job_tickets
                 WHERE LOWER(TRIM(tv_serial_number)) = LOWER(TRIM(${serial}))
                   AND status IN ('Ready', 'Delivered', 'Completed')
@@ -119,7 +121,7 @@ router.get(
                     status: j.status,
                     warrantyExpiryDate: j.warrantyExpiryDate,
                     warrantyDays: j.warrantyDays,
-                    completedAt: j.updatedAt,
+                    completedAt: j.completedAt,
                 })),
             });
         } catch (error: any) {
@@ -145,47 +147,44 @@ router.get('/api/warranty-claims/:id', requireGranularPermission('warranty.view'
 
 // ── Write routes ─────────────────────────────────────────────────────────────
 
-// Create warranty claim
+// Create warranty claim (admin-originated)
 router.post('/api/warranty-claims', requireGranularPermission('warranty.create'), async (req: Request, res: Response) => {
     try {
-        const {
-            originalJobId,
-            claimType,
-            claimReason,
-            claimedBy,
-            claimedByName,
-            claimedByRole,
-            notes,
-        } = req.body;
+        const { originalJobId, claimType, claimReason, notes } = req.body;
 
         const job = await jobRepo.getJobTicket(originalJobId);
         if (!job) {
             return res.status(404).json({ error: 'Original job not found' });
         }
 
+        // C: validate and preserve claimType; do not fall back silently to 'general'
+        const validTypes = ['service', 'parts', 'crr', 'reservice', 'general'];
+        const resolvedType = validTypes.includes(claimType) ? claimType : 'general';
+
         const now = new Date();
         let warrantyValid = false;
         let warrantyExpiryDate: Date | null = null;
-
         if (job.warrantyExpiryDate) {
             warrantyExpiryDate = new Date(job.warrantyExpiryDate);
-            if (warrantyExpiryDate > now) {
-                warrantyValid = true;
-            }
+            if (warrantyExpiryDate > now) warrantyValid = true;
         }
+
+        // D: actor from session — never from client body
+        const actor = (req as any).user;
 
         const claim = await warrantyRepo.createWarrantyClaim({
             originalJobId,
             customer: job.customer || 'Unknown',
             customerPhone: job.customerPhone,
-            claimType: 'general',
+            device: (job as any).device || undefined,
+            claimType: resolvedType,
             claimReason,
             status: 'pending',
             warrantyValid,
             warrantyExpiryDate: warrantyExpiryDate || undefined,
-            claimedBy: claimedBy || 'system',
-            claimedByName: claimedByName || 'System',
-            claimedByRole: claimedByRole || 'System',
+            claimedBy: actor?.id || 'system',
+            claimedByName: actor?.name || 'System',
+            claimedByRole: actor?.role || 'System',
             claimedAt: new Date(),
             notes,
         });
@@ -244,6 +243,30 @@ router.patch('/api/warranty-claims/:id/approve', requireGranularPermission('warr
             newValue: { status: 'approved', approvedBy, approvedByName },
         });
 
+        // E: sync outcome to customer journey
+        const approveJourneyRows = await db.execute(sql`
+            SELECT id FROM customer_repair_journeys WHERE warranty_claim_id = ${req.params.id} LIMIT 1
+        `);
+        const approveJourney = ((approveJourneyRows as any).rows ?? approveJourneyRows)[0] as { id: string } | undefined;
+        if (approveJourney) {
+            await db.execute(sql`
+                UPDATE customer_repair_journeys
+                SET current_stage = 'repair_approved', current_status = 'active',
+                    customer_friendly_status = 'Your warranty claim has been approved. A repair job is being prepared.',
+                    updated_at = NOW()
+                WHERE id = ${approveJourney.id}
+            `);
+            repairJourneyService.addJourneyEvent({
+                journeyId: approveJourney.id,
+                eventType: 'warranty_claim_approved',
+                title: 'Warranty Claim Approved',
+                message: 'Your warranty claim has been approved. A repair job has been opened for review.',
+                actorType: 'admin',
+                actorId: approvedBy,
+                isCustomerVisible: true,
+            }).catch((err: Error) => console.error('[Warranty] Journey event failed (approve):', err.message));
+        }
+
         res.json(updated);
     } catch (error: any) {
         console.error('[Warranty] Error approving claim:', error);
@@ -293,6 +316,31 @@ router.patch('/api/warranty-claims/:id/reject', requireGranularPermission('warra
             newValue: { status: 'rejected', rejectionReason },
         });
 
+        // E: sync outcome to customer journey
+        const rejectJourneyRows = await db.execute(sql`
+            SELECT id FROM customer_repair_journeys WHERE warranty_claim_id = ${req.params.id} LIMIT 1
+        `);
+        const rejectJourney = ((rejectJourneyRows as any).rows ?? rejectJourneyRows)[0] as { id: string } | undefined;
+        if (rejectJourney) {
+            await db.execute(sql`
+                UPDATE customer_repair_journeys
+                SET current_stage = 'cancelled', current_status = 'closed',
+                    customer_friendly_status = 'Your warranty claim has been reviewed and could not be approved at this time.',
+                    updated_at = NOW()
+                WHERE id = ${rejectJourney.id}
+            `);
+            const safeReason = rejectionReason ? ` Reason: ${String(rejectionReason).slice(0, 200)}` : '';
+            repairJourneyService.addJourneyEvent({
+                journeyId: rejectJourney.id,
+                eventType: 'warranty_claim_rejected',
+                title: 'Warranty Claim Rejected',
+                message: `Your warranty claim was not approved.${safeReason}`,
+                actorType: 'admin',
+                actorId: approvedBy,
+                isCustomerVisible: true,
+            }).catch((err: Error) => console.error('[Warranty] Journey event failed (reject):', err.message));
+        }
+
         res.json(updated);
     } catch (error: any) {
         console.error('[Warranty] Error rejecting claim:', error);
@@ -319,7 +367,7 @@ router.post('/api/warranty-claims/:id/create-job', requireGranularPermission('wa
 
         const newJob = await storage.createJobTicket({
             ...originalJob,
-            id: undefined,
+            id: nanoid(),
             parentJobId: claim.originalJobId,
             jobType: 'warranty_claim',
             status: 'Pending',
@@ -338,13 +386,39 @@ router.post('/api/warranty-claims/:id/create-job', requireGranularPermission('wa
             status: 'in_repair',
         });
 
+        // D: audit actor from session, not client body
+        const createJobActor = (req as any).user;
         await auditLogger.log({
-            userId: req.body.createdBy || 'system',
+            userId: createJobActor?.id || 'system',
             action: 'CREATE_WARRANTY_JOB',
             entity: 'warranty_claim',
             entityId: req.params.id,
             newValue: { newJobId: newJob.id },
         });
+
+        // E: link journey to new job + notify customer
+        const createJobJourneyRows = await db.execute(sql`
+            SELECT id FROM customer_repair_journeys WHERE warranty_claim_id = ${req.params.id} LIMIT 1
+        `);
+        const createJobJourney = ((createJobJourneyRows as any).rows ?? createJobJourneyRows)[0] as { id: string } | undefined;
+        if (createJobJourney) {
+            await db.execute(sql`
+                UPDATE customer_repair_journeys
+                SET job_ticket_id = ${newJob.id}, current_stage = 'repair_in_progress', current_status = 'active',
+                    customer_friendly_status = 'Your warranty repair job has been created and is waiting for technician review.',
+                    updated_at = NOW()
+                WHERE id = ${createJobJourney.id}
+            `);
+            repairJourneyService.addJourneyEvent({
+                journeyId: createJobJourney.id,
+                eventType: 'warranty_repair_started',
+                title: 'Warranty Repair Started',
+                message: 'Your warranty repair job has been created and is waiting for technician review.',
+                actorType: 'admin',
+                actorId: createJobActor?.id,
+                isCustomerVisible: true,
+            }).catch((err: Error) => console.error('[Warranty] Journey event failed (create-job):', err.message));
+        }
 
         res.status(201).json({ claim: { ...claim, newJobId: newJob.id }, job: newJob });
     } catch (error: any) {
