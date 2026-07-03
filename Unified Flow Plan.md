@@ -10774,3 +10774,121 @@ Chip row was `flex items-center gap-3` with a "Today" label. At 390px with 2-dig
 | SA 390×844 → #shift expand KPI | 2×2 toned cards appear |
 | POS closed register 390×844 | "Confirm Float & Open" button above dock |
 
+
+---
+
+## Phase 30A — Whole-System Codebase Pilot Readiness Audit (2026-07-04)
+
+Audit-only pass. No code changes. No browser automation. Evidence = file reads + ripgrep sweeps + build gates.
+
+### Executive Summary
+
+The system is close to pilot-ready. Customer and corporate portals are properly ownership-scoped, the admin mobile program has covered all Daily Ops tabs, rate limiting and session/cache hygiene are in place, and the DB pool has failover handling. Two backend authorization holes must be closed before pilot: the technician workbench API leaks the entire job table (with customer phones) to any logged-in staff role, and the legacy Add-User endpoint lets any user holding `canCreate` mint a Super Admin. Both are small, contained fixes.
+
+### 1. Portal Readiness
+
+| Portal | Verdict | Notes |
+|--------|---------|-------|
+| Admin | READY WITH FIXES | Daily Ops native-complete; secondary tabs functional; 2 auth gaps (below) |
+| Customer | READY | Ownership-scoped (43 scope checks in customer.routes.ts), short refs ("Repair #XXXXXX"), persisted cache cleared on login/logout, PWA + SW v5 |
+| Corporate | READY | requireCorporateAuth across 3 route files; temp password returned exactly once at create/reset (by design); OTP reset flow audited |
+| Technician | READY WITH FIXES | /api/technician/stats + /jobs self-scoped (id+name); job-tickets scoped (29B); workbench routes NOT scoped for non-Technician roles |
+
+### 2. Mobile-Native Readiness (code evidence)
+
+Native/branched (useAdminMobileMode or md:hidden branch, per ledger + code): Dashboard, Overview, Jobs, Inventory, Finance, POS, Service Requests, Pickups, Corp Messages, Warranty Claims, Attendance, Shift, Technician (29A), Settings, My Account, Repair Journeys.
+
+Desktop-squeezed (Table-heavy, zero/near-zero mobile branching — code counts):
+
+| Tab | Table refs | md:hidden refs | Assessment |
+|-----|-----------|----------------|------------|
+| WastageTab | 19 | 0 | Pure desktop table on mobile |
+| CashierTab | job list | 0 | No mobile branch; also renders raw job.id (line 312) |
+| PurchasingTab | n/a | 0 | No mobile branch |
+| SalaryHRTab (+subtabs) | 44+15 | 3 | Overwhelmingly desktop tables |
+| QuotationsTab | 20 | 1 | Ledger: Functional Clean (dialog only) |
+| CorporateRepairsTab | 43 | 2 | Table-heavy; needs visual confirmation |
+| ChallanTab | 15 | 3 | Has mobile challan sheets; partial |
+| Reports / Quality / Brain / SystemHealth / Orders / AuditLogs | — | — | Low-frequency admin tools; needs visual confirmation later; candidate "Not Mobile Priority" |
+
+### 3. Data Leak / Permission Risks
+
+| # | Finding | File/Route | Severity | Detail |
+|---|---------|-----------|----------|--------|
+| S1 | Workbench returns ALL jobs (incl. customerPhone) to any authed non-Technician role | technician-workbench.routes.ts:15 /api/technician/workbench/jobs, :133 /batches | HIGH | Only requireAdminAuth; else-branch = full table for Driver/Cashier/etc. Also Technician match is name-only (misses assignedTechnicianId) |
+| S2 | Privilege escalation via legacy Add-User | users.routes.ts:339 POST /api/admin/users | HIGH | Gated by legacy canCreate only; adminCreateUserSchema allows role 'Super Admin' and free-form permissions string (e.g. wildcard). Any canCreate holder can mint a Super Admin |
+| S3 | Remaining legacy requirePermission('jobs') on job routes | jobs.routes.ts /next-number, /ready-for-billing, /:id, /:id/history, POST / | MEDIUM | Invite-created Technician Basic (granular-only) passes list routes (29B) but 403s on job detail /:id — inconsistent; same bug class 29B fixed |
+| S4 | COD collection without permission gate | quotes.routes.ts:412 /api/admin/pickups/:id/collect-payment | MEDIUM | Financial mutation; only requireAdminAuth. Drawer-open check exists but any staff role can record COD |
+| S5 | Media cleanup unguarded | upload.routes.ts:252 /api/cleanup/expired-media | MEDIUM | Destructive-ish operation, requireAdminAuth only |
+| S6 | Raw job.id rendered in CashierTab | CashierTab.tsx:312 | LOW | Admin-facing; violates safe-ref convention |
+| OK | Leave routes | leave.routes.ts | — | Internal Super-Admin role checks present |
+| OK | Test OTP route | service-requests.routes.ts:1181 | — | NODE_ENV-gated, does not return the code |
+| OK | Mobile job feed | mobile.routes.ts:345 | — | Technician scoped id+name; other roles get empty list |
+| OK | RQ persisted cache | queryClient.ts + all 3 auth contexts | — | clearPersistedClientState() on login/logout — no cross-user bleed |
+
+### 4. Backend / Database / Compute Risks
+
+| # | Risk | Evidence | Likelihood | Impact | Before pilot? |
+|---|------|----------|-----------|--------|---------------|
+| B1 | Full-table job loads on hot paths | loadAllJobTickets() pattern: 27 refs across 7 files (jobs.routes, technician*, mobile, analytics) | HIGH as data grows | MEDIUM (Render free tier + Aiven) | No (acceptable at pilot volume; schedule indexed queries) |
+| B2 | intake-summary loads all service requests | service-requests.routes.ts:1199 | MEDIUM | LOW-MEDIUM | No |
+| B3 | Dashboard job-overview | analytics.repository.ts | LOW | LOW | Resolved — SQL counts primary path; full scan only on legacy-schema fallback (closes Phase 22C concern) |
+| B4 | DB pool | db.ts: max=DB_POOL_MAX (default 5), idle 20s, lifetime recycle via DB_POOL_MAX_LIFETIME_SECONDS, generation-checked reset | — | — | OK |
+| B5 | Schedulers | index.ts gated by RUN_BACKGROUND_JOBS / NODE_ENV | — | — | OK |
+| B6 | Rate limits | rate-limit.ts middleware used on auth, OTP, AI, uploads, notifications, quotes, SR | — | — | OK |
+| B7 | SW cache | sw.js CACHE_NAME v5 with old-cache cleanup | — | — | OK |
+| B8 | AI credit burn | ai.routes.ts has rate limiter; Groq called via direct fetch | LOW | MEDIUM | Monitor during pilot |
+| B9 | Vercel stale chunks | app-update-recovery.ts present (untracked file — commit it) | MEDIUM | MEDIUM | Verify it ships |
+
+### 5. Production Configuration
+
+| Item | Status |
+|------|--------|
+| DATABASE_URL vs BRAIN_DATABASE_URL | Separated; brain only in server/brain/ ✅ |
+| OFFICE_LAT/LNG/RADIUS | Documented in attendance.routes.ts header; unset → "unverified" (safe fallback) ✅ |
+| IMAGEKIT_FOLDER_PREFIX | utils/imagekit-folder.ts, default /promise-electronics ✅ |
+| DB_POOL_MAX / DB_POOL_MAX_LIFETIME_SECONDS | Wired with sane defaults ✅ |
+| RUN_BACKGROUND_JOBS | Explicit false override + NODE_ENV default ✅ |
+| Firebase service account | 3-source fallback per AGENTS.md ✅ |
+| SW versioning | Manual bump required (v5) — document bump step in release checklist ⚠️ |
+
+### 6. Unfinished Surfaces
+
+- client/src/lib/app-update-recovery.ts — untracked in git; if it's the stale-chunk recovery, commit it
+- 33 console.log across 10 client files (sw-register, otaUpdates, config, useAndroidBack, SSE hooks) — AGENTS.md says never in client; mostly infra logging, low priority
+- Server TODO/FIXME: only 3 (backup.service ×2, user.repository ×1) — clean
+- Client TODO/FIXME: 0 — clean
+- Legacy Add-User path (S2) is the old password-based staff creation — either restrict to Super Admin + strip dangerous permissions, or remove in favor of invite flow
+- getJobTicketsByTechnician(name) (name-only) still used by workbench routes — supersede with getJobTicketsByTechnicianUser
+- 29B T5/T6 live verification (invite-created Technician) still pending
+
+### 7. Top 10 Fixes Before Pilot (ordered)
+
+1. **S1** Gate workbench routes with requireGranularPermission('jobs.view') + scope non-manager roles; use getJobTicketsByTechnicianUser
+2. **S2** Lock POST /api/admin/users: reject role 'Super Admin' unless caller is Super Admin; strip wildcard/dangerous keys from client-supplied permissions
+3. **S3** Migrate remaining requirePermission('jobs') job routes to granular (jobs.view read, jobs.create POST) — esp. GET /:id or Technician Basic cannot open job detail
+4. **S4** Add permission gate to pickups collect-payment (pickup.viewAssigned OR pos.processPayment)
+5. **S5** Gate /api/cleanup/expired-media (settings.manage or Super Admin)
+6. Run 29B T5/T6 live: invite-created Technician Basic → job list 200 + scope verified
+7. Commit app-update-recovery.ts (stale-chunk recovery must ship with pilot)
+8. Decide Cashier/Wastage/Purchasing/SalaryHR mobile: build branches or mark "Not Mobile Priority" in ledger
+9. Add SW cache-bump step to RELEASE_CHECKLIST.md
+10. Schedule indexed technician/job queries (B1) as post-pilot perf phase
+
+### 8. Ratings
+
+| Dimension | Score | Rationale |
+|-----------|-------|-----------|
+| UI readiness | 7.5/10 | All Daily Ops native; 4-6 secondary tabs desktop-squeezed; customer/corporate portals coherent |
+| Security readiness | 6/10 | Strong scoping foundations, but S1 (job-table leak) + S2 (privilege escalation) are real holes |
+| Backend stability | 7/10 | Pool/scheduler/rate-limit hygiene good; full-table load pattern is the main debt, tolerable at pilot volume |
+| Pilot readiness | 6.5/10 | Fixes 1-5 are each under 1 hour of work; after those, 8/10 |
+
+### 9. Verdict: **GO WITH FIXES**
+
+Fixes S1-S5 (all small, contained middleware/validation changes) before onboarding pilot staff. Everything else can proceed in parallel with pilot.
+
+### Build Gates (audit baseline)
+- npx tsc --noEmit: ✅ clean
+- npx vite build --mode development: ✅ 15.86s
+- git diff --check: ✅ no whitespace errors
