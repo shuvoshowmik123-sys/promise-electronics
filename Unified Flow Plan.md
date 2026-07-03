@@ -10621,3 +10621,16 @@ The existing tab was a plain card wrapper delegating to `WarrantyClaimsTable`. T
 `GET /api/warranty-claims/check-serial/:serial` → 500 due to `warranty_days` column referenced in SQL but absent from `job_tickets` schema. This was pre-existing before Phase 27C — the route order fix (which would have turned this into a 404) is irrelevant here since the 500 is from the handler itself executing.
 
 ### VERDICT: PASS — Warranty Claims → Native Complete
+
+---
+
+## Phase 28A — Warranty System End-to-End Audit (2026-07-03)
+
+**Audit only — no production code changed.** Full report delivered to Inspector. Key facts:
+
+- Source of truth: `job_tickets.warrantyDays/gracePeriodDays/warrantyExpiryDate` (coverage) + `warranty_claims` (claim lifecycle). Expiry stamped on status→Completed (walk-in) or OUT-challan delivery (corporate).
+- Service vs parts warranty: NOT separately implemented — one shared expiry; customer UI shows two panels fed by the same fields; admin create route hardcodes `claimType:'general'`, discarding the dialog's service/parts choice.
+- check-serial 500 root cause CORRECTED: SQL selects `updated_at` which does not exist on `job_tickets` (`warranty_days` exists and is fine). Endpoint is dead code — `warrantyApi.checkBySerial/checkByJobId` defined in adminApi.ts but never called by any UI. Severity: pilot polish.
+- Gaps: no duplicate-claim prevention (both admin + customer paths); admin approve/reject never syncs to customer_repair_journeys (customer never sees rejection); claim device field not set by admin route.
+- Permissions verified live: Driver→403, SA→200+safeRef, customer routes 401 unauth, ownership check in journey service (phone match), expired-warranty override Super Admin-only.
+- Build gates: tsc ✅, vite build ✅, git diff --check ✅ (CRLF warnings only).
