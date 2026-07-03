@@ -22,6 +22,17 @@ import { Loader2, MoreVertical, CheckCircle, XCircle, ArrowRight } from "lucide-
 import { toast } from "sonner";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 
+function safeJobRef(claim: any, kind: 'original' | 'new'): string | null {
+    if (kind === 'original') {
+        if (claim.originalJobSafeRef) return claim.originalJobSafeRef as string;
+        const id = claim.originalJobId as string | undefined;
+        return id ? id.slice(-6).toUpperCase() : null;
+    }
+    if (claim.newJobSafeRef) return claim.newJobSafeRef as string;
+    const id = claim.newJobId as string | undefined;
+    return id ? id.slice(-6).toUpperCase() : null;
+}
+
 export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
     const queryClient = useQueryClient();
     const { user } = useAdminAuth();
@@ -113,15 +124,15 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
                                             </DropdownMenuItem>
                                         </>
                                     )}
-                                    {claim.status === 'approved' && claim.newJobId && (
-                                        <DropdownMenuItem disabled><ArrowRight className="mr-2 h-4 w-4" /> Job: #{claim.newJobId}</DropdownMenuItem>
+                                    {claim.newJobId && (
+                                        <DropdownMenuItem disabled><ArrowRight className="mr-2 h-4 w-4" /> Job: #{safeJobRef(claim, 'new')}</DropdownMenuItem>
                                     )}
                                 </DropdownMenuContent>
                             </DropdownMenu>
                         </div>
                         <div className="mt-1.5 flex items-center gap-2 text-xs">
                             <span className="text-slate-500">Job</span>
-                            <span className="font-mono font-bold text-blue-700">#{claim.originalJobId}</span>
+                            <span className="font-mono font-bold text-blue-700">#{safeJobRef(claim, 'original')}</span>
                             <span className="text-slate-300">·</span>
                             <span className="capitalize text-slate-600 font-medium">{claim.claimType}</span>
                         </div>
@@ -157,7 +168,7 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
                         claimsArray.map((claim: any) => (
                             <TableRow key={claim.id}>
                                 <TableCell className="font-mono text-xs">{claim.id.slice(0, 8)}</TableCell>
-                                <TableCell>#{claim.originalJobId}</TableCell>
+                                <TableCell>#{safeJobRef(claim, 'original')}</TableCell>
                                 <TableCell className="capitalize">{claim.claimType}</TableCell>
                                 <TableCell className="max-w-[200px] truncate">{claim.claimReason}</TableCell>
                                 <TableCell>
@@ -190,10 +201,10 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
                                                     </DropdownMenuItem>
                                                 </>
                                             )}
-                                            {claim.status === 'approved' && claim.newJobId && (
+                                            {claim.newJobId && (
                                                 <DropdownMenuItem disabled>
                                                     <ArrowRight className="mr-2 h-4 w-4" />
-                                                    Job: #{claim.newJobId}
+                                                    Job: #{safeJobRef(claim, 'new')}
                                                 </DropdownMenuItem>
                                             )}
                                         </DropdownMenuContent>
