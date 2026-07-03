@@ -10559,3 +10559,65 @@ The existing tab was a plain card wrapper delegating to `WarrantyClaimsTable`. T
 - "Linked" chip includes in_repair claims that have newJobId
 
 ### VERDICT: GO — Needs Visual QA
+
+---
+
+## Phase 27C-Final Hotfix — WarrantyClaimsTable Safe References
+
+**Goal**: Apply the same safe-ref fix to `WarrantyClaimsTable.tsx` (desktop+legacy mobile cards used in Corporate tab workspace). Same `safeJobRef()` helper pattern.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `client/src/components/admin/corporate/WarrantyClaimsTable.tsx` | Added `safeJobRef()` helper; replaced all displayed `claim.originalJobId`/`claim.newJobId` with safe refs in mobile card, desktop table "Original Job" cell, and actions dropdown |
+
+### Build Gates
+- `npx tsc --noEmit`: ✅ exit 0
+- `npx vite build`: ✅ exit 0
+
+### VERDICT: GO — QA in Phase 27C-QA
+
+---
+
+## Phase 27C-QA — Warranty Claims Playwright Verification
+
+**Date**: 2026-07-03  
+**Scope**: All four viewports, API permission checks, raw ID leak audit
+
+### Viewport Results
+
+| Viewport | Branch | Safe Refs | Chips | Sheet | Dock Hides | Overflow |
+|----------|--------|-----------|-------|-------|------------|----------|
+| 390×844 portrait | Mobile ✅ | ✅ | ✅ All/Pending/In Repair/Rejected/Linked | ✅ portaled, drag-to-close | ✅ | ✅ 0px |
+| 430×932 portrait | Mobile ✅ | ✅ | ✅ | N/T (confirmed via 390) | N/T | ✅ |
+| 844×390 landscape | Mobile ✅ (h<700, touch=1) | ✅ isDesktopTable:false | N/T | N/T | N/T | N/T |
+| 1440×900 desktop | Desktop table ✅ | ✅ "JOB-TEST-NCPI", "WAR-lQyH" | Desktop | N/A | N/A | ✅ |
+
+### Mobile Detail Checks (390×844)
+- Linked chip: shows `in_repair` claims with `newJobId` ✅ (was broken before hotfix)
+- In Repair chip: shows only `in_repair`/`approved` claims ✅
+- Search by safe ref "MLRRUK" → 1 card returned ✅
+- No raw 21-char nanoids in any rendered text ✅
+
+### API Permission Tests
+
+| Test | Result |
+|------|--------|
+| `GET /api/warranty-claims` as Driver (testdriver26c, no warranty.view) | 403 "Missing permission warranty.view" ✅ |
+| `GET /api/warranty-claims/check/nonexistent` as Driver | 403 ✅ |
+| `GET /api/warranty-claims` as Super Admin | 200 + `originalJobSafeRef: "6-0397"` ✅ |
+| Route order: `/check/nonexistent` hits `/check/:jobId` not `/:id` | 404 "Job not found" (not 500) ✅ |
+| `/check-serial/XXXX` | 500 ⚠️ PRE-EXISTING: `warranty_days` column missing from `job_tickets` — not caused by Phase 27C |
+
+### Screenshots
+- `qa-27c-warranty-390x844.png` — cards, safe refs, chips
+- `qa-27c-warranty-sheet-390x844.png` — bottom sheet open, dock hidden
+- `qa-27c-warranty-430x932.png` — 430 portrait
+- `qa-27c-warranty-844x390.png` — landscape mobile branch
+- `qa-27c-warranty-1440x900.png` — desktop table with safe refs
+
+### Known Pre-Existing Bug
+`GET /api/warranty-claims/check-serial/:serial` → 500 due to `warranty_days` column referenced in SQL but absent from `job_tickets` schema. This was pre-existing before Phase 27C — the route order fix (which would have turned this into a 404) is irrelevant here since the 500 is from the handler itself executing.
+
+### VERDICT: PASS — Warranty Claims → Native Complete
