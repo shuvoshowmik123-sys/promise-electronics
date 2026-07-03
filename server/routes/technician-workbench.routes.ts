@@ -1,37 +1,44 @@
 import { Router, Request, Response } from 'express';
-import { requireAdminAuth, requirePermission } from './middleware/auth.js';
-import { jobRepo, userRepo } from '../repositories/index.js';
+import { requireAdminAuth, requireGranularPermission } from './middleware/auth.js';
+import { jobRepo } from '../repositories/index.js';
 import { auditLogger } from '../utils/auditLogger.js';
 
 const router = Router();
 
 const VALID_INSPECTION_RESULTS = ['pending', 'ok', 'ng', 'rework'] as const;
 
+// Roles that may view the full team workbench and all customer data.
+// Any other role (including Cashier/Driver granted jobs.view) is 403.
+const WORKBENCH_TEAM_ROLES = ['Super Admin', 'Manager'];
+
+function canSeeFullWorkbench(role: string): boolean {
+    return WORKBENCH_TEAM_ROLES.includes(role);
+}
+
 /**
  * GET /api/technician/workbench/jobs
- * Returns jobs assigned to the logged-in technician.
- * Admins/managers see all jobs.
+ * Super Admin / Manager: all jobs + customerPhone.
+ * Technician: assigned jobs only, customerPhone masked.
+ * Any other role with jobs.view: 403.
  */
-router.get('/api/technician/workbench/jobs', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/technician/workbench/jobs', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
     try {
-        const userId = req.session?.adminUserId;
-        if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+        const user = (req as any).user;
+        const isTeam = canSeeFullWorkbench(user.role);
+        const isTech = user.role === 'Technician';
 
-        const user = await userRepo.getUser(userId);
-        if (!user) return res.status(401).json({ error: 'User not found' });
-
-        let jobs: any[];
-        if (user.role === 'Technician') {
-            jobs = await jobRepo.getJobTicketsByTechnician(user.name);
-        } else {
-            const allJobs = await jobRepo.getAllJobTickets();
-            jobs = allJobs;
+        if (!isTeam && !isTech) {
+            return res.status(403).json({ error: 'Workbench access restricted to Technician and Manager/Super Admin' });
         }
+
+        const jobs = isTeam
+            ? await jobRepo.getAllJobTickets()
+            : await jobRepo.getJobTicketsByTechnicianUser(user.id, user.name);
 
         const workbench = jobs.map((j: any) => ({
             id: j.id,
             customer: j.customer,
-            customerPhone: j.customerPhone,
+            customerPhone: isTeam ? j.customerPhone : null,
             device: j.device,
             issue: j.issue,
             status: j.status,
@@ -60,22 +67,25 @@ router.get('/api/technician/workbench/jobs', requireAdminAuth, async (req: Reque
 
 /**
  * PATCH /api/technician/workbench/jobs/:id/inspection
- * Update inspection result for a job.
- * Technicians can only update assigned jobs.
+ * Super Admin / Manager: any job.
+ * Technician: only assigned jobs.
+ * Any other role: 403.
  */
-router.patch('/api/technician/workbench/jobs/:id/inspection', requireAdminAuth, async (req: Request, res: Response) => {
+router.patch('/api/technician/workbench/jobs/:id/inspection', requireAdminAuth, requireGranularPermission('jobs.reportOutcome'), async (req: Request, res: Response) => {
     try {
-        const userId = req.session?.adminUserId;
-        if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+        const user = (req as any).user;
+        const isTeam = canSeeFullWorkbench(user.role);
+        const isTech = user.role === 'Technician';
 
-        const user = await userRepo.getUser(userId);
-        if (!user) return res.status(401).json({ error: 'User not found' });
+        if (!isTeam && !isTech) {
+            return res.status(403).json({ error: 'Inspection update restricted to Technician and Manager/Super Admin' });
+        }
 
         const jobId = req.params.id;
         const job = await jobRepo.getJobTicket(jobId);
         if (!job) return res.status(404).json({ error: 'Job not found' });
 
-        if (user.role === 'Technician' && job.assignedTechnicianId !== userId && job.technician !== user.name) {
+        if (isTech && job.assignedTechnicianId !== user.id && job.technician !== user.name) {
             return res.status(403).json({ error: 'You can only update jobs assigned to you' });
         }
 
@@ -95,12 +105,12 @@ router.patch('/api/technician/workbench/jobs/:id/inspection', requireAdminAuth, 
         const updated = await jobRepo.updateJobTicket(jobId, {
             inspectionResult,
             inspectionNote: inspectionNote ?? oldNote,
-            inspectedBy: userId,
+            inspectedBy: user.id,
             inspectedAt: new Date(),
         } as any);
 
         await auditLogger.log({
-            userId,
+            userId: user.id,
             action: 'INSPECTION_UPDATE',
             entity: 'JobTicket',
             entityId: jobId,
@@ -116,7 +126,7 @@ router.patch('/api/technician/workbench/jobs/:id/inspection', requireAdminAuth, 
             id: jobId,
             inspectionResult,
             inspectionNote: inspectionNote ?? oldNote,
-            inspectedBy: userId,
+            inspectedBy: user.id,
             inspectedAt: (updated as any)?.inspectedAt,
             previousResult: oldResult,
         });
@@ -128,22 +138,23 @@ router.patch('/api/technician/workbench/jobs/:id/inspection', requireAdminAuth, 
 
 /**
  * GET /api/technician/workbench/batches
- * Groups assigned jobs by corporate client/batch.
+ * Super Admin / Manager: all batches.
+ * Technician: assigned jobs only.
+ * Any other role: 403.
  */
-router.get('/api/technician/workbench/batches', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/technician/workbench/batches', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
     try {
-        const userId = req.session?.adminUserId;
-        if (!userId) return res.status(401).json({ error: 'Not authenticated' });
+        const user = (req as any).user;
+        const isTeam = canSeeFullWorkbench(user.role);
+        const isTech = user.role === 'Technician';
 
-        const user = await userRepo.getUser(userId);
-        if (!user) return res.status(401).json({ error: 'User not found' });
-
-        let jobs: any[];
-        if (user.role === 'Technician') {
-            jobs = await jobRepo.getJobTicketsByTechnician(user.name);
-        } else {
-            jobs = await jobRepo.getAllJobTickets();
+        if (!isTeam && !isTech) {
+            return res.status(403).json({ error: 'Workbench access restricted to Technician and Manager/Super Admin' });
         }
+
+        const jobs = isTeam
+            ? await jobRepo.getAllJobTickets()
+            : await jobRepo.getJobTicketsByTechnicianUser(user.id, user.name);
 
         const batchMap = new Map<string, { batchId: string; clientId: string | null; jobs: number; pending: number; ok: number; ng: number; rework: number }>();
 

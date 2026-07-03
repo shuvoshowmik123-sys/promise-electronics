@@ -11,7 +11,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { ObjectStorageService, ObjectNotFoundError } from '../objectStorage.js';
 import ImageKit from 'imagekit';
 import { uploadLimiter, uploadAuthLimiter } from './middleware/rate-limit.js';
-import { requireAdminAuth } from './middleware/auth.js';
+import { requireAdminAuth, requireGranularPermission } from './middleware/auth.js';
 import { getIKFolder } from '../utils/imagekit-folder.js';
 
 const router = Router();
@@ -249,7 +249,7 @@ router.post('/api/cloudinary/upload', requireAdminAuth, async (req: Request, res
 /**
  * POST /api/cleanup/expired-media - Cleanup expired media files
  */
-router.post('/api/cleanup/expired-media', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/cleanup/expired-media', requireAdminAuth, requireGranularPermission('settings.manage'), async (req: Request, res: Response) => {
     try {
         const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
         const apiKey = process.env.CLOUDINARY_API_KEY;

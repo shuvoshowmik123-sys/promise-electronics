@@ -333,10 +333,27 @@ router.get('/api/admin/users', requireAnyPermission(['users', 'canAssignTechnici
     }
 });
 
+const DANGEROUS_PERM_KEYS = new Set([
+    '*', 'users', 'settings', 'systemHealth', 'canDelete',
+    'users.inviteStaff', 'users.editPermissions', 'users.deactivate', 'settings.manage',
+]);
+
+function sanitizePermissions(raw: string | undefined, defaultPerms: Record<string, boolean>): string {
+    if (!raw) return JSON.stringify(defaultPerms);
+    try {
+        const parsed: Record<string, unknown> = JSON.parse(raw);
+        DANGEROUS_PERM_KEYS.forEach(key => delete parsed[key]);
+        return JSON.stringify(parsed);
+    } catch {
+        return JSON.stringify(defaultPerms);
+    }
+}
+
 /**
- * POST /api/admin/users - Create staff user (Super Admin only)
+ * POST /api/admin/users - Emergency direct staff creation (Super Admin only).
+ * Prefer the invite flow for normal onboarding.
  */
-router.post('/api/admin/users', requirePermission('canCreate'), async (req: Request, res: Response) => {
+router.post('/api/admin/users', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
     try {
         const validated = adminCreateUserSchema.parse(req.body);
 
@@ -359,7 +376,7 @@ router.post('/api/admin/users', requirePermission('canCreate'), async (req: Requ
             email: validated.email,
             password: hashedPassword,
             role: validated.role,
-            permissions: validated.permissions || JSON.stringify(defaultPermissions),
+            permissions: sanitizePermissions(validated.permissions, defaultPermissions),
         });
 
         if (validated.assignSalary) {
@@ -519,7 +536,7 @@ router.patch('/api/admin/users/:id', requireAdminAuth, async (req: Request, res:
 /**
  * DELETE /api/admin/users/:id - Delete staff user (Super Admin only)
  */
-router.delete('/api/admin/users/:id', requirePermission('canDelete'), async (req: Request, res: Response) => {
+router.delete('/api/admin/users/:id', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
     try {
         const currentUser = await userRepo.getUser(req.session.adminUserId!);
 

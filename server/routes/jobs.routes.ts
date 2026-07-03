@@ -43,7 +43,6 @@ router.get('/api/job-tickets/list', requireAdminAuth, requireGranularPermission(
         const user = (req as any).user;
         if (user?.role === 'Technician') {
             // Correctness over optimization: scope to assigned jobs only.
-            // TODO: replace with an indexed lightweight query when job_tickets grows large.
             const myJobs = await jobRepo.getJobTicketsByTechnicianUser(user.id, user.name);
             return res.json({
                 items: myJobs,
@@ -100,7 +99,7 @@ router.get('/api/job-tickets', requireAdminAuth, requireGranularPermission('jobs
 /**
  * GET /api/job-tickets/next-number - Get next auto-generated job number
  */
-router.get('/api/job-tickets/next-number', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.get('/api/job-tickets/next-number', requireAdminAuth, requireGranularPermission('jobs.create'), async (req: Request, res: Response) => {
     try {
         const nextNumber = await jobRepo.getNextJobNumber();
         res.json({ nextNumber });
@@ -112,7 +111,7 @@ router.get('/api/job-tickets/next-number', requireAdminAuth, requirePermission('
 /**
  * GET /api/job-tickets/ready-for-billing - Get jobs ready for billing
  */
-router.get('/api/job-tickets/ready-for-billing', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.get('/api/job-tickets/ready-for-billing', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
     try {
         const allJobs = jobRepo.filterJobTicketsByLane(await jobRepo.getAllJobTickets(), "walk-in");
         // Filter for jobs that are completed but not yet delivered/closed
@@ -140,11 +139,15 @@ router.get('/api/job-tickets/pending-rollbacks', requireAdminAuth, requirePermis
 /**
  * GET /api/job-tickets/:id - Get job ticket by ID
  */
-router.get('/api/job-tickets/:id', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.get('/api/job-tickets/:id', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
     try {
         const job = await jobRepo.getJobTicket(req.params.id);
         if (!job) {
             return res.status(404).json({ error: 'Job ticket not found' });
+        }
+        const user = (req as any).user;
+        if (user?.role === 'Technician' && job.assignedTechnicianId !== user.id && (job as any).technician !== user.name) {
+            return res.status(403).json({ error: 'Access denied: not assigned to this job' });
         }
         res.json(job);
     } catch (error) {
@@ -155,8 +158,15 @@ router.get('/api/job-tickets/:id', requireAdminAuth, requirePermission('jobs'), 
 /**
  * GET /api/job-tickets/:id/history - Get job audit history
  */
-router.get('/api/job-tickets/:id/history', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.get('/api/job-tickets/:id/history', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
     try {
+        const user = (req as any).user;
+        if (user?.role === 'Technician') {
+            const job = await jobRepo.getJobTicket(req.params.id);
+            if (!job || (job.assignedTechnicianId !== user.id && (job as any).technician !== user.name)) {
+                return res.status(403).json({ error: 'Access denied: not assigned to this job' });
+            }
+        }
         const logs = await systemRepo.getAuditLogs({
             entity: 'JobTicket',
             entityId: req.params.id
@@ -170,7 +180,7 @@ router.get('/api/job-tickets/:id/history', requireAdminAuth, requirePermission('
 /**
  * POST /api/job-tickets - Create new job ticket
  */
-router.post('/api/job-tickets', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.post('/api/job-tickets', requireAdminAuth, requireGranularPermission('jobs.create'), async (req: Request, res: Response) => {
     try {
         // Auto-generate job ID if not provided
         let jobData = { ...req.body };
@@ -275,7 +285,7 @@ router.post('/api/job-tickets', requireAdminAuth, requirePermission('jobs'), asy
 /**
  * POST /api/job-tickets/:id/advance-status - Enforces strict linear progression
  */
-router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGranularPermission('jobs.advanceStatus'), async (req: Request, res: Response) => {
     try {
         const jobId = req.params.id;
         const job = await jobRepo.getJobTicket(jobId);
@@ -443,7 +453,7 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requirePerm
  * POST /api/job-tickets/:id/set-outcome - Set repair outcome with branching status
  * Used when a job is In Progress / On Workbench and technician reports result.
  */
-router.post('/api/job-tickets/:id/set-outcome', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.post('/api/job-tickets/:id/set-outcome', requireAdminAuth, requireGranularPermission('jobs.reportOutcome'), async (req: Request, res: Response) => {
     try {
         const jobId = req.params.id;
         const { outcome, reason, notes } = req.body;
@@ -522,7 +532,7 @@ router.post('/api/job-tickets/:id/set-outcome', requireAdminAuth, requirePermiss
 /**
  * POST /api/job-tickets/bulk-update - Mass update jobs
  */
-router.post('/api/job-tickets/bulk-update', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.post('/api/job-tickets/bulk-update', requireAdminAuth, requireGranularPermission('jobs.edit'), async (req: Request, res: Response) => {
     try {
         const { jobIds, updates } = req.body;
         if (!Array.isArray(jobIds) || jobIds.length === 0) {
@@ -725,7 +735,7 @@ router.post('/api/job-tickets/:id/verify-rollback', requireAdminAuth, requirePer
 /**
  * PATCH /api/job-tickets/:id - Update job ticket
  */
-router.patch('/api/job-tickets/:id', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.patch('/api/job-tickets/:id', requireAdminAuth, requireGranularPermission('jobs.edit'), async (req: Request, res: Response) => {
     try {
         let updateData = { ...req.body };
 
@@ -1268,8 +1278,15 @@ router.post('/api/job-tickets/:id/mark-incomplete', requireAdminAuth, requirePer
 
 // ─── Unified Repair Case ───
 
-router.get('/api/admin/job-tickets/:id/repair-case', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.get('/api/admin/job-tickets/:id/repair-case', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
     try {
+        const user = (req as any).user;
+        if (user?.role === 'Technician') {
+            const job = await jobRepo.getJobTicket(req.params.id);
+            if (!job || (job.assignedTechnicianId !== user.id && (job as any).technician !== user.name)) {
+                return res.status(403).json({ error: 'Access denied: not assigned to this job' });
+            }
+        }
         const repairCase = await loadRepairCaseByJobTicket(req.params.id);
         if (!repairCase) return res.status(404).json({ error: 'Job ticket not found' });
         res.json(repairCase);

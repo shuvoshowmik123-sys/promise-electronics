@@ -8,7 +8,7 @@ import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { settingsRepo, notificationRepo, systemRepo, userRepo, jobRepo, serviceRequestRepo, warrantyRepo, hrRepo } from '../repositories/index.js';
 import { insertQuoteRequestSchema } from '../../shared/schema.js';
-import { getCustomerId, requireAdminAuth, requireCustomerAuth } from './middleware/auth.js';
+import { getCustomerId, requireAdminAuth, requireCustomerAuth, requireGranularPermission } from './middleware/auth.js';
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { pushService } from '../pushService.js';
 import { jobService } from '../services/job.service.js';
@@ -409,7 +409,7 @@ router.post('/api/admin/service-requests/:id/transfer-to-pickup', requireAdminAu
  * petty-cash Income (Sales) + bumps active drawer expectedCash for Cash,
  * and marks the linked service request paid.
  */
-router.post('/api/admin/pickups/:id/collect-payment', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/admin/pickups/:id/collect-payment', requireAdminAuth, requireGranularPermission('pos.processPayment'), async (req: Request, res: Response) => {
     try {
         const { amount, method } = req.body || {};
         const amt = Number(amount);
