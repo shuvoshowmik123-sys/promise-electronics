@@ -154,7 +154,7 @@ export const requirePermission = (permission: string) => async (req: Request, re
     }
 
     try {
-        const user = await storage.getUser(req.session.adminUserId);
+        const user = (req as any).user || await storage.getUser(req.session.adminUserId);
         if (!user) {
             return res.status(401).json({ error: 'User not found' });
         }
@@ -164,6 +164,7 @@ export const requirePermission = (permission: string) => async (req: Request, re
         if (!effectivePermissions['*'] && !effectivePermissions[permission]) {
             return res.status(403).json({ error: 'Access denied: Insufficient permissions' });
         }
+        (req as any).user = user;
         next();
     } catch (error) {
         console.error('[Auth] Permission check error:', (error as Error).message);
@@ -181,7 +182,7 @@ export const requireAnyPermission = (permissionsToCheck: string[]) => async (req
     }
 
     try {
-        const user = await storage.getUser(req.session.adminUserId);
+        const user = (req as any).user || await storage.getUser(req.session.adminUserId);
         if (!user) {
             return res.status(401).json({ error: 'User not found' });
         }
@@ -193,6 +194,7 @@ export const requireAnyPermission = (permissionsToCheck: string[]) => async (req
         if (!hasPermission) {
             return res.status(403).json({ error: 'Access denied: Insufficient permissions' });
         }
+        (req as any).user = user;
         next();
     } catch (error) {
         console.error('[Auth] Permission check error:', (error as Error).message);
@@ -222,7 +224,7 @@ export const requireGranularPermission = (granularKey: string) => async (req: Re
         return res.status(401).json({ error: 'Admin authentication required' });
     }
     try {
-        const user = await storage.getUser(req.session.adminUserId);
+        const user = (req as any).user || await storage.getUser(req.session.adminUserId);
         if (!user) return res.status(401).json({ error: 'User not found' });
         const effectivePermissions = getEffectivePermissionsForUser(user);
         if (!hasGranularPerm(effectivePermissions, granularKey)) {
@@ -241,7 +243,7 @@ export const requireAnyGranularPermission = (granularKeys: string[]) => async (r
         return res.status(401).json({ error: 'Admin authentication required' });
     }
     try {
-        const user = await storage.getUser(req.session.adminUserId);
+        const user = (req as any).user || await storage.getUser(req.session.adminUserId);
         if (!user) return res.status(401).json({ error: 'User not found' });
         const effectivePermissions = getEffectivePermissionsForUser(user);
         if (!granularKeys.some(k => hasGranularPerm(effectivePermissions, k))) {

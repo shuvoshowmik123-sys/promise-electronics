@@ -71,6 +71,18 @@ export async function getAllServiceRequests(): Promise<ServiceRequest[]> {
     return loadAllServiceRequests();
 }
 
+// Fallback-to-0 on error prevents bell count failure from breaking the admin shell.
+export async function getUnreadServiceRequestCount(): Promise<number> {
+    try {
+        const result = await db.execute(
+            sql`SELECT COUNT(*)::int AS n FROM service_requests WHERE admin_interacted IS DISTINCT FROM true`
+        );
+        return (result.rows[0] as any)?.n ?? 0;
+    } catch {
+        return 0;
+    }
+}
+
 export async function getServiceRequest(id: string): Promise<ServiceRequest | undefined> {
     const requests = await loadAllServiceRequests();
     return requests.find((request) => request.id === id);
@@ -79,6 +91,42 @@ export async function getServiceRequest(id: string): Promise<ServiceRequest | un
 export async function getServiceRequestByTicketNumber(ticketNumber: string): Promise<ServiceRequest | undefined> {
     const requests = await loadAllServiceRequests();
     return requests.find((request) => request.ticketNumber === ticketNumber);
+}
+
+export type PublicServiceRequestProjection = {
+    ticketNumber: string | null;
+    brand: string | null;
+    screenSize: string | null;
+    primaryIssue: string | null;
+    trackingStatus: string | null;
+    stage: string | null;
+    status: string | null;
+    createdAt: Date | null;
+    serviceMode: string | null;
+};
+
+export async function getPublicServiceRequestByTicketNumber(ticketNumber: string): Promise<PublicServiceRequestProjection | undefined> {
+    const rows = await db.execute(sql`
+        SELECT ticket_number, brand, screen_size, primary_issue, tracking_status,
+               stage, status, created_at, service_mode
+        FROM service_requests
+        WHERE ticket_number = ${ticketNumber}
+        LIMIT 1
+    `);
+    const result = (rows as any).rows ?? rows;
+    if (!result || result.length === 0) return undefined;
+    const r = result[0];
+    return {
+        ticketNumber: r.ticket_number ?? null,
+        brand: r.brand ?? null,
+        screenSize: r.screen_size ?? null,
+        primaryIssue: r.primary_issue ?? null,
+        trackingStatus: r.tracking_status ?? null,
+        stage: r.stage ?? null,
+        status: r.status ?? null,
+        createdAt: r.created_at ?? null,
+        serviceMode: r.service_mode ?? null,
+    };
 }
 
 export async function getServiceRequestsByCustomerId(customerId: string): Promise<ServiceRequest[]> {

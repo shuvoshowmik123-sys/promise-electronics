@@ -2,6 +2,10 @@ import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
 import "./lib/i18n";
+import { clearStaleBuildRecoveryFlag, installStaleBuildRecovery } from "./lib/app-update-recovery";
+
+installStaleBuildRecovery();
+window.addEventListener("load", clearStaleBuildRecoveryFlag, { once: true });
 
 // ── API URL interceptor for frontend/backend separation ───────────────────────
 // When VITE_API_URL is set (Render backend, Vercel frontend), all relative

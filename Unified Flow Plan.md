@@ -11090,3 +11090,418 @@ All 5 security fixes (S1-S5) confirmed operational under real role sessions. No 
 - Driver COD access via `process_payment: true` (legacy bridge) is confirmed intentional; update the S4 test matrix to reflect this.
 - Rollback (`POST /:id/request-rollback`) and hard-delete (`DELETE /api/job-tickets/:id`) remain at legacy `requirePermission('jobs')` — acceptable for pilot since Technician Basic has the legacy `jobs` flag too.
 - T5/T6 (invite-created Technician Basic) live verification deferred; functional gate confirmed by Phase 30C.
+
+
+---
+
+## Phase 31A — Backend + Database Optimization Audit (2026-07-04)
+
+AUDIT ONLY — no source code changed. Checks run: `npx tsc --noEmit` ✅ clean, `npx vite build --mode development` ✅ 34.3s, `git diff --check` ✅.
+
+### Executive Summary
+
+**What is slow today:** The dashboard (`/api/admin/dashboard`), the notification bell (`/api/admin/notifications/unread-count`), and the main jobs list (`GET /api/job-tickets`) all load the ENTIRE job_tickets or service_requests table on every call, then filter/count in JavaScript. The dashboard is polled every 30–60s per open admin session, so these full scans repeat continuously. At current row counts (~hundreds) this is tolerable on Aiven; nothing is user-visibly broken.
+
+**What becomes slow first:** the notification unread-count (full service_requests scan per poll, per admin), then `/api/admin/dashboard` (full job_tickets load per 60s per admin), then `/api/mobile/lookup` (2 full-table scans + per-row JS phone normalization per search).
+
+**Safe for pilot:** yes, at 5 staff / 20–50 jobs/day. All hot paths are O(total rows), not O(rows squared); tables are small; pool is protected by watchdog + lifetime recycling.
+
+**Before public launch:** convert dashboard + bell + list endpoints to SQL aggregates with LIMIT, add the core indexes below, and paginate mobile/admin list responses.
+
+### Top Optimization Targets
+
+| # | Pri | Location | Problem | Fix strategy | Effort |
+|---|-----|----------|---------|--------------|--------|
+| 1 | P0 | `admin-notification-feed.service.ts` `getAdminNotificationUnreadCount` | Builds full feed incl. `getAllServiceRequests()` full scan just to return a count; called by bell on every admin panel mount + 30s staleTime | SQL: `COUNT(*) WHERE admin_interacted=false` + unread notifications count; keep feed builder for the open-panel case only, LIMIT 50 | half-day |
+| 2 | P0 | `analytics.repository.ts:87` `getDashboardStats` | `getAllJobTickets()` to count active jobs + status distribution; polled every 60s/admin; weekly revenue = 7 separate queries | `COUNT(*) GROUP BY status`; weekly revenue via one `GROUP BY date_trunc('day')` | half-day |
+| 3 | P0 | `jobs.routes.ts:84` `GET /api/job-tickets` | Loads all jobs, lane-filters in JS, no LIMIT | SQL WHERE on corporate discriminators (corporate_client_id/batch_id/source) + LIMIT/offset | half-day |
+| 4 | P1 | `mobile.routes.ts:897` `/api/mobile/lookup` | Full scan of job_tickets + service_requests per search; `normalizePhone()` per row in JS | Indexed lookup on `phone_normalized` / ILIKE with prefix index; LIMIT 10 in SQL | 1 day |
+| 5 | P1 | `notificationService.broadcastAdminNotification` | `getAllUsers(1,10000)` + JSON.parse permissions per user + N inserts + per-recipient console.log on EVERY broadcast event | SQL `WHERE role IN (...)`; single multi-row INSERT; delete debug logs | half-day |
+| 6 | P1 | `mobile.routes.ts:456,1013` `/api/mobile/home`, `/api/mobile/jobs` | `getAllJobTickets()` per request just to derive the user's visible jobs | Reuse `getJobTicketsByTechnicianUser()` scoped query; SQL counts for summary chips | half-day |
+| 7 | P1 | `technician.routes.ts:33,72` | `getAllJobTickets()` then JS filter by technician | Reuse `getJobTicketsByTechnicianUser()` (already exists) | 1 hour |
+| 8 | P1 | `routes/middleware/auth.ts` | `requireAdminAuth` fetches user, then `requireGranularPermission` fetches the SAME user again — 2 user SELECTs on every gated request | In `requireGranularPermission`, use `(req as any).user` if already set | 1 hour |
+| 9 | P1 | `service-requests.routes.ts:75` | Full scan; `page`/`limit` params parsed but ignored (returns everything, totalPages always 1) | SQL WHERE + LIMIT/OFFSET; return real page metadata | 1 day |
+| 10 | P2 | `inventory.routes.ts:26` `GET /api/inventory` | **No auth middleware** and returns `cost_price` for every item; also full-table default response | Verify intent; if public shop needs it, split a public projection without cost fields; else add auth + pagination default | half-day |
+| 11 | P2 | `users.routes.ts:305` `GET /api/admin/users` | `getAllUsers(1,10000)` + all employment profiles per call | SQL role filter; join profiles | half-day |
+| 12 | P2 | `payroll.service.ts:123,351,406` | `getAllUsers()` with DEFAULT limit 50 — silently wrong above 50 staff | Pass explicit high limit or role-filtered query | 1 hour |
+| 13 | P2 | `analytics.repository.ts` reports fns (getReports/getJobStats/getTechnicianStats/getTechnicianPerformanceStats) | Full job scans, date-filter in JS; on-demand only | date-ranged SQL WHERE + GROUP BY | 1-2 days |
+| 14 | P2 | `TechDashboard` chunk 437 kB | `@zxing/library` statically imported via ScannerWidget | Dynamic `import()` on scanner open; also QuotationsTab static jspdf/html2canvas → dynamic (JobTicketsTab/PosDialogs already dynamic) | half-day |
+| 15 | P2 | `drawer-day-close.service.ts` tick | 4 settings SELECTs every 60s, 24/7 | Batch to one `WHERE key IN (...)` or widen tick to 5 min with cutoff-window check | 1 hour |
+
+Deferred/monitor: corporate-notification.service 3x `getAllUsers(1,10000)` (event-driven, low freq); `settings.routes.ts:195` full SR scan; `updateAcceptanceRatios` per-staff upsert loop (6h cadence, fine ≤50 staff); hot-deals full scan filter.
+
+### Connection Pool / Aiven
+
+- `db.ts`: pool max = `DB_POOL_MAX` (default 5), idle 20s, connect timeout 10s, generation-guarded lifetime recycle, idle-error auto-reset — solid design.
+- Session store (`connect-pg-simple`) shares the same pool; every authed request = 1 session read + 1–2 user reads. At 5 connections, a dashboard-poll burst can queue behind full-table loads → occasional slow logins. Fixes #2/#3 above remove the pressure at the source.
+- Schedulers run on the same pool but each tick is light; all guarded by `isDbReady()` + in-progress flags. Single-instance safe; **if Render ever scales to >1 instance, schedulers need distributed locks** (post-pilot).
+- PgBouncer/Aiven pooler: NOT needed at pilot scale.
+- Recommended pilot env: `DB_POOL_MAX=8` (only if Aiven plan allows ≥25 connections; otherwise keep 5), `DB_POOL_MAX_LIFETIME_SECONDS=1800`, `RUN_BACKGROUND_JOBS=true` on exactly one instance.
+- Monitoring thresholds: alert if `waitingCount > 0` sustained 30s (`getDbPoolDiagnostics` already exposes it), if p95 of `/api/admin/dashboard` > 1.5s, or Aiven connection count > 15.
+
+### Cache + Snappiness
+
+Healthy: React Query staleTime Infinity + `refetchOnMount:"always"` + localStorage persistence (instant paint, background refresh); cold-start stale cache middleware; SW never caches `/api/` or hashed `/assets/`; app-update-recovery is one-shot flagged (no reload loops); client retry disabled (no retry storms), 30s default timeout.
+
+Watch items: TeamChatPanel + CrmInboxPanel poll at 5s, CorporateMessagesTab 5s/10s, BrainTab 10s, CashierTab 10s — while mounted these are the chattiest consumers; SSE broker already exists, move chat/inbox to SSE-invalidation post-pilot. Logout correctly clears persisted cache (`clearPersistedClientState`).
+
+### Frontend Bundle (dev-mode build, gzip)
+
+vendor-react 202 kB, main index 83 kB, design-concept 35 kB → first admin login ≈ 330 kB gz. Largest lazy chunks: TechDashboard 117 kB (zxing — target #14), jspdf 126 kB, service-request 129 kB, recharts 99 kB, UnifiedB2BTab 50 kB (mega-file, split post-pilot), SettingsTab 20 kB. `manualChunks` not worth it yet; lazy-loading discipline is already good.
+
+### Mobile Performance
+
+`/api/mobile/jobs` and admin list tabs return unbounded arrays; no virtualization anywhere (no react-window). Fine at pilot row counts; add server pagination before public. Search boxes filter in-memory arrays per keypress — acceptable at pilot. No expensive animation regressions found (framer-motion vendor split is lazy).
+
+### Recommended Indexes (idempotent, run-at-startup style)
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_job_tickets_status        ON job_tickets (status);
+CREATE INDEX IF NOT EXISTS idx_job_tickets_created_at    ON job_tickets (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_job_tickets_assigned_tech ON job_tickets (assigned_technician_id);
+CREATE INDEX IF NOT EXISTS idx_job_tickets_technician    ON job_tickets (technician);
+CREATE INDEX IF NOT EXISTS idx_job_tickets_deadline      ON job_tickets (deadline) WHERE deadline IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_job_tickets_batch         ON job_tickets (batch_id) WHERE batch_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_service_requests_status      ON service_requests (status);
+CREATE INDEX IF NOT EXISTS idx_service_requests_created_at  ON service_requests (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_service_requests_admin_inter ON service_requests (admin_interacted) WHERE admin_interacted = false;
+CREATE INDEX IF NOT EXISTS idx_service_requests_phone       ON service_requests (phone);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read   ON notifications (user_id, read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at  ON notifications (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_pos_transactions_created  ON pos_transactions (created_at);
+CREATE INDEX IF NOT EXISTS idx_users_role                ON users (role);
+CREATE INDEX IF NOT EXISTS idx_attendance_user_date      ON attendance_records (user_id, date);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_severity_created ON audit_logs (severity, created_at);
+```
+
+(job_tickets already has model/serial/intake indexes; logistics_tasks, manual_payments, CRJ tables already indexed by their migration services. Verify `attendance_records` table name before applying.)
+
+### Must-Do Before Pilot
+
+1. **Verify `GET /api/inventory` exposure** — public route returns `cost_price`. If unintended, gate it (security + business data).
+2. **Unread-count SQL COUNT** (target #1) — every admin session pays a full SR scan today.
+3. **Apply the index migration above** — pure win, zero risk (`IF NOT EXISTS`).
+
+Everything else is GO-compatible at 5 staff.
+
+### Post-Pilot Backlog
+
+Targets #3/#4/#9 pagination-in-SQL work; reports SQL aggregation (#13); UnifiedB2BTab/SettingsTab/PosTab mega-file splits; SSE-driven chat/inbox instead of 5s polling; distributed scheduler locks before horizontal scaling; virtualized long lists.
+
+### Cost / Tier Risk (pilot volumes)
+
+- **Aiven:** connection count safe (5–8 of ~25); CPU grows linearly with full scans — the P0 fixes cap it. Biggest single lever: dashboard poll × staff count.
+- **Render 512MB:** `getAllJobTickets()` concurrency is the memory spike risk; fine at hundreds of rows.
+- **Vercel:** ~330 kB gz first load, cached after — negligible at 50 customers/day.
+- **ImageKit:** job media uploads dominate; monitor transformations; no runaway loop found.
+- **FCM:** free tier ample; reminder scheduler sends per-token, low volume.
+- **AI (Groq/Gemini):** user-triggered only; BrainTab polls hit DB not AI. Watch: staff exploring Brain/AI chat during pilot is the most likely surprise spend.
+
+### Final Score
+
+| Dimension | Score |
+|-----------|-------|
+| Database efficiency | 5/10 |
+| Backend compute efficiency | 6/10 |
+| Frontend snappiness | 7.5/10 |
+| Mobile performance | 7/10 |
+| Cost safety | 7/10 |
+| **Pilot performance readiness** | **7.5/10** |
+
+### Verdict: **GO WITH OPTIMIZATION**
+
+Pilot-safe today at stated volumes. Close the 3 must-do items during pilot week 1; schedule P0/P1 SQL conversions before public launch.
+
+
+---
+
+## Phase 31B â€” Pilot Safety + Hot Path Optimization Fixes (2026-07-04)
+
+Checks run: `npx tsc --noEmit` clean, `npx vite build --mode development` 12s, no regressions.
+
+### Changes Made
+
+#### Task 1 â€” Inventory Cost/Data Leak (security)
+
+**Problem:** `GET /api/inventory`, `GET /api/inventory/hot-deals`, `GET /api/inventory/:id`, `GET /api/inventory/:id/serials` had no auth middleware and returned full rows including internal fields (`price`, `preferredSupplier`, `reorderQuantity`, `minPrice`, `maxPrice`, stock levels).
+
+**Fix:** Added `requireAdminAuth, requirePermission('inventory')` to all four routes.
+
+**Impact:** Unauthenticated callers now receive 401. All four client callers are admin-panel pages authenticated via session. Public shop uses `/api/shop/inventory` (unchanged).
+
+File: `server/routes/inventory.routes.ts` â€” lines 26, 54, 87, 252.
+
+#### Task 2 â€” Notification Bell Unread Count (perf)
+
+**Problem:** `GET /api/admin/notifications/unread-count` called `buildAdminNotificationFeed()` which triggered `getAllServiceRequests()` â€” a full table scan â€” on every bell poll (staleTime 30s, per admin session). With 5 admins open this is a full scan every 6 seconds.
+
+**Fix:** Replaced `getAdminNotificationUnreadCount()` with an efficient path:
+- New `getUnreadServiceRequestCount()` in `service-request.repository.ts` â€” one SQL `COUNT(*) WHERE admin_interacted = false`, only called when user has serviceRequests permission.
+- Stored notifications use the existing `getUnreadNotifications(userId)` SQL query (already `WHERE user_id = ? AND read = false`) â€” never touched a full scan.
+- Permission filtering applied on the returned objects (small sets).
+- Fallback to full feed builder when no `currentUser` context (tests only).
+
+**Before:** 1 full service_requests scan + 2 notification queries per bell poll.
+**After:** 1 COUNT query (conditional on permission) + 2 notification queries per bell poll.
+
+Files: `server/repositories/service-request.repository.ts`, `server/services/admin-notification-feed.service.ts`.
+
+#### Task 3 â€” Idempotent Index Migration (perf)
+
+Added a new `"hot-path index migration"` startup task in `server/index.ts` that applies 4 indexes missing from both the schema and existing startup migrations:
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_job_tickets_assigned_tech ON job_tickets (assigned_technician_id);
+CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications (user_id, read);
+CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_audit_logs_severity_created ON audit_logs (severity, created_at);
+```
+
+All are `IF NOT EXISTS` â€” safe to run twice. Runs after the server is listening (non-blocking). Column names verified against `shared/schema.ts` before adding.
+
+File: `server/index.ts`.
+
+#### Task 4 â€” Eliminate Duplicate User Fetch per Gated Request (perf)
+
+**Problem:** `requireAdminAuth` fetches the user and attaches to `req.user`. Then `requirePermission`, `requireGranularPermission`, `requireAnyPermission`, and `requireAnyGranularPermission` each fetched the same user again â€” 2 DB reads per gated request.
+
+**Fix:** Each permission middleware now checks `(req as any).user` first; falls back to `storage.getUser(session.adminUserId)` only if not set. Auth logic and Super Admin wildcard behavior unchanged.
+
+**Impact:** Every route with the pattern `requireAdminAuth, requirePermission/requireGranularPermission(...)` now costs 1 user DB read instead of 2.
+
+File: `server/routes/middleware/auth.ts`.
+
+### Before/After Behavior
+
+| Endpoint | Before | After |
+|---|---|---|
+| `GET /api/inventory` | Public â€” any caller sees all fields | 401 without admin session |
+| `GET /api/inventory/hot-deals` | Public | 401 without admin session |
+| `GET /api/inventory/:id` | Public | 401 without admin session |
+| `GET /api/inventory/:id/serials` | Public | 401 without admin session |
+| `GET /api/shop/inventory` | Public safe endpoint | Unchanged |
+| `GET /api/admin/notifications/unread-count` | Full SR table scan per poll | SQL COUNT (if permitted) |
+| Any `requireAdminAuth + requirePermission` route | 2 user DB reads | 1 user DB read |
+
+### Remaining Performance Debt (post-pilot backlog)
+
+- Dashboard stats `GROUP BY status` instead of full `job_tickets` scan (P0, before public launch)
+- Jobs list SQL pagination instead of JS filter (P0)
+- Mobile lookup SQL search (P1)
+- Notification broadcast: role-filtered user query + batch insert + remove debug logs (P1)
+- SR list real pagination (P1)
+- TechDashboard zxing dynamic import (P2)
+
+
+---
+
+## Phase 31B-Hotfix â€” Inventory Granular View + Bell Count Correctness (2026-07-04)
+
+Checks run: `npx tsc --noEmit` clean, `npx vite build --mode development` 14s, `git diff --check` LF/CRLF warnings only.
+
+### What Was Fixed
+
+#### Fix 1 â€” Inventory GET Routes Now Use Granular `inventory.view`
+
+**Problem:** Phase 31B used legacy `requirePermission('inventory')` for GET routes. Invite-created users with only granular `inventory.view` could not access inventory even with the correct permission.
+
+**Fix:** Updated import in `server/routes/inventory.routes.ts` to include `requireGranularPermission` and `requireAnyGranularPermission`. Changed 7 GET routes from `requirePermission('inventory')` to `requireGranularPermission('inventory.view')`:
+- `GET /api/inventory`
+- `GET /api/inventory/hot-deals`
+- `GET /api/inventory/wastage`
+- `GET /api/inventory/:id`
+- `GET /api/inventory/:id/serials`
+- `GET /api/inventory/local-purchases`
+- `GET /api/inventory/local-purchases/report`
+
+Also gated `GET /api/inventory/local-purchases/check/:jobId` with `requireAnyGranularPermission(['inventory.view', 'jobs.view'])` â€” previously had only `requireAdminAuth`.
+
+Mutation routes (POST/PATCH/DELETE) unchanged; they stay on `requirePermission('inventory')` for now.
+
+#### Fix 2 â€” Bell Count Includes NULL `admin_interacted` Rows
+
+**Problem:** `getUnreadServiceRequestCount()` used `WHERE admin_interacted = false`. Old rows where `admin_interacted` was never set (NULL) were excluded, undercounting unread SRs. The original JS behavior `!request.adminInteracted` treated NULL as unread.
+
+**Fix:** Changed to `WHERE admin_interacted IS DISTINCT FROM true`. This matches `false` AND `NULL`. Added inline comment explaining the fallback-to-0 behavior.
+
+File: `server/repositories/service-request.repository.ts`.
+
+#### Fix 3 â€” Added Missing `idx_service_requests_admin_interacted` Index
+
+**Problem:** Phase 31B introduced a SQL COUNT on `service_requests.admin_interacted` but did not add this column to the startup index migration.
+
+**Fix:** Added to the existing `"hot-path index migration"` startup task:
+```sql
+CREATE INDEX IF NOT EXISTS idx_service_requests_admin_interacted ON service_requests (admin_interacted);
+```
+
+File: `server/index.ts`.
+
+### Files Changed
+
+- `server/routes/inventory.routes.ts` â€” import updated; 7 GET routes switched to `requireGranularPermission('inventory.view')`; check route gated with `requireAnyGranularPermission`
+- `server/repositories/service-request.repository.ts` â€” `IS DISTINCT FROM true` fixes NULL gap
+- `server/index.ts` â€” 5th index added to hot-path migration
+
+### Remaining Issues
+
+None introduced by this hotfix. Remaining post-pilot backlog from Phase 31B unchanged.
+
+
+---
+
+## Phase 31B-Hotfix-2 â€” Inventory Route Order Safety (2026-07-04)
+
+Checks run: `npx tsc --noEmit` clean, `npx vite build --mode development` 12s, `git diff --check` LF/CRLF warnings only.
+
+### What Was Fixed
+
+**Problem:** `GET /api/inventory/:id` was registered at line 87, before the static-segment local-purchases GET routes (registered around line 424+). Express matches routes in registration order. Any request to `GET /api/inventory/local-purchases` was captured by `/:id` with `id = "local-purchases"` â€” the local-purchases list handler was unreachable.
+
+**Fix:** Full rewrite of `server/routes/inventory.routes.ts` route registration order. No handler bodies changed â€” only the sequence of `router.get(...)` calls. New order for GET `/api/inventory/*` routes:
+
+1. `GET /api/inventory` (exact)
+2. `GET /api/inventory/hot-deals` (static suffix)
+3. `GET /api/inventory/wastage` (static suffix)
+4. `GET /api/inventory/local-purchases` (static suffix â€” **moved before /:id**)
+5. `GET /api/inventory/local-purchases/report` (static suffix â€” **moved before /:id**)
+6. `GET /api/inventory/local-purchases/check/:jobId` (mixed â€” **moved before /:id**)
+7. `GET /api/inventory/:id/serials` (dynamic with literal suffix â€” **moved before /:id**)
+8. `GET /api/inventory/:id` (pure dynamic â€” now last among GET routes)
+
+Added a route-order contract comment at the top of the file explaining the invariant.
+
+POST `/api/inventory/local-purchases` stays in its original position (POST ordering does not conflict with GET matching).
+
+### Files Changed
+
+- `server/routes/inventory.routes.ts` â€” full file rewrite; route registration order corrected; handler bodies and permissions unchanged; route-order contract comment added
+
+### Verification
+
+- `GET /api/inventory/local-purchases` now reaches the local-purchases handler (not /:id)
+- `GET /api/inventory/local-purchases/report` unaffected (4-segment path was never captured by 3-segment /:id â€” confirmed safe)
+- `GET /api/inventory/local-purchases/check/:jobId` unaffected (same reason)
+- `GET /api/inventory/:id` still resolves for real inventory item IDs
+- `GET /api/inventory/:id/serials` still resolves correctly
+
+
+---
+
+## Phase 32A — Full Codebase Unusual Issue + Optimization Inspection (2026-07-04)
+
+AUDIT ONLY — no production code changed. Checks: `npx tsc --noEmit --pretty false` ✅ clean, `npx vite build --mode development` ✅ 11.7s, `git diff --check` ✅ (CRLF warnings only).
+
+### New Confirmed Findings (beyond Phase 31A)
+
+| Pri | Area | Location | Problem |
+|-----|------|----------|---------|
+| P0 | Route order | `payroll.routes.ts:174` | `GET /api/admin/payroll/:month` registered before `/hr-defaults` (L534) and `/deduction-proposals` (L768) — both later routes are unreachable; frontend silently receives `[]` from `getPayrollByMonth('hr-defaults')`. Same bug class as inventory 31B-Hotfix-2. |
+| P0 | Permissions | `quotes.routes.ts:96,294` | `PATCH /api/admin/quotes/:id/price` and `POST /api/quotes/:id/convert` have only `requireAdminAuth` — any staff role (incl. Driver) can set quote prices and convert quotes. No granular/legacy permission gate, no audit log. |
+| P0 | Cache | `server/middleware/cold-start-cache.ts:131` | Stale-read cache keyed by `req.originalUrl` only. `/api/job-tickets` responses are role-scoped (Technician sees only own jobs) but cached globally — during a DB-not-ready window, a Technician with `jobs` permission can be served an Admin's cached full list (and vice versa). |
+| P1 | Public + DB | `settings.routes.ts:195` `GET /api/public/track/:ticketNumber` | Unauthenticated route loads the ENTIRE service_requests table per call and `.find()`s by ticket number. Response projection is safe, but this is a free full-table-scan endpoint anyone can hammer. One `WHERE ticket_number = $1` fixes it. |
+| P1 | Schema drift | `warranty.routes.ts:91` `/api/warranty-claims/check-serial/:serial` | Raw SQL selects `warranty_days`, `warranty_expiry_date`, `tv_serial_number` — no startup migration creates these columns and no legacy-schema fallback wraps the query. Already observed 500ing in ledger QA (Phase 27C note). |
+| P1 | Cost/abuse | `ai.routes.ts:435` `POST /api/ai/feedback` | Unauthenticated, un-rate-limited raw `req.body` insert into `diagnosis_training_data`. Anyone can pollute training data / grow the table. `POST /api/ai/chat` + `/inspect` + `/transliterate` are also anonymous (aiLimiter 30/h/IP only) and accept images → Groq/Gemini vision spend vector. |
+| P1 | DB | `service-request.repository.ts:86` | `getServiceRequest(id)` / `getServiceRequestByTicketNumber` / `getServiceRequestByConvertedJobId` load ALL rows then `.find()`. Every SR detail view, stage transition, and quote mutation pays a full table load (sometimes multiple times per request). |
+| P1 | Notifications | `notificationService.broadcastAdminNotification` | `getAllUsers(1,10000)` + JS permission parse + N individual INSERTs; each `createNotification` fires its own SSE invalidation event → one broadcast to N admins triggers N invalidation storms on every connected client. Debug logs print every recipient. (31A #5, still open; SSE-amplification angle is new.) |
+| P2 | Bundle | `vite.config.ts` manualChunks | `id.includes('react')` is checked first, so `@tanstack/react-query`, `lucide-react`, and `@radix-ui/react-*` all match "react" — vendor-query/vendor-icons branches are dead (chunks never emitted; verified in build output). vendor-react is 642 kB (201 kB gz) eager. Reorder specific matches before the generic 'react' test. |
+| P2 | Bundle | `client/src/pages/corporate/service-request.tsx:33` | Static `import * as XLSX from 'xlsx'` → 379 kB (129 kB gz) chunk for the corporate SR page. Dynamic-import on export/upload action. Same pattern: QuotationsTab static jspdf+html2canvas; ScannerWidget static @zxing (TechDashboard 437 kB — 31A #14). |
+| P2 | Dead code | `service-request.repository.ts:117-125` | `getPendingServiceRequestsCount()` and old `getUnreadServiceRequestsCount()` (both full-scan) have no callers — superseded by SQL COUNT versions. Delete. |
+| P2 | Dead routes | `ai.routes.ts:40,447,480` | `requireStaff` reads `req.user`, but nothing sets it without `requireAdminAuth` — `/api/ai/suggest-tech`, `/debug-suggestions`, `/apply-settings` always 403. Either dead features or silently broken. |
+| P2 | Fake data | `ai.routes.ts:381` `/api/ai/morning-brief` | Uses hardcoded placeholder stats (15 jobs, ৳25,000 revenue) and writes AI "insights" derived from fake numbers into `ai_insights`, which `/api/ai/insights` then serves. |
+| P2 | Legacy | `upload.routes.ts` `/api/cleanup/expired-media` | Cloudinary-based cleanup while the stack is ImageKit — expired ImageKit media is never cleaned; Cloudinary path is config-dead. |
+| P3 | Pagination lie | `job.repository.ts:295` `getJobTicketsList` | Loads all, slices, and returns `total: items.length` (page size, not table total) with `pages: 1`. |
+
+### Unusual Things (not immediately dangerous)
+
+- Two serial-number columns on job_tickets: startup migration adds `serial_number`; warranty flow queries `tv_serial_number`.
+- Legacy-schema fallback system (`legacy-schema.ts`) normalizes production schema drift across 30+ columns on job_tickets/service_requests/notifications — works, but any new raw-SQL query that skips the fallback (like check-serial) 500s in prod.
+- `cookies.txt` sitting in repo root (untracked) — session-cookie artifacts from curl testing; delete.
+- `getNextJobNumber`/SR ticket generation rely on string-ordered LIKE scans — fine below 10k tickets/year, silent wraparound risk above.
+- Corporate-notification service also does 3× `getAllUsers(1,10000)` (event-driven, low frequency — monitor).
+
+### Verdict: **GO WITH FIXES**
+
+Pilot rating 7/10. Main theme: route-order/permission-gate regressions and full-table loads on single-record paths — not new subsystem risks. Top 5 in order: (1) payroll route order, (2) quotes permission gates, (3) cold-start cache role scoping or de-listing `/api/job-tickets`, (4) public track SQL lookup, (5) warranty column migration + ai/feedback gate.
+
+Suggested next phase: **Phase 32B — Route Reachability + Gate Fixes** (payroll order, quotes gates, public track WHERE query, ai/feedback auth+limit, cold-start cache scoping, warranty columns migration).
+
+## Phase 32B — Surgical Backend Hardening (2026-07-04)
+
+**Goal:** Fix 7 confirmed high-priority issues from Phase 32A inspection before wider pilot. Surgical only — no UI redesign, no broad refactor, no response-shape changes.
+
+### Issues Fixed
+
+1. **Payroll route order (`server/routes/payroll.routes.ts`)** — Moved `GET /api/admin/payroll/hr-defaults`, `/deduction-proposals`, `/deduction-proposals/:payrollId` BEFORE `GET /api/admin/payroll/:month`. Without reordering, the `:month` wildcard shadowed static routes — `hr-defaults` matched as `month="hr-defaults"` and 400'd on date parse. Added route-order contract comments.
+
+2. **Quote permission gates + audit (`server/routes/quotes.routes.ts`)** — Added `requireGranularPermission('serviceRequests.quote')` to `PATCH /api/admin/quotes/:id/price` and `requireGranularPermission('serviceRequests.convertToJob')` to `POST /api/quotes/:id/convert`. Both were previously `requireAdminAuth`-only — any admin could quote/convert without the dedicated high-risk permission. Added `auditLogger.log()` calls with actions `QUOTE_PRICE_UPDATED` / `QUOTE_CONVERTED` (fire-and-forget with `.catch(() => {})`).
+
+3. **Cold-start cache cross-user risk (`server/middleware/cold-start-cache.ts`)** — Removed `/api/job-tickets` and `/api/job-tickets/list` from `STALE_READ_PATHS` and `STALE_READ_PERMISSIONS`. These list endpoints are user-scoped, so serving a cached response across users would leak data across admins/technicians. Kept mutation-protection entries. Option A (remove from stale cache) chosen over complicating cache keys with userId.
+
+4. **Public track single query (`server/routes/settings.routes.ts:191` + `server/repositories/service-request.repository.ts`)** — Replaced `storage.getAllServiceRequests().find(r => r.ticketNumber === ...)` with a new `getPublicServiceRequestByTicketNumber()` repository helper that does a direct `WHERE ticket_number = ? LIMIT 1` and returns a safe `PublicServiceRequestProjection` (no internal id, customerId, phone, or address). Added input length guard (3–60 chars) to reject overlong queries early.
+
+5. **Warranty serial migration + hardened query (`server/index.ts` + `server/routes/warranty.routes.ts`)** — Added idempotent migration in `server/index.ts` startup for `tv_serial_number`, `warranty_days` (default 30), `warranty_expiry_date` columns + `idx_job_tickets_tv_serial_number` index on `job_tickets`. Hardened the `check-serial` query to match either `serial_number` OR `tv_serial_number` via `COALESCE(NULLIF(serial_number,''), NULLIF(tv_serial_number,''))` so legacy jobs with only one field populated still match. Replaced raw `error.message` leak in 500 response with safe `'Failed to check serial warranty'` message.
+
+6. **AI feedback gate + Zod validation (`server/routes/ai.routes.ts`)** — Replaced the unauthenticated `POST /api/ai/feedback` (which inserted raw `req.body` into `diagnosisTrainingData`) with `requireAdminAuth` + `requireGranularPermission('aiBrain.manage')` + `insertDiagnosisTrainingDataSchema.safeParse(req.body)`. Returns 400 on invalid shape with `details: parsed.error.flatten()`, 401/403 on auth failure, `{ success: true }` on success. Public caller `publicApi.saveFeedback` in `client/src/lib/api/publicApi.ts:79` is dead code (no component imports it) — Option A confirmed by user.
+
+7. **AI debug log removal (`server/routes/ai.routes.ts`)** — Removed 3 `console.log` lines that dumped full session/customer/user objects: `[AI Context Debug] Session Customer`, `[AI Context Debug] Req User`, `[AI Context Debug] Session ID`. Sanitized the catch-block `console.error` from `err` (raw object) to `(err as Error).message` only. Kept safe service breadcrumb logs that don't contain PII (`[AI Context] Found customer via session ID`).
+
+### Files Changed
+
+- `server/routes/payroll.routes.ts` — route reorder + contract comments
+- `server/routes/quotes.routes.ts` — permission gates + audit logs + `auditLogger` import
+- `server/middleware/cold-start-cache.ts` — removed job-tickets from stale cache
+- `server/repositories/service-request.repository.ts` — new `getPublicServiceRequestByTicketNumber()` helper
+- `server/routes/settings.routes.ts` — public track endpoint uses single-query + input guard
+- `server/index.ts` — new idempotent migration for warranty columns
+- `server/routes/warranty.routes.ts` — hardened check-serial query with COALESCE + safe error message
+- `server/routes/ai.routes.ts` — admin-only + Zod gate on feedback, removed debug session logs
+
+### Tests Run
+
+- `npx tsc --noEmit --pretty false` — **PASS** (no output)
+- `npx vite build --mode development` — **PASS** (built in 1m 9s)
+- `git diff --check` — **PASS** (after fixing 1 trailing-whitespace line in payroll.routes.ts)
+
+### Remaining Debt
+
+- **Dead code removal:** `publicApi.saveFeedback` in `client/src/lib/api/publicApi.ts:79` is unused — no component imports it. Safe to remove in a follow-up cleanup pass; left in place this phase to avoid touching public API surface.
+- **Inventory permission audit:** Phase 32A finding `inventory.routes.ts` `searchBySerial` uses `sql.raw` in a route (violates "no raw SQL in routes" playbook rule) — not in scope for this phase (no confirmed security impact, just hygiene).
+- **Phase 32A finding `ai.routes.ts:435` was the feedback route** — addressed in Task 6 above. The other Phase 32A low-priority findings (unused exports, dead handlers in `ai.routes.ts`) deferred — not pilot-blocking.
+- **Warranty column backfill:** Existing `job_tickets` rows with `NULL` `warranty_expiry_date` won't match the warranty check query — expected behavior. A future backfill job could compute `warranty_expiry_date = completed_at + interval 'warranty_days days'` for historical Ready/Delivered/Completed jobs; out of scope for this surgical phase.
+
+### Verification Status
+
+Ready for inspector review. All 7 issues surgically fixed, no UI/auth/response-shape changes, all three QA commands pass clean.
+
+## Phase 32B-Hotfix — Warranty Serial Lookup Exactness (2026-07-04)
+
+**Problem:** Phase 32B's `check-serial` query used `COALESCE(NULLIF(serial_number, ''), NULLIF(tv_serial_number, ''))` in the WHERE clause. This fails when both `serial_number` AND `tv_serial_number` are populated but different — `COALESCE` only evaluates the first non-null/non-empty value, so a job ticket with a matching `tv_serial_number` but a non-matching `serial_number` would be missed.
+
+**Fix:** Replaced the COALESCE-based WHERE predicate with an explicit OR that checks each column independently:
+
+```sql
+WHERE (LOWER(TRIM(serial_number)) = LOWER(TRIM(input))
+       OR LOWER(TRIM(tv_serial_number)) = LOWER(TRIM(input)))
+```
+
+The SELECT display value still uses `COALESCE(NULLIF(serial_number, ''), NULLIF(tv_serial_number, ''))` for the `serialNumber` projection — that's safe for display only.
+
+### Files Changed
+
+- `server/routes/warranty.routes.ts` — WHERE clause uses explicit OR matching on `serial_number` OR `tv_serial_number`; SELECT projection unchanged.
+
+### Tests Run
+
+- `npx tsc --noEmit --pretty false` — **PASS** (no output)
+- `npx vite build --mode development` — **PASS** (built in 40.30s)
+- `git diff --check` — **PASS** (no whitespace errors)
+
+### Remaining Debt
+
+- Existing `job_tickets` rows with `NULL` `warranty_expiry_date` still won't match the warranty check (carried over from Phase 32B; backfill out of scope).
+- Permission guards, sanitized error response, and response shape all preserved — no frontend impact.
+
+### Verification Status
+
+Ready for inspector review. Single-line WHERE-clause fix, all three QA commands pass clean.

@@ -169,7 +169,59 @@ router.post('/api/admin/payroll/generate/:month', requireAdminAuth, requirePermi
 });
 
 /**
+ * GET /api/admin/payroll/hr-defaults - Get HR configuration defaults
+ *
+ * Route-order contract: this and other static/mixed GET routes (deduction-proposals,
+ * deduction-proposals/:payrollId) MUST be registered BEFORE GET /api/admin/payroll/:month,
+ * otherwise Express captures "hr-defaults" or "deduction-proposals" as :month.
+ */
+router.get('/api/admin/payroll/hr-defaults', requireAdminAuth, requirePermission('salary'), async (req: Request, res: Response) => {
+    try {
+        res.json({
+            shopOpenTime: HR_DEFAULTS.shopOpenTime,
+            shopCloseTime: HR_DEFAULTS.shopCloseTime,
+            graceMinutes: HR_DEFAULTS.graceMinutes,
+            consecutiveLateThreshold: HR_DEFAULTS.consecutiveLateThreshold,
+            weeklyHoliday: HR_DEFAULTS.weeklyHoliday,
+            bonusDeductionScale: HR_DEFAULTS.bonusDeductionScale,
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch HR defaults' });
+    }
+});
+
+// ============================================
+// V2 Advisory: Deduction Proposals (Super Admin ONLY)
+// Static/mixed routes — MUST stay before GET /:month to avoid param capture.
+// ============================================
+
+router.get('/api/admin/payroll/deduction-proposals', requireAdminAuth, requirePermission('salary'), async (req, res) => {
+    try {
+        const user = await userRepo.getUser(req.session.adminUserId!);
+        if (!user || user.role !== 'Super Admin') return res.status(403).json({ error: 'Super Admin access required' });
+        const data = await employmentRepo.getPendingDeductionProposals(req.query.month as string);
+        res.json(data);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch deduction proposals' });
+    }
+});
+
+router.get('/api/admin/payroll/deduction-proposals/:payrollId', requireAdminAuth, requirePermission('salary'), async (req, res) => {
+    try {
+        const user = await userRepo.getUser(req.session.adminUserId!);
+        if (!user || user.role !== 'Super Admin') return res.status(403).json({ error: 'Super Admin access required' });
+        const data = await employmentRepo.getDeductionProposalsForPayroll(req.params.payrollId);
+        res.json(data);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch proposals for payroll' });
+    }
+});
+
+/**
  * GET /api/admin/payroll/:month - Get salary sheet for a month
+ * Parametric route — MUST be registered AFTER all static/mixed GET routes
+ * (hr-defaults, deduction-proposals, deduction-proposals/:payrollId) to avoid
+ * Express capturing those literal strings as :month.
  */
 router.get('/api/admin/payroll/:month', requireAdminAuth, requirePermission('salary'), async (req: Request, res: Response) => {
     try {
@@ -530,21 +582,9 @@ router.post('/api/admin/holidays/seed/:year', requireAdminAuth, requirePermissio
 
 /**
  * GET /api/admin/payroll/hr-defaults - Get HR configuration defaults
+ * MOVED above GET /api/admin/payroll/:month to avoid param capture.
+ * See route-order contract near GET /:month.
  */
-router.get('/api/admin/payroll/hr-defaults', requireAdminAuth, requirePermission('salary'), async (req: Request, res: Response) => {
-    try {
-        res.json({
-            shopOpenTime: HR_DEFAULTS.shopOpenTime,
-            shopCloseTime: HR_DEFAULTS.shopCloseTime,
-            graceMinutes: HR_DEFAULTS.graceMinutes,
-            consecutiveLateThreshold: HR_DEFAULTS.consecutiveLateThreshold,
-            weeklyHoliday: HR_DEFAULTS.weeklyHoliday,
-            bonusDeductionScale: HR_DEFAULTS.bonusDeductionScale,
-        });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch HR defaults' });
-    }
-});
 
 
 // ============================================
@@ -763,29 +803,9 @@ router.patch('/api/admin/hr/increment-suggestions/:id', requireAdminAuth, requir
 
 // ============================================
 // V2 Advisory: Deduction Proposals (Super Admin ONLY)
+// GET routes (list + :payrollId) MOVED above GET /api/admin/payroll/:month
+// to avoid Express param capture. Only PATCH/POST remain here.
 // ============================================
-
-router.get('/api/admin/payroll/deduction-proposals', requireAdminAuth, requirePermission('salary'), async (req, res) => {
-    try {
-        const user = await userRepo.getUser(req.session.adminUserId!);
-        if (!user || user.role !== 'Super Admin') return res.status(403).json({ error: 'Super Admin access required' });
-        const data = await employmentRepo.getPendingDeductionProposals(req.query.month as string);
-        res.json(data);
-    } catch (e) {
-        res.status(500).json({ error: 'Failed to fetch deduction proposals' });
-    }
-});
-
-router.get('/api/admin/payroll/deduction-proposals/:payrollId', requireAdminAuth, requirePermission('salary'), async (req, res) => {
-    try {
-        const user = await userRepo.getUser(req.session.adminUserId!);
-        if (!user || user.role !== 'Super Admin') return res.status(403).json({ error: 'Super Admin access required' });
-        const data = await employmentRepo.getDeductionProposalsForPayroll(req.params.payrollId);
-        res.json(data);
-    } catch (e) {
-        res.status(500).json({ error: 'Failed to fetch proposals for payroll' });
-    }
-});
 
 router.patch('/api/admin/payroll/deduction-proposals/:id', requireAdminAuth, requirePermission('salary'), async (req, res) => {
     try {

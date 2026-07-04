@@ -100,11 +100,13 @@ router.get(
             const now = new Date().toISOString();
 
             const rows = await db.execute(sql`
-                SELECT id, device, status, tv_serial_number as "tvSerialNumber",
+                SELECT id, device, status,
+                       COALESCE(NULLIF(serial_number, ''), NULLIF(tv_serial_number, '')) as "serialNumber",
                        warranty_expiry_date as "warrantyExpiryDate", warranty_days as "warrantyDays",
                        completed_at as "completedAt"
                 FROM job_tickets
-                WHERE LOWER(TRIM(tv_serial_number)) = LOWER(TRIM(${serial}))
+                WHERE (LOWER(TRIM(serial_number)) = LOWER(TRIM(${serial}))
+                       OR LOWER(TRIM(tv_serial_number)) = LOWER(TRIM(${serial})))
                   AND status IN ('Ready', 'Delivered', 'Completed')
                   AND warranty_expiry_date IS NOT NULL
                   AND warranty_expiry_date > ${now}
@@ -126,7 +128,7 @@ router.get(
             });
         } catch (error: any) {
             console.error('[Warranty] Error checking serial warranty:', error);
-            res.status(500).json({ error: error.message });
+            res.status(500).json({ error: 'Failed to check serial warranty' });
         }
     },
 );

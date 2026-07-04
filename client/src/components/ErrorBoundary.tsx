@@ -1,5 +1,6 @@
 import React, { Component, ErrorInfo, ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
+import { isStaleBuildError, recoverFromStaleBuild } from "@/lib/app-update-recovery";
 
 interface Props {
     children: ReactNode;
@@ -23,11 +24,28 @@ export class ErrorBoundary extends Component<Props, State> {
     }
 
     public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+        if (isStaleBuildError(error)) {
+            void recoverFromStaleBuild();
+            return;
+        }
+
         console.error(`Uncaught error in component ${this.props.name || 'Unknown'}:`, error, errorInfo);
     }
 
     public render() {
         if (this.state.hasError) {
+            if (isStaleBuildError(this.state.error)) {
+                return (
+                    <div className="absolute inset-0 z-50 flex min-h-[200px] flex-col items-center justify-center bg-white p-6 text-center text-slate-900">
+                        <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-slate-200 border-t-slate-900" />
+                        <h2 className="mb-2 text-lg font-bold">Updating app</h2>
+                        <p className="max-w-sm text-sm text-slate-600">
+                            A new version is available. The app is refreshing once so you can continue safely.
+                        </p>
+                    </div>
+                );
+            }
+
             if (this.props.fallback) {
                 return this.props.fallback;
             }

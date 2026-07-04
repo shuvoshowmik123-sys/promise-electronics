@@ -3,8 +3,10 @@ import { aiService } from "../services/ai.service.js";
 import { storage } from "../storage.js";
 import { db } from "../db.js";
 import { users, aiInsights, diagnosisTrainingData, jobTickets } from "../../shared/schema.js";
+import { insertDiagnosisTrainingDataSchema } from "../../shared/schema.js";
 import { eq, and, desc } from "drizzle-orm";
 import { aiLimiter } from "./middleware/rate-limit.js";
+import { requireAdminAuth, requireGranularPermission } from "./middleware/auth.js";
 
 const router = Router();
 
@@ -120,10 +122,6 @@ router.post("/chat", aiLimiter, async (req, res) => {
         }
 
         // Get user context from session or userId
-        console.log("[AI Context Debug] Request received. Session ID:", req.sessionID);
-        console.log("[AI Context Debug] Session Customer:", (req.session as any)?.customer);
-        console.log("[AI Context Debug] Req User:", req.user);
-
         let userContext: { id?: string; name?: string; phone?: string; address?: string; role?: string } | undefined = undefined;
 
         // Try to get from session first (for logged-in users)
@@ -152,7 +150,7 @@ router.post("/chat", aiLimiter, async (req, res) => {
                     };
                 }
             } catch (err) {
-                console.error("[AI Context Debug] Failed to fetch customer:", err);
+                console.error("[AI Context] Failed to fetch customer via session:", (err as Error).message);
             }
         }
         // Or fetch by userId if provided
@@ -431,11 +429,16 @@ router.get("/insights", async (req, res) => {
     }
 });
 
-// POST /api/ai/feedback
-router.post("/feedback", async (req, res) => {
+// POST /api/ai/feedback - Admin-only, validated against diagnosisTrainingData schema.
+// Was previously unauthenticated and inserted raw req.body (data integrity + abuse risk).
+router.post("/feedback", requireAdminAuth, requireGranularPermission("aiBrain.manage"), async (req, res) => {
     try {
         setNoStore(res);
-        await db.insert(diagnosisTrainingData).values(req.body);
+        const parsed = insertDiagnosisTrainingDataSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({ error: "Invalid feedback payload", details: parsed.error.flatten() });
+        }
+        await db.insert(diagnosisTrainingData).values(parsed.data);
         res.json({ success: true });
     } catch (error) {
         console.error("Feedback error:", error);

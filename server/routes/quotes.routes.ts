@@ -18,6 +18,7 @@ import { repairJourneyService } from '../services/customer-repair-journey.servic
 import { syncPickupScheduleToLogisticsTask } from '../services/logistics-task.service.js';
 import { db } from '../db.js';
 import { sql } from 'drizzle-orm';
+import { auditLogger } from '../utils/auditLogger.js';
 
 const router = Router();
 const PICKUP_SCHEDULEABLE_STAGES = ['intake', 'assessment', 'authorized', 'pickup_scheduled'];
@@ -92,8 +93,9 @@ router.get('/api/admin/quotes', requireAdminAuth, async (req: Request, res: Resp
 
 /**
  * PATCH /api/admin/quotes/:id/price - Update quote with pricing (admin)
+ * Money action — requires serviceRequests.quote permission.
  */
-router.patch('/api/admin/quotes/:id/price', requireAdminAuth, async (req: Request, res: Response) => {
+router.patch('/api/admin/quotes/:id/price', requireAdminAuth, requireGranularPermission('serviceRequests.quote'), async (req: Request, res: Response) => {
     try {
         const { quoteAmount, quoteNotes } = req.body;
         if (!quoteAmount) {
@@ -104,6 +106,15 @@ router.patch('/api/admin/quotes/:id/price', requireAdminAuth, async (req: Reques
         if (!updated) {
             return res.status(404).json({ error: 'Quote not found' });
         }
+
+        auditLogger.log({
+            userId: req.session.adminUserId!,
+            action: 'QUOTE_PRICE_UPDATED',
+            entity: 'ServiceRequest',
+            entityId: req.params.id,
+            newValue: { quoteAmount, quoteNotes: quoteNotes ?? null, ticketNumber: updated.ticketNumber || null },
+            req,
+        }).catch(() => {});
 
         if (updated.customerId) {
             notifyCustomerUpdate(updated.customerId, {
@@ -290,13 +301,23 @@ router.post('/api/quotes/:id/decline', requireCustomerAuth, async (req: Request,
 
 /**
  * POST /api/quotes/:id/convert - Convert quote to service request (admin only)
+ * Money/flow action — requires serviceRequests.convertToJob permission.
  */
-router.post('/api/quotes/:id/convert', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/quotes/:id/convert', requireAdminAuth, requireGranularPermission('serviceRequests.convertToJob'), async (req: Request, res: Response) => {
     try {
         const updated = await storage.convertQuoteToServiceRequest(req.params.id);
         if (!updated) {
             return res.status(404).json({ error: 'Quote not found' });
         }
+
+        auditLogger.log({
+            userId: req.session.adminUserId!,
+            action: 'QUOTE_CONVERTED',
+            entity: 'ServiceRequest',
+            entityId: req.params.id,
+            newValue: { ticketNumber: updated.ticketNumber || null },
+            req,
+        }).catch(() => {});
 
         notifyAdminUpdate({
             type: 'quote_converted',

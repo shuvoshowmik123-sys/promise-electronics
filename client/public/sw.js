@@ -1,4 +1,4 @@
-const CACHE_NAME = 'promise-electronics-v4';
+const CACHE_NAME = 'promise-electronics-v5';
 const OFFLINE_URL = '/offline.html';
 
 const urlsToCache = [
@@ -31,6 +31,7 @@ function isCacheableRequest(request) {
   const pathname = url.pathname;
 
   if (url.origin !== self.location.origin) return false;
+  if (pathname.startsWith('/assets/')) return false;
 
   if (NON_CACHEABLE_PATHS.some((path) => pathname.startsWith(path))) return false;
 

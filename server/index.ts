@@ -107,6 +107,14 @@ async function runStartupMigrations(): Promise<boolean> {
       await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_job_tickets_model ON job_tickets (model_number)`);
       await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_job_tickets_serial ON job_tickets (serial_number)`);
     }, 2),
+    runStartupTask("job warranty columns migration", async () => {
+      const { db } = await import("./db.js");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS tv_serial_number TEXT`);
+      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS warranty_days INTEGER DEFAULT 30`);
+      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS warranty_expiry_date TIMESTAMP`);
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_job_tickets_tv_serial_number ON job_tickets (tv_serial_number)`);
+    }, 2),
     runStartupTask("firebase_uid migration", async () => {
       const { db } = await import("./db.js");
       const { sql } = await import("drizzle-orm");
@@ -126,6 +134,20 @@ async function runStartupMigrations(): Promise<boolean> {
         created_at TIMESTAMP NOT NULL DEFAULT now()
       )`);
       await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_payment_blacklist_phone ON payment_blacklist (phone)`);
+    }, 2),
+    runStartupTask("hot-path index migration", async () => {
+      const { db } = await import("./db.js");
+      const { sql } = await import("drizzle-orm");
+      // job_tickets: index on assigned_technician_id (used by technician route scoping)
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_job_tickets_assigned_tech ON job_tickets (assigned_technician_id)`);
+      // notifications: composite index for unread-count queries (user_id + read)
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications (user_id, read)`);
+      // notifications: created_at DESC for feed ordering
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications (created_at DESC)`);
+      // audit_logs: severity + created_at for filtered audit searches
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_audit_logs_severity_created ON audit_logs (severity, created_at)`);
+      // service_requests: admin_interacted for unread bell count query
+      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_service_requests_admin_interacted ON service_requests (admin_interacted)`);
     }, 2),
   ]);
   const complete = superAdminReady && results.every(Boolean);

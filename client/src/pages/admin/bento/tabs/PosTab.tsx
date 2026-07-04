@@ -618,7 +618,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                 <div className="absolute inset-0 z-50 flex flex-col">
                     {/* ── Mobile lock screen ── */}
                     <form
-                        className="md:hidden flex h-full min-h-0 flex-col bg-[#f8fafc] px-3 pt-2 pb-24"
+                        className="md:hidden flex h-full min-h-0 flex-col bg-[#f8fafc] px-3 pt-2 pb-[calc(7rem+env(safe-area-inset-bottom))]"
                         onSubmit={(event) => {
                             event.preventDefault();
                             openRegisterMutation.mutate();

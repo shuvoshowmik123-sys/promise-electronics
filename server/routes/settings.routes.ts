@@ -186,31 +186,22 @@ router.get('/api/public/settings', async (req: Request, res: Response) => {
 
 /**
  * GET /api/public/track/:ticketNumber - Public ticket tracking (No Auth)
- * Returns limited info: ticket number, brand, status, stage, tracking status
+ * Returns limited info: ticket number, brand, status, stage, tracking status.
+ * Single-query lookup — does NOT load all service requests.
  */
 router.get('/api/public/track/:ticketNumber', async (req: Request, res: Response) => {
     try {
         const { ticketNumber } = req.params;
-        // Search across all service requests for this ticket number
-        const allRequests = await storage.getAllServiceRequests();
-        const sr = allRequests.find((r: any) => r.ticketNumber === ticketNumber);
+        if (!ticketNumber || ticketNumber.length < 3 || ticketNumber.length > 60) {
+            return res.status(400).json({ error: 'Invalid ticket number' });
+        }
 
+        const sr = await serviceRequestRepo.getPublicServiceRequestByTicketNumber(ticketNumber);
         if (!sr) {
             return res.status(404).json({ error: 'Ticket not found' });
         }
 
-        // Return only safe public info
-        res.json({
-            ticketNumber: sr.ticketNumber,
-            brand: sr.brand,
-            screenSize: sr.screenSize,
-            primaryIssue: sr.primaryIssue,
-            trackingStatus: sr.trackingStatus,
-            stage: sr.stage,
-            status: sr.status,
-            createdAt: sr.createdAt,
-            serviceMode: sr.serviceMode,
-        });
+        res.json(sr);
     } catch (error) {
         res.status(500).json({ error: 'Failed to track ticket' });
     }

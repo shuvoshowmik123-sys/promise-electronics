@@ -244,8 +244,39 @@ export async function getAdminNotificationUnreadCount(
     overrides: Partial<AdminNotificationFeedDeps> = {},
     currentUser?: FeedUser,
 ): Promise<number> {
-    const items = await buildAdminNotificationFeed(currentUserId, overrides, currentUser);
-    return items.length;
+    // No user context — fall back to full feed builder (safe, only happens in tests)
+    if (!currentUser) {
+        const items = await buildAdminNotificationFeed(currentUserId, overrides, currentUser);
+        return items.length;
+    }
+
+    const perms = getEffectivePermissionsForUser(currentUser);
+    const now = new Date();
+
+    // Count unread SRs via SQL COUNT — no full table scan
+    const hasSRPerm = hasAnyPermission(perms, [
+        'serviceRequests',
+        'serviceRequests.view', 'serviceRequests.reply', 'serviceRequests.logCall',
+        'serviceRequests.quote', 'serviceRequests.transitionStage', 'serviceRequests.convertToJob',
+    ]);
+    const srCountPromise = hasSRPerm
+        ? serviceRequestRepo.getUnreadServiceRequestCount()
+        : Promise.resolve(0);
+
+    // Count stored notifications using existing per-user SQL query (already cheap)
+    const [srCount, personalNotifications, broadcastNotifications] = await Promise.all([
+        srCountPromise,
+        currentUserId ? notificationRepo.getUnreadNotifications(currentUserId) : Promise.resolve([]),
+        notificationRepo.getUnreadNotifications('broadcast'),
+    ]);
+
+    const storedCount = [...personalNotifications, ...broadcastNotifications]
+        .filter((n) => shouldIncludeStoredNotification(n, now))
+        .map(mapStoredNotification)
+        .filter((item) => canSeeNotificationItem(currentUser, item, currentUserId))
+        .length;
+
+    return srCount + storedCount;
 }
 
 // ── Exported for unit tests only ──

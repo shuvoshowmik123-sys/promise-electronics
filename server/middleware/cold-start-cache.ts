@@ -13,8 +13,6 @@ const staleReadCache = new Map<string, CachedResponse>();
 const STALE_READ_PATHS = [
   "/api/admin/dashboard",
   "/api/admin/job-overview",
-  "/api/job-tickets",
-  "/api/job-tickets/list",
   "/api/challans",
   "/api/inventory",
   "/api/pos-transactions/summary",
@@ -27,8 +25,6 @@ const STALE_READ_PATHS = [
 const STALE_READ_PERMISSIONS: Record<string, string | null> = {
   "/api/admin/dashboard": "dashboard",
   "/api/admin/job-overview": "dashboard",
-  "/api/job-tickets": "jobs",
-  "/api/job-tickets/list": "jobs",
   "/api/challans": "challans",
   "/api/inventory": "inventory",
   "/api/pos-transactions/summary": "pos",
