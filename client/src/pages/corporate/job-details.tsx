@@ -1,6 +1,7 @@
 import { useRoute, useLocation, Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { corporatePortalApi } from "@/lib/api";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { cn } from "@/lib/utils";
 import { corporateQueryConfig } from "@/lib/corporateApiErrorHandler";
 import {
@@ -118,7 +119,7 @@ export default function CorporateJobDetails() {
                     <div>
                         <div className="flex items-center gap-2">
                             <h1 className="text-2xl font-black text-slate-900">
-                                Ticket <span className="text-[var(--corp-blue)]">#{job.corporateJobNumber || job.id.substring(0, 8)}</span>
+                                Ticket <span className="text-[var(--corp-blue)]">#{getSafeJobDisplayRef(job)}</span>
                             </h1>
                         </div>
                         <p className="text-xs text-slate-400 mt-1 flex items-center gap-2">

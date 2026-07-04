@@ -20,6 +20,7 @@ import { playNotificationSound, type NotificationTone } from "@/lib/notification
 import { BentoCard, DashboardSkeleton, smartMatch } from "../shared";
 import { BulkActionToolbar } from "@/components/admin/workflow/BulkActionToolbar";
 import { JobTicket, InsertJobTicket } from "@shared/schema";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { JobTicketGrid } from "./jobs/JobTicketGrid";
 import { JobTicketList } from "./jobs/JobTicketList";
 import type { WorkFeedbackPayload } from "./jobs/JobDetailsSheet";
@@ -590,7 +591,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
             const pageWidth = doc.internal.pageSize.getWidth();
             const pageHeight = doc.internal.pageSize.getHeight();
             const margin = 42;
-            const ticketNumber = (job as any).ticketNumber || job.id.slice(-6).toUpperCase();
+            const ticketNumber = getSafeJobDisplayRef(job as any);
             const trackingUrl = `${window.location.origin}/track?id=${encodeURIComponent(job.id)}`;
             const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(trackingUrl)}`;
             const [logoDataUrl, qrDataUrl] = await Promise.all([
@@ -775,7 +776,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                                     className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-slate-50"
                                                 >
                                                     <span className="min-w-0">
-                                                        <span className="block truncate font-mono text-xs font-black text-blue-700">#{(job as any).ticketNumber || job.id.slice(-6).toUpperCase()}</span>
+                                                        <span className="block truncate font-mono text-xs font-black text-blue-700">#{getSafeJobDisplayRef(job as any)}</span>
                                                         <span className="block truncate text-xs font-semibold text-slate-800">{job.device || "Device not set"}</span>
                                                         <span className="block truncate text-[11px] text-slate-500">{job.customer || "Unknown"} {job.technician && job.technician !== "Unassigned" ? `- ${job.technician}` : "- Unassigned"}</span>
                                                     </span>
@@ -997,7 +998,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                                 <div className="min-w-0 flex-1">
                                                     <h2 className="text-lg font-black leading-tight text-slate-950">Assign Technician</h2>
                                                     <p className="mt-0.5 truncate font-mono text-xs font-bold text-blue-700">
-                                                        #{(selectedJob as any).ticketNumber || selectedJob.id.slice(-6).toUpperCase()}
+                                                        #{getSafeJobDisplayRef(selectedJob as any)}
                                                     </p>
                                                     <p className="mt-1 line-clamp-2 text-xs font-medium text-slate-500">{selectedJob.device} - {selectedJob.issue}</p>
                                                 </div>

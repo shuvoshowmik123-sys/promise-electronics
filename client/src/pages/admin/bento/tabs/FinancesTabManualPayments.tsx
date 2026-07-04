@@ -11,6 +11,7 @@ import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
 import { dueRecordsApi, manualPaymentsApi, searchApi } from "@/lib/api";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { toast } from "sonner";
 
 const methodLabels: Record<string, string> = {
@@ -92,7 +93,7 @@ export function ManualPaymentsTab({ getCurrencySymbol }: { getCurrencySymbol: ()
             const jobLinks: LinkOption[] = (globalResults.jobs || []).map((job: any) => ({
                 type: "job",
                 id: job.id,
-                label: job.corporateJobNumber || job.id,
+                label: getSafeJobDisplayRef(job),
                 customerName: job.resolvedCustomerName || job.customer,
                 customerPhone: job.customerPhone,
                 meta: [job.device, job.status].filter(Boolean).join(" | "),

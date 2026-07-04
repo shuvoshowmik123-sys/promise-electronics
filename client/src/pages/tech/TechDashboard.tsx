@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import { BentoCard } from "../admin/bento/shared";
 import { Button } from "@/components/ui/button";
 import { fetchApi } from "@/lib/api";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { TechJobDrawer } from "./TechJobDrawer";
 import { ScannerWidget } from "@/components/tech/ScannerWidget";
 import { toast } from "sonner";
@@ -244,7 +245,7 @@ export function TechDashboard() {
                     <BentoCard key={job.id} className="hover:border-blue-200 transition-colors shadow-sm">
                         <div className="flex justify-between items-start mb-3">
                             <span className="text-xs font-mono font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded">
-                                #{(job.ticketNumber || job.corporateJobNumber || job.id).substring(0, 12)}
+                                #{getSafeJobDisplayRef(job)}
                             </span>
                             <span className={`text-xs px-2 py-1 rounded-full font-medium ${job.priority === 'High' || job.priority === 'Urgent'
                                 ? 'bg-red-100 text-red-700'

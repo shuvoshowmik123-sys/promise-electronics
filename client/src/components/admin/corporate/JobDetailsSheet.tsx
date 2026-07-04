@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { jobTicketsApi, adminUsersApi } from "@/lib/api";
 import { JobTicket, InsertJobTicket } from "@shared/schema"; // Ensure shared/schema is available
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { format } from "date-fns";
 import { AlertTriangle, Check, Clock, Loader2, Save, History, Shield, Info, DollarSign, Building, Plus, X, Pencil, ShoppingCart, PackageCheck, RotateCcw } from "lucide-react";
 import { useState, useEffect } from "react";
@@ -138,7 +139,7 @@ export function JobDetailsSheet({
                             </div>
                             <div>
                                 <h1 className="text-xl font-bold flex items-center gap-2 text-slate-800 tracking-tight">
-                                    Job #{job.corporateJobNumber || job.id.substring(0, 8)}
+                                    Job #{getSafeJobDisplayRef(job)}
                                     <Badge variant={job.status === "Closed" ? "secondary" : "default"}>
                                         {job.status}
                                     </Badge>

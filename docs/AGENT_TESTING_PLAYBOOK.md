@@ -1,5 +1,7 @@
 # Testing Playbook
 
+**Master QA truth policy lives in `docs/AI_AGENT_OPERATING_RULES.md`** — see Section 5 (Playwright/Manual QA Policy) and Section 12 (Testing Gates). If this playbook conflicts with the master, the master wins.
+
 ## Tool Assignment
 
 | Tool | Use For |
@@ -16,27 +18,21 @@
 
 ## Required Checks
 
-Every implementation phase must run:
+See master Section 12 for the pre-completion gate. All three must pass before reporting completion:
 ```bash
 npx tsc --noEmit --pretty false    # TypeScript type check
 npx vite build --mode development  # Vite build verification
 git diff --check                   # Whitespace/line-ending check
 ```
 
-All three must pass before reporting completion.
-
 ## When Visual QA Is Mandatory
 
-Visual QA is required when:
-- A new UI component or page is created.
-- An existing UI layout is modified (not just data changes).
-- Mobile-specific layout is added or changed.
-- A modal/dialog/sheet is created or modified.
+See master Section 5 for the full Playwright/Manual QA policy. Summary:
 
-Visual QA is NOT required for:
-- Backend-only changes (API, service, repository).
-- Documentation changes.
-- .gitignore or config updates.
+- **Default mode (implementation):** UI changes ship with a manual test guide. Label `Mobile QA: NOT VERIFIED` until an explicit QA phase runs.
+- **QA phase (explicit):** Automated Playwright/MCP at 390x844, 430x932, 584x918, desktop 1440x900.
+- Visual QA is mandatory when: new UI component/page created, existing layout modified, mobile-specific layout changed, modal/dialog/sheet created or modified.
+- Visual QA is NOT required for: backend-only changes, documentation changes, config updates.
 
 ## Test Data Rules
 

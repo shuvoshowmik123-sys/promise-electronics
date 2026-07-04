@@ -14,6 +14,7 @@ import type {
     InsertCorporateMessage
 } from "../../shared/schema.js";
 import { normalizePhone } from "../utils/phone.js";
+import { getSafeJobDisplayRef } from "../../shared/job-display-utils.js";
 
 export class CorporateRepository {
     async getAllCorporateClients(): Promise<CorporateClient[]> {
@@ -361,7 +362,7 @@ export class CorporateRepository {
             subtotal += jobTotal;
             lineItems.push({
                 jobId: job.id,
-                jobNo: job.corporateJobNumber || job.id,
+                jobNo: getSafeJobDisplayRef(job),
                 device: job.device,
                 serial: job.tvSerialNumber,
                 defect: job.reportedDefect || job.issue,

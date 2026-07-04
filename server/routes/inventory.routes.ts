@@ -200,7 +200,7 @@ router.get('/api/inventory/:id', requireAdminAuth, requireGranularPermission('in
 /**
  * POST /api/inventory - Create inventory item
  */
-router.post('/api/inventory', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+router.post('/api/inventory', requireAdminAuth, requireGranularPermission('inventory.addItem'), async (req: Request, res: Response) => {
     try {
         const validated = insertInventoryItemSchema.parse(req.body);
         const item = await inventoryRepo.createInventoryItem(validated);
@@ -226,7 +226,7 @@ router.post('/api/inventory', requireAdminAuth, requirePermission('inventory'), 
 /**
  * PATCH /api/inventory/:id - Update inventory item
  */
-router.patch('/api/inventory/:id', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+router.patch('/api/inventory/:id', requireAdminAuth, requireGranularPermission('inventory.editItem'), async (req: Request, res: Response) => {
     try {
         const existingItem = await inventoryRepo.getInventoryItem(req.params.id);
         // Validate + whitelist fields. Raw req.body let callers set arbitrary
@@ -264,7 +264,7 @@ router.patch('/api/inventory/:id', requireAdminAuth, requirePermission('inventor
 /**
  * PATCH /api/inventory/:id/stock - Update inventory stock quantity
  */
-router.patch('/api/inventory/:id/stock', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+router.patch('/api/inventory/:id/stock', requireAdminAuth, requireGranularPermission('inventory.adjustStock'), async (req: Request, res: Response) => {
     try {
         const { quantity } = req.body;
         if (typeof quantity !== 'number') {
@@ -350,7 +350,7 @@ router.delete('/api/inventory/:id', requireAdminAuth, requirePermission('invento
 /**
  * POST /api/inventory/:id/serials - Add new serial numbers (restock)
  */
-router.post('/api/inventory/:id/serials', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+router.post('/api/inventory/:id/serials', requireAdminAuth, requireGranularPermission('inventory.adjustStock'), async (req: Request, res: Response) => {
     try {
         const { serials } = req.body;
         if (!Array.isArray(serials) || serials.length === 0) {
@@ -403,7 +403,7 @@ router.post('/api/inventory/:id/serials', requireAdminAuth, requirePermission('i
 /**
  * POST /api/inventory/bulk-import - Bulk import inventory items
  */
-router.post('/api/inventory/bulk-import', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+router.post('/api/inventory/bulk-import', requireAdminAuth, requireGranularPermission('inventory.addItem'), async (req: Request, res: Response) => {
     try {
         const { items } = req.body;
         if (!Array.isArray(items) || items.length === 0) {
@@ -494,7 +494,7 @@ router.post('/api/inventory/bulk-import', requireAdminAuth, requirePermission('i
 /**
  * POST /api/inventory/local-purchases - Create local purchase
  */
-router.post('/api/inventory/local-purchases', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+router.post('/api/inventory/local-purchases', requireAdminAuth, requireGranularPermission('inventory.addItem'), async (req: Request, res: Response) => {
     try {
         // Admin auth uses session (not Passport req.user) — look up actual name
         const adminUserId = req.session?.adminUserId;
@@ -581,7 +581,7 @@ router.get('/api/products/:id', async (req: Request, res: Response) => {
 /**
  * POST /api/products - Create product
  */
-router.post('/api/products', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+router.post('/api/products', requireAdminAuth, requireGranularPermission('inventory.addItem'), async (req: Request, res: Response) => {
     try {
         const validated = insertProductSchema.parse(req.body);
         const product = await storage.createProduct(validated);
@@ -594,7 +594,7 @@ router.post('/api/products', requireAdminAuth, requirePermission('inventory'), a
 /**
  * PATCH /api/products/:id - Update product
  */
-router.patch('/api/products/:id', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+router.patch('/api/products/:id', requireAdminAuth, requireGranularPermission('inventory.editItem'), async (req: Request, res: Response) => {
     try {
         const product = await storage.updateProduct(req.params.id, req.body);
         if (!product) {
@@ -624,7 +624,7 @@ router.delete('/api/products/:id', requireAdminAuth, requirePermission('inventor
 /**
  * POST /api/inventory/:id/wastage - Report wastage for an item
  */
-router.post('/api/inventory/:id/wastage', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+router.post('/api/inventory/:id/wastage', requireAdminAuth, requireGranularPermission('inventory.adjustStock'), async (req: Request, res: Response) => {
     try {
         const payload = {
             ...req.body,
@@ -660,7 +660,7 @@ router.post('/api/inventory/:id/wastage', requireAdminAuth, requirePermission('i
  * Consume a part from inventory for a specific job.
  * Body: { jobId, quantity, consumedBy, consumedByName }
  */
-router.post('/api/inventory/:id/consume', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+router.post('/api/inventory/:id/consume', requireAdminAuth, requireGranularPermission('inventory.adjustStock'), async (req: Request, res: Response) => {
     try {
         const { jobId, quantity = 1, consumedByName } = req.body;
         const consumedBy = req.session?.adminUserId || 'system';

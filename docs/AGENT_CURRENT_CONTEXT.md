@@ -1,6 +1,8 @@
 # Agent Current Context
 
-Last updated: 2026-07-01
+Last updated: 2026-07-04
+
+**Current operating rules live in `docs/AI_AGENT_OPERATING_RULES.md` (v2026-07-04-v3).** If any rule in this file conflicts with the master, the master wins.
 
 ## Product
 
@@ -55,12 +57,7 @@ Post-security-audit, preparing for pilot with P0 fixes pending.
 
 ## Current Working Rules
 
-- Do not freely redesign frontend.
-- Do not change backend during UI tasks.
-- Do not change customer/corporate while fixing admin unless explicitly requested.
-- Do not hide content under fixed bottom navigation.
-- Do not add dark mode.
-- Do not import full external UI templates.
+See `docs/AI_AGENT_OPERATING_RULES.md` for the full master rules. Key principles: do not freely redesign frontend, do not change backend during UI tasks, do not change customer/corporate while fixing admin unless explicitly requested, do not hide content under fixed bottom navigation, do not add dark mode, do not import full external UI templates.
 
 ## Planned Next Phases
 
@@ -72,12 +69,13 @@ Post-security-audit, preparing for pilot with P0 fixes pending.
 
 | Doc | Purpose |
 |-----|---------|
-| `AGENTS.md` | Agent role, stack, code rules |
-| `rules.md` | Coordination contract |
+| `docs/AI_AGENT_OPERATING_RULES.md` | **Master operating policy** — evidence, QA, git, deployment, secrets, report format |
+| `AGENTS.md` | Agent role, stack, code rules (quick primer) |
+| `rules.md` | Read order + ownership (routing file) |
 | `docs/AGENT_FRONTEND_PLAYBOOK.md` | UI patterns, mobile primitives |
 | `docs/AGENT_BACKEND_PLAYBOOK.md` | Server patterns, permissions, SQL |
 | `docs/AGENT_DESKTOP_NATIVE_DESIGN.md` | Desktop admin layout rules |
-| `docs/AGENT_TESTING_PLAYBOOK.md` | QA tools, test rules, reporting |
+| `docs/AGENT_TESTING_PLAYBOOK.md` | QA tools, test scripts, reporting |
 | `docs/AGENT_SKILLS.md` | Skill registry |
 | `docs/AGENT_HANDOFF_TEMPLATE.md` | Session handoff format |
 | `docs/RELEASE_CHECKLIST.md` | Pre-deploy verification |

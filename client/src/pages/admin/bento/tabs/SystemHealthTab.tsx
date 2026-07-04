@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { BentoCard, DashboardSkeleton } from "../shared";
 import { jobTicketsApi, serviceRequestsApi, inventoryApi } from "@/lib/api";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -38,10 +39,8 @@ export default function SystemHealthTab({ onNavigate }: SystemHealthTabProps) {
                     const isCorporate = !!job.corporateClientId || !!job.corporateChallanId;
 
                     // For corporate jobs: always use corporateJobNumber as the searchable identifier.
-                    // For walk-in jobs: use the JOB-XXXX id, or customer name as last resort.
-                    const displayId = isCorporate
-                        ? (job.corporateJobNumber || job.id)
-                        : (job.id?.startsWith('JOB-') ? job.id : (job.customer || job.id));
+                    // For walk-in jobs: use the safe display ref (JOB-XXXX or last-6 of id).
+                    const displayId = getSafeJobDisplayRef(job);
 
                     issues.push({
                         id: `job-${job.id}`,

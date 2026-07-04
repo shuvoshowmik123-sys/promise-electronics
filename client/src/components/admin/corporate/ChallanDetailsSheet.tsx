@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { corporateApi } from "@/lib/api";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { cn } from "@/lib/utils";
 
 interface ChallanDetailsSheetProps {
@@ -161,7 +162,7 @@ export function ChallanDetailsSheet({ challan, client, onClose, onReprint, isPri
                                                 <div className="flex items-center justify-between">
                                                     <div className="flex items-center gap-2">
                                                         <span className="font-mono text-xs font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
-                                                            {job.corporateJobNumber || job.id}
+                                                            {getSafeJobDisplayRef(job)}
                                                         </span>
                                                         <span className="font-medium text-sm text-slate-800">{job.device}</span>
                                                     </div>

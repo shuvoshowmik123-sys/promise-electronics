@@ -11505,3 +11505,137 @@ The SELECT display value still uses `COALESCE(NULLIF(serial_number, ''), NULLIF(
 ### Verification Status
 
 Ready for inspector review. Single-line WHERE-clause fix, all three QA commands pass clean.
+
+## Phase 32B-Hotfix-2 — Internal Job ID Display Leak Fix (2026-07-04)
+
+**Problem:** Phase 32B-Hotfix QA discovered the admin Dashboard "Recent Jobs" table displayed a raw 21-char nanoid (`Z8WyAxdjXVulsPRruL2rl`) as the primary ticket-number label for non-corporate jobs. Root cause: `toDashboardJobSummary()` in `server/repositories/analytics.repository.ts:29` used `ticketNumber: job.corporateJobNumber || job.id` — when `corporateJobNumber` is NULL (walk-in/legacy/warranty-created jobs), the raw internal database `id` (nanoid) was exposed as the visible label. The same `corporateJobNumber || id` fallback pattern existed in 7 more places across server + client, including a SQL `COALESCE(corporate_job_number, id)` in `getJobOverview()`.
+
+**Fix:** Added one shared backend-safe display helper `getSafeJobDisplayRef()` in `shared/job-display-utils.ts` (importable by both server via `../../shared/job-display-utils.js` and client via `@shared/job-display-utils`). Behavior:
+1. Returns `corporateJobNumber` if present (trimmed).
+2. Returns `"JOB-UNKNOWN"` if `id` is missing/empty.
+3. Returns `id.toUpperCase()` if `id` already matches `JOB-YYYY-NNNN` format.
+4. Otherwise returns `JOB-${id.slice(-6).toUpperCase()}` — a stable, human-readable pseudo-ticket derived from the last 6 chars of the internal id (never the full nanoid).
+
+Applied the helper to all 8 display sites, leaving 3 internal search/selection call sites untouched (per requirements: internal IDs may still be used for API lookup, search payloads, selection, joins, mutations).
+
+### Files Changed
+
+**New file:**
+- `shared/job-display-utils.ts` — shared `getSafeJobDisplayRef()` helper
+
+**Server:**
+- `server/repositories/analytics.repository.ts` — 3 sites: `toDashboardJobSummary()` (line 29), `getJobOverview()` SQL `COALESCE` (line 366, replaced with separate `corporateJobNumber` column + JS post-map), `readyForDelivery` map (line 397), `mapJob()` (line 467). Added import.
+- `server/repositories/corporate.repository.ts` — line 364 `jobNo` fallback in challan line items. Added import.
+
+**Client:**
+- `client/src/pages/admin/bento/tabs/CorporateRepairsTab.tsx` — 2 sites: delivery line item `jobNo` (line 321), visible `#{...}` label (line 1243). Left line 255 `setSearch()` untouched (internal selection).
+- `client/src/pages/admin/bento/tabs/FinancesTabManualPayments.tsx` — line 95 dropdown `label`.
+- `client/src/pages/admin/bento/tabs/SystemHealthTab.tsx` — lines 42-44 display logic (replaced custom isCorporate branch with helper).
+- `client/src/pages/tech/TechDashboard.tsx` — line 247 visible `#{...}` label.
+- `client/src/components/admin/corporate/JobDetailsSheet.tsx` — line 141 `Job #{...}` heading.
+- `client/src/components/admin/corporate/ChallanHistoryTable.tsx` — line 67 challan line item `jobNo`.
+- `client/src/components/admin/corporate/ChallanDetailsSheet.tsx` — line 164 visible job ref badge.
+- `client/src/pages/corporate/job-tracker.tsx` — line 186 job list label.
+- `client/src/pages/corporate/job-details.tsx` — line 121 `Ticket #{...}` heading.
+
+**Untouched (intentional internal selection / search payloads):**
+- `client/src/pages/admin/bento/shared/GlobalSearch.tsx` lines 842-843 — cmdk search `value` + `onNavigate` search query (internal matching, not display; already has its own safe `getJobDisplayId()` for visible labels at lines 837/855/916/934).
+- `client/src/pages/admin/bento/tabs/CorporateRepairsTab.tsx` line 255 — `setSearch()` for in-tab search matching (internal selection).
+
+### Tests Run
+
+- `npx tsc --noEmit --pretty false` — **PASS** (no output)
+- `npx vite build --mode development` — **PASS** (built in 45.55s)
+- `git diff --check` — **PASS** (no whitespace errors)
+
+### Remaining Debt
+
+- **Warranty-created jobs:** `server/routes/warranty.routes.ts` creates linked jobs with `id: nanoid()`. These jobs now display as `JOB-XXXXXX` (last 6 of nanoid) instead of the raw nanoid — safe, but not a true `JOB-YYYY-NNNN` sequence. A future improvement could assign proper sequential job numbers to warranty-created jobs; out of scope for this hotfix.
+- **Legacy/imported jobs:** Same as above — any job without a `corporateJobNumber` now shows `JOB-XXXXXX` instead of raw nanoid. Acceptable for display; internal `id` unchanged for API lookup.
+
+### Verification Status
+
+Ready for inspector review. All 8 display sites fixed with shared helper, 3 internal search/selection sites intentionally preserved, all three QA commands pass clean.
+
+## Phase 32B-Hotfix-2-Update — Warranty Job ID + Remaining Display Leaks (2026-07-04)
+
+**Problem:** Phase 32B-Hotfix-2 fixed 8 display sites but left two gaps: (1) warranty-created linked jobs still used `id: nanoid()` producing raw nanoid IDs that would later appear in dashboards; (2) 8 additional walk-in job display sites in `JobTicketsTab.tsx`, `JobTicketGrid.tsx`, `JobTicketList.tsx`, `JobCardMobile.tsx`, `JobDetailsSheet.tsx` (jobs folder), and `JobPrintTemplate.ts` used `ticketNumber || job.id.slice(-6).toUpperCase()` — a truncated-nanoid fallback that was inconsistent with the shared helper.
+
+**Fix:**
+1. `server/routes/warranty.routes.ts:372` — replaced `id: nanoid()` with `id: await jobRepo.getNextJobNumber()`. Warranty-created jobs now get proper `JOB-YYYY-NNNN` IDs. Removed unused `nanoid` import. `parentJobId` preserved as `claim.originalJobId` (original claim job ID). `newJobId` stores the new `JOB-YYYY-NNNN` ID.
+2. `client/src/pages/admin/bento/tabs/CorporateRepairsTab.tsx:1742` — replaced `selectedJobObjects[0]?.corporateJobNumber || selectedJobObjects[0]?.id` with `getSafeJobDisplayRef(selectedJobObjects[0])`.
+3. Applied `getSafeJobDisplayRef()` to 8 walk-in job display sites:
+   - `JobTicketsTab.tsx` lines 593, 778, 1000 (print template + 2 visible labels)
+   - `JobTicketGrid.tsx` line 150 (grid visible label)
+   - `JobTicketList.tsx` line 121 (list visible label)
+   - `JobCardMobile.tsx` line 79 (mobile card label)
+   - `JobDetailsSheet.tsx` line 204 (details sheet heading)
+   - `JobPrintTemplate.ts` line 28 (print template jobNo)
+
+**Re-scan result:** All `corporateJobNumber || id` and `ticketNumber || id.slice(-6)` visible display patterns are fixed. 3 internal search/selection call sites in `GlobalSearch.tsx` (lines 842-843, 922) and `CorporateRepairsTab.tsx` (line 255) intentionally preserved per requirements.
+
+### Files Changed (this update)
+
+- `server/routes/warranty.routes.ts` — `id: nanoid()` → `id: await jobRepo.getNextJobNumber()`, removed unused `nanoid` import
+- `client/src/pages/admin/bento/tabs/CorporateRepairsTab.tsx` — line 1742 extension dialog display
+- `client/src/pages/admin/bento/tabs/JobTicketsTab.tsx` — lines 593, 778, 1000 (3 display sites)
+- `client/src/pages/admin/bento/tabs/jobs/JobTicketGrid.tsx` — line 150 grid label
+- `client/src/pages/admin/bento/tabs/jobs/JobTicketList.tsx` — line 121 list label
+- `client/src/pages/admin/bento/tabs/jobs/JobCardMobile.tsx` — line 79 mobile card label
+- `client/src/pages/admin/bento/tabs/jobs/JobDetailsSheet.tsx` — line 204 details heading
+- `client/src/pages/admin/bento/tabs/jobs/JobPrintTemplate.ts` — line 28 print jobNo
+
+### Before/After — Warranty Create-Job
+
+**Before:**
+```ts
+const newJob = await storage.createJobTicket({
+    ...originalJob,
+    id: nanoid(),                    // raw 21-char nanoid, e.g. "Z8WyAxdjXVulsPRruL2rl"
+    parentJobId: claim.originalJobId,
+    ...
+});
+await storage.updateWarrantyClaim(req.params.id, {
+    newJobId: newJob.id,             // stores raw nanoid
+    ...
+});
+```
+
+**After:**
+```ts
+const newJob = await storage.createJobTicket({
+    ...originalJob,
+    id: await jobRepo.getNextJobNumber(),  // proper JOB-YYYY-NNNN, e.g. "JOB-2026-0468"
+    parentJobId: claim.originalJobId,      // preserved original claim job ID
+    ...
+});
+await storage.updateWarrantyClaim(req.params.id, {
+    newJobId: newJob.id,                   // stores JOB-YYYY-NNNN
+    ...
+});
+```
+
+### Remaining Raw-ID Search Results (after fix)
+
+| File | Line | Pattern | Status |
+|------|------|---------|--------|
+| `GlobalSearch.tsx` | 842 | `job.corporateJobNumber \|\| job.id` | INTENTIONAL — cmdk search `value` (internal matching) |
+| `GlobalSearch.tsx` | 843 | `job.corporateJobNumber \|\| job.id` | INTENTIONAL — `onNavigate` search query (internal selection) |
+| `GlobalSearch.tsx` | 922 | `job.ticketNumber \|\| job.id` | INTENTIONAL — `onNavigate` search query (internal selection) |
+| `CorporateRepairsTab.tsx` | 255 | `match.corporateJobNumber \|\| match.id` | INTENTIONAL — `setSearch()` (internal search) |
+
+All 4 remaining are internal search/selection payloads (per requirements: "Internal search payloads may keep real IDs, visible labels may not"). Zero visible display leaks remain.
+
+### Git Status Note
+
+`shared/job-display-utils.ts` is untracked (`??`). Before committing: `git add shared/job-display-utils.ts`. Do NOT include `InventoryTab.tsx` or `inventory.routes.ts` in this commit — those changes are from prior phases.
+
+### Tests Run
+
+- `npx tsc --noEmit --pretty false` — **PASS** (no output)
+- `npx vite build --mode development` — **PASS** (built in 41.79s)
+- `git diff --check` — **PASS** (no whitespace errors)
+
+### Verification Status
+
+Ready for inspector review. Warranty jobs now get proper JOB-YYYY-NNNN IDs, all visible display leaks fixed, 3 internal search payloads intentionally preserved.

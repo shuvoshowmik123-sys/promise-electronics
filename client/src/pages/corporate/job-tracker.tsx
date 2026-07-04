@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { cn } from "@/lib/utils";
 import { corporatePortalApi } from "@/lib/api";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { corporateQueryConfig } from "@/lib/corporateApiErrorHandler";
 import {
     Loader2,
@@ -183,7 +184,7 @@ export default function CorporateJobTracker() {
                                                     <TableCell className="pl-8 py-5">
                                                         <div className="flex flex-col">
                                                             <span className="font-black text-slate-900 text-sm">
-                                                                {isOptimistic ? "Creating..." : (job.corporateJobNumber || job.id?.substring(0, 8))}
+                                                                {isOptimistic ? "Creating..." : getSafeJobDisplayRef(job)}
                                                             </span>
                                                             {!isOptimistic && (
                                                                 <span className="text-[10px] text-slate-400 font-mono tracking-tighter">REF: {job.id.substring(0, 6)}</span>

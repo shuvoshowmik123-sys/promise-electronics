@@ -9,6 +9,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { CheckCircle2, Clock, CreditCard, Eye, MoreVertical, PackageCheck, PenTool, Play, Printer, Truck, UserCheck, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { JobTicket } from "@shared/schema";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 
 const HighlightMatch = ({ text, query }: { text: string | undefined | null; query: string }) => {
     if (!text) return null;
@@ -118,7 +119,7 @@ export function JobTicketList({
                                 <TableCell>
                                     <div className="flex flex-col gap-1">
                                         <div className="flex items-center gap-1.5 flex-wrap">
-                                            <span className="font-mono text-sm font-bold text-blue-700 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100/50 w-fit">#{job.ticketNumber || job.id.slice(-6).toUpperCase()}</span>
+                                            <span className="font-mono text-sm font-bold text-blue-700 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100/50 w-fit">#{getSafeJobDisplayRef(job)}</span>
                                             <ClientClassBadge clientClass={(job as any).clientClass} size="xs" />
                                         </div>
                                         <span className="text-[11px] text-slate-400 flex items-center gap-1.5"><Clock className="w-3 h-3" /> {job.createdAt ? format(new Date(job.createdAt), 'MMM dd, yyyy') : 'N/A'}</span>

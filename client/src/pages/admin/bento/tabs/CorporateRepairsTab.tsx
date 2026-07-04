@@ -14,6 +14,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { corporateApi, adminUsersApi } from "@/lib/api";
 import { smartMatch } from "../shared/smartMatch";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 
 // UI Components
 import { Button } from "@/components/ui/button";
@@ -318,7 +319,7 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                 clientPhone: client.phone || client.contactPhone || undefined,
                 receiverName, receiverPhone,
                 items: selectedJobObjects.map((j: any) => ({
-                    id: j.id, jobNo: j.corporateJobNumber || j.id, brand: (j.device || '').split(' ')[0] || "Unknown",
+                    id: j.id, jobNo: getSafeJobDisplayRef(j), brand: (j.device || '').split(' ')[0] || "Unknown",
                     model: j.device || "Unknown", serial: j.tvSerialNumber || "", problem: j.reportedDefect || "", status: j.status
                 }))
             });
@@ -1240,7 +1241,7 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                                     >
                                         <div className="min-w-0">
                                             <div className="flex flex-wrap items-center gap-2">
-                                                <span className="font-mono text-sm font-bold text-blue-700">#{job.corporateJobNumber || job.id}</span>
+                                                <span className="font-mono text-sm font-bold text-blue-700">#{getSafeJobDisplayRef(job)}</span>
                                                 <Badge variant="outline">{displayJobStatus(job.status)}</Badge>
                                                 {job.extensionStatus && job.extensionStatus !== "none" && <Badge className="bg-amber-100 text-amber-800 hover:bg-amber-100">Extension {job.extensionStatus}</Badge>}
                                             </div>
@@ -1738,7 +1739,7 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                     </DialogHeader>
                     <div className="space-y-4 py-4">
                         <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-sm text-amber-800">
-                            Selected item: {selectedJobObjects[0]?.corporateJobNumber || selectedJobObjects[0]?.id || "None"}
+                            Selected item: {selectedJobObjects[0] ? getSafeJobDisplayRef(selectedJobObjects[0]) : "None"}
                         </div>
                         <div className="space-y-2">
                             <label className="text-sm font-medium">Requested Until</label>

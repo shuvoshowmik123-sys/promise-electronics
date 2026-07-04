@@ -10,6 +10,7 @@ import { storage } from '../storage.js';
 import { userRepo, analyticsRepo, orderRepo, serviceRequestRepo, jobRepo, employmentRepo } from '../repositories/index.js';
 import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 import { insertUserSchema } from '../../shared/schema.js';
+import { getSafeJobDisplayRef } from '../../shared/job-display-utils.js';
 import {
     requireAdminAuth,
     requireSuperAdmin,
@@ -721,78 +722,99 @@ router.get('/api/admin/customers', requireAdminAuth, requirePermission('users'),
         const allUsers = result.items;
         const customers = allUsers.filter(u => u.role === 'Customer');
 
-        const customersWithStats = await Promise.all(
-            customers.map(async (customer) => {
-                const orders = await orderRepo.getOrdersByCustomerId(customer.id);
-                const serviceRequests = await serviceRequestRepo.getServiceRequestsByCustomerId(customer.id);
-                const jobTickets = await jobRepo.getJobTicketsByCustomerPhone(customer.phone || '');
+        // Hoist full-table loads before the per-customer loop: 3 total DB reads instead of N x 2 full-table scans
+        const [allOrders, allServiceRequests, allJobTickets] = await Promise.all([
+            orderRepo.getAllOrders(),
+            serviceRequestRepo.getAllServiceRequests(),
+            jobRepo.getAllJobTickets(),
+        ]);
 
-                // Calculate LTV
-                const shopTotal = orders.reduce((sum, order) => sum + (order.total || 0), 0);
-                const serviceTotal = serviceRequests.reduce((sum, sr) => sum + ((sr.totalAmount || sr.quoteAmount) || 0), 0);
-                const jobTotal = jobTickets.reduce((sum, j) => sum + (j.estimatedCost || 0), 0);
-                const lifetimeValue = shopTotal + serviceTotal + jobTotal;
+        // Index for O(1) per-customer lookup
+        const ordersByCid = new Map<string, any[]>();
+        for (const o of allOrders) {
+            if (o.customerId) {
+                if (!ordersByCid.has(o.customerId)) ordersByCid.set(o.customerId, []);
+                ordersByCid.get(o.customerId)!.push(o);
+            }
+        }
+        const srByCid = new Map<string, any[]>();
+        for (const sr of allServiceRequests) {
+            if (sr.customerId) {
+                if (!srByCid.has(sr.customerId)) srByCid.set(sr.customerId, []);
+                srByCid.get(sr.customerId)!.push(sr);
+            }
+        }
+        const jobByPhone = new Map<string, any[]>();
+        for (const j of allJobTickets) {
+            if (j.customerPhone) {
+                const key = j.customerPhone.replace(/\D/g, '').slice(-10);
+                if (!jobByPhone.has(key)) jobByPhone.set(key, []);
+                jobByPhone.get(key)!.push(j);
+            }
+        }
 
-                // Find Latest Interaction Date
-                let lastInteractionDate = customer.joinedAt;
-                orders.forEach(o => {
-                    if (o.createdAt && new Date(o.createdAt) > new Date(lastInteractionDate)) lastInteractionDate = o.createdAt;
-                });
-                serviceRequests.forEach(sr => {
-                    if (sr.createdAt && new Date(sr.createdAt) > new Date(lastInteractionDate)) lastInteractionDate = sr.createdAt;
-                });
-                jobTickets.forEach(j => {
-                    if (j.createdAt && new Date(j.createdAt) > new Date(lastInteractionDate)) lastInteractionDate = j.createdAt;
-                });
+        const customersWithStats = customers.map((customer) => {
+            const normalizedPhone = (customer.phone || '').replace(/\D/g, '').slice(-10);
+            const orders: any[] = ordersByCid.get(customer.id) ?? [];
+            const serviceRequests: any[] = srByCid.get(customer.id) ?? [];
+            const jobTickets: any[] = jobByPhone.get(normalizedPhone) ?? [];
 
-                // Get job tickets similarly 
-                // Since this section comes from getAll routing, we might not have jobs attached here initially without extra joins,
-                // but we DO have it on the getOne route line 585. Let's fix the timeline assembly on the map. 
-                // Wait, it turns out lines 480-520 are for the 'getAll' method! I should check the exact lines.
+            const shopTotal = orders.reduce((sum: number, order: any) => sum + (order.total || 0), 0);
+            const serviceTotal = serviceRequests.reduce((sum: number, sr: any) => sum + ((sr.totalAmount || sr.quoteAmount) || 0), 0);
+            const jobTotal = jobTickets.reduce((sum: number, j: any) => sum + (j.estimatedCost || 0), 0);
+            const lifetimeValue = shopTotal + serviceTotal + jobTotal;
 
-                // Attach simplified timelines for the Activity Popup
-                const recentOrders = orders.map(o => ({
-                    id: o.id,
-                    type: 'Shop Order',
-                    reference: o.orderNumber || o.id,
-                    status: o.status,
-                    date: o.createdAt,
-                    amount: o.total
-                }));
+            let lastInteractionDate = customer.joinedAt;
+            orders.forEach((o: any) => {
+                if (o.createdAt && new Date(o.createdAt) > new Date(lastInteractionDate)) lastInteractionDate = o.createdAt;
+            });
+            serviceRequests.forEach((sr: any) => {
+                if (sr.createdAt && new Date(sr.createdAt) > new Date(lastInteractionDate)) lastInteractionDate = sr.createdAt;
+            });
+            jobTickets.forEach((j: any) => {
+                if (j.createdAt && new Date(j.createdAt) > new Date(lastInteractionDate)) lastInteractionDate = j.createdAt;
+            });
 
-                const recentServices = serviceRequests.map(sr => ({
-                    id: sr.id,
-                    type: 'Service Request',
-                    reference: sr.ticketNumber || sr.id,
-                    status: sr.status,
-                    date: sr.createdAt,
-                    amount: sr.totalAmount || sr.quoteAmount || 0
-                }));
+            const recentOrders = orders.map((o: any) => ({
+                id: o.id,
+                type: 'Shop Order',
+                reference: o.orderNumber || o.id,
+                status: o.status,
+                date: o.createdAt,
+                amount: o.total
+            }));
+            const recentServices = serviceRequests.map((sr: any) => ({
+                id: sr.id,
+                type: 'Service Request',
+                reference: sr.ticketNumber || sr.id,
+                status: sr.status,
+                date: sr.createdAt,
+                amount: sr.totalAmount || sr.quoteAmount || 0
+            }));
+            const recentJobs = jobTickets.map((j: any) => ({
+                id: j.id,
+                type: j.billingStatus === 'invoiced' ? 'Invoice' : 'Job Ticket',
+                reference: getSafeJobDisplayRef(j),
+                status: j.status,
+                date: j.createdAt,
+                amount: j.estimatedCost || 0
+            }));
 
-                const recentJobs = jobTickets.map(j => ({
-                    id: j.id,
-                    type: j.billingStatus === 'invoiced' ? 'Invoice' : 'Job Ticket',
-                    reference: j.id,
-                    status: j.status,
-                    date: j.createdAt,
-                    amount: j.estimatedCost || 0
-                }));
+            const interactionTimeline = [...recentOrders, ...recentServices, ...recentJobs]
+                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                .slice(0, 10);
 
-                // Combine and sort interaction timeline
-                const interactionTimeline = [...recentOrders, ...recentServices, ...recentJobs]
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+            return {
+                ...stripSensitiveFields(customer),
+                totalOrders: orders.length,
+                totalServiceRequests: serviceRequests.length,
+                totalJobTickets: jobTickets.length,
+                lifetimeValue,
+                lastInteractionDate,
+                interactionTimeline
+            };
+        });
 
-                return {
-                    ...stripSensitiveFields(customer),
-                    totalOrders: orders.length,
-                    totalServiceRequests: serviceRequests.length,
-                    totalJobTickets: jobTickets.length,
-                    lifetimeValue,
-                    lastInteractionDate,
-                    interactionTimeline
-                };
-            })
-        );
         res.json(customersWithStats);
     } catch (error) {
         console.error('[UsersRoutes] Failed to fetch customers:', (error as Error).message);

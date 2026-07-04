@@ -804,7 +804,8 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
 
             {/* Sliding Action Drawer (Add/Edit Form) */}
             <Sheet open={isAddEditDrawerOpen} onOpenChange={setIsAddEditDrawerOpen}>
-                <SheetContent className="w-full sm:max-w-2xl bg-white/95 backdrop-blur-xl border-l border-white/20 shadow-2xl overflow-y-auto">
+                <SheetContent className="w-full sm:max-w-2xl bg-white/95 backdrop-blur-xl border-l border-white/20 shadow-2xl p-0 flex flex-col gap-0">
+                    <div className="flex-1 min-h-0 overflow-y-auto px-6 pt-6">
                     <SheetHeader className="mb-6">
                         <SheetTitle className="text-2xl font-bold">{selectedItem ? "Edit Item" : "Add New Item"}</SheetTitle>
                         <SheetDescription>
@@ -812,7 +813,7 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                         </SheetDescription>
                     </SheetHeader>
 
-                    <div className="space-y-6 pb-20">
+                    <div className="space-y-6 pb-6">
                         {/* Type & Categories */}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
@@ -946,8 +947,9 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                             </div>
                         </div>
                     </div>
+                    </div>
 
-                    <SheetFooter className="absolute bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur border-t border-slate-100 flex flex-row justify-end space-x-2">
+                    <SheetFooter className="shrink-0 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))] bg-white/90 backdrop-blur border-t border-slate-100 flex flex-row justify-end space-x-2">
                         <Button variant="outline" onClick={() => setIsAddEditDrawerOpen(false)}>Cancel</Button>
                         <Button onClick={handleSubmitForm} disabled={createMutation.isPending || updateMutation.isPending} className="px-8 shadow-md">
                             {(createMutation.isPending || updateMutation.isPending) ? "Saving..." : (selectedItem ? "Save Changes" : "Create Item")}

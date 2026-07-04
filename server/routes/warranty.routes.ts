@@ -17,7 +17,6 @@ import { notificationRepo, jobRepo, warrantyRepo } from '../repositories/index.j
 import { auditLogger } from '../utils/auditLogger.js';
 import { db } from '../db.js';
 import { sql } from 'drizzle-orm';
-import { nanoid } from 'nanoid';
 import {
     requireAdminAuth,
     requireGranularPermission,
@@ -369,7 +368,7 @@ router.post('/api/warranty-claims/:id/create-job', requireGranularPermission('wa
 
         const newJob = await storage.createJobTicket({
             ...originalJob,
-            id: nanoid(),
+            id: await jobRepo.getNextJobNumber(),
             parentJobId: claim.originalJobId,
             jobType: 'warranty_claim',
             status: 'Pending',

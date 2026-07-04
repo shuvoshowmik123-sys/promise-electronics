@@ -7,6 +7,7 @@
 
 import { db, eq, or, and, gte, lte, lt, count, sum, desc, sql, schema, notInArray, type JobTicket } from './base.js';
 import * as jobRepo from './job.repository.js';
+import { getSafeJobDisplayRef } from '../../shared/job-display-utils.js';
 
 const ACTIVE_JOB_STATUSES = ['In Progress', 'Diagnosing', 'Repairing'] as const;
 const PENDING_JOB_STATUSES = ['Pending', 'Waiting for Parts', 'Approval Requested'] as const;
@@ -26,7 +27,7 @@ type DashboardJobSummary = {
 function toDashboardJobSummary(job: JobTicket): DashboardJobSummary {
     return {
         id: job.id,
-        ticketNumber: job.corporateJobNumber || job.id,
+        ticketNumber: getSafeJobDisplayRef(job),
         deviceModel: job.device || '—',
         problemDescription: job.issue || 'No description',
         technician: job.technician || null,
@@ -363,7 +364,7 @@ export async function getJobOverview(): Promise<JobOverviewResult> {
             // Due-today display list — only columns the UI needs, capped at 20 rows
             db.select({
                 id: schema.jobTickets.id,
-                ticketNumber: sql<string>`COALESCE(${schema.jobTickets.corporateJobNumber}, ${schema.jobTickets.id})`,
+                corporateJobNumber: schema.jobTickets.corporateJobNumber,
                 priority: schema.jobTickets.priority,
                 deviceType: schema.jobTickets.device,
                 model: schema.jobTickets.modelNumber,
@@ -393,7 +394,7 @@ export async function getJobOverview(): Promise<JobOverviewResult> {
         // Map completed jobs to frontend field names
         const readyForDelivery: JobOverviewItem[] = completedJobs.map(j => ({
             id: j.id,
-            ticketNumber: j.corporateJobNumber || j.id,
+            ticketNumber: getSafeJobDisplayRef(j),
             priority: j.priority,
             deviceType: j.device ?? null,
             model: j.modelNumber ?? null,
@@ -408,7 +409,16 @@ export async function getJobOverview(): Promise<JobOverviewResult> {
         }));
 
         return {
-            dueToday: dueTodayRows,
+            dueToday: dueTodayRows.map((r) => ({
+                id: r.id,
+                ticketNumber: getSafeJobDisplayRef(r),
+                priority: r.priority,
+                deviceType: r.deviceType,
+                model: r.model,
+                technician: r.technician,
+                customerName: r.customerName,
+                deadline: r.deadline,
+            })),
             dueTomorrow: [],    // counts only — not rendered as list
             dueThisWeek: [],    // counts only — not rendered as list
             readyForDelivery,
@@ -454,7 +464,7 @@ export async function getJobOverview(): Promise<JobOverviewResult> {
 
         const mapJob = (j: JobTicket): JobOverviewItem => ({
             id: j.id,
-            ticketNumber: j.corporateJobNumber || j.id,
+            ticketNumber: getSafeJobDisplayRef(j),
             priority: j.priority ?? null,
             deviceType: j.device ?? null,
             model: j.modelNumber ?? null,

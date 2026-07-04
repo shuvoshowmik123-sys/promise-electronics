@@ -1,5 +1,6 @@
 import { format } from "date-fns";
 import { JobTicket } from "@shared/schema";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 
 const escapeHtml = (value: string | null | undefined): string => {
     if (!value) return "";
@@ -25,7 +26,7 @@ export function generatePrintHtml(
         : "To be assessed";
     const safeLogoUrl = escapeHtml(logoUrl || "");
     const safeTrackingUrl = escapeHtml(trackingUrl);
-    const jobNo = escapeHtml((job as any).ticketNumber || job.id.slice(-6).toUpperCase());
+    const jobNo = escapeHtml(getSafeJobDisplayRef(job as any));
 
     return `
       <!DOCTYPE html>

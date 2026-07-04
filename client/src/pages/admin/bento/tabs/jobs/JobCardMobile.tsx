@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { JobTicket } from "@shared/schema";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { HighlightMatch } from "../../shared";
 import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
 import { getPrimaryAction, getStatusVisual, mobileCardVariants } from "./jobActions";
@@ -76,7 +77,7 @@ export function JobCardMobile({
                 <div className="flex items-start justify-between gap-1.5">
                     <div className="min-w-0 space-y-1">
                         <span className="block font-mono text-[11px] font-bold text-slate-500 truncate">
-                            #<HighlightMatch text={j.ticketNumber || job.id.slice(-6).toUpperCase()} query={searchQuery} />
+                            #<HighlightMatch text={getSafeJobDisplayRef(j)} query={searchQuery} />
                         </span>
                         <ClientClassBadge clientClass={j.clientClass} size="xs" />
                     </div>

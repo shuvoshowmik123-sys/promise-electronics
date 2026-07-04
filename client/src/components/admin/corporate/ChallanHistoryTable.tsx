@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { corporateApi } from "@/lib/api";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import {
     Table,
     TableBody,
@@ -64,7 +65,7 @@ export function ChallanHistoryTable({ client }: ChallanHistoryTableProps) {
                     receiverPhone: challan.receiverPhone || "",
                     items: jobs.map((j: any) => ({
                         id: j.id,
-                        jobNo: j.corporateJobNumber || j.id,
+                        jobNo: getSafeJobDisplayRef(j),
                         brand: j.device.split(' ')[0] || "Unknown",
                         model: j.device,
                         serial: j.tvSerialNumber || "",

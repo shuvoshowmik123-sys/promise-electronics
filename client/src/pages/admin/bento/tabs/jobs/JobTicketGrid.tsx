@@ -9,6 +9,7 @@ import { BentoCard } from "../../shared";
 import { Clock, Eye, MoreVertical, PenTool, Phone, Printer, QrCode, User, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { JobTicket } from "@shared/schema";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { JobCardMobile } from "./JobCardMobile";
@@ -147,7 +148,7 @@ export function JobTicketGrid({
                                             />
                                         )}
                                         <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100/50 tracking-wide truncate">
-                                            #<HighlightMatch text={(job as any).ticketNumber || job.id.slice(-6).toUpperCase()} query={searchQuery} />
+                                            #<HighlightMatch text={getSafeJobDisplayRef(job as any)} query={searchQuery} />
                                         </span>
                                         <ClientClassBadge clientClass={(job as any).clientClass} size="xs" />
                                         <Badge variant="outline" className={cn("text-[9px] px-1.5 py-0 h-4 font-bold uppercase tracking-wider border-0 shadow-sm",

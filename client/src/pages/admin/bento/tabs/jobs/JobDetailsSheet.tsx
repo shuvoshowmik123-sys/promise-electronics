@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getPrimaryAction, getStatusVisual } from "./jobActions";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
@@ -201,7 +202,7 @@ export function JobDetailsSheet({
                                         <div>
                                             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">Job Ticket</p>
                                             <p className="font-mono text-2xl font-black tracking-tight text-white">
-                                                #{job.ticketNumber || job.id.slice(-6).toUpperCase()}
+                                                #{getSafeJobDisplayRef(job)}
                                             </p>
                                         </div>
                                         <Badge className={cn(

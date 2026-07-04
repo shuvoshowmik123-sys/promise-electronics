@@ -22,6 +22,10 @@ import { Loader2, MoreVertical, CheckCircle, XCircle, ArrowRight } from "lucide-
 import { toast } from "sonner";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 
+function safeClaimRef(id: string): string {
+    return 'CRR-' + id.slice(-6).toUpperCase();
+}
+
 function safeJobRef(claim: any, kind: 'original' | 'new'): string | null {
     if (kind === 'original') {
         if (claim.originalJobSafeRef) return claim.originalJobSafeRef as string;
@@ -102,7 +106,7 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
                     <div key={claim.id} className="rounded-xl border bg-white p-3 shadow-sm">
                         <div className="flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 min-w-0">
-                                <span className="font-mono text-[11px] text-muted-foreground">{claim.id.slice(0, 8)}</span>
+                                <span className="font-mono text-[11px] text-muted-foreground">{safeClaimRef(claim.id)}</span>
                                 <Badge variant={claim.status === 'approved' ? 'default' : claim.status === 'rejected' ? 'destructive' : 'secondary'} className="text-[10px] px-1.5 py-0">
                                     {claim.status}
                                 </Badge>
@@ -148,7 +152,7 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
             <Table>
                 <TableHeader>
                     <TableRow>
-                        <TableHead>Claim ID</TableHead>
+                        <TableHead>Claim Ref</TableHead>
                         <TableHead>Original Job</TableHead>
                         <TableHead>Type</TableHead>
                         <TableHead>Reason</TableHead>
@@ -167,7 +171,7 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
                     ) : (
                         claimsArray.map((claim: any) => (
                             <TableRow key={claim.id}>
-                                <TableCell className="font-mono text-xs">{claim.id.slice(0, 8)}</TableCell>
+                                <TableCell className="font-mono text-xs">{safeClaimRef(claim.id)}</TableCell>
                                 <TableCell>#{safeJobRef(claim, 'original')}</TableCell>
                                 <TableCell className="capitalize">{claim.claimType}</TableCell>
                                 <TableCell className="max-w-[200px] truncate">{claim.claimReason}</TableCell>

@@ -1,5 +1,7 @@
 # Release Checklist
 
+**Master release gate:** `docs/AI_AGENT_OPERATING_RULES.md` Section 17. If this checklist conflicts with the master, the master wins.
+
 ## Pre-Deploy
 
 ### Environment
@@ -86,6 +88,17 @@
 - [ ] Password hashes never returned in any API response
 
 ## Post-Deploy
+
+### Deployed Commit Verification
+- [ ] Local commit is pushed to remote (`git log --oneline origin/main..HEAD` is empty)
+- [ ] Render backend deployed commit hash includes the signed-off fix
+- [ ] Vercel frontend deployed commit hash includes the signed-off fix
+- [ ] Production domain is not running an older bundle
+- [ ] `git status --short` is clean (except explicitly ignored local-only folders)
+- [ ] No untracked source file is required by imported code
+- [ ] Secret scan: PASS / MANUAL PASS / SECRET FOUND (see master Section 9)
+
+### Health Checks
 
 - [ ] Server starts without migration errors
 - [ ] Health endpoint returns 200: `GET /api/health`
