@@ -24,6 +24,7 @@ import type { InfoBox, HomepageStat, FAQItem, ContactInfo, HomepageBrand, Proble
 import type { TeamMember } from "./settings/AboutUsSection";
 const CmsHomeSection = lazy(() => import("./settings/CmsHomeSection"));
 const AboutUsSection = lazy(() => import("./settings/AboutUsSection"));
+const BulkImportSection = lazy(() => import("./settings/BulkImportSection"));
 const ServiceConfigEditor = lazy(() => import("./settings/ServiceConfigEditor").then(m => ({ default: m.ServiceConfigEditor })));
 import { TagListCard } from "./settings/TagListCard";
 
@@ -44,6 +45,7 @@ function resolveSettingsDestination(query: string): { sheet?: 'identity' | 'fina
     if (/(service|category|brand|inch|symptom|catalog|stock|shop)/.test(normalized)) return { sheet: "catalog" };
     if (/(home|homepage|hero|faq|pricing|banner|cms|website)/.test(normalized)) return { panel: "cmshome" };
     if (/(about|team|mission|vision|address)/.test(normalized)) return { panel: "about" };
+    if (/(import|bulk|csv|data setup)/.test(normalized)) return { panel: "bulkimport" };
     return {};
 }
 
@@ -571,6 +573,13 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         right={null} onClick={() => setSelectedPanel("about")} />
                 </MobilePanel>
 
+                {/* Data Setup */}
+                <MobileSectionTitle>Data Setup</MobileSectionTitle>
+                <MobilePanel>
+                    <MobileSettingsRow icon={Upload} iconColor="text-blue-600" iconBg="bg-blue-50" label="Bulk Import Center" helper="CSV import for catalog, inventory & products"
+                        right={null} onClick={() => setSelectedPanel("bulkimport")} />
+                </MobilePanel>
+
                 {/* Danger Zone */}
                 <MobileSectionTitle>Advanced</MobileSectionTitle>
                 <div className="mx-4 mb-6 rounded-[20px] border border-red-200 bg-white overflow-hidden">
@@ -785,6 +794,33 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         </BentoCard>
                     </motion.div>
                 </div>
+
+                {/* Row 6: Bulk Import Center (desktop) */}
+                <motion.div variants={itemVariants} className="h-full">
+                    <BentoCard
+                        className="cursor-pointer group relative overflow-hidden h-full hover:-translate-y-1 hover:shadow-xl transition-all duration-300"
+                        title="Bulk Import Center"
+                        icon={<Upload className="w-5 h-5 text-blue-600" />}
+                        variant="glass"
+                        onClick={() => setSelectedPanel("bulkimport")}
+                    >
+                        <div className="flex flex-col h-full justify-between pb-2 mt-2 relative z-10">
+                            <div className="space-y-3">
+                                <div className="p-3 bg-white/50 backdrop-blur-sm rounded-xl border border-slate-200/60 group-hover:bg-blue-50/50 group-hover:border-blue-200/50 transition-colors">
+                                    <p className="text-sm font-semibold text-slate-800">CSV Bulk Import</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">First-Time Data Setup</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <span className="px-2 py-1 bg-white border border-slate-200/60 rounded-md text-xs font-semibold text-slate-600 shadow-sm">6 Import Types</span>
+                                    <span className="px-2 py-1 bg-white border border-slate-200/60 rounded-md text-xs font-semibold text-slate-600 shadow-sm">Preview & Validate</span>
+                                </div>
+                            </div>
+                            <div className="text-blue-600 font-semibold text-sm text-center pt-5 opacity-0 group-hover:opacity-100 transition-all">
+                                Open Import Wizard &rarr;
+                            </div>
+                        </div>
+                    </BentoCard>
+                </motion.div>
             </div>
 
         </motion.div>
@@ -827,8 +863,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             <MobileBottomSheetHandle />
                             <div className="border-b border-slate-100 bg-white px-4 py-3">
                                 <h2 className="flex min-w-0 items-center gap-2 text-base font-black text-slate-900">
-                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-5 h-5 text-indigo-500" /> : <Building2 className="w-5 h-5 text-emerald-500" />}
-                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS" : "About Us"}</span>
+                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-5 h-5 text-indigo-500" /> : selectedPanel === "about" ? <Building2 className="w-5 h-5 text-emerald-500" /> : <Upload className="w-5 h-5 text-blue-600" />}
+                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS" : selectedPanel === "about" ? "About Us" : "Bulk Import Center"}</span>
                                 </h2>
                             </div>
                             <div className="custom-scrollbar flex-1 overflow-y-auto bg-slate-50/30 px-3 pb-4">
@@ -874,13 +910,18 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         teamMembers={teamMembers} setTeamMembers={setTeamMembers}
                                     /></Suspense>
                                 )}
+                                {selectedPanel === "bulkimport" && (
+                                    <Suspense fallback={null}><BulkImportSection /></Suspense>
+                                )}
                             </div>
                             <div className="flex flex-col gap-2 border-t border-slate-100 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-                                <Button variant="outline" className="h-11 rounded-xl" onClick={() => setSelectedPanel(null)}>Close Editor</Button>
-                                <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
-                                    {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                                    Save & Close
-                                </Button>
+                                <Button variant="outline" className="h-11 rounded-xl" onClick={() => setSelectedPanel(null)}>Close</Button>
+                                {selectedPanel !== "bulkimport" && (
+                                    <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
+                                        {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                        Save & Close
+                                    </Button>
+                                )}
                             </div>
                         </MobileBottomSheetFrame>
 
@@ -890,11 +931,12 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             animate={{ opacity: 1, scale: 1, y: 0 }}
                             exit={{ opacity: 0, scale: 0.95, y: 20 }}
                             className="relative hidden md:flex h-auto max-h-[90vh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+                            style={selectedPanel === "bulkimport" ? { maxWidth: "56rem" } : undefined}
                         >
                             <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 p-6">
                                 <h2 className="flex min-w-0 items-center gap-3 text-2xl font-black text-slate-900">
-                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-6 h-6 text-indigo-500" /> : <Building2 className="w-6 h-6 text-emerald-500" />}
-                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS Editor" : "About Us Editor"}</span>
+                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-6 h-6 text-indigo-500" /> : selectedPanel === "about" ? <Building2 className="w-6 h-6 text-emerald-500" /> : <Upload className="w-6 h-6 text-blue-600" />}
+                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS Editor" : selectedPanel === "about" ? "About Us Editor" : "Bulk Import Center"}</span>
                                 </h2>
                                 <Button variant="ghost" size="icon" onClick={() => setSelectedPanel(null)} className="h-10 w-10 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200">
                                     <X className="w-5 h-5" />
@@ -943,13 +985,18 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         teamMembers={teamMembers} setTeamMembers={setTeamMembers}
                                     /></Suspense>
                                 )}
+                                {selectedPanel === "bulkimport" && (
+                                    <Suspense fallback={null}><BulkImportSection /></Suspense>
+                                )}
                             </div>
                             <div className="flex flex-col gap-2 border-t border-slate-100 bg-white p-5 md:flex-row md:justify-end">
-                                <Button variant="outline" className="h-10 rounded-xl" onClick={() => setSelectedPanel(null)}>Close Editor</Button>
-                                <Button className="h-10 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
-                                    {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
-                                    Save & Close
-                                </Button>
+                                <Button variant="outline" className="h-10 rounded-xl" onClick={() => setSelectedPanel(null)}>Close</Button>
+                                {selectedPanel !== "bulkimport" && (
+                                    <Button className="h-10 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
+                                        {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+                                        Save & Close
+                                    </Button>
+                                )}
                             </div>
                         </motion.div>
                     </div>

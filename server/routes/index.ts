@@ -71,6 +71,7 @@ import customerRepairJourneyRoutes from './customer-repair-journey.routes.js';
 import adminRepairJourneyRoutes from './admin-repair-journey.routes.js';
 import staffInviteRoutes from './staff-invites.routes.js';
 import logisticsTasksRoutes from './logistics-tasks.routes.js';
+import catalogImportRoutes from './catalog-import.routes.js'; // Phase 35A: Bulk Import Center
 
 /**
  * Register all routes with the Express application.
@@ -188,6 +189,10 @@ export async function registerRoutes(
 
     app.use(settingsRoutes);
     routeLog('[Routes] ✓ Settings routes registered');
+
+    // Phase 35A: Bulk Import Center (Super Admin only)
+    app.use(catalogImportRoutes);
+    routeLog('[Routes] ✓ Catalog import routes registered');
 
     app.use(attendanceRoutes);
     routeLog('[Routes] ✓ Attendance routes registered');

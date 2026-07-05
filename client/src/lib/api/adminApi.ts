@@ -12,6 +12,7 @@ import type {
 } from "@shared/schema";
 import type { AdminNotificationItem } from "@shared/types/admin-notifications";
 import { fetchApi } from "./httpClient";
+import { API_BASE_URL } from "../config";
 import { PaginationResult, Order, ProductVariant, AdminCustomer, CustomerDetails, SafeUser } from "./types";
 import type { CustomerRepairJourney, CustomerRepairJourneyDetail, CustomerJourneyStage } from "./customerApi";
 
@@ -1224,5 +1225,69 @@ export const quotationsApi = {
     delete: (id: string) =>
         fetchApi<void>(`/admin/quotations/${id}`, {
             method: "DELETE",
+        }),
+};
+
+// ─── Catalog Bulk Import (Phase 35A) ─────────────────────────────────────────
+
+export type CatalogImportType =
+    | 'service_categories' | 'service_catalog' | 'inventory_items'
+    | 'shop_products' | 'product_variants' | 'inventory_serials';
+
+export type CatalogImportMode = 'createOnly' | 'updateExisting' | 'createAndUpdate';
+
+export interface CatalogImportPreviewRow {
+    rowNumber: number;
+    status: 'valid' | 'invalid' | 'warning';
+    action: 'create' | 'update' | 'skip';
+    errors: string[];
+    warnings: string[];
+    normalized: Record<string, any>;
+}
+
+export interface CatalogImportPreview {
+    type: CatalogImportType;
+    totalRows: number;
+    validRows: number;
+    invalidRows: number;
+    warnings: string[];
+    rows: CatalogImportPreviewRow[];
+}
+
+export interface CatalogImportCommitResult {
+    batchId: string;
+    created: number;
+    updated: number;
+    skipped: number;
+    failed: number;
+    errors: string[];
+}
+
+export interface CatalogImportPayload {
+    type: CatalogImportType;
+    csvText: string;
+    mode: CatalogImportMode;
+    options?: { autoCreateCategories?: boolean };
+}
+
+export const catalogImportApi = {
+    /** Fetches the CSV template as text (caller turns it into a Blob download). */
+    getImportTemplate: async (type: CatalogImportType): Promise<string> => {
+        const response = await fetch(`${API_BASE_URL}/api/admin/catalog-import/templates/${type}`, {
+            credentials: 'include',
+            headers: { Accept: 'text/csv' },
+        });
+        if (!response.ok) throw new Error('Failed to download template');
+        return response.text();
+    },
+    previewCatalogImport: (payload: CatalogImportPayload) =>
+        fetchApi<CatalogImportPreview>("/admin/catalog-import/preview", {
+            method: "POST",
+            body: JSON.stringify(payload),
+        }),
+    commitCatalogImport: (payload: CatalogImportPayload) =>
+        fetchApi<CatalogImportCommitResult>("/admin/catalog-import/commit", {
+            method: "POST",
+            body: JSON.stringify(payload),
         }),
 };
