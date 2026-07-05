@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { drawerApi, settingsApi } from "@/lib/api";
+import { uploadToImageKit } from "@/lib/imagekit-upload";
 import { containerVariants, itemVariants, MobileScrollContent, MobileTabHeader, MobileTabLayout, MobileMarqueeText, MobileSegmentTabs } from "../shared";
 import { BentoCard } from "../shared/BentoCard";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
@@ -113,6 +114,21 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     });
     const [serviceAreas, setServiceAreas] = useState<string[]>([]);
     const [homepageBrands, setHomepageBrands] = useState<HomepageBrand[]>([]);
+
+    const handleUploadBrandLogo = async (id: number, file: File) => {
+        try {
+            const result = await uploadToImageKit(file, {
+                folder: 'cms/brands',
+                fileName: `brand-${id}-${file.name}`,
+                tags: ['brand-logo', 'cms'],
+            });
+            setHomepageBrands(prev => prev.map(b => b.id === id ? { ...b, logoUrl: result.url } : b));
+            toast({ title: "Logo uploaded", description: "Brand logo updated. Save settings to keep the change." });
+        } catch (err: any) {
+            toast({ title: "Upload failed", description: err?.message?.slice(0, 120) ?? "Could not upload logo.", variant: "destructive" });
+        }
+    };
+
     const [problemNavItems, setProblemNavItems] = useState<ProblemNavItem[]>([]);
     const [beforeAfterGallery, setBeforeAfterGallery] = useState<BeforeAfterItem[]>([]);
     const [pricingTable, setPricingTable] = useState<PricingItem[]>([]);
@@ -886,6 +902,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         pricingTable={pricingTable} setPricingTable={setPricingTable}
                                         trackRepairEnabled={trackRepairEnabled} setTrackRepairEnabled={setTrackRepairEnabled}
                                         googleMapUrl={googleMapUrl} setGoogleMapUrl={setGoogleMapUrl}
+                                        onUploadBrandLogo={handleUploadBrandLogo}
                                     /></Suspense>
                                 )}
                                 {selectedPanel === "about" && (
@@ -961,6 +978,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         pricingTable={pricingTable} setPricingTable={setPricingTable}
                                         trackRepairEnabled={trackRepairEnabled} setTrackRepairEnabled={setTrackRepairEnabled}
                                         googleMapUrl={googleMapUrl} setGoogleMapUrl={setGoogleMapUrl}
+                                        onUploadBrandLogo={handleUploadBrandLogo}
                                     /></Suspense>
                                 )}
                                 {selectedPanel === "about" && (

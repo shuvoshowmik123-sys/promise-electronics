@@ -166,6 +166,7 @@ export default function CmsHomeSection({
     const [newInfoBox, setNewInfoBox] = useState({ title: "", description: "" });
     const [newFaq, setNewFaq] = useState({ question: "", answer: "" });
     const [newBrand, setNewBrand] = useState("");
+    const [newBrandLogo, setNewBrandLogo] = useState("");
     const [newProblem, setNewProblem] = useState({ title: "", icon: "HelpCircle" });
     const [newBeforeAfter, setNewBeforeAfter] = useState({ title: "", before: "", after: "" });
     const [newPricing, setNewPricing] = useState({ service: "", price: "", note: "" });
@@ -195,10 +196,14 @@ export default function CmsHomeSection({
             setNewFaq({ question: "", answer: "" });
         }
     };
+    const updateBrand = (id: number, field: 'name' | 'logoUrl', value: string) => {
+        setHomepageBrands(homepageBrands.map(b => b.id === id ? { ...b, [field]: value } : b));
+    };
     const addBrand = () => {
-        if (newBrand) {
-            setHomepageBrands([...homepageBrands, { id: Date.now(), name: newBrand, logoUrl: "" }]);
+        if (newBrand.trim()) {
+            setHomepageBrands([...homepageBrands, { id: Date.now(), name: newBrand.trim(), logoUrl: newBrandLogo.trim() }]);
             setNewBrand("");
+            setNewBrandLogo("");
         }
     };
     const addProblem = () => {
@@ -542,37 +547,111 @@ export default function CmsHomeSection({
                 badge={<CountBadge count={homepageBrands.length} label="brands" />}
                 defaultOpen={false}
             >
-                <div className="space-y-4">
+                <div className="space-y-3">
+                    <p className="text-[11px] text-slate-400">
+                        These logos appear in the "Brands We Service" carousel on the customer homepage.
+                    </p>
+
+                    {/* Brand list */}
                     {homepageBrands.length === 0 ? (
-                        <EmptyState message="No brands configured." onAdd={() => setNewBrand("New Brand")} addLabel="Add Brand" />
+                        <EmptyState message="No brands configured." onAdd={() => { setNewBrand("New Brand"); }} addLabel="Add Brand" />
                     ) : (
-                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+                        <div className="space-y-2">
                             {homepageBrands.map((brand) => (
-                                <div key={brand.id} className="group relative flex items-center gap-2.5 p-3 bg-slate-50 border border-slate-100 rounded-xl hover:border-blue-200 hover:bg-blue-50/30 transition-all">
-                                    <div className="w-9 h-9 rounded-lg bg-white flex items-center justify-center overflow-hidden border border-slate-100 shrink-0">
-                                        {brand.logoUrl ? <img src={brand.logoUrl} alt={brand.name} className="w-full h-full object-contain" /> : <ImageIcon className="w-4 h-4 text-slate-300" />}
+                                <div key={brand.id} className="p-3 rounded-xl bg-slate-50 border border-slate-100 space-y-2 hover:border-blue-200 transition-colors">
+                                    {/* Row 1: logo preview + name + action buttons */}
+                                    <div className="flex items-center gap-2">
+                                        {/* Logo preview 48×48 */}
+                                        <div className="w-12 h-12 rounded-lg bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                                            {brand.logoUrl ? (
+                                                <img
+                                                    src={brand.logoUrl}
+                                                    alt={brand.name}
+                                                    className="w-full h-full object-contain"
+                                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                />
+                                            ) : (
+                                                <ImageIcon className="w-5 h-5 text-slate-300" />
+                                            )}
+                                        </div>
+                                        {/* Brand name input */}
+                                        <Input
+                                            value={brand.name}
+                                            onChange={(e) => updateBrand(brand.id, 'name', e.target.value)}
+                                            placeholder="Brand name"
+                                            className="h-9 text-sm bg-white border-slate-200 flex-1 min-w-0"
+                                        />
+                                        {/* Action buttons — always visible */}
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            <label className="cursor-pointer inline-flex items-center gap-1 h-8 px-2.5 text-xs border border-slate-200 rounded-lg bg-white hover:bg-slate-50 text-slate-600 font-medium transition-colors">
+                                                <Upload className="w-3 h-3" />
+                                                <span className="hidden sm:inline">Upload</span>
+                                                <input
+                                                    type="file"
+                                                    accept="image/*"
+                                                    className="hidden"
+                                                    onChange={(e) => e.target.files?.[0] && onUploadBrandLogo?.(brand.id, e.target.files[0])}
+                                                />
+                                            </label>
+                                            {brand.logoUrl && (
+                                                <Button
+                                                    size="icon"
+                                                    variant="ghost"
+                                                    onClick={() => updateBrand(brand.id, 'logoUrl', '')}
+                                                    title="Clear logo"
+                                                    className="h-8 w-8 text-slate-400 hover:text-slate-600 hover:bg-slate-100"
+                                                >
+                                                    <X className="w-3.5 h-3.5" />
+                                                </Button>
+                                            )}
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                onClick={() => setHomepageBrands(homepageBrands.filter(b => b.id !== brand.id))}
+                                                title="Delete brand"
+                                                className="h-8 w-8 text-red-400 hover:text-red-600 hover:bg-red-50"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </Button>
+                                        </div>
                                     </div>
-                                    <span className="text-xs font-medium text-slate-700 truncate flex-1">{brand.name}</span>
-                                    <div className="absolute top-1.5 right-1.5 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <label className="cursor-pointer text-blue-500 hover:text-blue-600 p-1 rounded hover:bg-blue-50">
-                                            <Upload className="w-3 h-3" />
-                                            <input type="file" className="hidden" onChange={(e) => e.target.files?.[0] && onUploadBrandLogo?.(brand.id, e.target.files[0])} />
-                                        </label>
-                                        <button onClick={() => setHomepageBrands(homepageBrands.filter(b => b.id !== brand.id))}
-                                            className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50">
-                                            <X className="w-3 h-3" />
-                                        </button>
-                                    </div>
+                                    {/* Row 2: logo URL input — full width, always visible */}
+                                    <Input
+                                        value={brand.logoUrl}
+                                        onChange={(e) => updateBrand(brand.id, 'logoUrl', e.target.value)}
+                                        placeholder="https://.../brand-logo.png"
+                                        className="h-8 text-xs bg-white border-slate-200 w-full font-mono"
+                                    />
                                 </div>
                             ))}
                         </div>
                     )}
-                    <div className="flex gap-2 pt-3 border-t border-slate-100 max-w-sm">
-                        <Input value={newBrand} onChange={(e) => setNewBrand(e.target.value)}
-                            placeholder="New brand name" className="bg-white text-sm" />
-                        <Button onClick={addBrand} disabled={!newBrand} size="sm" className="shrink-0 rounded-lg">
-                            <Plus className="w-4 h-4 mr-1.5" /> Add
-                        </Button>
+
+                    {/* Add brand */}
+                    <div className="pt-3 border-t border-slate-100 space-y-2">
+                        <p className="text-[11px] text-slate-500 font-medium">Add new brand</p>
+                        <div className="flex flex-col sm:flex-row gap-2">
+                            <Input
+                                value={newBrand}
+                                onChange={(e) => setNewBrand(e.target.value)}
+                                placeholder="Brand name"
+                                className="bg-white text-sm sm:w-40 shrink-0"
+                            />
+                            <Input
+                                value={newBrandLogo}
+                                onChange={(e) => setNewBrandLogo(e.target.value)}
+                                placeholder="https://.../brand-logo.png (optional)"
+                                className="bg-white text-xs flex-1 font-mono"
+                            />
+                            <Button
+                                onClick={addBrand}
+                                disabled={!newBrand.trim()}
+                                size="sm"
+                                className="shrink-0 rounded-lg"
+                            >
+                                <Plus className="w-4 h-4 mr-1.5" /> Add Brand
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </CmsSection>
