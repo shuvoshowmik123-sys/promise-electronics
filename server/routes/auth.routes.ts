@@ -178,6 +178,12 @@ router.post('/api/admin/login', authLimiter, validate(adminLoginSchema), async (
         req.session.adminUserRole = result.user.role;
         req.session.adminUserPermissions = result.user.permissions ?? null;
 
+        // Clear any co-resident customer identity (Customer → Admin coexistence fix).
+        req.session.customerId = undefined;
+        req.session.authMethod = undefined;
+        req.session.authenticatedAt = undefined;
+        (req.session as any).passport = undefined;
+
         // Remember Me: extend this session's cookie lifetime to 30 days.
         // When false/undefined, the global default session lifetime is unchanged.
         if (rememberMe === true && req.session.cookie) {

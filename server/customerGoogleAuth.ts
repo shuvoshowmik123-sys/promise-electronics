@@ -1,8 +1,6 @@
 import passport from "passport";
 import { Strategy as GoogleStrategy, Profile } from "passport-google-oauth20";
-import session from "express-session";
 import type { Express, RequestHandler } from "express";
-import MemoryStore from "memorystore";
 import { storage } from "./storage.js";
 import { OAuth2Client } from 'google-auth-library';
 
@@ -23,39 +21,6 @@ declare module 'express-session' {
   }
 }
 
-export function getCustomerSession() {
-  const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
-  const MemoryStoreSession = MemoryStore(session);
-  const sessionStore = new MemoryStoreSession({
-    checkPeriod: 86400000, // prune expired entries every 24h
-  });
-
-  const sessionSecret = process.env.SESSION_SECRET;
-  if (!sessionSecret) {
-    console.warn("[CustomerAuth] SESSION_SECRET is not set — using fallback. Insecure for production.");
-  }
-
-  const isProduction = process.env.NODE_ENV === "production";
-  const isReplit = !!process.env.REPLIT_DEV_DOMAIN;
-  const useSecureCookie = isProduction || isReplit;
-
-  console.log(`[CustomerAuth] Session config: production=${isProduction}, secureCookie=${useSecureCookie}`);
-
-  return session({
-    secret: sessionSecret || "promise-electronics-fallback-secret-2025",
-    store: sessionStore,
-    resave: false,
-    saveUninitialized: false,
-    name: "customer.sid",
-    cookie: {
-      httpOnly: true,
-      secure: useSecureCookie,
-      maxAge: sessionTtl,
-      sameSite: "lax",
-    },
-  });
-}
-
 async function upsertCustomerFromGoogle(profile: Profile) {
   const email = profile.emails?.[0]?.value;
   const name = profile.displayName ||
@@ -74,8 +39,7 @@ async function upsertCustomerFromGoogle(profile: Profile) {
 }
 
 export async function setupCustomerAuth(app: Express) {
-  app.set("trust proxy", 1);
-  app.use(getCustomerSession());
+  // Global session middleware is already mounted in app.ts — do not add a second one here.
   app.use(passport.initialize());
   app.use(passport.session());
 

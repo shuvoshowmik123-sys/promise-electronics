@@ -186,6 +186,25 @@ export async function pruneOldAuditLogs() {
     }
 }
 
+// ─── Expired session cleanup ──────────────────────────────────────────────────
+// Deletes rows from user_sessions where expire < now() (connect-pg-simple table).
+// Only affects rows whose TTL has already passed — active sessions are never touched.
+// Runs once per 24h. Typical batch: 0-100 rows. No session content logged.
+
+export async function pruneExpiredSessions() {
+    if (!isDbReady()) {
+        console.log('[NightlyJobs] Skipping session prune — DB not ready');
+        return;
+    }
+    try {
+        const result = await db.execute(sql`DELETE FROM user_sessions WHERE expire < now()`);
+        const deleted = (result as any).rowCount ?? 0;
+        if (deleted > 0) console.log(`[NightlyJobs] Pruned ${deleted} expired rows from user_sessions`);
+    } catch (e: any) {
+        console.warn('[NightlyJobs] pruneExpiredSessions failed:', e.message?.slice(0, 80));
+    }
+}
+
 // ─── Initializer (call from server/index.ts) ──────────────────────────────────
 
 let _started = false;
@@ -203,11 +222,15 @@ export function initNightlyJobs() {
     // Audit log retention once per 24h (runs at 3 AM effectively — first run 24h after boot)
     setInterval(pruneOldAuditLogs, 24 * 60 * 60 * 1000);
 
+    // Session cleanup once per 24h alongside audit log retention
+    setInterval(pruneExpiredSessions, 24 * 60 * 60 * 1000);
+
     // Stagger startup tasks so cold-start doesn't spike memory on 512MB free tier.
     // HTTP server must be accepting requests before any heavy DB work begins.
     setTimeout(() => checkSlaBreach().catch(() => {}), 45_000);          // 45s
     setTimeout(() => updateAcceptanceRatios().catch(() => {}), 90_000);  // 90s
     setTimeout(() => pruneOldAuditLogs().catch(() => {}), 120_000);      // 2 min
+    setTimeout(() => pruneExpiredSessions().catch(() => {}), 150_000);   // 2.5 min
 
     console.log('[NightlyJobs] SLA + acceptance ratio jobs scheduled');
 }
