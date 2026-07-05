@@ -312,7 +312,7 @@ export default function DesignConcept() {
     const mobileChromeLockedRef = useRef(false);
     const mobileScrollTickingRef = useRef(false);
 
-    const { isEnabled } = useModules();
+    const { isEnabled, isLoading: modulesLoading } = useModules();
     const { logout, user, hasPermission, status } = useAdminAuth();
     const [moreOpen, setMoreOpen] = useState(false);
     const { isOnline, getTabTier } = useOffline();
@@ -599,7 +599,7 @@ export default function DesignConcept() {
                         mobileChromeHidden && "translate-y-20 opacity-0 pointer-events-none border-transparent shadow-none"
                     )}
                 >
-                    {mobileNavItems.filter(item => item.id === 'menu' || status === 'pending' || isTabEnabled(item.id)).map(item => (
+                    {mobileNavItems.filter(item => item.id === 'menu' || status === 'pending' || modulesLoading || isTabEnabled(item.id)).map(item => (
                         item.id === 'menu' ? (
                             <Sheet key={item.id} open={moreOpen} onOpenChange={setMoreOpen}>
                                 <SheetTrigger asChild>
@@ -810,6 +810,8 @@ export default function DesignConcept() {
                                     <Suspense fallback={tabId === activeTab ? <DashboardSkeleton /> : null}>
                                         {/* Module & Permission Guard */}
                                         {status === "pending" ? (
+                                            <DashboardSkeleton />
+                                        ) : modulesLoading && !!TAB_TO_MODULE[tabId] ? (
                                             <DashboardSkeleton />
                                         ) : TAB_TO_MODULE[tabId] && !isTabEnabled(tabId) ? (
                                             <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500">
@@ -1073,7 +1075,7 @@ function SidebarContent({ groups, activeTab, setActiveTab, isOnline, getTabTier 
         <>
             {groups.map((group, idx) => (
                 <div key={idx} className="space-y-2">
-                    <h2 className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] px-3 mb-4 block">
+                    <h2 className="text-[10px] font-bold text-slate-500 uppercase tracking-[0.2em] px-3 mb-4 hidden lg:block">
                         {group.title}
                     </h2>
                     <div className="space-y-1">
@@ -1100,7 +1102,7 @@ function SidebarContent({ groups, activeTab, setActiveTab, isOnline, getTabTier 
                                     )}>
                                         <item.icon size={16} />
                                     </div>
-                                    <span className="font-medium text-sm tracking-wide inline-block truncate">
+                                    <span className="font-medium text-sm tracking-wide hidden lg:inline-block truncate">
                                         {item.label}
                                     </span>
                                     {activeTab === item.id && (
