@@ -1,6 +1,6 @@
-import { db } from '../db.js';
+import { promises as dnsPromises } from 'dns';
+import { db, resetDbPool, getDbPoolDiagnostics } from '../db.js';
 import { sql } from 'drizzle-orm';
-import { resetDbPool } from '../db.js';
 
 type ReadinessState = 'initializing' | 'checking' | 'ready' | 'degraded';
 
@@ -11,6 +11,8 @@ interface ReadinessInfo {
   lastCheck: Date | null;
   lastError: string | null;
   checkCount: number;
+  consecutiveFailures: number;
+  degradedSince: Date | null;
 }
 
 let readinessState: ReadinessInfo = {
@@ -20,6 +22,8 @@ let readinessState: ReadinessInfo = {
   lastCheck: null,
   lastError: null,
   checkCount: 0,
+  consecutiveFailures: 0,
+  degradedSince: null,
 };
 
 const MAX_RETRIES = 10;
@@ -75,6 +79,15 @@ function updateReadinessState(): void {
   }
 }
 
+function resolveDnsForLog(hostname: string): void {
+  if (!hostname || hostname === '(no pool)' || hostname === '(redacted)') return;
+  dnsPromises.lookup(hostname).then((result) => {
+    console.log(`[DBReadiness] DNS resolved: ${hostname} -> ${result.address}`);
+  }).catch(() => {
+    console.warn(`[DBReadiness] DNS lookup failed for: ${hostname}`);
+  });
+}
+
 async function watchdogTick(): Promise<void> {
   if (watchdogInProgress) return;
   watchdogInProgress = true;
@@ -88,15 +101,25 @@ async function watchdogTick(): Promise<void> {
 
     if (connected) {
       if (readinessState.state === 'degraded') {
-        console.log('[DBReadiness] Watchdog: DB recovered — back to ready');
-        // Restore full ready state if migrations were complete before degradation
+        const downSince = readinessState.degradedSince?.toISOString() ?? 'unknown';
+        console.log(`[DBReadiness] Watchdog: DB recovered -- was degraded since ${downSince} (${readinessState.consecutiveFailures} failures)`);
         readinessState.state = readinessState.migrationsComplete ? 'ready' : 'checking';
       }
+      readinessState.consecutiveFailures = 0;
+      readinessState.degradedSince = null;
     } else {
       const prev = readinessState.state;
       readinessState.state = 'degraded';
+      readinessState.consecutiveFailures++;
       if (prev !== 'degraded') {
-        console.warn(`[DBReadiness] Watchdog: DB unavailable — ${error?.slice(0, 100)}`);
+        readinessState.degradedSince = new Date();
+        console.warn(`[DBReadiness] Watchdog: DB unavailable -- ${error?.slice(0, 100)}`);
+        const diag = getDbPoolDiagnostics();
+        console.warn(`[DBReadiness] Pool diagnostics -- total:${diag.totalCount} idle:${diag.idleCount} waiting:${diag.waitingCount} host:${diag.host} gen:${diag.poolGeneration} resetInProgress:${diag.resetInProgress}`);
+        resolveDnsForLog(diag.host);
+      } else {
+        const diag = getDbPoolDiagnostics();
+        console.warn(`[DBReadiness] Watchdog: still degraded (${readinessState.consecutiveFailures} failures) -- pool total:${diag.totalCount} idle:${diag.idleCount} waiting:${diag.waitingCount} gen:${diag.poolGeneration} resetInProgress:${diag.resetInProgress}`);
       }
       if (isConnectionError(error)) {
         resetDbPool('watchdog: ' + (error?.slice(0, 60) ?? 'connection error')).catch(() => {});

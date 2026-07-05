@@ -11639,3 +11639,137 @@ All 4 remaining are internal search/selection payloads (per requirements: "Inter
 ### Verification Status
 
 Ready for inspector review. Warranty jobs now get proper JOB-YYYY-NNNN IDs, all visible display leaks fixed, 3 internal search payloads intentionally preserved.
+
+---
+
+## Phase 36A — DB Pool Diagnostics + Reset Hardening (2026-07-05)
+
+**Goal**: Add safe diagnostics so the next Render → Aiven PostgreSQL timeout incident produces actionable log lines, and harden the pool reset path against a deadlock that could prevent recovery.
+
+**Incident context**: Production periodically shows `timeout exceeded when trying to connect` after 20+ minutes of healthy operation. Render redeploy fixes it. Root cause (Render egress failure vs DNS staleness vs stuck pool reset) was previously undiagnosable from logs alone.
+
+### Files Changed
+
+| File | Change |
+|------|--------|
+| `server/db.ts` | Added `query_timeout: 30_000` to Pool config (client-side kill for dead-socket / TCP retransmit hangs); added `POOL_DRAIN_TIMEOUT_MS = 10_000`; wrapped `oldPool.end()` in `Promise.race` with 10s timeout to prevent `resetInProgress` staying `true` indefinitely when drain hangs on stuck connections |
+| `server/services/db-readiness.ts` | Merged duplicate `db`/`resetDbPool` imports; added `getDbPoolDiagnostics` import; added `dns.promises` import; added `resolveDnsForLog()` helper; on first degradation: logs full pool diagnostics (total/idle/waiting/host) + triggers async DNS hostname resolution; on each subsequent degraded tick: logs current pool counts so stuck-drain or saturation is visible in sustained outage logs |
+
+### What each fix diagnoses
+
+| Symptom in next incident | Diagnosis |
+|---|---|
+| `Pool diagnostics — total:5 idle:0 waiting:>0` | Pool saturated — queries piled up waiting |
+| `Pool diagnostics — total:0 idle:0 waiting:0` after reset | Reset ran clean, fresh pool will be created on next query |
+| `Pool diagnostics — total:5 idle:0 waiting:0` + `still degraded` repeating | Network path dead; pool exists but can't connect |
+| `Old pool drain warning: pool drain timed out after 10000ms` | Drain was stuck — confirms `resetInProgress` deadlock was occurring in prior incidents |
+| DNS resolved IP changes between first degradation and recovery | Aiven failover with stale DNS — DNS staleness was the cause |
+| DNS resolved IP stable and unreachable | Pure network/egress failure on Render instance |
+
+### Build Gates
+- `npx tsc --noEmit --pretty false`: PASS (no output)
+- `npx vite build --mode development`: PASS (built in 19.45s)
+- `git diff --check`: PASS (CRLF warnings only — Windows)
+
+### VERDICT: GO — Awaiting inspector review
+
+---
+
+## Phase 36A-Hotfix — Complete DB Diagnostics Fields (2026-07-06)
+
+**Goal**: Complete the diagnostic coverage left incomplete in Phase 36A — add `consecutiveFailures`, `degradedSince`, `poolGeneration`, and `resetInProgress` to readiness state and pool diagnostics, and make all log lines ASCII-safe.
+
+### What was missing after Phase 36A
+
+| Field | Problem |
+|---|---|
+| `consecutiveFailures` | No count of how many watchdog ticks failed in a row; couldn't distinguish a 1-tick blip from a 20-minute outage |
+| `degradedSince` | No timestamp for when degradation started; incident duration was unquantifiable from logs |
+| `poolGeneration` | In `getDbPoolDiagnostics()` but not in return type or log; couldn't confirm that a reset produced a new generation |
+| `resetInProgress` | Same — existed as module var but not surfaced in diagnostics return or logs |
+| Non-ASCII `→` in DNS log | Could produce garbage bytes in log aggregators that assume ASCII |
+
+### Files Changed
+
+| File | Change |
+|---|---|
+| `server/db.ts` | Extended `getDbPoolDiagnostics()` return type and value to include `poolGeneration` and `resetInProgress` |
+| `server/services/db-readiness.ts` | Added `consecutiveFailures: number` and `degradedSince: Date | null` to `ReadinessInfo` interface and initial state; on failure: increment `consecutiveFailures`, stamp `degradedSince` on first degradation; on recovery: log `degradedSince` and failure count, then reset both to zero/null; enriched both failure log lines to include `gen:` and `resetInProgress:`; replaced Unicode `→` with ASCII `->` in DNS log |
+
+### Log shape after hotfix
+
+**First degradation tick:**
+```
+[DBReadiness] Watchdog: DB unavailable -- timeout exceeded when trying to connect
+[DBReadiness] Pool diagnostics -- total:5 idle:0 waiting:2 host:pg-xxx.aivencloud.com gen:2 resetInProgress:false
+[DBReadiness] DNS resolved: pg-xxx.aivencloud.com -> 35.186.x.x
+```
+
+**Sustained degradation ticks (every 45s):**
+```
+[DBReadiness] Watchdog: still degraded (3 failures) -- pool total:0 idle:0 waiting:0 gen:3 resetInProgress:false
+```
+
+**Recovery:**
+```
+[DBReadiness] Watchdog: DB recovered -- was degraded since 2026-07-05T17:14:22.000Z (5 failures)
+```
+
+**New fields auto-surfaced in `/api/admin/readiness` response** (via existing `...getReadinessState()` spread at `app.ts:258`) — no route changes needed.
+
+### Build Gates
+- `npx tsc --noEmit --pretty false`: PASS (no output)
+- `npx vite build --mode development`: PASS (built in 18.14s)
+- `git diff --check`: PASS (CRLF warnings only — Windows)
+
+### VERDICT: GO — Awaiting inspector review
+
+---
+
+## Phase 36A-Final Hotfix — Reset Evidence Logs + Long-Running Query Audit (2026-07-06)
+
+**Goal**: Complete the last two gaps from Phase 36A-Hotfix: (1) `resetDbPool()` logs still did not include `poolGeneration` / `resetInProgress`; (2) long-running query audit was never cleanly reported.
+
+### Fix 1 — Reset evidence in `resetDbPool()` logs (`server/db.ts`)
+
+Updated the three log lines inside `resetDbPool()` to include `gen:` and `resetInProgress:`.
+
+**Before:**
+```
+[DB] Pool reset triggered: watchdog: timeout exceeded...
+[DB] Old pool drained
+[DB] Old pool drain warning: pool drain timed out after 10000ms
+```
+
+**After:**
+```
+[DB] Pool reset triggered: watchdog: timeout exceeded... -- gen:2 resetInProgress:true
+[DB] Old pool drained -- gen:2
+[DB] Old pool drain warning: pool drain timed out after 10000ms -- gen:2
+```
+
+`gen:N` shows which pool generation was killed. After a successful drain, the next `createPool()` increments to `gen:N+1`. This creates a clear chain: `Pool reset triggered gen:2` -> `Old pool drained gen:2` -> `Connection pool initialized` (gen:3 is now live).
+
+### Fix 2 — Long-Running Query Audit
+
+Audited all server-side DB paths for risk of hitting the 30s `query_timeout` added in Phase 36A.
+
+| Service / Function | DB Operations | Max Row Risk | Verdict |
+|---|---|---|---|
+| `nightly-jobs.service.ts` — `checkSlaBreach()` | 1x SELECT on `job_tickets` (status + clientClass filter) | ~1,000 active B2B jobs max | SAFE — indexed, <1s |
+| `nightly-jobs.service.ts` — `updateAcceptanceRatios()` | SELECT `users`, SELECT `job_tickets` (30d window), Nx UPSERT `staff_presence` | ~50 staff max at pilot scale | SAFE — each query <1s; N bounded by staff count |
+| `nightly-jobs.service.ts` — `pruneOldAuditLogs()` | 1x DELETE `audit_logs` WHERE severity='info' AND age>180d | 0 rows at pilot start | SAFE — indexed column, <1s |
+| `nightly-jobs.service.ts` — `pruneExpiredSessions()` | 1x DELETE `user_sessions` WHERE expire<now() | Hundreds at most | SAFE — indexed TTL column, <1s |
+| `catalog-import.service.ts` — `commitImport()` | Batched inserts/upserts per CSV row | Limited by uploaded CSV size | SAFE — practical limit is upload size, not query time |
+| `backup.service.ts` — `createBackup()` | REPEATABLE READ transaction + 30x `findMany()` across all tables | ALL rows in ALL 30 tables | MEDIUM — see note below |
+
+**Backup transaction note**: `createBackup()` opens a single REPEATABLE READ transaction that runs 30 consecutive `SELECT *` queries. The 30s `query_timeout` applies per query, not per transaction — so the transaction can run for minutes total, but only fails if any single SELECT takes >30s. At pilot scale (hundreds to low thousands of rows per table) this is not a risk. Scale threshold: if any single table grows past ~500k unindexed rows, that individual SELECT could approach 30s. At that point, the backup service should use a dedicated client with `SET statement_timeout` override. No action needed now.
+
+**Conclusion**: No immediate code changes required for any long-running path. The 30s `query_timeout` does not break any existing operation at current pilot scale.
+
+### Build Gates
+- `npx tsc --noEmit --pretty false`: PASS (no output)
+- `npx vite build --mode development`: PASS (built in 18.04s)
+- `git diff --check`: PASS (no whitespace errors; CRLF normalization warnings only)
+
+### VERDICT: GO — Phase 36A complete

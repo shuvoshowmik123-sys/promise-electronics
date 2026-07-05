@@ -24,6 +24,7 @@ function createPool(): pg.Pool {
     max: parseInt(process.env.DB_POOL_MAX || '5', 10),
     idleTimeoutMillis: 20_000,
     connectionTimeoutMillis: 10_000,
+    query_timeout: 30_000,
     keepAlive: true,
     ssl: dbUrl.includes('sslmode=require') ? { rejectUnauthorized: false } : undefined,
   });
@@ -78,21 +79,31 @@ export const db = new Proxy({} as ReturnType<typeof drizzle<typeof schema>>, {
   }
 });
 
+const POOL_DRAIN_TIMEOUT_MS = 10_000;
+
 /** Drain the current pool and create a fresh one on the next DB call. */
 export async function resetDbPool(reason: string): Promise<void> {
   if (resetInProgress) return;
   resetInProgress = true;
   try {
-    console.log(`[DB] Pool reset triggered: ${reason}`);
+    console.log(`[DB] Pool reset triggered: ${reason} -- gen:${poolGeneration} resetInProgress:${resetInProgress}`);
     const oldPool = _pool;
     _pool = null;
     _db = null;
     if (oldPool) {
       try {
-        await oldPool.end();
-        console.log('[DB] Old pool drained');
+        await Promise.race([
+          oldPool.end(),
+          new Promise<void>((_res, rej) =>
+            setTimeout(
+              () => rej(new Error(`pool drain timed out after ${POOL_DRAIN_TIMEOUT_MS}ms`)),
+              POOL_DRAIN_TIMEOUT_MS,
+            )
+          ),
+        ]);
+        console.log(`[DB] Old pool drained -- gen:${poolGeneration}`);
       } catch (e: any) {
-        console.warn('[DB] Old pool drain warning:', e.message?.slice(0, 80));
+        console.warn(`[DB] Old pool drain warning: ${e.message?.slice(0, 80)} -- gen:${poolGeneration}`);
       }
     }
   } finally {
@@ -105,8 +116,10 @@ export function getDbPoolDiagnostics(): {
   idleCount: number;
   waitingCount: number;
   host: string;
+  poolGeneration: number;
+  resetInProgress: boolean;
 } {
-  if (!_pool) return { totalCount: 0, idleCount: 0, waitingCount: 0, host: '(no pool)' };
+  if (!_pool) return { totalCount: 0, idleCount: 0, waitingCount: 0, host: '(no pool)', poolGeneration, resetInProgress };
   let host = '(redacted)';
   try { host = new URL(process.env.DATABASE_URL || '').hostname; } catch {}
   return {
@@ -114,5 +127,7 @@ export function getDbPoolDiagnostics(): {
     idleCount: _pool.idleCount,
     waitingCount: _pool.waitingCount,
     host,
+    poolGeneration,
+    resetInProgress,
   };
 }
