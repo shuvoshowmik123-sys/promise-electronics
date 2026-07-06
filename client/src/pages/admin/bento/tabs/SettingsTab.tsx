@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { drawerApi, settingsApi } from "@/lib/api";
 import type { SettingConflictGroup, SettingResolutionItem } from "@/lib/api/adminApi";
 import { uploadToImageKit } from "@/lib/imagekit-upload";
+import { normalizeBrandLogoFile } from "@/lib/brand-logo-normalizer";
 import { containerVariants, itemVariants, MobileScrollContent, MobileTabHeader, MobileTabLayout, MobileMarqueeText, MobileSegmentTabs } from "../shared";
 import { BentoCard } from "../shared/BentoCard";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
@@ -135,13 +136,14 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
     const handleUploadBrandLogo = async (id: number, file: File) => {
         try {
-            const result = await uploadToImageKit(file, {
+            const normalizedFile = await normalizeBrandLogoFile(file);
+            const result = await uploadToImageKit(normalizedFile, {
                 folder: 'cms/brands',
-                fileName: `brand-${id}-${file.name}`,
-                tags: ['brand-logo', 'cms'],
+                fileName: `brand-${id}-${normalizedFile.name}`,
+                tags: ['brand-logo', 'cms', 'normalized'],
             });
             setHomepageBrands(prev => prev.map(b => b.id === id ? { ...b, logoUrl: result.url } : b));
-            toast({ title: "Logo uploaded", description: "Brand logo updated. Save settings to keep the change." });
+            toast({ title: "Logo normalized", description: "Brand logo resized and centered. Save settings to keep the change." });
         } catch (err: any) {
             toast({ title: "Upload failed", description: err?.message?.slice(0, 120) ?? "Could not upload logo.", variant: "destructive" });
         }
