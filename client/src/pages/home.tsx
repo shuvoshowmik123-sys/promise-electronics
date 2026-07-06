@@ -1187,23 +1187,21 @@ export default function HomePage() {
           </motion.div>
 
           <div className="relative">
-            <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-slate-100 to-transparent z-10 pointer-events-none" />
-            <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-slate-100 to-transparent z-10 pointer-events-none" />
             <motion.div
-              className="flex gap-8 md:gap-12"
-              animate={{ x: [0, -(homepageBrands.length * 160)] }}
-              transition={{ duration: Math.max(homepageBrands.length * 4, 20), repeat: Infinity, ease: "linear" }}
+              className="flex w-max transform-gpu will-change-transform"
+              animate={{ x: ["0%", "-50%"] }}
+              transition={{ duration: Math.max(homepageBrands.length * 3, 12), repeat: Infinity, ease: "linear" }}
             >
               {[...Array(2)].map((_, setIndex) => (
-                <div key={setIndex} className="flex gap-8 md:gap-12 flex-shrink-0">
+                <div key={setIndex} className="flex flex-shrink-0 gap-8 pr-8 md:gap-12 md:pr-12">
                   {homepageBrands.map((brand, i) => (
                     <div
                       key={`${setIndex}-${brand.id}`}
-                      className="flex-shrink-0 w-32 md:w-40 h-20 rounded-2xl border border-white/80 bg-gradient-to-br from-white via-slate-50 to-emerald-50/50 p-2 shadow-neumorph-sm transition-shadow hover:shadow-neumorph"
+                      className="flex-shrink-0 w-32 md:w-40 h-20 rounded-2xl bg-white/85 p-2 shadow-[0_10px_30px_rgba(15,23,42,0.06)] transition-shadow hover:shadow-[0_14px_36px_rgba(15,23,42,0.09)]"
                       data-testid={`brand-carousel-${brand.id}`}
                     >
                       {brand.logoUrl ? (
-                        <div className="flex h-full w-full items-center justify-center rounded-xl bg-white/70 ring-1 ring-slate-200/70">
+                        <div className="flex h-full w-full items-center justify-center rounded-xl bg-transparent">
                           <img
                             src={brand.logoUrl}
                             alt={brand.name}
@@ -1211,7 +1209,7 @@ export default function HomePage() {
                           />
                         </div>
                       ) : (
-                        <div className="flex h-full w-full items-center justify-center rounded-xl bg-white/70 ring-1 ring-slate-200/70">
+                        <div className="flex h-full w-full items-center justify-center rounded-xl bg-transparent">
                           <span className="text-lg md:text-xl font-bold text-slate-600 tracking-wide">{brand.name}</span>
                         </div>
                       )}
