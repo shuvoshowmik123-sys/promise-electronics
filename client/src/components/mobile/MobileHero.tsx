@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Search, ShieldCheck, Wrench } from "lucide-react";
 import { Link } from "wouter";
@@ -8,6 +9,7 @@ export type MobileHomeLanguage = "en" | "bn";
 
 export function MobileHero({ heroImage }: { heroImage: string }) {
   const { t, toggleLanguage } = useCustomerLanguage();
+  const [imgFailed, setImgFailed] = useState(false);
 
   return (
     <div className="relative w-full overflow-hidden bg-gradient-to-b from-emerald-50 via-white to-white px-4 pb-6 pt-5">
@@ -30,7 +32,18 @@ export function MobileHero({ heroImage }: { heroImage: string }) {
 
         <div className="relative overflow-hidden rounded-[28px] bg-slate-950 shadow-xl">
           <div className="aspect-[4/3]">
-            <img src={heroImage} alt="Technician working" className="h-full w-full object-cover opacity-80" />
+            {imgFailed ? (
+              <div className="h-full w-full bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900 flex items-center justify-center">
+                <Wrench className="h-16 w-16 text-white/20" />
+              </div>
+            ) : (
+              <img
+                src={heroImage}
+                alt="Technician working"
+                className="h-full w-full object-cover opacity-80"
+                onError={() => setImgFailed(true)}
+              />
+            )}
           </div>
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/35 to-transparent" />
           <motion.div

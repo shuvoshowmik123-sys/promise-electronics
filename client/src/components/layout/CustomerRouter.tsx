@@ -21,6 +21,7 @@ const ServicesPage = lazy(() => import("@/pages/services"));
 const ServiceDetailsPage = lazy(() => import("@/pages/service-details"));
 const GetQuotePage = lazy(() => import("@/pages/get-quote"));
 const QuoteApprovalPage = lazy(() => import("@/pages/quote-approval"));
+const ShopHoldingPage = lazy(() => import("@/pages/shop-holding"));
 const TrackOrderPage = lazy(() => import("@/pages/track-order"));
 const TrackJobPage = lazy(() => import("@/pages/track-job"));
 const SupportPage = lazy(() => import("@/pages/support"));
@@ -99,7 +100,7 @@ export function CustomerRouter() {
 
                                 <Route path="/shop">
                                     <CustomerErrorBoundary fallbackTitle="Shop Error">
-                                        <CustomerModuleGuard module="customer_shop"><ShopPage /></CustomerModuleGuard>
+                                        <ShopHoldingPage />
                                     </CustomerErrorBoundary>
                                 </Route>
                                 <Route path="/cart">

@@ -59,6 +59,10 @@ const defaultHeroSlides = [
 export default function HomePage() {
   usePageTitle();
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [failedSlides, setFailedSlides] = useState<Set<number>>(new Set());
+  const handleHeroImageError = (index: number) => {
+    setFailedSlides(prev => new Set(prev).add(index));
+  };
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
@@ -870,16 +874,33 @@ export default function HomePage() {
                 {activeHeroSlides.length > 0 ? (
                   <>
                     <AnimatePresence mode="wait">
-                      <motion.img
-                        key={`${isMobile ? 'mobile' : 'desktop'}-${currentSlide}`}
-                        src={activeHeroSlides[currentSlide]}
-                        alt="Electronics Workshop"
-                        className="w-full h-64 md:h-80 lg:h-[450px] object-cover"
-                        initial={animationVariants.initial}
-                        animate={animationVariants.animate}
-                        exit={animationVariants.exit}
-                        transition={{ duration: 0.8, ease: "easeInOut" }}
-                      />
+                      {failedSlides.has(currentSlide) ? (
+                        <motion.div
+                          key={`fallback-${currentSlide}`}
+                          className="w-full h-64 md:h-80 lg:h-[450px] bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900 flex items-center justify-center"
+                          initial={animationVariants.initial}
+                          animate={animationVariants.animate}
+                          exit={animationVariants.exit}
+                          transition={{ duration: 0.8, ease: "easeInOut" }}
+                        >
+                          <div className="text-center text-white/70 select-none">
+                            <Wrench className="h-16 w-16 mx-auto mb-3 opacity-40" />
+                            <p className="text-sm font-medium opacity-60">Promise Electronics Workshop</p>
+                          </div>
+                        </motion.div>
+                      ) : (
+                        <motion.img
+                          key={`${isMobile ? 'mobile' : 'desktop'}-${currentSlide}`}
+                          src={activeHeroSlides[currentSlide]}
+                          alt="Electronics Workshop"
+                          className="w-full h-64 md:h-80 lg:h-[450px] object-cover"
+                          initial={animationVariants.initial}
+                          animate={animationVariants.animate}
+                          exit={animationVariants.exit}
+                          transition={{ duration: 0.8, ease: "easeInOut" }}
+                          onError={() => handleHeroImageError(currentSlide)}
+                        />
+                      )}
                     </AnimatePresence>
                     {/* Slide Navigation Dots */}
                     {activeHeroSlides.length > 1 && (
