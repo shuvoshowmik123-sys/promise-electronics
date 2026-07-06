@@ -50,6 +50,11 @@ interface CmsHomeSectionProps {
     googleMapUrl: string; setGoogleMapUrl: (v: string) => void;
     onUploadBrandLogo?: (id: number, file: File) => Promise<void>;
     onUploadProblemIcon?: (id: number, file: File) => Promise<void>;
+    canonicalPhone?: string;
+    canonicalEmail?: string;
+    canonicalAddress?: string;
+    canonicalHours?: string;
+    canonicalWhatsapp?: string;
 }
 
 // ─── Collapsible Section Shell ──────────────────────────────────────────────
@@ -159,7 +164,8 @@ export default function CmsHomeSection({
     homepageBrands, setHomepageBrands, problemNavItems, setProblemNavItems,
     beforeAfterGallery, setBeforeAfterGallery, pricingTable, setPricingTable,
     trackRepairEnabled, setTrackRepairEnabled, googleMapUrl, setGoogleMapUrl,
-    onUploadBrandLogo, onUploadProblemIcon
+    onUploadBrandLogo, onUploadProblemIcon,
+    canonicalPhone, canonicalEmail, canonicalAddress, canonicalHours, canonicalWhatsapp
 }: CmsHomeSectionProps) {
 
     // --- Local State for New Items ---
@@ -494,27 +500,27 @@ export default function CmsHomeSection({
                     </div>
                 </CmsSection>
 
-                {/* Contact Info */}
+                {/* Contact Info — read-only notice */}
                 <CmsSection
                     title="Contact Info"
                     icon={<Phone className="w-5 h-5" />}
-                    description="Phone numbers, emails, and addresses displayed on homepage"
+                    description="Phone, email, address, hours, and WhatsApp"
                     defaultOpen={false}
                 >
-                    <div className="space-y-5 max-h-[450px] overflow-y-auto pr-1 custom-scrollbar">
-                        {renderContactField("Phone Numbers", "phoneNumbers", "+880 1XXX-XXXXXX")}
-                        <Separator className="opacity-50" />
-                        {renderContactField("Email Addresses", "emails", "email@example.com")}
-                        <Separator className="opacity-50" />
-                        {renderContactField("Address Lines", "addressLines", "123 Street, City")}
-                        <Separator className="opacity-50" />
-                        {renderContactField("Working Hours", "workingHoursLines", "Sat-Thu: 10AM – 8PM")}
-                        <Separator className="opacity-50" />
-                        <div className="space-y-1.5">
-                            <Label className="text-xs font-semibold text-slate-600">WhatsApp Number</Label>
-                            <Input value={contactInfo.whatsappNumber || ""} onChange={(e) => setContactInfo({ ...contactInfo, whatsappNumber: e.target.value })}
-                                placeholder="+880 1XXXXXXXXX" className="h-8 text-xs bg-white border-slate-200 rounded-lg" />
-                        </div>
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                        <p className="text-xs font-semibold text-amber-800">Managed in Business Identity</p>
+                        <p className="text-xs text-amber-700">Phone, email, address, business hours, and WhatsApp are now managed under <strong>Business Identity</strong> in System Settings. Edit them there to update the homepage and all other pages consistently.</p>
+                        {(canonicalPhone || canonicalEmail || canonicalAddress || canonicalHours || canonicalWhatsapp ||
+                          contactInfo.phoneNumbers?.length || contactInfo.emails?.length || contactInfo.addressLines?.length || contactInfo.workingHoursLines?.length || contactInfo.whatsappNumber) ? (
+                            <div className="mt-2 space-y-1 border-t border-amber-200 pt-2">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-amber-600 mb-1">Current values (Business Identity)</p>
+                                {(canonicalPhone || contactInfo.phoneNumbers?.[0]) && <p className="text-xs text-amber-800 font-mono">{canonicalPhone || contactInfo.phoneNumbers?.[0]}</p>}
+                                {(canonicalEmail || contactInfo.emails?.[0]) && <p className="text-xs text-amber-800 font-mono">{canonicalEmail || contactInfo.emails?.[0]}</p>}
+                                {(canonicalAddress || contactInfo.addressLines?.[0]) && <p className="text-xs text-amber-800">{canonicalAddress || contactInfo.addressLines?.filter(Boolean).join(", ")}</p>}
+                                {(canonicalHours || contactInfo.workingHoursLines?.[0]) && <p className="text-xs text-amber-800">{canonicalHours || contactInfo.workingHoursLines?.filter(Boolean).join(" · ")}</p>}
+                                {(canonicalWhatsapp || contactInfo.whatsappNumber) && <p className="text-xs text-amber-800 font-mono">{canonicalWhatsapp || contactInfo.whatsappNumber}</p>}
+                            </div>
+                        ) : null}
                     </div>
                 </CmsSection>
 
@@ -554,7 +560,11 @@ export default function CmsHomeSection({
 
                     {/* Brand list */}
                     {homepageBrands.length === 0 ? (
-                        <EmptyState message="No brands configured." onAdd={() => { setNewBrand("New Brand"); }} addLabel="Add Brand" />
+                        <EmptyState
+                            message="No brands configured."
+                            onAdd={() => setHomepageBrands([{ id: Date.now(), name: "New Brand", logoUrl: "" }])}
+                            addLabel="Add Brand"
+                        />
                     ) : (
                         <div className="space-y-2">
                             {homepageBrands.map((brand) => (

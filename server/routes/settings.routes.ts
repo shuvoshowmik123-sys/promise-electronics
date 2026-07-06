@@ -15,6 +15,7 @@ import {
 import { requireAdminAuth, requirePermission } from './middleware/auth.js';
 import { auditLogger } from '../utils/auditLogger.js';
 import { AUDIT_ACTIONS } from '../../shared/constants.js';
+import { detectConflicts, applyResolutions } from '../services/settings-conflict.service.js';
 
 const router = Router();
 
@@ -56,9 +57,12 @@ const ALLOWED_SETTING_KEYS = [
     'contact_phone',
     'contact_whatsapp',
     'contact_address',
+    'company_email',
     'social_facebook',
     'social_instagram',
     'social_youtube',
+    'service_center_contact_bn',
+    'business_hours_bn',
 
     // Service Catalogs
     'service_categories',
@@ -165,8 +169,9 @@ const PUBLIC_SETTING_KEYS = [
     'about_team_bn', 'about_address_bn', 'about_working_hours_bn', 'team_members',
     // Social
     'social_facebook', 'social_instagram', 'social_youtube',
-    // Contact
-    'contact_phone', 'contact_whatsapp', 'contact_address',
+    // Contact & Business Identity
+    'contact_phone', 'contact_whatsapp', 'contact_address', 'company_email',
+    'service_center_contact_bn', 'business_hours_bn',
     // Payment send-money numbers (rendered on the customer payment card)
     'bkash_send_money_number', 'nagad_send_money_number',
 ];
@@ -775,10 +780,68 @@ router.delete('/api/admin/policies/:slug', requireAdminAuth, requirePermission('
 });
 
 // ============================================
-// Admin Data Management
+// Settings Conflict Detection & Resolution
 // ============================================
 
 import { requireSuperAdmin } from './middleware/auth.js';
+
+/**
+ * GET /api/admin/settings/conflicts — detect duplicate business info (Super Admin only)
+ */
+router.get('/api/admin/settings/conflicts', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+        const allSettings = await settingsRepo.getAllSettings();
+        const report = detectConflicts(allSettings);
+        res.json(report);
+    } catch (error) {
+        console.error('[Settings] Error detecting conflicts:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to detect setting conflicts' });
+    }
+});
+
+/**
+ * POST /api/admin/settings/conflicts/resolve — apply conflict resolutions (Super Admin only)
+ */
+router.post('/api/admin/settings/conflicts/resolve', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+        const { resolutions } = req.body;
+        if (!Array.isArray(resolutions) || resolutions.length === 0) {
+            return res.status(400).json({ error: 'resolutions must be a non-empty array' });
+        }
+
+        for (const r of resolutions) {
+            if (typeof r.group !== 'string' || typeof r.canonicalKey !== 'string' || typeof r.value !== 'string') {
+                return res.status(400).json({ error: 'Each resolution must have group, canonicalKey, and value fields' });
+            }
+        }
+
+        const allSettings = await settingsRepo.getAllSettings();
+
+        await applyResolutions(resolutions, allSettings, async (key: string, value: string) => {
+            if (!ALLOWED_SETTING_KEYS.includes(key)) return;
+            await storage.upsertSetting({ key, value });
+        });
+
+        await auditLogger.log({
+            userId: (req as any).session?.adminUserId || 'unknown',
+            action: 'SETTINGS_CONFLICT_RESOLVED',
+            entity: 'Settings',
+            entityId: 'conflict-resolution',
+            details: `Resolved ${resolutions.length} setting conflict(s): ${resolutions.map((r: any) => r.group).join(', ')}`,
+            req,
+            severity: 'info',
+        }).catch(() => {});
+
+        res.json({ ok: true, resolved: resolutions.length });
+    } catch (error) {
+        console.error('[Settings] Error resolving conflicts:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to resolve setting conflicts' });
+    }
+});
+
+// ============================================
+// Admin Data Management
+// ============================================
 
 /**
  * DELETE /api/admin/data/all - Delete all business data (Super Admin only)

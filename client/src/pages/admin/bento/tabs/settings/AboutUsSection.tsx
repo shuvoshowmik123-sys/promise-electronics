@@ -36,6 +36,9 @@ interface AboutUsSectionProps {
     aboutWorkingHours: string; setAboutWorkingHours: (v: string) => void;
     aboutWorkingHoursBn: string; setAboutWorkingHoursBn: (v: string) => void;
     teamMembers: TeamMember[]; setTeamMembers: (v: TeamMember[]) => void;
+    canonicalAddress?: string;
+    canonicalEmail?: string;
+    canonicalHours?: string;
 }
 
 export default function AboutUsSection({
@@ -56,7 +59,8 @@ export default function AboutUsSection({
     aboutEmail, setAboutEmail,
     aboutWorkingHours, setAboutWorkingHours,
     aboutWorkingHoursBn, setAboutWorkingHoursBn,
-    teamMembers, setTeamMembers
+    teamMembers, setTeamMembers,
+    canonicalAddress, canonicalEmail, canonicalHours
 }: AboutUsSectionProps) {
 
     // New team member state
@@ -213,53 +217,45 @@ export default function AboutUsSection({
                 </div>
             </BentoCard>
 
-            {/* 5. Contact Details (About Page) */}
+            {/* 5. Contact Details — read-only, managed in Business Identity */}
             <BentoCard title="Contact Details" icon={<MapPin className="w-5 h-5 text-emerald-500" />} variant="glass">
-                <div className="space-y-3 pt-2">
-                    <div className="flex items-center gap-3">
-                        <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <Input
-                            value={aboutAddress}
-                            onChange={(e) => setAboutAddress(e.target.value)}
-                            placeholder="Business Address"
-                            className="bg-white/50"
-                        />
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <MapPin className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <Input
-                            value={aboutAddressBn}
-                            onChange={(e) => setAboutAddressBn(e.target.value)}
-                            placeholder="ব্যবসার ঠিকানা বাংলায়"
-                            className="bg-white/50"
-                        />
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <Mail className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <Input
-                            value={aboutEmail}
-                            onChange={(e) => setAboutEmail(e.target.value)}
-                            placeholder="Email Address"
-                            className="bg-white/50"
-                        />
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <Input
-                            value={aboutWorkingHours}
-                            onChange={(e) => setAboutWorkingHours(e.target.value)}
-                            placeholder="Working Hours"
-                            className="bg-white/50"
-                        />
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <Clock className="w-4 h-4 text-muted-foreground shrink-0" />
-                        <Input
-                            value={aboutWorkingHoursBn}
-                            onChange={(e) => setAboutWorkingHoursBn(e.target.value)}
-                            placeholder="কাজের সময় বাংলায়"
-                            className="bg-white/50"
-                        />
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2 mt-2">
+                    <p className="text-xs font-semibold text-amber-800">Managed in Business Identity</p>
+                    <p className="text-xs text-amber-700">Address, email, and business hours are now managed under <strong>Business Identity</strong> in System Settings. Edit them there to keep all pages consistent.</p>
+                    <div className="mt-2 space-y-1.5 border-t border-amber-200 pt-2">
+                        {(canonicalAddress || aboutAddress) && (
+                            <div className="flex items-start gap-2">
+                                <MapPin className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+                                <p className="text-xs text-amber-800">{canonicalAddress || aboutAddress}</p>
+                            </div>
+                        )}
+                        {(!canonicalAddress && aboutAddressBn) && (
+                            <div className="flex items-start gap-2">
+                                <MapPin className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+                                <p className="text-xs text-amber-800">{aboutAddressBn}</p>
+                            </div>
+                        )}
+                        {(canonicalEmail || aboutEmail) && (
+                            <div className="flex items-start gap-2">
+                                <Mail className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+                                <p className="text-xs text-amber-800 font-mono">{canonicalEmail || aboutEmail}</p>
+                            </div>
+                        )}
+                        {(canonicalHours || aboutWorkingHours) && (
+                            <div className="flex items-start gap-2">
+                                <Clock className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+                                <p className="text-xs text-amber-800">{canonicalHours || aboutWorkingHours}</p>
+                            </div>
+                        )}
+                        {(!canonicalHours && aboutWorkingHoursBn) && (
+                            <div className="flex items-start gap-2">
+                                <Clock className="w-3.5 h-3.5 text-amber-600 mt-0.5 shrink-0" />
+                                <p className="text-xs text-amber-800">{aboutWorkingHoursBn}</p>
+                            </div>
+                        )}
+                        {!canonicalAddress && !aboutAddress && !canonicalEmail && !aboutEmail && !canonicalHours && !aboutWorkingHours && (
+                            <p className="text-xs text-amber-600 italic">No values set yet. Add them in Business Identity.</p>
+                        )}
                     </div>
                 </div>
             </BentoCard>

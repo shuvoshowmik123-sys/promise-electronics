@@ -64,9 +64,9 @@ export default function AboutPage() {
     "Service warranty support",
   ]);
   const teamDescription = getLocalizedSetting("about_team", "Our technicians combine field experience with careful diagnosis, so customers understand what is happening before repair work begins.");
-  const address = getLocalizedSetting("about_address", "Dhaka, Bangladesh");
-  const email = getSetting("about_email", "support@promise-electronics.com");
-  const workingHours = getLocalizedSetting("about_working_hours", "Saturday - Thursday: 9:00 AM - 8:00 PM");
+  const address = getLocalizedSetting("service_center_contact", "") || getLocalizedSetting("about_address", "Dhaka, Bangladesh");
+  const email = getSetting("company_email", "") || getSetting("about_email", "support@promise-electronics.com");
+  const workingHours = getLocalizedSetting("business_hours", "") || getLocalizedSetting("about_working_hours", "Saturday - Thursday: 9:00 AM - 8:00 PM");
 
   const stats = [
     { label: t("about.years"), value: "10+", icon: Clock },

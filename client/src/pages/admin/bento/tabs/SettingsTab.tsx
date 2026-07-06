@@ -6,13 +6,15 @@ import {
     Smartphone, FileText, MessageSquare, Loader2,
     Search, X, Wrench, Star, Upload, LayoutTemplate, Building2, Clock3, PlayCircle,
     Shield, AlertTriangle, Code2, ChevronRight, ChevronDown, Percent,
-    Phone, MapPin, Clock, Trash2, ShoppingBag, Tv, Ruler, AlertCircle, Filter
+    Phone, MapPin, Clock, Trash2, ShoppingBag, Tv, Ruler, AlertCircle, Filter,
+    Mail, MessageCircle, Facebook, Instagram, Youtube, Languages, CheckCircle2
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { drawerApi, settingsApi } from "@/lib/api";
+import type { SettingConflictGroup, SettingResolutionItem } from "@/lib/api/adminApi";
 import { uploadToImageKit } from "@/lib/imagekit-upload";
 import { containerVariants, itemVariants, MobileScrollContent, MobileTabHeader, MobileTabLayout, MobileMarqueeText, MobileSegmentTabs } from "../shared";
 import { BentoCard } from "../shared/BentoCard";
@@ -80,10 +82,26 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     const [vatPercentage, setVatPercentage] = useState("0");
     const [timezone, setTimezone] = useState("asia-dhaka");
     const [logoUrl, setLogoUrl] = useState("");
+    // Business Identity extended fields
+    const [companyEmail, setCompanyEmail] = useState("");
+    const [contactWhatsapp, setContactWhatsapp] = useState("");
+    const [socialFacebook, setSocialFacebook] = useState("");
+    const [socialInstagram, setSocialInstagram] = useState("");
+    const [socialYoutube, setSocialYoutube] = useState("");
+    const [serviceCenterContactBn, setServiceCenterContactBn] = useState("");
+    const [businessHoursBn, setBusinessHoursBn] = useState("");
+
     // Customer Send Money (bKash/Nagad) numbers shown on the track page
     const [bkashSendMoney, setBkashSendMoney] = useState("");
     const [nagadSendMoney, setNagadSendMoney] = useState("");
     const [maintenanceMode, setMaintenanceMode] = useState(false);
+
+    // Conflict detection
+    const [conflictGroups, setConflictGroups] = useState<SettingConflictGroup[]>([]);
+    const [conflictLoading, setConflictLoading] = useState(false);
+    const [showConflictResolver, setShowConflictResolver] = useState(false);
+    const [resolvingConflicts, setResolvingConflicts] = useState(false);
+    const [resolutionSelections, setResolutionSelections] = useState<Record<string, string>>({});
     const [allowRegistrations, setAllowRegistrations] = useState(true);
     const [developerMode, setDeveloperMode] = useState(false);
     const [drawerDayCloseEnabled, setDrawerDayCloseEnabled] = useState(true);
@@ -158,7 +176,44 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     // --- Load Settings ---
     useEffect(() => {
         fetchSettings();
+        fetchConflicts();
     }, []);
+
+    const fetchConflicts = async () => {
+        try {
+            setConflictLoading(true);
+            const report = await settingsApi.getConflicts();
+            setConflictGroups(report.conflicts);
+            const defaults: Record<string, string> = {};
+            for (const g of report.conflicts) {
+                const canonical = g.sources.find(s => s.isCanonical);
+                defaults[g.group] = canonical?.value ?? g.sources[0]?.value ?? '';
+            }
+            setResolutionSelections(defaults);
+        } catch {
+            // Silently ignore — user may not be Super Admin
+        } finally {
+            setConflictLoading(false);
+        }
+    };
+
+    const handleApplyResolutions = async () => {
+        setResolvingConflicts(true);
+        try {
+            const resolutions: SettingResolutionItem[] = conflictGroups
+                .filter(g => resolutionSelections[g.group] !== undefined)
+                .map(g => ({ group: g.group, canonicalKey: g.canonicalKey, value: resolutionSelections[g.group] ?? '' }));
+            await settingsApi.resolveConflicts(resolutions);
+            toast({ title: "Conflicts resolved", description: "Canonical values updated. Refreshing..." });
+            setShowConflictResolver(false);
+            await fetchSettings();
+            await fetchConflicts();
+        } catch (err: any) {
+            toast({ title: "Resolution failed", description: err?.message?.slice(0, 120) ?? "Could not apply resolutions.", variant: "destructive" });
+        } finally {
+            setResolvingConflicts(false);
+        }
+    };
 
     const fetchSettings = async () => {
         try {
@@ -180,6 +235,13 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         case "support_phone": setSupportPhone(val); break;
                         case "service_center_contact": setServiceCenterContact(val); break;
                         case "business_hours": setBusinessHours(val); break;
+                        case "company_email": setCompanyEmail(val); break;
+                        case "contact_whatsapp": setContactWhatsapp(val); break;
+                        case "social_facebook": setSocialFacebook(val); break;
+                        case "social_instagram": setSocialInstagram(val); break;
+                        case "social_youtube": setSocialYoutube(val); break;
+                        case "service_center_contact_bn": setServiceCenterContactBn(val); break;
+                        case "business_hours_bn": setBusinessHoursBn(val); break;
                         case "currency_symbol": setCurrencySymbol(val); break;
                         case "vat_percentage": setVatPercentage(val); break;
                         case "timezone": setTimezone(val); break;
@@ -262,6 +324,13 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                 support_phone: supportPhone,
                 service_center_contact: serviceCenterContact,
                 business_hours: businessHours,
+                company_email: companyEmail,
+                contact_whatsapp: contactWhatsapp,
+                social_facebook: socialFacebook,
+                social_instagram: socialInstagram,
+                social_youtube: socialYoutube,
+                service_center_contact_bn: serviceCenterContactBn,
+                business_hours_bn: businessHoursBn,
                 currency_symbol: currencySymbol,
                 vat_percentage: vatPercentage,
                 timezone: timezone,
@@ -507,6 +576,29 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         right={<StatusPill label={developerMode ? "On" : "Off"} tone={developerMode ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"} />} onClick={() => setGeneralDialogTrigger("developer")} />
                 </MobilePanel>
 
+                {/* Conflict Center — only shown when conflicts exist */}
+                {conflictGroups.length > 0 && (
+                    <>
+                        <MobileSectionTitle>Action Required</MobileSectionTitle>
+                        <div className="mx-4 rounded-[20px] border border-amber-300 bg-amber-50 overflow-hidden">
+                            <div className="flex items-start gap-3 px-4 py-3">
+                                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] bg-amber-100 mt-0.5">
+                                    <AlertTriangle className="h-4 w-4 text-amber-600" />
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-[13px] font-bold text-amber-900">Duplicate business information found</p>
+                                    <p className="text-[11px] text-amber-700 mt-0.5">{conflictGroups.length} conflict group{conflictGroups.length !== 1 ? 's' : ''} across Settings need review.</p>
+                                </div>
+                            </div>
+                            <div className="px-4 pb-3">
+                                <Button size="sm" onClick={() => setShowConflictResolver(true)} className="w-full h-9 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-[12px] font-bold">
+                                    Review & Resolve
+                                </Button>
+                            </div>
+                        </div>
+                    </>
+                )}
+
                 {/* Business Identity */}
                 <MobileSectionTitle>Business Identity</MobileSectionTitle>
                 <MobilePanel>
@@ -656,6 +748,22 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                     </Button>
                 </div>
             </div>
+
+            {/* Conflict Center — desktop */}
+            {conflictGroups.length > 0 && (
+                <motion.div variants={itemVariants} className="w-full">
+                    <div className="flex items-center gap-4 rounded-2xl border border-amber-300 bg-amber-50 px-5 py-4">
+                        <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                            <p className="text-sm font-bold text-amber-900">Duplicate business information found</p>
+                            <p className="text-xs text-amber-700 mt-0.5">{conflictGroups.length} conflict group{conflictGroups.length !== 1 ? 's' : ''} across Settings — phone, address, hours, email, or WhatsApp may differ between sections.</p>
+                        </div>
+                        <Button size="sm" onClick={() => setShowConflictResolver(true)} className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl">
+                            Review & Resolve
+                        </Button>
+                    </div>
+                </motion.div>
+            )}
 
             {/* Main Bento Layout */}
             <div className="flex flex-col gap-6">
@@ -903,6 +1011,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         trackRepairEnabled={trackRepairEnabled} setTrackRepairEnabled={setTrackRepairEnabled}
                                         googleMapUrl={googleMapUrl} setGoogleMapUrl={setGoogleMapUrl}
                                         onUploadBrandLogo={handleUploadBrandLogo}
+                                        canonicalPhone={supportPhone} canonicalEmail={companyEmail}
+                                        canonicalAddress={serviceCenterContact} canonicalHours={businessHours}
+                                        canonicalWhatsapp={contactWhatsapp}
                                     /></Suspense>
                                 )}
                                 {selectedPanel === "about" && (
@@ -925,6 +1036,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         aboutWorkingHours={aboutWorkingHours} setAboutWorkingHours={setAboutWorkingHours}
                                         aboutWorkingHoursBn={aboutWorkingHoursBn} setAboutWorkingHoursBn={setAboutWorkingHoursBn}
                                         teamMembers={teamMembers} setTeamMembers={setTeamMembers}
+                                        canonicalAddress={serviceCenterContact} canonicalEmail={companyEmail}
+                                        canonicalHours={businessHours}
                                     /></Suspense>
                                 )}
                                 {selectedPanel === "bulkimport" && (
@@ -979,6 +1092,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         trackRepairEnabled={trackRepairEnabled} setTrackRepairEnabled={setTrackRepairEnabled}
                                         googleMapUrl={googleMapUrl} setGoogleMapUrl={setGoogleMapUrl}
                                         onUploadBrandLogo={handleUploadBrandLogo}
+                                        canonicalPhone={supportPhone} canonicalEmail={companyEmail}
+                                        canonicalAddress={serviceCenterContact} canonicalHours={businessHours}
+                                        canonicalWhatsapp={contactWhatsapp}
                                     /></Suspense>
                                 )}
                                 {selectedPanel === "about" && (
@@ -1001,6 +1117,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         aboutWorkingHours={aboutWorkingHours} setAboutWorkingHours={setAboutWorkingHours}
                                         aboutWorkingHoursBn={aboutWorkingHoursBn} setAboutWorkingHoursBn={setAboutWorkingHoursBn}
                                         teamMembers={teamMembers} setTeamMembers={setTeamMembers}
+                                        canonicalAddress={serviceCenterContact} canonicalEmail={companyEmail}
+                                        canonicalHours={businessHours}
                                     /></Suspense>
                                 )}
                                 {selectedPanel === "bulkimport" && (
@@ -1039,10 +1157,11 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     <h2 className="flex items-center gap-2 text-base font-black text-slate-900">
                                         <Globe className="w-5 h-5 text-indigo-500" /> Business Identity
                                     </h2>
-                                    <p className="mt-0.5 text-xs font-medium text-slate-500">Update public business information.</p>
+                                    <p className="mt-0.5 text-xs font-medium text-slate-500">Single source of truth for contact info.</p>
                                 </div>
                             </div>
                             <div className="custom-scrollbar space-y-4 overflow-y-auto p-4">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Brand</p>
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700">Site Name</label>
                                     <Input placeholder="Enter site name" value={siteName} onChange={(e) => setSiteName(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
@@ -1052,17 +1171,47 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     <Input placeholder="/logo.png" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
                                     {logoUrl && <img src={logoUrl} alt="Logo Preview" className="h-10 object-contain mt-2 border rounded-md p-1 bg-white" />}
                                 </div>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-2">Contact</p>
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700">Support Phone</label>
                                     <Input placeholder="Phone number" value={supportPhone} onChange={(e) => setSupportPhone(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Email</label>
+                                    <Input placeholder="info@example.com" value={companyEmail} onChange={(e) => setCompanyEmail(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">WhatsApp</label>
+                                    <Input placeholder="+880 1XXXXXXXXX" value={contactWhatsapp} onChange={(e) => setContactWhatsapp(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
                                 </div>
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700">Service Center Address</label>
                                     <Input placeholder="Full address" value={serviceCenterContact} onChange={(e) => setServiceCenterContact(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
                                 </div>
                                 <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Address (Bangla)</label>
+                                    <Input placeholder="ঠিকানা বাংলায়" value={serviceCenterContactBn} onChange={(e) => setServiceCenterContactBn(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                </div>
+                                <div className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700">Business Hours</label>
                                     <Input placeholder="e.g. Mon-Fri 9AM-6PM" value={businessHours} onChange={(e) => setBusinessHours(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Hours (Bangla)</label>
+                                    <Input placeholder="কাজের সময় বাংলায়" value={businessHoursBn} onChange={(e) => setBusinessHoursBn(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                </div>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-2">Social Links</p>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><Facebook className="w-3.5 h-3.5 text-blue-600" /> Facebook</label>
+                                    <Input placeholder="https://facebook.com/..." value={socialFacebook} onChange={(e) => setSocialFacebook(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><Instagram className="w-3.5 h-3.5 text-pink-500" /> Instagram</label>
+                                    <Input placeholder="https://instagram.com/..." value={socialInstagram} onChange={(e) => setSocialInstagram(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><Youtube className="w-3.5 h-3.5 text-red-500" /> YouTube</label>
+                                    <Input placeholder="https://youtube.com/..." value={socialYoutube} onChange={(e) => setSocialYoutube(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
                                 </div>
                             </div>
                             <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
@@ -1074,42 +1223,79 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             </div>
                         </MobileBottomSheetFrame>
 
-                        {/* Desktop popup — unchanged */}
+                        {/* Desktop popup — expanded with full fields */}
                         <motion.div
-                            className="relative z-10 hidden md:flex h-auto max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+                            className="relative z-10 hidden md:flex h-auto max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
                         >
                             <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-6">
                                 <div>
                                     <h2 className="flex items-center gap-2 text-xl font-black text-slate-900">
                                         <Globe className="w-5 h-5 text-indigo-500" /> Business Identity
                                     </h2>
-                                    <p className="mt-1 text-sm font-medium text-slate-500">Update public business information.</p>
+                                    <p className="mt-1 text-sm font-medium text-slate-500">Single source of truth for all contact info.</p>
                                 </div>
                                 <Button variant="ghost" size="icon" className="rounded-full -mr-2 text-slate-500" onClick={() => setActiveSheet(null)}>
                                     <X className="w-5 h-5" />
                                 </Button>
                             </div>
-                            <div className="custom-scrollbar space-y-6 overflow-y-auto p-6">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-semibold text-slate-700">Site Name</label>
-                                    <Input placeholder="Enter site name" value={siteName} onChange={(e) => setSiteName(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                            <div className="custom-scrollbar overflow-y-auto p-6 space-y-5">
+                                <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-400">Brand</p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">Site Name</label>
+                                        <Input placeholder="Enter site name" value={siteName} onChange={(e) => setSiteName(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">Logo Image URL</label>
+                                        <Input placeholder="/logo.png" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                        {logoUrl && <img src={logoUrl} alt="Logo Preview" className="h-8 object-contain border rounded-md p-1 bg-white" />}
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-semibold text-slate-700">Logo Image URL</label>
-                                    <Input placeholder="/logo.png" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
-                                    {logoUrl && <img src={logoUrl} alt="Logo Preview" className="h-10 object-contain mt-2 border rounded-md p-1 bg-white" />}
+                                <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-400 pt-2">Contact</p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" /> Support Phone</label>
+                                        <Input placeholder="Phone number" value={supportPhone} onChange={(e) => setSupportPhone(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email</label>
+                                        <Input placeholder="info@example.com" value={companyEmail} onChange={(e) => setCompanyEmail(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><MessageCircle className="w-3.5 h-3.5 text-green-600" /> WhatsApp</label>
+                                        <Input placeholder="+880 1XXXXXXXXX" value={contactWhatsapp} onChange={(e) => setContactWhatsapp(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> Address</label>
+                                        <Input placeholder="Full address" value={serviceCenterContact} onChange={(e) => setServiceCenterContact(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><Languages className="w-3.5 h-3.5 text-slate-400" /> Address (Bangla)</label>
+                                        <Input placeholder="ঠিকানা বাংলায়" value={serviceCenterContactBn} onChange={(e) => setServiceCenterContactBn(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><Clock className="w-3.5 h-3.5" /> Business Hours</label>
+                                        <Input placeholder="Mon-Fri 9AM-6PM" value={businessHours} onChange={(e) => setBusinessHours(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><Languages className="w-3.5 h-3.5 text-slate-400" /> Hours (Bangla)</label>
+                                        <Input placeholder="কাজের সময় বাংলায়" value={businessHoursBn} onChange={(e) => setBusinessHoursBn(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-semibold text-slate-700">Support Phone</label>
-                                    <Input placeholder="Phone number" value={supportPhone} onChange={(e) => setSupportPhone(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-semibold text-slate-700">Service Center Address</label>
-                                    <Input placeholder="Full address" value={serviceCenterContact} onChange={(e) => setServiceCenterContact(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
-                                </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-semibold text-slate-700">Business Hours</label>
-                                    <Input placeholder="e.g. Mon-Fri 9AM-6PM" value={businessHours} onChange={(e) => setBusinessHours(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-400 pt-2">Social Links</p>
+                                <div className="grid grid-cols-1 gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <Facebook className="w-4 h-4 text-blue-600 shrink-0" />
+                                        <Input placeholder="https://facebook.com/..." value={socialFacebook} onChange={(e) => setSocialFacebook(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <Instagram className="w-4 h-4 text-pink-500 shrink-0" />
+                                        <Input placeholder="https://instagram.com/..." value={socialInstagram} onChange={(e) => setSocialInstagram(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <Youtube className="w-4 h-4 text-red-500 shrink-0" />
+                                        <Input placeholder="https://youtube.com/..." value={socialYoutube} onChange={(e) => setSocialYoutube(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
                                 </div>
                             </div>
                             <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-slate-50 p-5 md:flex-row md:justify-end md:rounded-b-3xl">
@@ -1241,6 +1427,137 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                     Save Changes
                                 </Button>
+                            </div>
+                        </motion.div>
+                    </div>
+                )}
+            </AnimatePresence></BodyPortal>
+
+            {/* ─── Conflict Resolver — mobile bottom sheet + desktop dialog ─── */}
+            <BodyPortal><AnimatePresence>
+                {showConflictResolver && (
+                    <div className="fixed inset-0 z-[270] flex items-end justify-center p-0 md:items-center md:p-6" style={{ pointerEvents: 'auto' }}>
+                        <motion.div
+                            initial={{ opacity: 0 }}
+                            animate={{ opacity: 1 }}
+                            exit={{ opacity: 0 }}
+                            onClick={() => setShowConflictResolver(false)}
+                            className="absolute inset-0 bg-slate-900/40"
+                        />
+                        <MobileBottomSheetFrame onClose={() => setShowConflictResolver(false)} className="relative z-10 flex h-[calc(100dvh-0.5rem)] w-full flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl md:hidden">
+                            <MobileBottomSheetHandle />
+                            <div className="flex shrink-0 items-center gap-3 border-b border-slate-100 px-4 py-3">
+                                <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                                <div>
+                                    <h2 className="text-base font-black text-slate-900">Conflict Resolver</h2>
+                                    <p className="text-xs text-slate-500">Choose the correct value for each group</p>
+                                </div>
+                            </div>
+                            <div className="custom-scrollbar flex-1 overflow-y-auto p-4 space-y-5">
+                                {conflictGroups.map(g => (
+                                    <div key={g.group} className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-3">
+                                        <p className="text-[12px] font-bold text-amber-900 uppercase tracking-wider">{g.groupLabel}</p>
+                                        {g.sources.map(src => (
+                                            <button
+                                                key={src.key}
+                                                type="button"
+                                                onClick={() => setResolutionSelections(prev => ({ ...prev, [g.group]: src.value }))}
+                                                className={`w-full text-left rounded-lg border p-2.5 transition-colors ${resolutionSelections[g.group] === src.value ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-white'}`}
+                                            >
+                                                <div className="flex items-center justify-between gap-2">
+                                                    <div className="min-w-0">
+                                                        <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">{src.source}</p>
+                                                        <p className="text-[13px] font-semibold text-slate-800 truncate">{src.value || '(empty)'}</p>
+                                                    </div>
+                                                    {resolutionSelections[g.group] === src.value && <CheckCircle2 className="w-4 h-4 text-blue-500 shrink-0" />}
+                                                </div>
+                                                {src.isCanonical && <span className="text-[10px] font-bold text-indigo-600 uppercase">Recommended (canonical)</span>}
+                                            </button>
+                                        ))}
+                                    </div>
+                                ))}
+                                {conflictGroups.length === 0 && (
+                                    <div className="flex flex-col items-center gap-2 py-12 text-center">
+                                        <CheckCircle2 className="w-10 h-10 text-emerald-400" />
+                                        <p className="text-sm font-semibold text-slate-700">No conflicts found</p>
+                                        <p className="text-xs text-slate-500">All business info is consistent.</p>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+                                <Button variant="outline" className="h-11 rounded-xl" onClick={() => setShowConflictResolver(false)}>Cancel</Button>
+                                {conflictGroups.length > 0 && (
+                                    <Button className="h-11 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold" onClick={handleApplyResolutions} disabled={resolvingConflicts}>
+                                        {resolvingConflicts ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                                        Apply Resolutions
+                                    </Button>
+                                )}
+                            </div>
+                        </MobileBottomSheetFrame>
+
+                        {/* Desktop conflict resolver dialog */}
+                        <motion.div
+                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                            className="relative z-10 hidden md:flex h-auto max-h-[85vh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+                        >
+                            <div className="flex shrink-0 items-center justify-between gap-3 border-b border-slate-100 p-6">
+                                <div className="flex items-center gap-3">
+                                    <AlertTriangle className="w-5 h-5 text-amber-500" />
+                                    <div>
+                                        <h2 className="text-xl font-black text-slate-900">Conflict Resolver</h2>
+                                        <p className="text-sm text-slate-500 mt-0.5">Select the canonical value to keep for each group.</p>
+                                    </div>
+                                </div>
+                                <Button variant="ghost" size="icon" className="rounded-full text-slate-500" onClick={() => setShowConflictResolver(false)}>
+                                    <X className="w-5 h-5" />
+                                </Button>
+                            </div>
+                            <div className="custom-scrollbar flex-1 overflow-y-auto p-6 space-y-5">
+                                {conflictGroups.map(g => (
+                                    <div key={g.group} className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">
+                                        <p className="text-xs font-extrabold text-amber-800 uppercase tracking-wider">{g.groupLabel}</p>
+                                        <div className="grid grid-cols-1 gap-2">
+                                            {g.sources.map(src => (
+                                                <button
+                                                    key={src.key}
+                                                    type="button"
+                                                    onClick={() => setResolutionSelections(prev => ({ ...prev, [g.group]: src.value }))}
+                                                    className={`text-left rounded-xl border p-3 transition-colors ${resolutionSelections[g.group] === src.value ? 'border-blue-400 bg-blue-50 ring-1 ring-blue-300' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                                                >
+                                                    <div className="flex items-start justify-between gap-3">
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex items-center gap-2 mb-0.5">
+                                                                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{src.source}</span>
+                                                                {src.isCanonical && <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded px-1">Canonical</span>}
+                                                            </div>
+                                                            <p className="text-sm font-semibold text-slate-800">{src.value || '(empty)'}</p>
+                                                            <p className="text-[10px] text-slate-400 font-mono mt-0.5">{src.key}</p>
+                                                        </div>
+                                                        {resolutionSelections[g.group] === src.value && <CheckCircle2 className="w-5 h-5 text-blue-500 shrink-0 mt-0.5" />}
+                                                    </div>
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                                {conflictGroups.length === 0 && (
+                                    <div className="flex flex-col items-center gap-3 py-16 text-center">
+                                        <CheckCircle2 className="w-12 h-12 text-emerald-400" />
+                                        <p className="text-base font-semibold text-slate-700">No conflicts found</p>
+                                        <p className="text-sm text-slate-500">All business info is consistent across settings.</p>
+                                    </div>
+                                )}
+                            </div>
+                            <div className="flex shrink-0 items-center justify-end gap-3 border-t border-slate-100 bg-slate-50 p-5 rounded-b-3xl">
+                                <Button variant="outline" className="h-10 rounded-xl" onClick={() => setShowConflictResolver(false)}>Cancel</Button>
+                                {conflictGroups.length > 0 && (
+                                    <Button className="h-10 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold" onClick={handleApplyResolutions} disabled={resolvingConflicts}>
+                                        {resolvingConflicts ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
+                                        Apply All Resolutions
+                                    </Button>
+                                )}
                             </div>
                         </motion.div>
                     </div>

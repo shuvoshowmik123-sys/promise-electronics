@@ -28,9 +28,9 @@ export default function SupportPage() {
     };
 
     const supportPhone = getSettingValue("support_phone", "+880 1944-488999");
-    const supportEmail = getSettingValue("support_email", "support@promiseelectronics.com");
-    const whatsappNumber = getSettingValue("whatsapp_number", "8801944488999");
-    const address = getSettingValue("contact_address", "House 12, Road 5, Dhanmondi, Dhaka 1205");
+    const supportEmail = getSettingValue("company_email", "") || getSettingValue("support_email", "support@promiseelectronics.com");
+    const whatsappNumber = getSettingValue("contact_whatsapp", "") || getSettingValue("whatsapp_number", "8801944488999");
+    const address = getSettingValue("service_center_contact", "") || getSettingValue("contact_address", "House 12, Road 5, Dhanmondi, Dhaka 1205");
     const businessHours = getSettingValue("business_hours", "Sat - Thu: 9:00 AM - 8:00 PM");
 
     const handleSendMessage = async (e: React.FormEvent) => {

@@ -478,18 +478,27 @@ export default function HomePage() {
   };
 
   const contactInfo = useMemo((): ContactInfo => {
+    // Parse legacy blob as per-field fallback
+    let legacy: Partial<ContactInfo> = {};
     const contactSetting = settings.find((s) => s.key === "homepage_contact_info");
     if (contactSetting?.value) {
       try {
         const parsed = JSON.parse(contactSetting.value);
-        if (parsed && typeof parsed === "object") {
-          return { ...defaultContactInfo, ...parsed };
-        }
-      } catch {
-        // homepage_contact_info invalid — fall back
-      }
+        if (parsed && typeof parsed === "object") legacy = parsed;
+      } catch { /* ignore */ }
     }
-    return defaultContactInfo;
+    const phone = getSettingValue("support_phone", "");
+    const whatsapp = getSettingValue("contact_whatsapp", "");
+    const address = getSettingValue("service_center_contact", "");
+    const email = getSettingValue("company_email", "");
+    const hours = getSettingValue("business_hours", "");
+    return {
+      phoneNumbers: phone ? [phone] : (legacy.phoneNumbers ?? defaultContactInfo.phoneNumbers),
+      whatsappNumber: whatsapp || (legacy.whatsappNumber ?? defaultContactInfo.whatsappNumber),
+      addressLines: address ? [address] : (legacy.addressLines ?? defaultContactInfo.addressLines),
+      emails: email ? [email] : (legacy.emails ?? defaultContactInfo.emails),
+      workingHoursLines: hours ? [hours] : (legacy.workingHoursLines ?? defaultContactInfo.workingHoursLines),
+    };
   }, [settings]);
 
   const defaultServiceAreas = [

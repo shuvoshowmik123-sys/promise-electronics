@@ -11772,4 +11772,77 @@ Audited all server-side DB paths for risk of hitting the 30s `query_timeout` add
 - `npx vite build --mode development`: PASS (built in 18.04s)
 - `git diff --check`: PASS (no whitespace errors; CRLF normalization warnings only)
 
+---
+
+## Phase 37A — Homepage Brands Editor Upgrade
+
+**Date**: 2026-07-06
+**Status**: COMPLETE (not yet pushed — pending inspector review with Phase 38A)
+**Scope**: Frontend only — `CmsHomeSection.tsx`, `SettingsTab.tsx`
+
+### What changed
+- Upgraded "Brands We Service" editor in Homepage CMS from compact hover-only grid to per-brand card rows with: always-visible name input, logo URL input, logo 48×48 preview (onError hides broken image), upload button (file input), clear button (visible only when logoUrl set), delete button.
+- EmptyState "Add Brand" creates an editable row immediately.
+- New brand draft: separate name + logo URL inputs below existing brands.
+- `onUploadBrandLogo?: (id: number, file: File) => Promise<void>` prop wired by SettingsTab via `uploadToImageKit`.
+
+---
+
+## Phase 37A-Hotfix — Wire Brand Logo Upload
+
+**Date**: 2026-07-06
+**Status**: COMPLETE (not yet pushed — pending inspector review with Phase 38A)
+**Scope**: Frontend only — `SettingsTab.tsx`
+
+### What changed
+- Imported `uploadToImageKit` from `@/lib/imagekit-upload`.
+- Added `handleUploadBrandLogo(id, file)` handler in SettingsTab.
+- Passed `onUploadBrandLogo={handleUploadBrandLogo}` to both CmsHomeSection instances (mobile bottom sheet + desktop popup).
+
+---
+
+## Phase 38A — Unified System Settings + Duplicate Conflict Resolver
+
+**Date**: 2026-07-06
+**Status**: COMPLETE — not yet pushed (awaiting inspector review)
+**Scope**: Backend service + routes + frontend SettingsTab + CmsHomeSection + AboutUsSection
+
+### What changed
+
+#### Backend
+1. **`server/services/settings-conflict.service.ts`** (NEW): Detects duplicate business info across settings keys. Five conflict groups: Phone, Address, Hours, Email, WhatsApp. Normalizes values lightly (last 10 phone digits, lowercase/trim for text/email). `detectConflicts()` returns `ConflictReport`. `applyResolutions()` syncs canonical key + all duplicate keys + `homepage_contact_info` JSON in one operation.
+2. **`server/routes/settings.routes.ts`**:
+   - Added `company_email`, `service_center_contact_bn`, `business_hours_bn` to `ALLOWED_SETTING_KEYS` and `PUBLIC_SETTING_KEYS`.
+   - Imported conflict service.
+   - Added `GET /api/admin/settings/conflicts` (requireAdminAuth + requireSuperAdmin).
+   - Added `POST /api/admin/settings/conflicts/resolve` (requireAdminAuth + requireSuperAdmin + audit log).
+3. **`client/src/lib/api/adminApi.ts`**: Extended `settingsApi` with `getConflicts()` and `resolveConflicts()`. Added `SettingConflictSource`, `SettingConflictGroup`, `SettingResolutionItem` interfaces.
+
+#### Frontend
+4. **`client/src/pages/admin/bento/tabs/settings/CmsHomeSection.tsx`**: Contact Info section converted from editable to read-only notice. Shows amber banner "Managed in Business Identity" with current stored values as read-only text. No inputs. `contactInfo` prop still accepted for display.
+5. **`client/src/pages/admin/bento/tabs/settings/AboutUsSection.tsx`**: Contact Details card converted from editable to read-only notice. Shows amber banner with current address/email/hours values as read-only text. Setters still accepted as props for SettingsTab backward compat but not called.
+6. **`client/src/pages/admin/bento/tabs/SettingsTab.tsx`**:
+   - New state: `companyEmail`, `contactWhatsapp`, `socialFacebook`, `socialInstagram`, `socialYoutube`, `serviceCenterContactBn`, `businessHoursBn`.
+   - Conflict state: `conflictGroups`, `conflictLoading`, `showConflictResolver`, `resolvingConflicts`, `resolutionSelections`.
+   - `fetchConflicts()` called on mount alongside `fetchSettings()`.
+   - `handleApplyResolutions()` calls `settingsApi.resolveConflicts()`, then refreshes settings + conflicts.
+   - **Mobile**: Amber "Action Required" conflict panel above Business Identity when conflicts exist; "Review & Resolve" button.
+   - **Desktop**: Amber conflict banner above Main Bento Layout when conflicts exist.
+   - **Conflict Resolver** (z-[270], portaled): Mobile bottom sheet + desktop dialog. Per-group radio-style buttons with value + source + canonical badge. "Apply Resolutions" button.
+   - **Business Identity sheet expanded**: Now includes Email, WhatsApp, Address (Bangla), Hours (Bangla), Facebook, Instagram, YouTube — both mobile and desktop forms.
+
+### Canonical key decisions
+| Group | Canonical Key | Old duplicate sources |
+|---|---|---|
+| Phone | `support_phone` | `homepage_contact_info.phoneNumbers`, `contact_phone`, `mobile_contact_phone` |
+| Address | `service_center_contact` | `homepage_contact_info.addressLines`, `about_address`, `contact_address`, `mobile_contact_address` |
+| Hours | `business_hours` | `homepage_contact_info.workingHoursLines`, `about_working_hours`, `mobile_business_hours` |
+| Email | `company_email` (new) | `about_email`, `homepage_contact_info.emails` |
+| WhatsApp | `contact_whatsapp` | `homepage_contact_info.whatsappNumber`, `mobile_contact_whatsapp` |
+
+### Build Gates
+- `npx tsc --noEmit --pretty false`: PASS (exit code 0)
+- `npx vite build --mode development`: PASS (built in ~63s)
+- `git diff --check`: PASS (exit code 0; CRLF normalization warnings only)
+
 ### VERDICT: GO — Phase 36A complete

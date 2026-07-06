@@ -429,7 +429,34 @@ export const settingsApi = {
             method: "POST",
             body: JSON.stringify(data),
         }),
+    getConflicts: () => fetchApi<{ conflicts: SettingConflictGroup[]; totalConflicts: number }>("/admin/settings/conflicts"),
+    resolveConflicts: (resolutions: SettingResolutionItem[]) =>
+        fetchApi<{ ok: boolean; resolved: number }>("/admin/settings/conflicts/resolve", {
+            method: "POST",
+            body: JSON.stringify({ resolutions }),
+        }),
 };
+
+export interface SettingConflictSource {
+    key: string;
+    source: string;
+    value: string;
+    isCanonical: boolean;
+}
+
+export interface SettingConflictGroup {
+    group: string;
+    groupLabel: string;
+    canonicalKey: string;
+    sources: SettingConflictSource[];
+    hasConflict: boolean;
+}
+
+export interface SettingResolutionItem {
+    group: string;
+    canonicalKey: string;
+    value: string;
+}
 
 // POS Transactions API
 export const posTransactionsApi = {
