@@ -1199,17 +1199,21 @@ export default function HomePage() {
                   {homepageBrands.map((brand, i) => (
                     <div
                       key={`${setIndex}-${brand.id}`}
-                      className="flex-shrink-0 w-32 md:w-40 h-20 bg-white shadow-neumorph-sm rounded-xl flex items-center justify-center hover:shadow-neumorph transition-shadow overflow-hidden"
+                      className="flex-shrink-0 w-32 md:w-40 h-20 rounded-2xl border border-white/80 bg-gradient-to-br from-white via-slate-50 to-emerald-50/50 p-2 shadow-neumorph-sm transition-shadow hover:shadow-neumorph"
                       data-testid={`brand-carousel-${brand.id}`}
                     >
                       {brand.logoUrl ? (
-                        <img
-                          src={brand.logoUrl}
-                          alt={brand.name}
-                          className="w-full h-full object-contain p-2"
-                        />
+                        <div className="flex h-full w-full items-center justify-center rounded-xl bg-white/70 ring-1 ring-slate-200/70">
+                          <img
+                            src={brand.logoUrl}
+                            alt={brand.name}
+                            className="h-full w-full object-contain p-2.5 mix-blend-multiply saturate-[1.05] contrast-[1.03]"
+                          />
+                        </div>
                       ) : (
-                        <span className="text-lg md:text-xl font-bold text-slate-600 tracking-wide">{brand.name}</span>
+                        <div className="flex h-full w-full items-center justify-center rounded-xl bg-white/70 ring-1 ring-slate-200/70">
+                          <span className="text-lg md:text-xl font-bold text-slate-600 tracking-wide">{brand.name}</span>
+                        </div>
                       )}
                     </div>
                   ))}

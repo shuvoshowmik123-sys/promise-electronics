@@ -557,6 +557,9 @@ export default function CmsHomeSection({
                     <p className="text-[11px] text-slate-400">
                         These logos appear in the "Brands We Service" carousel on the customer homepage.
                     </p>
+                    <p className="rounded-lg border border-emerald-100 bg-emerald-50/70 px-3 py-2 text-[11px] leading-relaxed text-emerald-800">
+                        Logo cards automatically blend white and off-white image backgrounds into the carousel surface. Transparent PNG or SVG logos still look best.
+                    </p>
 
                     {/* Brand list */}
                     {homepageBrands.length === 0 ? (
@@ -572,16 +575,20 @@ export default function CmsHomeSection({
                                     {/* Row 1: logo preview + name + action buttons */}
                                     <div className="flex items-center gap-2">
                                         {/* Logo preview 48×48 */}
-                                        <div className="w-12 h-12 rounded-lg bg-white border border-slate-200 flex items-center justify-center overflow-hidden shrink-0">
+                                        <div className="w-12 h-12 rounded-lg border border-white/80 bg-gradient-to-br from-white via-slate-50 to-emerald-50/60 p-1 shadow-sm shrink-0">
                                             {brand.logoUrl ? (
-                                                <img
-                                                    src={brand.logoUrl}
-                                                    alt={brand.name}
-                                                    className="w-full h-full object-contain"
-                                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                                                />
+                                                <div className="flex h-full w-full items-center justify-center rounded-md bg-white/70 ring-1 ring-slate-200/70">
+                                                    <img
+                                                        src={brand.logoUrl}
+                                                        alt={brand.name}
+                                                        className="w-full h-full object-contain p-1 mix-blend-multiply saturate-[1.05] contrast-[1.03]"
+                                                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                                                    />
+                                                </div>
                                             ) : (
-                                                <ImageIcon className="w-5 h-5 text-slate-300" />
+                                                <div className="flex h-full w-full items-center justify-center rounded-md bg-white/70 ring-1 ring-slate-200/70">
+                                                    <ImageIcon className="w-5 h-5 text-slate-300" />
+                                                </div>
                                             )}
                                         </div>
                                         {/* Brand name input */}
