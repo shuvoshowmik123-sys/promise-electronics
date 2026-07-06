@@ -136,15 +136,11 @@ export function CustomerRouter() {
                                 </Route>
 
                                 <Route path="/track">
-                                    <CustomerErrorBoundary fallbackTitle="Track Job Error">
-                                        <CustomerModuleGuard module="customer_track"><TrackJobPage /></CustomerModuleGuard>
-                                    </CustomerErrorBoundary>
+                                    <CustomerErrorBoundary fallbackTitle="Track Order Error"><TrackOrderPage /></CustomerErrorBoundary>
                                 </Route>
-                                {/* QR code deep-link: /track/:id */}
+                                {/* QR code deep-link: /track/:id — printed job tickets */}
                                 <Route path="/track/:id">
-                                    <CustomerErrorBoundary fallbackTitle="Track Job Error">
-                                        <CustomerModuleGuard module="customer_track"><TrackJobPage /></CustomerModuleGuard>
-                                    </CustomerErrorBoundary>
+                                    <CustomerErrorBoundary fallbackTitle="Track Job Error"><TrackJobPage /></CustomerErrorBoundary>
                                 </Route>
                                 <Route path="/support">
                                     <CustomerErrorBoundary fallbackTitle="Support Error"><SupportPage /></CustomerErrorBoundary>
