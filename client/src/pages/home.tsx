@@ -523,9 +523,10 @@ export default function HomePage() {
   }, [settings]);
 
   interface HomepageBrand {
-    id: string;
+    id: string | number;
     name: string;
     logoUrl: string;
+    logoScale?: number;
   }
 
   const defaultBrands: HomepageBrand[] = [
@@ -1197,14 +1198,15 @@ export default function HomePage() {
                   {homepageBrands.map((brand, i) => (
                     <div
                       key={`${setIndex}-${brand.id}`}
-                      className="flex-shrink-0 w-32 md:w-40 h-20 rounded-2xl bg-white/85 p-2 shadow-[0_10px_30px_rgba(15,23,42,0.06)] transition-shadow hover:shadow-[0_14px_36px_rgba(15,23,42,0.09)]"
+                      className="flex-shrink-0 w-32 md:w-40 h-20 rounded-2xl bg-white/85 p-2 shadow-[0_10px_30px_rgba(15,23,42,0.06)] transition-shadow hover:shadow-[0_14px_36px_rgba(15,23,42,0.09)] overflow-hidden"
                       data-testid={`brand-carousel-${brand.id}`}
                     >
                       {brand.logoUrl ? (
-                        <div className="flex h-full w-full items-center justify-center rounded-xl bg-transparent">
+                        <div className="flex h-full w-full items-center justify-center rounded-xl bg-transparent overflow-hidden">
                           <img
                             src={brand.logoUrl}
                             alt={brand.name}
+                            style={{ transform: `scale(${brand.logoScale ?? 1})` }}
                             className="h-full w-full object-contain p-2.5 mix-blend-multiply saturate-[1.05] contrast-[1.03]"
                           />
                         </div>

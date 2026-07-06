@@ -1,6 +1,5 @@
 const TARGET_WIDTH = 512;
 const TARGET_HEIGHT = 256;
-const TARGET_PADDING = 44;
 const WHITE_THRESHOLD = 246;
 const ALPHA_THRESHOLD = 20;
 
@@ -34,6 +33,44 @@ function canvasToFile(canvas: HTMLCanvasElement, name: string): Promise<File> {
             resolve(new File([blob], name, { type: "image/png" }));
         }, "image/png");
     });
+}
+
+function getLogoFitBounds(cropWidth: number, cropHeight: number) {
+    const aspect = cropWidth / cropHeight;
+
+    if (aspect >= 3.2) {
+        return { maxWidth: 456, maxHeight: 170 };
+    }
+
+    if (aspect <= 1.25) {
+        return { maxWidth: 250, maxHeight: 206 };
+    }
+
+    return { maxWidth: 420, maxHeight: 190 };
+}
+
+function safeFilePart(value: string): string {
+    return value
+        .trim()
+        .replace(/\.[^.]+$/, "")
+        .replace(/[^a-z0-9]+/gi, "-")
+        .replace(/^-+|-+$/g, "")
+        .toLowerCase()
+        .slice(0, 60) || "brand-logo";
+}
+
+export async function normalizeBrandLogoFromUrl(url: string, brandName: string): Promise<File> {
+    const response = await fetch(url, { cache: "no-store" });
+    if (!response.ok) {
+        throw new Error("Could not download existing logo.");
+    }
+
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/")) {
+        throw new Error("Existing logo URL is not an image.");
+    }
+
+    return normalizeBrandLogoFile(new File([blob], `${safeFilePart(brandName)}.png`, { type: blob.type }));
 }
 
 export async function normalizeBrandLogoFile(file: File): Promise<File> {
@@ -98,8 +135,7 @@ export async function normalizeBrandLogoFile(file: File): Promise<File> {
     const outputContext = outputCanvas.getContext("2d");
     if (!outputContext) return file;
 
-    const maxWidth = TARGET_WIDTH - TARGET_PADDING * 2;
-    const maxHeight = TARGET_HEIGHT - TARGET_PADDING * 2;
+    const { maxWidth, maxHeight } = getLogoFitBounds(cropWidth, cropHeight);
     const scale = Math.min(maxWidth / cropWidth, maxHeight / cropHeight);
     const drawWidth = Math.max(1, cropWidth * scale);
     const drawHeight = Math.max(1, cropHeight * scale);
@@ -110,6 +146,6 @@ export async function normalizeBrandLogoFile(file: File): Promise<File> {
     outputContext.imageSmoothingQuality = "high";
     outputContext.drawImage(cropCanvas, drawX, drawY, drawWidth, drawHeight);
 
-    const baseName = file.name.replace(/\.[^.]+$/, "") || "brand-logo";
+    const baseName = safeFilePart(file.name);
     return canvasToFile(outputCanvas, `${baseName}-normalized.png`);
 }

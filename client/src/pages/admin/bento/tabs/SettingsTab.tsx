@@ -16,7 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { drawerApi, settingsApi } from "@/lib/api";
 import type { SettingConflictGroup, SettingResolutionItem } from "@/lib/api/adminApi";
 import { uploadToImageKit } from "@/lib/imagekit-upload";
-import { normalizeBrandLogoFile } from "@/lib/brand-logo-normalizer";
+import { normalizeBrandLogoFile, normalizeBrandLogoFromUrl } from "@/lib/brand-logo-normalizer";
 import { containerVariants, itemVariants, MobileScrollContent, MobileTabHeader, MobileTabLayout, MobileMarqueeText, MobileSegmentTabs } from "../shared";
 import { BentoCard } from "../shared/BentoCard";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
@@ -24,7 +24,7 @@ import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui
 // Sections
 import GeneralSection from "./settings/GeneralSection";
 import ServiceConfigSection from "./settings/ServiceConfigSection";
-import type { InfoBox, HomepageStat, FAQItem, ContactInfo, HomepageBrand, ProblemNavItem, BeforeAfterItem, PricingItem } from "./settings/CmsHomeSection";
+import type { InfoBox, HomepageStat, FAQItem, ContactInfo, HomepageBrand, HomepageBrandId, ProblemNavItem, BeforeAfterItem, PricingItem } from "./settings/CmsHomeSection";
 import type { TeamMember } from "./settings/AboutUsSection";
 const CmsHomeSection = lazy(() => import("./settings/CmsHomeSection"));
 const AboutUsSection = lazy(() => import("./settings/AboutUsSection"));
@@ -133,19 +133,75 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     });
     const [serviceAreas, setServiceAreas] = useState<string[]>([]);
     const [homepageBrands, setHomepageBrands] = useState<HomepageBrand[]>([]);
+    const [brandLogoFittingIds, setBrandLogoFittingIds] = useState<HomepageBrandId[]>([]);
+    const [autoFittingAllBrands, setAutoFittingAllBrands] = useState(false);
 
-    const handleUploadBrandLogo = async (id: number, file: File) => {
+    const uploadBrandLogoFile = async (brand: HomepageBrand, file: File) => {
+        const result = await uploadToImageKit(file, {
+            folder: 'cms/brands',
+            fileName: `brand-${brand.id}-${file.name}`,
+            tags: ['brand-logo', 'cms', 'normalized'],
+        });
+
+        setHomepageBrands(prev => prev.map(b => b.id === brand.id ? {
+            ...b,
+            logoUrl: result.url,
+            logoScale: b.logoScale ?? 1,
+            logoNormalizedAt: new Date().toISOString(),
+        } : b));
+    };
+
+    const handleUploadBrandLogo = async (id: HomepageBrandId, file: File) => {
+        const brand = homepageBrands.find(b => b.id === id);
+        if (!brand) return;
         try {
             const normalizedFile = await normalizeBrandLogoFile(file);
-            const result = await uploadToImageKit(normalizedFile, {
-                folder: 'cms/brands',
-                fileName: `brand-${id}-${normalizedFile.name}`,
-                tags: ['brand-logo', 'cms', 'normalized'],
-            });
-            setHomepageBrands(prev => prev.map(b => b.id === id ? { ...b, logoUrl: result.url } : b));
+            await uploadBrandLogoFile(brand, normalizedFile);
             toast({ title: "Logo normalized", description: "Brand logo resized and centered. Save settings to keep the change." });
         } catch (err: any) {
             toast({ title: "Upload failed", description: err?.message?.slice(0, 120) ?? "Could not upload logo.", variant: "destructive" });
+        }
+    };
+
+    const handleAutoFitBrandLogo = async (id: HomepageBrandId) => {
+        const brand = homepageBrands.find(b => b.id === id);
+        if (!brand?.logoUrl) return;
+
+        setBrandLogoFittingIds(prev => Array.from(new Set([...prev, id])));
+        try {
+            const normalizedFile = await normalizeBrandLogoFromUrl(brand.logoUrl, brand.name);
+            await uploadBrandLogoFile(brand, normalizedFile);
+            toast({ title: "Logo auto-fitted", description: `${brand.name} was cropped, centered, and re-uploaded. Save settings to keep it.` });
+        } catch (err: any) {
+            toast({ title: "Auto fit failed", description: err?.message?.slice(0, 140) ?? "Could not auto-fit this logo.", variant: "destructive" });
+        } finally {
+            setBrandLogoFittingIds(prev => prev.filter(value => value !== id));
+        }
+    };
+
+    const handleAutoFitAllBrandLogos = async () => {
+        const brandsWithLogos = homepageBrands.filter(brand => brand.logoUrl?.trim());
+        if (brandsWithLogos.length === 0) return;
+
+        setAutoFittingAllBrands(true);
+        let fitted = 0;
+        try {
+            for (const brand of brandsWithLogos) {
+                setBrandLogoFittingIds(prev => Array.from(new Set([...prev, brand.id])));
+                try {
+                    const normalizedFile = await normalizeBrandLogoFromUrl(brand.logoUrl, brand.name);
+                    await uploadBrandLogoFile(brand, normalizedFile);
+                    fitted += 1;
+                } finally {
+                    setBrandLogoFittingIds(prev => prev.filter(value => value !== brand.id));
+                }
+            }
+            toast({ title: "Brand logos auto-fitted", description: `${fitted} logo${fitted === 1 ? "" : "s"} normalized. Save settings to publish.` });
+        } catch (err: any) {
+            toast({ title: "Auto fit stopped", description: `${fitted} logo${fitted === 1 ? "" : "s"} completed. ${err?.message?.slice(0, 100) ?? "One logo could not be processed."}`, variant: "destructive" });
+        } finally {
+            setAutoFittingAllBrands(false);
+            setBrandLogoFittingIds([]);
         }
     };
 
@@ -1013,6 +1069,10 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         trackRepairEnabled={trackRepairEnabled} setTrackRepairEnabled={setTrackRepairEnabled}
                                         googleMapUrl={googleMapUrl} setGoogleMapUrl={setGoogleMapUrl}
                                         onUploadBrandLogo={handleUploadBrandLogo}
+                                        onAutoFitBrandLogo={handleAutoFitBrandLogo}
+                                        onAutoFitAllBrandLogos={handleAutoFitAllBrandLogos}
+                                        autoFittingBrandIds={brandLogoFittingIds}
+                                        isAutoFittingAllBrands={autoFittingAllBrands}
                                         canonicalPhone={supportPhone} canonicalEmail={companyEmail}
                                         canonicalAddress={serviceCenterContact} canonicalHours={businessHours}
                                         canonicalWhatsapp={contactWhatsapp}
@@ -1094,6 +1154,10 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         trackRepairEnabled={trackRepairEnabled} setTrackRepairEnabled={setTrackRepairEnabled}
                                         googleMapUrl={googleMapUrl} setGoogleMapUrl={setGoogleMapUrl}
                                         onUploadBrandLogo={handleUploadBrandLogo}
+                                        onAutoFitBrandLogo={handleAutoFitBrandLogo}
+                                        onAutoFitAllBrandLogos={handleAutoFitAllBrandLogos}
+                                        autoFittingBrandIds={brandLogoFittingIds}
+                                        isAutoFittingAllBrands={autoFittingAllBrands}
                                         canonicalPhone={supportPhone} canonicalEmail={companyEmail}
                                         canonicalAddress={serviceCenterContact} canonicalHours={businessHours}
                                         canonicalWhatsapp={contactWhatsapp}
