@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { navItems, images } from "@/lib/app-config";
 import { CustomerLanguageProvider } from "@/contexts/CustomerLanguageContext";
@@ -28,6 +28,14 @@ import { ProfileCompletionModal } from "@/components/auth/ProfileCompletionModal
 import { MobileBottomNav } from "./MobileBottomNav";
 import { NetworkOfflineBanner } from "@/components/customer/NetworkOfflineBanner";
 import { ScrollProgressBar } from "@/components/customer/ScrollProgressBar";
+
+function ScrollToTop() {
+  const [location] = useLocation();
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location]);
+  return null;
+}
 
 export function PublicLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
@@ -90,6 +98,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
   return (
     <CustomerLanguageProvider>
     <div className="customer-portal-shell min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50">
+      <ScrollToTop />
       <ScrollProgressBar />
       <NetworkOfflineBanner />
       {/* Top Bar */}

@@ -1,7 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ArrowRight, CheckCircle2, Clock, ShieldCheck, Wrench, Package, Users, ChevronLeft, ChevronRight, ShoppingCart, MessageSquare, Calendar, Search, Truck, MapPin, Phone, Mail, Star, HelpCircle, Award, Zap, Heart, Power, MonitorOff, Maximize, VolumeX, WifiOff, AlignJustify, type LucideIcon } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock, ShieldCheck, Wrench, Package, Users, ChevronLeft, ChevronRight, ShoppingCart, MessageSquare, Calendar, Search, Truck, MapPin, Phone, Mail, Star, HelpCircle, Award, Zap, Heart, Power, MonitorOff, Maximize, VolumeX, WifiOff, AlignJustify, X, Calculator, type LucideIcon } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useLocation } from "wouter";
 import { images } from "@/lib/app-config";
 import { useState, useEffect, useMemo, useRef } from "react";
@@ -68,6 +69,9 @@ export default function HomePage() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const { addItem } = useCart();
   const [trackTicket, setTrackTicket] = useState("");
+  const [estBrand, setEstBrand] = useState("");
+  const [estSize, setEstSize] = useState("");
+  const [estIssue, setEstIssue] = useState("");
   const [, setLocation] = useLocation();
   const { customer } = useCustomerAuth();
   const { language, t } = useCustomerLanguage();
@@ -414,10 +418,10 @@ export default function HomePage() {
   }
 
   const defaultStats: HomepageStat[] = [
-    { id: "1", value: 500, suffix: "+", label: "Happy Customers", iconName: "Users" },
-    { id: "2", value: 1000, suffix: "+", label: "TVs Repaired", iconName: "Wrench" },
-    { id: "3", value: 5, suffix: "+", label: "Years Experience", iconName: "Clock" },
-    { id: "4", value: 10, suffix: "+", label: "Expert Technicians", iconName: "ShieldCheck" },
+    { id: "1", value: 10000, suffix: "+", label: "Repairs Completed", iconName: "Wrench" },
+    { id: "2", value: 12, suffix: "+", label: "Years in Business", iconName: "Clock" },
+    { id: "3", value: 90, suffix: "", label: "Day Warranty", iconName: "ShieldCheck" },
+    { id: "4", value: 20, suffix: "+", label: "TV Brands Serviced", iconName: "Star" },
   ];
 
   const homepageStats = useMemo((): HomepageStat[] => {
@@ -611,6 +615,35 @@ export default function HomePage() {
     "Lines on Screen": "স্ক্রিনে লাইন",
   };
 
+  // Shared calculator data — used by both desktop and mobile paths
+  type CalcSizeBucket = "small" | "medium" | "large";
+  const CALC_ISSUES = ["No Power", "No Display", "Lines on Screen", "Dim / No Backlight", "Broken Screen", "Sound Issue", "Software / Smart TV"];
+  const CALC_SIZES = ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch+"];
+  const CALC_BRANDS = ["Sony", "Samsung", "LG", "Walton", "Vision", "Sharp", "Panasonic", "Haier", "Other"];
+  const DEFAULT_PRICE_MATRIX: Record<string, Record<CalcSizeBucket, [number, number]>> = {
+    "No Power":              { small: [800,  2000],  medium: [1000, 2500],  large: [1500, 4000]  },
+    "No Display":            { small: [1500, 3000],  medium: [2000, 4500],  large: [3000, 7000]  },
+    "Lines on Screen":       { small: [1200, 2500],  medium: [1800, 4000],  large: [2500, 6000]  },
+    "Dim / No Backlight":    { small: [1000, 2500],  medium: [1500, 3500],  large: [2000, 5000]  },
+    "Broken Screen":         { small: [3000, 6000],  medium: [5000, 10000], large: [8000, 18000] },
+    "Sound Issue":           { small: [500,  1500],  medium: [500,  1500],  large: [500,  2000]  },
+    "Software / Smart TV":   { small: [500,  1000],  medium: [500,  1000],  large: [500,  1200]  },
+  };
+  const priceMatrixSetting = settings.find(s => s.key === "repair_price_matrix");
+  let PRICE_MATRIX: Record<string, Record<CalcSizeBucket, [number, number]>> = DEFAULT_PRICE_MATRIX;
+  if (priceMatrixSetting?.value) {
+    try {
+      const parsed = JSON.parse(priceMatrixSetting.value);
+      if (parsed && typeof parsed === "object") PRICE_MATRIX = parsed;
+    } catch { /* fall back to defaults */ }
+  }
+  const calcSizeBucket = (s: string): CalcSizeBucket => {
+    const n = parseInt(s);
+    if (n <= 32) return "small";
+    if (n <= 50) return "medium";
+    return "large";
+  };
+
   // Mobile Dashboard Logic
   if (isMobile) {
     return (
@@ -739,6 +772,110 @@ export default function HomePage() {
             </div>
           </div>
 
+          {/* Mobile Estimate Calculator */}
+          <div className="mb-8">
+            <h3 className="text-lg font-bold text-slate-950 mb-1">{t("desktop.calc.title")}</h3>
+            <p className="text-xs text-slate-500 mb-4">{t("desktop.calc.subtitle")}</p>
+            <div className="rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm space-y-3">
+              <div>
+                <label className="block text-[10px] font-bold text-emerald-700 uppercase tracking-wide mb-1.5">{t("desktop.calc.labelBrand")}</label>
+                <Select value={estBrand} onValueChange={setEstBrand}>
+                  <SelectTrigger className="h-11 rounded-2xl border border-emerald-100 bg-emerald-50/40 text-sm focus:ring-emerald-300">
+                    <SelectValue placeholder={language === "bn" ? "ব্র্যান্ড বেছে নিন" : "Select brand"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CALC_BRANDS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-emerald-700 uppercase tracking-wide mb-1.5">{t("desktop.calc.labelSize")}</label>
+                <Select value={estSize} onValueChange={setEstSize}>
+                  <SelectTrigger className="h-11 rounded-2xl border border-emerald-100 bg-emerald-50/40 text-sm focus:ring-emerald-300">
+                    <SelectValue placeholder={language === "bn" ? "স্ক্রিন সাইজ বেছে নিন" : "Select size"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CALC_SIZES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-emerald-700 uppercase tracking-wide mb-1.5">{t("desktop.calc.labelProblem")}</label>
+                <Select value={estIssue} onValueChange={setEstIssue}>
+                  <SelectTrigger className="h-11 rounded-2xl border border-emerald-100 bg-emerald-50/40 text-sm focus:ring-emerald-300">
+                    <SelectValue placeholder={language === "bn" ? "সমস্যা বেছে নিন" : "Select problem"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {CALC_ISSUES.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Result panel + persistent CTA */}
+              {(() => {
+                const mBucket = estSize ? calcSizeBucket(estSize) : null;
+                const mRange = estIssue && mBucket ? PRICE_MATRIX[estIssue]?.[mBucket] : null;
+                const mAllSelected = estBrand && estSize && estIssue;
+                const mBookUrl = mAllSelected
+                  ? `/repair?brand=${encodeURIComponent(estBrand)}&size=${encodeURIComponent(estSize)}&issue=${encodeURIComponent(estIssue)}`
+                  : "/repair";
+                return (
+                  <>
+                    {/* Result state */}
+                    {!mAllSelected ? (
+                      <p className="text-xs text-slate-400 text-center py-2">{t("desktop.calc.idle")}</p>
+                    ) : mRange ? (
+                      <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
+                        <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide mb-0.5">{t("desktop.calc.resultLabel")}</p>
+                        <p className="text-3xl font-black text-emerald-700 mb-1">
+                          ৳{mRange[0].toLocaleString()} – ৳{mRange[1].toLocaleString()}
+                        </p>
+                        <p className="text-[10px] text-emerald-600/70 leading-relaxed">{t("desktop.calc.disclaimer")}</p>
+                      </div>
+                    ) : (
+                      <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4">
+                        <p className="text-sm font-medium text-slate-700">{t("desktop.calc.noData")}</p>
+                        <p className="text-xs text-slate-400 mt-0.5">{t("desktop.calc.noDataSub")}</p>
+                      </div>
+                    )}
+
+                    {/* Always-visible CTA */}
+                    <Link href={mBookUrl}>
+                      <Button className="mt-4 w-full h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-base font-bold shadow-lg shadow-emerald-200 text-white border-none">
+                        {mAllSelected ? t("desktop.calc.bookThis") : t("desktop.calc.bookGeneral")}
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </>
+                );
+              })()}
+            </div>
+          </div>
+
+          {/* Why Promise Feels Different */}
+          <div className="mb-8">
+            <h3 className="mb-4 text-lg font-bold text-slate-950">{t("mobile.wpfd.title")}</h3>
+            <div className="rounded-3xl border border-emerald-100 bg-white shadow-sm overflow-hidden">
+              {([
+                { icon: Calculator,  titleKey: "mobile.wpfd.r1.title", descKey: "mobile.wpfd.r1.desc" },
+                { icon: Search,      titleKey: "mobile.wpfd.r2.title", descKey: "mobile.wpfd.r2.desc" },
+                { icon: ShieldCheck, titleKey: "mobile.wpfd.r3.title", descKey: "mobile.wpfd.r3.desc" },
+                { icon: Truck,       titleKey: "mobile.wpfd.r4.title", descKey: "mobile.wpfd.r4.desc" },
+              ] as { icon: LucideIcon; titleKey: string; descKey: string }[]).map((row, i, arr) => (
+                <div key={i} className={`flex items-center gap-4 p-4 ${i < arr.length - 1 ? "border-b border-emerald-50" : ""}`}>
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-600">
+                    <row.icon className="w-5 h-5" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-800 leading-snug">{t(row.titleKey as any)}</p>
+                    <p className="text-xs text-slate-500 leading-snug">{t(row.descKey as any)}</p>
+                  </div>
+                  <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-500" />
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* Why Choose Us (Mobile) */}
           <div className="mb-8">
             <h3 className="mb-4 text-lg font-bold text-slate-950">{mobileCopy.whyChoose}</h3>
@@ -798,7 +935,7 @@ export default function HomePage() {
               transition={{ duration: 0.7 }}
             >
               <Badge className="bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 px-4 py-1.5 text-sm font-medium">
-                #1 Trusted Electronics Service in Bangladesh
+                {t("desktop.hero.badge")}
               </Badge>
               <h1 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-heading font-bold leading-tight text-slate-900">
                 {heroTitle.includes("Premium Electronics") ? (
@@ -817,12 +954,12 @@ export default function HomePage() {
               <div className="flex flex-col sm:flex-row gap-4 pt-4">
                 <Link href="/repair">
                   <Button size="lg" className="text-sm md:text-lg h-12 md:h-14 px-6 md:px-8 shadow-lg shadow-primary/25 w-full sm:w-auto">
-                    <Wrench className="mr-2 h-5 w-5" /> Book Repair Service
+                    <Wrench className="mr-2 h-5 w-5" /> {t("desktop.hero.bookRepair")}
                   </Button>
                 </Link>
                 <Link href="/shop">
                   <Button size="lg" variant="outline" className="text-sm md:text-lg h-12 md:h-14 px-6 md:px-8 border-slate-300 hover:bg-slate-100 text-slate-800 w-full sm:w-auto">
-                    Browse Shop <ArrowRight className="ml-2 h-5 w-5" />
+                    {t("desktop.hero.browseShop")} <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
                 </Link>
               </div>
@@ -830,17 +967,17 @@ export default function HomePage() {
               {/* Track Repair Widget */}
               {trackRepairEnabled && (
                 <div className="mt-8 p-4 bg-white/80 backdrop-blur-sm rounded-xl shadow-neumorph-sm border border-slate-200 max-w-md">
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Check Repair Status</label>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">{t("desktop.hero.trackLabel")}</label>
                   <div className="flex gap-2">
                     <input
                       type="text"
-                      placeholder="Enter Ticket Number (e.g. TR-1234)"
+                      placeholder={t("desktop.hero.trackPlaceholder")}
                       className="flex-1 px-4 py-2 rounded-lg bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/50"
                       value={trackTicket}
                       onChange={(e) => setTrackTicket(e.target.value)}
                     />
                     <Button onClick={handleTrack} disabled={!trackTicket.trim()}>
-                      Track
+                      {t("desktop.hero.trackBtn")}
                     </Button>
                   </div>
                 </div>
@@ -850,15 +987,15 @@ export default function HomePage() {
               <div className="flex flex-wrap items-center gap-3 pt-6 text-sm">
                 <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-3 py-1.5 rounded-full">
                   <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  <span className="font-medium">90-Day Warranty</span>
+                  <span className="font-medium">{t("desktop.hero.warranty")}</span>
                 </div>
                 <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded-full">
                   <ShieldCheck className="h-4 w-4 text-blue-500" />
-                  <span className="font-medium">Certified Technicians</span>
+                  <span className="font-medium">{t("desktop.hero.certified")}</span>
                 </div>
                 <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 text-orange-700 px-3 py-1.5 rounded-full">
                   <Clock className="h-4 w-4 text-orange-500" />
-                  <span className="font-medium">Fast Turnaround</span>
+                  <span className="font-medium">{t("desktop.hero.fast")}</span>
                 </div>
               </div>
             </motion.div>
@@ -940,8 +1077,8 @@ export default function HomePage() {
       < section className="py-16 bg-white" >
         <div className="container mx-auto px-4">
           <div className="text-center mb-12">
-            <h2 className="text-3xl font-heading font-bold text-slate-900 mb-4">What's Wrong With Your TV?</h2>
-            <p className="text-slate-600">Select your issue to find the right solution</p>
+            <h2 className="text-3xl font-heading font-bold text-slate-900 mb-4">{t("desktop.problems.title")}</h2>
+            <p className="text-slate-600">{t("desktop.problems.subtitle")}</p>
           </div>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {problemNavItems.map((item: any) => {
@@ -1007,26 +1144,26 @@ export default function HomePage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">Why Choose Promise Electronics?</h2>
-            <p className="text-muted-foreground">We bring professionalism and transparency to the electronics service industry.</p>
+            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">{t("desktop.why.title")}</h2>
+            <p className="text-muted-foreground">{t("desktop.why.subtitle")}</p>
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-8">
             {[
               {
                 icon: ShieldCheck,
-                title: "Certified Technicians",
-                desc: "Our team consists of factory-trained experts specializing in major global brands."
+                title: t("desktop.why.f1title"),
+                desc: t("desktop.why.f1desc")
               },
               {
                 icon: Clock,
-                title: "Quick Turnaround",
-                desc: "Priority service options available with 24-48 hour delivery for urgent repairs."
+                title: t("desktop.why.f2title"),
+                desc: t("desktop.why.f2desc")
               },
               {
                 icon: CheckCircle2,
-                title: "Genuine Parts",
-                desc: "We use only authentic replacement parts with warranty coverage on all repairs."
+                title: t("desktop.why.f3title"),
+                desc: t("desktop.why.f3desc")
               }
             ].map((feature, i) => (
               <motion.div
@@ -1057,9 +1194,9 @@ export default function HomePage() {
           <section className="py-20 bg-slate-900 text-white overflow-hidden">
             <div className="container mx-auto px-4">
               <div className="text-center mb-16">
-                <Badge className="bg-primary text-white mb-4 hover:bg-primary">Real Results</Badge>
-                <h2 className="text-3xl md:text-4xl font-heading font-bold mb-4">See The Difference</h2>
-                <p className="text-slate-400">We bring dead TVs back to life. Check out our recent repairs.</p>
+                <Badge className="bg-primary text-white mb-4 hover:bg-primary">{t("desktop.ba.badge")}</Badge>
+                <h2 className="text-3xl md:text-4xl font-heading font-bold mb-4">{t("desktop.ba.title")}</h2>
+                <p className="text-slate-400">{t("desktop.ba.subtitle")}</p>
               </div>
 
               <div className="grid md:grid-cols-2 gap-8">
@@ -1085,7 +1222,7 @@ export default function HomePage() {
                       <h3 className="text-xl font-bold mb-2">{item.title}</h3>
                       <div className="flex items-center gap-2 text-sm text-slate-400">
                         <CheckCircle2 className="w-4 h-4 text-green-500" />
-                        <span>Successfully Repaired & Delivered</span>
+                        <span>{t("desktop.ba.fixed")}</span>
                       </div>
                     </div>
                   </div>
@@ -1101,24 +1238,22 @@ export default function HomePage() {
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div>
-              <Badge className="bg-slate-100 text-slate-800 border-slate-200 mb-4 hover:bg-slate-200">Transparent Pricing</Badge>
-              <h2 className="text-3xl md:text-4xl font-heading font-bold text-slate-900 mb-6">No Hidden Charges.<br />Fair & Honest Repair Costs.</h2>
-              <p className="text-slate-600 text-lg mb-8">
-                We believe in complete transparency. You'll know exactly what you're paying for before we start any work. Diagnosis is always free if you choose to repair with us.
-              </p>
+              <Badge className="bg-slate-100 text-slate-800 border-slate-200 mb-4 hover:bg-slate-200">{t("desktop.pricing.badge")}</Badge>
+              <h2 className="text-3xl md:text-4xl font-heading font-bold text-slate-900 mb-6">{t("desktop.pricing.title")}</h2>
+              <p className="text-slate-600 text-lg mb-8">{t("desktop.pricing.desc")}</p>
               <div className="flex gap-4">
                 <Link href="/repair">
-                  <Button size="lg" className="shadow-lg shadow-primary/20">Get a Free Quote</Button>
+                  <Button size="lg" className="shadow-lg shadow-primary/20">{t("desktop.pricing.quote")}</Button>
                 </Link>
                 <Link href="/contact">
-                  <Button size="lg" variant="outline">Contact Us</Button>
+                  <Button size="lg" variant="outline">{t("desktop.pricing.contact")}</Button>
                 </Link>
               </div>
             </div>
 
             <div className="bg-slate-50 rounded-2xl border border-slate-200 shadow-neumorph overflow-hidden">
               <div className="p-6 bg-slate-100 border-b border-slate-200">
-                <h3 className="font-bold text-xl text-slate-800">Common Service Rates</h3>
+                <h3 className="font-bold text-xl text-slate-800">{t("desktop.pricing.tableTitle")}</h3>
               </div>
               <div className="divide-y divide-slate-200">
                 {pricingTable.map((item: any) => (
@@ -1134,7 +1269,7 @@ export default function HomePage() {
                 ))}
               </div>
               <div className="p-4 bg-slate-100 border-t border-slate-200 text-center text-xs text-slate-500">
-                * Final price depends on specific model and parts required.
+                {t("desktop.pricing.footer")}
               </div>
             </div>
           </div>
@@ -1151,18 +1286,18 @@ export default function HomePage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">How It Works</h2>
-            <p className="text-muted-foreground">Get your TV repaired in 4 simple steps</p>
+            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">{t("desktop.how.title")}</h2>
+            <p className="text-muted-foreground">{t("desktop.how.subtitle")}</p>
           </motion.div>
 
           <div className="relative">
             <div className="hidden md:block absolute top-1/2 left-0 right-0 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-transparent -translate-y-1/2" />
             <div className="grid md:grid-cols-4 gap-8 relative">
               {[
-                { step: 1, icon: Calendar, title: "Book Online", desc: "Schedule your repair request through our website or call us directly." },
-                { step: 2, icon: Search, title: "Expert Diagnosis", desc: "Our technicians diagnose the issue and provide a transparent quote." },
-                { step: 3, icon: Wrench, title: "Professional Repair", desc: "We repair your TV using genuine parts with skilled expertise." },
-                { step: 4, icon: Truck, title: "Fast Delivery", desc: "Your repaired TV is delivered back to you with warranty." },
+                { step: 1, icon: Calendar, title: t("desktop.how.s1title"), desc: t("desktop.how.s1desc") },
+                { step: 2, icon: Search,   title: t("desktop.how.s2title"), desc: t("desktop.how.s2desc") },
+                { step: 3, icon: Wrench,   title: t("desktop.how.s3title"), desc: t("desktop.how.s3desc") },
+                { step: 4, icon: Truck,    title: t("desktop.how.s4title"), desc: t("desktop.how.s4desc") },
               ].map((item, i) => (
                 <motion.div
                   key={i}
@@ -1194,6 +1329,110 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Instant Estimate Calculator — desktop only */}
+      <section className="hidden md:block py-20 bg-white">
+        <div className="container mx-auto px-4">
+          {(() => {
+            const bucket = estSize ? calcSizeBucket(estSize) : null;
+            const range = estIssue && bucket ? PRICE_MATRIX[estIssue]?.[bucket] : null;
+            const allSelected = estBrand && estSize && estIssue;
+            const bookUrl = allSelected
+              ? `/repair?brand=${encodeURIComponent(estBrand)}&size=${encodeURIComponent(estSize)}&issue=${encodeURIComponent(estIssue)}`
+              : "/repair";
+
+            return (
+              <div className="max-w-4xl mx-auto">
+                <motion.div
+                  className="text-center mb-10"
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6 }}
+                >
+                  <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-4">
+                    <Calculator className="h-4 w-4" />
+                    {t("desktop.calc.badge")}
+                  </div>
+                  <h2 className="text-3xl font-heading font-bold text-slate-900 mb-3">{t("desktop.calc.title")}</h2>
+                  <p className="text-slate-500 max-w-lg mx-auto">{t("desktop.calc.subtitle")}</p>
+                </motion.div>
+
+                <motion.div
+                  className="bg-slate-100 rounded-2xl shadow-neumorph p-8"
+                  initial={{ opacity: 0, y: 24 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ duration: 0.6, delay: 0.1 }}
+                >
+                  <div className="grid grid-cols-3 gap-6 mb-8">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">{t("desktop.calc.labelBrand")}</label>
+                      <Select value={estBrand} onValueChange={setEstBrand}>
+                        <SelectTrigger className="bg-white shadow-neumorph-inset border-none rounded-xl h-12">
+                          <SelectValue placeholder="Select brand" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CALC_BRANDS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">{t("desktop.calc.labelSize")}</label>
+                      <Select value={estSize} onValueChange={setEstSize}>
+                        <SelectTrigger className="bg-white shadow-neumorph-inset border-none rounded-xl h-12">
+                          <SelectValue placeholder="Select size" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CALC_SIZES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">{t("desktop.calc.labelProblem")}</label>
+                      <Select value={estIssue} onValueChange={setEstIssue}>
+                        <SelectTrigger className="bg-white shadow-neumorph-inset border-none rounded-xl h-12">
+                          <SelectValue placeholder="Select problem" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {CALC_ISSUES.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+
+                  <div className={`rounded-xl p-6 flex items-center justify-between transition-all duration-300 ${allSelected ? "bg-white shadow-neumorph-inset" : "bg-slate-50 border-2 border-dashed border-slate-200"}`}>
+                    <div>
+                      {allSelected && range ? (
+                        <>
+                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">{t("desktop.calc.resultLabel")}</p>
+                          <p className="text-4xl font-black text-primary">
+                            ৳{range[0].toLocaleString()} – ৳{range[1].toLocaleString()}
+                          </p>
+                          <p className="text-xs text-slate-400 mt-2 leading-relaxed">{t("desktop.calc.disclaimer")}</p>
+                        </>
+                      ) : allSelected && !range ? (
+                        <>
+                          <p className="text-sm font-medium text-slate-600">{t("desktop.calc.noData")}</p>
+                          <p className="text-xs text-slate-400 mt-1">{t("desktop.calc.noDataSub")}</p>
+                        </>
+                      ) : (
+                        <p className="text-sm text-slate-400">{t("desktop.calc.idle")}</p>
+                      )}
+                    </div>
+                    <Link href={bookUrl}>
+                      <Button size="lg" className="ml-6 shrink-0 shadow-lg shadow-primary/20 h-12 px-6">
+                        {allSelected ? t("desktop.calc.bookThis") : t("desktop.calc.bookGeneral")}
+                        <ArrowRight className="ml-2 h-4 w-4" />
+                      </Button>
+                    </Link>
+                  </div>
+                </motion.div>
+              </div>
+            );
+          })()}
+        </div>
+      </section>
+
       {/* Brands We Service Section */}
       <section className="py-20 bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100 overflow-hidden">
         <div className="container mx-auto px-4">
@@ -1204,8 +1443,8 @@ export default function HomePage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">Brands We Service</h2>
-            <p className="text-muted-foreground">Expert repair services for all major TV brands</p>
+            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">{t("desktop.brands.title")}</h2>
+            <p className="text-muted-foreground">{t("desktop.brands.subtitle")}</p>
           </motion.div>
 
           <div className="relative">
@@ -1257,11 +1496,11 @@ export default function HomePage() {
                 viewport={{ once: true }}
               >
                 <div>
-                  <h2 className="text-3xl font-heading font-bold text-foreground mb-2">Featured Products</h2>
-                  <p className="text-muted-foreground">Latest electronics and accessories from our collection</p>
+                  <h2 className="text-3xl font-heading font-bold text-foreground mb-2">{t("desktop.products.title")}</h2>
+                  <p className="text-muted-foreground">{t("desktop.products.subtitle")}</p>
                 </div>
                 <Link href="/shop">
-                  <Button variant="link" className="text-primary shadow-neumorph-sm px-4 py-2 rounded-full bg-white">View All Products &rarr;</Button>
+                  <Button variant="link" className="text-primary shadow-neumorph-sm px-4 py-2 rounded-full bg-white">{t("desktop.products.viewAll")}</Button>
                 </Link>
               </motion.div>
 
@@ -1293,7 +1532,7 @@ export default function HomePage() {
                             <Package className="h-8 w-8 md:h-12 md:w-12 text-muted-foreground" />
                           )}
                           <div className="absolute top-1 left-1 md:top-2 md:left-2 bg-yellow-400 text-yellow-950 text-[10px] md:text-xs font-bold px-1.5 py-0.5 md:px-2 md:py-1 rounded">
-                            In Stock
+                            {t("desktop.products.inStock")}
                           </div>
                         </div>
                         <CardContent className="p-2 md:p-4">
@@ -1303,14 +1542,14 @@ export default function HomePage() {
                           </h3>
                           <div className="flex items-baseline gap-0.5 md:gap-1 mb-1.5 md:mb-3">
                             <span className="text-xs md:text-lg font-bold text-primary">৳{Number(item.price).toLocaleString()}</span>
-                            <span className="text-[8px] md:text-xs text-muted-foreground">/ unit</span>
+                            <span className="text-[8px] md:text-xs text-muted-foreground">{t("desktop.products.unit")}</span>
                           </div>
                           <Button
                             className="w-full text-[10px] md:text-sm h-7 md:h-10 px-2 md:px-4 bg-slate-900 hover:bg-slate-800 shadow-neumorph hover:shadow-neumorph-inset"
                             onClick={() => handleViewDetails(item)}
                             data-testid={`button-view-details-${item.id}`}
                           >
-                            View Details
+                            {t("desktop.products.viewDetails")}
                           </Button>
                         </CardContent>
                       </Card>
@@ -1329,8 +1568,8 @@ export default function HomePage() {
           <section className="py-20 bg-white">
             <div className="container mx-auto px-4">
               <div className="text-center max-w-2xl mx-auto mb-16">
-                <h2 className="text-3xl font-heading font-bold text-slate-900 mb-4">Meet Our Experts</h2>
-                <p className="text-slate-600">The skilled hands behind every successful repair</p>
+                <h2 className="text-3xl font-heading font-bold text-slate-900 mb-4">{t("desktop.team.title")}</h2>
+                <p className="text-slate-600">{t("desktop.team.subtitle")}</p>
               </div>
 
               <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
@@ -1364,8 +1603,8 @@ export default function HomePage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">What Our Customers Say</h2>
-            <p className="text-muted-foreground">Trusted by hundreds of satisfied customers across Dhaka</p>
+            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">{t("desktop.reviews.title")}</h2>
+            <p className="text-muted-foreground">{t("desktop.reviews.subtitle")}</p>
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-6">
@@ -1402,7 +1641,7 @@ export default function HomePage() {
                         </div>
                         <div>
                           <p className="font-bold text-sm">{review.customerName}</p>
-                          <p className="text-xs text-muted-foreground">Verified Customer</p>
+                          <p className="text-xs text-muted-foreground">{t("desktop.reviews.verified")}</p>
                         </div>
                       </div>
                     </CardContent>
@@ -1424,8 +1663,8 @@ export default function HomePage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">We Serve All Over Dhaka & Beyond</h2>
-            <p className="text-muted-foreground">Pickup and delivery services available in all major areas</p>
+            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">{t("desktop.areas.title")}</h2>
+            <p className="text-muted-foreground">{t("desktop.areas.subtitle")}</p>
           </motion.div>
 
           <motion.div
@@ -1468,8 +1707,8 @@ export default function HomePage() {
               <HelpCircle className="h-4 w-4" />
               FAQ
             </div>
-            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">Frequently Asked Questions</h2>
-            <p className="text-muted-foreground">Find answers to common questions about our services</p>
+            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">{t("desktop.faq.title")}</h2>
+            <p className="text-muted-foreground">{t("desktop.faq.subtitle")}</p>
           </motion.div>
 
           <motion.div
@@ -1509,30 +1748,30 @@ export default function HomePage() {
             viewport={{ once: true }}
             transition={{ duration: 0.6 }}
           >
-            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">Get In Touch</h2>
-            <p className="text-muted-foreground">Have questions? Contact us through any of these channels</p>
+            <h2 className="text-3xl font-heading font-bold text-foreground mb-4">{t("desktop.contact.title")}</h2>
+            <p className="text-muted-foreground">{t("desktop.contact.subtitle")}</p>
           </motion.div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6 max-w-5xl mx-auto">
             {[
               {
                 icon: MapPin,
-                title: "Our Address",
+                title: t("desktop.contact.address"),
                 lines: contactInfo.addressLines
               },
               {
                 icon: Phone,
-                title: "Phone",
+                title: t("desktop.contact.phone"),
                 lines: contactInfo.phoneNumbers
               },
               {
                 icon: Mail,
-                title: "Email",
+                title: t("desktop.contact.email"),
                 lines: contactInfo.emails
               },
               {
                 icon: Clock,
-                title: "Working Hours",
+                title: t("desktop.contact.hours"),
                 lines: contactInfo.workingHoursLines
               },
             ].map((contact, i) => (
@@ -1573,7 +1812,7 @@ export default function HomePage() {
             >
               <Button size="lg" className="bg-green-600 hover:bg-green-700 text-white h-12 px-6 rounded-full shadow-lg">
                 <MessageSquare className="h-5 w-5 mr-2" />
-                Chat on WhatsApp
+                {t("desktop.contact.whatsapp")}
               </Button>
             </a>
           </motion.div>
@@ -1590,14 +1829,14 @@ export default function HomePage() {
           transition={{ duration: 0.7 }}
         >
           <h2 className="text-3xl md:text-4xl font-heading font-bold text-white mb-6">
-            Have a Broken TV? Don't Throw It Away!
+            {t("desktop.cta.title")}
           </h2>
           <p className="text-primary-foreground/80 text-lg max-w-2xl mx-auto mb-10">
-            Get a free diagnosis today. Our experts can fix 95% of display and power issues for a fraction of the cost of a new device.
+            {t("desktop.cta.subtitle")}
           </p>
           <Link href="/repair">
             <Button size="lg" variant="secondary" className="h-10 md:h-14 px-4 md:px-8 text-sm md:text-lg font-bold shadow-sm md:shadow-neumorph-lg active:shadow-neumorph-inset md:hover:shadow-neumorph-inset transition-shadow rounded-full">
-              Start Repair Request
+              {t("desktop.cta.btn")}
             </Button>
           </Link>
         </motion.div>

@@ -511,6 +511,130 @@ const translations = {
   "policy.termsErrorTitle": { en: "Terms are not available", bn: "শর্তাবলি এখন পাওয়া যাচ্ছে না" },
   "policy.termsError":   { en: "The terms and conditions are being refreshed. Contact support if you need help before ordering.", bn: "শর্তাবলি আপডেট হচ্ছে। অর্ডারের আগে সাহায্য দরকার হলে সাপোর্টে যোগাযোগ করুন।" },
   "policy.lastUpdated":  { en: "Last updated",        bn: "সর্বশেষ আপডেট" },
+
+  // ── Language toggle ──
+  "lang.toggle":         { en: "বাংলা",               bn: "English" },
+
+  // ── Desktop Hero ──
+  "desktop.hero.badge":          { en: "#1 Trusted Electronics Service in Bangladesh", bn: "বাংলাদেশের সেরা বিশ্বস্ত ইলেকট্রনিক্স সার্ভিস" },
+  "desktop.hero.bookRepair":     { en: "Book Repair Service",                          bn: "রিপেয়ার বুক করুন" },
+  "desktop.hero.browseShop":     { en: "Browse Shop",                                  bn: "শপ দেখুন" },
+  "desktop.hero.trackLabel":     { en: "Check Repair Status",                          bn: "মেরামতের অবস্থা জানুন" },
+  "desktop.hero.trackPlaceholder": { en: "Enter Ticket Number (e.g. TR-1234)",         bn: "টিকেট নম্বর লিখুন (যেমন TR-1234)" },
+  "desktop.hero.trackBtn":       { en: "Track",                                        bn: "ট্র্যাক করুন" },
+  "desktop.hero.warranty":       { en: "90-Day Warranty",                              bn: "৯০ দিনের ওয়ারেন্টি" },
+  "desktop.hero.certified":      { en: "Certified Technicians",                        bn: "সার্টিফাইড টেকনিশিয়ান" },
+  "desktop.hero.fast":           { en: "Fast Turnaround",                              bn: "দ্রুত সার্ভিস" },
+
+  // ── Desktop Problems section ──
+  "desktop.problems.title":      { en: "What's Wrong With Your TV?",                  bn: "আপনার TV-তে কী সমস্যা?" },
+  "desktop.problems.subtitle":   { en: "Select your issue to find the right solution", bn: "সমস্যা বেছে নিন, সঠিক সমাধান পাবেন" },
+
+  // ── Desktop Why Choose ──
+  "desktop.why.title":           { en: "Why Choose Promise Electronics?",             bn: "কেন প্রমিজ ইলেকট্রনিক্স বেছে নেবেন?" },
+  "desktop.why.subtitle":        { en: "We bring professionalism and transparency to the electronics service industry.", bn: "আমরা ইলেকট্রনিক্স সার্ভিসে পেশাদারিত্ব ও স্বচ্ছতা নিয়ে এসেছি।" },
+  "desktop.why.f1title":         { en: "Certified Technicians",                       bn: "সার্টিফাইড টেকনিশিয়ান" },
+  "desktop.why.f1desc":          { en: "Our team consists of factory-trained experts specializing in major global brands.", bn: "আমাদের টিম বিশ্বের প্রধান ব্র্যান্ডে ফ্যাক্টরি-প্রশিক্ষিত বিশেষজ্ঞদের নিয়ে গঠিত।" },
+  "desktop.why.f2title":         { en: "Quick Turnaround",                            bn: "দ্রুত সার্ভিস" },
+  "desktop.why.f2desc":          { en: "Priority service options available with 24-48 hour delivery for urgent repairs.", bn: "জরুরি মেরামতের জন্য ২৪-৪৮ ঘন্টার ডেলিভারিসহ প্রায়োরিটি সার্ভিস রয়েছে।" },
+  "desktop.why.f3title":         { en: "Genuine Parts",                               bn: "আসল পার্টস" },
+  "desktop.why.f3desc":          { en: "We use only authentic replacement parts with warranty coverage on all repairs.", bn: "সব মেরামতে শুধু আসল রিপ্লেসমেন্ট পার্টস ব্যবহার করি, ওয়ারেন্টিসহ।" },
+
+  // ── Before/After ──
+  "desktop.ba.badge":            { en: "Real Results",                                bn: "আসল ফলাফল" },
+  "desktop.ba.title":            { en: "See The Difference",                          bn: "পার্থক্য দেখুন" },
+  "desktop.ba.subtitle":         { en: "We bring dead TVs back to life. Check out our recent repairs.", bn: "নষ্ট TV-কে আমরা আবার জীবন্ত করি। আমাদের সাম্প্রতিক মেরামত দেখুন।" },
+  "desktop.ba.fixed":            { en: "Successfully Repaired & Delivered",           bn: "সফলভাবে মেরামত ও ডেলিভারি সম্পন্ন" },
+
+  // ── Pricing table ──
+  "desktop.pricing.badge":       { en: "Transparent Pricing",                         bn: "স্বচ্ছ মূল্য" },
+  "desktop.pricing.title":       { en: "No Hidden Charges. Fair & Honest Repair Costs.", bn: "কোনো লুকানো চার্জ নেই। ন্যায্য ও সৎ মেরামত মূল্য।" },
+  "desktop.pricing.desc":        { en: "We believe in complete transparency. You'll know exactly what you're paying for before we start any work. Diagnosis is always free if you choose to repair with us.", bn: "আমরা সম্পূর্ণ স্বচ্ছতায় বিশ্বাস করি। কাজ শুরুর আগেই জানতে পারবেন কতটা খরচ হবে। আমাদের সাথে মেরামত করলে ডায়াগনসিস সবসময় বিনামূল্যে।" },
+  "desktop.pricing.quote":       { en: "Get a Free Quote",                            bn: "ফ্রি কোটেশন নিন" },
+  "desktop.pricing.contact":     { en: "Contact Us",                                  bn: "যোগাযোগ করুন" },
+  "desktop.pricing.tableTitle":  { en: "Common Service Rates",                        bn: "সাধারণ সার্ভিসের রেট" },
+  "desktop.pricing.footer":      { en: "* Final price depends on specific model and parts required.", bn: "* চূড়ান্ত মূল্য নির্দিষ্ট মডেল ও প্রয়োজনীয় পার্টসের উপর নির্ভর করে।" },
+
+  // ── How It Works ──
+  "desktop.how.title":           { en: "How It Works",                                bn: "কীভাবে কাজ করে" },
+  "desktop.how.subtitle":        { en: "Get your TV repaired in 4 simple steps",      bn: "মাত্র ৪টি সহজ ধাপে আপনার TV মেরামত করুন" },
+  "desktop.how.s1title":         { en: "Book Online",                                 bn: "অনলাইনে বুক করুন" },
+  "desktop.how.s1desc":          { en: "Schedule your repair request through our website or call us directly.", bn: "ওয়েবসাইটে রিপেয়ার রিকোয়েস্ট করুন অথবা সরাসরি কল করুন।" },
+  "desktop.how.s2title":         { en: "Expert Diagnosis",                            bn: "বিশেষজ্ঞ ডায়াগনসিস" },
+  "desktop.how.s2desc":          { en: "Our technicians diagnose the issue and provide a transparent quote.", bn: "আমাদের টেকনিশিয়ান সমস্যা নির্ণয় করে স্বচ্ছ কোটেশন দেন।" },
+  "desktop.how.s3title":         { en: "Professional Repair",                         bn: "পেশাদার মেরামত" },
+  "desktop.how.s3desc":          { en: "We repair your TV using genuine parts with skilled expertise.", bn: "দক্ষতার সাথে আসল পার্টস ব্যবহার করে আপনার TV মেরামত করা হয়।" },
+  "desktop.how.s4title":         { en: "Fast Delivery",                               bn: "দ্রুত ডেলিভারি" },
+  "desktop.how.s4desc":          { en: "Your repaired TV is delivered back to you with warranty.", bn: "মেরামত করা TV ওয়ারেন্টিসহ আপনার কাছে ফিরিয়ে দেওয়া হয়।" },
+
+  // ── Estimate Calculator ──
+  "desktop.calc.badge":          { en: "Instant Price Estimate",                      bn: "তাৎক্ষণিক মূল্য অনুমান" },
+  "desktop.calc.title":          { en: "Get an Instant Estimate",                     bn: "তাৎক্ষণিক মূল্য জানুন" },
+  "desktop.calc.subtitle":       { en: "Select your TV details and see the repair price range before you book — no surprises, no hidden charges.", bn: "TV-র তথ্য বেছে নিন এবং বুক করার আগেই মেরামতের মূল্য পরিসীমা জানুন — কোনো আশ্চর্য নেই, লুকানো চার্জ নেই।" },
+  "desktop.calc.labelBrand":     { en: "TV Brand",                                    bn: "TV ব্র্যান্ড" },
+  "desktop.calc.labelSize":      { en: "Screen Size",                                 bn: "স্ক্রিন সাইজ" },
+  "desktop.calc.labelProblem":   { en: "Problem",                                     bn: "সমস্যা" },
+  "desktop.calc.resultLabel":    { en: "Estimated repair cost",                       bn: "আনুমানিক মেরামত খরচ" },
+  "desktop.calc.disclaimer":     { en: "This is an estimated price range based on typical repairs. The actual cost may be slightly lower or higher depending on the true condition of your TV — and we confirm the exact figure before any work begins. If you choose not to proceed after diagnosis, you owe us nothing.", bn: "এটি সাধারণ মেরামতের ভিত্তিতে একটি আনুমানিক মূল্য পরিসীমা। প্রকৃত খরচ আপনার TV-র প্রকৃত অবস্থার উপর নির্ভর করে কিছুটা কম বা বেশি হতে পারে — কাজ শুরুর আগেই সঠিক পরিমাণ নিশ্চিত করা হয়। ডায়াগনসিসের পর এগিয়ে না যেতে চাইলে কোনো চার্জ নেই।" },
+  "desktop.calc.noData":         { en: "We'll need to check this combination in person.", bn: "এই কম্বিনেশনটি আমাদের সরাসরি দেখতে হবে।" },
+  "desktop.calc.noDataSub":      { en: "Contact us for a personalised quote.",         bn: "ব্যক্তিগত কোটেশনের জন্য যোগাযোগ করুন।" },
+  "desktop.calc.idle":           { en: "Select all three options above to see an instant price range.", bn: "তাৎক্ষণিক মূল্য পরিসীমা দেখতে উপরের তিনটি অপশন বেছে নিন।" },
+  "desktop.calc.bookThis":       { en: "Book This Repair",                            bn: "এই মেরামত বুক করুন" },
+  "desktop.calc.bookGeneral":    { en: "Book a Repair",                               bn: "মেরামত বুক করুন" },
+
+  // ── Brands ──
+  "desktop.brands.title":        { en: "Brands We Service",                           bn: "আমরা যে ব্র্যান্ড সার্ভিস দিই" },
+  "desktop.brands.subtitle":     { en: "Expert repair services for all major TV brands", bn: "সব প্রধান TV ব্র্যান্ডের জন্য বিশেষজ্ঞ মেরামত সার্ভিস" },
+
+  // ── Featured Products ──
+  "desktop.products.title":      { en: "Featured Products",                           bn: "বিশেষ পণ্য" },
+  "desktop.products.subtitle":   { en: "Latest electronics and accessories from our collection", bn: "আমাদের সংগ্রহ থেকে সর্বশেষ ইলেকট্রনিক্স ও এক্সেসরিজ" },
+  "desktop.products.viewAll":    { en: "View All Products →",                         bn: "সব পণ্য দেখুন →" },
+  "desktop.products.inStock":    { en: "In Stock",                                    bn: "স্টকে আছে" },
+  "desktop.products.unit":       { en: "/ unit",                                      bn: "/ পিস" },
+  "desktop.products.viewDetails":{ en: "View Details",                                bn: "বিস্তারিত দেখুন" },
+
+  // ── Team / Experts ──
+  "desktop.team.title":          { en: "Meet Our Experts",                            bn: "আমাদের বিশেষজ্ঞদের সাথে পরিচিত হন" },
+  "desktop.team.subtitle":       { en: "The skilled hands behind every successful repair", bn: "প্রতিটি সফল মেরামতের পেছনের দক্ষ হাত" },
+
+  // ── Customer Reviews ──
+  "desktop.reviews.title":       { en: "What Our Customers Say",                      bn: "আমাদের গ্রাহকরা কী বলেন" },
+  "desktop.reviews.subtitle":    { en: "Trusted by hundreds of satisfied customers across Dhaka", bn: "ঢাকা জুড়ে শত শত সন্তুষ্ট গ্রাহকের বিশ্বাস" },
+  "desktop.reviews.verified":    { en: "Verified Customer",                           bn: "যাচাইকৃত গ্রাহক" },
+
+  // ── Service Areas ──
+  "desktop.areas.title":         { en: "We Serve All Over Dhaka & Beyond",            bn: "আমরা সারা ঢাকায় সার্ভিস দিই" },
+  "desktop.areas.subtitle":      { en: "Pickup and delivery services available in all major areas", bn: "সব প্রধান এলাকায় পিকআপ ও ডেলিভারি সার্ভিস রয়েছে" },
+
+  // ── FAQ ──
+  "desktop.faq.title":           { en: "Frequently Asked Questions",                  bn: "সাধারণ জিজ্ঞাসা" },
+  "desktop.faq.subtitle":        { en: "Find answers to common questions about our services", bn: "আমাদের সার্ভিস সম্পর্কে সাধারণ প্রশ্নের উত্তর খুঁজুন" },
+
+  // ── Contact ──
+  "desktop.contact.title":       { en: "Get In Touch",                                bn: "যোগাযোগ করুন" },
+  "desktop.contact.subtitle":    { en: "Have questions? Contact us through any of these channels", bn: "প্রশ্ন আছে? এই চ্যানেলগুলোর যেকোনো একটিতে যোগাযোগ করুন" },
+  "desktop.contact.address":     { en: "Our Address",                                 bn: "আমাদের ঠিকানা" },
+  "desktop.contact.phone":       { en: "Phone",                                       bn: "ফোন" },
+  "desktop.contact.email":       { en: "Email",                                       bn: "ইমেইল" },
+  "desktop.contact.hours":       { en: "Working Hours",                               bn: "কার্যসময়" },
+  "desktop.contact.whatsapp":    { en: "Chat on WhatsApp",                            bn: "WhatsApp-এ চ্যাট করুন" },
+
+  // ── CTA Banner ──
+  "desktop.cta.title":           { en: "Have a Broken TV? Don't Throw It Away!",      bn: "TV নষ্ট? ফেলে দেবেন না!" },
+  "desktop.cta.subtitle":        { en: "Get a free diagnosis today. Our experts can fix 95% of display and power issues for a fraction of the cost of a new device.", bn: "আজই বিনামূল্যে ডায়াগনসিস করুন। আমাদের বিশেষজ্ঞরা নতুন ডিভাইসের খরচের ভগ্নাংশে ৯৫% ডিসপ্লে ও পাওয়ার সমস্যা সমাধান করতে পারেন।" },
+  "desktop.cta.btn":             { en: "Start Repair Request",                        bn: "মেরামতের অনুরোধ শুরু করুন" },
+
+  // Mobile — Why Promise Feels Different section
+  "mobile.wpfd.title":           { en: "Why Promise Feels Different",                  bn: "কেন প্রমিস আলাদা?" },
+  "mobile.wpfd.r1.title":        { en: "Clear estimate before repair",                 bn: "মেরামতের আগে স্পষ্ট মূল্য অনুমান" },
+  "mobile.wpfd.r1.desc":         { en: "Know the cost range before we start — no surprises.", bn: "শুরুর আগেই খরচের পরিসীমা জানুন — কোনো চমক নেই।" },
+  "mobile.wpfd.r2.title":        { en: "Track every repair stage",                     bn: "প্রতিটি মেরামত ধাপ ট্র্যাক করুন" },
+  "mobile.wpfd.r2.desc":         { en: "Live updates from diagnosis to delivery.",      bn: "ডায়াগনসিস থেকে ডেলিভারি পর্যন্ত লাইভ আপডেট।" },
+  "mobile.wpfd.r3.title":        { en: "90-day warranty on record",                    bn: "৯০ দিনের ওয়ারেন্টি — রেকর্ডে সংরক্ষিত" },
+  "mobile.wpfd.r3.desc":         { en: "Written warranty accessible anytime in your account.", bn: "লিখিত ওয়ারেন্টি আপনার অ্যাকাউন্টে সবসময় সহজলভ্য।" },
+  "mobile.wpfd.r4.title":        { en: "Organised pickup & delivery",                  bn: "সুশৃঙ্খল পিকআপ ও ডেলিভারি" },
+  "mobile.wpfd.r4.desc":         { en: "Doorstep collection and return — no travel needed.", bn: "দরজায় সংগ্রহ ও ফেরত — যাতায়াতের ঝামেলা নেই।" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;

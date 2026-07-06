@@ -77,6 +77,20 @@ export default function RepairRequestPage() {
     }
   };
 
+  // Pre-fill from calculator query params (?brand=...&size=...&issue=...)
+  const hydrated = useRef(false);
+  useEffect(() => {
+    if (hydrated.current) return;
+    hydrated.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const qBrand = params.get("brand");
+    const qSize  = params.get("size");
+    const qIssue = params.get("issue");
+    if (qBrand) setBrand(decodeURIComponent(qBrand));
+    if (qSize)  setScreenSize(decodeURIComponent(qSize));
+    if (qIssue) setPrimaryIssue(decodeURIComponent(qIssue));
+  }, []);
+
   // Auto-fill customer info when logged in
   useEffect(() => {
     if (isAuthenticated && customer) {

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
@@ -149,6 +149,20 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [address, setAddress] = useState(customer?.address || "");
   const [ticketNumber, setTicketNumber] = useState("");
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+
+  // Pre-fill from calculator query params (?brand=...&size=...&issue=...)
+  const wizardHydrated = useRef(false);
+  useEffect(() => {
+    if (wizardHydrated.current) return;
+    wizardHydrated.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const qBrand = params.get("brand");
+    const qSize  = params.get("size");
+    const qIssue = params.get("issue");
+    if (qBrand) setBrand(decodeURIComponent(qBrand));
+    if (qSize)  setScreenSize(decodeURIComponent(qSize));
+    if (qIssue) setPrimaryIssue(decodeURIComponent(qIssue));
+  }, []);
 
   const { data: settings = [] } = useQuery({
     queryKey: ["public-settings"],
