@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { navItems, images } from "@/lib/app-config";
-import { CustomerLanguageProvider } from "@/contexts/CustomerLanguageContext";
+import { CustomerLanguageProvider, useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 import { Search, ShoppingCart, User, Menu, LogOut, UserCircle, Globe, Shield, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,21 @@ import { ProfileCompletionModal } from "@/components/auth/ProfileCompletionModal
 import { MobileBottomNav } from "./MobileBottomNav";
 import { NetworkOfflineBanner } from "@/components/customer/NetworkOfflineBanner";
 import { ScrollProgressBar } from "@/components/customer/ScrollProgressBar";
+
+function DesktopLangToggle() {
+  const { language, toggleLanguage } = useCustomerLanguage();
+  return (
+    <button
+      onClick={toggleLanguage}
+      className="flex items-center gap-1.5 rounded-full bg-white/15 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 transition-all border border-white/20 hover:border-white/40"
+      aria-label={language === "en" ? "Switch to Bangla" : "Switch to English"}
+      data-testid="button-lang-toggle-desktop"
+    >
+      <Globe className="h-3 w-3 opacity-80" />
+      {language === "en" ? "বাংলা" : "English"}
+    </button>
+  );
+}
 
 function ScrollToTop() {
   const [location] = useLocation();
@@ -105,10 +120,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
       <div className="bg-gradient-to-r from-primary to-primary/90 text-primary-foreground py-2 px-4 text-sm hidden sm:block">
         <div className="container mx-auto flex justify-between items-center">
           <p>📞 Hotline: {supportPhone} | 🕒 {businessHours}</p>
-          <div className="flex items-center gap-2" title="Language Translation">
-            <Globe className="h-4 w-4" aria-label="Language Switcher" role="img" />
-            <div id="google_translate_element"></div>
-          </div>
+          <DesktopLangToggle />
         </div>
       </div>
 
