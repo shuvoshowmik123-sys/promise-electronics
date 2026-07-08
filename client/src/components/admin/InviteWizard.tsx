@@ -33,6 +33,14 @@ const ROLE_SUMMARIES: Record<string, string> = {
     Manager: "Full operations: jobs, service requests, pickups, finance, corporate.",
 };
 
+const EXPIRY_OPTIONS = [
+    { label: "30 minutes", value: 30 },
+    { label: "1 hour", value: 60 },
+    { label: "2 hours", value: 120 },
+    { label: "Today only", value: 480 },
+    { label: "24 hours", value: 1440 },
+] as const;
+
 const MODULE_META: Record<string, { icon: LucideIcon; color: string; label: string }> = {
     dashboard: { icon: BarChart3, color: "blue", label: "Dashboard" },
     serviceRequests: { icon: MessageSquare, color: "blue", label: "Service Requests" },
@@ -92,6 +100,7 @@ export function InviteWizard({ onClose, onCreated }: Props) {
     const [phone, setPhone] = useState("");
     const [email, setEmail] = useState("");
     const [note, setNote] = useState("");
+    const [expiresInMinutes, setExpiresInMinutes] = useState<number>(30);
     const [selectedPerms, setSelectedPerms] = useState<Record<string, boolean>>({});
     const [criticalConfirmed, setCriticalConfirmed] = useState<Record<string, boolean>>({});
     const [expandedModule, setExpandedModule] = useState<string | null>(null);
@@ -173,6 +182,7 @@ export function InviteWizard({ onClose, onCreated }: Props) {
                 phone: phone || undefined,
                 email: email || undefined,
                 note: note || undefined,
+                expiresInMinutes,
             });
         },
         onSuccess: (data: any) => {
@@ -204,6 +214,18 @@ export function InviteWizard({ onClose, onCreated }: Props) {
                     </div>
                     <div className="rounded-lg bg-blue-50 border border-blue-100 p-3 text-xs text-blue-700">
                         {ROLE_SUMMARIES[role] || "Select a role."} Loads the <strong>{ROLE_PRESET_MAP[role]}</strong> preset — you can adjust every permission on the next screens.
+                    </div>
+                    <div className="space-y-1.5">
+                        <Label className="text-xs font-bold uppercase text-slate-500">Link Expiry</Label>
+                        <Select value={String(expiresInMinutes)} onValueChange={(v) => setExpiresInMinutes(Number(v))}>
+                            <SelectTrigger className="h-10 rounded-lg"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                                {EXPIRY_OPTIONS.map(option => (
+                                    <SelectItem key={option.value} value={String(option.value)}>{option.label}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                        <p className="text-[10px] text-slate-400">Default is 30 minutes. After the setup form is submitted once, this link cannot be retried unless you generate a new one.</p>
                     </div>
                     <div className="space-y-1.5">
                         <Label className="text-xs font-bold uppercase text-slate-500">Phone (optional)</Label>
@@ -418,7 +440,7 @@ export function InviteWizard({ onClose, onCreated }: Props) {
                     </div>
                     <div className="flex items-center gap-2 text-xs text-amber-600">
                         <Clock className="h-3.5 w-3.5 shrink-0" />
-                        <span>Expires in 5 minutes. One-time use. Will not be shown again.</span>
+                        <span>Expires in {EXPIRY_OPTIONS.find(option => option.value === expiresInMinutes)?.label.toLowerCase() || `${expiresInMinutes} minutes`}. One-time use. Cannot be retried after submit unless regenerated.</span>
                     </div>
                 </div>
             );

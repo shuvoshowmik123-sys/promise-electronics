@@ -615,11 +615,20 @@ export default function HomePage() {
     "Lines on Screen": "স্ক্রিনে লাইন",
   };
 
-  // Shared calculator data — used by both desktop and mobile paths
+  // Shared calculator data — settings-driven with hardcoded fallbacks
   type CalcSizeBucket = "small" | "medium" | "large";
-  const CALC_ISSUES = ["No Power", "No Display", "Lines on Screen", "Dim / No Backlight", "Broken Screen", "Sound Issue", "Software / Smart TV"];
-  const CALC_SIZES = ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch+"];
-  const CALC_BRANDS = ["Sony", "Samsung", "LG", "Walton", "Vision", "Sharp", "Panasonic", "Haier", "Other"];
+  const CALC_BRANDS_DEFAULT = ["Sony", "Samsung", "LG", "Walton", "Vision", "Sharp", "Panasonic", "Haier", "Other"];
+  const CALC_SIZES_DEFAULT = ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch+"];
+  const CALC_ISSUES_DEFAULT = ["No Power", "No Display", "Lines on Screen", "Dim / No Backlight", "Broken Screen", "Sound Issue", "Software / Smart TV"];
+  const parseCalcArray = (key: string, fallbackKey?: string, def: string[] = []): string[] => {
+    const s = settings.find(x => x.key === key);
+    if (s?.value) { try { const p = JSON.parse(s.value); if (Array.isArray(p) && p.length > 0) return p; } catch {} }
+    if (fallbackKey) { const fb = settings.find(x => x.key === fallbackKey); if (fb?.value) { try { const p = JSON.parse(fb.value); if (Array.isArray(p) && p.length > 0) return p; } catch {} } }
+    return def;
+  };
+  const CALC_BRANDS = parseCalcArray("tv_brands", undefined, CALC_BRANDS_DEFAULT);
+  const CALC_SIZES = parseCalcArray("tv_sizes", "tv_inches", CALC_SIZES_DEFAULT);
+  const CALC_ISSUES = parseCalcArray("common_symptoms", "common_issues", CALC_ISSUES_DEFAULT);
   const DEFAULT_PRICE_MATRIX: Record<string, Record<CalcSizeBucket, [number, number]>> = {
     "No Power":              { small: [800,  2000],  medium: [1000, 2500],  large: [1500, 4000]  },
     "No Display":            { small: [1500, 3000],  medium: [2000, 4500],  large: [3000, 7000]  },
@@ -1789,7 +1798,7 @@ export default function HomePage() {
                     </div>
                     <h3 className="font-bold text-lg mb-3">{contact.title}</h3>
                     {contact.lines.map((line, lineIndex) => (
-                      <p key={lineIndex} className="text-sm text-muted-foreground">{line}</p>
+                      <p key={lineIndex} className="text-sm text-muted-foreground break-all">{line}</p>
                     ))}
                   </CardContent>
                 </Card>

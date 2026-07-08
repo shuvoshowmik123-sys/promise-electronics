@@ -15,6 +15,15 @@ function formatTimeLeft(expiresAt: string): string {
     return `${mins}m ${secs}s`;
 }
 
+function formatDuration(minutes?: number): string {
+    if (!minutes) return "the selected time";
+    if (minutes < 60) return `${minutes} minutes`;
+    if (minutes % 60 === 0) return `${minutes / 60} hour${minutes === 60 ? "" : "s"}`;
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    return `${hours}h ${mins}m`;
+}
+
 const ROLE_TIPS: Record<string, { Icon: LucideIcon; color: string; tips: string[] }> = {
     Driver: {
         Icon: Truck,
@@ -156,8 +165,12 @@ export default function StaffSetupPage() {
         return <StateScreen icon={<XCircle className="h-6 w-6" />} title="Link Revoked" message="This setup link is no longer valid. Your admin has either revoked it or generated a new one. Please ask for the latest link." color="rose" />;
     }
 
+    if (invite.status === "failed" || invite.status === "accepting") {
+        return <StateScreen icon={<XCircle className="h-6 w-6" />} title="Already Attempted" message="This one-time setup link was already submitted. Please ask your admin to generate a new one." color="rose" />;
+    }
+
     if (invite.expired || invite.status !== "pending") {
-        return <StateScreen icon={<Clock className="h-6 w-6" />} title="Link Expired" message="This setup link has expired. Setup links are valid for 5 minutes. Please ask your admin to generate a new one." />;
+        return <StateScreen icon={<Clock className="h-6 w-6" />} title="Link Expired" message="This setup link has expired. Please ask your admin to generate a new one." />;
     }
 
     const roleInfo = ROLE_TIPS[invite.role] || { Icon: User, color: "from-slate-600 to-slate-700", tips: ["Sign in to get started."] };
@@ -280,7 +293,7 @@ export default function StaffSetupPage() {
 
                     <div className="flex items-center gap-2 text-[11px] text-slate-400 px-1 pb-6">
                         <Lock className="h-3.5 w-3.5 shrink-0" />
-                        <span>This link is one-time use and expires in 5 minutes. Your password is encrypted.</span>
+                        <span>This link is one-time use, expires in {formatDuration(invite.expiresInMinutes)}, and cannot be retried after submit unless your admin regenerates it. Your password is encrypted.</span>
                     </div>
                 </div>
             </div>
@@ -327,7 +340,7 @@ export default function StaffSetupPage() {
 
                     <div className="flex items-center gap-2 text-xs opacity-50">
                         <Lock className="h-4 w-4" />
-                        <span>One-time link · Expires in 5 minutes · Password encrypted</span>
+                        <span>One-time link · Expires in {formatDuration(invite.expiresInMinutes)} · No retry after submit</span>
                     </div>
                 </div>
 

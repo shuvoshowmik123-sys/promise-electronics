@@ -111,7 +111,8 @@ export default function GetQuotePage() {
   const serviceCenterContact = getSettingValue("service_center_contact", "01700-000000");
 
   const tvBrands = getSettingArray("tv_brands", ["Sony", "Samsung", "LG", "Walton", "Vision"]);
-  const commonIssues = getSettingArray("common_issues", [
+  const commonSymptomsFromSettings = getSettingArray("common_symptoms", []);
+  const commonIssues = commonSymptomsFromSettings.length > 0 ? commonSymptomsFromSettings : getSettingArray("common_issues", [
     "No Power / Won't Turn On",
     "No Picture / Black Screen",
     "Display Lines / Broken Panel",

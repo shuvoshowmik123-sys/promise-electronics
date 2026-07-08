@@ -174,7 +174,8 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         }
         return defaultValue;
     };
-    const tvInches = getSettingArray("tv_inches", ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch"]);
+    const tvSizesFromSettings = getSettingArray("tv_sizes", []);
+    const tvInches = tvSizesFromSettings.length > 0 ? tvSizesFromSettings : getSettingArray("tv_inches", ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch"]);
     const notificationTone = (settings.find(s => s.key === "notification_tone")?.value as NotificationTone) || "default";
     const selectedJobGroup = JOB_GROUPS.find((group) => group.key === jobGroupFilter);
 

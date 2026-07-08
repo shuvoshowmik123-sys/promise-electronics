@@ -6,7 +6,9 @@ import bcrypt from "bcryptjs";
 import { normalizePhone as normalizePhoneUtil } from "../utils/phone.js";
 import { PERMISSION_CATALOG, ROLE_PRESETS } from "../../shared/permission-catalog.js";
 
-const INVITE_EXPIRY_MINUTES = 5;
+const DEFAULT_INVITE_EXPIRY_MINUTES = 30;
+const MIN_INVITE_EXPIRY_MINUTES = 5;
+const MAX_INVITE_EXPIRY_MINUTES = 24 * 60;
 const VALID_ROLES = ["Manager", "Cashier", "Technician", "Driver"];
 
 const BLOCKED_GRANULAR = ["settings.manage", "users.inviteStaff", "users.editPermissions", "users.deactivate"];
@@ -54,6 +56,33 @@ function hashToken(token: string): string {
 function generateToken(): { raw: string; hash: string } {
     const raw = randomBytes(32).toString("hex");
     return { raw, hash: hashToken(raw) };
+}
+
+export function getDefaultInviteExpiryMinutes(): number {
+    const parsed = Number(process.env.STAFF_INVITE_EXPIRY_MINUTES);
+    if (!Number.isFinite(parsed)) return DEFAULT_INVITE_EXPIRY_MINUTES;
+    return Math.min(MAX_INVITE_EXPIRY_MINUTES, Math.max(MIN_INVITE_EXPIRY_MINUTES, Math.round(parsed)));
+}
+
+function normalizeInviteExpiryMinutes(value?: unknown): number {
+    if (value === undefined || value === null || value === "") return getDefaultInviteExpiryMinutes();
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+        throw new Error("expiresInMinutes must be a number.");
+    }
+    const rounded = Math.round(parsed);
+    if (rounded < MIN_INVITE_EXPIRY_MINUTES || rounded > MAX_INVITE_EXPIRY_MINUTES) {
+        throw new Error(`expiresInMinutes must be between ${MIN_INVITE_EXPIRY_MINUTES} and ${MAX_INVITE_EXPIRY_MINUTES} minutes.`);
+    }
+    return rounded;
+}
+
+async function markInviteFailed(id: string) {
+    await db.execute(sql`
+        UPDATE staff_invitations
+        SET status = 'failed'
+        WHERE id = ${id} AND status = 'accepting'
+    `);
 }
 
 export interface StaffInvite {
@@ -124,6 +153,7 @@ export async function createStaffInvite(opts: {
     email?: string | null;
     note?: string | null;
     createdBy: string;
+    expiresInMinutes?: number;
 }): Promise<{ invite: StaffInvite; rawToken: string; setupUrl: string }> {
     if (!VALID_ROLES.includes(opts.role)) {
         throw new Error(`Invalid role: ${opts.role}. Must be one of: ${VALID_ROLES.join(", ")}`);
@@ -136,7 +166,8 @@ export async function createStaffInvite(opts: {
 
     const id = nanoid();
     const { raw, hash } = generateToken();
-    const expiresAt = new Date(Date.now() + INVITE_EXPIRY_MINUTES * 60 * 1000);
+    const expiresInMinutes = normalizeInviteExpiryMinutes(opts.expiresInMinutes);
+    const expiresAt = new Date(Date.now() + expiresInMinutes * 60 * 1000);
 
     await db.execute(sql`
         INSERT INTO staff_invitations (id, token_hash, role, permissions, phone, email, note, status, expires_at, created_by)
@@ -188,7 +219,7 @@ export async function acceptStaffInvite(rawToken: string, staffData: {
         const check = await db.execute(sql`SELECT status, expires_at FROM staff_invitations WHERE token_hash = ${hash}`);
         if (check.rows.length === 0) return { success: false, error: "Setup link not found or invalid." };
         const row = check.rows[0] as any;
-        if (row.status === "accepted" || row.status === "accepting") return { success: false, error: "This setup link has already been used." };
+        if (row.status === "accepted" || row.status === "accepting" || row.status === "failed") return { success: false, error: "This setup link has already been used. Please ask your admin to generate a new one." };
         if (row.status === "revoked" || row.status === "regenerated") return { success: false, error: "This setup link has been revoked." };
         if (new Date(row.expires_at) < new Date()) return { success: false, error: "This setup link has expired. Please ask your admin to generate a new one." };
         return { success: false, error: "This setup link is no longer valid." };
@@ -198,7 +229,7 @@ export async function acceptStaffInvite(rawToken: string, staffData: {
 
     const existingUsername = await db.execute(sql`SELECT id FROM users WHERE LOWER(username) = ${staffData.username.toLowerCase()} LIMIT 1`);
     if (existingUsername.rows.length > 0) {
-        await db.execute(sql`UPDATE staff_invitations SET status = 'pending' WHERE id = ${invite.id} AND status = 'accepting'`);
+        await markInviteFailed(invite.id);
         return { success: false, error: "This username is already taken." };
     }
 
@@ -207,7 +238,7 @@ export async function acceptStaffInvite(rawToken: string, staffData: {
     if (phone) {
         const existingPhone = await db.execute(sql`SELECT id FROM users WHERE phone = ${phone} AND role != 'Customer' LIMIT 1`);
         if (existingPhone.rows.length > 0) {
-            await db.execute(sql`UPDATE staff_invitations SET status = 'pending' WHERE id = ${invite.id} AND status = 'accepting'`);
+            await markInviteFailed(invite.id);
             return { success: false, error: "This phone number is already used by another staff account." };
         }
     }
@@ -216,7 +247,7 @@ export async function acceptStaffInvite(rawToken: string, staffData: {
     if (email) {
         const existingEmail = await db.execute(sql`SELECT id FROM users WHERE LOWER(email) = ${email.toLowerCase()} AND role != 'Customer' LIMIT 1`);
         if (existingEmail.rows.length > 0) {
-            await db.execute(sql`UPDATE staff_invitations SET status = 'pending' WHERE id = ${invite.id} AND status = 'accepting'`);
+            await markInviteFailed(invite.id);
             return { success: false, error: "This email is already used by another staff account." };
         }
     }
@@ -254,9 +285,10 @@ export async function revokeStaffInvite(id: string): Promise<boolean> {
     return (result as any).rowCount > 0;
 }
 
-export async function regenerateStaffInvite(id: string, createdBy: string): Promise<{ invite: StaffInvite; rawToken: string; setupUrl: string } | null> {
+export async function regenerateStaffInvite(id: string, createdBy: string, expiresInMinutes?: number): Promise<{ invite: StaffInvite; rawToken: string; setupUrl: string } | null> {
     const old = await getStaffInviteById(id);
     if (!old) return null;
+    if (old.status === "accepted") return null;
 
     await db.execute(sql`
         UPDATE staff_invitations SET status = 'regenerated', revoked_at = NOW()
@@ -265,7 +297,8 @@ export async function regenerateStaffInvite(id: string, createdBy: string): Prom
 
     const newId = nanoid();
     const { raw, hash } = generateToken();
-    const expiresAt = new Date(Date.now() + INVITE_EXPIRY_MINUTES * 60 * 1000);
+    const normalizedExpiry = normalizeInviteExpiryMinutes(expiresInMinutes);
+    const expiresAt = new Date(Date.now() + normalizedExpiry * 60 * 1000);
 
     await db.execute(sql`
         INSERT INTO staff_invitations (id, token_hash, role, permissions, phone, email, note, status, expires_at, created_by, regenerated_from_id)

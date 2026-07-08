@@ -7,6 +7,7 @@
 import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { settingsRepo, notificationRepo, systemRepo, userRepo, jobRepo, serviceRequestRepo, warrantyRepo, hrRepo } from '../repositories/index.js';
+import * as inventoryRepo from '../repositories/inventory.repository.js';
 import {
     insertSettingSchema,
     insertServiceCatalogSchema,
@@ -71,6 +72,7 @@ const ALLOWED_SETTING_KEYS = [
     'tv_sizes',
     'common_symptoms',
     'service_filter_categories',
+    'repair_price_matrix',
 
     // CMS / Home
     'hero_title',
@@ -155,7 +157,7 @@ const PUBLIC_SETTING_KEYS = [
     'hero_animation_type', 'banner_enabled', 'banner_text', 'banner_type', 'banner_link',
     // Service Catalogs (needed by repair form)
     'tv_brands', 'tv_sizes', 'common_symptoms', 'service_categories',
-    'service_filter_categories', 'shop_categories',
+    'service_filter_categories', 'shop_categories', 'repair_price_matrix',
     // CMS / Home
     'info_boxes', 'homepage_stats', 'faq_items', 'homepage_contact_info',
     'service_areas', 'homepage_brands', 'home_problems_list',
@@ -459,33 +461,79 @@ router.get('/api/admin/services', requireAdminAuth, async (req: Request, res: Re
     }
 });
 
+/** Maps an inventory_items row to the ServiceCatalog response shape the frontend expects. */
+function inventoryItemToServiceShape(item: { id: string; name: string; description?: string | null; category: string; icon?: string | null; minPrice?: number | null; maxPrice?: number | null; price?: number | null; estimatedDays?: string | null; showOnWebsite?: boolean | null; displayOrder?: number | null; images?: string | null; features?: string | null; }) {
+    return {
+        id: item.id,
+        name: item.name,
+        description: item.description || '',
+        category: item.category,
+        icon: item.icon || 'Wrench',
+        minPrice: item.minPrice ?? item.price ?? 0,
+        maxPrice: item.maxPrice ?? item.price ?? 0,
+        estimatedDays: item.estimatedDays || '3-5 days',
+        isActive: item.showOnWebsite ?? true,
+        displayOrder: item.displayOrder || 0,
+        images: item.images,
+        features: item.features,
+    };
+}
+
 /**
- * POST /api/admin/services - Create service
+ * POST /api/admin/services - Create service in inventory_items
  */
 router.post('/api/admin/services', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
         const validated = insertServiceCatalogSchema.parse(req.body);
-        const service = await storage.createServiceCatalogItem(validated);
-        res.status(201).json(service);
+        const { isActive, minPrice, maxPrice, ...rest } = validated as any;
+        const item = await inventoryRepo.createInventoryItem({
+            ...rest,
+            minPrice,
+            maxPrice,
+            price: minPrice ?? maxPrice ?? 0,
+            itemType: 'service',
+            stock: 0,
+            showOnWebsite: isActive ?? true,
+            showOnAndroidApp: false,
+            showOnHotDeals: false,
+            isSparePart: false,
+            isSerialized: false,
+        });
+        res.status(201).json(inventoryItemToServiceShape(item));
     } catch (error: any) {
-        console.error('Service creation error:', error);
-        res.status(400).json({ error: 'Invalid service data', details: error.message });
+        if (error?.name === 'ZodError') {
+            return res.status(400).json({ error: 'Invalid service data', details: error.errors });
+        }
+        console.warn('[Settings] Service creation error:', (error as Error).message?.slice(0, 120));
+        res.status(400).json({ error: 'Invalid service data' });
     }
 });
 
 /**
- * PATCH /api/admin/services/:id - Update service
+ * PATCH /api/admin/services/:id - Update service in inventory_items
  */
 router.patch('/api/admin/services/:id', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
-        // Validate + whitelist like the POST route does — raw req.body let callers
-        // set arbitrary columns (e.g. negative prices, unknown fields).
-        const updates = insertServiceCatalogSchema.partial().parse(req.body);
-        const service = await storage.updateServiceCatalogItem(req.params.id, updates);
-        if (!service) {
+        const existing = await inventoryRepo.getInventoryItem(req.params.id);
+        if (!existing) {
             return res.status(404).json({ error: 'Service not found' });
         }
-        res.json(service);
+        const validated = insertServiceCatalogSchema.partial().parse(req.body);
+        const { isActive, minPrice, maxPrice, ...rest } = validated as any;
+        const updates: Record<string, unknown> = { ...rest };
+        if (minPrice !== undefined || maxPrice !== undefined) {
+            const nextMin = minPrice ?? existing.minPrice ?? existing.price ?? 0;
+            const nextMax = maxPrice ?? existing.maxPrice ?? existing.price ?? nextMin;
+            updates.minPrice = nextMin;
+            updates.maxPrice = nextMax;
+            updates.price = nextMin;
+        }
+        if (isActive !== undefined) updates.showOnWebsite = isActive;
+        const item = await inventoryRepo.updateInventoryItem(req.params.id, updates as any);
+        if (!item) {
+            return res.status(404).json({ error: 'Service not found' });
+        }
+        res.json(inventoryItemToServiceShape(item));
     } catch (error: any) {
         if (error?.name === 'ZodError') {
             return res.status(400).json({ error: 'Invalid service data', details: error.errors });
@@ -495,11 +543,11 @@ router.patch('/api/admin/services/:id', requireAdminAuth, requirePermission('set
 });
 
 /**
- * DELETE /api/admin/services/:id - Delete service
+ * DELETE /api/admin/services/:id - Delete service from inventory_items
  */
 router.delete('/api/admin/services/:id', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
     try {
-        const success = await storage.deleteServiceCatalogItem(req.params.id);
+        const success = await inventoryRepo.deleteInventoryItem(req.params.id);
         if (!success) {
             return res.status(404).json({ error: 'Service not found' });
         }

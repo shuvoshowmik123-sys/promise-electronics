@@ -140,7 +140,8 @@ export default function RepairRequestPage() {
   };
 
   const tvBrands = getSettingArray("tv_brands", ["Sony", "Samsung", "LG", "Walton", "Vision"]);
-  const tvInches = getSettingArray("tv_inches", ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch"]);
+  const tvSizesFromSettings = getSettingArray("tv_sizes", []);
+  const tvInches = tvSizesFromSettings.length > 0 ? tvSizesFromSettings : getSettingArray("tv_inches", ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch"]);
   const serviceCategories = getSettingArray("service_categories", ["No Power", "No Display", "Broken Screen", "Sound Issue", "Software"]);
   const commonSymptoms = getSettingArray("common_symptoms", ["Blinking Red Light", "Lines on Screen", "Dim Picture", "Wifi Not Connecting", "Remote Not Working", "Burning Smell"]);
 

@@ -987,14 +987,14 @@ export interface StaffInviteCreateResponse {
 
 export const staffInvitesApi = {
     list: () => fetchApi<StaffInvite[]>("/admin/staff-invites"),
-    create: (data: { role: string; permissions: string; phone?: string; email?: string; note?: string }) =>
+    create: (data: { role: string; permissions: string; phone?: string; email?: string; note?: string; expiresInMinutes?: number }) =>
         fetchApi<StaffInviteCreateResponse>("/admin/staff-invites", { method: "POST", body: JSON.stringify(data) }),
     revoke: (id: string) =>
         fetchApi<{ success: boolean }>(`/admin/staff-invites/${id}/revoke`, { method: "POST" }),
-    regenerate: (id: string) =>
-        fetchApi<StaffInviteCreateResponse>(`/admin/staff-invites/${id}/regenerate`, { method: "POST" }),
+    regenerate: (id: string, expiresInMinutes?: number) =>
+        fetchApi<StaffInviteCreateResponse>(`/admin/staff-invites/${id}/regenerate`, { method: "POST", body: JSON.stringify({ expiresInMinutes }) }),
     getSetup: (token: string) =>
-        fetchApi<{ role: string; phone?: string; email?: string; note?: string; status: string; expired: boolean; expiresAt?: string; message?: string }>(`/admin/staff-invites/setup/${token}`),
+        fetchApi<{ role: string; phone?: string; email?: string; note?: string; status: string; expired: boolean; expiresAt?: string; expiresInMinutes?: number; message?: string }>(`/admin/staff-invites/setup/${token}`),
     acceptSetup: (token: string, data: { name: string; username: string; password: string; phone?: string; email?: string }) =>
         fetchApi<{ success: boolean; message: string }>(`/admin/staff-invites/setup/${token}`, { method: "POST", body: JSON.stringify(data) }),
 };

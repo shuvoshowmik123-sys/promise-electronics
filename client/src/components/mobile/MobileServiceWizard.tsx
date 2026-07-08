@@ -55,7 +55,7 @@ interface MobileServiceWizardProps {
   mode: WizardMode;
 }
 
-const problemOptions = [
+const DEFAULT_PROBLEM_OPTIONS = [
   {
     id: "No Display",
     bn: "ডিসপ্লে নেই",
@@ -189,6 +189,28 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   };
 
   const tvBrands = getSettingArray(settings, "tv_brands", ["Samsung", "Sony", "LG", "Walton", "Vision", "Other"]);
+
+  // Build problem options from settings; map known issues to existing metadata
+  const problemOptions = useMemo(() => {
+    const symptoms = getSettingArray(settings, "common_symptoms", []);
+    const effective = symptoms.length > 0 ? symptoms : getSettingArray(settings, "common_issues", []);
+    if (effective.length === 0) return DEFAULT_PROBLEM_OPTIONS;
+    return effective.map(symptom => {
+      const match = DEFAULT_PROBLEM_OPTIONS.find(
+        p => p.en.toLowerCase() === symptom.toLowerCase() || p.id.toLowerCase() === symptom.toLowerCase()
+      );
+      if (match) return match;
+      return {
+        id: symptom,
+        bn: symptom,
+        en: symptom,
+        icon: Wrench,
+        followUpTitle: null as string | null,
+        followUps: [] as string[],
+      };
+    });
+  }, [settings]);
+
   const selectedProblem = problemOptions.find((item) => item.id === primaryIssue);
   const totalSteps = 6;
 

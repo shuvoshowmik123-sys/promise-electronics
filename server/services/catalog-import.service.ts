@@ -240,13 +240,13 @@ async function loadExisting(type: ImportType): Promise<{
         return { categories: new Map(all.map(c => [lk(c.name), c])) };
     }
     if (type === 'service_catalog') {
-        const [cats, items] = await Promise.all([
+        const [cats, serviceItems] = await Promise.all([
             storage.getAllServiceCategories(),
-            storage.getAllServiceCatalog(),
+            inventoryRepo.getServicesFromInventory(),
         ]);
         return {
             categories: new Map(cats.map(c => [lk(c.name), c])),
-            catalog: new Map(items.map(i => [`${lk(i.category)}::${lk(i.name)}`, i])),
+            inventory: new Map(serviceItems.map(i => [`${lk(i.name)}::${lk(i.category)}`, i])),
         };
     }
     if (type === 'inventory_items') {
@@ -372,20 +372,28 @@ export async function validateImport(
                     if (options.autoCreateCategories) {
                         warnings.push(`Category "${category}" will be auto-created`);
                     } else {
-                        errors.push(`Category "${category}" does not exist (enable auto-create or add it first)`);
+                        warnings.push(`Category "${category}" is not in Service Categories; service will still import with this category text`);
                     }
                 }
             }
             if (name && category) {
-                dupKey = `${lk(category)}::${lk(name)}`;
-                existsRecord = existing.catalog?.get(dupKey);
+                dupKey = `${lk(name)}::${lk(category)}`;
+                existsRecord = existing.inventory?.get(dupKey);
+                const isActive = parseBool(get(raw, 'isActive')) ?? true;
                 normalized = {
                     name, category,
+                    itemType: 'service',
                     minPrice, maxPrice,
+                    price: minPrice ?? maxPrice ?? 0,
+                    stock: 0,
                     description: str(get(raw, 'description')),
                     estimatedDays: str(get(raw, 'estimatedDays')),
                     icon: str(get(raw, 'icon')),
-                    isActive: parseBool(get(raw, 'isActive')) ?? true,
+                    showOnWebsite: isActive,
+                    showOnAndroidApp: false,
+                    showOnHotDeals: false,
+                    isSparePart: false,
+                    isSerialized: false,
                     displayOrder: parseIntSafe(get(raw, 'displayOrder')) ?? 0,
                     features: parseFeatures(get(raw, 'features')),
                 };
@@ -685,10 +693,10 @@ export async function commitImport(
                 }
             } else if (type === 'service_catalog') {
                 if (row.action === 'update' && _updateId) {
-                    await storage.updateServiceCatalogItem(_updateId, payload as any);
+                    await inventoryRepo.updateInventoryItem(_updateId, payload as any);
                     updated++;
                 } else {
-                    await storage.createServiceCatalogItem(payload as any);
+                    await inventoryRepo.createInventoryItem(payload as any);
                     created++;
                 }
             } else if (type === 'inventory_items') {

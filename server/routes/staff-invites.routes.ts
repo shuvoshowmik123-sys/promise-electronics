@@ -9,6 +9,7 @@ import {
     acceptStaffInvite,
     revokeStaffInvite,
     regenerateStaffInvite,
+    getDefaultInviteExpiryMinutes,
 } from "../services/staff-invite.service.js";
 
 const router = Router();
@@ -25,7 +26,7 @@ router.get("/api/admin/staff-invites", requireAdminAuth, requirePermission("user
 
 router.post("/api/admin/staff-invites", requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
     try {
-        const { role, permissions, phone, email, note } = req.body;
+        const { role, permissions, phone, email, note, expiresInMinutes } = req.body;
         if (!role) return res.status(400).json({ error: "role is required" });
 
         const result = await createStaffInvite({
@@ -35,6 +36,7 @@ router.post("/api/admin/staff-invites", requireAdminAuth, requireSuperAdmin, asy
             email: email || null,
             note: note || null,
             createdBy: req.session.adminUserId!,
+            expiresInMinutes,
         });
 
         await auditLogger.log({
@@ -75,8 +77,8 @@ router.post("/api/admin/staff-invites/:id/revoke", requireAdminAuth, requireSupe
 
 router.post("/api/admin/staff-invites/:id/regenerate", requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
     try {
-        const result = await regenerateStaffInvite(req.params.id, req.session.adminUserId!);
-        if (!result) return res.status(404).json({ error: "Original invite not found" });
+        const result = await regenerateStaffInvite(req.params.id, req.session.adminUserId!, req.body?.expiresInMinutes);
+        if (!result) return res.status(404).json({ error: "Original invite not found or already accepted" });
 
         await auditLogger.log({
             userId: req.session.adminUserId!,
@@ -89,7 +91,8 @@ router.post("/api/admin/staff-invites/:id/regenerate", requireAdminAuth, require
 
         res.status(201).json(result);
     } catch (error: any) {
-        res.status(500).json({ error: "Failed to regenerate invite" });
+        console.error("[StaffInvite] Regenerate error:", error?.message);
+        res.status(400).json({ error: error?.message || "Failed to regenerate invite" });
     }
 });
 
@@ -101,7 +104,10 @@ router.get("/api/admin/staff-invites/setup/:token", async (req: Request, res: Re
 
         const expired = new Date(invite.expiresAt) < new Date();
         if (invite.status !== "pending") {
-            return res.json({ role: invite.role, status: invite.status, expired: true, message: `This setup link has been ${invite.status}.` });
+            const message = invite.status === "failed"
+                ? "This setup link was already attempted. Please ask your admin to generate a new one."
+                : `This setup link has been ${invite.status}.`;
+            return res.json({ role: invite.role, status: invite.status, expired: true, message });
         }
         if (expired) {
             return res.json({ role: invite.role, status: "expired", expired: true, message: "This setup link has expired. Please ask your admin to generate a new one." });
@@ -115,6 +121,7 @@ router.get("/api/admin/staff-invites/setup/:token", async (req: Request, res: Re
             status: "pending",
             expired: false,
             expiresAt: invite.expiresAt,
+            expiresInMinutes: Math.max(1, Math.round((new Date(invite.expiresAt).getTime() - new Date(invite.createdAt).getTime()) / 60000)) || getDefaultInviteExpiryMinutes(),
         });
     } catch (error: any) {
         res.status(500).json({ error: "Failed to load setup link" });

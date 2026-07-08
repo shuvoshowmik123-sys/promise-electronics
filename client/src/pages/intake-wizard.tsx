@@ -90,7 +90,8 @@ export default function IntakeWizardPage() {
 
     const tvBrands = getSettingArray("tv_brands", ["Sony", "Samsung", "LG", "Walton", "Vision", "MI", "Hisense", "TCL", "Haier"]);
     const screenSizes = ["24 Inch", "32 Inch", "40 Inch", "43 Inch", "50 Inch", "55 Inch", "65 Inch", "75 Inch", "Other"];
-    const commonIssues = getSettingArray("common_issues", [
+    const commonSymptomsFromSettings = getSettingArray("common_symptoms", []);
+    const commonIssues = commonSymptomsFromSettings.length > 0 ? commonSymptomsFromSettings : getSettingArray("common_issues", [
         "No Power / Won't Turn On",
         "No Picture / Black Screen",
         "Display Lines / Broken Panel",

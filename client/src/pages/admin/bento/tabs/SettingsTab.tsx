@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -117,6 +117,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     const [tvInches, setTvInches] = useState<string[]>([]); // Renamed from tvSizes to match prop
     const [commonSymptoms, setCommonSymptoms] = useState<string[]>([]);
     const [serviceFilterCategories, setServiceFilterCategories] = useState<string[]>([]);
+    const [rawSettingsKeys, setRawSettingsKeys] = useState<string[]>([]);
 
     // --- CMS / Home State ---
     const [heroTitle, setHeroTitle] = useState("");
@@ -277,6 +278,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
         try {
             setLoading(true);
             const settings = await settingsApi.getAll(); // Direct array return
+            setRawSettingsKeys(settings.map((s: any) => s.key));
 
             settings.forEach((s: any) => {
                 try {
@@ -560,6 +562,37 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
         { label: "Filters", count: serviceFilterCategories.length, icon: Filter, color: "text-cyan-500", bg: "bg-cyan-50" },
     ];
 
+    const catalogHealthWarnings = useMemo(() => {
+        const warnings: { level: 'warn' | 'info'; message: string }[] = [];
+        if (rawSettingsKeys.includes('tv_inches')) {
+            warnings.push({ level: 'warn', message: 'Legacy key "tv_inches" still exists in DB. Values now read from "tv_sizes" first; cleanup can be done later.' });
+        }
+        if (rawSettingsKeys.includes('common_issues')) {
+            warnings.push({ level: 'warn', message: 'Legacy key "common_issues" still exists in DB. Values now read from "common_symptoms" first; cleanup can be done later.' });
+        }
+        const tvBrandSet = new Set(tvBrands.map(b => b.trim().toLowerCase()));
+        const homepageBrandNames = homepageBrands.map(b => (b.name ?? '').trim().toLowerCase());
+        const missingFromTvBrands = homepageBrandNames.filter(n => n && !tvBrandSet.has(n));
+        if (missingFromTvBrands.length > 0) {
+            warnings.push({ level: 'warn', message: `Homepage carousel has ${missingFromTvBrands.length} brand(s) not in TV Brands master list: ${missingFromTvBrands.slice(0, 3).join(', ')}${missingFromTvBrands.length > 3 ? '…' : ''}.` });
+        }
+        const brandsWithoutLogo = tvBrands.filter(b => {
+            const name = b.trim();
+            if (!name) return false;
+            const hb = homepageBrands.find(h => (h.name ?? '').trim().toLowerCase() === name.toLowerCase());
+            return !hb || !hb.logoUrl;
+        });
+        if (brandsWithoutLogo.length > 0) {
+            const listed = brandsWithoutLogo.slice(0, 3).join(', ');
+            const extra = brandsWithoutLogo.length > 3 ? '…' : '';
+            warnings.push({ level: 'warn', message: `${brandsWithoutLogo.length} TV brand(s) have no homepage carousel logo: ${listed}${extra}.` });
+        }
+        if (!rawSettingsKeys.includes('repair_price_matrix')) {
+            warnings.push({ level: 'info', message: '"repair_price_matrix" not configured — calculator uses built-in default prices.' });
+        }
+        return warnings;
+    }, [rawSettingsKeys, tvBrands, homepageBrands]);
+
     const MobileSettingsRow = ({ icon: Icon, iconColor, iconBg, label, helper, right, onClick }: {
         icon: any; iconColor: string; iconBg: string; label: string; helper?: string;
         right: React.ReactNode; onClick?: () => void;
@@ -719,6 +752,20 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         </Button>
                     </div>
                 </MobilePanel>
+
+                {/* Catalog Health */}
+                {catalogHealthWarnings.length > 0 && (
+                    <div className="mx-4 mb-2 flex flex-col gap-1.5">
+                        {catalogHealthWarnings.map((w, i) => (
+                            <div key={i} className={`flex items-start gap-2 rounded-xl px-3 py-2.5 text-[12px] font-medium ${w.level === 'warn' ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-700'}`}>
+                                {w.level === 'warn'
+                                    ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-500" />
+                                    : <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-blue-500" />}
+                                <span>{w.message}</span>
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 {/* Service Catalogs */}
                 <MobileSectionTitle>Service Catalogs</MobileSectionTitle>
@@ -1670,6 +1717,18 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     <Star className="w-3.5 h-3.5 mt-0.5 shrink-0 text-blue-500" />
                                     <p>Changes sync locally. Click <strong>Save Changes</strong> to push to server.</p>
                                 </div>
+                                {catalogHealthWarnings.length > 0 && (
+                                    <div className="flex flex-col gap-1.5 mb-3">
+                                        {catalogHealthWarnings.map((w, i) => (
+                                            <div key={i} className={`flex items-start gap-2 rounded-xl px-3 py-2 text-[11px] font-medium ${w.level === 'warn' ? 'bg-amber-50 text-amber-800' : 'bg-blue-50 text-blue-700'}`}>
+                                                {w.level === 'warn'
+                                                    ? <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5 text-amber-500" />
+                                                    : <AlertCircle className="h-3 w-3 shrink-0 mt-0.5 text-blue-500" />}
+                                                <span>{w.message}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                                 {mobileCatalogTab === "service" && (
                                     <TagListCard title="Service Categories" icon={<Wrench className="w-5 h-5 text-blue-500" />} items={serviceCategories} setItems={setServiceCategories} placeholder="e.g. TV Repair, AC Servicing" accentColor="blue" />
                                 )}
@@ -1714,10 +1773,22 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 </Button>
                             </div>
                             <div className="custom-scrollbar flex-1 overflow-y-auto p-4">
-                                <div className="flex items-start gap-2 bg-blue-50 text-blue-800 p-3 rounded-xl border border-blue-100 text-sm mb-6 mx-2">
+                                <div className="flex items-start gap-2 bg-blue-50 text-blue-800 p-3 rounded-xl border border-blue-100 text-sm mb-4 mx-2">
                                     <Star className="w-4 h-4 mt-0.5 shrink-0 text-blue-500" />
                                     <p>Changes made here are auto-synced locally. Remember to click <strong>Save Changes</strong> to push everything to the server when you are done.</p>
                                 </div>
+                                {catalogHealthWarnings.length > 0 && (
+                                    <div className="flex flex-col gap-2 mx-2 mb-4">
+                                        {catalogHealthWarnings.map((w, i) => (
+                                            <div key={i} className={`flex items-start gap-2 rounded-xl px-3 py-2.5 text-xs font-medium ${w.level === 'warn' ? 'bg-amber-50 text-amber-800 border border-amber-100' : 'bg-blue-50 text-blue-700 border border-blue-100'}`}>
+                                                {w.level === 'warn'
+                                                    ? <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-500" />
+                                                    : <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-blue-500" />}
+                                                <span>{w.message}</span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
                                 <Suspense fallback={null}><ServiceConfigEditor
                                     serviceCategories={serviceCategories} setServiceCategories={setServiceCategories}
                                     shopCategories={shopCategories} setShopCategories={setShopCategories}

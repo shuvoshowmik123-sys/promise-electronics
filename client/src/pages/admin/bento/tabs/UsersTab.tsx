@@ -140,7 +140,7 @@ export default function UsersTab() {
     });
 
     const regenerateInviteMutation = useMutation({
-        mutationFn: staffInvitesApi.regenerate,
+        mutationFn: (id: string) => staffInvitesApi.regenerate(id),
         onSuccess: (result) => {
             queryClient.invalidateQueries({ queryKey: ["staff-invites"] });
             const fullUrl = `${window.location.origin}${result.setupUrl}`;
@@ -584,7 +584,7 @@ export default function UsersTab() {
                                 {invites.slice(0, 20).map((inv) => {
                                     const expired = new Date(inv.expiresAt) < new Date();
                                     const isPending = inv.status === "pending" && !expired;
-                                    const statusLabel = isPending ? "Pending" : inv.status === "accepted" ? "Accepted" : expired && inv.status === "pending" ? "Expired" : inv.status.charAt(0).toUpperCase() + inv.status.slice(1);
+                                    const statusLabel = isPending ? "Pending" : inv.status === "accepted" ? "Accepted" : inv.status === "failed" || inv.status === "accepting" ? "Attempted" : expired && inv.status === "pending" ? "Expired" : inv.status.charAt(0).toUpperCase() + inv.status.slice(1);
                                     return (
                                         <div key={inv.id} className={cn("rounded-xl border p-3", isPending ? "border-blue-200 bg-blue-50/30" : inv.status === "accepted" ? "border-emerald-100 bg-emerald-50/30" : "border-slate-100")}>
                                             <div className="flex items-start justify-between gap-2">
@@ -603,7 +603,7 @@ export default function UsersTab() {
                                                     </p>
                                                 </div>
                                                 <div className="flex items-center gap-1 shrink-0">
-                                                    {(isPending || expired || inv.status === "regenerated" || inv.status === "revoked") && (
+                                                    {(isPending || expired || inv.status === "regenerated" || inv.status === "revoked" || inv.status === "failed" || inv.status === "accepting") && (
                                                         <Button size="sm" variant="outline" className="h-7 text-[11px] rounded-lg px-2" onClick={() => regenerateInviteMutation.mutate(inv.id)} disabled={regenerateInviteMutation.isPending}>
                                                             <RefreshCw className="h-3 w-3 mr-1" />New
                                                         </Button>
@@ -623,6 +623,59 @@ export default function UsersTab() {
                     </BentoCard>
                 </motion.div>
             )}
+
+            <Dialog open={showLinkDialog} onOpenChange={(open) => {
+                setShowLinkDialog(open);
+                if (!open) setCopiedLink(null);
+            }}>
+                <DialogContent className="!left-0 !right-0 !top-auto !bottom-0 !translate-x-0 !translate-y-0 !max-h-none !max-w-none w-full rounded-t-[2rem] rounded-b-none border-none shadow-2xl p-0 overflow-hidden h-auto md:!left-[50%] md:!right-auto md:!top-[50%] md:!bottom-auto md:!translate-x-[-50%] md:!translate-y-[-50%] md:!max-h-[calc(100dvh-2rem)] md:!max-w-[520px] md:rounded-[2rem]">
+                    <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 text-white">
+                        <DialogHeader>
+                            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/15">
+                                <Link className="h-6 w-6" />
+                            </div>
+                            <DialogTitle className="text-2xl font-black tracking-tighter">Setup Link Generated</DialogTitle>
+                            <DialogDescription className="text-white/75 font-medium">
+                                Share this one-time link with the staff member. It is only visible now for security.
+                            </DialogDescription>
+                        </DialogHeader>
+                    </div>
+                    <div className="space-y-4 p-6">
+                        <div className="space-y-2">
+                            <Label className="text-xs font-black uppercase tracking-widest text-slate-500">Setup URL</Label>
+                            <div className="flex gap-2">
+                                <Input
+                                    readOnly
+                                    value={copiedLink || ""}
+                                    className="h-12 rounded-xl bg-slate-50 font-mono text-xs"
+                                    onFocus={(e) => e.currentTarget.select()}
+                                />
+                                <Button type="button" onClick={copyLink} className="h-12 rounded-xl bg-blue-600 px-4 hover:bg-blue-700">
+                                    <Copy className="h-4 w-4" />
+                                </Button>
+                            </div>
+                        </div>
+                        <p className="rounded-xl bg-amber-50 px-3 py-2 text-xs font-medium leading-relaxed text-amber-800">
+                            Once this dialog is closed, the raw setup token cannot be shown again from the list. Use New to regenerate another link if needed.
+                        </p>
+                    </div>
+                    <DialogFooter className="gap-2 border-t bg-slate-50 p-4">
+                        {copiedLink && (
+                            <Button
+                                type="button"
+                                variant="outline"
+                                className="h-11 flex-1 rounded-xl font-bold"
+                                onClick={() => window.open(copiedLink, "_blank", "noopener,noreferrer")}
+                            >
+                                Open Link
+                            </Button>
+                        )}
+                        <Button type="button" className="h-11 flex-1 rounded-xl bg-slate-900 font-bold hover:bg-slate-800" onClick={() => setShowLinkDialog(false)}>
+                            Done
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* INVITE WIZARD */}
             {isInviteOpen && (
