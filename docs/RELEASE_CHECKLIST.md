@@ -45,7 +45,7 @@
 - [ ] Can assign technician to job
 
 ### Technician
-- [ ] Login → lands on /tech (TechPortal)
+- [ ] Login → lands on /admin#technician
 - [ ] Can see assigned jobs
 - [ ] Can report repair outcome
 - [ ] Cannot access admin sidebar tabs

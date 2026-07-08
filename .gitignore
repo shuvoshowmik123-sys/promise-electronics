@@ -76,6 +76,13 @@ Thumbs.db
 .cursor/
 opencode.json
 
+# Local AI/workbench artifacts
+.claude/
+skills
+mockups/
+Frontend Upgrade Plan.md
+docs/PORTAL_QA_LEDGER.md
+
 # Tool artifacts (Playwright MCP, codex video frames, mobile QA screenshots)
 .playwright-mcp/
 .codex-video-frames/

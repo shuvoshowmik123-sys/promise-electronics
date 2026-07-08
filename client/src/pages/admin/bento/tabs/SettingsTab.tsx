@@ -545,23 +545,6 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
         };
     }, [activeSheet, selectedPanel]);
 
-    if (loading) {
-        return (
-            <div className="flex items-center justify-center h-96">
-                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-            </div>
-        );
-    }
-
-    const catalogItems = [
-        { label: "Service", count: serviceCategories.length, icon: Wrench, color: "text-blue-500", bg: "bg-blue-50" },
-        { label: "Shop", count: shopCategories.length, icon: ShoppingBag, color: "text-emerald-500", bg: "bg-emerald-50" },
-        { label: "Brands", count: tvBrands.length, icon: Tv, color: "text-purple-500", bg: "bg-purple-50" },
-        { label: "Sizes", count: tvInches.length, icon: Ruler, color: "text-amber-500", bg: "bg-amber-50" },
-        { label: "Symptoms", count: commonSymptoms.length, icon: AlertCircle, color: "text-rose-500", bg: "bg-rose-50" },
-        { label: "Filters", count: serviceFilterCategories.length, icon: Filter, color: "text-cyan-500", bg: "bg-cyan-50" },
-    ];
-
     const catalogHealthWarnings = useMemo(() => {
         const warnings: { level: 'warn' | 'info'; message: string }[] = [];
         if (rawSettingsKeys.includes('tv_inches')) {
@@ -592,6 +575,23 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
         }
         return warnings;
     }, [rawSettingsKeys, tvBrands, homepageBrands]);
+
+    if (loading) {
+        return (
+            <div className="flex items-center justify-center h-96">
+                <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+            </div>
+        );
+    }
+
+    const catalogItems = [
+        { label: "Service", count: serviceCategories.length, icon: Wrench, color: "text-blue-500", bg: "bg-blue-50" },
+        { label: "Shop", count: shopCategories.length, icon: ShoppingBag, color: "text-emerald-500", bg: "bg-emerald-50" },
+        { label: "Brands", count: tvBrands.length, icon: Tv, color: "text-purple-500", bg: "bg-purple-50" },
+        { label: "Sizes", count: tvInches.length, icon: Ruler, color: "text-amber-500", bg: "bg-amber-50" },
+        { label: "Symptoms", count: commonSymptoms.length, icon: AlertCircle, color: "text-rose-500", bg: "bg-rose-50" },
+        { label: "Filters", count: serviceFilterCategories.length, icon: Filter, color: "text-cyan-500", bg: "bg-cyan-50" },
+    ];
 
     const MobileSettingsRow = ({ icon: Icon, iconColor, iconBg, label, helper, right, onClick }: {
         icon: any; iconColor: string; iconBg: string; label: string; helper?: string;

@@ -41,6 +41,12 @@ function RootRoute() {
     return null;
 }
 
+function RepairRequestRedirect() {
+    const [, setLocation] = useLocation();
+    setTimeout(() => setLocation("/repair"), 0);
+    return null;
+}
+
 function CustomerModuleGuard({ module, children }: { module: string, children: React.ReactNode }) {
     const { isEnabled } = useModules();
     if (!isEnabled(module, "customer")) {
@@ -113,6 +119,8 @@ export function CustomerRouter() {
                                         <CustomerModuleGuard module="customer_shop"><CheckoutPage /></CustomerModuleGuard>
                                     </CustomerErrorBoundary>
                                 </Route>
+
+                                <Route path="/repair-request" component={RepairRequestRedirect} />
 
                                 <Route path="/repair">
                                     <CustomerErrorBoundary fallbackTitle="Repair Request Error">

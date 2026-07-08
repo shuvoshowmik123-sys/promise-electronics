@@ -389,8 +389,8 @@ export default function DesignConcept() {
         'salary': 'salary',
         'cashier': 'pos',          // cashier is a POS subset
         'reports': 'reports',
-        'pickup': ['pickup', 'jobs'], // driver (pickup) or job-staff (jobs) can view
-        'technician': 'technician',
+        'pickup': 'pickup',
+        'technician': ['technician', 'jobs'],
         'orders': 'orders',
         'warranty': ['warranty', 'warrantyClaims'], // warranty.* = catalog module; warrantyClaims = legacy key name
         'refunds': ['pos', 'finance', 'refunds'],   // pos.refund = granular key; finance staff audit refunds; refunds = legacy

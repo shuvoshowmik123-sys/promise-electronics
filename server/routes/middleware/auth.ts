@@ -161,7 +161,7 @@ export const requirePermission = (permission: string) => async (req: Request, re
 
         const effectivePermissions = getEffectivePermissionsForUser(user);
 
-        if (!effectivePermissions['*'] && !effectivePermissions[permission]) {
+        if (!hasLegacyOrMappedPermission(effectivePermissions, permission)) {
             return res.status(403).json({ error: 'Access denied: Insufficient permissions' });
         }
         (req as any).user = user;
@@ -189,7 +189,7 @@ export const requireAnyPermission = (permissionsToCheck: string[]) => async (req
 
         const effectivePermissions = getEffectivePermissionsForUser(user);
 
-        const hasPermission = effectivePermissions['*'] || permissionsToCheck.some(permission => effectivePermissions[permission]);
+        const hasPermission = permissionsToCheck.some(p => hasLegacyOrMappedPermission(effectivePermissions, p));
 
         if (!hasPermission) {
             return res.status(403).json({ error: 'Access denied: Insufficient permissions' });
@@ -202,6 +202,22 @@ export const requireAnyPermission = (permissionsToCheck: string[]) => async (req
     }
 };
 
+
+/**
+ * Check if a user satisfies a legacy flat permission key by direct match or via
+ * LEGACY_TO_GRANULAR: if the user has any granular key that maps to this legacy key, they pass.
+ * This bridges invite-created accounts (granular-only) with older routes that still call
+ * requirePermission("pos"), requirePermission("dashboard"), etc.
+ */
+function hasLegacyOrMappedPermission(effectivePermissions: Record<string, any>, legacyKey: string): boolean {
+    if (effectivePermissions['*']) return true;
+    if (effectivePermissions[legacyKey]) return true;
+    const mappedKeys = LEGACY_TO_GRANULAR[legacyKey];
+    if (mappedKeys) {
+        return mappedKeys.some(k => effectivePermissions[k] === true);
+    }
+    return false;
+}
 
 /**
  * Check if a user has a granular permission (e.g. "jobs.writeOff").
