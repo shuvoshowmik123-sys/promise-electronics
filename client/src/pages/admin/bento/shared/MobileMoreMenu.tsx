@@ -23,38 +23,38 @@ const TONE: Record<string, string> = {
     slate: "bg-slate-100 text-slate-600",
 };
 
-// Modules already pinned in the bottom dock — never repeat them in More
-const DOCK_IDS = new Set(["jobs", "pos", "shift", "finance"]);
-
 const APP_VERSION = "1.2.4";
 
 export function MobileMoreMenu({
     groups,
     user,
     isOnline,
+    dockItemIds = ["jobs", "pos", "shift", "finance"],
     onSelect,
     onLogout,
 }: {
     groups: NavGroup[];
     user?: { name?: string | null; username?: string | null; role?: string | null; id?: string | null; avatar?: string | null } | null;
     isOnline: boolean;
+    dockItemIds?: string[];
     onSelect: (id: string) => void;
     onLogout: () => void;
 }) {
     const [query, setQuery] = useState("");
+    const dockIds = useMemo(() => new Set(dockItemIds), [dockItemIds]);
 
-    // Drop dock items, then apply search
+    // Drop dock-pinned items, then apply search.
     const visibleGroups = useMemo(() => {
         const q = query.trim().toLowerCase();
         return groups
             .map((g) => ({
                 ...g,
                 items: g.items.filter(
-                    (it) => !DOCK_IDS.has(it.id) && (q === "" || it.label.toLowerCase().includes(q)),
+                    (it) => !dockIds.has(it.id) && (q === "" || it.label.toLowerCase().includes(q)),
                 ),
             }))
             .filter((g) => g.items.length > 0);
-    }, [groups, query]);
+    }, [groups, query, dockIds]);
 
     const name = user?.name || user?.username || "Admin User";
     const initials = name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase();

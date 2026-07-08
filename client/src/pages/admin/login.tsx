@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useLocation } from "wouter";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAdminAuth, getRoleLandingPath } from "@/contexts/AdminAuthContext";
@@ -9,7 +8,6 @@ import { motion } from "framer-motion";
 import { variants } from "@/lib/motion";
 
 export default function AdminLoginPage() {
-  const [, setLocation] = useLocation();
   const { user, login, isAuthenticated, isLoading: authLoading } = useAdminAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -20,9 +18,9 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     if (!authLoading && isAuthenticated && user) {
-      setLocation(getRoleLandingPath(user.role));
+      window.location.href = getRoleLandingPath(user.role);
     }
-  }, [authLoading, isAuthenticated, user, setLocation]);
+  }, [authLoading, isAuthenticated, user]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,7 +37,7 @@ export default function AdminLoginPage() {
     try {
       const loggedInUser = await login(username, password, rememberMe);
       toast.success("Login successful!");
-      setLocation(getRoleLandingPath(loggedInUser.role));
+      window.location.href = getRoleLandingPath(loggedInUser.role);
     } catch (error: unknown) {
       setHasError(true);
       toast.error(error instanceof Error ? error.message : "Login failed");

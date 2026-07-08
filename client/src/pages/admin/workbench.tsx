@@ -221,7 +221,7 @@ export default function SuperAdminWorkbench() {
                 })}
 
                 <p className="text-xs text-slate-400 text-center pb-4">
-                    Core modules cannot be disabled. Changes take effect immediately.
+                    Core modules cannot be disabled. These toggles control Admin Panel visibility for supervisors. Technician staff access uses the technician portal flag.
                 </p>
             </main>
 

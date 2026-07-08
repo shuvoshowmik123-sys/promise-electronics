@@ -224,7 +224,7 @@ Customer/corporate routes must be ownership-scoped — a customer can only see t
 |------|----------|-------------|------------|
 | Super Admin | Dashboard | None | All tabs visible, all actions allowed |
 | Manager | Dashboard | System Settings, Users | Can assign tech, process POS |
-| Technician | /tech | All admin tabs | Sees own jobs only |
+| Technician | /admin#technician | All admin tabs | Sees own jobs only |
 | Driver | /admin#pickup | Jobs, POS, Finance, Users | Sees pickup/shift only |
 | Cashier | /admin#pos | Users, System Settings | Can process POS, view inventory |
 | Customer | /home | All admin | No admin sidebar, no admin data |
@@ -578,7 +578,7 @@ Before declaring a release GO:
 ### 17.3 Role Smoke Tests
 - [ ] Super Admin: login → dashboard, all tabs load, can create setup link
 - [ ] Manager: login → dashboard, can assign tech / process POS, no System Settings/Users
-- [ ] Technician: login → /tech, sees own jobs only, no admin tabs
+- [ ] Technician: login → /admin#technician, sees own jobs only, no admin tabs
 - [ ] Driver: login → /admin#pickup, sees pickup/shift only, no Jobs/POS/Finance/Users
 - [ ] Cashier: login → /admin#pos, can process POS / view inventory, no Users/System Settings
 - [ ] Customer portal: submit repair request, view My Repairs, see journey timeline, no admin sidebar

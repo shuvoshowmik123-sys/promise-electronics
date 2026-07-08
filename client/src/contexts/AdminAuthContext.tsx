@@ -122,7 +122,7 @@ export function useAdminAuth() {
 
 export function getRoleLandingPath(role: string): string {
   switch (role) {
-    case "Technician": return "/tech";
+    case "Technician": return "/admin#technician";
     case "Driver": return "/admin#pickup";
     case "Cashier": return "/admin#pos";
     default: return "/admin";

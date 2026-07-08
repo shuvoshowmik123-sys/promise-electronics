@@ -7,6 +7,7 @@ import {
     Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { BentoCard } from "../shared/BentoCard";
 import { containerVariants, itemVariants, tableRowVariants } from "../shared/animations";
 import { Badge } from "@/components/ui/badge";
@@ -128,6 +129,7 @@ export default function TechnicianTab() {
         queryKey: ["admin-users"],
         queryFn: () => usersApi.getAll(),
         retry: false, // 403 for roles without users.view — handle gracefully below
+        enabled: !isPersonalView, // Technician personal view doesn't need user roster
     });
 
     const { data: jobsData, isLoading: jobsLoading } = useQuery({
@@ -136,7 +138,8 @@ export default function TechnicianTab() {
         refetchInterval: 30_000,
     });
 
-    const isLoading = usersLoading || jobsLoading;
+    // For personal view, only job loading matters; usersQuery is intentionally disabled
+    const isLoading = isPersonalView ? jobsLoading : (usersLoading || jobsLoading);
 
     const usersList = Array.isArray(usersData) ? usersData : (usersData as any)?.items ?? [];
     const techOnly = usersList.filter((u: any) => u.role === "Technician");
@@ -240,9 +243,19 @@ export default function TechnicianTab() {
 
                 <MobileScrollContent>
                     {filteredJobs.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center h-32 rounded-2xl border border-slate-200 bg-white text-slate-400 gap-2 mt-2">
-                            <AlertTriangle className="w-5 h-5" />
-                            <p className="text-sm font-medium">No jobs found</p>
+                        <div className="flex flex-col items-center justify-center h-36 rounded-2xl border border-slate-200 bg-white gap-2 mt-2">
+                            {isPersonalView ? (
+                                <>
+                                    <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                                    <p className="text-sm font-medium text-slate-500">No assigned jobs</p>
+                                    <p className="text-[11px] text-slate-400">You&apos;re clear right now</p>
+                                </>
+                            ) : (
+                                <>
+                                    <AlertTriangle className="w-5 h-5 text-slate-400" />
+                                    <p className="text-sm font-medium text-slate-400">No jobs found</p>
+                                </>
+                            )}
                         </div>
                     ) : (
                         filteredJobs.slice(0, 50).map((job) => (
@@ -271,7 +284,7 @@ export default function TechnicianTab() {
                                     </div>
                                 </div>
                                 <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
-                                    <span className="font-mono">{job.id?.slice(-6).toUpperCase()}</span>
+                                    <span className="font-mono">{getSafeJobDisplayRef(job)}</span>
                                     <span className="font-semibold text-slate-500">
                                         {job.technician ? job.technician.split(" ")[0] : "Unassigned"}
                                     </span>
@@ -400,7 +413,7 @@ export default function TechnicianTab() {
                                                         </div>
                                                         <div className="min-w-0">
                                                             <div className="flex items-center gap-1.5 flex-wrap">
-                                                                <p className="text-xs font-black text-slate-400 font-mono">{job.id}</p>
+                                                                <p className="text-xs font-black text-slate-400 font-mono">{getSafeJobDisplayRef(job)}</p>
                                                                 {job.corporateClientId && (
                                                                     <Badge variant="secondary" className="bg-[var(--corp-blue)] text-white text-[9px] font-black px-1.5 py-0 h-4 border-none">B2B</Badge>
                                                                 )}

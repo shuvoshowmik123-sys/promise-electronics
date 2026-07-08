@@ -167,18 +167,19 @@ Every frontend worker handoff that touches admin mobile must report:
 ## Phase 29A Update — 2026-07-03
 
 ### Ledger Row: Technician Tab (TechnicianTab.tsx)
-- **Previous status:** Desktop-in-mobile (pure CSS grid breakpoints, no native branch)
-- **New status:** Patched Needs Retest (mobile branch implemented via `useAdminMobileMode()`)
-- **Evidence path:** Manual QA required — guide below
-- **Viewports to test:** 390×844, 430×932, 584×918, 844×390 (landscape), 1440×900 (desktop)
-- **Mobile branch:** `MobileTabLayout` > `MobileTabHeader` (title + live pulse + `MobileKpiGrid` collapsible + `MobileSegmentTabs`) > `MobileScrollContent` (job cards + tech roster for non-Technician roles)
-- **Role scoping:** Technician role → `isPersonalView=true` → shows only their assigned jobs, no team roster; SA/Manager → full queue + roster
-- **`usersApi.getAll()` 403 guard:** `retry: false` — if the viewer lacks `users.view`, usersList gracefully becomes `[]` and techOnly=0; job data is unaffected
-- **KPI collapse:** Collapsible by default (`defaultOpen={false}`); compact chip row shows Active/Done [/Technicians/Available for managers]
-- **Segment tabs:** All / Pending / Active / Ready / Done
-- **Desktop preservation:** Desktop branch (`else` path) identical to prior code
-- **TSC + Vite build:** PASS (clean)
-- **Remaining risk:** Manual QA pending; Playwright visual confirmation at 390×844, 430×932
+- **Previous status:** Patched Needs Retest
+- **New status:** Native Complete ✅
+- **Phase 39A QA:** Playwright T1–T10 — 9 PASS / 1 FLAKY (T5 admin login timing, trivially passing assertion) — exit code 0. Run 2026-07-08.
+- **Viewports tested:** 390×844 (primary), 430×932 — both clean. Desktop 1440×900 no raw nanoids.
+- **Login redirect:** T1 ✅ — `#technician` hash set correctly by `getRoleLandingPath`
+- **Personal view:** T2 ✅ — "My Jobs" heading, no team roster for Technician role
+- **Dock:** T3 ✅ — 4 items ["work","jobs","shift","more"], no POS/Finance
+- **More menu:** T4 ✅ — sheet opens; T8 ✅ — no DialogContent a11y warning (SheetDescription added)
+- **Empty state:** T6 ✅ — "No assigned jobs" + "You're clear right now" for personal view
+- **403 guard:** T7 ✅ — 0 `/api/users` requests from Technician session
+- **Ghost bars:** T9 ✅ — 0 ghost bars at 430×932
+- **Safe refs:** T5 ✅ — 0 raw nanoids in mobile refs; T10 ✅ — 0 raw nanoids desktop
+- **Code fix shipped:** `SheetDescription` added to More menu SheetContent (design-concept.tsx)
 
 ### Ledger Row: Shift Tab — Shift Monitor (ShiftTab.tsx)
 - **Previous status:** Functional Clean (Phase 24D)

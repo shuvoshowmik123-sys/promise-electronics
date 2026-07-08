@@ -31,7 +31,7 @@ import { DatabaseSyncStatus } from "@/components/admin/DatabaseSyncStatus";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { DashboardSkeleton } from "./bento/shared/DashboardSkeleton";
 import { MobileMoreMenu } from "./bento/shared/MobileMoreMenu";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { GlobalSearch, type SearchNavigationPayload } from "./bento/shared/GlobalSearch";
 import { NotificationPanel } from "./bento/shared/NotificationPanel";
 import {
@@ -408,9 +408,10 @@ export default function DesignConcept() {
         // Check 1: Is the global module enabled?
         const moduleId = TAB_TO_MODULE[tabId];
         if (moduleId) {
+            const portal = tabId === "technician" && user?.role === "Technician" ? "technician" : "admin";
             const moduleEnabled = Array.isArray(moduleId)
-                ? moduleId.some((id) => isEnabled(id, "admin"))
-                : isEnabled(moduleId, "admin");
+                ? moduleId.some((id) => isEnabled(id, portal))
+                : isEnabled(moduleId, portal);
             if (!moduleEnabled) return false;
         }
 
@@ -452,13 +453,39 @@ export default function DesignConcept() {
         })
     })).filter(g => g.items.length > 0);
 
-    const mobileNavItems = [
-        { label: "Jobs", id: "jobs", icon: ClipboardList },
-        { label: "POS", id: "pos", icon: ShoppingCart },
-        { label: "Shift", id: "shift", icon: UserCheck },
-        { label: "Finance", id: "finance", icon: Banknote },
-        { label: "More", id: "menu", icon: Menu },
-    ];
+    const mobileNavItems = (() => {
+        if (user?.role === "Technician") {
+            return [
+                { label: "Work", id: "technician", icon: HardHat },
+                { label: "Jobs", id: "jobs", icon: ClipboardList },
+                { label: "Shift", id: "shift", icon: UserCheck },
+                { label: "More", id: "menu", icon: Menu },
+            ];
+        }
+        if (user?.role === "Driver") {
+            return [
+                { label: "Pickups", id: "pickup", icon: Truck },
+                { label: "Shift", id: "shift", icon: UserCheck },
+                { label: "More", id: "menu", icon: Menu },
+            ];
+        }
+        if (user?.role === "Cashier") {
+            return [
+                { label: "POS", id: "pos", icon: ShoppingCart },
+                { label: "Stock", id: "inventory", icon: Package },
+                { label: "Shift", id: "shift", icon: UserCheck },
+                { label: "More", id: "menu", icon: Menu },
+            ];
+        }
+        return [
+            { label: "Jobs", id: "jobs", icon: ClipboardList },
+            { label: "POS", id: "pos", icon: ShoppingCart },
+            { label: "Shift", id: "shift", icon: UserCheck },
+            { label: "Finance", id: "finance", icon: Banknote },
+            { label: "More", id: "menu", icon: Menu },
+        ];
+    })();
+    const mobileDockItemIds = mobileNavItems.filter((item) => item.id !== "menu").map((item) => item.id);
 
     useEffect(() => {
         setVisitedTabs((tabs) => {
@@ -623,6 +650,8 @@ export default function DesignConcept() {
                                     onOpenAutoFocus={(event) => event.preventDefault()}
                                     className="h-[92dvh] w-full bg-[#f8fafc] border-0 p-0 rounded-t-3xl overflow-hidden [&>button]:hidden"
                                 >
+                                    <SheetTitle className="sr-only">Navigation Menu</SheetTitle>
+                                    <SheetDescription className="sr-only">Browse and navigate to admin modules</SheetDescription>
                                     {status === "pending" ? (
                                         <div className="p-6"><SidebarSkeleton /></div>
                                     ) : (
@@ -630,6 +659,7 @@ export default function DesignConcept() {
                                             groups={filteredSidebarGroups}
                                             user={user}
                                             isOnline={isOnline}
+                                            dockItemIds={mobileDockItemIds}
                                             onSelect={(tab) => { setActiveTab(tab); setMoreOpen(false); }}
                                             onLogout={() => { setMoreOpen(false); logout(); }}
                                         />
