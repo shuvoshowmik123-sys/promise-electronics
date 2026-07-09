@@ -11,10 +11,18 @@ import type {
     CorporateMessageThread, CorporateMessage, Quotation, InsertQuotation, QuotationItem, InsertQuotationItem
 } from "@shared/schema";
 import type { AdminNotificationItem } from "@shared/types/admin-notifications";
-import { fetchApi } from "./httpClient";
+import { ApiError, fetchApi } from "./httpClient";
 import { API_BASE_URL } from "../config";
 import { PaginationResult, Order, ProductVariant, AdminCustomer, CustomerDetails, SafeUser } from "./types";
 import type { CustomerRepairJourney, CustomerRepairJourneyDetail, CustomerJourneyStage } from "./customerApi";
+
+function normalizeListResponse<T>(response: unknown, label: string): T[] {
+    if (Array.isArray(response)) return response as T[];
+    if (response && typeof response === "object" && Array.isArray((response as { items?: unknown }).items)) {
+        return (response as { items: T[] }).items;
+    }
+    throw new ApiError(`Unexpected ${label} response`, "INVALID_RESPONSE_SHAPE");
+}
 
 // Audit Logs API
 export const auditLogsApi = {
@@ -682,7 +690,7 @@ export const adminAuthApi = {
 
 // Admin Users API
 export const adminUsersApi = {
-    getAll: () => fetchApi<SafeUser[]>("/admin/users"),
+    getAll: () => fetchApi<unknown>("/admin/users").then(response => normalizeListResponse<SafeUser>(response, "users")),
     lookup: () => fetchApi<{ items: SafeUser[] }>("/users/lookup").then(res => res.items),
     create: (data: {
         username: string;
@@ -986,7 +994,7 @@ export interface StaffInviteCreateResponse {
 }
 
 export const staffInvitesApi = {
-    list: () => fetchApi<StaffInvite[]>("/admin/staff-invites"),
+    list: () => fetchApi<unknown>("/admin/staff-invites").then(response => normalizeListResponse<StaffInvite>(response, "staff invites")),
     create: (data: { role: string; permissions: string; phone?: string; email?: string; note?: string; expiresInMinutes?: number }) =>
         fetchApi<StaffInviteCreateResponse>("/admin/staff-invites", { method: "POST", body: JSON.stringify(data) }),
     revoke: (id: string) =>

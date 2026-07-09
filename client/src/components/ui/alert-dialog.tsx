@@ -31,13 +31,17 @@ const AlertDialogOverlay = React.forwardRef<
 ))
 AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName
 
+// asChild on AlertDialogPrimitive.Content crashes with Radix v1.1.15:
+// Content wraps children in [Slottable(children), DescriptionWarning]; the Slot
+// Slottable path then calls React.Children.only(null) when there are multiple
+// children inside the motion.div — crash. Fix: no asChild, motion.div goes inside.
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
 >(({ className, children, ...props }, ref) => (
   <AlertDialogPortal>
     <AlertDialogOverlay />
-    <AlertDialogPrimitive.Content asChild {...props} ref={ref}>
+    <AlertDialogPrimitive.Content ref={ref} {...props}>
       <motion.div
         variants={variants.modalContent}
         initial="initial"

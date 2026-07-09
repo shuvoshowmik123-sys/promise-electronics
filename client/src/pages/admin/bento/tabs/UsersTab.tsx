@@ -103,7 +103,7 @@ export default function UsersTab() {
     const [inviteNote, setInviteNote] = useState("");
     const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
-    const { data: users = [], isLoading, isError, error, refetch } = useQuery({
+    const { data: usersData = [], isLoading, isError, error, refetch } = useQuery({
         queryKey: ["admin-users"],
         queryFn: adminUsersApi.getAll,
         enabled: !!currentUser,
@@ -111,11 +111,13 @@ export default function UsersTab() {
     });
 
     const isSuperAdminEarly = currentUser?.role === "Super Admin";
-    const { data: invites = [] } = useQuery({
+    const { data: invitesData = [] } = useQuery({
         queryKey: ["staff-invites"],
         queryFn: staffInvitesApi.list,
         enabled: !!currentUser && isSuperAdminEarly,
     });
+    const users = Array.isArray(usersData) ? usersData : [];
+    const invites = Array.isArray(invitesData) ? invitesData : [];
 
     const createInviteMutation = useMutation({
         mutationFn: staffInvitesApi.create,
