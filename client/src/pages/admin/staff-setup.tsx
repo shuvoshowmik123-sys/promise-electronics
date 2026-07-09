@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { CheckCircle, AlertTriangle, Clock, Loader2, ShieldCheck, User, Lock, Zap, XCircle, Check, Truck, Wrench, Receipt, ClipboardList, type LucideIcon } from "lucide-react";
+import { CheckCircle, AlertTriangle, Clock, Loader2, ShieldCheck, User, Lock, Zap, XCircle, Check, Truck, Wrench, Receipt, ClipboardList, Eye, EyeOff, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,31 @@ function formatDuration(minutes?: number): string {
     const hours = Math.floor(minutes / 60);
     const mins = minutes % 60;
     return `${hours}h ${mins}m`;
+}
+
+const VERY_WEAK_PASSWORDS = new Set([
+    "123456", "1234567", "12345678", "123456789", "1234567890",
+    "password", "password1", "qwerty", "qwerty123", "abc123",
+    "111111", "000000", "123123", "iloveyou", "admin",
+]);
+
+function isVeryWeak(pw: string): boolean {
+    if (pw.length < 6) return false;
+    // All same character (e.g. aaaaaa)
+    if (/^(.)\1+$/.test(pw)) return true;
+    return VERY_WEAK_PASSWORDS.has(pw.toLowerCase());
+}
+
+function PasswordHint({ ok, label, error }: { ok: boolean; label: string; error?: boolean }) {
+    return (
+        <div className={`flex items-center gap-1.5 text-xs ${ok ? "text-emerald-600" : error ? "text-rose-500" : "text-slate-400"}`}>
+            {ok
+                ? <Check className="h-3 w-3 shrink-0" />
+                : <span className="inline-block h-3 w-3 shrink-0 rounded-full border border-current" />
+            }
+            {label}
+        </div>
+    );
 }
 
 const ROLE_TIPS: Record<string, { Icon: LucideIcon; color: string; tips: string[] }> = {
@@ -119,6 +144,8 @@ export default function StaffSetupPage() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [confirmPassword, setConfirmPassword] = useState("");
+    const [showPassword, setShowPassword] = useState(false);
+    const [showConfirmPassword, setShowConfirmPassword] = useState(false);
     const [timeLeft, setTimeLeft] = useState("");
 
     const { data: invite, isLoading, isError } = useQuery({
@@ -143,7 +170,16 @@ export default function StaffSetupPage() {
         onError: () => {},
     });
 
-    const canSubmit = name.trim().length >= 2 && username.trim().length >= 3 && password.length >= 6 && password === confirmPassword && !acceptMutation.isPending;
+    const passwordValid = password.length >= 6;
+    const passwordsMatch = password === confirmPassword;
+    const veryWeak = isVeryWeak(password);
+
+    const canSubmit =
+        name.trim().length >= 2 &&
+        username.trim().length >= 3 &&
+        passwordValid &&
+        passwordsMatch &&
+        !acceptMutation.isPending;
 
     if (isLoading) {
         return (
@@ -177,7 +213,7 @@ export default function StaffSetupPage() {
     const countdown = timeLeft || formatTimeLeft(invite.expiresAt!);
 
     const profileDone = name.trim().length >= 2 && username.trim().length >= 3;
-    const passwordDone = password.length >= 6 && password === confirmPassword;
+    const passwordDone = passwordValid && passwordsMatch;
     const currentStep = acceptMutation.isSuccess ? 3 : passwordDone && profileDone ? 2 : profileDone ? 2 : name.trim() || username.trim() ? 1 : 1;
 
     if (acceptMutation.isSuccess) {
@@ -211,41 +247,123 @@ export default function StaffSetupPage() {
         <form onSubmit={(e) => { e.preventDefault(); if (canSubmit) acceptMutation.mutate(); }} className="space-y-4">
             {acceptMutation.isError && (
                 <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-700">
-                    {(acceptMutation.error as any)?.message || "Setup failed. Please try again."}
+                    {(acceptMutation.error as any)?.message || "Setup failed. Please check your details and try again."}
                 </div>
             )}
+
+            {/* Full Name */}
             <div className="space-y-1.5">
                 <Label className="text-xs font-bold uppercase text-slate-500">Full Name *</Label>
-                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Your full name" className="h-11 rounded-xl" />
+                <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Your full name"
+                    className="h-11 rounded-xl"
+                    autoComplete="name"
+                />
             </div>
+
+            {/* Username */}
             <div className="space-y-1.5">
                 <Label className="text-xs font-bold uppercase text-slate-500">Username *</Label>
-                <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Choose a username (min 3 chars)" className="h-11 rounded-xl" />
+                <Input
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Choose a username (min 3 chars)"
+                    className="h-11 rounded-xl"
+                    autoComplete="username"
+                />
             </div>
+
+            {/* Phone (conditional) */}
             {!invite.phone && (
                 <div className="space-y-1.5">
                     <Label className="text-xs font-bold uppercase text-slate-500">Phone</Label>
                     <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="01XXXXXXXXX" className="h-11 rounded-xl" />
                 </div>
             )}
+
+            {/* Email (conditional) */}
             {!invite.email && (
                 <div className="space-y-1.5">
                     <Label className="text-xs font-bold uppercase text-slate-500">Email</Label>
                     <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Optional" className="h-11 rounded-xl" />
                 </div>
             )}
+
+            {/* Password */}
             <div className="space-y-1.5">
                 <Label className="text-xs font-bold uppercase text-slate-500">Password *</Label>
-                <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Min 6 characters" className="h-11 rounded-xl" />
-            </div>
-            <div className="space-y-1.5">
-                <Label className="text-xs font-bold uppercase text-slate-500">Confirm Password *</Label>
-                <Input type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} placeholder="Re-enter password" className="h-11 rounded-xl" />
-                {confirmPassword && password !== confirmPassword && (
-                    <p className="text-xs text-rose-500 font-bold">Passwords do not match</p>
+                <div className="relative">
+                    <Input
+                        type={showPassword ? "text" : "password"}
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="Min 6 characters"
+                        className="h-11 rounded-xl pr-10"
+                        autoComplete="new-password"
+                    />
+                    <button
+                        type="button"
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        onClick={() => setShowPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                    >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                </div>
+                {/* Length hint shown as soon as user starts typing */}
+                {password.length > 0 && (
+                    <div className="pl-0.5 space-y-1 pt-0.5">
+                        <PasswordHint ok={passwordValid} label="At least 6 characters" />
+                        {veryWeak && passwordValid && (
+                            <div className="flex items-center gap-1.5 text-xs text-amber-600">
+                                <AlertTriangle className="h-3 w-3 shrink-0" />
+                                Too simple — add letters, numbers, or symbols
+                            </div>
+                        )}
+                    </div>
                 )}
             </div>
-            <Button type="submit" disabled={!canSubmit} className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-base">
+
+            {/* Confirm Password */}
+            <div className="space-y-1.5">
+                <Label className="text-xs font-bold uppercase text-slate-500">Confirm Password *</Label>
+                <div className="relative">
+                    <Input
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Re-enter password"
+                        className="h-11 rounded-xl pr-10"
+                        autoComplete="new-password"
+                    />
+                    <button
+                        type="button"
+                        aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                        onClick={() => setShowConfirmPassword(v => !v)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded"
+                    >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                </div>
+                {/* Match hint shown once user starts typing confirm */}
+                {confirmPassword.length > 0 && (
+                    <div className="pl-0.5 pt-0.5">
+                        <PasswordHint
+                            ok={passwordsMatch}
+                            label={passwordsMatch ? "Passwords match" : "Passwords do not match"}
+                            error={!passwordsMatch}
+                        />
+                    </div>
+                )}
+            </div>
+
+            <Button
+                type="submit"
+                disabled={!canSubmit}
+                className="w-full h-12 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-base"
+            >
                 {acceptMutation.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : "Complete Setup"}
             </Button>
         </form>
