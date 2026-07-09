@@ -400,12 +400,12 @@ export default function UsersTab() {
                                                             </DropdownMenuItem>
                                                         )}
                                                         {isSuperAdmin && user.id !== currentUser?.id && (
-                                                            <>
-                                                                <DropdownMenuSeparator className="my-1 border-slate-50" />
-                                                                <DropdownMenuItem onClick={() => { setSelectedUser(user); setIsDeleteOpen(true); }} className="rounded-xl flex items-center gap-2 py-2.5 px-3 cursor-pointer text-rose-600">
-                                                                    <Trash2 className="w-4 h-4" /> Delete Account
-                                                                </DropdownMenuItem>
-                                                            </>
+                                                            <DropdownMenuSeparator className="my-1 border-slate-50" />
+                                                        )}
+                                                        {isSuperAdmin && user.id !== currentUser?.id && (
+                                                            <DropdownMenuItem onClick={() => { setSelectedUser(user); setIsDeleteOpen(true); }} className="rounded-xl flex items-center gap-2 py-2.5 px-3 cursor-pointer text-rose-600">
+                                                                <Trash2 className="w-4 h-4" /> Delete Account
+                                                            </DropdownMenuItem>
                                                         )}
                                                     </DropdownMenuContent>
                                                 </DropdownMenu>

@@ -34,7 +34,7 @@ AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
   React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content>
->(({ className, ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
   <AlertDialogPortal>
     <AlertDialogOverlay />
     <AlertDialogPrimitive.Content asChild {...props} ref={ref}>
@@ -47,7 +47,9 @@ const AlertDialogContent = React.forwardRef<
           "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg sm:rounded-[2rem]",
           className
         )}
-      />
+      >
+        {children}
+      </motion.div>
     </AlertDialogPrimitive.Content>
   </AlertDialogPortal>
 ))
