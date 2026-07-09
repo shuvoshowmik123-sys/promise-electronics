@@ -84,7 +84,7 @@ export function getDefaultPermissionsForRole(role: string): Record<string, boole
         finance: false,
         attendance: true,
         reports: false,
-        serviceRequests: true,
+        serviceRequests: false,
         orders: false,
         technician: true,
         inquiries: false,

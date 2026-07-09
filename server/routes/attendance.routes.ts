@@ -13,7 +13,7 @@
 
 import { Router, Request, Response } from 'express';
 import { attendanceRepo, userRepo, notificationRepo, db, schema, eq } from '../repositories/index.js';
-import { requireAdminAuth, requireAnyPermission } from './middleware/auth.js';
+import { requireAdminAuth, requirePermission } from './middleware/auth.js';
 
 const router = Router();
 
@@ -92,7 +92,7 @@ async function alertSuperAdmins(userName: string, userRole: string, distanceMete
 router.get(
     '/api/admin/attendance',
     requireAdminAuth,
-    requireAnyPermission(['attendance', 'reports']),
+    requirePermission('reports'),
     async (req: Request, res: Response) => {
         try {
             res.json(await attendanceRepo.getAllAttendanceRecords());
@@ -105,7 +105,7 @@ router.get(
 router.get(
     '/api/admin/attendance/date/:date',
     requireAdminAuth,
-    requireAnyPermission(['attendance', 'reports']),
+    requirePermission('reports'),
     async (req: Request, res: Response) => {
         try {
             res.json(await attendanceRepo.getAttendanceByDate(req.params.date));
@@ -118,7 +118,7 @@ router.get(
 router.get(
     '/api/admin/attendance/user/:userId',
     requireAdminAuth,
-    requireAnyPermission(['attendance', 'reports']),
+    requirePermission('reports'),
     async (req: Request, res: Response) => {
         try {
             res.json(await attendanceRepo.getAttendanceByUserId(req.params.userId));

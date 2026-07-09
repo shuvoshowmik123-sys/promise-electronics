@@ -15,6 +15,7 @@ server/public/
 .env.production
 .env.render
 .env.vercel
+.env.*
 !.env.example
 
 # Service account keys (sensitive)
@@ -111,6 +112,8 @@ jdk11.zip
 jdk-11.0.29+7/
 check_output.txt
 dev.log
+dev.err
+tmp_*.cjs
 ts_errors.log
 scripts/test-gemini.ts
 scripts/load-test-gemini.ts

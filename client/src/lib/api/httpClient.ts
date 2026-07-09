@@ -20,22 +20,30 @@ function getCsrfToken(): string | undefined {
     return match ? match[2] : undefined;
 }
 
+function clearCsrfCookie(): void {
+    if (typeof document === 'undefined') return;
+    document.cookie = 'XSRF-TOKEN=; Max-Age=0; path=/';
+}
+
+async function fetchFreshCsrfToken(): Promise<string | undefined> {
+    if (typeof window === "undefined") return undefined;
+    const response = await fetch(`${API_BASE}/admin/csrf-token`, {
+        credentials: "include",
+        headers: { "Accept": "application/json" },
+    });
+    if (!response.ok) return undefined;
+    const data = await response.json().catch(() => null);
+    return data?.csrfToken || getCsrfToken();
+}
+
 async function ensureCsrfToken(method: string): Promise<string | undefined> {
     const upperMethod = method.toUpperCase();
     if (["GET", "HEAD", "OPTIONS", "TRACE"].includes(upperMethod)) return undefined;
 
     const existing = getCsrfToken();
     if (existing) return existing;
-    if (typeof window === "undefined") return undefined;
 
-    const response = await fetch(`${API_BASE}/admin/csrf-token`, {
-        credentials: "include",
-        headers: { "Accept": "application/json" },
-    });
-    if (!response.ok) return undefined;
-
-    const data = await response.json().catch(() => null);
-    return data?.csrfToken || getCsrfToken();
+    return fetchFreshCsrfToken();
 }
 
 type FetchApiOptions = RequestInit & { timeoutMs?: number };
@@ -92,6 +100,14 @@ export async function fetchApi<T>(url: string, options?: FetchApiOptions): Promi
         }
 
         if (errorData) {
+            // Stale CSRF cookie after server restart — clear and retry once with a fresh token
+            if (response.status === 403 && (errorData.code === 'CSRF_FAILED' || errorData.error === 'CSRF_FAILED') && !(options as any)?._csrfRetry) {
+                clearCsrfCookie();
+                const freshToken = await fetchFreshCsrfToken();
+                if (freshToken) {
+                    return fetchApi<T>(url, { ...options, headers: { ...(options?.headers || {}), "X-XSRF-TOKEN": freshToken }, _csrfRetry: true } as any);
+                }
+            }
             // Use message from server if available, fallback to error code or default
             const message = errorData.message || errorData.error || "Request failed";
             // Use error code from server (e.g. AI_SERVICE_UNAVAILABLE)
