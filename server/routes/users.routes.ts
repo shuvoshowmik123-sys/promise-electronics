@@ -448,7 +448,7 @@ router.patch('/api/admin/users/:id', requireAdminAuth, async (req: Request, res:
         // Determine permissions
         const permissions = currentUser.permissions ? JSON.parse(currentUser.permissions) : {};
         const effectivePermissions = Object.keys(permissions).length > 0 ? permissions : getDefaultPermissions(currentUser.role);
-        const canEdit = effectivePermissions.canEdit;
+        const canEdit = currentUser.role === 'Super Admin' || effectivePermissions.canEdit === true;
 
         // Logic:
         // 1. If it's your own account, you can update it (subject to restrictions below).
