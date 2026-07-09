@@ -39,7 +39,10 @@ function safeJobRef(claim: any, kind: 'original' | 'new'): string | null {
 
 export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
     const queryClient = useQueryClient();
-    const { user } = useAdminAuth();
+    const { user, permissions } = useAdminAuth();
+
+    const isSuperAdmin = user?.role === "Super Admin";
+    const hasWarrantyApprove = isSuperAdmin || (permissions as any)["warranty.approve"] === true;
 
     const { data, isLoading } = useQuery<any>({
         queryKey: ["warranty-claims"],
@@ -118,11 +121,13 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
                                     </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end">
-                                    {claim.status === 'pending' && (
+                                    {hasWarrantyApprove && claim.status === 'pending' && (
                                         <>
-                                            <DropdownMenuItem onClick={() => approveMutation.mutate(claim.id)}>
-                                                <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Approve
-                                            </DropdownMenuItem>
+                                            {(claim.warrantyValid || isSuperAdmin) && (
+                                                <DropdownMenuItem onClick={() => approveMutation.mutate(claim.id)}>
+                                                    <CheckCircle className="mr-2 h-4 w-4 text-green-500" /> Approve
+                                                </DropdownMenuItem>
+                                            )}
                                             <DropdownMenuItem onClick={() => rejectMutation.mutate(claim.id)}>
                                                 <XCircle className="mr-2 h-4 w-4 text-red-500" /> Reject
                                             </DropdownMenuItem>
@@ -193,12 +198,14 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
                                             </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent align="end">
-                                            {claim.status === 'pending' && (
+                                            {hasWarrantyApprove && claim.status === 'pending' && (
                                                 <>
-                                                    <DropdownMenuItem onClick={() => approveMutation.mutate(claim.id)}>
-                                                        <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
-                                                        Approve & Create Linked Job
-                                                    </DropdownMenuItem>
+                                                    {(claim.warrantyValid || isSuperAdmin) && (
+                                                        <DropdownMenuItem onClick={() => approveMutation.mutate(claim.id)}>
+                                                            <CheckCircle className="mr-2 h-4 w-4 text-green-500" />
+                                                            Approve & Create Linked Job
+                                                        </DropdownMenuItem>
+                                                    )}
                                                     <DropdownMenuItem onClick={() => rejectMutation.mutate(claim.id)}>
                                                         <XCircle className="mr-2 h-4 w-4 text-red-500" />
                                                         Reject

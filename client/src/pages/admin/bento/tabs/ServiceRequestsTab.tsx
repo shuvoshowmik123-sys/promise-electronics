@@ -263,7 +263,7 @@ interface ServiceRequestsTabProps {
 }
 
 export default function ServiceRequestsTab({ initialSearchQuery, initialRequestId, onSearchConsumed }: ServiceRequestsTabProps = {}) {
-    const { hasPermission } = useAdminAuth();
+    const { user, permissions, hasPermission } = useAdminAuth();
     const isMobile = useIsMobile();
     const [viewMode, setViewMode] = useState<"grid" | "list">("list");
     const [draggedRequestId, setDraggedRequestId] = useState<string | null>(null);
@@ -509,6 +509,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             toast.success("Progress adjusted");
             setShowRollbackDialog(false);
             setRollbackReason("");
+            setRollbackTarget("");
         },
         onError: (e: Error) => { toast.error("Failed to adjust progress: " + e.message); }
     });
@@ -560,7 +561,19 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
         onError: (e: Error) => { toast.error(e.message || "Failed to verify"); },
     });
 
-    const canVerifyAndConvert = hasPermission("serviceRequests") && hasPermission("jobs") && hasPermission("canCreate");
+    // === PERMISSION HELPERS ===
+    const isSuperAdmin = user?.role === "Super Admin";
+    const hasDirect = (key: string) => (permissions as any)?.[key] === true;
+    const hasLegacy = (key: string) => (permissions as any)?.[key] === true;
+
+    const canSendQuote = isSuperAdmin || hasDirect("serviceRequests.quote") || hasLegacy("serviceRequests");
+    const canTransitionStage = isSuperAdmin || hasDirect("serviceRequests.transitionStage") || hasLegacy("serviceRequests");
+    const canLogCall = isSuperAdmin || hasDirect("serviceRequests.logCall") || hasLegacy("serviceRequests");
+    const canConvertServiceRequest = isSuperAdmin || hasDirect("serviceRequests.convertToJob") || hasLegacy("serviceRequests");
+    const canCreateJobTicket = isSuperAdmin || hasDirect("jobs.create") || (hasLegacy("jobs") && hasLegacy("canCreate"));
+    const canVerifyAndConvert = canConvertServiceRequest && canCreateJobTicket;
+    const canDeleteServiceRequest = isSuperAdmin;
+    const canEditServiceRequest = isSuperAdmin || hasDirect("serviceRequests.edit") || hasLegacy("serviceRequests");
     const handleStageSelect = (id: string, stage: string) => {
         const custodyAction = getCustodyActionForStage(stage);
         if (custodyAction) {
@@ -758,7 +771,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
     const mobileWizardAction = selectedRequest ? (() => {
         const quoted = selectedRequest.isQuote && (!selectedRequest.quoteStatus || selectedRequest.quoteStatus === "Pending");
         const waitingQuote = selectedRequest.isQuote && selectedRequest.quoteStatus === "Quoted";
-        if (quoted) {
+        if (canSendQuote && quoted) {
             return {
                 title: "Send customer quote",
                 body: "Price must be sent before this request can move forward.",
@@ -791,7 +804,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 disabled: verifyMutation.isPending,
             };
         }
-        if (selectedRequest.convertedJobId && selectedStage === "ready" && selectedIsPickup) {
+        if (canTransitionStage && selectedRequest.convertedJobId && selectedStage === "ready" && selectedIsPickup) {
             const nextStage = findNextStage("out_for_delivery");
             return {
                 title: "Ready for return",
@@ -803,7 +816,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 disabled: stageTransitionMutation.isPending,
             };
         }
-        if (selectedRequest.convertedJobId && (selectedStage === "out_for_delivery" || selectedStage === "ready")) {
+        if (canTransitionStage && selectedRequest.convertedJobId && (selectedStage === "out_for_delivery" || selectedStage === "ready")) {
             return {
                 title: "Release to customer",
                 body: selectedPaymentPaid ? "Verify customer OTP before releasing the device." : "Open billing first, then verify OTP at handover.",
@@ -826,7 +839,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             };
         }
         const receiveStage = findNextStage(selectedIsPickup ? "picked_up" : "device_received");
-        if (receiveStage) {
+        if (canTransitionStage && receiveStage) {
             return {
                 title: "Confirm custody",
                 body: "Customer OTP is required before this can become a job.",
@@ -837,7 +850,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 disabled: sendCustodyOtpMutation.isPending,
             };
         }
-        if (selectedIsPickup && ["authorized", "assessment", "intake", "pickup_scheduled"].includes(selectedStage)) {
+        if (canTransitionStage && selectedIsPickup && ["authorized", "assessment", "intake", "pickup_scheduled"].includes(selectedStage)) {
             return {
                 title: "Move to pickup desk",
                 body: "Create or open the Pickup & Delivery work item for scheduling.",
@@ -848,7 +861,9 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 disabled: transferToPickupMutation.isPending,
             };
         }
-        const nextStage = findNextStage("assessment", "authorized", "awaiting_dropoff", "in_repair", "ready", "closed") || selectedValidNextStages[0];
+        const nextStage = canTransitionStage
+            ? (findNextStage("assessment", "authorized", "awaiting_dropoff", "in_repair", "ready", "closed") || selectedValidNextStages[0])
+            : null;
         return {
             title: nextStage ? `Next: ${formatStageName(nextStage)}` : "No next action",
             body: nextStage ? "Move the case forward one step." : "This case has no available wizard action.",
@@ -1211,9 +1226,11 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         {repairCase?.intake?.callSummary?.callAttemptCount > 0 && (
                                             <span className="text-[10px] font-bold text-slate-500">{repairCase.intake.callSummary.callAttemptCount} call{repairCase.intake.callSummary.callAttemptCount > 1 ? 's' : ''}{repairCase.intake.callSummary.lastCallOutcome ? ` · ${repairCase.intake.callSummary.lastCallOutcome.replace(/_/g, ' ')}` : ''}</span>
                                         )}
-                                        <Button variant="outline" size="sm" className="ml-auto h-7 rounded-lg text-[10px] font-bold gap-1" onClick={() => setShowCallLogDialog(true)}>
-                                            <Phone className="h-3 w-3" /> Log Call
-                                        </Button>
+                                        {canLogCall && (
+                                            <Button variant="outline" size="sm" className="ml-auto h-7 rounded-lg text-[10px] font-bold gap-1" onClick={() => setShowCallLogDialog(true)}>
+                                                <Phone className="h-3 w-3" /> Log Call
+                                            </Button>
+                                        )}
                                     </div>
                                     {repairCase?.intake?.needsStaffAction && (
                                         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
@@ -1409,9 +1426,11 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         {repairCase?.intake?.callSummary?.callAttemptCount > 0 && (
                                             <span className="text-xs text-slate-500">{repairCase.intake.callSummary.callAttemptCount} call{repairCase.intake.callSummary.callAttemptCount > 1 ? 's' : ''}{repairCase.intake.callSummary.lastCallOutcome ? ` · ${repairCase.intake.callSummary.lastCallOutcome.replace(/_/g, ' ')}` : ''}</span>
                                         )}
-                                        <Button variant="outline" size="sm" className="ml-auto h-7 rounded-lg text-xs font-bold gap-1" onClick={() => setShowCallLogDialog(true)}>
-                                            <Phone className="h-3 w-3" /> Log Call
-                                        </Button>
+                                        {canLogCall && (
+                                            <Button variant="outline" size="sm" className="ml-auto h-7 rounded-lg text-xs font-bold gap-1" onClick={() => setShowCallLogDialog(true)}>
+                                                <Phone className="h-3 w-3" /> Log Call
+                                            </Button>
+                                        )}
                                     </div>
                                     {repairCase?.intake?.needsStaffAction && (
                                         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
@@ -1519,7 +1538,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                                     </div>
                                                 )}
                                                 {/* Expected Dates */}
-                                                {sr.serviceMode && (
+                                                {sr.serviceMode && canTransitionStage && (
                                                     <div className="space-y-2 pt-2 border-t border-slate-200">
                                                         <Label className="text-[10px] font-medium text-slate-600">Expected Dates</Label>
                                                         {sr.serviceMode === "pickup" ? (
@@ -1641,7 +1660,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         <Button variant="ghost" onClick={handleCloseDialog} className="rounded-xl">Close</Button>
 
                                         {/* Dynamic Contextual Actions */}
-                                        {getContextualActions(selectedRequest.status, selectedRequest.serviceMode || "service_center", "Admin", selectedRequest.quoteStatus).map((action) => (
+                                        {canTransitionStage && getContextualActions(selectedRequest.status, selectedRequest.serviceMode || "service_center", "Admin", selectedRequest.quoteStatus).map((action) => (
                                             <Button
                                                 key={action.id}
                                                 variant={action.isPrimary ? "default" : action.intent === "negative" ? "destructive" : "outline"}
@@ -1654,22 +1673,24 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                             </Button>
                                         ))}
 
-                                        {selectedRequest.isQuote && (!selectedRequest.quoteStatus || selectedRequest.quoteStatus === "Pending") && (
+                                        {canSendQuote && selectedRequest.isQuote && (!selectedRequest.quoteStatus || selectedRequest.quoteStatus === "Pending") && (
                                             <Button size="sm" className="rounded-xl bg-amber-600 hover:bg-amber-700" onClick={() => { setQuoteAmount(selectedRequest.quoteAmount?.toString() || ""); setQuoteNotes(selectedRequest.quoteNotes || ""); setShowQuotePriceDialog(true); }}><Send className="w-3.5 h-3.5 mr-1.5" />Send Quote</Button>
                                         )}
-                                        {!selectedRequest.convertedJobId && ["picked_up", "device_received"].includes(selectedRequest.stage || "") && canVerifyAndConvert && (
+                                        {canVerifyAndConvert && !selectedRequest.convertedJobId && ["picked_up", "device_received"].includes(selectedRequest.stage || "") && (
                                             <Button size="sm" className="rounded-xl bg-green-600 hover:bg-green-700" onClick={() => { setRequestToVerify(selectedRequest); setVerificationNotes(selectedRequest.description || ""); setShowVerifyDialog(true); }}><CheckCircle className="w-3.5 h-3.5 mr-1.5" />Create Job</Button>
                                         )}
-                                        {(selectedRequest.servicePreference === "pickup" || selectedRequest.servicePreference === "home_pickup" || selectedRequest.serviceMode === "pickup") && (
+                                        {canTransitionStage && (selectedRequest.servicePreference === "pickup" || selectedRequest.servicePreference === "home_pickup" || selectedRequest.serviceMode === "pickup") && (
                                             <Button size="sm" variant="outline" className="rounded-xl border-blue-200 text-blue-700 hover:bg-blue-50" onClick={() => transferToPickupMutation.mutate(selectedRequest.id)} disabled={transferToPickupMutation.isPending}>
                                                 {transferToPickupMutation.isPending ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Truck className="w-3.5 h-3.5 mr-1.5" />}
                                                 Transfer to Pickup & Delivery
                                             </Button>
                                         )}
                                     </div>
-                                    <div className="flex gap-2 pl-4 border-l ml-2">
-                                        <Button variant="destructive" size="sm" className="rounded-xl" onClick={() => { setRequestToDelete(selectedRequest); setShowDeleteDialog(true); handleCloseDialog(); }}><Trash2 className="w-3.5 h-3.5 mr-1.5" />Delete</Button>
-                                    </div>
+                                    {canDeleteServiceRequest && (
+                                        <div className="flex gap-2 pl-4 border-l ml-2">
+                                            <Button variant="destructive" size="sm" className="rounded-xl" onClick={() => { setRequestToDelete(selectedRequest); setShowDeleteDialog(true); handleCloseDialog(); }}><Trash2 className="w-3.5 h-3.5 mr-1.5" />Delete</Button>
+                                        </div>
+                                    )}
                                 </div>
                             </motion.div>
                         </>
@@ -1706,7 +1727,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         <ChevronRight className="h-4 w-4 text-slate-400" />
                                     </button>
 
-                                    {(selectedRequest.servicePreference === "pickup" || selectedRequest.servicePreference === "home_pickup" || selectedRequest.serviceMode === "pickup") && (
+                                    {canTransitionStage && (selectedRequest.servicePreference === "pickup" || selectedRequest.servicePreference === "home_pickup" || selectedRequest.serviceMode === "pickup") && (
                                         <button
                                             type="button"
                                             className="flex w-full items-center justify-between rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3 text-left disabled:opacity-60"
@@ -1724,7 +1745,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         </button>
                                     )}
 
-                                    {selectedRequest.status !== "New" && !isClosedState && (
+                                    {canTransitionStage && selectedRequest.status !== "New" && !isClosedState && (
                                         <button
                                             type="button"
                                             className="flex w-full items-center justify-between rounded-2xl border border-amber-100 bg-amber-50 px-3 py-3 text-left"
@@ -1742,22 +1763,24 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         </button>
                                     )}
 
-                                    <button
-                                        type="button"
-                                        className="flex w-full items-center justify-between rounded-2xl border border-rose-100 bg-rose-50 px-3 py-3 text-left"
-                                        onClick={() => {
-                                            setRequestToDelete(selectedRequest);
-                                            setShowMobileMoreActions(false);
-                                            setShowDeleteDialog(true);
-                                            handleCloseDialog();
-                                        }}
-                                    >
-                                        <span>
-                                            <span className="block text-sm font-black text-rose-900">Delete request</span>
-                                            <span className="block text-xs font-semibold text-rose-600">Permanent action, confirmation required</span>
-                                        </span>
-                                        <Trash2 className="h-4 w-4 text-rose-600" />
-                                    </button>
+                                    {canDeleteServiceRequest && (
+                                        <button
+                                            type="button"
+                                            className="flex w-full items-center justify-between rounded-2xl border border-rose-100 bg-rose-50 px-3 py-3 text-left"
+                                            onClick={() => {
+                                                setRequestToDelete(selectedRequest);
+                                                setShowMobileMoreActions(false);
+                                                setShowDeleteDialog(true);
+                                                handleCloseDialog();
+                                            }}
+                                        >
+                                            <span>
+                                                <span className="block text-sm font-black text-rose-900">Delete request</span>
+                                                <span className="block text-xs font-semibold text-rose-600">Permanent action, confirmation required</span>
+                                            </span>
+                                            <Trash2 className="h-4 w-4 text-rose-600" />
+                                        </button>
+                                    )}
                                 </div>
                                 <Button variant="outline" className="mt-4 h-11 w-full rounded-2xl font-black" onClick={() => setShowMobileMoreActions(false)}>
                                     Close
@@ -2072,7 +2095,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                         </div>
                         <div className="grid gap-2">
                             <Label>Target Stage</Label>
-                            <Select onValueChange={(v) => document.getElementById('rollback-target-val')?.setAttribute('value', v)}>
+                            <Select value={rollbackTarget} onValueChange={setRollbackTarget}>
                                 <SelectTrigger className="rounded-xl">
                                     <SelectValue placeholder="Select target stage..." />
                                 </SelectTrigger>
@@ -2082,7 +2105,6 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                     ))}
                                 </SelectContent>
                             </Select>
-                            <input type="hidden" id="rollback-target-val" value="" />
                         </div>
                         <div className="grid gap-2">
                             <Label>Reason for Adjustment</Label>
@@ -2098,21 +2120,21 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                         <Button variant="outline" onClick={() => {
                             setShowRollbackDialog(false);
                             setRollbackReason("");
+                            setRollbackTarget("");
                         }} className="rounded-xl">Cancel</Button>
                         <Button
                             onClick={() => {
-                                const target = document.getElementById('rollback-target-val')?.getAttribute('value');
-                                if (selectedRequest && rollbackReason.trim() && target) {
+                                if (selectedRequest && rollbackReason.trim() && rollbackTarget) {
                                     adjustProgressMutation.mutate({
                                         id: selectedRequest.id,
-                                        targetStatus: target,
+                                        targetStatus: rollbackTarget,
                                         reason: rollbackReason
                                     });
                                 } else {
                                     toast.error("Please select a target stage and provide a reason");
                                 }
                             }}
-                            disabled={!rollbackReason.trim() || adjustProgressMutation.isPending}
+                            disabled={!rollbackTarget || !rollbackReason.trim() || adjustProgressMutation.isPending}
                             className="rounded-xl bg-amber-500 hover:bg-amber-600"
                         >
                             {adjustProgressMutation.isPending ? "Adjusting..." : "Adjust Progress"}

@@ -5,12 +5,22 @@
  * Returns only data specific to the authenticated technician.
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { storage } from '../storage.js';
 import { jobRepo, userRepo, notificationRepo } from '../repositories/index.js';
 import { requireAdminAuth } from './middleware/auth.js';
 
 const router = Router();
+
+// Technician personal routes are scoped to Technician and Super Admin only.
+// Manager is intentionally blocked — these endpoints return per-tech workload
+// data that is not meaningful or safe to expose across roles.
+function requireTechnicianOrSuperAdmin(req: Request, res: Response, next: NextFunction) {
+    const user = (req as any).user;
+    if (!user) return res.status(401).json({ error: 'Admin authentication required' });
+    if (user.role === 'Technician' || user.role === 'Super Admin') return next();
+    return res.status(403).json({ error: 'Access denied: Technician role required' });
+}
 
 // ============================================
 // Technician Personal Dashboard API
@@ -20,7 +30,7 @@ const router = Router();
  * GET /api/technician/stats - Get personal job stats for logged-in technician
  * Returns: { assigned, completed, pending }
  */
-router.get('/api/technician/stats', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/technician/stats', requireAdminAuth, requireTechnicianOrSuperAdmin, async (req: Request, res: Response) => {
     try {
         const userId = req.session!.adminUserId;
         const user = await userRepo.getUser(userId!);
@@ -59,7 +69,7 @@ router.get('/api/technician/stats', requireAdminAuth, async (req: Request, res: 
  * Optional query: ?status=pending|completed|all (default: all)
  * Returns: Array of job tickets with pendingDays calculation
  */
-router.get('/api/technician/jobs', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/technician/jobs', requireAdminAuth, requireTechnicianOrSuperAdmin, async (req: Request, res: Response) => {
     try {
         const userId = req.session!.adminUserId;
         const user = await userRepo.getUser(userId!);

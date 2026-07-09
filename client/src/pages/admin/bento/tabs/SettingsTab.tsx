@@ -17,6 +17,7 @@ import { drawerApi, settingsApi } from "@/lib/api";
 import type { SettingConflictGroup, SettingResolutionItem } from "@/lib/api/adminApi";
 import { uploadToImageKit } from "@/lib/imagekit-upload";
 import { normalizeBrandLogoFile, normalizeBrandLogoFromUrl } from "@/lib/brand-logo-normalizer";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { containerVariants, itemVariants, MobileScrollContent, MobileTabHeader, MobileTabLayout, MobileMarqueeText, MobileSegmentTabs } from "../shared";
 import { BentoCard } from "../shared/BentoCard";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
@@ -55,6 +56,8 @@ function resolveSettingsDestination(query: string): { sheet?: 'identity' | 'fina
 
 export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: SettingsTabProps = {}) {
     const { toast } = useToast();
+    const { user } = useAdminAuth();
+    const isSuperAdmin = user?.role === "Super Admin";
 
     // Sheet State Management
     const [activeSheet, setActiveSheet] = useState<'identity' | 'finance' | 'catalog' | null>(null);
@@ -745,12 +748,14 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             <Input value={drawerDayCloseTimezone} onChange={(e) => setDrawerDayCloseTimezone(e.target.value)} placeholder="Asia/Dhaka" className="h-10 rounded-xl bg-slate-50 text-sm" />
                         </div>
                     </div>
+                    {isSuperAdmin && (
                     <div className="px-4 py-3">
                         <Button type="button" onClick={handleRunDayEndNow} disabled={runningDayCloseNow} className="w-full h-11 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-sm font-bold">
                             {runningDayCloseNow ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
                             Run Day-End Now
                         </Button>
                     </div>
+                    )}
                 </MobilePanel>
 
                 {/* Catalog Health */}
@@ -787,11 +792,13 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                 </MobilePanel>
 
                 {/* Data Setup */}
-                <MobileSectionTitle>Data Setup</MobileSectionTitle>
+                {isSuperAdmin && <MobileSectionTitle>Data Setup</MobileSectionTitle>}
+                {isSuperAdmin && (
                 <MobilePanel>
                     <MobileSettingsRow icon={Upload} iconColor="text-blue-600" iconBg="bg-blue-50" label="Bulk Import Center" helper="CSV import for catalog, inventory & products"
                         right={null} onClick={() => setSelectedPanel("bulkimport")} />
                 </MobilePanel>
+                )}
 
                 {/* Danger Zone */}
                 <MobileSectionTitle>Advanced</MobileSectionTitle>
@@ -806,7 +813,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         </div>
                         <ChevronDown className={`h-4 w-4 text-red-300 transition-transform ${dangerExpanded ? "rotate-180" : ""}`} />
                     </button>
-                    {dangerExpanded && (
+                    {dangerExpanded && isSuperAdmin && (
                         <div className="px-4 pb-4 pt-1 border-t border-red-100">
                             <p className="text-[12px] text-red-600 mb-3">Deleting data is irreversible. All transactions, customers, and catalog data will be permanently removed.</p>
                             <Button variant="outline" className="w-full h-11 rounded-xl border-red-300 text-red-600 font-bold hover:bg-red-50" onClick={() => setGeneralDialogTrigger("delete")}>
@@ -863,9 +870,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             <p className="text-sm font-bold text-amber-900">Duplicate business information found</p>
                             <p className="text-xs text-amber-700 mt-0.5">{conflictGroups.length} conflict group{conflictGroups.length !== 1 ? 's' : ''} across Settings — phone, address, hours, email, or WhatsApp may differ between sections.</p>
                         </div>
-                        <Button size="sm" onClick={() => setShowConflictResolver(true)} className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl">
+                        {isSuperAdmin && <Button size="sm" onClick={() => setShowConflictResolver(true)} className="shrink-0 bg-amber-600 hover:bg-amber-700 text-white font-semibold rounded-xl">
                             Review & Resolve
-                        </Button>
+                        </Button>}
                     </div>
                 </motion.div>
             )}
@@ -930,6 +937,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 />
                             </div>
 
+                            {isSuperAdmin && (
                             <Button
                                 type="button"
                                 onClick={handleRunDayEndNow}
@@ -939,6 +947,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 {runningDayCloseNow ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <PlayCircle className="w-4 h-4 mr-2" />}
                                 Run Day-End Now
                             </Button>
+                            )}
                         </div>
                     </BentoCard>
                 </motion.div>
@@ -1024,8 +1033,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                     </motion.div>
                 </div>
 
-                {/* Row 6: Bulk Import Center (desktop) */}
-                <motion.div variants={itemVariants} className="h-full">
+                {/* Row 6: Bulk Import Center (Super Admin only, desktop) */}
+                {isSuperAdmin && <motion.div variants={itemVariants} className="h-full">
                     <BentoCard
                         className="cursor-pointer group relative overflow-hidden h-full hover:-translate-y-1 hover:shadow-xl transition-all duration-300"
                         title="Bulk Import Center"
@@ -1049,7 +1058,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             </div>
                         </div>
                     </BentoCard>
-                </motion.div>
+                </motion.div>}
             </div>
 
         </motion.div>
@@ -1599,7 +1608,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             </div>
                             <div className="flex shrink-0 flex-col gap-2 border-t border-slate-100 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                                 <Button variant="outline" className="h-11 rounded-xl" onClick={() => setShowConflictResolver(false)}>Cancel</Button>
-                                {conflictGroups.length > 0 && (
+                                {isSuperAdmin && conflictGroups.length > 0 && (
                                     <Button className="h-11 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold" onClick={handleApplyResolutions} disabled={resolvingConflicts}>
                                         {resolvingConflicts ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
                                         Apply Resolutions
@@ -1665,7 +1674,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             </div>
                             <div className="flex shrink-0 items-center justify-end gap-3 border-t border-slate-100 bg-slate-50 p-5 rounded-b-3xl">
                                 <Button variant="outline" className="h-10 rounded-xl" onClick={() => setShowConflictResolver(false)}>Cancel</Button>
-                                {conflictGroups.length > 0 && (
+                                {isSuperAdmin && conflictGroups.length > 0 && (
                                     <Button className="h-10 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold" onClick={handleApplyResolutions} disabled={resolvingConflicts}>
                                         {resolvingConflicts ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
                                         Apply All Resolutions

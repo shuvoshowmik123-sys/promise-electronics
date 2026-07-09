@@ -684,7 +684,7 @@ export default function UsersTab() {
                 <InviteWizard
                     onClose={() => setIsInviteOpen(false)}
                     onCreated={() => {
-                        queryClient.invalidateQueries({ queryKey: ["staffInvites"] });
+                        queryClient.invalidateQueries({ queryKey: ["staff-invites"] });
                         queryClient.invalidateQueries({ queryKey: ["permCoverage"] });
                     }}
                 />

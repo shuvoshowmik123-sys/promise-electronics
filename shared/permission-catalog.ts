@@ -17,12 +17,13 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "dashboard.view", label: "View dashboard", module: "dashboard", action: "view", risk: "low", description: "See the admin dashboard with KPIs and summaries.", consequence: "Read-only overview; no data modification.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
 
   // ── Service Requests ──
-  { key: "serviceRequests.view", label: "View service requests", module: "serviceRequests", action: "view", risk: "low", description: "See incoming customer repair requests.", consequence: "Read-only access to customer intake data.", suggestedRoles: ["Manager", "Technician", "Super Admin"], coverageCritical: false },
+  { key: "serviceRequests.view", label: "View service requests", module: "serviceRequests", action: "view", risk: "low", description: "See incoming customer repair requests.", consequence: "Read-only access to customer intake data.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
   { key: "serviceRequests.reply", label: "Reply to requests", module: "serviceRequests", action: "reply", risk: "medium", description: "Answer customer intake messages.", consequence: "Customer-facing communication; bad replies can damage trust.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: true },
   { key: "serviceRequests.logCall", label: "Log phone calls", module: "serviceRequests", action: "logCall", risk: "low", description: "Record notes from phone calls with customers.", consequence: "Internal notes only; not customer-visible.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
   { key: "serviceRequests.quote", label: "Send repair quote", module: "serviceRequests", action: "quote", risk: "high", description: "Create and send price quotes to customers.", consequence: "Financial commitment; customer sees the price and can accept.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: true },
   { key: "serviceRequests.transitionStage", label: "Change request stage", module: "serviceRequests", action: "transitionStage", risk: "high", description: "Move a request between stages (Authorized, Pickup Scheduled, In Repair, etc.).", consequence: "Affects workflow and customer-visible status.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
   { key: "serviceRequests.convertToJob", label: "Convert to job ticket", module: "serviceRequests", action: "convertToJob", risk: "high", description: "Create a job ticket from a service request.", consequence: "Starts the repair workflow; assigns resources.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
+  { key: "serviceRequests.edit", label: "Edit service requests", module: "serviceRequests", action: "edit", risk: "high", description: "Edit service request fields and customer intake details.", consequence: "Can alter customer-facing/request workflow data.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: true },
 
   // ── Jobs ──
   { key: "jobs.view", label: "View job tickets", module: "jobs", action: "view", risk: "low", description: "See all job tickets and their status.", consequence: "Read-only access to repair work data.", suggestedRoles: ["Manager", "Technician", "Super Admin"], coverageCritical: false },
@@ -125,7 +126,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
 
 export const LEGACY_TO_GRANULAR: Record<string, string[]> = {
   dashboard: ["dashboard.view"],
-  serviceRequests: ["serviceRequests.view", "serviceRequests.reply", "serviceRequests.logCall", "serviceRequests.quote", "serviceRequests.transitionStage", "serviceRequests.convertToJob"],
+  serviceRequests: ["serviceRequests.view", "serviceRequests.reply", "serviceRequests.logCall", "serviceRequests.quote", "serviceRequests.transitionStage", "serviceRequests.convertToJob", "serviceRequests.edit"],
   jobs: ["jobs.view", "jobs.create", "jobs.assignTechnician", "jobs.reportOutcome", "jobs.advanceStatus", "jobs.edit"],
   pickup: ["pickup.viewAssigned"],
   pos: ["pos.view", "pos.processPayment", "pos.openRegister"],
@@ -169,7 +170,7 @@ export const ROLE_PRESETS: Record<string, string[]> = {
   ],
   "Technician Basic": [
     "jobs.view", "jobs.reportOutcome", "jobs.advanceStatus",
-    "serviceRequests.view", "repairJourney.view",
+    "repairJourney.view",
     "attendance.checkIn", "notifications.view",
   ],
   "Cashier Basic": [
@@ -179,7 +180,7 @@ export const ROLE_PRESETS: Record<string, string[]> = {
   ],
   "Manager Basic": [
     "dashboard.view",
-    "serviceRequests.view", "serviceRequests.reply", "serviceRequests.logCall", "serviceRequests.quote", "serviceRequests.transitionStage", "serviceRequests.convertToJob",
+    "serviceRequests.view", "serviceRequests.reply", "serviceRequests.logCall", "serviceRequests.quote", "serviceRequests.transitionStage", "serviceRequests.convertToJob", "serviceRequests.edit",
     "jobs.view", "jobs.create", "jobs.assignTechnician", "jobs.reportOutcome", "jobs.advanceStatus", "jobs.edit", "jobs.recordPayment",
     "repairJourney.view", "repairJourney.customerUpdate",
     "pickup.viewAll", "pickup.assignDriver", "pickup.reschedule", "pickup.cancel", "pickup.routePlan",
@@ -231,6 +232,7 @@ export const CUSTOM_PACKS: Record<string, { label: string; description: string; 
 export const COVERAGE_CRITICAL_PERMISSIONS = [
   "serviceRequests.reply",
   "serviceRequests.quote",
+  "serviceRequests.edit",
   "jobs.assignTechnician",
   "jobs.reportOutcome",
   "pickup.assignDriver",

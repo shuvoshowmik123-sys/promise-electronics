@@ -49,6 +49,12 @@ export function getDefaultPermissionsForRole(role: string): Record<string, boole
         canExport: true,
         process_payment: true,
         view_financials: true,
+        pickup: true,
+        "pickup.viewAll": true,
+        "pickup.assignDriver": true,
+        "pickup.reschedule": true,
+        "pickup.cancel": true,
+        "pickup.routePlan": true,
       };
     case "Cashier":
       return {

@@ -27,6 +27,7 @@ import {
 import { firebaseAdmin } from '../services/firebase.js';
 import { authLimiter, registrationLimiter, serviceRequestLimiter, accountRecoveryLimiter } from './middleware/rate-limit.js';
 import { isPhoneBlacklisted } from './blacklist.routes.js';
+import { normalizePhone } from '../utils/phone.js';
 import { z } from 'zod';
 import { customerService } from '../services/customer.service.js';
 
@@ -678,6 +679,12 @@ router.post('/api/customer/service-requests/:id/payment-submissions', serviceReq
 
 /**
  * GET /api/customer/track/:ticketNumber - Track order by ticket number
+ *
+ * Ownership rules:
+ * - Anonymous: limited public projection only (no phone, address, customerId, timeline, payments).
+ * - Logged-in customer: full projection only when order.customerId === session.customerId,
+ *   or legacy unlinked request whose normalized phone matches the customer's normalized phone.
+ * - Never overwrite an existing order.customerId. Never reveal existence of another customer's ticket.
  */
 router.get('/api/customer/track/:ticketNumber', async (req: Request, res: Response) => {
     try {
@@ -686,20 +693,29 @@ router.get('/api/customer/track/:ticketNumber', async (req: Request, res: Respon
             return res.status(404).json({ error: 'Order not found' });
         }
 
-        if (req.session?.customerId && order.phone) {
-            const customer = await storage.getCustomer(req.session.customerId);
-            if (customer && customer.phone === order.phone && !order.customerId) {
-                await customerService.linkServiceRequestToCustomer(order.id, customer.id);
-            }
-        }
+        const sessionCustomerId = req.session?.customerId;
 
-        if (!req.session?.customerId) {
+        if (!sessionCustomerId) {
             return res.json({
                 ticketNumber: order.ticketNumber,
                 trackingStatus: order.trackingStatus,
                 createdAt: order.createdAt,
                 message: 'Login to see full details',
             });
+        }
+
+        if (order.customerId && order.customerId !== sessionCustomerId) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+
+        if (!order.customerId) {
+            const customer = await storage.getCustomer(sessionCustomerId);
+            const orderPhoneNorm = normalizePhone(order.phone);
+            const customerPhoneNorm = normalizePhone(customer?.phone);
+            if (!customer || !orderPhoneNorm || !customerPhoneNorm || orderPhoneNorm !== customerPhoneNorm) {
+                return res.status(404).json({ error: 'Order not found' });
+            }
+            await customerService.linkServiceRequestToCustomer(order.id, customer.id);
         }
 
         const events = await storage.getServiceRequestEvents(order.id);

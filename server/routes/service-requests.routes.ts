@@ -10,7 +10,7 @@ import { createHash, randomUUID } from 'crypto';
 
 import { jobRepo, serviceRequestRepo, userRepo, systemRepo, settingsRepo, notificationRepo } from '../repositories/index.js';
 import { insertServiceRequestSchema, otpCodes, type ServiceRequest } from '../../shared/schema.js';
-import { requireAdminAuth, requirePermission } from './middleware/auth.js';
+import { requireAdminAuth, requireGranularPermission, requireSuperAdmin } from './middleware/auth.js';
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { serviceRequestLimiter } from './middleware/rate-limit.js';
 import { auditLogger } from '../utils/auditLogger.js';
@@ -65,7 +65,7 @@ function getCustodyLabel(request: ServiceRequest, action: string): string {
  * GET /api/service-requests - Get all service requests
  * PROTECTED: Admin only
  */
-router.get('/api/service-requests', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.get('/api/service-requests', requireAdminAuth, requireGranularPermission('serviceRequests.view'), async (req: Request, res: Response) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 50;
@@ -124,7 +124,7 @@ router.get('/api/service-requests', requireAdminAuth, requirePermission('service
  * GET /api/service-requests/:id - Get service request by ID
  * PROTECTED: Admin only (for * GET /api/service-requests/:id - Get service request by ID
  */
-router.get('/api/service-requests/:id', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.get('/api/service-requests/:id', requireAdminAuth, requireGranularPermission('serviceRequests.view'), async (req: Request, res: Response) => {
     try {
         let request = await serviceRequestRepo.getServiceRequest(req.params.id);
         if (!request) {
@@ -162,7 +162,7 @@ router.get('/api/service-requests/:id', requireAdminAuth, requirePermission('ser
 /**
  * POST /api/admin/service-requests/:id/mark-interacted - Mark a service request as interacted/reviewed
  */
-router.post('/api/admin/service-requests/:id/mark-interacted', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/:id/mark-interacted', requireAdminAuth, requireGranularPermission('serviceRequests.view'), async (req: Request, res: Response) => {
     try {
         const request = await serviceRequestRepo.getServiceRequest(req.params.id);
         if (!request) {
@@ -202,7 +202,7 @@ router.post('/api/admin/service-requests/:id/mark-interacted', requireAdminAuth,
 /**
  * POST /api/admin/service-requests/sync-job/:jobId - Syncs a job ticket's status to its parent service request
  */
-router.post('/api/admin/service-requests/sync-job/:jobId', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/sync-job/:jobId', requireAdminAuth, requireGranularPermission('serviceRequests.transitionStage'), async (req: Request, res: Response) => {
     try {
         const { jobId } = req.params;
         const result = await jobService.syncLinkedServiceRequestFromJob(jobId, "System Manager Sync");
@@ -310,7 +310,7 @@ router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ?
  * PATCH /api/service-requests/:id - Update service request
  * PROTECTED: Admin only
  */
-router.patch('/api/service-requests/:id', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.patch('/api/service-requests/:id', requireAdminAuth, requireGranularPermission('serviceRequests.edit'), async (req: Request, res: Response) => {
     try {
         const updateData = { ...req.body };
         if (updateData.trackingStatus) delete updateData.trackingStatus;
@@ -401,7 +401,7 @@ router.patch('/api/service-requests/:id', requireAdminAuth, requirePermission('s
  * DELETE /api/service-requests/:id - Delete service request
  * PROTECTED: Admin only
  */
-router.delete('/api/service-requests/:id', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.delete('/api/service-requests/:id', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
     try {
         const requestId = req.params.id;
 
@@ -445,7 +445,7 @@ router.delete('/api/service-requests/:id', requireAdminAuth, requirePermission('
 /**
  * GET /api/admin/service-requests/:id/next-stages - Get valid next stages
  */
-router.get('/api/admin/service-requests/:id/next-stages', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.get('/api/admin/service-requests/:id/next-stages', requireAdminAuth, requireGranularPermission('serviceRequests.view'), async (req: Request, res: Response) => {
     try {
         const validNextStages = await serviceRequestRepo.getNextValidStages(req.params.id);
         const serviceRequest = await serviceRequestRepo.getServiceRequest(req.params.id);
@@ -466,7 +466,7 @@ router.get('/api/admin/service-requests/:id/next-stages', requireAdminAuth, requ
 /**
  * POST /api/admin/service-requests/:id/transition-stage - Transition to new stage
  */
-router.post('/api/admin/service-requests/:id/transition-stage', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/:id/transition-stage', requireAdminAuth, requireGranularPermission('serviceRequests.transitionStage'), async (req: Request, res: Response) => {
     try {
         const { stage, actorName } = req.body;
         if (!stage) {
@@ -555,7 +555,7 @@ router.post('/api/admin/service-requests/:id/transition-stage', requireAdminAuth
 
 });
 
-router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth, requireGranularPermission('serviceRequests.transitionStage'), async (req: Request, res: Response) => {
     try {
         const { action } = req.body;
         if (action !== "receive" && action !== "delivery") {
@@ -624,7 +624,7 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
     }
 });
 
-router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminAuth, requireGranularPermission('serviceRequests.transitionStage'), async (req: Request, res: Response) => {
     try {
         const { action, code } = req.body;
         if (action !== "receive" && action !== "delivery") {
@@ -727,9 +727,8 @@ router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminA
 router.post(
     '/api/admin/service-requests/:id/verify-and-convert',
     requireAdminAuth,
-    requirePermission('serviceRequests'),
-    requirePermission('jobs'),
-    requirePermission('canCreate'),
+    requireGranularPermission('serviceRequests.convertToJob'),
+    requireGranularPermission('jobs.create'),
     async (req: Request, res: Response) => {
         try {
             const { verificationNotes, priority } = req.body;
@@ -825,7 +824,7 @@ router.post(
 /**
  * PUT /api/admin/service-requests/:id/expected-dates - Update expected dates
  */
-router.put('/api/admin/service-requests/:id/expected-dates', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.put('/api/admin/service-requests/:id/expected-dates', requireAdminAuth, requireGranularPermission('serviceRequests.transitionStage'), async (req: Request, res: Response) => {
     try {
         const { expectedPickupDate, expectedReturnDate, expectedReadyDate } = req.body;
 
@@ -905,7 +904,7 @@ router.put('/api/admin/service-requests/:id/expected-dates', requireAdminAuth, r
 /**
  * POST /api/admin/service-requests/:id/action - Execute contextual action
  */
-router.post('/api/admin/service-requests/:id/action', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/:id/action', requireAdminAuth, requireGranularPermission('serviceRequests.transitionStage'), async (req: Request, res: Response) => {
     try {
         const { actionId } = req.body;
         const request = await serviceRequestRepo.getServiceRequest(req.params.id);
@@ -995,7 +994,7 @@ router.post('/api/admin/service-requests/:id/action', requireAdminAuth, requireP
 /**
  * POST /api/admin/service-requests/:id/adjust-progress - Rollback/adjust workflow progress
  */
-router.post('/api/admin/service-requests/:id/adjust-progress', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/:id/adjust-progress', requireAdminAuth, requireGranularPermission('serviceRequests.transitionStage'), async (req: Request, res: Response) => {
     try {
         const { targetStatus, reason } = req.body;
         const request = await serviceRequestRepo.getServiceRequest(req.params.id);
@@ -1034,7 +1033,7 @@ router.post('/api/admin/service-requests/:id/adjust-progress', requireAdminAuth,
 /**
  * POST /api/admin/service-requests/:id/send-quote - Send quote to customer
  */
-router.post('/api/admin/service-requests/:id/send-quote', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/:id/send-quote', requireAdminAuth, requireGranularPermission('serviceRequests.quote'), async (req: Request, res: Response) => {
     try {
         const { quoteAmount, quoteNotes, quoteValidDays } = req.body;
 
@@ -1196,7 +1195,7 @@ if (process.env.NODE_ENV !== 'production') {
 
 // ─── Intake Summary (bulk lane classification) ───
 
-router.get('/api/admin/service-requests/intake-summary', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.get('/api/admin/service-requests/intake-summary', requireAdminAuth, requireGranularPermission('serviceRequests.view'), async (req: Request, res: Response) => {
     try {
         const allSr = await serviceRequestRepo.getAllServiceRequests();
         const summary = await getIntakeSummaryBulk(allSr.map(sr => ({
@@ -1216,7 +1215,7 @@ router.get('/api/admin/service-requests/intake-summary', requireAdminAuth, requi
 
 // ─── Unified Repair Case ───
 
-router.get('/api/admin/service-requests/:id/repair-case', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.get('/api/admin/service-requests/:id/repair-case', requireAdminAuth, requireGranularPermission('serviceRequests.view'), async (req: Request, res: Response) => {
     try {
         const repairCase = await loadRepairCaseByServiceRequest(req.params.id);
         if (!repairCase) return res.status(404).json({ error: 'Service request not found' });
@@ -1233,7 +1232,7 @@ const VALID_CALL_TYPES = ['consultation', 'quote', 'schedule', 'follow_up', 'pay
 const VALID_OUTCOMES = ['scheduled', 'accepted', 'rejected', 'asked_for_time', 'no_answer', 'phone_off', 'wrong_number', 'hung_up', 'callback_requested', 'converted_to_pickup', 'converted_to_service_center', 'converted_to_quote', 'closed_no_response'] as const;
 const VALID_MOODS = ['normal', 'confused', 'angry', 'interested', 'not_interested'] as const;
 
-router.get('/api/admin/service-requests/:id/call-attempts', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.get('/api/admin/service-requests/:id/call-attempts', requireAdminAuth, requireGranularPermission('serviceRequests.view'), async (req: Request, res: Response) => {
     try {
         const sr = await serviceRequestRepo.getServiceRequest(req.params.id);
         if (!sr) return res.status(404).json({ error: 'Service request not found' });
@@ -1244,7 +1243,7 @@ router.get('/api/admin/service-requests/:id/call-attempts', requireAdminAuth, re
     }
 });
 
-router.post('/api/admin/service-requests/:id/call-attempts', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/:id/call-attempts', requireAdminAuth, requireGranularPermission('serviceRequests.logCall'), async (req: Request, res: Response) => {
     try {
         const sr = await serviceRequestRepo.getServiceRequest(req.params.id);
         if (!sr) return res.status(404).json({ error: 'Service request not found' });
@@ -1276,7 +1275,7 @@ router.post('/api/admin/service-requests/:id/call-attempts', requireAdminAuth, r
     }
 });
 
-router.patch('/api/admin/service-requests/:id/call-attempts/:attemptId', requireAdminAuth, requirePermission('serviceRequests'), async (req: Request, res: Response) => {
+router.patch('/api/admin/service-requests/:id/call-attempts/:attemptId', requireAdminAuth, requireGranularPermission('serviceRequests.logCall'), async (req: Request, res: Response) => {
     try {
         const { calledAt, outcome, nextAction, callbackAt, customerMood, notes, customerVisibleMessage } = req.body;
 

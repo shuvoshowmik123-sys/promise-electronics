@@ -105,6 +105,8 @@ interface ClaimSheetProps {
     onReject: (id: string, reason: string) => void;
     approving: boolean;
     rejecting: boolean;
+    canApprove?: boolean;  // approve this specific claim (SA or Manager with warranty.approve AND claim.warrantyValid)
+    canReject?: boolean;   // reject any pending claim (SA or Manager with warranty.approve)
 }
 
 function MobileWarrantyClaimSheet({
@@ -114,6 +116,8 @@ function MobileWarrantyClaimSheet({
     onReject,
     approving,
     rejecting,
+    canApprove = false,
+    canReject = false,
 }: ClaimSheetProps) {
     const [rejectReason, setRejectReason] = useState('');
     const [showRejectForm, setShowRejectForm] = useState(false);
@@ -272,41 +276,45 @@ function MobileWarrantyClaimSheet({
                     )}
                 </div>
 
-                {/* Footer — pending actions */}
-                {isPending && !showRejectForm && (
+                {/* Footer — pending actions based on permission */}
+                {isPending && (canApprove || canReject) && !showRejectForm && (
                     <div
-                        className="flex gap-2 border-t border-slate-100 p-4"
+                        className="flex w-full shrink-0 gap-2 overflow-hidden border-t border-slate-100 p-4"
                         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
                     >
-                        <button
-                            type="button"
-                            disabled={approving || rejecting}
-                            onClick={() => onApprove(claim.id)}
-                            className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3 text-sm font-bold text-white shadow-sm active:scale-[0.98] disabled:opacity-50"
-                        >
-                            {approving ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <CheckCircle className="h-4 w-4" />
-                            )}
-                            Approve &amp; Create Job
-                        </button>
-                        <button
-                            type="button"
-                            disabled={approving || rejecting}
-                            onClick={() => setShowRejectForm(true)}
-                            className="flex items-center justify-center gap-1.5 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-bold text-rose-700 active:scale-[0.98] disabled:opacity-50"
-                        >
-                            <XCircle className="h-4 w-4" />
-                            Reject
-                        </button>
+                        {canApprove && (
+                            <button
+                                type="button"
+                                disabled={approving || rejecting}
+                                onClick={() => onApprove(claim.id)}
+                                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-600 py-3 text-sm font-bold text-white shadow-sm active:scale-[0.98] disabled:opacity-50"
+                            >
+                                {approving ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <CheckCircle className="h-4 w-4" />
+                                )}
+                                Approve &amp; Create Job
+                            </button>
+                        )}
+                        {canReject && (
+                            <button
+                                type="button"
+                                disabled={approving || rejecting}
+                                onClick={() => setShowRejectForm(true)}
+                                className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl border border-rose-200 bg-rose-50 py-3 text-sm font-bold text-rose-700 active:scale-[0.98] disabled:opacity-50"
+                            >
+                                <XCircle className="h-4 w-4" />
+                                Reject
+                            </button>
+                        )}
                     </div>
                 )}
 
                 {/* Footer — non-pending: just close */}
                 {!isPending && !showRejectForm && (
                     <div
-                        className="border-t border-slate-100 p-4"
+                        className="w-full shrink-0 border-t border-slate-100 p-4"
                         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
                     >
                         <button
@@ -399,7 +407,9 @@ function MobileWarrantyCard({
 export default function WarrantyClaimsTab() {
     const isMobile = useAdminMobileMode();
     const queryClient = useQueryClient();
-    const { user } = useAdminAuth();
+    const { user, permissions } = useAdminAuth();
+    const isSA = user?.role === "Super Admin";
+    const hasWarrantyApprove = isSA || (permissions as any)["warranty.approve"] === true;
 
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
     const [search, setSearch] = useState('');
@@ -604,6 +614,8 @@ export default function WarrantyClaimsTab() {
                         onReject={(id, reason) => rejectMutation.mutate({ id, reason })}
                         approving={approveMutation.isPending}
                         rejecting={rejectMutation.isPending}
+                        canApprove={hasWarrantyApprove && (!!(selectedClaim?.warrantyValid) || isSA)}
+                        canReject={hasWarrantyApprove}
                     />
                 )}
             </MobileTabLayout>

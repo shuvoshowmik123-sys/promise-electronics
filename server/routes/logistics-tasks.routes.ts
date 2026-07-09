@@ -1,5 +1,5 @@
-import { Router, Request, Response } from "express";
-import { requireAdminAuth, requirePermission } from "./middleware/auth.js";
+import { Router, Request, Response, NextFunction } from "express";
+import { requireAdminAuth, requireGranularPermission, requireAnyGranularPermission } from "./middleware/auth.js";
 import { userRepo } from "../repositories/index.js";
 import { repairJourneyService } from "../services/customer-repair-journey.service.js";
 import {
@@ -68,10 +68,29 @@ function hasPickupPermission(permissions: unknown): boolean {
     return false;
 }
 
+// Drivers may only mutate their own assigned task.
+// Non-driver roles (Manager, SA, etc.) pass through without a DB lookup.
+async function requireTaskOwnership(req: Request, res: Response, next: NextFunction): Promise<void> {
+    const user = (req as any).user;
+    if (user?.role !== "Driver") { next(); return; }
+    try {
+        const task = await getTask(req.params.id);
+        if (!task) { res.status(404).json({ error: "Logistics task not found" }); return; }
+        if (task.assignedDriverId !== user.id) {
+            res.status(403).json({ error: "You can only update your own assigned tasks" }); return;
+        }
+        next();
+    } catch (err: any) {
+        console.error("[Logistics] Ownership check error:", err?.message);
+        res.status(500).json({ error: "Failed to verify task ownership" }); return;
+    }
+}
+
+// GET /drivers — manager+ only; Drivers must not enumerate the full driver roster
 router.get(
     "/api/admin/logistics-tasks/drivers",
     requireAdminAuth,
-    requirePermission("pickup"),
+    requireGranularPermission("pickup.viewAll"),
     async (_req: Request, res: Response) => {
         try {
             const result = await userRepo.getAllUsers(1, 1000);
@@ -86,16 +105,23 @@ router.get(
     }
 );
 
+// GET / — Drivers (pickup.viewAssigned) or Managers (pickup.viewAll) both pass.
+// Drivers are then force-filtered to their own tasks in the handler.
 router.get(
     "/api/admin/logistics-tasks",
     requireAdminAuth,
-    requirePermission("pickup"),
+    requireAnyGranularPermission(["pickup.viewAssigned", "pickup.viewAll"]),
     async (req: Request, res: Response) => {
         try {
+            const caller = (req as any).user;
+            const isDriverRole = caller?.role === "Driver";
             const tasks = await listTasks({
                 status: req.query.status as string | undefined,
                 taskType: req.query.taskType as string | undefined,
-                assignedDriverId: req.query.assignedDriverId as string | undefined,
+                // Force Drivers to see only their own tasks; ignore any client-supplied filter
+                assignedDriverId: isDriverRole
+                    ? caller.id
+                    : (req.query.assignedDriverId as string | undefined),
                 serviceRequestId: req.query.serviceRequestId as string | undefined,
                 jobTicketId: req.query.jobTicketId as string | undefined,
                 zone: req.query.zone as string | undefined,
@@ -109,10 +135,11 @@ router.get(
     }
 );
 
+// POST / — create task; Drivers cannot create tasks
 router.post(
     "/api/admin/logistics-tasks",
     requireAdminAuth,
-    requirePermission("pickup"),
+    requireGranularPermission("pickup.viewAll"),
     async (req: Request, res: Response) => {
         try {
             const { fromServiceRequest, fromJobTicket, ...body } = req.body;
@@ -149,10 +176,11 @@ router.post(
     }
 );
 
+// PATCH /:id — general task update; Drivers cannot edit tasks
 router.patch(
     "/api/admin/logistics-tasks/:id",
     requireAdminAuth,
-    requirePermission("pickup"),
+    requireGranularPermission("pickup.viewAll"),
     async (req: Request, res: Response) => {
         try {
             const task = await updateTask(req.params.id, req.body);
@@ -167,10 +195,13 @@ router.patch(
     }
 );
 
+// POST /:id/status — Drivers (pickup.viewAssigned) or Managers (pickup.viewAll) both pass.
+// Drivers are then restricted to their own task by requireTaskOwnership.
 router.post(
     "/api/admin/logistics-tasks/:id/status",
     requireAdminAuth,
-    requirePermission("pickup"),
+    requireAnyGranularPermission(["pickup.viewAssigned", "pickup.viewAll"]),
+    requireTaskOwnership,
     async (req: Request, res: Response) => {
         try {
             const { status, failureReason, notes, proofPhotoUrl, signatureUrl } = req.body;
@@ -209,10 +240,11 @@ router.post(
     }
 );
 
+// POST /:id/assign — Drivers cannot assign tasks
 router.post(
     "/api/admin/logistics-tasks/:id/assign",
     requireAdminAuth,
-    requirePermission("pickup"),
+    requireGranularPermission("pickup.assignDriver"),
     async (req: Request, res: Response) => {
         try {
             const { driverId, driverName, zone, routeOrder } = req.body;
@@ -237,10 +269,13 @@ router.post(
     }
 );
 
+// POST /:id/reschedule — pickup.reschedule is held by Manager Basic and may be granted
+// to individual Drivers. When a Driver holds it they may only reschedule their OWN task.
 router.post(
     "/api/admin/logistics-tasks/:id/reschedule",
     requireAdminAuth,
-    requirePermission("pickup"),
+    requireGranularPermission("pickup.reschedule"),
+    requireTaskOwnership,
     async (req: Request, res: Response) => {
         try {
             const { scheduledDate, timeWindow, reason } = req.body;
@@ -268,10 +303,11 @@ router.post(
     }
 );
 
+// POST /:id/cancel — Drivers cannot cancel tasks
 router.post(
     "/api/admin/logistics-tasks/:id/cancel",
     requireAdminAuth,
-    requirePermission("pickup"),
+    requireGranularPermission("pickup.cancel"),
     async (req: Request, res: Response) => {
         try {
             const { reason } = req.body;
@@ -296,10 +332,11 @@ router.post(
     }
 );
 
+// POST /batch-assign — Drivers cannot batch-assign
 router.post(
     "/api/admin/logistics-tasks/batch-assign",
     requireAdminAuth,
-    requirePermission("pickup"),
+    requireGranularPermission("pickup.assignDriver"),
     async (req: Request, res: Response) => {
         try {
             const { taskIds, driverId, driverName, zone } = req.body;
@@ -318,10 +355,11 @@ router.post(
     }
 );
 
+// POST /batch-reorder — Drivers cannot reorder routes
 router.post(
     "/api/admin/logistics-tasks/batch-reorder",
     requireAdminAuth,
-    requirePermission("pickup"),
+    requireGranularPermission("pickup.routePlan"),
     async (req: Request, res: Response) => {
         try {
             const { tasks } = req.body;

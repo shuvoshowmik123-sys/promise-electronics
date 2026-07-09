@@ -23,6 +23,7 @@ import {
     COVERAGE_CRITICAL_PERMISSIONS, DEPRECATED_BROAD_PERMISSIONS,
     LEGACY_TO_GRANULAR, getModules, getPermissionsByModule,
 } from '../../shared/permission-catalog.js';
+import { notifySpecificAdmin } from './middleware/sse-broker.js';
 
 const router = Router();
 
@@ -597,6 +598,10 @@ router.patch("/api/admin/users/:id/permission-profile", requireAdminAuth, requir
         for (const k of permKeys) cleanPerms[k] = true;
 
         await storage.updateUser(targetId, { permissions: JSON.stringify(cleanPerms) } as any);
+
+        // Notify the target user's live session to reload permissions immediately.
+        // Fire-and-forget: save must succeed even if the user has no active SSE channel.
+        notifySpecificAdmin(targetId, { type: "force_refresh_user" });
 
         await auditLogger.log({
             userId: actorId,

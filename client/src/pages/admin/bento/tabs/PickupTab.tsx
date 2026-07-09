@@ -17,6 +17,10 @@ import {
     DropdownMenu, DropdownMenuContent, DropdownMenuItem,
     DropdownMenuLabel, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+    AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+    AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { adminLogisticsApi, type LogisticsTask } from "@/lib/api/adminApi";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -148,6 +152,8 @@ export default function PickupTab() {
     const [schedWindow, setSchedWindow] = useState("");
     const [schedReason, setSchedReason] = useState("");
     const [failReason, setFailReason] = useState("");
+
+    const [cancelConfirmTask, setCancelConfirmTask] = useState<LogisticsTask | null>(null);
 
     const anySheetOpen = assignOpen || scheduleOpen || failOpen || !!handoverTarget || !!selectedTask;
     useEffect(() => {
@@ -551,8 +557,8 @@ export default function PickupTab() {
                                         ) : null; })()}
                                         <div className="grid grid-cols-3 gap-2">
                                             {!isDriver && <Button variant="outline" className="h-10 rounded-xl text-xs font-bold" onClick={() => openAssign(selectedTask)}><User className="h-3.5 w-3.5 mr-1" />Assign</Button>}
-                                            <Button variant="outline" className="h-10 rounded-xl text-xs font-bold" onClick={() => openSchedule(selectedTask)}><Calendar className="h-3.5 w-3.5 mr-1" />{selectedTask.scheduledDate ? "Resched" : "Sched"}</Button>
-                                            <Button variant="outline" className="h-10 rounded-xl text-xs font-bold text-rose-600 border-rose-200" onClick={() => openFail(selectedTask)}><XCircle className="h-3.5 w-3.5 mr-1" />Failed</Button>
+                                            {!isDriver && <Button variant="outline" className="h-10 rounded-xl text-xs font-bold" onClick={() => openSchedule(selectedTask)}><Calendar className="h-3.5 w-3.5 mr-1" />{selectedTask.scheduledDate ? "Resched" : "Sched"}</Button>}
+                                            {!isDriver && <Button variant="outline" className="h-10 rounded-xl text-xs font-bold text-rose-600 border-rose-200" onClick={() => openFail(selectedTask)}><XCircle className="h-3.5 w-3.5 mr-1" />Failed</Button>}
                                         </div>
                                     </div>
                                 )}
@@ -821,10 +827,10 @@ export default function PickupTab() {
                                                             {t.status === "en_route" && (
                                                                 <DropdownMenuItem onClick={() => openHandover(t)}><CheckCircle className="w-4 h-4 mr-2" /> {t.taskType === "delivery" ? "Deliver" : "Receive"}</DropdownMenuItem>
                                                             )}
-                                                            <DropdownMenuItem onClick={() => openAssign(t)}><User className="w-4 h-4 mr-2" /> Assign Driver</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => openSchedule(t)}><Calendar className="w-4 h-4 mr-2" /> {t.scheduledDate ? "Reschedule" : "Schedule"}</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => openFail(t)} className="text-rose-600"><AlertTriangle className="w-4 h-4 mr-2" /> Mark Failed</DropdownMenuItem>
-                                                            <DropdownMenuItem onClick={() => cancelMutation.mutate({ id: t.id })} className="text-slate-500"><XCircle className="w-4 h-4 mr-2" /> Cancel</DropdownMenuItem>
+                                                            {!isDriver && <DropdownMenuItem onClick={() => openAssign(t)}><User className="w-4 h-4 mr-2" /> Assign Driver</DropdownMenuItem>}
+                                                            {!isDriver && <DropdownMenuItem onClick={() => openSchedule(t)}><Calendar className="w-4 h-4 mr-2" /> {t.scheduledDate ? "Reschedule" : "Schedule"}</DropdownMenuItem>}
+                                                            {!isDriver && <DropdownMenuItem onClick={() => openFail(t)} className="text-rose-600"><AlertTriangle className="w-4 h-4 mr-2" /> Mark Failed</DropdownMenuItem>}
+                                                            {!isDriver && <DropdownMenuItem onClick={() => setCancelConfirmTask(t)} className="text-slate-500"><XCircle className="w-4 h-4 mr-2" /> Cancel</DropdownMenuItem>}
                                                         </>
                                                     )}
                                                     {t.customerPhone && (
@@ -886,10 +892,10 @@ export default function PickupTab() {
                                         <Button className="w-full rounded-xl bg-blue-600 hover:bg-blue-700" onClick={a.onClick}>{a.icon}<span className="ml-2">{a.label}</span></Button>
                                     ) : null; })()}
                                     <div className="grid grid-cols-2 gap-2">
-                                        <Button variant="outline" className="rounded-xl" onClick={() => openAssign(selectedTask)}><User className="h-4 w-4 mr-1" />Assign</Button>
-                                        <Button variant="outline" className="rounded-xl" onClick={() => openSchedule(selectedTask)}><Calendar className="h-4 w-4 mr-1" />{selectedTask.scheduledDate ? "Reschedule" : "Schedule"}</Button>
-                                        <Button variant="outline" className="rounded-xl text-rose-600 border-rose-200" onClick={() => openFail(selectedTask)}><AlertTriangle className="h-4 w-4 mr-1" />Failed</Button>
-                                        <Button variant="outline" className="rounded-xl text-slate-500" onClick={() => cancelMutation.mutate({ id: selectedTask.id })}><XCircle className="h-4 w-4 mr-1" />Cancel</Button>
+                                        {!isDriver && <Button variant="outline" className="rounded-xl" onClick={() => openAssign(selectedTask)}><User className="h-4 w-4 mr-1" />Assign</Button>}
+                                        {!isDriver && <Button variant="outline" className="rounded-xl" onClick={() => openSchedule(selectedTask)}><Calendar className="h-4 w-4 mr-1" />{selectedTask.scheduledDate ? "Reschedule" : "Schedule"}</Button>}
+                                        {!isDriver && <Button variant="outline" className="rounded-xl text-rose-600 border-rose-200" onClick={() => openFail(selectedTask)}><AlertTriangle className="h-4 w-4 mr-1" />Failed</Button>}
+                                        {!isDriver && <Button variant="outline" className="rounded-xl text-slate-500" onClick={() => setCancelConfirmTask(selectedTask)}><XCircle className="h-4 w-4 mr-1" />Cancel</Button>}
                                     </div>
                                 </div>
                             )}
@@ -965,6 +971,27 @@ export default function PickupTab() {
                     </div>
                 </div>
             )}
+
+            <AlertDialog open={!isMobile && !!cancelConfirmTask} onOpenChange={(open) => { if (!open) setCancelConfirmTask(null); }}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Cancel Task?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            Cancel the task for <strong>{cancelConfirmTask?.customerName || "Unknown"}</strong>? This cannot be undone.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel>Keep Task</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                            disabled={cancelMutation.isPending}
+                            onClick={() => { if (cancelConfirmTask) { cancelMutation.mutate({ id: cancelConfirmTask.id }); setCancelConfirmTask(null); } }}
+                        >
+                            {cancelMutation.isPending ? "Cancelling..." : "Cancel Task"}
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
         </MobileTabLayout>
     );
 }
