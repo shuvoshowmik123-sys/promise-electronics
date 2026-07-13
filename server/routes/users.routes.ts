@@ -136,17 +136,36 @@ router.get('/api/admin/events', requireAdminAuth, (req: Request, res: Response) 
 // ============================================
 
 /**
- * GET /api/users/lookup - Limited user lookup for dropdowns
+ * GET /api/users/lookup - Limited user lookup for dropdowns.
+ * Requires users / canViewUsers / canAssignTechnician (or mapped jobs.assignTechnician).
+ * ?role=Technician returns only active Technicians with safe fields (no email).
  */
 router.get('/api/users/lookup', requireAnyPermission(['users', 'canViewUsers', 'canAssignTechnician']), async (req: Request, res: Response) => {
     try {
         const result = await userRepo.getAllUsers(1, 1000);
+        const roleFilter = typeof req.query.role === 'string' ? req.query.role.trim() : '';
+        let items = result.items;
+        if (roleFilter === 'Technician') {
+            items = items.filter((u) => u.role === 'Technician' && (!u.status || u.status === 'Active'));
+            res.setHeader('Cache-Control', 'private, no-store');
+            return res.json({
+                items: items.map((u) => ({
+                    id: u.id,
+                    name: u.name,
+                    role: u.role,
+                    skills: u.skills ?? null,
+                    status: u.status,
+                })),
+            });
+        }
         // Only return non-sensitive fields
-        const safeUsers = result.items.map(u => ({
+        const safeUsers = items.map(u => ({
             id: u.id,
             name: u.name,
             role: u.role,
-            email: u.email
+            email: u.email,
+            skills: u.skills ?? null,
+            status: u.status,
         }));
         res.json({ items: safeUsers });
     } catch (error) {

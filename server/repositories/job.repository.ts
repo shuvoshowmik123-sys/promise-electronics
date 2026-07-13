@@ -9,6 +9,8 @@ import { executeLegacyQuery, isMissingColumnError, mapLegacyJobTicketRow } from 
 
 const JOB_TICKETS_LEGACY_COLUMNS = [
     'assigned_technician_id',
+    'created_by_user_id',
+    'created_by_name',
     'corporate_challan_id',
     'corporate_job_number',
     'corporate_client_id',
@@ -191,6 +193,35 @@ export async function getJobTicketsByTechnicianUser(
             job.assignedTechnicianId === userId ||
             (technicianName && job.technician === technicianName),
     );
+}
+
+/** Assigned to me OR created by me (intake visibility without ownership). */
+export async function getJobTicketsVisibleToTechnician(
+    userId: string,
+    technicianName: string | null | undefined,
+): Promise<JobTicket[]> {
+    const jobs = await loadAllJobTickets();
+    return jobs.filter(
+        (job) =>
+            job.assignedTechnicianId === userId ||
+            job.createdByUserId === userId ||
+            (technicianName && job.technician === technicianName),
+    );
+}
+
+export function isJobAssignedToUser(
+    job: JobTicket,
+    userId: string,
+    technicianName?: string | null,
+): boolean {
+    return (
+        job.assignedTechnicianId === userId ||
+        (!!technicianName && job.technician === technicianName && job.technician !== "Unassigned")
+    );
+}
+
+export function isJobCreatedByUser(job: JobTicket, userId: string): boolean {
+    return job.createdByUserId === userId;
 }
 
 export async function getJobTicketsByStatus(status: string): Promise<JobTicket[]> {

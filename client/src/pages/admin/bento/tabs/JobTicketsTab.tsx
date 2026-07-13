@@ -76,6 +76,18 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         isSuperAdmin ||
         (permissions as Record<string, boolean | undefined>)["jobs.create"] === true ||
         permissions.jobs === true;
+    // Who may pick/assign OTHER technicians on create.
+    // Managers with legacy jobs:true still may assign; technicians need explicit assign flag.
+    const canAssignTechnician =
+        isSuperAdmin
+        || (permissions as Record<string, boolean | undefined>)["jobs.assignTechnician"] === true
+        || permissions.canAssignTechnician === true
+        || (user?.role !== "Technician" && permissions.jobs === true);
+    // Lead technicians: see every job (not only assigned/created)
+    const canViewAllJobs =
+        isSuperAdmin
+        || (permissions as Record<string, boolean | undefined>)["jobs.viewAll"] === true
+        || (user?.role !== "Technician" && permissions.jobs === true);
 
     const [jobSearchQuery, setJobSearchQuery] = useState(initialSearchQuery || "");
     const [jobStatusFilter, setJobStatusFilter] = useState("all");
@@ -158,13 +170,19 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         queryFn: settingsApi.getAll,
     });
 
-    const { data: usersData } = useQuery({
-        queryKey: ["users"],
-        queryFn: adminUsersApi.lookup,
+    const { data: usersData, isError: usersLookupError } = useQuery({
+        queryKey: ["users", "lookup", "Technician"],
+        queryFn: () => adminUsersApi.lookupTechnicians(),
+        enabled: canAssignTechnician,
+        retry: false,
+        staleTime: 60_000,
     });
 
     const jobTickets = useMemo(() => Array.isArray(jobTicketsData) ? jobTicketsData : (jobTicketsData?.items || []), [jobTicketsData]);
-    const technicianUsers = usersData?.filter(u => ["Technician", "Super Admin", "Admin"].includes(u.role)) || [];
+    const technicianUsers = useMemo(
+        () => (usersData || []).filter((u) => u.role === "Technician"),
+        [usersData],
+    );
 
     const getCurrencySymbol = () => {
         const currencySetting = settings?.find(s => s.key === "currency_symbol");
@@ -262,7 +280,19 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
 
     const isAssignedToCurrentTech = (job: JobTicket) => {
         if (!currentTech) return false;
-        return job.assignedTechnicianId === currentTech.id || job.technician === currentTech.name;
+        if (job.assignedTechnicianId === currentTech.id) return true;
+        const techName = job.technician?.trim();
+        return Boolean(techName && techName !== "Unassigned" && techName === currentTech.name);
+    };
+
+    const isCreatedByCurrentUser = (job: JobTicket) => {
+        if (!user?.id) return false;
+        return (job as any).createdByUserId === user.id;
+    };
+
+    const isJobReadOnlyForCurrentUser = (job: JobTicket) => {
+        if (user?.role !== "Technician") return false;
+        return !isAssignedToCurrentTech(job);
     };
 
     const isUnassignedJob = (job: JobTicket) => !job.technician || job.technician === "Unassigned" || !job.assignedTechnicianId;
@@ -305,8 +335,10 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
             (jobTechnicianFilter === "Unassigned" && (!j.technician || j.technician === "Unassigned")) ||
             j.technician === jobTechnicianFilter;
 
-        if (user?.role === "Technician") {
-            return matchesSearch && matchesGroup && matchesStatus && matchesPriority && (isAssignedToCurrentTech(j) || (isUnassignedJob(j) && matchesCurrentTechSkills(j)));
+        // Server already scopes technicians to assigned+created (or all if jobs.viewAll).
+        // Do not drop creator-only rows client-side.
+        if (user?.role === "Technician" && !canViewAllJobs) {
+            return matchesSearch && matchesGroup && matchesStatus && matchesPriority;
         }
 
         return matchesSearch && matchesGroup && matchesStatus && matchesPriority && matchesTechnician;
@@ -427,14 +459,28 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
     };
 
     const handleEditJob = (job: JobTicket) => {
+        if (isJobReadOnlyForCurrentUser(job)) {
+            toast.error("Read-only: this job is not assigned to you yet");
+            handleViewDetails(job);
+            return;
+        }
         setSelectedJob(job);
-        if (isMobile && isUnassignedJob(job)) {
+        if (isMobile && isUnassignedJob(job) && canAssignTechnician) {
             setMobileAssignTechId("");
             setMobileAssistTechIds([]);
             setIsMobileAssignSheetOpen(true);
             return;
         }
         setIsEditDrawerOpen(true);
+    };
+
+    const handleAdvanceJob = (job: JobTicket) => {
+        if (isJobReadOnlyForCurrentUser(job)) {
+            toast.error("Read-only: this job is not assigned to you yet");
+            return;
+        }
+        setSelectedJob(job);
+        setIsAdvanceDialogOpen(true);
     };
 
     const selectedAssignRules = selectedJob ? getJobSkillRules((selectedJob as any).ticketType || "full_device", selectedJob.issue) : null;
@@ -899,7 +945,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 onToggleSelection={(id) => setSelectedJobIds(prev => prev.includes(id) ? prev.filter(jId => jId !== id) : [...prev, id])}
                                 onViewDetails={handleViewDetails}
                                 onEditJob={handleEditJob}
-                                onAdvanceStage={(job) => { setSelectedJob(job); setIsAdvanceDialogOpen(true); }}
+                                onAdvanceStage={handleAdvanceJob}
                                 onPrintTicket={handlePrintTicket}
                                 onGenerateQr={(job) => { setSelectedJob(job); setQrDialogOpen(true); }}
                                 userRole={user?.role}
@@ -915,7 +961,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 onToggleSelection={(id) => setSelectedJobIds(prev => prev.includes(id) ? prev.filter(jId => jId !== id) : [...prev, id])}
                                 onViewDetails={handleViewDetails}
                                 onEditJob={handleEditJob}
-                                onAdvanceStage={(job) => { setSelectedJob(job); setIsAdvanceDialogOpen(true); }}
+                                onAdvanceStage={handleAdvanceJob}
                                 onPrintTicket={handlePrintTicket}
                                 userRole={user?.role}
                                 canEdit={hasPermission("canEdit")}
@@ -980,6 +1026,8 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                     onClose={() => setIsCreateDrawerOpen(false)}
                     technicianUsers={technicianUsers}
                     tvInches={tvInches}
+                    canAssignTechnician={canAssignTechnician}
+                    lookupFailed={usersLookupError}
                 />
             </Suspense>
 
@@ -1153,14 +1201,35 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                     onClose={() => setViewDialogOpen(false)}
                     viewMode={viewMode}
                     userRole={user?.role}
-                    canEdit={hasPermission("canEdit")}
+                    canEdit={
+                        hasPermission("canEdit")
+                        && !!selectedJob
+                        && !isJobReadOnlyForCurrentUser(selectedJob)
+                    }
                     currencySymbol={getCurrencySymbol()}
                     onEditJob={(job) => { setViewDialogOpen(false); handleEditJob(job); }}
                     onPrintTicket={handlePrintTicket}
                     onDownloadTicket={handleDownloadTicketPdf}
-                    onSaveWorkFeedback={handleSaveWorkFeedback}
-                    onOutsidePurchase={() => setIsLocalPurchaseOpen(true)}
-                    onAdvanceStage={(job) => { setSelectedJob(job); setIsAdvanceDialogOpen(true); }}
+                    onSaveWorkFeedback={
+                        selectedJob && isJobReadOnlyForCurrentUser(selectedJob)
+                            ? undefined
+                            : handleSaveWorkFeedback
+                    }
+                    onOutsidePurchase={
+                        selectedJob && isJobReadOnlyForCurrentUser(selectedJob)
+                            ? undefined
+                            : () => setIsLocalPurchaseOpen(true)
+                    }
+                    onAdvanceStage={handleAdvanceJob}
+                    accessBanner={
+                        selectedJob && isJobReadOnlyForCurrentUser(selectedJob)
+                            ? isCreatedByCurrentUser(selectedJob)
+                                ? isUnassignedJob(selectedJob)
+                                    ? "You created this job. It is unassigned — view only until a manager assigns it to you."
+                                    : "You created this job. It is assigned to another technician — view only."
+                                : "View only — this job is not assigned to you."
+                            : null
+                    }
                 />
             </Suspense>
 

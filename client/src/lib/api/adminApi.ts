@@ -692,6 +692,9 @@ export const adminAuthApi = {
 export const adminUsersApi = {
     getAll: () => fetchApi<unknown>("/admin/users").then(response => normalizeListResponse<SafeUser>(response, "users")),
     lookup: () => fetchApi<{ items: SafeUser[] }>("/users/lookup").then(res => res.items),
+    /** Active Technicians only — requires assign/users permission (server-enforced). */
+    lookupTechnicians: () =>
+        fetchApi<{ items: SafeUser[] }>("/users/lookup?role=Technician").then((res) => res.items),
     create: (data: {
         username: string;
         name: string;

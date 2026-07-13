@@ -19,6 +19,7 @@ import { TechnicianPicker } from "@/components/admin/TechnicianPicker";
 import { InsertJobTicket, JobTicket } from "@shared/schema";
 import { MISSING_PARTS_LIST } from "@shared/constants";
 import type { AdminCustomer } from "@/lib/api/types";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
 
 const PANEL_MODEL_MEMORY_KEY = "promise.panelModelMemory.v1";
 
@@ -137,11 +138,24 @@ interface CreateJobDrawerProps {
     onClose: () => void;
     technicianUsers: { id: string; name: string; role: string; skills?: string | null }[];
     tvInches: string[];
+    canAssignTechnician?: boolean;
+    lookupFailed?: boolean;
 }
 
-export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: CreateJobDrawerProps) {
+export function CreateJobDrawer({
+    isOpen,
+    onClose,
+    technicianUsers,
+    tvInches,
+    canAssignTechnician = false,
+    lookupFailed = false,
+}: CreateJobDrawerProps) {
     const queryClient = useQueryClient();
+    const { user } = useAdminAuth();
     const autoFilledPhoneRef = useRef("");
+    // Technicians create unassigned jobs (manager assigns later). Always read-only assignment panel for techs without assign.
+    const isCreatingTech = user?.role === "Technician";
+    const techCreatesUnassigned = isCreatingTech && !canAssignTechnician;
 
     const [activeStep, setActiveStep] = useState(0);
     const [jobMode, setJobMode] = useState<JobMode>("single");
@@ -222,12 +236,14 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
 
     const createMutation = useMutation({
         mutationFn: (data: Record<string, unknown>) => jobTicketsApi.create(data as InsertJobTicket & Record<string, unknown>),
-        onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+        onSuccess: async () => {
+            // Refetch active Jobs list (Technician-scoped) so the new self-assigned job appears immediately
+            await queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+            await queryClient.refetchQueries({ queryKey: ["jobTickets"] });
             onClose();
             toast.success("Job created successfully");
         },
-        onError: () => toast.error("Failed to create job"),
+        onError: (error: Error) => toast.error(error.message || "Failed to create job"),
     });
 
     const ticketType = formData.ticketType || "full_device";
@@ -236,7 +252,11 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
     const validPanelItems = panelItems.filter(p => p.panelModel.trim());
     const totalPanelPieces = panelItems.reduce((s, p) => s + (p.quantity || 0), 0);
     const selectedTicket = TICKET_TYPE_OPTIONS.find(option => option.value === ticketType);
-    const assignedName = formData.technician && formData.technician !== "Unassigned" ? formData.technician : "Not assigned";
+    const assignedName = techCreatesUnassigned
+        ? "Unassigned (manager will assign)"
+        : formData.technician && formData.technician !== "Unassigned"
+            ? formData.technician
+            : "Not assigned";
     const activeStepInfo = CREATE_JOB_STEPS[activeStep];
     const isLastStep = activeStep === CREATE_JOB_STEPS.length - 1;
     const intakeTitle = ticketType === "full_device" ? "Missing Parts" : ticketType === "panel_only" ? "Panel Check" : ticketType === "motherboard_only" ? "Board Check" : "Item Check";
@@ -513,12 +533,21 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
             jobData.receivedAccessories = receivedAccessories.join(", ");
         }
 
-        const finalAssisted = [...selectedAssistedBy];
-        if (finalAssisted.length > 0) {
-            jobData.assistedByIds = JSON.stringify(finalAssisted);
-            jobData.assistedByNames = finalAssisted
-                .map(id => technicianUsers.find(t => t.id === id)?.name ?? messengerSession?.claimedByName ?? id)
-                .filter(Boolean).join(", ") || null;
+        // Server enforces assignment. Create-only techs never send assignment fields.
+        if (techCreatesUnassigned || !canAssignTechnician) {
+            delete jobData.assignedTechnicianId;
+            delete jobData.technician;
+            delete jobData.assistedByIds;
+            delete jobData.assistedByNames;
+            delete jobData.assistedBy;
+        } else {
+            const finalAssisted = [...selectedAssistedBy];
+            if (finalAssisted.length > 0) {
+                jobData.assistedByIds = JSON.stringify(finalAssisted);
+                jobData.assistedByNames = finalAssisted
+                    .map(id => technicianUsers.find(t => t.id === id)?.name ?? messengerSession?.claimedByName ?? id)
+                    .filter(Boolean).join(", ") || null;
+            }
         }
 
         createMutation.mutate(jobData);
@@ -1126,21 +1155,57 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
                                         })}
                                     </div>
                                 </div>
-                                <div className="flex items-end">
-                                    <Button variant="ghost" size="sm" type="button" className="h-9 px-3 text-[11px] bg-purple-100 text-purple-700 hover:bg-purple-200 uppercase tracking-wider font-bold rounded w-full" onClick={() => handleSuggestTechnician(formData.issue || "")} disabled={isSuggesting}>
-                                        {isSuggesting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Sparkles className="w-3 h-3 mr-1" />} AI Assign
-                                    </Button>
-                                </div>
-                                <TechnicianPicker
-                                    users={technicianUsers}
-                                    ticketType={ticketType}
-                                    issue={formData.issue}
-                                    assignedTechnicianId={formData.assignedTechnicianId}
-                                    assistedByIds={selectedAssistedBy}
-                                    onAssignedChange={(id, name) => setFormData({ ...formData, assignedTechnicianId: id, technician: name })}
-                                    onAssistedChange={setSelectedAssistedBy}
-                                />
-                                <div />
+                                {techCreatesUnassigned ? (
+                                    <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-200 text-slate-600">
+                                                <User className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-800">Unassigned</p>
+                                                <p className="mt-1 text-xs text-slate-600">
+                                                    You can create this job and will see it in your list as <span className="font-semibold">read-only</span> until a manager assigns it
+                                                    {user?.name ? ` (created as ${user.name})` : ""}.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : canAssignTechnician ? (
+                                    <>
+                                        <div className="flex items-end">
+                                            <Button variant="ghost" size="sm" type="button" className="h-9 px-3 text-[11px] bg-purple-100 text-purple-700 hover:bg-purple-200 uppercase tracking-wider font-bold rounded w-full" onClick={() => handleSuggestTechnician(formData.issue || "")} disabled={isSuggesting || lookupFailed}>
+                                                {isSuggesting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Sparkles className="w-3 h-3 mr-1" />} AI Assign
+                                            </Button>
+                                        </div>
+                                        {lookupFailed ? (
+                                            <div className="sm:col-span-2 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
+                                                Technician list could not be loaded. Check your connection or assignment permission, then retry.
+                                            </div>
+                                        ) : (
+                                            <TechnicianPicker
+                                                users={technicianUsers}
+                                                ticketType={ticketType}
+                                                issue={formData.issue}
+                                                assignedTechnicianId={formData.assignedTechnicianId}
+                                                assistedByIds={selectedAssistedBy}
+                                                onAssignedChange={(id, name) => setFormData({ ...formData, assignedTechnicianId: id ?? undefined, technician: name })}
+                                                onAssistedChange={setSelectedAssistedBy}
+                                            />
+                                        )}
+                                    </>
+                                ) : (
+                                    <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                        <div className="flex items-start gap-3">
+                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-200 text-slate-600">
+                                                <User className="h-5 w-5" />
+                                            </div>
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-800">Unassigned</p>
+                                                <p className="mt-1 text-xs text-slate-600">A manager can assign a technician later. You do not have assignment permission.</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         </div>
                     )}

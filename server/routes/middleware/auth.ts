@@ -235,6 +235,14 @@ function hasGranularPerm(effectivePermissions: Record<string, any>, granularKey:
     return false;
 }
 
+/** Shared helper for routes that need granular checks after auth (e.g. assignment rules). */
+export function userHasGranularPermission(
+    user: { role: string; permissions?: string | null },
+    granularKey: string,
+): boolean {
+    return hasGranularPerm(getEffectivePermissionsForUser(user), granularKey);
+}
+
 export const requireGranularPermission = (granularKey: string) => async (req: Request, res: Response, next: NextFunction) => {
     if (!req.session?.adminUserId) {
         return res.status(401).json({ error: 'Admin authentication required' });

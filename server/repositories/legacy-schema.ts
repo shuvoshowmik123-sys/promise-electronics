@@ -84,6 +84,8 @@ export function mapLegacyJobTicketRow(row: LegacyRow): JobTicket {
         aiDiagnosis: parseJsonValue(row.ai_diagnosis ?? row.aiDiagnosis, null),
         estimatedCost: toNumber(row.estimated_cost ?? row.estimatedCost, 0),
         assignedTechnicianId: row.assigned_technician_id ?? row.assignedTechnicianId ?? null,
+        createdByUserId: row.created_by_user_id ?? row.createdByUserId ?? null,
+        createdByName: row.created_by_name ?? row.createdByName ?? null,
         corporateChallanId: row.corporate_challan_id ?? row.corporateChallanId ?? null,
         corporateJobNumber: row.corporate_job_number ?? row.corporateJobNumber ?? null,
         corporateClientId: row.corporate_client_id ?? row.corporateClientId ?? null,

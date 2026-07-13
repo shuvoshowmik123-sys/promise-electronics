@@ -10,7 +10,7 @@ import { insertJobTicketSchema } from '../../shared/schema.js';
 
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { auditLogger } from '../utils/auditLogger.js';
-import { requireAdminAuth, requirePermission, requireGranularPermission } from './middleware/auth.js';
+import { requireAdminAuth, requirePermission, requireGranularPermission, userHasGranularPermission } from './middleware/auth.js';
 import { pushService } from '../pushService.js';
 import { jobService } from '../services/job.service.js';
 import { publishAdminNotificationEvent, publishJobTicketEvent } from '../services/admin-realtime.service.js';
@@ -29,6 +29,30 @@ const JOB_REALTIME_TAGS = ["jobTickets", "jobOverview", "dashboardStats"] as con
 const JOB_CREATE_REALTIME_TAGS = [...JOB_REALTIME_TAGS, "adminNotifications", "adminNotificationCount"] as const;
 const ROLLBACK_REALTIME_TAGS = ["pendingRollbacks", "adminNotifications", "adminNotificationCount"] as const;
 
+function techCanViewAllJobs(user: { role: string; permissions?: string | null }) {
+    return userHasGranularPermission(user, 'jobs.viewAll');
+}
+
+function techCanAccessJob(
+    user: { id: string; name: string; role: string; permissions?: string | null },
+    job: { assignedTechnicianId?: string | null; technician?: string | null; createdByUserId?: string | null },
+): boolean {
+    if (user.role !== 'Technician') return true;
+    if (techCanViewAllJobs(user)) return true;
+    if (jobRepo.isJobAssignedToUser(job as any, user.id, user.name)) return true;
+    if (jobRepo.isJobCreatedByUser(job as any, user.id)) return true;
+    return false;
+}
+
+function techCanMutateJob(
+    user: { id: string; name: string; role: string; permissions?: string | null },
+    job: { assignedTechnicianId?: string | null; technician?: string | null },
+): boolean {
+    if (user.role !== 'Technician') return true;
+    // Lead tech with viewAll still needs assignment to edit work — only assignee (or managers) mutate
+    return jobRepo.isJobAssignedToUser(job as any, user.id, user.name);
+}
+
 // ============================================
 // Job Tickets API
 // ============================================
@@ -43,8 +67,9 @@ router.get('/api/job-tickets/list', requireAdminAuth, requireGranularPermission(
 
         const user = (req as any).user;
         if (user?.role === 'Technician') {
-            // Correctness over optimization: scope to assigned jobs only.
-            const myJobs = await jobRepo.getJobTicketsByTechnicianUser(user.id, user.name);
+            const myJobs = techCanViewAllJobs(user)
+                ? await jobRepo.getAllJobTickets()
+                : await jobRepo.getJobTicketsVisibleToTechnician(user.id, user.name);
             return res.json({
                 items: myJobs,
                 pagination: { total: myJobs.length, page: 1, limit: myJobs.length, pages: 1 },
@@ -67,14 +92,13 @@ router.get('/api/job-tickets', requireAdminAuth, requireGranularPermission('jobs
         const limit = parseInt(req.query.limit as string) || 50;
         const type = (req.query.type as 'all' | 'walk-in' | 'corporate') || 'walk-in';
 
-        // requireGranularPermission sets (req as any).user — no extra DB fetch needed
         const user = (req as any).user;
         if (user?.role === 'Technician') {
-            // Scope to jobs assigned to this technician only (ID match + legacy name match)
-            const myJobs = jobRepo.filterJobTicketsByLane(
-                await jobRepo.getJobTicketsByTechnicianUser(user.id, user.name),
-                type,
-            );
+            // viewAll → shop-wide list; else assigned OR created-by-me
+            const scoped = techCanViewAllJobs(user)
+                ? await jobRepo.getAllJobTickets()
+                : await jobRepo.getJobTicketsVisibleToTechnician(user.id, user.name);
+            const myJobs = jobRepo.filterJobTicketsByLane(scoped, type);
             return res.json({
                 items: myJobs,
                 pagination: { total: myJobs.length, page: 1, limit: myJobs.length, pages: 1 },
@@ -147,10 +171,15 @@ router.get('/api/job-tickets/:id', requireAdminAuth, requireGranularPermission('
             return res.status(404).json({ error: 'Job ticket not found' });
         }
         const user = (req as any).user;
-        if (user?.role === 'Technician' && job.assignedTechnicianId !== user.id && (job as any).technician !== user.name) {
+        if (user?.role === 'Technician' && !techCanAccessJob(user, job as any)) {
             return res.status(403).json({ error: 'Access denied: not assigned to this job' });
         }
-        res.json(job);
+        const canMutate = user?.role !== 'Technician' || techCanMutateJob(user, job as any);
+        res.json({
+            ...job,
+            // Client hint: creator-only (or other non-assignee) techs get read-only UI
+            viewerAccess: canMutate ? 'full' : 'read_only',
+        });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch job ticket' });
     }
@@ -164,7 +193,7 @@ router.get('/api/job-tickets/:id/history', requireAdminAuth, requireGranularPerm
         const user = (req as any).user;
         if (user?.role === 'Technician') {
             const job = await jobRepo.getJobTicket(req.params.id);
-            if (!job || (job.assignedTechnicianId !== user.id && (job as any).technician !== user.name)) {
+            if (!job || !techCanAccessJob(user, job as any)) {
                 return res.status(403).json({ error: 'Access denied: not assigned to this job' });
             }
         }
@@ -180,9 +209,18 @@ router.get('/api/job-tickets/:id/history', requireAdminAuth, requireGranularPerm
 
 /**
  * POST /api/job-tickets - Create new job ticket
+ * Assignment rules (jobs.assignTechnician):
+ * - Technician without assign: forced self-assign; ignore client assignee fields
+ * - With assign: validate active Technician role; name derived server-side
+ * - Create-only non-Technician: unassigned; strip client assignee fields
  */
 router.post('/api/job-tickets', requireAdminAuth, requireGranularPermission('jobs.create'), async (req: Request, res: Response) => {
     try {
+        const creator = (req as any).user;
+        if (!creator?.id) {
+            return res.status(401).json({ error: 'Admin authentication required' });
+        }
+
         // Auto-generate job ID if not provided
         let jobData = { ...req.body };
         if (!jobData.id) {
@@ -208,6 +246,69 @@ router.post('/api/job-tickets', requireAdminAuth, requireGranularPermission('job
 
         if (jobData.serviceAreaId && !await getActiveServiceAreaById(jobData.serviceAreaId)) {
             return res.status(400).json({ error: 'Selected service area is not active or does not exist.' });
+        }
+
+        // Product: default create is Unassigned; manager (or assign-capable user) assigns later.
+        // Technician creators never pick peers unless they have jobs.assignTechnician.
+        const canAssignOthers = userHasGranularPermission(creator, 'jobs.assignTechnician');
+        const requestedAssigneeId = typeof jobData.assignedTechnicianId === 'string' && jobData.assignedTechnicianId.trim()
+            ? jobData.assignedTechnicianId.trim()
+            : null;
+
+        // Never trust client-supplied technician display name / assist lists without assign rights.
+        delete jobData.assistedByIds;
+        delete jobData.assistedByNames;
+        delete jobData.assistedBy;
+
+        // Always stamp creator for intake visibility
+        jobData.createdByUserId = creator.id;
+        jobData.createdByName = creator.name;
+
+        if (!canAssignOthers) {
+            // Create-only tech or create-only manager: always unassigned
+            jobData.assignedTechnicianId = null;
+            jobData.technician = 'Unassigned';
+        } else if (requestedAssigneeId) {
+            const assignee = await userRepo.getUser(requestedAssigneeId);
+            if (!assignee) {
+                return res.status(400).json({ error: 'Assigned technician not found' });
+            }
+            if (assignee.status && assignee.status !== 'Active') {
+                return res.status(400).json({ error: 'Assigned technician is not active' });
+            }
+            if (assignee.role !== 'Technician') {
+                return res.status(400).json({ error: 'Assignee must have the Technician role' });
+            }
+            jobData.assignedTechnicianId = assignee.id;
+            jobData.technician = assignee.name;
+
+            // Optional assist team: only when assigner has permission (already true)
+            if (req.body.assistedByIds) {
+                let assistIds: string[] = [];
+                try {
+                    assistIds = typeof req.body.assistedByIds === 'string'
+                        ? JSON.parse(req.body.assistedByIds)
+                        : Array.isArray(req.body.assistedByIds) ? req.body.assistedByIds : [];
+                } catch {
+                    assistIds = [];
+                }
+                const validAssists: { id: string; name: string }[] = [];
+                for (const aid of assistIds) {
+                    if (typeof aid !== 'string' || aid === assignee.id) continue;
+                    const a = await userRepo.getUser(aid);
+                    if (a && a.role === 'Technician' && (!a.status || a.status === 'Active')) {
+                        validAssists.push({ id: a.id, name: a.name });
+                    }
+                }
+                if (validAssists.length > 0) {
+                    jobData.assistedByIds = JSON.stringify(validAssists.map((a) => a.id));
+                    jobData.assistedByNames = validAssists.map((a) => a.name).join(', ');
+                }
+            }
+        } else {
+            // canAssignOthers but no assignee chosen
+            jobData.assignedTechnicianId = null;
+            jobData.technician = 'Unassigned';
         }
 
         const validated = insertJobTicketSchema.parse(jobData);
@@ -295,6 +396,10 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGran
         const jobId = req.params.id;
         const job = await jobRepo.getJobTicket(jobId);
         if (!job) return res.status(404).json({ error: 'Job ticket not found' });
+        const user = (req as any).user;
+        if (user?.role === 'Technician' && !techCanMutateJob(user, job as any)) {
+            return res.status(403).json({ error: 'Read-only: this job is not assigned to you yet' });
+        }
 
         const currentStatus = job.status;
 
@@ -470,6 +575,10 @@ router.post('/api/job-tickets/:id/set-outcome', requireAdminAuth, requireGranula
 
         const job = await jobRepo.getJobTicket(jobId);
         if (!job) return res.status(404).json({ error: 'Job ticket not found' });
+        const user = (req as any).user;
+        if (user?.role === 'Technician' && !techCanMutateJob(user, job as any)) {
+            return res.status(403).json({ error: 'Read-only: this job is not assigned to you yet' });
+        }
 
         const workStatuses = ['In Progress', 'On Workbench', 'Diagnosing'];
         if (!workStatuses.includes(job.status)) {
@@ -746,9 +855,19 @@ router.patch('/api/job-tickets/:id', requireAdminAuth, requireGranularPermission
 
         // Resolve the actual DB ID — old records may have a trailing space
         const rawId = req.params.id.trim();
-        const resolvedId = (await jobRepo.getJobTicket(rawId))
-            ? rawId
-            : (await jobRepo.getJobTicket(rawId + ' ') ? rawId + ' ' : rawId);
+        const existingForAccess = await jobRepo.getJobTicket(rawId) || await jobRepo.getJobTicket(rawId + ' ');
+        const user = (req as any).user;
+        if (user?.role === 'Technician') {
+            if (!existingForAccess || !techCanAccessJob(user, existingForAccess as any)) {
+                return res.status(403).json({ error: 'Access denied: not assigned to this job' });
+            }
+            if (!techCanMutateJob(user, existingForAccess as any)) {
+                return res.status(403).json({ error: 'Read-only: this job is not assigned to you yet' });
+            }
+        }
+        const resolvedId = existingForAccess
+            ? existingForAccess.id
+            : rawId;
 
         // Defensive: never allow updating the primary key even if sent in payload
         delete updateData.id;

@@ -29,6 +29,8 @@ interface JobDetailsSheetProps {
     onSaveWorkFeedback?: (job: any, payload: WorkFeedbackPayload) => Promise<void>;
     onOutsidePurchase?: () => void;
     onAdvanceStage?: (job: any) => void;
+    /** When set, shows a read-only banner (creator or non-assignee tech). */
+    accessBanner?: string | null;
 }
 
 export interface WorkFeedbackPayload {
@@ -62,6 +64,7 @@ export function JobDetailsSheet({
     onSaveWorkFeedback,
     onOutsidePurchase,
     onAdvanceStage,
+    accessBanner = null,
 }: JobDetailsSheetProps) {
     const isMobile = useIsMobile();
     const [workSheetOpen, setWorkSheetOpen] = useState(false);
@@ -96,7 +99,8 @@ export function JobDetailsSheet({
     if (typeof document === 'undefined') return null;
 
     const isTechnician = userRole === "Technician";
-    const showCustomerDetails = !!job && (!isTechnician || canEdit);
+    // Creator/read-only viewers still see full intake details; only unrelated techs are masked
+    const showCustomerDetails = !!job && (!isTechnician || canEdit || !!accessBanner);
     const customerLabel = job
         ? (showCustomerDetails
             ? (job.customer || "Unknown")
@@ -212,6 +216,11 @@ export function JobDetailsSheet({
                                             {getStatusVisual(job.status).label}
                                         </Badge>
                                     </div>
+                                    {accessBanner && (
+                                        <div className="relative z-10 mt-3 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-medium leading-snug text-amber-50">
+                                            {accessBanner}
+                                        </div>
+                                    )}
                                 </div>
                             </div>
 
@@ -623,6 +632,11 @@ export function JobDetailsSheet({
                                     )}>{job.status}</Badge>
                                 </div>
                             </div>
+                            {accessBanner && (
+                                <div className="relative z-10 mt-4 rounded-xl border border-amber-400/30 bg-amber-500/15 px-3 py-2 text-sm font-medium text-amber-50">
+                                    {accessBanner}
+                                </div>
+                            )}
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">

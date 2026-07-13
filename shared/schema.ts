@@ -203,6 +203,9 @@ export const jobTickets = pgTable("job_tickets", {
   aiDiagnosis: jsonb("ai_diagnosis"),
   estimatedCost: real("estimated_cost"),
   assignedTechnicianId: text("assigned_technician_id"), // FK to users.id
+  // Creator (intake) — technicians may see jobs they created as read-only until assigned to them
+  createdByUserId: text("created_by_user_id"),
+  createdByName: text("created_by_name"),
   corporateChallanId: text("corporate_challan_id"),
   corporateJobNumber: text("corporate_job_number"),
   corporateClientId: text("corporate_client_id"),

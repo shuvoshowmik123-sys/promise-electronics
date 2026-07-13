@@ -26,7 +26,8 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "serviceRequests.edit", label: "Edit service requests", module: "serviceRequests", action: "edit", risk: "high", description: "Edit service request fields and customer intake details.", consequence: "Can alter customer-facing/request workflow data.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: true },
 
   // ── Jobs ──
-  { key: "jobs.view", label: "View job tickets", module: "jobs", action: "view", risk: "low", description: "See all job tickets and their status.", consequence: "Read-only access to repair work data.", suggestedRoles: ["Manager", "Technician", "Super Admin"], coverageCritical: false },
+  { key: "jobs.view", label: "View assigned / own jobs", module: "jobs", action: "view", risk: "low", description: "See jobs assigned to you and jobs you created (creator view is read-only until assigned to you).", consequence: "Scoped repair visibility.", suggestedRoles: ["Manager", "Technician", "Super Admin"], coverageCritical: false },
+  { key: "jobs.viewAll", label: "See all jobs", module: "jobs", action: "viewAll", risk: "medium", description: "See every job ticket in the shop, not only assigned or self-created jobs.", consequence: "Full jobs list visibility; pair with assign rights for lead technicians.", suggestedRoles: ["Manager", "Super Admin", "Technician"], coverageCritical: true },
   { key: "jobs.create", label: "Create job ticket", module: "jobs", action: "create", risk: "medium", description: "Create a new job ticket (walk-in or converted).", consequence: "Starts repair workflow; assigns shop resources.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
   { key: "jobs.assignTechnician", label: "Assign technician", module: "jobs", action: "assignTechnician", risk: "high", description: "Assign or reassign a technician to a job.", consequence: "Determines who works on the repair; affects workload.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: true },
   { key: "jobs.reportOutcome", label: "Report repair outcome", module: "jobs", action: "reportOutcome", risk: "medium", description: "Set outcome: Repair OK, Needs Parts, Not Repairable, Customer Declined.", consequence: "Determines next step; customer is notified.", suggestedRoles: ["Technician", "Manager", "Super Admin"], coverageCritical: true },
@@ -131,7 +132,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
 export const LEGACY_TO_GRANULAR: Record<string, string[]> = {
   dashboard: ["dashboard.view"],
   serviceRequests: ["serviceRequests.view", "serviceRequests.reply", "serviceRequests.logCall", "serviceRequests.quote", "serviceRequests.transitionStage", "serviceRequests.convertToJob", "serviceRequests.edit"],
-  jobs: ["jobs.view", "jobs.create", "jobs.assignTechnician", "jobs.reportOutcome", "jobs.advanceStatus", "jobs.edit"],
+  jobs: ["jobs.view", "jobs.viewAll", "jobs.create", "jobs.assignTechnician", "jobs.reportOutcome", "jobs.advanceStatus", "jobs.edit"],
   pickup: ["pickup.viewAssigned"],
   pos: ["pos.view", "pos.processPayment", "pos.openRegister"],
   finance: ["finance.view", "finance.createRecord", "finance.editRecord"],
