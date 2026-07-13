@@ -6,6 +6,7 @@ import ImageKit from "imagekit";
 import { brainService } from "../brain/brain.service.js";
 import { getIKFolder } from "../utils/imagekit-folder.js";
 import { assignSession } from "../services/assignment.service.js";
+import { requireMetaWebhookSignature } from "../middleware/meta-webhook-signature.js";
 
 const router = Router();
 
@@ -13,6 +14,10 @@ const router = Router();
 const VERIFY_TOKEN = process.env.MESSENGER_VERIFY_TOKEN;
 const PAGE_ACCESS_TOKEN = process.env.MESSENGER_PAGE_ACCESS_TOKEN;
 const PAGE_ID = process.env.FACEBOOK_PAGE_ID;
+const APP_SECRET = process.env.MESSENGER_APP_SECRET ?? process.env.META_APP_SECRET;
+const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+const ATTACHMENT_DOWNLOAD_TIMEOUT_MS = 15_000;
+const TRUSTED_ATTACHMENT_HOSTS = new Set(["lookaside.fbsbx.com"]);
 
 if (!VERIFY_TOKEN) {
     console.warn('[Messenger] MESSENGER_VERIFY_TOKEN not set — webhook verification will fail');
@@ -58,7 +63,7 @@ router.get("/webhook", (req: Request, res: Response) => {
 /**
  * Handle Incoming Messages
  */
-router.post("/webhook", (req: Request, res: Response) => {
+router.post("/webhook", requireMetaWebhookSignature("Messenger", APP_SECRET), (req: Request, res: Response) => {
     const body = req.body;
 
     if (body.object === "page") {
@@ -326,10 +331,41 @@ async function callSendAPI(sender_psid: string, response: any) {
  * Helper: Download File to Buffer
  */
 async function downloadFile(url: string): Promise<Buffer> {
-    const res = await global.fetch(url);
-    if (!res.ok) throw new Error(`Failed to download file: ${res.statusText}`);
-    const arrayBuffer = await res.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+    const attachmentUrl = new URL(url);
+    if (attachmentUrl.protocol !== "https:" || !TRUSTED_ATTACHMENT_HOSTS.has(attachmentUrl.hostname)) {
+        throw new Error("Untrusted Messenger attachment URL");
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), ATTACHMENT_DOWNLOAD_TIMEOUT_MS);
+
+    try {
+        const res = await global.fetch(attachmentUrl, { signal: controller.signal, redirect: "error" });
+        if (!res.ok) throw new Error(`Failed to download file: ${res.statusText}`);
+
+        const contentLength = Number(res.headers.get("content-length") ?? 0);
+        if (contentLength > MAX_ATTACHMENT_BYTES) throw new Error("Messenger attachment exceeds size limit");
+        if (!res.body) throw new Error("Messenger attachment has no body");
+
+        const reader = res.body.getReader();
+        const chunks: Uint8Array[] = [];
+        let totalBytes = 0;
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            totalBytes += value.byteLength;
+            if (totalBytes > MAX_ATTACHMENT_BYTES) {
+                await reader.cancel();
+                throw new Error("Messenger attachment exceeds size limit");
+            }
+            chunks.push(value);
+        }
+
+        return Buffer.concat(chunks);
+    } finally {
+        clearTimeout(timeout);
+    }
 }
 
 export default router;

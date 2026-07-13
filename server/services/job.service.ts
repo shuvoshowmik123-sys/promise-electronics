@@ -309,6 +309,7 @@ export class JobService {
             parentJobId: request.id, // Track origin
             corporateClientId: request.corporateClientId || undefined,
             corporateChallanId: request.corporateChallanId || undefined,
+            serviceAreaId: request.corporateClientId ? undefined : request.serviceAreaId || undefined,
         } as any).returning();
 
         const trackingStatus = getProjectedTrackingStatus(request, jobTicket);

@@ -34,6 +34,7 @@ import * as XLSX from 'xlsx';
 import { motion, AnimatePresence } from "framer-motion";
 import { autoMapColumns, applyMapping, FieldMapping } from "@/lib/columnMapper";
 import { ColumnMappingDialog } from "@/components/corporate/ColumnMappingDialog";
+import { useCorporateMobileMode } from "@/hooks/useCorporateMobileMode";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -109,6 +110,7 @@ export default function CorporateServiceRequest() {
     const [, setLocation] = useLocation();
     const queryClient = useQueryClient();
     const { handleError } = useCorporateApiErrorHandler();
+    const isCorporateMobile = useCorporateMobileMode();
 
     // Wizard State
     const [step, setStep] = useState(1);
@@ -502,25 +504,25 @@ J002,Samsung,QLED Q80C,987654321,Screen flickering,OK,,All cables,Intermittent i
     };
 
     return (
-        <div className="max-w-4xl mx-auto space-y-10 pb-20">
+        <div className={`${isCorporateMobile ? "px-4 pb-6 pt-4" : "pb-20"} max-w-4xl mx-auto space-y-6`}>
             {/* Page Title */}
-            <div className="text-center space-y-2">
-                <h1 className="text-4xl font-black tracking-tight text-slate-900 mt-8">Intake <span className="text-[var(--corp-blue)]">Wizard</span></h1>
-                <p className="text-slate-500 font-medium">Simplify your repair requests with our smart intake system.</p>
+            <div className="text-center space-y-1.5">
+                <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-slate-900 mt-4 sm:mt-8">Intake <span className="text-[var(--corp-blue)]">Wizard</span></h1>
+                <p className="text-slate-500 font-medium text-sm">Simplify your repair requests with our smart intake system.</p>
             </div>
 
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'single' | 'bulk')} className="w-full">
-                <div className="flex justify-center mb-8">
-                    <TabsList className="bg-slate-100 p-1 rounded-2xl h-14">
+                <div className="flex justify-center mb-4 sm:mb-8">
+                    <TabsList className="bg-slate-100 p-1 rounded-2xl h-11 sm:h-14">
                         <TabsTrigger
                             value="single"
-                            className="rounded-xl px-10 h-12 font-bold data-[state=active]:bg-white data-[state=active]:text-[var(--corp-blue)] data-[state=active]:shadow-sm transition-all"
+                            className="rounded-xl px-5 sm:px-10 h-9 sm:h-12 font-bold data-[state=active]:bg-white data-[state=active]:text-[var(--corp-blue)] data-[state=active]:shadow-sm transition-all"
                         >
                             Single Ticket
                         </TabsTrigger>
                         <TabsTrigger
                             value="bulk"
-                            className="rounded-xl px-10 h-12 font-bold data-[state=active]:bg-white data-[state=active]:text-[var(--corp-blue)] data-[state=active]:shadow-sm transition-all"
+                            className="rounded-xl px-5 sm:px-10 h-9 sm:h-12 font-bold data-[state=active]:bg-white data-[state=active]:text-[var(--corp-blue)] data-[state=active]:shadow-sm transition-all"
                         >
                             Batch Upload
                         </TabsTrigger>
@@ -530,10 +532,10 @@ J002,Samsung,QLED Q80C,987654321,Screen flickering,OK,,All cables,Intermittent i
                 <TabsContent value="single" className="mt-0 focus-visible:outline-none">
                     <Card className="border-none shadow-sm rounded-3xl bg-white overflow-hidden">
                         {/* Step Indicator */}
-                        <div className="bg-slate-50/50 px-10 py-6 border-b border-slate-100 flex items-center justify-between">
-                            <div className="flex items-center gap-6">
+                        <div className="bg-slate-50/50 px-4 py-4 sm:px-10 sm:py-6 border-b border-slate-100 flex items-center justify-between">
+                            <div className="flex items-center gap-3 sm:gap-6">
                                 {[1, 2, 3].map((s) => (
-                                    <div key={s} className="flex items-center gap-3">
+                                    <div key={s} className="flex items-center gap-1.5 sm:gap-3">
                                         <div className={`
                                             w-8 h-8 rounded-full flex items-center justify-center font-black text-xs transition-all duration-300
                                             ${step >= s ? "bg-[var(--corp-blue)] text-white shadow-lg shadow-blue-100" : "bg-white text-slate-300 border border-slate-200"}
@@ -551,7 +553,7 @@ J002,Samsung,QLED Q80C,987654321,Screen flickering,OK,,All cables,Intermittent i
                             </Badge>
                         </div>
 
-                        <CardContent className="p-10">
+                        <CardContent className="p-4 sm:p-10">
                             <Form {...form}>
                                 <form onSubmit={form.handleSubmit(onSingleSubmit)} className="space-y-8">
                                     <AnimatePresence mode="wait" custom={step}>
@@ -697,8 +699,8 @@ J002,Samsung,QLED Q80C,987654321,Screen flickering,OK,,All cables,Intermittent i
                                                     <p className="text-sm text-slate-400">Review your intake details before final submission.</p>
                                                 </div>
 
-                                                <div className="bg-slate-50 rounded-3xl p-8 space-y-6">
-                                                    <div className="grid grid-cols-2 gap-8 text-sm">
+                                                <div className="bg-slate-50 rounded-3xl p-4 sm:p-8 space-y-6">
+                                                    <div className="grid grid-cols-2 gap-4 sm:gap-8 text-sm">
                                                         <div className="space-y-1">
                                                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Device</p>
                                                             <p className="font-bold text-slate-800">{form.getValues().deviceModel}</p>
@@ -779,7 +781,7 @@ J002,Samsung,QLED Q80C,987654321,Screen flickering,OK,,All cables,Intermittent i
 
                 <TabsContent value="bulk" className="mt-0 focus-visible:outline-none">
                     <Card className="border-none shadow-sm rounded-3xl bg-white overflow-hidden p-0">
-                        <CardHeader className="bg-slate-50/50 px-10 py-8 border-b border-slate-100">
+                        <CardHeader className="bg-slate-50/50 px-4 py-6 sm:px-10 sm:py-8 border-b border-slate-100">
                             <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
                                 <div>
                                     <CardTitle className="text-2xl font-black text-slate-900">Batch Processing</CardTitle>
@@ -792,7 +794,7 @@ J002,Samsung,QLED Q80C,987654321,Screen flickering,OK,,All cables,Intermittent i
                             </div>
                         </CardHeader>
 
-                        <CardContent className="p-10 space-y-10">
+                        <CardContent className="p-4 sm:p-10 space-y-6 sm:space-y-10">
                             {/* Dropzone */}
                             {!parsedRows.length && !errorRows.length && (
                                 <div
@@ -998,7 +1000,18 @@ J002,Samsung,QLED Q80C,987654321,Screen flickering,OK,,All cables,Intermittent i
                                         </div>
 
                                         <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
-                                            <Table>
+                                            {isCorporateMobile ? (
+                                                <div className="divide-y divide-slate-100 bg-white">
+                                                    {parsedRows.slice(0, 5).map((row, i) => (
+                                                        <div key={i} className="space-y-2 p-4">
+                                                            <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-sm font-bold text-slate-800">{row.corporateJobNumber}</p><p className="mt-0.5 truncate text-xs text-slate-500">{row.deviceBrand} {row.model}</p></div><Badge className={`shrink-0 px-2 py-0.5 rounded-full text-[9px] font-black shadow-none border ${row.initialStatus === 'OK' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-rose-50 text-rose-600 border-rose-100'}`}>{row.initialStatus}</Badge></div>
+                                                            <p className="font-mono text-[11px] text-slate-400">{row.serialNumber}</p>
+                                                            <p className="line-clamp-2 text-xs leading-5 text-slate-600">{row.reportedDefect}</p>
+                                                        </div>
+                                                    ))}
+                                                    {parsedRows.length > 5 && <p className="px-4 py-3 text-center text-xs font-semibold text-slate-400">+ {parsedRows.length - 5} additional records</p>}
+                                                </div>
+                                            ) : <Table>
                                                 <TableHeader className="bg-slate-50/50">
                                                     <TableRow className="hover:bg-transparent border-slate-100">
                                                         <TableHead className="text-[10px] font-black uppercase text-slate-400 py-4 pl-6">Job ID</TableHead>
@@ -1034,7 +1047,7 @@ J002,Samsung,QLED Q80C,987654321,Screen flickering,OK,,All cables,Intermittent i
                                                         </TableRow>
                                                     )}
                                                 </TableBody>
-                                            </Table>
+                                            </Table>}
                                         </div>
 
                                         <div className="flex justify-end pt-4">

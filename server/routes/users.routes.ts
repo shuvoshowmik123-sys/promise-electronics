@@ -37,7 +37,14 @@ import { auditLogger } from '../utils/auditLogger.js';
 import { AUDIT_ACTIONS } from '../../shared/constants.js';
 import { db } from '../db.js';
 import { staffPresence as staffPresenceTable, users } from '../../shared/schema.js';
-import { eq as drizzleEq, desc as drizzleDesc } from 'drizzle-orm';
+import { eq as drizzleEq, desc as drizzleDesc, sql } from 'drizzle-orm';
+import {
+    createCorporateSetupToken,
+    getCorporateAppBaseUrl,
+    invalidateCorporateSetupToken,
+    invalidateOtherCorporateSetupTokens,
+    removeCorporateUserAndTokens,
+} from '../services/corporate-setup-token.service.js';
 
 const router = Router();
 
@@ -445,50 +452,32 @@ router.patch('/api/admin/users/:id', requireAdminAuth, async (req: Request, res:
             return res.status(404).json({ error: 'User not found' });
         }
 
-        // Determine permissions
-        const permissions = currentUser.permissions ? JSON.parse(currentUser.permissions) : {};
-        const effectivePermissions = Object.keys(permissions).length > 0 ? permissions : getDefaultPermissions(currentUser.role);
-        const canEdit = currentUser.role === 'Super Admin' || effectivePermissions.canEdit === true;
+        const isSuperAdmin = currentUser.role === 'Super Admin';
 
-        // Logic:
-        // 1. If it's your own account, you can update it (subject to restrictions below).
-        // 2. If it's NOT your own account, you need 'canEdit' permission.
-        if (currentUser.id !== targetUserId && !canEdit) {
+        // Non-SA: cannot touch any other user
+        if (!isSuperAdmin && currentUser.id !== targetUserId) {
             return res.status(403).json({ error: 'Not authorized to update other users' });
         }
 
-        // Restriction: If you are NOT Super Admin, but updating YOURSELF, you can ONLY update password.
-        if (currentUser.role !== 'Super Admin' && currentUser.id === targetUserId) {
+        // Non-SA self-edit: only password allowed
+        if (!isSuperAdmin && currentUser.id === targetUserId) {
             const { password, ...otherFields } = req.body;
-            // Allow only password update for self-edit if not Super Admin?
-            // Wait, what if a Manager wants to update their name/email?
-            // The previous logic RESTRICTED this:
-            // "if (currentUser?.role !== 'Super Admin' && currentUser?.id === targetUserId) { ... error if otherFields > 0 ... }"
-
-            // I will maintain this restrictiveness for self-edits to be safe, 
-            // OR relax it if 'canEdit' is true?
-            // If I have 'canEdit', I can edit OTHERS. Should I be able to edit MYSELF fully?
-            // Usually yes.
-
-            // New Logic: 
-            // If I have 'canEdit', I can edit myself fully (except Role maybe?).
-            // If I DON'T have 'canEdit', I can only edit password.
-
-            if (!canEdit && Object.keys(otherFields).length > 0) {
-                return res.status(403).json({ error: 'You can only update your password' });
+            if (Object.keys(otherFields).length > 0) {
+                return res.status(403).json({ error: 'You can only update your own password' });
+            }
+            if (!password) {
+                return res.status(400).json({ error: 'Password is required' });
             }
         }
 
         const validated = adminUpdateUserSchema.parse(req.body);
 
-        // Security Check: Prevent privilege escalation
-        // Only Super Admins can change 'role' or 'permissions'
-        if (currentUser.role !== 'Super Admin') {
+        // Only Super Admin can change role or permissions
+        if (!isSuperAdmin) {
             if (validated.role && validated.role !== targetUser.role) {
                 return res.status(403).json({ error: 'Only Super Admins can change user roles' });
             }
             if (validated.permissions) {
-                // Ideally, check if permissions changed. For now, block any permission update by non-super admin.
                 return res.status(403).json({ error: 'Only Super Admins can change user permissions' });
             }
         }
@@ -586,11 +575,10 @@ const createCorporateUserSchema = z.object({
     username: z.string().min(3, "Username must be at least 3 characters"),
 });
 
-router.post('/api/admin/corporate-users', requirePermission('canCreate'), async (req: Request, res: Response) => {
+router.post('/api/admin/corporate-users', requireAdminAuth, requirePermission('canCreate'), async (req: Request, res: Response) => {
     try {
         const validated = createCorporateUserSchema.parse(req.body);
 
-        // Check if user exists
         if (await userRepo.getUserByUsername(validated.username)) {
             return res.status(400).json({ error: 'Username already taken' });
         }
@@ -598,36 +586,59 @@ router.post('/api/admin/corporate-users', requirePermission('canCreate'), async 
             return res.status(400).json({ error: 'Email already registered' });
         }
 
-        // Generate secure random password
-        const generatedPassword = crypto.randomBytes(8).toString('hex');
-        const hashedPassword = await bcrypt.hash(generatedPassword, 12);
+        // Locked unusable password — never returned, never emailed
+        const appUrl = getCorporateAppBaseUrl();
+        if (!appUrl) {
+            return res.status(503).json({ error: 'Corporate setup is temporarily unavailable. Configure APP_BASE_URL.' });
+        }
 
-        // Create user
+        const lockedHash = await bcrypt.hash(crypto.randomBytes(32).toString('hex'), 12);
+
         const user = await userRepo.createUser({
             username: validated.username,
             name: validated.name,
             email: validated.email,
-            password: hashedPassword,
-            role: 'Corporate', // Special role
+            password: lockedHash,
+            role: 'Corporate',
             corporateClientId: validated.corporateClientId,
-            permissions: JSON.stringify({ corporate: true }), // Basic corporate permission
+            permissions: JSON.stringify({ corporate: true }),
+            status: 'Pending',
         } as any);
 
-        // Send Email
-        const emailSent = await MailerService.sendWelcomeEmail(
+        const rawToken = await createCorporateSetupToken(user.id, 'setup');
+        const setupUrl = `${appUrl}/corporate/setup/${rawToken}`;
+
+        const emailSent = await MailerService.sendCorporateSetupLink(
             validated.email,
             validated.name,
-            validated.username,
-            generatedPassword
+            setupUrl,
         );
 
+        if (!emailSent) {
+            try {
+                await removeCorporateUserAndTokens(user.id);
+            } catch (cleanupError) {
+                console.error('[UsersRoutes] Corporate setup cleanup failed:', (cleanupError as Error).message);
+                return res.status(500).json({ error: 'Setup email failed and account cleanup could not be confirmed.' });
+            }
+            return res.status(500).json({ error: 'Failed to send setup link. User was not created. Please try again.' });
+        }
+        await invalidateOtherCorporateSetupTokens(user.id, 'setup', rawToken).catch((error) => {
+            console.error('[UsersRoutes] Previous setup-token invalidation failed:', (error as Error).message);
+        });
+
+        AuditLogger.log({
+            userId: req.session.adminUserId!,
+            action: 'CREATE',
+            entity: 'User',
+            entityId: user.id,
+            details: `Created corporate user '${validated.username}' (client: ${validated.corporateClientId}), setup link sent`,
+            severity: 'info',
+        }).catch(() => {});
+
         res.status(201).json({
-            message: 'Corporate user created successfully',
             user: { id: user.id, username: user.username, email: user.email },
-            emailSent,
-            // We return the password here strictly for the Admin to copy manually if email fails
-            // In a stricter environment, we wouldn't return this.
-            temporaryPassword: generatedPassword
+            emailSent: true,
         });
 
     } catch (error: any) {
@@ -639,43 +650,67 @@ router.post('/api/admin/corporate-users', requirePermission('canCreate'), async 
     }
 });
 
-router.post('/api/admin/corporate-users/:id/reset-password', requirePermission('canEdit'), async (req: Request, res: Response) => {
+router.post('/api/admin/corporate-users/:id/reset-password', requireAdminAuth, requirePermission('canEdit'), async (req: Request, res: Response) => {
     try {
         const targetUser = await userRepo.getUser(req.params.id);
         if (!targetUser || targetUser.role !== 'Corporate' || !targetUser.corporateClientId) {
             return res.status(404).json({ error: 'Corporate user not found' });
         }
+        if ((targetUser as any).status !== 'Active') {
+            return res.status(400).json({ error: 'User is not active. Use resend setup link instead.' });
+        }
 
-        const generatedPassword = crypto.randomBytes(8).toString('hex');
-        const hashedPassword = await bcrypt.hash(generatedPassword, 12);
-        const updatedUser = await userRepo.updateUser(targetUser.id, { password: hashedPassword } as any);
+        // Generate reset token WITHOUT touching the existing password
+        const appUrl = getCorporateAppBaseUrl();
+        if (!appUrl) {
+            return res.status(503).json({ error: 'Password reset is temporarily unavailable. Configure APP_BASE_URL.' });
+        }
+        const rawToken = await createCorporateSetupToken(targetUser.id, 'reset');
+        const resetUrl = `${appUrl}/corporate/setup/${rawToken}`;
 
-        await authService.revokeAllCorporateTrustedDevicesForUser(targetUser.id, 'corporate_password_reset').catch(() => {});
+        const emailSent = await MailerService.sendCorporateResetLink(
+            targetUser.email ?? '',
+            targetUser.name ?? targetUser.username ?? '',
+            resetUrl,
+        );
+
+        if (!emailSent) {
+            try {
+                await invalidateCorporateSetupToken(rawToken);
+            } catch (cleanupError) {
+                console.error('[UsersRoutes] Reset-token cleanup failed:', (cleanupError as Error).message);
+                return res.status(500).json({ error: 'Reset email failed and link cleanup could not be confirmed.' });
+            }
+            return res.status(500).json({ error: 'Failed to send reset link. Your current password is unchanged.' });
+        }
+        await invalidateOtherCorporateSetupTokens(targetUser.id, 'reset', rawToken).catch((error) => {
+            console.error('[UsersRoutes] Previous reset-token invalidation failed:', (error as Error).message);
+        });
 
         AuditLogger.log({
             userId: req.session.adminUserId!,
             action: 'UPDATE',
             entity: 'User',
             entityId: targetUser.id,
-            details: `Reset corporate portal password for '${targetUser.name}' (${targetUser.username})`,
+            details: `Sent password reset link to corporate user '${targetUser.username}'`,
             severity: 'warning',
         }).catch(() => {});
 
         res.json({
             user: {
-                id: updatedUser?.id || targetUser.id,
-                username: updatedUser?.username || targetUser.username,
-                email: updatedUser?.email || targetUser.email,
+                id: targetUser.id,
+                username: targetUser.username,
+                email: targetUser.email,
             },
-            temporaryPassword: generatedPassword,
+            emailSent: true,
         });
     } catch (error) {
         console.error('[UsersRoutes] Corporate password reset error:', (error as Error).message);
-        res.status(500).json({ error: 'Failed to reset corporate user password' });
+        res.status(500).json({ error: 'Failed to send reset link' });
     }
 });
 
-router.post('/api/admin/corporate-users/:id/reset-otp', requirePermission('canEdit'), async (req: Request, res: Response) => {
+router.post('/api/admin/corporate-users/:id/reset-otp', requireAdminAuth, requirePermission('canEdit'), async (req: Request, res: Response) => {
     try {
         const result = await corporatePasswordResetService.issueAdminCode(req.params.id, req.session.adminUserId!);
 
@@ -694,7 +729,63 @@ router.post('/api/admin/corporate-users/:id/reset-otp', requirePermission('canEd
     }
 });
 
-router.get('/api/admin/corporate-users/reset-requests', requirePermission('canEdit'), async (req: Request, res: Response) => {
+router.post('/api/admin/corporate-users/:id/resend-setup', requireAdminAuth, requirePermission('canEdit'), async (req: Request, res: Response) => {
+    try {
+        const targetUser = await userRepo.getUser(req.params.id);
+        if (!targetUser || targetUser.role !== 'Corporate' || !targetUser.corporateClientId) {
+            return res.status(404).json({ error: 'Corporate user not found' });
+        }
+
+        const userStatus = (targetUser as any).status;
+        if (userStatus !== 'Pending' && userStatus !== 'Active') {
+            return res.status(400).json({ error: 'Cannot resend link for this user status' });
+        }
+
+        const type: 'setup' | 'reset' = userStatus === 'Pending' ? 'setup' : 'reset';
+        const appUrl = getCorporateAppBaseUrl();
+        if (!appUrl) {
+            return res.status(503).json({ error: 'Corporate setup is temporarily unavailable. Configure APP_BASE_URL.' });
+        }
+        const rawToken = await createCorporateSetupToken(targetUser.id, type);
+        const linkUrl = `${appUrl}/corporate/setup/${rawToken}`;
+
+        const emailSent = type === 'setup'
+            ? await MailerService.sendCorporateSetupLink(targetUser.email ?? '', targetUser.name ?? targetUser.username ?? '', linkUrl)
+            : await MailerService.sendCorporateResetLink(targetUser.email ?? '', targetUser.name ?? targetUser.username ?? '', linkUrl);
+
+        if (!emailSent) {
+            try {
+                await invalidateCorporateSetupToken(rawToken);
+            } catch (cleanupError) {
+                console.error('[UsersRoutes] Resend-token cleanup failed:', (cleanupError as Error).message);
+                return res.status(500).json({ error: 'Resend email failed and link cleanup could not be confirmed.' });
+            }
+            return res.status(500).json({ error: 'Failed to resend link. Please try again.' });
+        }
+        await invalidateOtherCorporateSetupTokens(targetUser.id, type, rawToken).catch((error) => {
+            console.error('[UsersRoutes] Previous setup-token invalidation failed:', (error as Error).message);
+        });
+
+        AuditLogger.log({
+            userId: req.session.adminUserId!,
+            action: 'UPDATE',
+            entity: 'User',
+            entityId: targetUser.id,
+            details: `Resent ${type} link to corporate user '${targetUser.username}'`,
+            severity: 'info',
+        }).catch(() => {});
+
+        res.json({
+            user: { id: targetUser.id, username: targetUser.username, email: targetUser.email },
+            emailSent: true,
+        });
+    } catch (error) {
+        console.error('[UsersRoutes] Resend setup error:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to resend setup link' });
+    }
+});
+
+router.get('/api/admin/corporate-users/reset-requests', requireAdminAuth, requirePermission('canEdit'), async (req: Request, res: Response) => {
     try {
         const corporateClientId = String(req.query.corporateClientId || '');
         if (!corporateClientId) {
@@ -984,7 +1075,7 @@ router.delete('/api/admin/customers/:id', requireAdminAuth, requirePermission('u
  * Super Admin only. Verifies customer identity manually, then creates a one-time code
  * the customer can use at POST /api/customer/password-reset/complete.
  */
-router.post('/api/admin/customers/:id/reset-code', requireSuperAdmin, async (req: Request, res: Response) => {
+router.post('/api/admin/customers/:id/reset-code', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
     try {
         const customer = await userRepo.getUser(req.params.id);
         if (!customer || customer.role !== 'Customer') {

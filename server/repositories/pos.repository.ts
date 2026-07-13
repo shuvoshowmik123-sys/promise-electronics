@@ -166,6 +166,31 @@ export async function createPosTransaction(transaction: InsertPosTransaction): P
     return newTransaction;
 }
 
+export async function createPosTransactionWithAllocations(
+    transaction: InsertPosTransaction,
+    allocations: Array<{ jobTicketId: string | null; serviceAreaId: string; billedAmount: number }>,
+): Promise<PosTransaction> {
+    const invoiceNumber = await getNextInvoiceNumber();
+    return db.transaction(async (tx) => {
+        const [newTransaction] = await tx
+            .insert(schema.posTransactions)
+            .values({ ...transaction, invoiceNumber, id: (transaction as any).id || nanoid() })
+            .returning();
+        if (allocations.length > 0) {
+            await tx.insert(schema.posTransactionAreaAllocations).values(
+                allocations.map((a) => ({
+                    id: nanoid(),
+                    transactionId: newTransaction.id,
+                    jobTicketId: a.jobTicketId,
+                    serviceAreaId: a.serviceAreaId,
+                    billedAmount: a.billedAmount,
+                })),
+            );
+        }
+        return newTransaction;
+    });
+}
+
 export async function updatePosTransactionStatus(invoiceNumber: string, status: string): Promise<void> {
     await db
         .update(schema.posTransactions)
@@ -231,6 +256,22 @@ export async function getClosedDrawerSessions(date: Date): Promise<DrawerSession
         const closed = new Date(s.closedAt);
         return closed >= startOfDay && closed <= endOfDay;
     });
+}
+
+export async function createPosAreaAllocations(
+    transactionId: string,
+    allocations: Array<{ jobTicketId: string | null; serviceAreaId: string; billedAmount: number }>,
+): Promise<void> {
+    if (allocations.length === 0) return;
+    await db.insert(schema.posTransactionAreaAllocations).values(
+        allocations.map((allocation) => ({
+            id: nanoid(),
+            transactionId,
+            jobTicketId: allocation.jobTicketId,
+            serviceAreaId: allocation.serviceAreaId,
+            billedAmount: allocation.billedAmount,
+        })),
+    );
 }
 
 /**

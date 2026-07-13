@@ -91,6 +91,7 @@ export const queryClient = new QueryClient({
       // background (React Query keeps showing cached data while refetching). This
       // is what makes the admin panel feel snappy without serving stale numbers.
       refetchOnMount: "always",
+      refetchOnReconnect: false,
       retry: false,
       // Enable garbage collection time for persistence
       gcTime: 1000 * 60 * 60 * 24 * 7, // 7 days
@@ -241,6 +242,17 @@ export function initQueryPersistence() {
 
         const key = query.queryKey[0];
         // Persist user profile, service requests, orders, warranties, notifications
+        // MAP-PUBLIC-LEAK-HOTFIX: never persist public area publication data offline.
+        if (
+          typeof key === 'string'
+          && (key === 'public-area-map'
+            || key === 'public-service-area-list'
+            || key.includes('public-area')
+            || key.includes('/public/area-'))
+        ) {
+          return false;
+        }
+
         const persistedQueries = [
           '/customer/me',
           '/customer/service-requests',

@@ -1,23 +1,25 @@
 import { db } from '../db.js';
 import { sql } from 'drizzle-orm';
+import { createHash } from 'crypto';
 import { encryptionService } from './encryption.service.js';
 import { compressionService } from './compression.service.js';
-import { googleDriveService } from './google-drive.service.js';
+import { storageService } from './storage.service.js';
 import { backupMetadata, backupAuditLogs } from '../../shared/schema.js';
 import * as schema from '../../shared/schema.js';
 import { nanoid } from 'nanoid';
 import { log } from '../app.js';
 
+const BACKUP_PREFIX = 'backups/application/v1';
+
+function buildObjectKey(fileName: string): string {
+    const now = new Date();
+    const yyyy = now.getUTCFullYear();
+    const mm = String(now.getUTCMonth() + 1).padStart(2, '0');
+    return `${BACKUP_PREFIX}/${yyyy}/${mm}/${fileName}`;
+}
+
 export class BackupService {
 
-    /**
-     * Create a full system backup.
-     * 
-     * @param password - Password to encrypt the backup with (combined with master key)
-     * @param userId - ID of the user initiating the backup
-     * @param userName - Name of the user initiating the backup
-     * @returns Backup metadata
-     */
     async createBackup(password: string, userId: string, userName: string, backupType: 'manual' | 'scheduled' = 'manual', description?: string) {
         const startTime = Date.now();
         const backupId = nanoid();
@@ -25,21 +27,11 @@ export class BackupService {
         try {
             log(`[BackupService] Starting ${backupType} backup...`);
 
-            // 1. Fetch Data Snapshot (Repeatable Read Transaction)
-            // We use a transaction to ensure data consistency across all tables.
             const backupData = await db.transaction(async (tx) => {
-                // Set isolation level to ensure consistent snapshot
                 await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`);
-
-                // Fetch all tables
-                // We use query builder for convenience. 
-                // Note: ensuring we get ALL data as per plan.
 
                 const users = await tx.query.users.findMany();
                 const userSessions = await tx.query.userSessions.findMany();
-                // deviceTokens not in schema export? Let's check schema.ts imports if needed.
-                // Assuming it is not in the truncated view or not vital yet. 
-                // Based on plan: "deviceTokens". I'll skip if not in schema.
 
                 const jobTickets = await tx.query.jobTickets.findMany();
                 const serviceRequests = await tx.query.serviceRequests.findMany();
@@ -51,9 +43,7 @@ export class BackupService {
 
                 const posTransactions = await tx.query.posTransactions.findMany();
 
-                // Commerce & Refunds
                 const orders = await tx.query.orders.findMany();
-                // Check if orderItems exists in schema, assuming yes based on previous checks
                 const orderItems = await tx.query.orderItems.findMany();
                 const refunds = await tx.query.refunds.findMany();
                 const warrantyClaims = await tx.query.warrantyClaims.findMany();
@@ -63,12 +53,10 @@ export class BackupService {
                 const dueRecords = await tx.query.dueRecords.findMany();
                 const challans = await tx.query.challans.findMany();
 
-                // Settings & Config
                 const settings = await tx.query.settings.findMany();
                 const serviceCatalog = await tx.query.serviceCatalog.findMany();
                 const serviceCategories = await tx.query.serviceCategories.findMany();
 
-                // Corporate
                 const corporateClients = await tx.query.corporateClients.findMany();
                 const corporateChallans = await tx.query.corporateChallans.findMany();
                 const corporateBills = await tx.query.corporateBills.findMany();
@@ -76,19 +64,16 @@ export class BackupService {
                 const corporateMessages = await tx.query.corporateMessages.findMany();
                 const corporatePortalUrgencies = await tx.query.corporatePortalUrgencies.findMany();
 
-                // Other
                 const approvalRequests = await tx.query.approvalRequests.findMany();
                 const fraudAlerts = await tx.query.fraudAlerts.findMany();
                 const pickupSchedules = await tx.query.pickupSchedules.findMany();
                 const attendanceRecords = await tx.query.attendanceRecords.findMany();
                 const notifications = await tx.query.notifications.findMany();
 
-                // Phase 3 tables
                 const teamChannels = await tx.query.teamChannels.findMany();
                 const teamMessages = await tx.query.teamMessages.findMany();
                 const reminders = await tx.query.reminders.findMany();
 
-                // Phase 2 tables
                 const commissionRules = await tx.query.commissionRules.findMany();
                 const commissionAssignments = await tx.query.commissionAssignments.findMany();
                 const commissionPayouts = await tx.query.commissionPayouts.findMany();
@@ -97,14 +82,12 @@ export class BackupService {
                     metadata: {
                         version: '1.0',
                         timestamp: new Date().toISOString(),
-                        systemVersion: '1.0.0', // TODO: Get from package.json
-                        databaseVersion: 'PostgreSQL 15', // Approximate
-                        // count records
+                        systemVersion: '1.0.0',
+                        databaseVersion: 'PostgreSQL 15',
                         counts: {
                             users: users.length,
                             jobTickets: jobTickets.length,
                             orders: orders.length,
-                            // ... add others
                         }
                     },
                     data: {
@@ -151,35 +134,34 @@ export class BackupService {
 
             log(`[BackupService] Data fetched. Users: ${backupData.data.users.length}, Jobs: ${backupData.data.jobTickets.length}`);
 
-            // 2. Serialize & Compress
             const jsonString = JSON.stringify(backupData);
             const compressedBuffer = await compressionService.compress(jsonString);
             log(`[BackupService] Compressed. Size: ${(compressedBuffer.length / 1024 / 1024).toFixed(2)} MB`);
 
-            // 3. Encrypt
             const encryptedData = await encryptionService.encrypt(compressedBuffer, password);
-            // Construct the final file content (JSON format containing IV, Salt, AuthTag, Content)
             const fileContent = JSON.stringify(encryptedData);
             const fileBuffer = Buffer.from(fileContent);
             log(`[BackupService] Encrypted.`);
 
-            // 4. Upload to Google Drive
+            const checksum = createHash('sha256').update(fileBuffer).digest('hex');
+
             const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
             const fileName = `backup_${timestamp}_${backupType}_${nanoid(6)}.enc`;
+            const objectKey = buildObjectKey(fileName);
 
-            const googleDriveFileId = await googleDriveService.uploadFile(fileName, 'application/json', fileBuffer);
-            log(`[BackupService] Uploaded to Drive. ID: ${googleDriveFileId}`);
+            const r2Key = await storageService.uploadFile(objectKey, fileBuffer, 'application/octet-stream');
+            log(`[BackupService] Uploaded to R2. Key prefix: ${BACKUP_PREFIX}`);
 
-            // 5. Save Metadata
             const totalRecords = Object.values(backupData.data).reduce((acc, arr: any[]) => acc + arr.length, 0);
             const tablesIncluded = Object.keys(backupData.data);
-            const checksum = 'TODO'; // Optional: Calculate SHA256 of compressed buffer
 
             const metadata = await db.insert(backupMetadata).values({
                 id: backupId,
                 fileName,
                 fileSize: fileBuffer.length,
-                googleDriveFileId,
+                googleDriveFileId: null,
+                storageProvider: 'r2',
+                storageObjectKey: r2Key,
                 backupType,
                 description,
 
@@ -191,7 +173,7 @@ export class BackupService {
 
                 totalRecords,
                 tablesIncluded: tablesIncluded,
-                checksum: 'pending', // Implement checksum if time permits
+                checksum,
 
                 systemVersion: '1.0.0',
                 databaseVersion: 'Unknown',
@@ -202,7 +184,6 @@ export class BackupService {
                 verified: false
             }).returning();
 
-            // 6. Audit Log
             await db.insert(backupAuditLogs).values({
                 id: nanoid(),
                 timestamp: new Date(),
@@ -223,7 +204,6 @@ export class BackupService {
         } catch (error: any) {
             log(`[BackupService] Failed: ${error.message}`);
 
-            // Audit Log Failure
             await db.insert(backupAuditLogs).values({
                 id: nanoid(),
                 timestamp: new Date(),

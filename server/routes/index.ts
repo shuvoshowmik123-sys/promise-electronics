@@ -48,6 +48,7 @@ import purchaseOrdersRoutes from './purchase-orders.routes.js';
 import quotationRoutes from './quotation.routes.js';
 
 import corporateAuthRoutes from './corporate-auth.routes.js';
+import corporateSetupRoutes from './corporate-setup.routes.js';
 import corporateRoutes from './corporate.routes.js';
 import corporatePortalRoutes from './corporate-portal.routes.js';
 import warrantyRoutes from './warranty.routes.js';
@@ -72,6 +73,7 @@ import adminRepairJourneyRoutes from './admin-repair-journey.routes.js';
 import staffInviteRoutes from './staff-invites.routes.js';
 import logisticsTasksRoutes from './logistics-tasks.routes.js';
 import catalogImportRoutes from './catalog-import.routes.js'; // Phase 35A: Bulk Import Center
+import serviceAreasRoutes from './service-areas.routes.js'; // Phase Map-01: Service Area Analytics
 
 /**
  * Register all routes with the Express application.
@@ -225,6 +227,7 @@ export async function registerRoutes(
     // Note: CSRF protection removed from corporate routes as it was blocking GET requests
     // Individual routes can apply csrfProtection middleware to state-changing operations (POST/PUT/DELETE) as needed
     app.use("/api/corporate/auth", corporateAuthRoutes);
+    app.use("/api/corporate", corporateSetupRoutes);
     app.use("/api/corporate", corporateRoutes);
     app.use("/api/corporate", corporatePortalRoutes);
     app.use("/api/corporate", corporateNotificationsRoutes);
@@ -311,6 +314,10 @@ export async function registerRoutes(
 
     app.use(kgRoutes);
     routeLog('[Routes] ✓ Knowledge Graph routes registered');
+
+    // Phase Map-01: Service Area Analytics
+    app.use(serviceAreasRoutes);
+    routeLog('[Routes] ✓ Service areas routes registered');
 
     routeLog('[Routes] All route modules registered successfully!');
 

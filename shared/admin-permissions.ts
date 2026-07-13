@@ -55,6 +55,7 @@ export function getDefaultPermissionsForRole(role: string): Record<string, boole
         "pickup.reschedule": true,
         "pickup.cancel": true,
         "pickup.routePlan": true,
+        "map.viewAreaAnalytics": true,
       };
     case "Cashier":
       return {

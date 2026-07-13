@@ -175,6 +175,7 @@ router.post('/api/warranty-claims', requireGranularPermission('warranty.create')
 
         const claim = await warrantyRepo.createWarrantyClaim({
             originalJobId,
+            serviceAreaId: job.corporateClientId || job.corporateChallanId ? undefined : job.serviceAreaId || undefined,
             customer: job.customer || 'Unknown',
             customerPhone: job.customerPhone,
             device: (job as any).device || undefined,
@@ -370,6 +371,7 @@ router.post('/api/warranty-claims/:id/create-job', requireGranularPermission('wa
             ...originalJob,
             id: await jobRepo.getNextJobNumber(),
             parentJobId: claim.originalJobId,
+            serviceAreaId: originalJob.corporateClientId || originalJob.corporateChallanId ? undefined : originalJob.serviceAreaId || undefined,
             jobType: 'warranty_claim',
             status: 'Pending',
             paymentStatus: 'paid',

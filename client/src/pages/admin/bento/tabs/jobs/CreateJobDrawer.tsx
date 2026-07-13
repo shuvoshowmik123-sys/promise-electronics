@@ -13,7 +13,7 @@ import {
     Layers, Loader2, MessageSquare, Monitor, Package, Plus, ShieldCheck, Sparkles,
     Trash2, UploadCloud, User, UserCheck, Wrench,
 } from "lucide-react";
-import { jobTicketsApi, aiApi, adminCustomersApi } from "@/lib/api";
+import { jobTicketsApi, aiApi, adminCustomersApi, publicAreaMapApi } from "@/lib/api";
 import { toast } from "sonner";
 import { TechnicianPicker } from "@/components/admin/TechnicianPicker";
 import { InsertJobTicket, JobTicket } from "@shared/schema";
@@ -170,6 +170,14 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
         queryFn: adminCustomersApi.getAll,
         enabled: isOpen,
         staleTime: 60_000,
+    });
+    const { data: serviceAreas = [] } = useQuery({
+        queryKey: ['public-service-area-list'],
+        queryFn: publicAreaMapApi.getList,
+        enabled: isOpen,
+        staleTime: 0,
+        gcTime: 0,
+        refetchOnMount: 'always',
     });
 
     const { data: existingJobsData } = useQuery({
@@ -724,6 +732,13 @@ export function CreateJobDrawer({ isOpen, onClose, technicianUsers, tvInches }: 
                             <div className="space-y-2">
                                 <Label>Address</Label>
                                 <Textarea placeholder="Pickup or delivery address..." value={formData.customerAddress || ""} onChange={(e) => setFormData({ ...formData, customerAddress: e.target.value })} rows={3} className="resize-none rounded-xl bg-white shadow-sm sm:bg-slate-50 sm:shadow-none" />
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Service area <span className="font-normal text-slate-400">(optional)</span></Label>
+                                <select value={formData.serviceAreaId || ''} onChange={(event) => setFormData({ ...formData, serviceAreaId: event.target.value || null })} className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500 sm:h-10 sm:bg-slate-50">
+                                    <option value="">No area selected</option>
+                                    {serviceAreas.map((area) => <option key={area.id} value={area.id}>{[area.blockOrSector, area.subareaName, area.areaName, area.city].filter(Boolean).join(', ')}</option>)}
+                                </select>
                             </div>
                         </div>
                     )}

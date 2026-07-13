@@ -13,6 +13,7 @@ import { auditLogger } from '../utils/auditLogger.js';
 import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 import { jobService } from '../services/job.service.js';
 import { jobRepo } from '../repositories/index.js';
+import { getActiveServiceAreaById } from '../repositories/service-area.repository.js';
 
 const router = Router();
 
@@ -107,6 +108,39 @@ router.post('/api/pos-transactions', requireAdminAuth, requirePermission('proces
         if (!Array.isArray(cartItems)) cartItems = [];
         if (!Array.isArray(linkedJobs)) linkedJobs = [];
 
+        // Map-03A Fix 2: load linked jobs FIRST, then resolve area.
+        // Client-supplied serviceAreaId is only validated for standalone POS (no linked jobs).
+        // When linked retail jobs exist the client area is completely ignored and overridden
+        // by the first linked job that has a serviceAreaId.
+        const linkedJobAllocations: Array<{ job: any; billedAmount: number }> = [];
+        for (const linked of linkedJobs) {
+            const billedAmount = Number(linked?.billedAmount);
+            if (!linked?.jobId || !Number.isFinite(billedAmount) || billedAmount < 0) {
+                return res.status(400).json({ error: 'Each linked job requires a valid non-negative billed amount.' });
+            }
+            const existingJob = await storage.getJobTicket(linked.jobId);
+            if (!existingJob) return res.status(400).json({ error: 'A linked job does not exist.' });
+            if (existingJob.corporateClientId || existingJob.corporateChallanId) {
+                return res.status(400).json({ error: 'Corporate jobs cannot be billed through retail POS area analytics.' });
+            }
+            linkedJobAllocations.push({ job: existingJob, billedAmount });
+        }
+        const linkedBilledTotal = linkedJobAllocations.reduce((sum, allocation) => sum + allocation.billedAmount, 0);
+        if (linkedBilledTotal > Number(validated.total) + 0.01) {
+            return res.status(400).json({ error: 'Linked job billed amounts cannot exceed the transaction total.' });
+        }
+
+        if (linkedJobAllocations.length > 0) {
+            // Linked retail jobs: derive area from first job that has one, ignore client area entirely.
+            const jobWithArea = linkedJobAllocations.find(({ job }) => Boolean(job.serviceAreaId));
+            (validated as any).serviceAreaId = jobWithArea ? jobWithArea.job.serviceAreaId : null;
+        } else {
+            // Standalone POS: validate client-supplied serviceAreaId.
+            if ((validated as any).serviceAreaId && !await getActiveServiceAreaById((validated as any).serviceAreaId)) {
+                return res.status(400).json({ error: 'Selected service area is not active or does not exist.' });
+            }
+        }
+
         // Server-side stock guard. Frontend validates, but a direct API call or a
         // stale client could oversell — updateInventoryStock silently floors at 0,
         // losing the real count. Reject before creating the transaction.
@@ -125,7 +159,16 @@ router.post('/api/pos-transactions', requireAdminAuth, requirePermission('proces
             }
         }
 
-        const transaction = await posRepo.createPosTransaction(validated);
+        // Map-03A Fix 1: atomic write — POS row + allocations in a single DB transaction.
+        // If allocation insert fails, the POS row is rolled back automatically.
+        const areaAllocations = linkedJobAllocations
+            .filter(({ job }) => Boolean(job.serviceAreaId))
+            .map(({ job, billedAmount }) => ({
+                jobTicketId: job.id as string | null,
+                serviceAreaId: job.serviceAreaId as string,
+                billedAmount,
+            }));
+        const transaction = await posRepo.createPosTransactionWithAllocations(validated, areaAllocations);
 
         // Handle Inventory Updates
         for (const item of cartItems) {
@@ -169,18 +212,16 @@ router.post('/api/pos-transactions', requireAdminAuth, requirePermission('proces
         if (linkedJobs.length > 0) {
             const isPaid = ['Cash', 'Bank', 'bKash', 'Nagad'].includes(paymentMethod);
 
-            for (const job of linkedJobs) {
-                if (!job.jobId) continue;
-
-                const existingJob = await storage.getJobTicket(job.jobId);
-                if (!existingJob) continue;
+            for (const allocation of linkedJobAllocations) {
+                const existingJob = allocation.job;
+                const job = { jobId: existingJob.id };
 
                 // 1. Bill Ready journey event (always, dedup-safe)
                 repairJourneyService.syncBillToJourney({
                     jobId: job.jobId,
                     invoiceNumber: transaction.invoiceNumber || undefined,
                     transactionId: transaction.id,
-                    amount: validated.total,
+                    amount: allocation.billedAmount,
                     paymentMethod,
                 }).catch(err => console.error('[RepairJourney] Bill sync failed:', (err as Error).message));
 
@@ -189,7 +230,7 @@ router.post('/api/pos-transactions', requireAdminAuth, requirePermission('proces
                     try {
                         await jobService.recordJobPayment(job.jobId, {
                             paymentId: transaction.id,
-                            amount: validated.total,
+                            amount: allocation.billedAmount,
                             method: paymentMethod,
                         });
                     } catch (payErr) {

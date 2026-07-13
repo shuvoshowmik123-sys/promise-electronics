@@ -11,7 +11,7 @@ import {
     Banknote, UserCheck, UserCog, HardHat, Building2,
     FileText, HelpCircle, Settings, Bell, Search, User, Zap,
     PieChart, Users, LineChart, Menu, LogOut,
-    ShieldCheck, RotateCcw, FileWarning, Brain, WifiOff, Wrench
+    ShieldCheck, RotateCcw, FileWarning, Brain, WifiOff, Wrench, MapPinned
 } from "lucide-react";
 
 // Contexts
@@ -65,6 +65,7 @@ const BrainTab = lazy(() => import("./bento/tabs/BrainTab"));
 
 // New Tabs
 const ReportsTab = lazy(() => import("./bento/tabs/ReportsTab"));
+const AreaIntelligenceTab = lazy(() => import("./bento/tabs/AreaIntelligenceTab"));
 const QualityAnalyticsTab = lazy(() => import("./bento/tabs/QualityAnalyticsTab"));
 const AttendanceTab = lazy(() => import("./bento/tabs/AttendanceTab"));
 const CustomersTab = lazy(() => import("./bento/tabs/CustomersTab"));
@@ -100,6 +101,7 @@ const ADMIN_SIDEBAR_NAV_GROUPS: SidebarGroup[] = [
         items: [
             { label: "Dashboard", id: "dashboard", icon: BarChart3, color: "blue", layout: "fixed" },
             { label: "Overview", id: "overview", icon: Activity, color: "indigo", layout: "scroll" },
+            { label: "Area Intelligence", id: "area-intelligence", icon: MapPinned, color: "cyan", layout: "fixed" },
             { label: "Reports", id: "reports", icon: PieChart, color: "violet", layout: "scroll" },
             { label: "Quality", id: "quality", icon: LineChart, color: "rose", layout: "scroll" },
             { label: "Health", id: "system-health", icon: ShieldAlert, color: "emerald", layout: "scroll" },
@@ -371,6 +373,7 @@ export default function DesignConcept() {
     const TAB_TO_PERMISSION: Record<string, string | string[]> = {
         'dashboard': 'dashboard',
         'overview': 'dashboard',
+        'area-intelligence': 'map',
         'jobs': 'jobs',
         'service-requests': 'serviceRequests',
         'repair-journeys': ['repairJourney', 'serviceRequests'], // repairJourney.* = catalog module; serviceRequests = legacy
@@ -427,7 +430,7 @@ export default function DesignConcept() {
 
     // Display names for breadcrumb
     const TAB_DISPLAY_NAMES: Record<string, string> = {
-        'dashboard': 'Dashboard', 'overview': 'Overview',
+        'dashboard': 'Dashboard', 'overview': 'Overview', 'area-intelligence': 'Area Intelligence',
         'system-health': 'System Health', 'service-requests': 'Service Requests', 'repair-journeys': 'Repair Journeys',
         'jobs': 'Job Tickets', 'pickup': 'Pickups', 'challans': 'Challans',
         'pos': 'Point of Sale', 'orders': 'Orders', 'inventory': 'Inventory',
@@ -843,7 +846,7 @@ export default function DesignConcept() {
                                             <DashboardSkeleton />
                                         ) : modulesLoading && !!TAB_TO_MODULE[tabId] ? (
                                             <DashboardSkeleton />
-                                        ) : TAB_TO_MODULE[tabId] && !isTabEnabled(tabId) ? (
+                                        ) : (TAB_TO_MODULE[tabId] || TAB_TO_PERMISSION[tabId]) && !isTabEnabled(tabId) ? (
                                             <div className="h-full flex flex-col items-center justify-center p-8 text-center text-slate-500">
                                                 <div className="h-20 w-20 bg-slate-100 rounded-full flex items-center justify-center mb-6">
                                                     <ShieldAlert size={32} className="text-slate-400" />
@@ -872,6 +875,7 @@ export default function DesignConcept() {
 
                                                 {/* Overview Group */}
                                                 {tabId === 'overview' && <OverviewTab />}
+                                                {tabId === 'area-intelligence' && <AreaIntelligenceTab />}
                                                 {tabId === 'reports' && <ReportsTab />}
                                                 {tabId === 'quality' && <QualityAnalyticsTab />}
                                                 {tabId === 'system-health' && <SystemHealthTab onNavigate={(tab: string, searchQuery?: string, clientId?: string) => {
@@ -975,7 +979,7 @@ export default function DesignConcept() {
                                                 {tabId === 'workflow-demo' && <Suspense fallback={<DashboardSkeleton />}><PlaceholderTab tabName={tabId} /></Suspense>}
                                                 {tabId === 'audit-logs' && <Suspense fallback={<DashboardSkeleton />}><AuditLogsTab /></Suspense>}
 
-                                                {!['dashboard', 'overview', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'shift', 'customers', 'quotations', 'inquiries', 'workflow-demo', 'salary', 'cashier', 'technician', 'purchasing', 'warranty', 'refunds', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain', 'account'].includes(tabId) && (
+                                                {!['dashboard', 'overview', 'area-intelligence', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'shift', 'customers', 'quotations', 'inquiries', 'workflow-demo', 'salary', 'cashier', 'technician', 'purchasing', 'warranty', 'refunds', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain', 'account'].includes(tabId) && (
                                                     <Suspense fallback={<DashboardSkeleton />}>
                                                         <PlaceholderTab tabName={tabId} />
                                                     </Suspense>

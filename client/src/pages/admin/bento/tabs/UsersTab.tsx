@@ -103,12 +103,15 @@ export default function UsersTab() {
     const [inviteNote, setInviteNote] = useState("");
     const [copiedLink, setCopiedLink] = useState<string | null>(null);
 
-    const { data: usersData = [], isLoading, isError, error, refetch } = useQuery({
+    const { data: usersData, isLoading, isError, error, refetch } = useQuery({
         queryKey: ["admin-users"],
         queryFn: adminUsersApi.getAll,
         enabled: !!currentUser,
-        retry: false,
+        retry: 2,
+        retryDelay: 3000,
+        placeholderData: (prev: SafeUser[] | undefined) => prev,
     });
+    const usersDataNormalized = Array.isArray(usersData) ? usersData : [];
 
     const isSuperAdminEarly = currentUser?.role === "Super Admin";
     const { data: invitesData = [] } = useQuery({
@@ -116,7 +119,7 @@ export default function UsersTab() {
         queryFn: staffInvitesApi.list,
         enabled: !!currentUser && isSuperAdminEarly,
     });
-    const users = Array.isArray(usersData) ? usersData : [];
+    const users = usersDataNormalized;
     const invites = Array.isArray(invitesData) ? invitesData : [];
 
     const createInviteMutation = useMutation({
@@ -250,6 +253,23 @@ export default function UsersTab() {
     };
 
     if (isLoading) return <DashboardSkeleton />;
+
+    if (isError && users.length === 0) return (
+        <div className="h-full flex flex-col items-center justify-center gap-4 p-8 text-center">
+            <Users className="h-12 w-12 text-slate-300" />
+            <div>
+                <p className="font-semibold text-slate-700">Failed to load users</p>
+                <p className="text-sm text-slate-400 mt-1">{(error as Error)?.message || "Unknown error"}</p>
+            </div>
+            <button
+                onClick={() => refetch()}
+                className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+            >
+                <RefreshCw className="h-4 w-4" />
+                Retry
+            </button>
+        </div>
+    );
 
     return (
         <motion.div

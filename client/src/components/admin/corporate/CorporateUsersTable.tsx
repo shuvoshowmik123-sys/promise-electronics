@@ -36,7 +36,6 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
 
     // Modal State
     const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-    const [createdUserCreds, setCreatedUserCreds] = useState<{ username: string, password: string } | null>(null);
     const [otpResetCode, setOtpResetCode] = useState<{ username: string; code: string; expiresAt: string } | null>(null);
     const [copied, setCopied] = useState(false);
 
@@ -58,19 +57,11 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
         onSuccess: (data) => {
             queryClient.invalidateQueries({ queryKey: ["corporateUsers", clientId] });
             setIsAddUserOpen(false);
-            setFormData({ name: "", username: "", email: "" }); // Reset form
-
-            if (data.temporaryPassword) {
-                setCreatedUserCreds({
-                    username: data.user.username || "",
-                    password: data.temporaryPassword
-                });
-            } else {
-                toast({
-                    title: "User Created",
-                    description: `Credentials have been emailed to ${data.user.email}`,
-                });
-            }
+            setFormData({ name: "", username: "", email: "" });
+            toast({
+                title: "Setup link sent",
+                description: `Account setup email sent to ${data.user.email}`,
+            });
         },
         onError: (error: Error) => {
             toast({
@@ -97,17 +88,26 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
     const resetPasswordMutation = useMutation({
         mutationFn: corporateApi.resetCorporateUserPassword,
         onSuccess: (data) => {
-            setCreatedUserCreds({
-                username: data.user.username || "",
-                password: data.temporaryPassword,
-            });
             toast({
-                title: "Password Reset",
-                description: "Copy the new temporary password now. It will not be shown again.",
+                title: "Reset link sent",
+                description: `Password reset link sent to ${data.user.email}`,
             });
         },
         onError: (error: Error) => {
-            toast({ title: "Failed to reset password", description: error.message, variant: "destructive" });
+            toast({ title: "Failed to send reset link", description: error.message, variant: "destructive" });
+        },
+    });
+
+    const resendSetupMutation = useMutation({
+        mutationFn: (id: string) => corporateApi.resendCorporateSetupLink(id),
+        onSuccess: (data) => {
+            toast({
+                title: "Link resent",
+                description: `Setup link resent to ${data.user.email}`,
+            });
+        },
+        onError: (error: Error) => {
+            toast({ title: "Failed to resend link", description: error.message, variant: "destructive" });
         },
     });
 
@@ -490,13 +490,22 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
                                         className="w-full rounded-xl border-slate-200 text-slate-700 hover:bg-slate-100"
                                         disabled={resetPasswordMutation.isPending}
                                         onClick={() => {
-                                            if (confirm("Reset this portal user's password? The new password will be shown once.")) {
+                                            if (confirm("Send a secure password reset link? The current password stays valid until they complete it.")) {
                                                 resetPasswordMutation.mutate(selectedUser.id);
                                             }
                                         }}
                                     >
                                         {resetPasswordMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                                        Instant Temporary Password
+                                        Send Password Reset Link
+                                    </Button>
+                                    <Button
+                                        variant="outline"
+                                        className="w-full rounded-xl border-slate-200 text-slate-700 hover:bg-slate-100"
+                                        disabled={resendSetupMutation.isPending}
+                                        onClick={() => resendSetupMutation.mutate(selectedUser.id)}
+                                    >
+                                        {resendSetupMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                                        Resend Setup / Reset Link
                                     </Button>
                                     <Button
                                         variant="outline"
@@ -568,53 +577,6 @@ export function CorporateUsersTable({ clientId }: CorporateUsersTableProps) {
                             </Button>
                         </div>
                     </form>
-                </DialogContent>
-            </Dialog>
-
-            {/* Credential Success Dialog */}
-            <Dialog open={!!createdUserCreds} onOpenChange={(open) => !open && setCreatedUserCreds(null)}>
-                <DialogContent className="sm:max-w-md bg-white rounded-2xl border-0 shadow-2xl p-0 overflow-hidden text-center">
-                    <div className="px-6 py-8">
-                        <div className="w-16 h-16 rounded-2xl bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-4">
-                            <Check className="w-8 h-8" />
-                        </div>
-                        <DialogTitle className="text-2xl font-bold text-slate-800 mb-2">User Created!</DialogTitle>
-                        <DialogDescription className="text-slate-500">
-                            Copy these credentials now. The password is shown once and cannot be recovered later.
-                        </DialogDescription>
-
-                        <div className="mt-6 bg-slate-50 p-4 rounded-2xl border border-slate-100 space-y-3 text-left">
-                            <div className="flex justify-between items-center">
-                                <span className="text-sm font-semibold text-slate-500">Username</span>
-                                <code className="bg-white border border-slate-200 px-3 py-1 rounded-lg text-slate-700 font-mono text-sm shadow-sm">
-                                    {createdUserCreds?.username}
-                                </code>
-                            </div>
-                            <div className="flex justify-between items-center">
-                                <span className="text-sm font-semibold text-slate-500">Password</span>
-                                <div className="flex items-center gap-2">
-                                    <code className="bg-white border border-slate-200 px-3 py-1 rounded-lg text-emerald-600 font-mono font-bold text-sm shadow-sm select-all">
-                                        {createdUserCreds?.password}
-                                    </code>
-                                    <Button
-                                        variant="outline"
-                                        size="icon"
-                                        className="h-8 w-8 rounded-lg shrink-0 border-slate-200"
-                                        onClick={() => handleCopyToken(createdUserCreds?.password || "")}
-                                    >
-                                        {copied ? <Check className="h-4 w-4 text-emerald-500" /> : <Copy className="h-4 w-4 text-slate-500" />}
-                                    </Button>
-                                </div>
-                            </div>
-                        </div>
-
-                        <Button
-                            onClick={() => setCreatedUserCreds(null)}
-                            className="w-full mt-6 rounded-xl bg-slate-800 hover:bg-slate-900 text-white h-11 shadow-sm"
-                        >
-                            Done
-                        </Button>
-                    </div>
                 </DialogContent>
             </Dialog>
 

@@ -26,7 +26,7 @@ import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { publicSettingsApi, quoteRequestsApi, serviceCatalogApi, serviceRequestsApi } from "@/lib/api";
+import { publicAreaMapApi, publicSettingsApi, quoteRequestsApi, serviceCatalogApi, serviceRequestsApi } from "@/lib/api";
 import { getApiUrl } from "@/lib/config";
 import { getIKFolder } from "@/lib/imagekit-config";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
@@ -144,6 +144,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [description, setDescription] = useState("");
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [servicePreference, setServicePreference] = useState<ServicePreference>("home_pickup");
+  const [serviceAreaId, setServiceAreaId] = useState("");
   const [customerName, setCustomerName] = useState(customer?.name || "");
   const [phone, setPhone] = useState(normalizePhone(customer?.phone || ""));
   const [address, setAddress] = useState(customer?.address || "");
@@ -159,9 +160,14 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
     const qBrand = params.get("brand");
     const qSize  = params.get("size");
     const qIssue = params.get("issue");
+    const qServiceMode = params.get("serviceMode");
+    const qServiceAreaId = params.get("serviceAreaId");
     if (qBrand) setBrand(decodeURIComponent(qBrand));
     if (qSize)  setScreenSize(decodeURIComponent(qSize));
     if (qIssue) setPrimaryIssue(decodeURIComponent(qIssue));
+    if (qServiceMode === "pickup") setServicePreference("home_pickup");
+    if (qServiceMode === "service_center") setServicePreference("service_center");
+    if (qServiceAreaId) setServiceAreaId(qServiceAreaId);
   }, []);
 
   const { data: settings = [] } = useQuery({
@@ -176,6 +182,15 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
     staleTime: 5 * 60 * 1000,
     enabled: mode === "quote",
   });
+
+  const { data: serviceAreas = [] } = useQuery({
+    queryKey: ["public-service-area-list"],
+    queryFn: publicAreaMapApi.getList,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always",
+  });
+  const selectedServiceArea = serviceAreas.find((area) => area.id === serviceAreaId);
 
   const getTvTypeLabel = (type: string) => {
     switch (type) {
@@ -372,6 +387,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
         status: "Pending",
         requestIntent: "repair",
         serviceMode: servicePreference === "home_pickup" ? "pickup" : "service_center",
+        serviceAreaId: serviceAreaId || undefined,
       });
       return;
     }
@@ -408,6 +424,11 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
             <p className="mt-3 text-sm leading-6 text-slate-600">
               {t("wizard.submitted")}
             </p>
+            {selectedServiceArea && (
+              <p className="mt-3 text-sm font-semibold text-emerald-700">
+                {t("wizard.areaSuccessPrefix")} {selectedServiceArea.blockOrSector || selectedServiceArea.subareaName || selectedServiceArea.areaName}.
+              </p>
+            )}
             <div className="mt-5 rounded-2xl bg-emerald-50 px-4 py-3">
               <p className="text-xs font-medium text-emerald-700">{t("wizard.ticketNumber")}</p>
               <p className="mt-1 font-mono text-xl font-bold text-slate-950">#{ticketNumber}</p>
@@ -644,6 +665,21 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                 <Textarea value={address} onChange={(event) => setAddress(event.target.value)} className="min-h-24 rounded-2xl border-emerald-100" placeholder="Area, road, house..." />
               </div>
             )}
+            <div className="space-y-2 rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
+              <Label>{t("wizard.serviceArea")}</Label>
+              <Select value={serviceAreaId || "none"} onValueChange={(value) => setServiceAreaId(value === "none" ? "" : value)}>
+                <SelectTrigger className="h-12 rounded-xl border-emerald-100"><SelectValue placeholder={t("wizard.serviceArea")} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">{t("wizard.noServiceArea")}</SelectItem>
+                  {serviceAreas.map((area) => (
+                    <SelectItem key={area.id} value={area.id}>
+                      {[area.blockOrSector, area.subareaName, area.areaName, area.city].filter(Boolean).join(", ")}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs leading-relaxed text-slate-500">{t("wizard.serviceAreaHint")}</p>
+            </div>
           </motion.div>
         )}
 
@@ -700,6 +736,17 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
           </Button>
         </div>
       </div>
+      {isSubmitting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/92 px-6 backdrop-blur-sm" role="status" aria-live="polite">
+          <div className="max-w-xs text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+            <h2 className="mt-5 text-xl font-bold text-slate-950">{t("wizard.submittingTitle")}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{t("wizard.submittingBody")}</p>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

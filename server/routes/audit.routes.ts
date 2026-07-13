@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { db } from '../db.js';
 import { auditLogs, users } from '../../shared/schema.js';
 import { desc, eq, and, sql, lt } from 'drizzle-orm';
-import { requireAdminAuth, requirePermission } from './middleware/auth.js';
+import { requireAdminAuth, requirePermission, requireSuperAdmin } from './middleware/auth.js';
 import { auditLogger } from '../utils/auditLogger.js';
 import { AUDIT_ACTIONS } from '../../shared/constants.js';
 
@@ -87,7 +87,7 @@ router.get('/api/audit-logs', requireAdminAuth, requirePermission('auditLogs'), 
  * Shows table sizes, index hit rates, largest tables, last vacuum times.
  * Super Admin only. On-demand — zero background cost.
  */
-router.get('/api/admin/db-health', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
+router.get('/api/admin/db-health', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
     try {
         const [tableSizes, indexHitRate, vacuumStats, auditStats] = await Promise.all([
             // Top 15 tables by size
@@ -153,7 +153,7 @@ router.get('/api/admin/db-health', requireAdminAuth, requirePermission('settings
  * POST /api/admin/db-health/analyze — Run ANALYZE on key tables (refreshes query planner stats)
  * Super Admin only. Safe: ANALYZE never locks, never modifies data.
  */
-router.post('/api/admin/db-health/analyze', requireAdminAuth, requirePermission('settings'), async (req: Request, res: Response) => {
+router.post('/api/admin/db-health/analyze', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
     try {
         const tables = ['audit_logs', 'job_tickets', 'customers', 'corporate_bills', 'staff_presence'];
         for (const t of tables) {

@@ -1,39 +1,59 @@
-import { S3Client, PutObjectCommand, ListObjectsV2Command, GetObjectCommand } from "@aws-sdk/client-s3";
+import {
+    S3Client,
+    PutObjectCommand,
+    ListObjectsV2Command,
+    GetObjectCommand,
+    DeleteObjectCommand,
+} from "@aws-sdk/client-s3";
 
+const REQUIRED_VARS = [
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "R2_ENDPOINT",
+    "R2_BUCKET_NAME",
+] as const;
 
 export class StorageService {
     private client: S3Client;
     private bucket: string;
+    private configured: boolean;
 
     constructor() {
-        const accessKeyId = process.env.R2_ACCESS_KEY_ID;
-        const secretAccessKey = process.env.R2_SECRET_ACCESS_KEY;
-        const endpoint = process.env.R2_ENDPOINT;
-        const bucket = process.env.R2_BUCKET_NAME;
-
-        if (!accessKeyId || !secretAccessKey || !endpoint || !bucket) {
-            console.warn("WARNING: R2/S3 credentials missing. StorageService will fail.");
-            // Throwing here might crash server on startup if env is missing, 
-            // but for a critical service, maybe that's better?
-            // For now, allow partial init but methods will fail.
+        const missing = REQUIRED_VARS.filter((v) => !process.env[v]);
+        if (missing.length > 0) {
+            console.warn(`[StorageService] Missing required R2 environment variables (${missing.length}). Storage operations will fail.`);
+            this.configured = false;
+            this.bucket = "";
+            this.client = new S3Client({ region: "auto" });
+            return;
         }
 
-        this.bucket = bucket || "";
+        this.configured = true;
+        this.bucket = process.env.R2_BUCKET_NAME!;
         this.client = new S3Client({
             region: "auto",
-            endpoint: endpoint,
+            endpoint: process.env.R2_ENDPOINT!,
             credentials: {
-                accessKeyId: accessKeyId || "",
-                secretAccessKey: secretAccessKey || "",
+                accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+                secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
             },
         });
+        console.log("[StorageService] R2 storage initialized.");
     }
 
-    /**
-     * Upload a file to R2
-     */
-    async uploadFile(key: string, content: Buffer, contentType: string): Promise<void> {
-        if (!this.bucket) throw new Error("R2_BUCKET_NAME not configured");
+    isConfigured(): boolean {
+        return this.configured;
+    }
+
+    private assertConfigured(): void {
+        if (!this.configured) {
+            throw new Error("R2 storage is not configured. Set R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_ENDPOINT, and R2_BUCKET_NAME.");
+        }
+    }
+
+    /** Upload a file. Returns the R2 object key. */
+    async uploadFile(key: string, content: Buffer, contentType: string): Promise<string> {
+        this.assertConfigured();
 
         const command = new PutObjectCommand({
             Bucket: this.bucket,
@@ -44,44 +64,52 @@ export class StorageService {
 
         try {
             await this.client.send(command);
+            return key;
         } catch (error) {
-            console.error("R2 Upload Error:", error);
-            throw new Error("Failed to upload file to Cloudflare R2");
+            console.error("[StorageService] Upload failed:", (error as Error).message);
+            throw new Error("Failed to upload file to storage.");
         }
     }
 
-    /**
-     * List files in the bucket
-     */
-    async listFiles(prefix?: string) {
-        if (!this.bucket) throw new Error("R2_BUCKET_NAME not configured");
+    /** List objects under the given prefix. Prefix is required to prevent bucket enumeration. */
+    async listFiles(prefix: string, continuationToken?: string) {
+        this.assertConfigured();
+
+        if (!prefix) {
+            throw new Error("A storage prefix is required for listing.");
+        }
 
         const command = new ListObjectsV2Command({
             Bucket: this.bucket,
             Prefix: prefix,
+            ContinuationToken: continuationToken,
         });
 
         try {
             const data = await this.client.send(command);
-            return (data.Contents || []).map(item => ({
-                id: item.Key, // S3 uses Key as ID
-                name: item.Key,
-                size: item.Size,
-                createdTime: item.LastModified?.toISOString(),
-                mimeType: "application/octet-stream" // S3 list doesn't return mime
-            }));
+            return {
+                items: (data.Contents || []).map((item) => ({
+                    key: item.Key ?? "",
+                    name: item.Key?.split("/").pop() ?? item.Key ?? "",
+                    size: item.Size,
+                    lastModified: item.LastModified?.toISOString(),
+                })),
+                isTruncated: data.IsTruncated ?? false,
+                nextContinuationToken: data.NextContinuationToken,
+            };
         } catch (error) {
-            console.error("R2 List Error:", error);
-            throw new Error("Failed to list files from Cloudflare R2");
+            console.error("[StorageService] List failed:", (error as Error).message);
+            throw new Error("Failed to list files from storage.");
         }
     }
 
-    /**
-     * Download a file from R2
-     * Returns a Buffer
-     */
+    /** Download a file by its exact object key. */
     async downloadFile(key: string): Promise<Buffer> {
-        if (!this.bucket) throw new Error("R2_BUCKET_NAME not configured");
+        this.assertConfigured();
+
+        if (!key) {
+            throw new Error("Object key is required for download.");
+        }
 
         const command = new GetObjectCommand({
             Bucket: this.bucket,
@@ -90,12 +118,32 @@ export class StorageService {
 
         try {
             const response = await this.client.send(command);
-            // S3 Body is a stream
             const byteArray = await response.Body?.transformToByteArray();
-            return Buffer.from(byteArray || []);
+            return Buffer.from(byteArray ?? []);
         } catch (error) {
-            console.error("R2 Download Error:", error);
-            throw new Error("Failed to download file from Cloudflare R2");
+            console.error("[StorageService] Download failed:", (error as Error).message);
+            throw new Error("Failed to download file from storage.");
+        }
+    }
+
+    /** Delete an object by its exact key. Used for QA cleanup only. */
+    async deleteFile(key: string): Promise<void> {
+        this.assertConfigured();
+
+        if (!key) {
+            throw new Error("Object key is required for deletion.");
+        }
+
+        const command = new DeleteObjectCommand({
+            Bucket: this.bucket,
+            Key: key,
+        });
+
+        try {
+            await this.client.send(command);
+        } catch (error) {
+            console.error("[StorageService] Delete failed:", (error as Error).message);
+            throw new Error("Failed to delete file from storage.");
         }
     }
 }

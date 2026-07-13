@@ -1,23 +1,24 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Link, useLocation } from "wouter";
 import { useCorporateAuth } from "@/contexts/CorporateAuthContext";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
     LayoutDashboard,
     ClipboardList,
     User,
     LogOut,
-    Menu,
     Bell,
     Building2,
     Loader2,
     Wrench,
     MessageSquare,
     Search,
-    ChevronDown
+    ChevronDown,
+    MoreHorizontal,
+    HelpCircle
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
     DropdownMenu,
@@ -31,12 +32,35 @@ import { Input } from "@/components/ui/input";
 import { CorporateNotificationsBell } from "@/components/corporate/CorporateNotificationsBell";
 import { CorporateBrandingHeader } from "@/components/corporate/CorporateBrandingHeader";
 import { CorporatePwaInstallPrompt } from "@/components/corporate/CorporatePwaInstallPrompt";
+import { useCorporateMobileMode } from "@/hooks/useCorporateMobileMode";
+import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 
+
+function getPageTitle(path: string): string {
+    if (path === "/corporate/dashboard") return "Dashboard";
+    if (path === "/corporate/jobs") return "Jobs";
+    if (path.startsWith("/corporate/jobs/")) return "Job Details";
+    if (path === "/corporate/service-request") return "Request Service";
+    if (path === "/corporate/messages") return "Messages";
+    if (path === "/corporate/profile") return "My Profile";
+    if (path === "/corporate/notifications") return "Notifications";
+    return "Corporate Portal";
+}
 
 export function CorporateLayoutShell({ children }: { children: React.ReactNode }) {
     const [location, setLocation] = useLocation();
     const { user, logout, isAuthenticated, isLoading } = useCorporateAuth();
-    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [isMoreOpen, setIsMoreOpen] = useState(false);
+    const moreButtonRef = useRef<HTMLButtonElement>(null);
+    const isCorporateMobile = useCorporateMobileMode();
+    const isFocusedMobileRoute = isCorporateMobile && (
+        location.startsWith("/corporate/jobs/") || location === "/corporate/service-request"
+    );
+
+    const closeMore = () => {
+        setIsMoreOpen(false);
+        moreButtonRef.current?.focus();
+    };
 
     useEffect(() => {
         if (!isLoading && !isAuthenticated) {
@@ -80,6 +104,10 @@ export function CorporateLayoutShell({ children }: { children: React.ReactNode }
         { label: "Messages", icon: MessageSquare, href: "/corporate/messages" },
         { label: "My Profile", icon: User, href: "/corporate/profile" },
     ];
+
+    const navigateMobile = (href: string) => {
+        setLocation(href);
+    };
 
     const SidebarContent = () => (
         <div className="flex flex-col h-full bg-white border-r border-slate-100 shadow-sm relative overflow-hidden">
@@ -147,32 +175,27 @@ export function CorporateLayoutShell({ children }: { children: React.ReactNode }
     return (
         <div className="flex h-screen bg-[var(--corp-bg-subtle)] text-slate-800 font-sans">
             {/* Desktop Sidebar */}
-            <div className="hidden md:flex w-72 flex-col fixed inset-y-0 z-50 transition-all duration-300">
-                <SidebarContent />
-            </div>
+            {!isCorporateMobile && (
+                <div className="hidden md:flex w-72 flex-col fixed inset-y-0 z-50 transition-all duration-300">
+                    <SidebarContent />
+                </div>
+            )}
 
             {/* Mobile Header */}
-            <div className="md:hidden fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md z-40 flex items-center justify-between px-4 border-b border-slate-100 shadow-sm">
-                <div className="font-bold flex items-center gap-2 text-slate-800">
-                    <Building2 className="h-6 w-6 text-[var(--corp-blue)]" />
-                    <span>Promise Corporate Portal</span>
+            <div className={`${isCorporateMobile && !isFocusedMobileRoute ? "flex" : "hidden"} fixed top-0 left-0 right-0 h-16 bg-white/80 backdrop-blur-md z-40 items-center justify-between px-4 border-b border-slate-100 shadow-sm`}>
+                <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-400 leading-none mb-0.5">Corporate</p>
+                    <h1 className="text-base font-bold text-slate-900 leading-none">{getPageTitle(location)}</h1>
                 </div>
-                <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-                    <SheetTrigger asChild>
-                        <Button variant="ghost" size="icon" className="corp-btn-glow">
-                            <Menu className="h-6 w-6 text-slate-600" />
-                        </Button>
-                    </SheetTrigger>
-                    <SheetContent side="left" className="p-0 border-r-0 w-72">
-                        <SidebarContent />
-                    </SheetContent>
-                </Sheet>
+                <div className="flex items-center gap-1">
+                    <CorporateNotificationsBell />
+                </div>
             </div>
 
             {/* Main Content Wrapper */}
-            <main className="flex-1 md:ml-72 pt-16 md:pt-0 overflow-auto h-screen transition-all">
+            <main className={`${isCorporateMobile ? (isFocusedMobileRoute ? "ml-0 pt-0 pb-0" : "ml-0 pt-16 pb-24") : "md:ml-72 md:pt-0"} flex-1 overflow-x-hidden overflow-y-auto h-screen transition-all`}>
                 {/* Desktop Top Header */}
-                <header className="hidden md:flex sticky top-0 z-30 h-18 bg-white/80 backdrop-blur-md border-b border-slate-100 px-8 items-center justify-between">
+                {!isCorporateMobile && <header className="hidden md:flex sticky top-0 z-30 h-18 bg-white/80 backdrop-blur-md border-b border-slate-100 px-8 items-center justify-between">
                     <div className="flex items-center gap-4 flex-1">
                         <div className="relative w-full max-w-md hidden lg:block">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -220,14 +243,122 @@ export function CorporateLayoutShell({ children }: { children: React.ReactNode }
                             </DropdownMenuContent>
                         </DropdownMenu>
                     </div>
-                </header>
+                </header>}
 
-                <div className="p-4 md:p-8 max-w-7xl mx-auto animate-slide-up">
+                <div className={`${isCorporateMobile ? (isFocusedMobileRoute ? "p-0" : "p-4 pb-8") : "md:p-8"} max-w-7xl mx-auto animate-slide-up`}>
                     {children}
                 </div>
-                {/* Floating Chat Button used to be here */}
-                <CorporatePwaInstallPrompt />
+                {isCorporateMobile && !isFocusedMobileRoute && (
+                    <nav className="fixed inset-x-0 bottom-0 z-50 border-t border-slate-200 bg-white/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-8px_24px_rgba(15,23,42,0.08)] backdrop-blur-md" aria-label="Corporate mobile navigation">
+                        <div className="mx-auto grid max-w-lg grid-cols-5 gap-1">
+                            {[
+                                { href: "/corporate/dashboard", label: "Home", icon: LayoutDashboard },
+                                { href: "/corporate/jobs", label: "Jobs", icon: ClipboardList },
+                                { href: "/corporate/service-request", label: "Request", icon: Wrench },
+                                { href: "/corporate/messages", label: "Messages", icon: MessageSquare },
+                                { href: "#more", label: "More", icon: MoreHorizontal },
+                            ].map((item) => {
+                                const Icon = item.icon;
+                                const active = item.href !== "#more" && (location === item.href || (item.href === "/corporate/jobs" && location.startsWith("/corporate/jobs/")));
+                                if (item.href === "#more") {
+                                    return (
+                                        <button
+                                            key="more"
+                                            ref={moreButtonRef}
+                                            type="button"
+                                            onClick={() => setIsMoreOpen(true)}
+                                            className="flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold transition-colors text-slate-500 hover:bg-slate-50"
+                                            aria-label="Open more options"
+                                            aria-haspopup="dialog"
+                                            aria-expanded={isMoreOpen}
+                                        >
+                                            <Icon className="h-5 w-5" />
+                                            {item.label}
+                                        </button>
+                                    );
+                                }
+                                return (
+                                    <button
+                                        key={item.href}
+                                        type="button"
+                                        onClick={() => navigateMobile(item.href)}
+                                        className={`flex min-h-14 flex-col items-center justify-center gap-1 rounded-xl text-[11px] font-semibold transition-colors ${active ? "bg-blue-50 text-[var(--corp-blue)]" : "text-slate-500 hover:bg-slate-50"}`}
+                                        aria-current={active ? "page" : undefined}
+                                    >
+                                        <Icon className="h-5 w-5" />
+                                        {item.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    </nav>
+                )}
+                <CorporatePwaInstallPrompt disabled={isFocusedMobileRoute} />
             </main>
+
+            {/* More bottom sheet — portaled to body so it clears dock z-index */}
+            {isCorporateMobile && createPortal(
+                <AnimatePresence>
+                    {isMoreOpen && (
+                        <>
+                            <motion.div
+                                key="more-backdrop"
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                transition={{ duration: 0.18 }}
+                                className="fixed inset-0 z-[200] bg-black/40"
+                                onClick={closeMore}
+                                aria-hidden="true"
+                            />
+                            <MobileBottomSheetFrame
+                                key="more-sheet"
+                                onClose={closeMore}
+                                className="fixed inset-x-0 bottom-0 z-[201] overflow-hidden rounded-t-2xl bg-white shadow-2xl"
+                            >
+                                <div
+                                    role="dialog"
+                                    aria-modal="true"
+                                    aria-labelledby="corp-more-title"
+                                    aria-describedby="corp-more-desc"
+                                >
+                                    <MobileBottomSheetHandle />
+                                    <p id="corp-more-title" className="sr-only">More options</p>
+                                    <p id="corp-more-desc" className="sr-only">Navigate to notifications, profile, support, or log out.</p>
+                                    <nav className="px-3 pb-2" aria-label="More options navigation">
+                                        {[
+                                            { icon: Bell, label: "Notifications", href: "/corporate/notifications" },
+                                            { icon: User, label: "My Profile", href: "/corporate/profile" },
+                                            { icon: HelpCircle, label: "Help / Support", href: "/corporate/messages" },
+                                        ].map(({ icon: Icon, label, href }) => (
+                                            <button
+                                                key={href}
+                                                type="button"
+                                                onClick={() => { closeMore(); setLocation(href); }}
+                                                className="flex w-full items-center gap-4 rounded-xl px-4 py-3.5 text-sm font-semibold text-slate-700 transition-colors active:bg-slate-100"
+                                            >
+                                                <Icon className="h-5 w-5 text-[var(--corp-blue)]" aria-hidden="true" />
+                                                {label}
+                                            </button>
+                                        ))}
+                                        <div className="mx-4 my-1 h-px bg-slate-100" />
+                                        <button
+                                            type="button"
+                                            onClick={() => { closeMore(); logout(); }}
+                                            className="flex w-full items-center gap-4 rounded-xl px-4 py-3.5 text-sm font-semibold text-red-600 transition-colors active:bg-red-50"
+                                        >
+                                            <LogOut className="h-5 w-5" aria-hidden="true" />
+                                            Log out
+                                        </button>
+                                    </nav>
+                                    <div className="pb-[calc(env(safe-area-inset-bottom)+1rem)]" />
+                                </div>
+                            </MobileBottomSheetFrame>
+                        </>
+                    )}
+                </AnimatePresence>,
+                document.body
+            )}
         </div>
     );
 }

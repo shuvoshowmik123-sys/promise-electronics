@@ -1,17 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
+import { motion, useReducedMotion } from "framer-motion";
 import { navItems, images } from "@/lib/app-config";
 import { CustomerLanguageProvider, useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
-import { Search, ShoppingCart, User, Menu, LogOut, UserCircle, Globe, Shield, Facebook, Twitter, Instagram, Linkedin } from "lucide-react";
+import { Search, ShoppingCart, User, LogOut, UserCircle, Globe, Shield, Facebook, Twitter, Instagram, Linkedin, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  Sheet,
-  SheetContent,
-  SheetTrigger,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,16 +23,19 @@ import { MobileBottomNav } from "./MobileBottomNav";
 import { NetworkOfflineBanner } from "@/components/customer/NetworkOfflineBanner";
 import { ScrollProgressBar } from "@/components/customer/ScrollProgressBar";
 
+/** Matches homepage section motion: soft y + opacity, easeOut ~0.55–0.65s */
+const HEADER_EASE = [0.22, 1, 0.36, 1] as const;
+
 function DesktopLangToggle() {
   const { language, toggleLanguage } = useCustomerLanguage();
   return (
     <button
       onClick={toggleLanguage}
-      className="flex items-center gap-1.5 rounded-full bg-white/15 hover:bg-white/30 text-white text-xs font-bold px-3 py-1 transition-all border border-white/20 hover:border-white/40"
+      className="flex h-10 items-center gap-1.5 rounded-full px-3 text-xs font-bold text-slate-700 transition-colors hover:bg-blue-50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       aria-label={language === "en" ? "Switch to Bangla" : "Switch to English"}
       data-testid="button-lang-toggle-desktop"
     >
-      <Globe className="h-3 w-3 opacity-80" />
+      <Globe className="h-3.5 w-3.5 text-primary" />
       {language === "en" ? "বাংলা" : "English"}
     </button>
   );
@@ -56,12 +53,36 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [showMobileSearch, setShowMobileSearch] = useState(false);
+  const [isHeaderCompact, setIsHeaderCompact] = useState(false);
+  const isHeaderCompactRef = useRef(false);
   const [profileSkipped, setProfileSkipped] = useState(() => {
     return sessionStorage.getItem('profileCompletionSkipped') === 'true';
   });
   const { customer, isAuthenticated, logout, needsProfileCompletion, checkAuth } = useCustomerAuth();
   const { itemCount } = useCart();
+  const prefersReducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    let animationFrame = 0;
+    const updateHeader = () => {
+      cancelAnimationFrame(animationFrame);
+      animationFrame = requestAnimationFrame(() => {
+        // Hysteresis: enter compact after 112px, leave earlier (56px) so return-to-top
+        // animation can start while the user is still scrolling up — not only at the top edge.
+        const nextCompact = isHeaderCompactRef.current ? window.scrollY > 56 : window.scrollY > 112;
+        if (nextCompact !== isHeaderCompactRef.current) {
+          isHeaderCompactRef.current = nextCompact;
+          setIsHeaderCompact(nextCompact);
+        }
+      });
+    };
+    updateHeader();
+    window.addEventListener("scroll", updateHeader, { passive: true });
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      window.removeEventListener("scroll", updateHeader);
+    };
+  }, []);
 
 
   const handleSkipProfile = () => {
@@ -74,7 +95,6 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
   const handleSearch = () => {
     if (searchQuery.trim()) {
       setLocation(`/shop?search=${encodeURIComponent(searchQuery.trim())}`);
-      setShowMobileSearch(false);
     }
   };
 
@@ -96,6 +116,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
   };
 
   const supportPhone = getSettingValue("support_phone", "+880 1700-000000");
+  const supportPhoneHref = supportPhone.replace(/[^\d+]/g, "");
   const businessHours = getSettingValue("business_hours", "9:00 AM - 9:00 PM");
   const siteName = getSettingValue("site_name", "Promise Electronics");
   const logoUrl = getSettingValue("logo_url", "");
@@ -112,43 +133,97 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <CustomerLanguageProvider>
-    <div className="customer-portal-shell min-h-screen flex flex-col bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50">
+    <div className="customer-portal-shell min-h-screen flex flex-col bg-slate-50">
       <ScrollToTop />
       <ScrollProgressBar />
       <NetworkOfflineBanner />
-      {/* Top Bar */}
-      <div className="bg-gradient-to-r from-primary to-primary/90 text-primary-foreground py-2 px-4 text-sm hidden sm:block">
-        <div className="container mx-auto flex justify-between items-center">
-          <p>📞 Hotline: {supportPhone} | 🕒 {businessHours}</p>
-          <DesktopLangToggle />
-        </div>
-      </div>
-
-      {/* Main Header - Neumorphic */}
-      <header className={`${isImmersiveMobileRoute ? "hidden md:block" : ""} bg-slate-100 sticky top-0 z-50 shadow-neumorph-sm border-b border-slate-200/50 pt-[env(safe-area-inset-top)]`}>
-        <div className="container mx-auto px-4 py-3 sm:py-4">
-          <div className="flex items-center justify-between gap-4 sm:gap-8">
-            {/* Logo */}
-            <Link href="/" className="flex items-center gap-2 text-xl sm:text-2xl font-heading font-bold text-primary tracking-tight flex-shrink-0" data-testid="link-logo">
-              <img src={logoUrl || images.logo} alt="Logo" className="h-8 w-8 sm:h-10 sm:w-10 object-contain" />
-              <span className="hidden sm:inline">
-                PROMISE<span className="text-foreground">ELECTRONICS</span>
+      <header className="pointer-events-none sticky top-0 z-50 hidden h-24 md:block" aria-label="Customer site header">
+        {/* Stable outer footprint (h-24). Capsule motion matches homepage fade/y language. */}
+        <div className="mx-auto w-full max-w-[1600px] px-6 pt-4 lg:px-8">
+          <motion.div
+            data-compact={isHeaderCompact ? "true" : "false"}
+            className="desktop-header-capsule pointer-events-auto relative grid h-[76px] w-full origin-top grid-cols-[auto_auto_minmax(9rem,1fr)_auto] items-center gap-3 rounded-3xl border border-slate-950/18 px-4 backdrop-blur-2xl will-change-transform lg:gap-4 lg:px-5 xl:gap-6"
+            // First paint: soft drop-in (same family as hero copy opacity+y)
+            initial={prefersReducedMotion ? false : { opacity: 0, y: -14, scale: 0.98 }}
+            // Close (scroll down) vs open/return (scroll top) — slight, polished, not bouncy
+            animate={
+              isHeaderCompact
+                ? {
+                    opacity: 1,
+                    y: -3,
+                    scale: 0.985,
+                    boxShadow: "0 0 0 1px rgba(15, 23, 42, 0.1), 0 14px 32px -18px rgba(15, 23, 42, 0.28)",
+                    backgroundColor: "rgba(255, 255, 255, 0.94)",
+                    borderColor: "rgba(15, 23, 42, 0.16)",
+                  }
+                : {
+                    opacity: 1,
+                    y: 0,
+                    scale: 1,
+                    boxShadow: "0 0 0 1px rgba(15, 23, 42, 0.12), 0 20px 48px -22px rgba(15, 23, 42, 0.32)",
+                    backgroundColor: "rgba(255, 255, 255, 0.9)",
+                    borderColor: "rgba(15, 23, 42, 0.2)",
+                  }
+            }
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : {
+                    duration: isHeaderCompact ? 0.48 : 0.58,
+                    ease: HEADER_EASE,
+                  }
+            }
+          >
+            <Link href="/home" className="flex shrink-0 items-center gap-2 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30" data-testid="link-logo">
+              <motion.img
+                src={logoUrl || images.logo}
+                alt={`${siteName} logo`}
+                className="h-9 w-9 origin-left object-contain"
+                animate={{ scale: isHeaderCompact ? 0.89 : 1 }}
+                transition={
+                  prefersReducedMotion
+                    ? { duration: 0 }
+                    : { duration: isHeaderCompact ? 0.48 : 0.58, ease: HEADER_EASE }
+                }
+              />
+              <span className="font-heading text-base font-black tracking-tight text-primary lg:text-lg">
+                PROMISE<span className="hidden text-slate-950 min-[1180px]:inline">ELECTRONICS</span>
               </span>
             </Link>
 
-            {/* Search Bar (Desktop) - Neumorphic */}
-            <div className="hidden md:flex flex-1 max-w-2xl relative">
+            <nav className="flex items-center gap-0.5" aria-label="Primary navigation">
+              {navItems.map((item) => {
+                const isActive = currentPath === item.href || (item.href === "/home" && currentPath === "/");
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`relative flex h-10 items-center whitespace-nowrap rounded-full px-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 lg:px-3 lg:text-sm ${isActive ? "bg-blue-50 text-primary" : "text-slate-600 hover:bg-white hover:text-primary"}`}
+                    data-testid={`link-secondary-nav-${item.href.replace(/\//g, '')}`}
+                  >
+                    {item.label}
+                    {isActive && <span className="absolute inset-x-3 -bottom-0.5 h-0.5 rounded-full bg-primary/70" aria-hidden="true" />}
+                  </Link>
+                );
+              })}
+            </nav>
+
+            <div className="relative min-w-0">
               <Input
                 placeholder="Search products, parts, or services..."
-                className="w-full pl-4 pr-12 rounded-full bg-white border-none shadow-neumorph-inset focus-visible:ring-primary/30 focus-visible:ring-2"
+                aria-label="Search products, parts, or services"
+                className="h-10 w-full rounded-full border border-slate-200/80 bg-white/78 pl-4 pr-11 text-sm shadow-[0_6px_18px_rgba(15,23,42,0.07)] focus-visible:border-primary/40 focus-visible:ring-2 focus-visible:ring-primary/20"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={handleSearchKeyDown}
                 data-testid="input-search"
               />
               <Button
+                type="button"
                 size="icon"
-                className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8 rounded-full shadow-neumorph hover:shadow-neumorph-inset transition-shadow"
+                aria-label="Submit search"
+                className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full shadow-none"
                 onClick={handleSearch}
                 data-testid="button-search"
               >
@@ -156,21 +231,38 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
               </Button>
             </div>
 
-            {/* Actions - Neumorphic */}
-            <div className="hidden md:flex items-center gap-4">
-              <Button variant="ghost" size="icon" className="relative rounded-full shadow-neumorph hover:shadow-neumorph-inset transition-shadow bg-slate-100" onClick={() => setLocation("/cart")} data-testid="button-cart-desktop">
+            <div className="flex shrink-0 items-center gap-1.5">
+              <a
+                href={`tel:${supportPhoneHref}`}
+                aria-label={`Call hotline ${supportPhone}. Open ${businessHours}`}
+                className="hidden h-11 min-w-[176px] items-center rounded-2xl border border-blue-200/80 bg-white/64 px-3.5 text-left shadow-sm transition-colors hover:border-blue-300 hover:bg-blue-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 min-[1280px]:flex"
+              >
+                <span className="min-w-0 leading-tight">
+                  <span className="block whitespace-nowrap text-xs font-bold text-slate-900">{supportPhone}</span>
+                  <span className="mt-0.5 block whitespace-nowrap text-[10px] font-semibold text-slate-500">Open {businessHours}</span>
+                </span>
+              </a>
+              <a
+                href={`tel:${supportPhoneHref}`}
+                aria-label={`Call hotline ${supportPhone}`}
+                className="flex h-10 w-10 items-center justify-center rounded-full text-slate-700 transition-colors hover:bg-blue-50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 min-[1280px]:hidden"
+              >
+                <Phone className="h-4 w-4" />
+              </a>
+              <DesktopLangToggle />
+              <Button variant="ghost" size="icon" aria-label="Open cart" className="relative h-10 w-10 rounded-full text-slate-700 hover:bg-blue-50 hover:text-primary" onClick={() => setLocation("/cart")} data-testid="button-cart-desktop">
                 <ShoppingCart className="h-5 w-5" />
                 {itemCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-destructive text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center shadow-sm" data-testid="text-cart-count">{itemCount}</span>
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-1 text-[10px] text-white shadow-sm" data-testid="text-cart-count">{itemCount}</span>
                 )}
               </Button>
 
               {isAuthenticated && customer ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="outline" className="gap-2 rounded-full shadow-neumorph hover:shadow-neumorph-inset transition-shadow border-none bg-slate-100" data-testid="button-user-menu">
-                      <UserCircle className="h-5 w-5" />
-                      <span className="max-w-[150px] truncate" title={customer.name}>{customer.name}</span>
+                    <Button variant="outline" className="h-10 max-w-[150px] gap-2 rounded-full border-blue-100 bg-white/80 px-3 text-slate-700 shadow-sm hover:bg-blue-50 hover:text-primary" data-testid="button-user-menu">
+                      <UserCircle className="h-5 w-5 shrink-0" />
+                      <span className="truncate" title={customer.name}>{customer.name}</span>
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-48">
@@ -194,110 +286,15 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
                   </DropdownMenuContent>
                 </DropdownMenu>
               ) : (
-                <Button onClick={() => setShowAuthModal(true)} className="rounded-full shadow-neumorph hover:shadow-neumorph-inset transition-shadow" data-testid="button-signin">
+                <Button onClick={() => setShowAuthModal(true)} className="h-10 rounded-full px-4 shadow-[0_2px_5px_-3px_rgba(14,165,233,0.18)]" data-testid="button-signin">
                   <User className="mr-2 h-4 w-4" /> Sign In
                 </Button>
               )}
             </div>
 
-            {/* Mobile Actions & Menu */}
-            <div className="flex items-center gap-2 md:hidden">
-              <Button variant="ghost" size="icon" onClick={() => setShowMobileSearch(!showMobileSearch)} data-testid="button-search-mobile">
-                <Search className="h-5 w-5" />
-              </Button>
-              <Button variant="ghost" size="icon" className="relative" onClick={() => setLocation("/cart")} data-testid="button-cart-mobile">
-                <ShoppingCart className="h-5 w-5" />
-                {itemCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-destructive text-white text-[10px] w-4 h-4 rounded-full flex items-center justify-center" data-testid="text-cart-count-mobile">{itemCount}</span>
-                )}
-              </Button>
-              <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="ghost" size="icon" data-testid="button-menu"><Menu className="h-6 w-6" /></Button>
-                </SheetTrigger>
-                <SheetContent side="right">
-                  <div className="flex flex-col h-full">
-                    <SheetHeader className="mb-4 text-left">
-                      <SheetTitle className="text-xl font-heading font-bold text-primary">PROMISE<span className="text-foreground">ELECTRONICS</span></SheetTitle>
-                    </SheetHeader>
-
-                    {!isAuthenticated && (
-                      <Button className="w-full mb-4" onClick={() => setShowAuthModal(true)} data-testid="button-mobile-signin">
-                        Sign In / Register
-                      </Button>
-                    )}
-
-                    {isAuthenticated && customer && (
-                      <div className="mb-4 p-4 bg-primary/5 rounded-lg">
-                        <p className="font-medium truncate" title={customer.name}>{customer.name}</p>
-                        <p className="text-sm text-muted-foreground">{customer.phone}</p>
-                      </div>
-                    )}
-
-                    <nav className="flex flex-col gap-4">
-                      {navItems.map((item, index) => (
-                        <div key={item.href}>
-                          <Link href={item.href} className={`text-lg font-medium py-2 border-b border-slate-100 block ${location === item.href ? 'text-primary' : 'text-foreground'}`} data-testid={`link-nav-${item.href.replace(/\//g, '')}`}>
-                            {item.label}
-                          </Link>
-                          {index === 0 && isAuthenticated && (
-                            <Link href="/my-profile" className={`text-lg font-medium py-2 border-b border-slate-100 block mt-4 ${location === '/my-profile' ? 'text-primary' : 'text-foreground'}`} data-testid="link-nav-my-profile">
-                              My Profile
-                            </Link>
-                          )}
-                        </div>
-                      ))}
-                    </nav>
-
-                    {isAuthenticated && (
-                      <div className="mt-auto">
-                        <Button variant="outline" className="w-full" onClick={handleLogout} data-testid="button-mobile-logout">
-                          <LogOut className="mr-2 h-4 w-4" />
-                          Logout
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                </SheetContent>
-              </Sheet>
-            </div>
-          </div>
-
-          {/* Secondary Nav - Neumorphic Pills */}
-          <nav className="hidden md:flex gap-4 mt-4 text-sm font-medium">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`px-4 py-2 rounded-full transition-all duration-200 ${location === item.href ? 'text-primary bg-white shadow-neumorph-inset font-semibold' : 'text-muted-foreground hover:text-primary hover:bg-white/50'}`}
-                data-testid={`link-secondary-nav-${item.href.replace(/\//g, '')}`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </nav>
+          </motion.div>
         </div>
       </header>
-
-      {/* Mobile Search Bar - Neumorphic */}
-      {showMobileSearch && (
-        <div className="md:hidden bg-slate-100 border-b border-slate-200/50 px-4 py-3 shadow-neumorph-sm">
-          <div className="flex gap-2">
-            <Input
-              placeholder="Search products..."
-              className="flex-1 bg-white shadow-neumorph-inset border-none rounded-full"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={handleSearchKeyDown}
-              autoFocus
-              data-testid="input-search-mobile"
-            />
-            <Button onClick={handleSearch} className="rounded-full shadow-neumorph" data-testid="button-search-mobile-submit">
-              <Search className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
 
       <main className={`flex-1 ${currentPath === "/login" ? "pb-0" : isImmersiveMobileRoute ? "pb-28 md:pb-0" : "pb-20 md:pb-0"}`}>
         {children}

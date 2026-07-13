@@ -2,12 +2,14 @@ import { X, Download, Building2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { usePwaInstallPrompt } from "@/hooks/usePwaInstallPrompt";
 import { useCorporateAuth } from "@/contexts/CorporateAuthContext";
+import { useCorporateMobileMode } from "@/hooks/useCorporateMobileMode";
 
-export function CorporatePwaInstallPrompt() {
+export function CorporatePwaInstallPrompt({ disabled = false }: { disabled?: boolean }) {
   const { canShow, isIOS, install, dismiss, hasNativePrompt } = usePwaInstallPrompt("corporate");
   const { user } = useCorporateAuth();
+  const isCorporateMobile = useCorporateMobileMode();
 
-  if (!canShow || !user) return null;
+  if (disabled || !canShow || !user) return null;
   if (!isIOS && !hasNativePrompt) return null;
 
   const handleInstall = async () => {
@@ -19,7 +21,7 @@ export function CorporatePwaInstallPrompt() {
   };
 
   return (
-    <div className="fixed bottom-4 right-4 z-50 w-80 animate-in slide-in-from-bottom-4 duration-300">
+    <div className={`fixed ${isCorporateMobile ? "bottom-[calc(5.5rem+env(safe-area-inset-bottom))] left-3 right-3 w-auto" : "bottom-4 right-4 w-80"} z-50 animate-in slide-in-from-bottom-4 duration-300`}>
       <div className="bg-white rounded-xl shadow-lg border border-blue-100 overflow-hidden">
         <div className="flex items-center gap-3 p-3 bg-blue-800 text-white">
           <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center flex-shrink-0">

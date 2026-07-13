@@ -14,6 +14,7 @@ import {
 } from "@/components/corporate/CorporatePageSkeleton";
 
 // Lazy load corporate pages
+const CorporateSetupPage = lazy(() => import("@/pages/corporate/setup"));
 const CorporateDashboard = lazy(() => import("@/pages/corporate/dashboard"));
 const CorporateJobTracker = lazy(() => import("@/pages/corporate/job-tracker"));
 const CorporateJobDetails = lazy(() => import("@/pages/corporate/job-details"));
@@ -72,11 +73,19 @@ function CorporateModuleGuard({ module, children }: { module: string, children: 
 export function CorporateRouter() {
     const [location] = useLocation();
 
-    // Login page should not have the shell or guard
+    // Public pages — no auth guard, no shell
     if (location === "/corporate/login") {
         return (
             <Suspense fallback={<GenericSkeleton />}>
                 <CorporateLogin />
+            </Suspense>
+        );
+    }
+
+    if (location.startsWith("/corporate/setup/")) {
+        return (
+            <Suspense fallback={<GenericSkeleton />}>
+                <CorporateSetupPage />
             </Suspense>
         );
     }

@@ -10,7 +10,7 @@ import { PrintStyles } from "@/components/print";
 import { Search, UserPlus, Trash2, CreditCard, Plus, ShoppingCart, Package, Loader2, Minus, FileText, Banknote, Smartphone, Clock, Shield, ChevronDown, Link, ListPlus, X, Landmark, ScanBarcode, LockKeyhole, AlertTriangle, TrendingUp, Equal, Ban, RefreshCcw, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { inventoryApi, jobTicketsApi, posTransactionsApi, settingsApi, adminCustomersApi, drawerApi } from "@/lib/api";
+import { inventoryApi, jobTicketsApi, posTransactionsApi, settingsApi, adminCustomersApi, drawerApi, publicAreaMapApi } from "@/lib/api";
 import { toast } from "sonner";
 import { CartItem, LinkedJobCharge, TransactionData, PAYMENT_METHODS, parseImages, parseTransactionForReprint } from "./pos/pos-types";
 const CustomerDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.CustomerDialog })));
@@ -71,6 +71,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     const [customerName, setCustomerName] = useState("");
     const [customerPhone, setCustomerPhone] = useState("");
     const [customerAddress, setCustomerAddress] = useState("");
+    const [serviceAreaId, setServiceAreaId] = useState("");
     const [discount, setDiscount] = useState(0);
     const [paymentMethod, setPaymentMethod] = useState("Cash");
     const [productSearch, setProductSearch] = useState("");
@@ -111,6 +112,13 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     const { data: posTransactions } = useQuery({ queryKey: ["pos-transactions"], queryFn: () => posTransactionsApi.getAll() });
     const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: settingsApi.getAll });
     const { data: customers, isLoading: customersLoading } = useQuery({ queryKey: ["admin-customers"], queryFn: adminCustomersApi.getAll });
+    const { data: serviceAreas = [] } = useQuery({
+        queryKey: ['public-service-area-list'],
+        queryFn: publicAreaMapApi.getList,
+        staleTime: 0,
+        gcTime: 0,
+        refetchOnMount: 'always',
+    });
     // Only fetches when register is confirmed closed — shows last opener in lock screen
     const { data: recentDrawerHistory } = useQuery({
         queryKey: ["drawerHistory", "recent"],
@@ -350,12 +358,6 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     const checkoutMutation = useMutation({
         mutationFn: posTransactionsApi.create,
         onSuccess: async (response) => {
-            if (linkedJobCharges.length > 0) {
-                try {
-                    await Promise.all(linkedJobCharges.map(c => jobTicketsApi.recordPayment(c.jobId, { paymentId: response.id, amount: c.billedAmount, method: paymentMethod })));
-                    toast.success("Job payments recorded successfully");
-                } catch (e) { console.error("Failed to update job payment status", e); toast.error("Transaction saved, but failed to update job payment status"); }
-            }
             const td: TransactionData = {
                 id: response.id, invoiceNumber: response.invoiceNumber, customer: response.customer,
                 customerPhone: response.customerPhone, customerAddress: response.customerAddress,
@@ -369,7 +371,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
             // Without this the SuccessDialog (z-50) renders behind the cart sheet (z-[60]) and is invisible.
             setMobileCartOpen(false);
             setLastTransaction(td);
-            setCartItems([]); setLinkedJobCharges([]); setCustomerName(""); setCustomerPhone(""); setCustomerAddress(""); setDiscount(0); setPaymentMethod("Cash");
+            setCartItems([]); setLinkedJobCharges([]); setCustomerName(""); setCustomerPhone(""); setCustomerAddress(""); setServiceAreaId(""); setDiscount(0); setPaymentMethod("Cash");
             setTimeout(() => setShowSuccessDialog(true), 380);
             queryClient.invalidateQueries({ queryKey: ["pos-transactions"] });
             queryClient.invalidateQueries({ queryKey: ["inventory"] });
@@ -400,6 +402,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
         checkoutMutation.mutate({
             id: `POS-${Date.now()}`, customer: customerName || null, customerPhone: customerPhone || null, customerAddress: customerAddress || null,
             items: JSON.stringify(cartItems), linkedJobs: linkedJobCharges.length > 0 ? JSON.stringify(linkedJobsData) : null,
+            serviceAreaId: linkedJobCharges.length === 0 && serviceAreaId ? serviceAreaId : null,
             subtotal: parseFloat(subtotal.toFixed(2)), tax: parseFloat(tax.toFixed(2)), taxRate: parseFloat(vatRate.toFixed(2)),
             discount: parseFloat(discount.toFixed(2)), total: parseFloat(total.toFixed(2)), paymentMethod, paymentStatus: paymentMethod === "Due" ? "Due" : "Paid",
         });
@@ -1108,6 +1111,10 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                             value={customerAddress}
                                             onChange={(e) => setCustomerAddress(e.target.value)}
                                         />
+                                        <select value={serviceAreaId} onChange={(event) => setServiceAreaId(event.target.value)} disabled={linkedJobCharges.length > 0} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 disabled:bg-slate-100">
+                                            <option value="">{linkedJobCharges.length > 0 ? 'Area inherited from linked jobs' : 'Service area (optional)'}</option>
+                                            {serviceAreas.map((area) => <option key={area.id} value={area.id}>{[area.blockOrSector, area.subareaName, area.areaName].filter(Boolean).join(', ')}</option>)}
+                                        </select>
                                     </div>
                                 </div>
                                 {/* Mobile Cart Items */}
@@ -1600,6 +1607,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                     <div className="grid grid-cols-2 gap-2">
                                         <Input placeholder="Phone number" className="h-9 bg-white border-slate-200 rounded-lg text-xs" value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} />
                                         <Input placeholder="Address" className="h-9 bg-white border-slate-200 rounded-lg text-xs" value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} />
+                                        <select value={serviceAreaId} onChange={(event) => setServiceAreaId(event.target.value)} disabled={linkedJobCharges.length > 0} className="h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 disabled:bg-slate-100"><option value="">{linkedJobCharges.length > 0 ? 'Area inherited from jobs' : 'Service area (optional)'}</option>{serviceAreas.map((area) => <option key={area.id} value={area.id}>{[area.blockOrSector, area.subareaName, area.areaName].filter(Boolean).join(', ')}</option>)}</select>
                                     </div>
                                     <div className="grid grid-cols-2 gap-2">
                                         <Button variant="outline" className="h-9 bg-gradient-to-r from-violet-500 to-purple-600 text-white border-0 hover:opacity-90 shadow-md shadow-violet-200 rounded-xl text-[11px] font-semibold gap-2" onClick={() => setIsJobDialogOpen(true)}>

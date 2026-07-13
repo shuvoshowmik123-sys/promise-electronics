@@ -5,7 +5,6 @@ import {
     MessageSquare,
     Send,
     Image as ImageIcon,
-    Paperclip,
     Loader2,
     CheckCheck,
     Check,
@@ -29,6 +28,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Separator } from "@/components/ui/separator";
 import { useCorporateAuth } from "@/contexts/CorporateAuthContext";
+import { useCorporateMobileMode } from "@/hooks/useCorporateMobileMode";
 import { corporateMessagesApi } from "@/lib/api";
 import { ImageKitUpload } from "@/components/common/ImageKitUpload";
 import { cn } from "@/lib/utils";
@@ -38,6 +38,7 @@ import { useMessageQueue, QueueMessage } from "@/hooks/useMessageQueue";
 import { useSound } from "@/hooks/useSound";
 import { useCorporateApiErrorHandler, corporateQueryConfig } from "@/lib/corporateApiErrorHandler";
 import { useCorporateSSE } from "@/hooks/useCorporateSSE";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 
 // ... existing code ...
 
@@ -98,7 +99,7 @@ const statusColors: Record<string, string> = {
     Pending: "bg-amber-50 text-amber-600 border-amber-200",
     "In Progress": "bg-blue-50 text-blue-600 border-blue-200",
     Completed: "bg-emerald-50 text-emerald-600 border-emerald-200",
-    Delivered: "bg-purple-50 text-purple-600 border-purple-200",
+    Delivered: "bg-sky-50 text-sky-700 border-sky-200",
     Cancelled: "bg-rose-50 text-rose-600 border-rose-200",
 };
 
@@ -164,6 +165,7 @@ function JobCardBubble({ meta, isFromCorporate, onJobClick }: { meta: JobRefMeta
 
 export default function CorporateMessagesPage() {
     const { user } = useCorporateAuth();
+    const isCorporateMobile = useCorporateMobileMode();
     const queryClient = useQueryClient();
     const { isOnline } = useNetworkStatus();
     const { playSent, playReceived, isMuted, toggleMute } = useSound();
@@ -178,7 +180,7 @@ export default function CorporateMessagesPage() {
         if (!jobRef) return null;
         return {
             jobId: jobRef,
-            jobNo: params.get("jobNo") || jobRef.substring(0, 8),
+            jobNo: params.get("jobNo") || getSafeJobDisplayRef({ id: jobRef }),
             device: params.get("device") || "",
             status: params.get("status") || "",
             priority: params.get("priority") || "",
@@ -363,8 +365,7 @@ export default function CorporateMessagesPage() {
             await sendMessage.mutateAsync({ content: messageText, messageType: "text" });
             setMessageText("");
             setShowQuickActions(true);
-        } catch (error) {
-            console.error("Send failed, adding to queue", error);
+        } catch {
             // Don't add to queue here if it was a real API error handled by onError/rollback
             // Unless we want offline-like behavior for failed requests. 
             // For now, let the error toast handle it and rollback.
@@ -396,15 +397,15 @@ export default function CorporateMessagesPage() {
     };
 
     return (
-        <div className="flex flex-col h-[calc(100vh-8rem)] md:h-[calc(100vh-4.5rem)] overflow-hidden bg-[var(--corp-bg-subtle)] -m-4 md:-m-8">
+        <div className={`flex flex-col ${isCorporateMobile ? "h-[calc(100dvh-10rem)]" : "md:h-[calc(100vh-4.5rem)] h-[calc(100vh-8rem)]"} overflow-hidden bg-[var(--corp-bg-subtle)] -m-4 md:-m-8`}>
             {/* Simplified Header */}
-            <div className="px-6 py-4 border-b border-slate-200/60 bg-white/70 backdrop-blur-xl z-20 flex items-center justify-between flex-shrink-0 relative">
-                <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[var(--corp-blue)] via-blue-600 to-cyan-500 flex items-center justify-center shadow-lg shadow-blue-500/25">
+            <div className={`${isCorporateMobile ? "px-4 py-3" : "px-6 py-4"} border-b border-slate-200/60 bg-white/70 backdrop-blur-xl z-20 flex items-center justify-between flex-shrink-0 relative`}>
+                <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-xl bg-[var(--corp-blue)] flex items-center justify-center shadow-sm shadow-blue-500/25">
                         <MessageSquare className="text-white w-5 h-5" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold text-slate-800 tracking-tight">Support Chat</h1>
+                        <h1 className="text-base font-bold text-slate-800 tracking-tight">Support chat</h1>
                         <p className="text-xs text-slate-500 flex items-center gap-2">
                             <Shield className="w-3 h-3 text-emerald-500" />
                             Direct line to your account manager
@@ -461,8 +462,8 @@ export default function CorporateMessagesPage() {
             </AnimatePresence>
 
             {/* Main Chat Area - Full Width */}
-            <div className="flex-1 flex overflow-hidden p-4 md:p-6">
-                <Card className="flex-1 flex flex-col overflow-hidden border-none shadow-2xl shadow-slate-200/50 bg-white/90 backdrop-blur-xl rounded-3xl">
+            <div className={`${isCorporateMobile ? "p-0" : "p-4 md:p-6"} flex-1 flex overflow-hidden`}>
+                <Card className={`${isCorporateMobile ? "rounded-none shadow-none" : "rounded-3xl shadow-2xl shadow-slate-200/50"} flex-1 flex flex-col overflow-hidden border-none bg-white/90 backdrop-blur-xl`}>
 
                     {/* Messages Area */}
                     <ScrollArea className="flex-1 px-4 md:px-8 py-6 bg-gradient-to-b from-slate-50/50 to-white/30">
@@ -636,7 +637,7 @@ export default function CorporateMessagesPage() {
                     </ScrollArea>
 
                     {/* Composer Area - Fixed at bottom */}
-                    <div className="p-5 border-t border-slate-100/80 bg-white/70 backdrop-blur-sm flex-shrink-0">
+                    <div className={`${isCorporateMobile ? "p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]" : "p-5"} border-t border-slate-100/80 bg-white/70 backdrop-blur-sm flex-shrink-0`}>
                         {/* Quick Actions */}
                         <AnimatePresence>
                             {showQuickActions && (
@@ -644,14 +645,14 @@ export default function CorporateMessagesPage() {
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     exit={{ opacity: 0, y: -10 }}
-                                    className="mb-3 flex flex-wrap gap-2 justify-center md:justify-start"
+                                    className={`${isCorporateMobile ? "overflow-x-auto whitespace-nowrap" : "flex-wrap"} mb-3 flex gap-2 justify-start`}
                                 >
-                                    <span className="text-xs text-slate-400 mr-2 flex items-center">Quick responses:</span>
+                                    <span className="shrink-0 text-xs text-slate-400 mr-2 flex items-center">Quick replies:</span>
                                     {CORPORATE_MESSAGES.systemFeedback.slice(0, 3).map((msg: string, i: number) => (
                                         <button
                                             key={i}
                                             onClick={() => insertQuickMessage(msg)}
-                                            className="text-xs px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
+                                            className="shrink-0 text-xs px-3 py-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors"
                                         >
                                             {msg}
                                         </button>
@@ -676,14 +677,6 @@ export default function CorporateMessagesPage() {
                                         <ImageIcon className="w-5 h-5" />
                                     </Button>
                                 </ImageKitUpload>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="text-slate-400 hover:text-slate-600 hover:bg-slate-100 h-11 w-11 rounded-xl transition-colors"
-                                    aria-label="Attach file"
-                                >
-                                    <Paperclip className="w-5 h-5" />
-                                </Button>
                             </div>
                             <div className="flex-1 relative">
                                 <Input

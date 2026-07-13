@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { backupService } from '../services/backup.service.js';
-import { requireSuperAdmin } from './middleware/auth.js';
+import { requireAdminAuth, requireSuperAdmin } from './middleware/auth.js';
 import { restorationService } from '../services/restoration.service.js';
 import { storageService } from '../services/storage.service.js';
 import multer from 'multer';
@@ -14,7 +14,7 @@ const upload = multer({
 
 const router = Router();
 
-router.post('/backups', requireSuperAdmin, async (req, res) => {
+router.post('/backups', requireAdminAuth, requireSuperAdmin, async (req, res) => {
     try {
         const { password, description } = req.body;
 
@@ -38,8 +38,8 @@ router.post('/backups', requireSuperAdmin, async (req, res) => {
         res.status(201).json(backup);
 
     } catch (error: any) {
-        console.error('Backup failed:', error);
-        res.status(500).json({ error: error.message || 'Backup failed' });
+        console.error('[BackupRoutes] Backup creation failed:', (error as Error).message);
+        res.status(500).json({ error: 'Backup creation failed.' });
     }
 });
 
@@ -48,7 +48,7 @@ router.post('/backups', requireSuperAdmin, async (req, res) => {
 /**
  * Validate a backup file before restoring
  */
-router.post('/restore/validate', requireSuperAdmin, upload.single('file'), async (req, res) => {
+router.post('/restore/validate', requireAdminAuth, requireSuperAdmin, upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No backup file provided' });
@@ -71,7 +71,7 @@ router.post('/restore/validate', requireSuperAdmin, upload.single('file'), async
 /**
  * Execute full system restore
  */
-router.post('/restore/execute', requireSuperAdmin, upload.single('file'), async (req, res) => {
+router.post('/restore/execute', requireAdminAuth, requireSuperAdmin, upload.single('file'), async (req, res) => {
     try {
         const password = req.body.password;
         if (!req.file || !password) {
@@ -91,16 +91,13 @@ router.post('/restore/execute', requireSuperAdmin, upload.single('file'), async 
     }
 });
 
-/**
- * List backups from Google Drive
- */
-router.get('/backups/list', requireSuperAdmin, async (req, res) => {
+router.get('/backups/list', requireAdminAuth, requireSuperAdmin, async (req, res) => {
     try {
-        const fileList = await storageService.listFiles();
-        res.json(fileList);
+        const result = await storageService.listFiles('backups/application/');
+        res.json(result.items);
     } catch (error: any) {
-        console.error('List backups failed:', error);
-        res.status(500).json({ error: error.message });
+        console.error('[BackupRoutes] List failed:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to retrieve backup list.' });
     }
 });
 

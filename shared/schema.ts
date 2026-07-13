@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, date, jsonb, real, doublePrecision, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, date, jsonb, real, doublePrecision, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -251,6 +251,7 @@ export const jobTickets = pgTable("job_tickets", {
   mobileMedia: text("mobile_media").default("[]"),
   lastMobileUpdateAt: timestamp("last_mobile_update_at"),
   storeId: text("store_id"), // Franchise-Ready column
+  serviceAreaId: text("service_area_id"),
 
   // Ticket Type (Phase 2)
   ticketType: text("ticket_type").notNull().default("full_device"), // 'full_device' | 'panel_only' | 'motherboard_only' | 'parts_only'
@@ -291,6 +292,7 @@ export const jobTickets = pgTable("job_tickets", {
     paymentStatusIdx: index("idx_job_tickets_payment_status").on(table.paymentStatus),
     statusDeadlineIdx: index("idx_job_tickets_status_deadline").on(table.status, table.deadline),
     statusCreatedIdx: index("idx_job_tickets_status_created_at").on(table.status, table.createdAt),
+    serviceAreaIdx: index("idx_job_tickets_service_area_id").on(table.serviceAreaId),
   };
 });
 
@@ -1000,6 +1002,7 @@ export const posTransactions = pgTable("pos_transactions", {
   total: real("total").notNull(),
   paymentMethod: text("payment_method").notNull(),
   paymentStatus: text("payment_status").notNull().default("Paid"),
+  serviceAreaId: text("service_area_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   drawerSessionId: text("drawer_session_id").references(() => drawerSessions.id), // Phase 7
 }, (table) => {
@@ -1007,6 +1010,7 @@ export const posTransactions = pgTable("pos_transactions", {
     customerPhoneIdx: index("idx_pos_transactions_phone").on(table.customerPhone),
     createdAtIdx: index("idx_pos_transactions_created_at").on(table.createdAt),
     paymentMethodCreatedIdx: index("idx_pos_txn_method_created").on(table.paymentMethod, table.createdAt),
+    serviceAreaIdx: index("idx_pos_transactions_service_area_id").on(table.serviceAreaId),
   };
 });
 
@@ -1109,6 +1113,9 @@ export const serviceRequests = pgTable("service_requests", {
   // B2B Linkage
   corporateClientId: text("corporate_client_id").references(() => corporateClients.id),
   corporateChallanId: text("corporate_challan_id").references(() => challans.id),
+
+  // Geographic area (optional, privacy-safe — operational area only, no exact coordinates)
+  serviceAreaId: text("service_area_id"),
 }, (table) => {
   return {
     customerIdIdx: index("idx_service_requests_customer_id").on(table.customerId),
@@ -1117,6 +1124,7 @@ export const serviceRequests = pgTable("service_requests", {
     ticketNumberIdx: index("idx_service_requests_ticket_number").on(table.ticketNumber),
     createdAtIdx: index("idx_service_requests_created_at").on(table.createdAt),
     adminInteractedIdx: index("idx_service_requests_admin_interacted").on(table.adminInteracted),
+    serviceAreaIdx: index("idx_service_requests_service_area_id").on(table.serviceAreaId),
   };
 });
 
@@ -1662,6 +1670,7 @@ export const warrantyClaims = pgTable("warranty_claims", {
   // Job Linkage
   originalJobId: text("original_job_id").notNull(),
   newJobId: text("new_job_id"),
+  serviceAreaId: text("service_area_id"),
 
   // Customer Info snapshot at claim time
   customer: text("customer").notNull(),
@@ -1696,6 +1705,7 @@ export const warrantyClaims = pgTable("warranty_claims", {
   originalJobIdx: index("idx_warranty_claims_original_job").on(table.originalJobId),
   statusIdx: index("idx_warranty_claims_status").on(table.status),
   customerPhoneIdx: index("idx_warranty_claims_phone").on(table.customerPhone),
+  serviceAreaIdx: index("idx_warranty_claims_service_area_id").on(table.serviceAreaId),
 }));
 
 export const insertWarrantyClaimSchema = createInsertSchema(warrantyClaims).omit({
@@ -1820,7 +1830,9 @@ export const backupMetadata = pgTable("backup_metadata", {
   id: text("id").primaryKey(),
   fileName: text("file_name").notNull(),
   fileSize: integer("file_size").notNull(),
-  googleDriveFileId: text("google_drive_file_id").notNull(),
+  googleDriveFileId: text("google_drive_file_id"),
+  storageProvider: text("storage_provider").notNull().default("google_drive"),
+  storageObjectKey: text("storage_object_key"),
 
   // Backup Information
   backupType: text("backup_type").notNull(), // 'manual' | 'scheduled'
@@ -2703,3 +2715,62 @@ export const insertPaymentBlacklistSchema = createInsertSchema(paymentBlacklist)
 });
 export type InsertPaymentBlacklist = z.infer<typeof insertPaymentBlacklistSchema>;
 export type PaymentBlacklist = typeof paymentBlacklist.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Service Area Taxonomy (Phase Map-01)
+// Privacy-safe operational areas only — no exact GPS, no customer location.
+// ----------------------------------------------------------------------------
+
+export const serviceAreas = pgTable("service_areas", {
+  id: text("id").primaryKey(),
+  city: text("city").notNull().default("Dhaka"),
+  areaName: text("area_name").notNull(),
+  subareaName: text("subarea_name"),
+  blockOrSector: text("block_or_sector"),
+  normalizedKey: text("normalized_key").notNull().unique(),
+  isActive: boolean("is_active").notNull().default(true),
+  // MAP-PUBLIC-SEARCH-PRIVACY-01: explicit public publication (default unpublished)
+  isPublic: boolean("is_public").notNull().default(false),
+  // Phase Map-02: broad operational geometry — never customer GPS
+  centroidLatitude: doublePrecision("centroid_latitude"),
+  centroidLongitude: doublePrecision("centroid_longitude"),
+  boundaryGeoJson: jsonb("boundary_geo_json"),
+  geometryUpdatedAt: timestamp("geometry_updated_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  isActiveIdx: index("idx_service_areas_is_active").on(table.isActive),
+  isPublicIdx: index("idx_service_areas_is_public").on(table.isPublic),
+  cityAreaIdx: index("idx_service_areas_city_area").on(table.city, table.areaName),
+}));
+
+export const insertServiceAreaSchema = createInsertSchema(serviceAreas).omit({
+  id: true,
+  normalizedKey: true,
+  geometryUpdatedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertServiceArea = z.infer<typeof insertServiceAreaSchema>;
+export type ServiceArea = typeof serviceAreas.$inferSelect;
+
+export const posTransactionAreaAllocations = pgTable("pos_transaction_area_allocations", {
+  id: text("id").primaryKey(),
+  transactionId: text("transaction_id").notNull(),
+  jobTicketId: text("job_ticket_id"),
+  serviceAreaId: text("service_area_id").notNull(),
+  billedAmount: real("billed_amount").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  transactionJobUnique: uniqueIndex("uq_pos_area_alloc_transaction_job").on(table.transactionId, table.jobTicketId),
+  transactionIdx: index("idx_pos_area_alloc_transaction_id").on(table.transactionId),
+  jobIdx: index("idx_pos_area_alloc_job_ticket_id").on(table.jobTicketId),
+  areaIdx: index("idx_pos_area_alloc_service_area_id").on(table.serviceAreaId),
+}));
+
+export const insertPosTransactionAreaAllocationSchema = createInsertSchema(posTransactionAreaAllocations).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertPosTransactionAreaAllocation = z.infer<typeof insertPosTransactionAreaAllocationSchema>;
+export type PosTransactionAreaAllocation = typeof posTransactionAreaAllocations.$inferSelect;

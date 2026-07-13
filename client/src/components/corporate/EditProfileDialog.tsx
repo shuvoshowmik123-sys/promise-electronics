@@ -101,7 +101,7 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
                         className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden z-10 border border-slate-100"
                     >
                         {/* Native Blue Header */}
-                        <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-6 relative text-white">
+                        <div className="bg-[var(--corp-blue)] p-6 relative text-white">
                             <Button
                                 variant="ghost"
                                 size="icon"
@@ -135,7 +135,7 @@ export function EditProfileDialog({ open, onOpenChange }: EditProfileDialogProps
 
                                 <div className="space-y-2">
                                     <Label className="text-sm font-semibold text-slate-700 flex items-center gap-2">
-                                        <Mail className="w-4 h-4 text-indigo-500" />
+                                        <Mail className="w-4 h-4 text-[var(--corp-blue)]" />
                                         Email Address
                                     </Label>
                                     <Input

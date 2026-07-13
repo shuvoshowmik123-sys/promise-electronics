@@ -201,13 +201,18 @@ export const corporateApi = {
         name: string;
         email: string;
         username: string;
-    }) => fetchApi<{ user: User, temporaryPassword?: string }>("/admin/corporate-users", {
+    }) => fetchApi<{ user: User; emailSent: boolean }>("/admin/corporate-users", {
         method: "POST",
         body: JSON.stringify(data)
     }),
 
     resetCorporateUserPassword: (id: string) =>
-        fetchApi<{ user: User; temporaryPassword: string }>(`/admin/corporate-users/${id}/reset-password`, {
+        fetchApi<{ user: User; emailSent: boolean }>(`/admin/corporate-users/${id}/reset-password`, {
+            method: "POST",
+        }),
+
+    resendCorporateSetupLink: (id: string) =>
+        fetchApi<{ user: User; emailSent: boolean }>(`/admin/corporate-users/${id}/resend-setup`, {
             method: "POST",
         }),
 

@@ -24,6 +24,7 @@ import { and, desc, eq, gt } from 'drizzle-orm';
 import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 import { loadRepairCaseByServiceRequest } from '../services/repair-case.service.js';
 import { getCallAttempts, createCallAttempt, updateCallAttempt, getIntakeSummaryBulk } from '../services/call-attempt.service.js';
+import { getActiveServiceAreaById } from '../repositories/service-area.repository.js';
 
 const router = Router();
 const SERVICE_REQUEST_REALTIME_TAGS = ["serviceRequests", "dashboardStats"] as const;
@@ -222,6 +223,13 @@ router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ?
     try {
         const validated = insertServiceRequestSchema.parse(req.body);
 
+        if ((validated as any).serviceAreaId) {
+            const area = await getActiveServiceAreaById((validated as any).serviceAreaId);
+            if (!area) {
+                return res.status(400).json({ error: 'Invalid or inactive service area' });
+            }
+        }
+
         if (validated.mediaUrls) {
             const thirtyDaysFromNow = new Date();
             thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
@@ -314,6 +322,13 @@ router.patch('/api/service-requests/:id', requireAdminAuth, requireGranularPermi
     try {
         const updateData = { ...req.body };
         if (updateData.trackingStatus) delete updateData.trackingStatus;
+
+        if (updateData.serviceAreaId !== undefined && updateData.serviceAreaId !== null) {
+            const area = await getActiveServiceAreaById(updateData.serviceAreaId);
+            if (!area) {
+                return res.status(400).json({ error: 'Invalid or inactive service area' });
+            }
+        }
 
         if (updateData.status === 'Work Order' || updateData.status === 'Converted') {
             const existingRequest = await serviceRequestRepo.getServiceRequest(req.params.id);

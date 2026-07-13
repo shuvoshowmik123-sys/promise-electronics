@@ -300,3 +300,15 @@
         right: -120px;
     }
 }
+
+@media (max-width: 768px) {
+    .corporate-notifications-dropdown {
+        position: fixed;
+        top: 4.5rem;
+        right: 0.75rem;
+        left: 0.75rem;
+        width: auto;
+        max-height: calc(100dvh - 6rem);
+        border-radius: 1rem;
+    }
+}

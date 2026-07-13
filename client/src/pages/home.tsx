@@ -5,7 +5,7 @@ import { ArrowRight, CheckCircle2, Clock, ShieldCheck, Wrench, Package, Users, C
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useLocation } from "wouter";
 import { images } from "@/lib/app-config";
-import { useState, useEffect, useMemo, useRef } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence, useInView, useMotionValue, useTransform, animate } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { publicSettingsApi, inventoryApi, reviewsApi, customerServiceRequestsApi, shopOrdersApi } from "@/lib/api";
@@ -22,6 +22,8 @@ import { QuickActionsGrid } from "@/components/mobile/QuickActionsGrid";
 import { ScrollableList } from "@/components/ui/ScrollableList";
 import { MobileHero } from "@/components/mobile/MobileHero";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
+
+const CustomerDistanceExplorer = lazy(() => import("@/components/customer/CustomerDistanceExplorer"));
 
 function AnimatedCounter({ value, suffix = "" }: { value: number; suffix?: string }) {
   const ref = useRef<HTMLSpanElement>(null);
@@ -52,9 +54,9 @@ function AnimatedCounter({ value, suffix = "" }: { value: number; suffix?: strin
 }
 
 const defaultHeroSlides = [
+  images.repair,
+  images.tv,
   images.hero,
-  images.showroom,
-  images.repair
 ];
 
 export default function HomePage() {
@@ -509,6 +511,25 @@ export default function HomePage() {
     };
   }, [settings]);
 
+  const serviceCenterLocation = useMemo(() => {
+    const latitudeValue = settings.find((setting) => setting.key === "service_center_latitude")?.value?.trim() ?? "";
+    const longitudeValue = settings.find((setting) => setting.key === "service_center_longitude")?.value?.trim() ?? "";
+    if (!latitudeValue || !longitudeValue) return null;
+
+    const latitude = Number(latitudeValue);
+    const longitude = Number(longitudeValue);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180) {
+      return null;
+    }
+
+    return {
+      latitude,
+      longitude,
+      placeId: settings.find((setting) => setting.key === "service_center_google_place_id")?.value?.trim() || undefined,
+      address: contactInfo.addressLines.filter(Boolean).join(", ") || undefined,
+    };
+  }, [contactInfo, settings]);
+
   const defaultServiceAreas = [
     "Gulshan", "Banani", "Dhanmondi", "Uttara", "Mirpur", "Mohammadpur",
     "Bashundhara", "Baridhara", "Motijheel", "Tejgaon", "Farmgate", "Badda",
@@ -675,6 +696,12 @@ export default function HomePage() {
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="-mx-4 mb-8">
+            <Suspense fallback={<div className="h-[72dvh] min-h-[510px] animate-pulse bg-slate-100" />}>
+              <CustomerDistanceExplorer serviceCenter={serviceCenterLocation} />
+            </Suspense>
           </div>
 
           {/* Mobile Header */}
@@ -932,155 +959,186 @@ export default function HomePage() {
         )}
       </div>
 
-      {/* Desktop Hero Section - Split Layout */}
-      <section className="hidden md:block relative bg-gradient-to-br from-slate-50 via-white to-slate-100 overflow-hidden">
-        <div className="container mx-auto px-4 py-12 md:py-20 lg:py-24">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-12 items-center">
-            {/* Left Side - Text Content */}
-            <motion.div
-              className="space-y-6 order-2 lg:order-1"
-              initial={{ opacity: 0, x: -30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.7 }}
-            >
-              <Badge className="bg-primary/10 text-primary border-primary/30 hover:bg-primary/20 px-4 py-1.5 text-sm font-medium">
-                {t("desktop.hero.badge")}
-              </Badge>
-              <h1 className="text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-heading font-bold leading-tight text-slate-900">
-                {heroTitle.includes("Premium Electronics") ? (
-                  <>
-                    {heroTitle.split("Premium Electronics")[0]}
-                    <span className="text-primary">Premium Electronics</span>
-                    {heroTitle.split("Premium Electronics")[1]}
-                  </>
-                ) : (
-                  heroTitle
-                )}
-              </h1>
-              <p className="text-base md:text-lg text-slate-600 leading-relaxed max-w-xl">
-                {heroSubtitle}
-              </p>
-              <div className="flex flex-col sm:flex-row gap-4 pt-4">
-                <Link href="/repair">
-                  <Button size="lg" className="text-sm md:text-lg h-12 md:h-14 px-6 md:px-8 shadow-lg shadow-primary/25 w-full sm:w-auto">
-                    <Wrench className="mr-2 h-5 w-5" /> {t("desktop.hero.bookRepair")}
-                  </Button>
-                </Link>
-                <Link href="/shop">
-                  <Button size="lg" variant="outline" className="text-sm md:text-lg h-12 md:h-14 px-6 md:px-8 border-slate-300 hover:bg-slate-100 text-slate-800 w-full sm:w-auto">
-                    {t("desktop.hero.browseShop")} <ArrowRight className="ml-2 h-5 w-5" />
-                  </Button>
-                </Link>
-              </div>
-
-              {/* Track Repair Widget */}
-              {trackRepairEnabled && (
-                <div className="mt-8 p-4 bg-white/80 backdrop-blur-sm rounded-xl shadow-neumorph-sm border border-slate-200 max-w-md">
-                  <label className="block text-sm font-medium text-slate-700 mb-2">{t("desktop.hero.trackLabel")}</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      placeholder={t("desktop.hero.trackPlaceholder")}
-                      className="flex-1 px-4 py-2 rounded-lg bg-slate-50 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/50"
-                      value={trackTicket}
-                      onChange={(e) => setTrackTicket(e.target.value)}
-                    />
-                    <Button onClick={handleTrack} disabled={!trackTicket.trim()}>
-                      {t("desktop.hero.trackBtn")}
-                    </Button>
+      {/* Desktop Hero — full-bleed; -mt-24 pulls media under the sticky glass header (h-24) */}
+      <section
+        className="relative -mt-24 hidden h-[min(calc(78vh+6rem),916px)] min-h-[calc(520px+6rem)] max-h-[996px] overflow-hidden bg-white md:block"
+        aria-label="Promise Electronics hero"
+      >
+        {/* Full-bleed media layer — no image card */}
+        <div className="absolute inset-0">
+          {activeHeroSlides.length > 0 ? (
+            <AnimatePresence mode="wait">
+              {failedSlides.has(currentSlide) ? (
+                <motion.div
+                  key={`desktop-fallback-${currentSlide}`}
+                  className="flex h-full w-full items-center justify-end bg-gradient-to-br from-white via-slate-100 to-slate-200 pr-[12%]"
+                  initial={animationVariants.initial}
+                  animate={animationVariants.animate}
+                  exit={animationVariants.exit}
+                  transition={{ duration: 0.8, ease: "easeInOut" }}
+                >
+                  <div className="w-[38%] select-none text-center text-slate-400">
+                    <Wrench className="mx-auto mb-2 h-12 w-12 opacity-30" />
+                    <p className="text-xs font-medium opacity-60">Promise Electronics Workshop</p>
                   </div>
-                </div>
+                </motion.div>
+              ) : (
+                <motion.img
+                  key={`desktop-hero-${currentSlide}`}
+                  src={activeHeroSlides[currentSlide]}
+                  alt="Promise Electronics technician providing premium electronics repair"
+                  className="h-full w-full object-cover object-[78%_center] lg:object-[82%_center] xl:object-[85%_center]"
+                  initial={animationVariants.initial}
+                  animate={animationVariants.animate}
+                  exit={animationVariants.exit}
+                  transition={{ duration: 0.8, ease: "easeInOut" }}
+                  onError={() => handleHeroImageError(currentSlide)}
+                  fetchPriority="high"
+                  decoding="async"
+                />
               )}
-
-              {/* Trust Indicators */}
-              <div className="flex flex-wrap items-center gap-3 pt-6 text-sm">
-                <div className="flex items-center gap-2 bg-green-50 border border-green-200 text-green-700 px-3 py-1.5 rounded-full">
-                  <CheckCircle2 className="h-4 w-4 text-green-500" />
-                  <span className="font-medium">{t("desktop.hero.warranty")}</span>
-                </div>
-                <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 text-blue-700 px-3 py-1.5 rounded-full">
-                  <ShieldCheck className="h-4 w-4 text-blue-500" />
-                  <span className="font-medium">{t("desktop.hero.certified")}</span>
-                </div>
-                <div className="flex items-center gap-2 bg-orange-50 border border-orange-200 text-orange-700 px-3 py-1.5 rounded-full">
-                  <Clock className="h-4 w-4 text-orange-500" />
-                  <span className="font-medium">{t("desktop.hero.fast")}</span>
-                </div>
-              </div>
-            </motion.div>
-
-            {/* Right Side - Hero Image */}
-            <motion.div
-              className="relative order-1 lg:order-2"
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.7, delay: 0.2 }}
-            >
-              <div className="relative rounded-2xl overflow-hidden shadow-2xl shadow-slate-300/50">
-                {activeHeroSlides.length > 0 ? (
-                  <>
-                    <AnimatePresence mode="wait">
-                      {failedSlides.has(currentSlide) ? (
-                        <motion.div
-                          key={`fallback-${currentSlide}`}
-                          className="w-full h-64 md:h-80 lg:h-[450px] bg-gradient-to-br from-slate-700 via-slate-800 to-slate-900 flex items-center justify-center"
-                          initial={animationVariants.initial}
-                          animate={animationVariants.animate}
-                          exit={animationVariants.exit}
-                          transition={{ duration: 0.8, ease: "easeInOut" }}
-                        >
-                          <div className="text-center text-white/70 select-none">
-                            <Wrench className="h-16 w-16 mx-auto mb-3 opacity-40" />
-                            <p className="text-sm font-medium opacity-60">Promise Electronics Workshop</p>
-                          </div>
-                        </motion.div>
-                      ) : (
-                        <motion.img
-                          key={`${isMobile ? 'mobile' : 'desktop'}-${currentSlide}`}
-                          src={activeHeroSlides[currentSlide]}
-                          alt="Electronics Workshop"
-                          className="w-full h-64 md:h-80 lg:h-[450px] object-cover"
-                          initial={animationVariants.initial}
-                          animate={animationVariants.animate}
-                          exit={animationVariants.exit}
-                          transition={{ duration: 0.8, ease: "easeInOut" }}
-                          onError={() => handleHeroImageError(currentSlide)}
-                        />
-                      )}
-                    </AnimatePresence>
-                    {/* Slide Navigation Dots */}
-                    {activeHeroSlides.length > 1 && (
-                      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2">
-                        {activeHeroSlides.map((_, index) => (
-                          <button
-                            key={index}
-                            onClick={() => setCurrentSlide(index)}
-                            className={`w-2.5 h-2.5 rounded-full transition-all duration-300 ${currentSlide === index
-                              ? 'bg-white w-8'
-                              : 'bg-white/50 hover:bg-white/75'
-                              }`}
-                            aria-label={`Go to slide ${index + 1}`}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  /* Skeleton Loader for Desktop Hero */
-                  <div className="w-full h-64 md:h-80 lg:h-[450px] bg-slate-200 animate-pulse">
-                    <div className="w-full h-full bg-gradient-to-br from-slate-200 via-slate-300 to-slate-200 relative overflow-hidden">
-                      <div className="absolute inset-0 -translate-x-full animate-[shimmer_2s_infinite] bg-gradient-to-r from-transparent via-white/30 to-transparent" />
-                    </div>
-                  </div>
-                )}
-              </div>
-              {/* Decorative Elements */}
-              <div className="absolute -top-4 -right-4 w-24 h-24 bg-primary/10 rounded-full blur-2xl pointer-events-none" />
-              <div className="absolute -bottom-6 -left-6 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl pointer-events-none" />
-            </motion.div>
-          </div>
+            </AnimatePresence>
+          ) : (
+            <div className="h-full w-full animate-pulse bg-gradient-to-br from-slate-100 via-slate-200 to-slate-100" />
+          )}
         </div>
-      </section >
+
+        {/* CSS left white fade — independent of source image edges */}
+        <div
+          className="pointer-events-none absolute inset-0 z-[1]"
+          aria-hidden="true"
+          style={{
+            background: [
+              "linear-gradient(90deg,",
+              "#ffffff 0%,",
+              "#ffffff 22%,",
+              "rgba(255,255,255,0.97) 32%,",
+              "rgba(255,255,255,0.88) 40%,",
+              "rgba(255,255,255,0.55) 52%,",
+              "rgba(255,255,255,0.22) 64%,",
+              "rgba(255,255,255,0.06) 74%,",
+              "transparent 84%)",
+            ].join(" "),
+          }}
+        />
+        {/* Soft bottom settle into map band (#f7fbf9) — no hard color step */}
+        <div
+          className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-44 bg-gradient-to-t from-[#f7fbf9] via-[#f7fbf9]/85 to-transparent"
+          aria-hidden="true"
+        />
+
+        {/* Left-pinned content (no mx-auto) so wide screens keep copy on the left, not mid-frame */}
+        <div className="relative z-[2] flex h-full w-full items-center pl-4 pr-6 pt-24 sm:pl-5 md:pl-6 lg:pl-8 xl:pl-10 2xl:pl-12">
+          <motion.div
+            className="w-full max-w-[38rem] space-y-6 lg:max-w-[42rem] xl:max-w-[44rem]"
+            initial={{ opacity: 0, y: 18 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.65, ease: "easeOut" }}
+          >
+            <Badge className="border-primary/30 bg-primary/10 px-4 py-1.5 text-sm font-semibold text-primary hover:bg-primary/15">
+              {t("desktop.hero.badge")}
+            </Badge>
+            <h1 className="font-heading text-4xl font-bold leading-[1.1] tracking-tight text-slate-900 lg:text-5xl xl:text-[3.25rem]">
+              {heroTitle.includes("Premium Electronics") ? (
+                <>
+                  {heroTitle.split("Premium Electronics")[0]}
+                  <span className="text-primary">Premium Electronics</span>
+                  {heroTitle.split("Premium Electronics")[1]}
+                </>
+              ) : (
+                heroTitle
+              )}
+            </h1>
+            <p className="max-w-xl text-base leading-relaxed text-slate-600 lg:text-lg">
+              {heroSubtitle}
+            </p>
+
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <Link href="/repair">
+                <Button size="lg" className="h-12 px-7 text-base shadow-lg shadow-primary/20 lg:h-14 lg:px-8 lg:text-lg">
+                  <Wrench className="mr-2 h-5 w-5" /> {t("desktop.hero.bookRepair")}
+                </Button>
+              </Link>
+              <Link href="/shop">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-12 border-slate-300/90 bg-white/80 px-7 text-base text-slate-800 hover:bg-white lg:h-14 lg:px-8 lg:text-lg"
+                >
+                  {t("desktop.hero.browseShop")} <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              </Link>
+            </div>
+
+            {trackRepairEnabled && (
+              <div className="pt-1">
+                <label htmlFor="desktop-hero-track" className="mb-1.5 block text-sm font-semibold text-slate-600">
+                  {t("desktop.hero.trackLabel")}
+                </label>
+                <div className="flex max-w-lg items-center gap-2 rounded-full border border-slate-200/90 bg-white/92 py-1.5 pl-4 pr-1.5 shadow-[0_6px_18px_rgba(15,23,42,0.06)]">
+                  <input
+                    id="desktop-hero-track"
+                    type="text"
+                    placeholder={t("desktop.hero.trackPlaceholder")}
+                    className="min-w-0 flex-1 bg-transparent text-base text-slate-800 outline-none placeholder:text-slate-400"
+                    value={trackTicket}
+                    onChange={(e) => setTrackTicket(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") handleTrack();
+                    }}
+                  />
+                  <Button
+                    onClick={handleTrack}
+                    disabled={!trackTicket.trim()}
+                    size="sm"
+                    className="h-10 shrink-0 rounded-full px-5 text-sm"
+                  >
+                    {t("desktop.hero.trackBtn")}
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center gap-2.5 pt-1 text-sm">
+              <div className="flex items-center gap-1.5 rounded-full border border-green-200/90 bg-green-50/95 px-3 py-1.5 text-green-700">
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <span className="font-medium">{t("desktop.hero.warranty")}</span>
+              </div>
+              <div className="flex items-center gap-1.5 rounded-full border border-blue-200/90 bg-blue-50/95 px-3 py-1.5 text-blue-700">
+                <ShieldCheck className="h-4 w-4 text-blue-500" />
+                <span className="font-medium">{t("desktop.hero.certified")}</span>
+              </div>
+              <div className="flex items-center gap-1.5 rounded-full border border-orange-200/90 bg-orange-50/95 px-3 py-1.5 text-orange-700">
+                <Clock className="h-4 w-4 text-orange-500" />
+                <span className="font-medium">{t("desktop.hero.fast")}</span>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+
+        {activeHeroSlides.length > 1 && (
+          <div className="absolute bottom-7 right-[8%] z-[2] hidden items-center gap-1.5 lg:flex">
+            {activeHeroSlides.map((_, index) => (
+              <button
+                key={index}
+                type="button"
+                onClick={() => setCurrentSlide(index)}
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  currentSlide === index ? "w-6 bg-slate-700/65" : "w-2 bg-slate-700/25 hover:bg-slate-700/45"
+                }`}
+                aria-label={`Go to slide ${index + 1}`}
+              />
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Extra white band + matching map bg so the hero→map join has no hard edge */}
+      <section className="mt-16 hidden overflow-hidden bg-[#f7fbf9] pt-8 md:block lg:mt-24 lg:pt-12">
+        <Suspense fallback={<div className="h-[min(78vh,820px)] min-h-[620px] max-h-[860px] animate-pulse bg-[#f7fbf9]" />}>
+          <CustomerDistanceExplorer serviceCenter={serviceCenterLocation} />
+        </Suspense>
+      </section>
 
       {/* Problem-Based Navigation */}
       < section className="py-16 bg-white" >

@@ -62,11 +62,20 @@ interface JobTicketsTabProps {
 }
 
 export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSearchConsumed, initialJobType }: JobTicketsTabProps) {
-    const { hasPermission, user } = useAdminAuth();
+    const { hasPermission, user, permissions } = useAdminAuth();
     const { sseSupported } = useAdminSSE();
     const isMobile = useIsMobile();
     const queryClient = useQueryClient();
     const previousJobCountRef = useRef(0);
+
+    // Canonical create-job visibility: matches requireGranularPermission("jobs.create")
+    // Super Admin → always; granular jobs.create → yes; legacy jobs:true → yes via LEGACY_TO_GRANULAR.
+    // jobs.view-only must NOT see create (do not use hasPermission("jobs") prefix fallback).
+    const isSuperAdmin = user?.role === "Super Admin";
+    const canCreateJob =
+        isSuperAdmin ||
+        (permissions as Record<string, boolean | undefined>)["jobs.create"] === true ||
+        permissions.jobs === true;
 
     const [jobSearchQuery, setJobSearchQuery] = useState(initialSearchQuery || "");
     const [jobStatusFilter, setJobStatusFilter] = useState("all");
@@ -742,7 +751,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 </div>
                                 <p className="text-slate-500 mt-1 text-[11px] font-semibold md:text-sm">Normal customer jobs only · B2B stays separate.</p>
                             </div>
-                            {hasPermission("canCreate") && (
+                            {canCreateJob && (
                                 <Button className="h-9 md:h-10 rounded-xl gap-1.5 px-3 md:px-4 bg-blue-600 hover:bg-blue-700 text-white shadow-md transition-all bc-hover bc-rise shrink-0" onClick={() => setIsCreateDrawerOpen(true)}>
                                     <Plus className="w-4 h-4" /> New Job
                                 </Button>
@@ -964,10 +973,10 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                 </BentoCard>
             </div>
 
-            {/* CREATE JOB SHEET */}
+            {/* CREATE JOB SHEET — same jobs.create gate as New Job button */}
             <Suspense fallback={null}>
                 <CreateJobDrawer
-                    isOpen={isCreateDrawerOpen}
+                    isOpen={isCreateDrawerOpen && canCreateJob}
                     onClose={() => setIsCreateDrawerOpen(false)}
                     technicianUsers={technicianUsers}
                     tvInches={tvInches}

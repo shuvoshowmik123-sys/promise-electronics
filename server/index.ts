@@ -26,8 +26,10 @@ import { migratePasswordChangedAt } from "./services/password-changed-at-migrati
 import { migrateOperationalFields } from "./services/operational-fields-migration.service.js";
 import { migrateCallAttempts } from "./services/call-attempt.service.js";
 import { migrateStaffInvitations } from "./services/staff-invite.service.js";
+import { migrateSetupTokens } from "./services/corporate-setup-token.service.js";
 import { migrateLogisticsTasks } from "./services/logistics-task-migration.service.js";
 import { backfillPickupSchedulesToLogisticsTasks } from "./services/logistics-task.service.js";
+import { migrateServiceAreaTables } from "./services/service-area-migration.service.js";
 import { markMigrationsComplete, startReadinessChecks } from "./services/db-readiness.js";
 
 // ── Crash guards ────────────────────────────────────────────────────────────
@@ -93,10 +95,12 @@ async function runStartupMigrations(): Promise<boolean> {
     runStartupTask("operational fields migration", migrateOperationalFields, 2),
     runStartupTask("call attempts migration", migrateCallAttempts, 2),
     runStartupTask("staff invitations migration", migrateStaffInvitations, 2),
+    runStartupTask("corporate setup tokens migration", migrateSetupTokens, 2),
     runStartupTask("logistics tasks migration + backfill", async () => {
       await migrateLogisticsTasks();
       await backfillPickupSchedulesToLogisticsTasks();
     }, 2),
+    runStartupTask("service area tables migration", migrateServiceAreaTables, 2),
     runStartupTask("job model+serial+outcome migration", async () => {
       const { db } = await import("./db.js");
       const { sql } = await import("drizzle-orm");
@@ -134,6 +138,14 @@ async function runStartupMigrations(): Promise<boolean> {
         created_at TIMESTAMP NOT NULL DEFAULT now()
       )`);
       await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_payment_blacklist_phone ON payment_blacklist (phone)`);
+    }, 2),
+    runStartupTask("backup_metadata R2 columns migration", async () => {
+      const { db } = await import("./db.js");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`ALTER TABLE backup_metadata ADD COLUMN IF NOT EXISTS storage_provider text NOT NULL DEFAULT 'google_drive'`);
+      await db.execute(sql`ALTER TABLE backup_metadata ADD COLUMN IF NOT EXISTS storage_object_key text`);
+      await db.execute(sql`ALTER TABLE backup_metadata ALTER COLUMN google_drive_file_id DROP NOT NULL`);
+      await db.execute(sql`UPDATE backup_metadata SET storage_object_key = google_drive_file_id WHERE storage_object_key IS NULL AND google_drive_file_id IS NOT NULL`);
     }, 2),
     runStartupTask("hot-path index migration", async () => {
       const { db } = await import("./db.js");

@@ -5,12 +5,14 @@ import { storage } from "../storage.js";
 import { brainService } from "../brain/brain.service.js";
 import { assignSession } from "../services/assignment.service.js";
 import { findCustomerByPhone } from "../services/canonical-customer.service.js";
+import { requireMetaWebhookSignature } from "../middleware/meta-webhook-signature.js";
 
 const router = Router();
 
 const VERIFY_TOKEN = process.env.WHATSAPP_VERIFY_TOKEN;
 const ACCESS_TOKEN = process.env.WHATSAPP_ACCESS_TOKEN;
 const PHONE_NUMBER_ID = process.env.WHATSAPP_PHONE_NUMBER_ID;
+const APP_SECRET = process.env.WHATSAPP_APP_SECRET ?? process.env.META_APP_SECRET;
 
 /**
  * Webhook Verification — Meta sends GET to confirm your URL owns this token
@@ -34,7 +36,7 @@ router.get("/webhook", (req: Request, res: Response) => {
 /**
  * Incoming Messages
  */
-router.post("/webhook", (req: Request, res: Response) => {
+router.post("/webhook", requireMetaWebhookSignature("WhatsApp", APP_SECRET), (req: Request, res: Response) => {
     const body = req.body;
 
     if (body.object !== "whatsapp_business_account") {

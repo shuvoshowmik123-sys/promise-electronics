@@ -15,7 +15,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { format } from "date-fns";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { publicSettingsApi, serviceRequestsApi } from "@/lib/api";
+import { publicAreaMapApi, publicSettingsApi, serviceRequestsApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 const CustomerAuthModal = lazy(() => import("@/components/auth/CustomerAuthModal").then(m => ({ default: m.CustomerAuthModal })));
@@ -63,6 +63,7 @@ export default function RepairRequestPage() {
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
   const [servicePreference, setServicePreference] = useState("home_pickup");
+  const [serviceAreaId, setServiceAreaId] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [validationErrors, setValidationErrors] = useState<Record<string, boolean>>({});
@@ -77,7 +78,7 @@ export default function RepairRequestPage() {
     }
   };
 
-  // Pre-fill from calculator query params (?brand=...&size=...&issue=...)
+  // Pre-fill from customer entry points.
   const hydrated = useRef(false);
   useEffect(() => {
     if (hydrated.current) return;
@@ -86,9 +87,14 @@ export default function RepairRequestPage() {
     const qBrand = params.get("brand");
     const qSize  = params.get("size");
     const qIssue = params.get("issue");
+    const qServiceMode = params.get("serviceMode");
+    const qServiceAreaId = params.get("serviceAreaId");
     if (qBrand) setBrand(decodeURIComponent(qBrand));
     if (qSize)  setScreenSize(decodeURIComponent(qSize));
     if (qIssue) setPrimaryIssue(decodeURIComponent(qIssue));
+    if (qServiceMode === "pickup") setServicePreference("home_pickup");
+    if (qServiceMode === "service_center") setServicePreference("service_center");
+    if (qServiceAreaId) setServiceAreaId(qServiceAreaId);
   }, []);
 
   // Auto-fill customer info when logged in
@@ -109,6 +115,16 @@ export default function RepairRequestPage() {
     staleTime: 0,
     refetchOnMount: "always",
   });
+
+  const { data: serviceAreas = [] } = useQuery({
+    queryKey: ["public-service-area-list"],
+    queryFn: publicAreaMapApi.getList,
+    // MAP-PUBLIC-LEAK-HOTFIX: publication list must not stick after unpublish
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: "always",
+  });
+  const selectedServiceArea = serviceAreas.find((area) => area.id === serviceAreaId);
 
   useEffect(() => {
     if (settingsError) {
@@ -441,6 +457,7 @@ export default function RepairRequestPage() {
         status: "Pending",
         requestIntent: "repair",
         serviceMode: servicePreference === "home_pickup" ? "pickup" : "service_center",
+        serviceAreaId: serviceAreaId || undefined,
       });
 
       setTicketNumber(result.ticketNumber || "");
@@ -799,6 +816,22 @@ export default function RepairRequestPage() {
                     </RadioGroup>
                   </div>
 
+                  <div className="space-y-2">
+                    <Label>{t("wizard.serviceArea")}</Label>
+                    <Select value={serviceAreaId || "none"} onValueChange={(value) => setServiceAreaId(value === "none" ? "" : value)}>
+                      <SelectTrigger data-testid="select-service-area"><SelectValue placeholder={t("wizard.serviceArea")} /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">{t("wizard.noServiceArea")}</SelectItem>
+                        {serviceAreas.map((area) => (
+                          <SelectItem key={area.id} value={area.id}>
+                            {[area.blockOrSector, area.subareaName, area.areaName, area.city].filter(Boolean).join(", ")}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">{t("wizard.serviceAreaHint")}</p>
+                  </div>
+
                   {servicePreference === "home_pickup" && (
                     <div className="space-y-2">
                       <Label>Pickup Address *</Label>
@@ -992,6 +1025,11 @@ export default function RepairRequestPage() {
                     <p className="text-muted-foreground max-w-md mx-auto">
                       We have received your service request. Our team will contact you shortly to confirm the details.
                     </p>
+                    {selectedServiceArea && (
+                      <p className="font-medium text-emerald-700">
+                        {t("wizard.areaSuccessPrefix")} {selectedServiceArea.blockOrSector || selectedServiceArea.subareaName || selectedServiceArea.areaName}.
+                      </p>
+                    )}
                   </div>
 
                   <div className="bg-slate-50 p-6 rounded-lg max-w-md mx-auto text-left space-y-4 border">
@@ -1057,6 +1095,18 @@ export default function RepairRequestPage() {
           </Card>
         </div>
       </div>
+
+      {isSubmitting && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/90 px-6 backdrop-blur-sm" role="status" aria-live="polite">
+          <div className="max-w-sm text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+              <Loader2 className="h-8 w-8 animate-spin" />
+            </div>
+            <h2 className="mt-5 text-2xl font-bold text-slate-950">{t("wizard.submittingTitle")}</h2>
+            <p className="mt-2 text-sm leading-6 text-slate-600">{t("wizard.submittingBody")}</p>
+          </div>
+        </div>
+      )}
 
       <Suspense fallback={null}><CustomerAuthModal
         open={showAuthModal}

@@ -35,11 +35,13 @@ FRONTEND_URL=https://<your-vercel-app>.vercel.app
 
 MESSENGER_VERIFY_TOKEN=<same as Meta console>
 MESSENGER_PAGE_ACCESS_TOKEN=<from Meta>
+MESSENGER_APP_SECRET=<from Meta app settings>
 FACEBOOK_PAGE_ID=<your page ID>
 
 WHATSAPP_ACCESS_TOKEN=<from Meta>
 WHATSAPP_PHONE_NUMBER_ID=<from Meta>
 WHATSAPP_VERIFY_TOKEN=<from Meta>
+WHATSAPP_APP_SECRET=<from Meta app settings>
 
 GEMINI_API_KEY=<your key>
 GROQ_API_KEY=<your key>

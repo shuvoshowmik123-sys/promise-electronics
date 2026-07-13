@@ -13,7 +13,7 @@ import {
     insertServiceCatalogSchema,
     insertProductVariantSchema
 } from '../../shared/schema.js';
-import { requireAdminAuth, requirePermission } from './middleware/auth.js';
+import { requireAdminAuth, requirePermission, requireSuperAdmin } from './middleware/auth.js';
 import { auditLogger } from '../utils/auditLogger.js';
 import { AUDIT_ACTIONS } from '../../shared/constants.js';
 import { detectConflicts, applyResolutions } from '../services/settings-conflict.service.js';
@@ -64,6 +64,11 @@ const ALLOWED_SETTING_KEYS = [
     'social_youtube',
     'service_center_contact_bn',
     'business_hours_bn',
+
+    // Location / Map
+    'service_center_latitude',
+    'service_center_longitude',
+    'service_center_google_place_id',
 
     // Service Catalogs
     'service_categories',
@@ -174,6 +179,8 @@ const PUBLIC_SETTING_KEYS = [
     // Contact & Business Identity
     'contact_phone', 'contact_whatsapp', 'contact_address', 'company_email',
     'service_center_contact_bn', 'business_hours_bn',
+    // Location / Map (used by customer distance widget)
+    'service_center_latitude', 'service_center_longitude', 'service_center_google_place_id',
     // Payment send-money numbers (rendered on the customer payment card)
     'bkash_send_money_number', 'nagad_send_money_number',
 ];
@@ -831,8 +838,6 @@ router.delete('/api/admin/policies/:slug', requireAdminAuth, requirePermission('
 // Settings Conflict Detection & Resolution
 // ============================================
 
-import { requireSuperAdmin } from './middleware/auth.js';
-
 /**
  * GET /api/admin/settings/conflicts — detect duplicate business info (Super Admin only)
  */
@@ -894,7 +899,7 @@ router.post('/api/admin/settings/conflicts/resolve', requireAdminAuth, requireSu
 /**
  * DELETE /api/admin/data/all - Delete all business data (Super Admin only)
  */
-router.delete('/api/admin/data/all', requireSuperAdmin, async (req: Request, res: Response) => {
+router.delete('/api/admin/data/all', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
     try {
         const { confirmation } = req.body;
 

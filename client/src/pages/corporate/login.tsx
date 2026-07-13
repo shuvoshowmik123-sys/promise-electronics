@@ -9,6 +9,7 @@ import { useToast } from "@/hooks/use-toast";
 import { motion } from "framer-motion";
 import { variants } from "@/lib/motion";
 import { corporatePasswordResetApi } from "@/lib/api/corporateApi";
+import { useCorporateMobileMode } from "@/hooks/useCorporateMobileMode";
 export default function CorporateLoginPage() {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
@@ -25,6 +26,7 @@ export default function CorporateLoginPage() {
     const { login } = useCorporateAuth();
     const [, setLocation] = useLocation();
     const { toast } = useToast();
+    const isCorporateMobile = useCorporateMobileMode();
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -99,6 +101,28 @@ export default function CorporateLoginPage() {
             setIsResetLoading(false);
         }
     };
+
+    if (isCorporateMobile) {
+        return (
+            <CorporateMobileLogin
+                username={username}
+                password={password}
+                trustDevice={trustDevice}
+                showPassword={showPassword}
+                showReset={showReset}
+                resetUsername={resetUsername}
+                resetCode={resetCode}
+                resetPassword={resetPassword}
+                resetConfirmPassword={resetConfirmPassword}
+                resetRequestSent={resetRequestSent}
+                isLoading={isLoading}
+                isResetLoading={isResetLoading}
+                setUsername={setUsername} setPassword={setPassword} setTrustDevice={setTrustDevice} setShowPassword={setShowPassword}
+                setShowReset={setShowReset} setResetUsername={setResetUsername} setResetCode={setResetCode} setResetPassword={setResetPassword} setResetConfirmPassword={setResetConfirmPassword}
+                handleLogin={handleLogin} handleRequestReset={handleRequestReset} handleCompleteReset={handleCompleteReset}
+            />
+        );
+    }
 
     return (
         <motion.div variants={variants.pageEnter} initial="initial" animate="animate" exit="exit" className="min-h-screen bg-slate-50 flex overflow-hidden">
@@ -345,6 +369,33 @@ export default function CorporateLoginPage() {
                 </motion.div>
             </div>
         </motion.div>
+    );
+}
+
+function CorporateMobileLogin(props: any) {
+    const fieldClass = "h-12 rounded-xl border-slate-200 bg-white px-3 text-sm shadow-sm focus-visible:ring-blue-500";
+    return (
+        <main className="min-h-[100dvh] overflow-y-auto bg-slate-50 px-4 py-6">
+            <div className="mx-auto flex min-h-[calc(100dvh-3rem)] max-w-md flex-col justify-center">
+                <section className="mb-7 rounded-2xl bg-slate-900 p-5 text-white shadow-lg shadow-slate-200">
+                    <div className="flex items-center gap-3"><div className="flex h-11 w-11 items-center justify-center rounded-xl bg-blue-600"><Building2 className="h-5 w-5" /></div><div><p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-200">Promise Electronics</p><h1 className="text-lg font-bold">Corporate Portal</h1></div></div>
+                    <p className="mt-4 text-sm leading-5 text-slate-300">Jobs, service requests and messages for your organization.</p>
+                </section>
+
+                {!props.showReset ? <form onSubmit={props.handleLogin} className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div><h2 className="text-xl font-bold text-slate-900">Sign in</h2><p className="mt-1 text-sm text-slate-500">Use your corporate account credentials.</p></div>
+                    <div className="space-y-2"><Label>Username or email</Label><Input value={props.username} onChange={(event) => props.setUsername(event.target.value)} autoComplete="username" className={fieldClass} required /></div>
+                    <div className="space-y-2"><div className="flex items-center justify-between"><Label>Password</Label><button type="button" onClick={() => { props.setResetUsername(props.username); props.setShowReset(true); }} className="min-h-11 text-xs font-semibold text-[var(--corp-blue)]">Forgot password?</button></div><div className="relative"><Input type={props.showPassword ? "text" : "password"} value={props.password} onChange={(event) => props.setPassword(event.target.value)} autoComplete="current-password" className={`${fieldClass} pr-12`} required /><button type="button" onClick={() => props.setShowPassword(!props.showPassword)} className="absolute right-0 top-0 flex h-12 w-12 items-center justify-center text-slate-500" aria-label={props.showPassword ? "Hide password" : "Show password"}>{props.showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}</button></div></div>
+                    <button type="button" onClick={() => props.setTrustDevice(!props.trustDevice)} className="flex min-h-11 items-center gap-2 text-left text-sm text-slate-600" aria-pressed={props.trustDevice}><span className={`flex h-5 w-5 items-center justify-center rounded-md border ${props.trustDevice ? "border-blue-600 bg-blue-600 text-white" : "border-slate-300"}`}>{props.trustDevice && <ShieldCheck className="h-3.5 w-3.5" />}</span>Trust this device for 30 days</button>
+                    <Button type="submit" disabled={props.isLoading} className="min-h-12 w-full rounded-xl bg-[var(--corp-blue)] text-sm font-bold">{props.isLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Sign in"}<ArrowRight className="ml-2 h-4 w-4" /></Button>
+                </form> : <div className="space-y-4 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                    <div><h2 className="text-xl font-bold text-slate-900">Reset password</h2><p className="mt-1 text-sm text-slate-500">Request a code, then choose a new password.</p></div>
+                    <form onSubmit={props.handleRequestReset} className="space-y-3"><div className="space-y-2"><Label>Username or email</Label><Input value={props.resetUsername} onChange={(event) => props.setResetUsername(event.target.value)} className={fieldClass} required /></div><Button type="submit" variant="outline" disabled={props.isResetLoading} className="min-h-11 w-full rounded-xl">Request reset code</Button></form>
+                    {props.resetRequestSent && <form onSubmit={props.handleCompleteReset} className="space-y-3 border-t border-slate-100 pt-4"><div className="space-y-2"><Label>6-digit code</Label><Input value={props.resetCode} onChange={(event) => props.setResetCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" maxLength={6} className={fieldClass} required /></div><div className="space-y-2"><Label>New password</Label><Input type="password" value={props.resetPassword} onChange={(event) => props.setResetPassword(event.target.value)} className={fieldClass} required /></div><div className="space-y-2"><Label>Confirm password</Label><Input type="password" value={props.resetConfirmPassword} onChange={(event) => props.setResetConfirmPassword(event.target.value)} className={fieldClass} required /></div><Button type="submit" disabled={props.isResetLoading || props.resetCode.length !== 6} className="min-h-12 w-full rounded-xl bg-[var(--corp-blue)] font-bold">{props.isResetLoading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Set new password"}</Button></form>}
+                    <Button type="button" variant="ghost" onClick={() => props.setShowReset(false)} className="min-h-11 w-full">Back to sign in</Button>
+                </div>}
+            </div>
+        </main>
     );
 }
 

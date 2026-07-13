@@ -296,6 +296,27 @@ html[data-customer-lang="bn"] .customer-portal-shell .font-heading {
   outline-offset: 2px;
 }
 
+/* Customer map search: emerald capsule focus; no blue rectangular input outline */
+.customer-map-search-input:focus,
+.customer-map-search-input:focus-visible {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: transparent !important;
+}
+.customer-map-search-capsule:focus-within {
+  border-color: rgba(16, 185, 129, 0.55);
+  box-shadow:
+    0 0 0 3px rgba(16, 185, 129, 0.22),
+    0 12px 34px rgba(15, 23, 42, 0.16);
+}
+/* Keep keyboard focus visible when capsule receives focus-within via Tab */
+.customer-map-search-capsule:focus-within:has(.customer-map-search-input:focus-visible) {
+  border-color: rgba(5, 150, 105, 0.7);
+  box-shadow:
+    0 0 0 3px rgba(16, 185, 129, 0.32),
+    0 12px 34px rgba(15, 23, 42, 0.16);
+}
+
 /* ===========================================
    NEUMORPHISM DESIGN SYSTEM - Customer Portal Only
    =========================================== */

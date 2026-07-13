@@ -24,6 +24,8 @@ import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 import { variants } from "@/lib/motion";
 import { DashboardSkeleton } from "@/components/corporate/CorporatePageSkeleton";
+import { useCorporateMobileMode } from "@/hooks/useCorporateMobileMode";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import React, { Suspense } from "react";
 
 // Lazy load heavy chart components
@@ -31,6 +33,7 @@ const DashboardCharts = React.lazy(() => import("@/components/corporate/dashboar
 
 export default function CorporateDashboard() {
     const { user } = useCorporateAuth();
+    const isCorporateMobile = useCorporateMobileMode();
     const queryClient = useQueryClient();
 
     const { data: stats, isLoading } = useQuery({
@@ -93,6 +96,18 @@ export default function CorporateDashboard() {
     ];
 
     const pendingExtensionRequests = extensionRequests.filter((request: any) => request.status === "pending");
+
+    if (isCorporateMobile) {
+        return (
+            <CorporateDashboardMobile
+                user={user}
+                stats={stats}
+                pendingExtensionRequests={pendingExtensionRequests}
+                respondExtensionMutation={respondExtensionMutation}
+                formatCurrency={formatCurrency}
+            />
+        );
+    }
 
     const containerVariants = {
         hidden: variants.staggerContainer.initial as any,
@@ -295,7 +310,7 @@ export default function CorporateDashboard() {
                                                 <div className="space-y-1">
                                                     <h4 className="text-sm font-bold text-slate-800 flex items-center gap-2">
                                                         {activity.device}
-                                                        <span className="text-[10px] text-slate-400 font-mono tracking-tighter">#{activity.id.substring(0, 8)}</span>
+                                                        <span className="text-[10px] text-slate-400 font-mono tracking-tighter">{getSafeJobDisplayRef(activity)}</span>
                                                     </h4>
                                                     <p className="text-xs text-slate-400 flex items-center gap-1">
                                                         <Clock className="h-3 w-3" />
@@ -339,5 +354,106 @@ export default function CorporateDashboard() {
                 </Card>
             </motion.div>
         </motion.div >
+    );
+}
+
+function CorporateDashboardMobile({
+    user,
+    stats,
+    pendingExtensionRequests,
+    respondExtensionMutation,
+    formatCurrency,
+}: {
+    user: any;
+    stats: any;
+    pendingExtensionRequests: any[];
+    respondExtensionMutation: any;
+    formatCurrency: (amount: number) => string;
+}) {
+    return (
+        <div className="space-y-5 pb-4">
+            <header className="space-y-1">
+                <p className="text-xs font-bold uppercase tracking-[0.18em] text-[var(--corp-blue)]">Corporate workspace</p>
+                <h1 className="text-2xl font-black tracking-tight text-slate-900">Welcome back, {user?.name?.split(" ")[0]}.</h1>
+                <p className="text-sm text-slate-500">Here is the current picture of your repair program.</p>
+            </header>
+
+            <div className="grid grid-cols-2 gap-3">
+                <Card className="border-blue-100 bg-blue-50/60 shadow-none">
+                    <CardContent className="p-4">
+                        <Activity className="mb-3 h-5 w-5 text-[var(--corp-blue)]" />
+                        <p className="text-2xl font-black text-slate-900">{stats?.activeJobs || 0}</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">Active jobs</p>
+                    </CardContent>
+                </Card>
+                <Card className="border-amber-100 bg-amber-50/60 shadow-none">
+                    <CardContent className="p-4">
+                        <Clock className="mb-3 h-5 w-5 text-amber-600" />
+                        <p className="text-2xl font-black text-slate-900">{stats?.pendingApprovals || 0}</p>
+                        <p className="mt-1 text-xs font-semibold text-slate-500">Pending approvals</p>
+                    </CardContent>
+                </Card>
+            </div>
+
+            <Link href="/corporate/service-request" className="flex w-full min-h-[48px] items-center justify-center gap-2 rounded-xl bg-[var(--corp-blue)] px-4 text-sm font-bold text-white shadow-md shadow-blue-100 active:scale-[0.99] transition-transform">
+                <Wrench className="h-4 w-4" /> Request Service
+            </Link>
+
+            {pendingExtensionRequests.length > 0 && (
+                <Card className="border-amber-200 bg-amber-50 shadow-none">
+                    <CardHeader className="p-4 pb-2">
+                        <CardTitle className="text-base text-amber-900">Approval needed</CardTitle>
+                        <CardDescription className="text-xs text-amber-700">Review these clearance extensions.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-3 p-4 pt-2">
+                        {pendingExtensionRequests.map((request: any) => (
+                            <div key={request.id} className="space-y-3 rounded-xl border border-amber-200 bg-white p-3">
+                                <div>
+                                    <p className="text-sm font-bold text-slate-900">Job {request.jobId}</p>
+                                    <p className="mt-1 text-xs text-slate-500">{request.reason}</p>
+                                </div>
+                                <div className="grid grid-cols-2 gap-2">
+                                    <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700" disabled={respondExtensionMutation.isPending} onClick={() => respondExtensionMutation.mutate({ id: request.id, status: "accepted" })}>Accept</Button>
+                                    <Button size="sm" variant="outline" className="border-red-200 text-red-700" disabled={respondExtensionMutation.isPending} onClick={() => respondExtensionMutation.mutate({ id: request.id, status: "rejected" })}>Reject</Button>
+                                </div>
+                            </div>
+                        ))}
+                    </CardContent>
+                </Card>
+            )}
+
+            <Card className="border-slate-200 shadow-none">
+                <CardHeader className="flex flex-row items-center justify-between p-4 pb-2">
+                    <div>
+                        <CardTitle className="text-base">Recent activity</CardTitle>
+                        <CardDescription className="text-xs">Latest updates from your repairs</CardDescription>
+                    </div>
+                    <Link href="/corporate/jobs" className="text-xs font-bold text-[var(--corp-blue)]">View all</Link>
+                </CardHeader>
+                <CardContent className="p-4 pt-2">
+                    {stats?.recentActivity?.length ? (
+                        <div className="divide-y divide-slate-100">
+                            {stats.recentActivity.slice(0, 5).map((activity: any) => (
+                                <Link key={activity.id} href={`/corporate/jobs/${activity.id}`} className="flex items-center gap-3 py-3">
+                                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[var(--corp-blue)]"><Activity className="h-4 w-4" /></div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="truncate text-sm font-bold text-slate-800">{activity.device}</p>
+                                        <p className="text-xs text-slate-500">{activity.status}</p>
+                                    </div>
+                                    <ChevronRight className="h-4 w-4 shrink-0 text-slate-300" />
+                                </Link>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="py-8 text-center text-sm text-slate-400">No recent activity yet.</p>
+                    )}
+                </CardContent>
+            </Card>
+
+            <div className="rounded-xl bg-slate-900 p-4 text-white">
+                <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Monthly spend</p>
+                <p className="mt-1 text-2xl font-black">{formatCurrency(stats?.totalSpentMonth || 0)}</p>
+            </div>
+        </div>
     );
 }

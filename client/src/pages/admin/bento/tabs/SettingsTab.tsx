@@ -94,6 +94,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     const [socialYoutube, setSocialYoutube] = useState("");
     const [serviceCenterContactBn, setServiceCenterContactBn] = useState("");
     const [businessHoursBn, setBusinessHoursBn] = useState("");
+    const [serviceCenterLatitude, setServiceCenterLatitude] = useState("");
+    const [serviceCenterLongitude, setServiceCenterLongitude] = useState("");
+    const [serviceCenterGooglePlaceId, setServiceCenterGooglePlaceId] = useState("");
 
     // Customer Send Money (bKash/Nagad) numbers shown on the track page
     const [bkashSendMoney, setBkashSendMoney] = useState("");
@@ -305,6 +308,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         case "social_youtube": setSocialYoutube(val); break;
                         case "service_center_contact_bn": setServiceCenterContactBn(val); break;
                         case "business_hours_bn": setBusinessHoursBn(val); break;
+                        case "service_center_latitude": setServiceCenterLatitude(val); break;
+                        case "service_center_longitude": setServiceCenterLongitude(val); break;
+                        case "service_center_google_place_id": setServiceCenterGooglePlaceId(val); break;
                         case "currency_symbol": setCurrencySymbol(val); break;
                         case "vat_percentage": setVatPercentage(val); break;
                         case "timezone": setTimezone(val); break;
@@ -379,6 +385,15 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     };
 
     const handleSaveAll = async () => {
+        const latitude = serviceCenterLatitude.trim();
+        const longitude = serviceCenterLongitude.trim();
+        const latitudeNumber = Number(latitude);
+        const longitudeNumber = Number(longitude);
+        if ((latitude || longitude) && (!latitude || !longitude || !Number.isFinite(latitudeNumber) || !Number.isFinite(longitudeNumber) || latitudeNumber < -90 || latitudeNumber > 90 || longitudeNumber < -180 || longitudeNumber > 180)) {
+            toast({ title: "Invalid map location", description: "Enter both latitude and longitude using valid coordinate values.", variant: "destructive" });
+            return;
+        }
+
         setSaving(true);
         try {
             const settingsToSave = {
@@ -394,6 +409,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                 social_youtube: socialYoutube,
                 service_center_contact_bn: serviceCenterContactBn,
                 business_hours_bn: businessHoursBn,
+                service_center_latitude: latitude,
+                service_center_longitude: longitude,
+                service_center_google_place_id: serviceCenterGooglePlaceId.trim(),
                 currency_symbol: currencySymbol,
                 vat_percentage: vatPercentage,
                 timezone: timezone,
@@ -1322,6 +1340,22 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     <label className="text-sm font-semibold text-slate-700">Hours (Bangla)</label>
                                     <Input placeholder="কাজের সময় বাংলায়" value={businessHoursBn} onChange={(e) => setBusinessHoursBn(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
                                 </div>
+                                <p className="pt-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">Customer Distance Map</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">Latitude</label>
+                                        <Input inputMode="decimal" placeholder="23.7806" value={serviceCenterLatitude} onChange={(e) => setServiceCenterLatitude(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">Longitude</label>
+                                        <Input inputMode="decimal" placeholder="90.4070" value={serviceCenterLongitude} onChange={(e) => setServiceCenterLongitude(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Google Place ID <span className="font-normal text-slate-400">(optional)</span></label>
+                                    <Input placeholder="ChIJ..." value={serviceCenterGooglePlaceId} onChange={(e) => setServiceCenterGooglePlaceId(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    <p className="text-xs leading-relaxed text-slate-500">Coordinates power the private distance map. Place ID improves the external Google Maps destination.</p>
+                                </div>
                                 <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 pt-2">Social Links</p>
                                 <div className="space-y-2">
                                     <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><Facebook className="w-3.5 h-3.5 text-blue-600" /> Facebook</label>
@@ -1403,6 +1437,22 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         <label className="text-sm font-semibold text-slate-700 flex items-center gap-1.5"><Languages className="w-3.5 h-3.5 text-slate-400" /> Hours (Bangla)</label>
                                         <Input placeholder="কাজের সময় বাংলায়" value={businessHoursBn} onChange={(e) => setBusinessHoursBn(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
                                     </div>
+                                </div>
+                                <p className="pt-2 text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-400">Customer Distance Map</p>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">Latitude</label>
+                                        <Input inputMode="decimal" placeholder="23.7806" value={serviceCenterLatitude} onChange={(e) => setServiceCenterLatitude(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-semibold text-slate-700">Longitude</label>
+                                        <Input inputMode="decimal" placeholder="90.4070" value={serviceCenterLongitude} onChange={(e) => setServiceCenterLongitude(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-semibold text-slate-700">Google Place ID <span className="font-normal text-slate-400">(optional)</span></label>
+                                    <Input placeholder="ChIJ..." value={serviceCenterGooglePlaceId} onChange={(e) => setServiceCenterGooglePlaceId(e.target.value)} className="bg-slate-50 focus:bg-white transition-colors" />
+                                    <p className="text-xs leading-relaxed text-slate-500">Coordinates power the private customer distance map. Place ID improves the Google Maps handoff.</p>
                                 </div>
                                 <p className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-slate-400 pt-2">Social Links</p>
                                 <div className="grid grid-cols-1 gap-3">

@@ -144,3 +144,43 @@ export const uploadAuthLimiter = rateLimit({
     standardHeaders: true,
     legacyHeaders: false,
 });
+
+export const routeEstimateLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 20,
+    message: {
+        error: 'Too many route estimates',
+        message: 'Please wait before checking the route again.',
+        retryAfter: 600,
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+});
+
+/**
+ * Admin map place search (Photon fair-use).
+ * Prefer authenticated admin user id; fall back to default IP keying.
+ * Does NOT skip admin sessions (unlike apiLimiter).
+ */
+export const mapPlaceSearchLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 30,
+    standardHeaders: true,
+    legacyHeaders: false,
+    // Only override when admin session exists — avoids custom IP keyGenerator IPv6 issues.
+    keyGenerator: (req: Request, _res: Response) => {
+        const adminId = (req.session as { adminUserId?: string } | undefined)?.adminUserId;
+        if (adminId) return `map-place:admin:${adminId}`;
+        // Delegate IP handling to library default path via req.ip string is ok when
+        // we use validate.keyGeneratorIpFallback = false and trust proxy/IP already set.
+        return `map-place:ip:${req.ip || 'unknown'}`;
+    },
+    validate: {
+        keyGeneratorIpFallback: false,
+    },
+    message: {
+        error: 'Too many place searches',
+        message: 'Please wait before searching again.',
+        retryAfter: 600,
+    },
+});

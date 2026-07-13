@@ -114,7 +114,7 @@ router.get("/clients/:id", requireAdminAuth, requirePermission('corporate'), asy
 
 // 0.5. Create New Corporate Client
 // 0.5. Create New Corporate Client
-router.post("/clients", requirePermission('corporate'), async (req, res) => {
+router.post("/clients", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
     try {
         // Extended schema to include optional password
         const schema = insertCorporateClientSchema.extend({
@@ -219,7 +219,7 @@ router.get("/clients/:id/branches", requireAdminAuth, requirePermission('corpora
 });
 
 // 1.5.2 Update Corporate Client
-router.patch("/clients/:id", requirePermission('corporate'), async (req, res) => {
+router.patch("/clients/:id", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
     try {
         const client = await storage.updateCorporateClient(req.params.id, req.body);
         res.json(client);
@@ -391,7 +391,7 @@ router.get("/clients/:id/challans", requireAdminAuth, requirePermission('corpora
 });
 
 // 2. Create Challan IN (Bulk Check-in)
-router.post("/challans/in", requirePermission('corporate'), async (req, res) => {
+router.post("/challans/in", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
     try {
         const data = createChallanInSchema.parse(req.body);
         const result = await corporateService.createChallanIn(data);
@@ -406,7 +406,7 @@ router.post("/challans/in", requirePermission('corporate'), async (req, res) => 
 });
 
 // 3. Create Challan OUT (Bulk Check-out)
-router.post("/challans/out", requirePermission('corporate'), async (req, res) => {
+router.post("/challans/out", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
     try {
         const data = createChallanOutSchema.parse(req.body);
         const challanOutId = await corporateService.createChallanOut(data);
@@ -438,7 +438,7 @@ router.get("/bills/:id", requireAdminAuth, requirePermission('corporate'), async
 });
 
 // 4. Generate Corporate Master Bill (Manual selection)
-router.post("/bills/generate", requirePermission('corporate'), async (req, res) => {
+router.post("/bills/generate", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
     try {
         const data = generateBillSchema.parse(req.body);
         const bill = await storage.generateCorporateBill(data);
@@ -455,7 +455,7 @@ const autoGenerateStatementSchema = z.object({
     month: z.number().int().min(1).max(12),
 });
 
-router.post("/bills/auto-generate", requirePermission('corporate'), async (req, res) => {
+router.post("/bills/auto-generate", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
     try {
         const data = autoGenerateStatementSchema.parse(req.body);
 
@@ -749,7 +749,7 @@ const extractPptxTableRows = async (buffer: Buffer) => {
     return [];
 };
 
-router.post("/clients/challans/parse-excel", requirePermission('corporate'), upload.single('file'), async (req, res) => {
+router.post("/clients/challans/parse-excel", requireAdminAuth, requirePermission('corporate'), upload.single('file'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
     }
@@ -847,7 +847,7 @@ router.post("/clients/challans/parse-excel", requirePermission('corporate'), upl
 // DOCX PARSING (Microsoft Word)
 import mammoth from 'mammoth';
 
-router.post("/clients/challans/parse-docx", requirePermission('corporate'), upload.single('file'), async (req, res) => {
+router.post("/clients/challans/parse-docx", requireAdminAuth, requirePermission('corporate'), upload.single('file'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
     }
@@ -881,7 +881,7 @@ router.post("/clients/challans/parse-docx", requirePermission('corporate'), uplo
     }
 });
 
-router.post("/clients/challans/parse-pptx", requirePermission('corporate'), upload.single('file'), async (req, res) => {
+router.post("/clients/challans/parse-pptx", requireAdminAuth, requirePermission('corporate'), upload.single('file'), async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
     }
@@ -924,7 +924,7 @@ router.post("/clients/challans/parse-pptx", requirePermission('corporate'), uplo
         });
     }
 });
-router.patch("/jobs/:id/status", requirePermission('jobs'), async (req, res) => {
+router.patch("/jobs/:id/status", requireAdminAuth, requirePermission('jobs'), async (req, res) => {
     try {
         const { status } = req.body;
         if (!status) return res.status(400).json({ message: "Status required" });
@@ -942,7 +942,7 @@ const bulkPrioritySchema = z.object({
     priority: z.enum(["Low", "Medium", "High", "Critical"]).nullable(),
 });
 
-router.patch("/jobs/bulk-priority", requirePermission('jobs'), async (req, res) => {
+router.patch("/jobs/bulk-priority", requireAdminAuth, requirePermission('jobs'), async (req, res) => {
     try {
         const data = bulkPrioritySchema.parse(req.body);
 
@@ -972,7 +972,7 @@ router.get("/billing-profile/:clientId", requirePermission('corporate'), async (
     } catch { res.status(500).json({ message: "Failed to fetch billing profile" }); }
 });
 
-router.patch("/billing-profile/:clientId", requirePermission('corporate'), async (req, res) => {
+router.patch("/billing-profile/:clientId", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
     try {
         const allowed = [
             'tier', 'scatterBillingEnabled', 'scatterBillingMode', 'requiresSerialMatch',
@@ -1005,7 +1005,7 @@ const scatterSchema = z.object({
     reason: z.string().optional(),
 });
 
-router.post("/bills/:billId/scatter", requirePermission('corporate'), async (req: any, res) => {
+router.post("/bills/:billId/scatter", requireAdminAuth, requirePermission('corporate'), async (req: any, res) => {
     try {
         const staffId = req.admin?.id || req.session?.adminUserId || 'admin';
         const { splits, reason } = scatterSchema.parse(req.body);
@@ -1091,7 +1091,7 @@ const quoteLogSchema = z.object({
 
 import { quoteLogs } from "../../shared/schema.js";
 
-router.post("/quote-logs", requirePermission('corporate'), async (req: any, res) => {
+router.post("/quote-logs", requireAdminAuth, requirePermission('corporate'), async (req: any, res) => {
     try {
         const data = quoteLogSchema.parse(req.body);
         const staffId = req.admin?.id || req.session?.adminUserId || 'admin';

@@ -120,6 +120,10 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   // ── Notifications ──
   { key: "notifications.view", label: "View notifications", module: "notifications", action: "view", risk: "low", description: "See system notifications and alerts.", consequence: "Read-only.", suggestedRoles: ["Driver", "Technician", "Cashier", "Manager", "Super Admin"], coverageCritical: false },
   { key: "notifications.manage", label: "Manage notifications", module: "notifications", action: "manage", risk: "medium", description: "Configure notification settings and overrides.", consequence: "Affects alert routing.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
+
+  // ── Map / Service Areas ──
+  { key: "map.viewAreaAnalytics", label: "View area analytics", module: "map", action: "viewAreaAnalytics", risk: "medium", description: "View aggregated service analytics grouped by geographic area.", consequence: "Access to area-level service counts and revenue totals — no customer PII.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
+  { key: "map.manageAreas", label: "Manage service areas", module: "map", action: "manageAreas", risk: "medium", description: "Create, update, and deactivate service area taxonomy entries.", consequence: "Affects area-based filtering and analytics grouping.", suggestedRoles: ["Super Admin"], coverageCritical: false },
 ];
 
 // ── Old → New Compatibility Map ──
@@ -197,6 +201,7 @@ export const ROLE_PRESETS: Record<string, string[]> = {
     "users.viewStaff",
     "attendance.view", "attendance.checkIn",
     "notifications.view", "notifications.manage",
+    "map.viewAreaAnalytics",
   ],
   "Super Admin": ["*"],
 };

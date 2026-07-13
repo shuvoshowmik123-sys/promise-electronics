@@ -19,14 +19,15 @@ import {
     ChevronRight,
     Tag,
     History,
-    ArrowUpRight
+    ArrowUpRight,
+    MessageSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
-import { MessageSquare } from "lucide-react";
+import { useCorporateMobileMode } from "@/hooks/useCorporateMobileMode";
 
 
 export default function CorporateJobDetails() {
@@ -34,6 +35,7 @@ export default function CorporateJobDetails() {
     const id = params?.id;
     const [, setLocation] = useLocation();
     const { toast } = useToast();
+    const isCorporateMobile = useCorporateMobileMode();
 
     const { data: job, isLoading, error } = useQuery({
         queryKey: ["corporateJob", id],
@@ -81,7 +83,7 @@ export default function CorporateJobDetails() {
             case "Completed":
                 return { icon: CheckCircle2, class: "bg-emerald-50 text-emerald-600 border-emerald-100", label: "Completed" };
             case "Delivered":
-                return { icon: ShieldCheck, class: "bg-purple-50 text-purple-600 border-purple-100", label: "Delivered" };
+                return { icon: ShieldCheck, class: "bg-sky-50 text-sky-700 border-sky-100", label: "Delivered" };
             case "Cancelled":
                 return { icon: AlertCircle, class: "bg-rose-50 text-rose-600 border-rose-100", label: "Cancelled" };
             default:
@@ -91,13 +93,34 @@ export default function CorporateJobDetails() {
 
     const statusConfig = getStatusConfig(job.status);
 
-    // Derived timeline steps from job status
     const timelineSteps = [
         { label: "Service Requested", date: job.createdAt, status: "completed" },
         { label: "Under Diagnosis", date: job.createdAt, status: job.status !== 'Pending' ? 'completed' : 'active' },
         { label: "Repair Finished", date: job.completedAt, status: job.status === 'Completed' || job.status === 'Delivered' ? 'completed' : 'pending' },
         { label: "Unit Delivered", date: null, status: job.status === 'Delivered' ? 'completed' : 'pending' },
     ];
+
+    if (isCorporateMobile) {
+        return (
+            <CorporateJobDetailMobile
+                job={job}
+                statusConfig={statusConfig}
+                timelineSteps={timelineSteps}
+                onBack={() => setLocation("/corporate/jobs")}
+                onMessage={() => {
+                    const params = new URLSearchParams({
+                        jobRef: job.id,
+                        jobNo: getSafeJobDisplayRef(job),
+                        device: job.device || "",
+                        status: job.status || "",
+                        priority: job.priority || "",
+                    });
+                    setLocation(`/corporate/messages?${params.toString()}`);
+                }}
+                onToast={toast}
+            />
+        );
+    }
 
     return (
         <div
@@ -252,7 +275,7 @@ export default function CorporateJobDetails() {
                                 onClick={() => {
                                     const params = new URLSearchParams({
                                         jobRef: job.id,
-                                        jobNo: job.corporateJobNumber || `PRM-REF-${job.id.substring(0, 6)}`,
+                                        jobNo: getSafeJobDisplayRef(job),
                                         device: job.device || "",
                                         status: job.status || "",
                                         priority: job.priority || "",
@@ -294,7 +317,7 @@ export default function CorporateJobDetails() {
                                 <div className="flex justify-between items-center text-xs">
                                     <span className="text-slate-400 font-medium italic">Account Reference</span>
                                     <span className="font-bold text-slate-700 uppercase tracking-tighter">
-                                        {job.corporateJobNumber || `PRM-REF-${job.id.substring(0, 6)}`}
+                                        {getSafeJobDisplayRef(job)}
                                     </span>
                                 </div>
                             </div>
@@ -308,6 +331,141 @@ export default function CorporateJobDetails() {
                             </div>
                         </CardContent>
                     </Card>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+interface MobileProps {
+    job: any;
+    statusConfig: { icon: any; class: string; label: string };
+    timelineSteps: Array<{ label: string; date: Date | string | null; status: string }>;
+    onBack: () => void;
+    onMessage: () => void;
+    onToast: (opts: any) => void;
+}
+
+function CorporateJobDetailMobile({ job, statusConfig, timelineSteps, onBack, onMessage, onToast }: MobileProps) {
+    const StatusIcon = statusConfig.icon;
+    return (
+        <div className="space-y-3 pb-4">
+            {/* Compact header */}
+            <div className="flex items-center gap-3">
+                <button
+                    type="button"
+                    onClick={onBack}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white"
+                    aria-label="Back to jobs"
+                >
+                    <ArrowLeft className="h-4 w-4 text-slate-600" />
+                </button>
+                <div className="min-w-0 flex-1">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.15em] text-[var(--corp-blue)]">Job Details</p>
+                    <p className="text-base font-black text-slate-900 leading-tight">{getSafeJobDisplayRef(job)}</p>
+                </div>
+                <Badge className={cn("shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold shadow-none", statusConfig.class)}>
+                    <StatusIcon className="mr-1 h-3 w-3" />
+                    {statusConfig.label}
+                </Badge>
+            </div>
+
+            {/* Message Manager — primary action */}
+            <button
+                type="button"
+                onClick={onMessage}
+                className="flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--corp-blue)] px-4 py-3.5 text-sm font-bold text-white shadow-md shadow-blue-100 active:scale-[0.99] transition-transform"
+            >
+                <MessageSquare className="h-4 w-4" /> Message Manager
+            </button>
+
+            {/* Device info */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Device</p>
+                <p className="text-sm font-bold text-slate-800">{job.device}</p>
+                {job.tvSerialNumber && (
+                    <div className="flex items-center gap-2">
+                        <code className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1 font-mono text-xs text-slate-500">{job.tvSerialNumber}</code>
+                        <Badge variant="secondary" className="bg-blue-50 text-[var(--corp-blue)] text-[9px] font-black py-0 shadow-none">VERIFIED</Badge>
+                    </div>
+                )}
+                {job.issue && (
+                    <div className="border-t border-slate-100 pt-3">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Fault Reported</p>
+                        <p className="text-xs text-slate-500 leading-relaxed">"{job.issue}"</p>
+                    </div>
+                )}
+            </div>
+
+            {/* Timeline */}
+            <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <p className="mb-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Progress</p>
+                <div className="relative">
+                    <div className="absolute left-2 top-0 bottom-0 w-px bg-slate-100" />
+                    <div className="space-y-5">
+                        {timelineSteps.map((step, idx) => (
+                            <div key={idx} className="flex items-start gap-4">
+                                <div className={cn(
+                                    "relative z-10 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all",
+                                    step.status === 'completed' ? "border-[var(--corp-blue)] bg-[var(--corp-blue)]" :
+                                    step.status === 'active' ? "border-[var(--corp-blue)] bg-white animate-pulse" :
+                                    "border-slate-200 bg-white"
+                                )}>
+                                    {step.status === 'completed' && <CheckCircle2 className="h-3 w-3 text-white" />}
+                                    {step.status === 'active' && <div className="h-1.5 w-1.5 rounded-full bg-[var(--corp-blue)]" />}
+                                </div>
+                                <div className="min-w-0 flex-1 -mt-0.5">
+                                    <p className={cn("text-sm font-bold leading-snug", step.status === 'pending' ? "text-slate-300" : "text-slate-800")}>
+                                        {step.label}
+                                    </p>
+                                    {step.date && (
+                                        <p className="text-xs text-slate-400 mt-0.5">
+                                            {new Date(step.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                        </p>
+                                    )}
+                                    {!step.date && step.status === 'pending' && (
+                                        <p className="text-[10px] text-slate-300 italic mt-0.5">Expected soon</p>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            {/* Meta info */}
+            <div className="rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+                <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-xs text-slate-500">Reference</span>
+                    <span className="text-xs font-bold text-slate-800 uppercase tracking-tight">
+                        {getSafeJobDisplayRef(job)}
+                    </span>
+                </div>
+                <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-xs text-slate-500">Priority</span>
+                    <span className={cn(
+                        "rounded px-2 py-0.5 text-xs font-bold",
+                        job.priority === 'Critical' ? "bg-red-50 text-red-600" :
+                        job.priority === 'High' ? "bg-orange-50 text-orange-600" :
+                        "bg-blue-50 text-blue-600"
+                    )}>
+                        {job.priority || "Standard"}
+                    </span>
+                </div>
+                <div className="flex items-center justify-between px-4 py-3">
+                    <span className="text-xs text-slate-500">Submitted</span>
+                    <span className="text-xs font-bold text-slate-800">
+                        {new Date(job.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </span>
+                </div>
+                <div className="px-4 py-3 flex justify-center">
+                    <button
+                        type="button"
+                        onClick={() => onToast({ title: "Digital Invoice", description: "Invoice generation is in progress." })}
+                        className="text-[10px] font-black uppercase tracking-wide text-[var(--corp-blue)] flex items-center gap-1"
+                    >
+                        View Digital Invoice <ArrowUpRight className="h-3 w-3" />
+                    </button>
                 </div>
             </div>
         </div>

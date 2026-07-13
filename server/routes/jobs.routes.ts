@@ -22,6 +22,7 @@ import { repairJourneyService } from '../services/customer-repair-journey.servic
 import { eq, sql } from 'drizzle-orm';
 import { loadRepairCaseByJobTicket } from '../services/repair-case.service.js';
 import { normalizePhone } from '../utils/phone.js';
+import { getActiveServiceAreaById } from '../repositories/service-area.repository.js';
 
 const router = Router();
 const JOB_REALTIME_TAGS = ["jobTickets", "jobOverview", "dashboardStats"] as const;
@@ -203,6 +204,10 @@ router.post('/api/job-tickets', requireAdminAuth, requireGranularPermission('job
 
         if (!jobData.source && !jobData.corporateClientId && !jobData.corporateChallanId) {
             jobData.source = 'walk_in';
+        }
+
+        if (jobData.serviceAreaId && !await getActiveServiceAreaById(jobData.serviceAreaId)) {
+            return res.status(400).json({ error: 'Selected service area is not active or does not exist.' });
         }
 
         const validated = insertJobTicketSchema.parse(jobData);
@@ -769,6 +774,15 @@ router.patch('/api/job-tickets/:id', requireAdminAuth, requireGranularPermission
         const existingJob = await jobRepo.getJobTicket(resolvedId);
         if (!existingJob) {
             return res.status(404).json({ error: 'Job ticket not found' });
+        }
+
+        if ('serviceAreaId' in updateData) {
+            if (existingJob.corporateClientId || existingJob.corporateChallanId) {
+                return res.status(400).json({ error: 'Corporate jobs cannot be attributed to retail service areas.' });
+            }
+            if (updateData.serviceAreaId && !await getActiveServiceAreaById(updateData.serviceAreaId)) {
+                return res.status(400).json({ error: 'Selected service area is not active or does not exist.' });
+            }
         }
 
         // Phase P — Warranty cost lock: zero out costs on warranty repairs
