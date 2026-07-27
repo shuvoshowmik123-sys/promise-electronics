@@ -316,6 +316,229 @@ export async function updateTaskStatus(id: string, status: string, extra?: {
     return result.rows[0] ? rowToTask(result.rows[0]) : null;
 }
 
+/** JOB-LIFECYCLE-TRUST-01A — retail delivery must not complete before Job Ready → Delivered. */
+export class LogisticsLifecycleError extends Error {
+    status: number;
+    code: string;
+    constructor(status: number, code: string, message: string) {
+        super(message);
+        this.name = "LogisticsLifecycleError";
+        this.status = status;
+        this.code = code;
+    }
+}
+
+export type LogisticsStatusActor = {
+    id: string;
+    name: string;
+    role: string;
+};
+
+export type LifecycleStatusResult = {
+    task: LogisticsTask;
+    linkedJobId: string | null;
+    jobDelivered: boolean;
+    /** True when canonical Job Delivered path was used or an already-Delivered linked task no-op. */
+    usedCanonicalDelivery: boolean;
+    /**
+     * True only when this completion is a genuinely unlinked delivery (no jobTicketId and
+     * no converted_job_id). Route may legacy-sync journey only when this is true.
+     * JOB-LIFECYCLE-TRUST-01A-HOTFIX-1: never true merely because canonical was skipped.
+     */
+    allowDirectJourneyProjection: boolean;
+};
+
+async function resolveLinkedRepairJobId(task: LogisticsTask): Promise<string | null> {
+    let linkedJobId = task.jobTicketId ? String(task.jobTicketId).trim() : "";
+    if (!linkedJobId && task.serviceRequestId) {
+        const { serviceRequestRepo } = await import("../repositories/index.js");
+        const sr = await serviceRequestRepo.getServiceRequest(task.serviceRequestId);
+        const conv = sr?.convertedJobId != null ? String(sr.convertedJobId).trim() : "";
+        if (conv) linkedJobId = conv;
+    }
+    return linkedJobId || null;
+}
+
+/**
+ * Status update with lifecycle ownership for linked retail delivery.
+ * Delivery + linked Job: require Ready (or already Delivered), run canonical Job Delivered
+ * first, then mark the task completed. Never writes journey.delivered directly for that job.
+ * Pickup / unlinked tasks keep prior behavior (caller may sync journey for pickup only).
+ * HOTFIX-1: already-completed linked deliveries never fall through to legacy journey publish.
+ */
+export async function updateTaskStatusWithLifecycle(
+    id: string,
+    status: string,
+    extra: {
+        failureReason?: string;
+        notes?: string;
+        proofPhotoUrl?: string;
+        signatureUrl?: string;
+    } | undefined,
+    actor: LogisticsStatusActor,
+): Promise<LifecycleStatusResult> {
+    if (!validateStatus(status)) {
+        throw new Error(`Invalid status: ${status}. Valid: ${VALID_STATUSES.join(", ")}`);
+    }
+
+    const existing = await getTask(id);
+    if (!existing) {
+        throw new LogisticsLifecycleError(404, "TASK_NOT_FOUND", "Logistics task not found");
+    }
+
+    // Non-completion statuses: plain update (never delivery-journey projection)
+    if (status !== "completed") {
+        const task = await updateTaskStatus(id, status, extra);
+        if (!task) throw new LogisticsLifecycleError(404, "TASK_NOT_FOUND", "Logistics task not found");
+        return {
+            task,
+            linkedJobId: null,
+            jobDelivered: false,
+            usedCanonicalDelivery: false,
+            allowDirectJourneyProjection: false,
+        };
+    }
+
+    // Resolve linked repair job before any completed-path branch (including already-completed).
+    const linkedJobId = existing.taskType === "delivery" ? await resolveLinkedRepairJobId(existing) : null;
+    const isLinkedDelivery = existing.taskType === "delivery" && Boolean(linkedJobId);
+
+    // Already completed — durable no-op, but linked delivery must not open legacy projection
+    if (existing.status === "completed") {
+        if (existing.taskType === "delivery" && linkedJobId) {
+            const { jobRepo } = await import("../repositories/index.js");
+            const job = await jobRepo.getJobTicket(linkedJobId);
+            if (!job) {
+                throw new LogisticsLifecycleError(
+                    409,
+                    "DELIVERY_JOB_NOT_FOUND",
+                    "Linked job was not found for this delivery task.",
+                );
+            }
+            if (job.status === "Delivered") {
+                return {
+                    task: existing,
+                    linkedJobId,
+                    jobDelivered: true,
+                    usedCanonicalDelivery: true,
+                    allowDirectJourneyProjection: false,
+                };
+            }
+            // Ready or any other lifecycle — require reconciliation, zero mutation
+            throw new LogisticsLifecycleError(
+                409,
+                "DELIVERY_REQUIRES_RECONCILIATION",
+                "This delivery task is already completed but the linked job is not Delivered. Reconcile the job lifecycle before retrying.",
+            );
+        }
+        // Delivery with explicit job id / converted id missing after resolve → if SR had convert but empty?
+        // If task.jobTicketId was set but resolve failed empty — treat missing
+        if (
+            existing.taskType === "delivery" &&
+            (existing.jobTicketId || existing.serviceRequestId)
+        ) {
+            // serviceRequestId alone without convertedJobId = unlinked; only error if we expected a link
+            if (existing.jobTicketId) {
+                throw new LogisticsLifecycleError(
+                    409,
+                    "DELIVERY_JOB_NOT_FOUND",
+                    "Linked job was not found for this delivery task.",
+                );
+            }
+            // SR without converted job: genuine unlinked no-op
+            return {
+                task: existing,
+                linkedJobId: null,
+                jobDelivered: false,
+                usedCanonicalDelivery: false,
+                allowDirectJourneyProjection: false,
+            };
+        }
+        return {
+            task: existing,
+            linkedJobId: null,
+            jobDelivered: false,
+            usedCanonicalDelivery: false,
+            allowDirectJourneyProjection: false,
+        };
+    }
+
+    // Fresh completion of unlinked delivery (or non-delivery)
+    if (!isLinkedDelivery) {
+        const task = await updateTaskStatus(id, status, extra);
+        if (!task) throw new LogisticsLifecycleError(404, "TASK_NOT_FOUND", "Logistics task not found");
+        const unlinkedDelivery = existing.taskType === "delivery" && !linkedJobId;
+        return {
+            task,
+            linkedJobId: null,
+            jobDelivered: false,
+            usedCanonicalDelivery: false,
+            allowDirectJourneyProjection: unlinkedDelivery,
+        };
+    }
+
+    const { jobRepo } = await import("../repositories/index.js");
+    const {
+        transitionJobStatus,
+        JobStatusTransitionError,
+    } = await import("./job-status-transition.service.js");
+
+    const job = await jobRepo.getJobTicket(linkedJobId!);
+    if (!job) {
+        throw new LogisticsLifecycleError(
+            409,
+            "DELIVERY_JOB_NOT_FOUND",
+            "Linked job was not found for this delivery task.",
+        );
+    }
+
+    if (job.status !== "Ready" && job.status !== "Delivered") {
+        throw new LogisticsLifecycleError(
+            409,
+            "DELIVERY_REQUIRES_JOB_READY",
+            "Retail delivery can complete only when the linked job is Ready (after final testing).",
+        );
+    }
+
+    let jobDelivered = job.status === "Delivered";
+    if (job.status === "Ready") {
+        try {
+            await transitionJobStatus({
+                jobId: linkedJobId!,
+                toStatus: "Delivered",
+                actor: {
+                    id: actor.id || "system",
+                    name: actor.name || "Logistics",
+                    role: actor.role || "Manager",
+                },
+                reason: "system",
+                extraPatch: { completedAt: new Date() },
+                suppressReadyNotify: true,
+            });
+            jobDelivered = true;
+        } catch (err) {
+            if (err instanceof JobStatusTransitionError) {
+                throw new LogisticsLifecycleError(err.status, err.code, err.message);
+            }
+            throw err;
+        }
+    }
+
+    // Mark task completed only after successful lifecycle outcome
+    const task = await updateTaskStatus(id, "completed", extra);
+    if (!task) {
+        throw new LogisticsLifecycleError(404, "TASK_NOT_FOUND", "Logistics task not found after delivery");
+    }
+
+    return {
+        task,
+        linkedJobId,
+        jobDelivered,
+        usedCanonicalDelivery: true,
+        allowDirectJourneyProjection: false,
+    };
+}
+
 export async function assignDriver(id: string, driverId: string, driverName: string, zone?: string, routeOrder?: number): Promise<LogisticsTask | null> {
     const result = await db.execute(sql`
         UPDATE logistics_tasks

@@ -12,15 +12,16 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";
-import { FileText, Printer, Loader2, Plus, Filter, Search, ChevronLeft, ChevronRight, Eye } from "lucide-react";
+import { FileText, Printer, Loader2, Plus, Filter, Search, ChevronLeft, ChevronRight, Eye, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { BillDetailsSheet } from "./BillDetailsSheet";
 
 interface CorporateBillsTableProps {
     clientId: string;
+    clientType?: string;
 }
 
-export function CorporateBillsTable({ clientId }: CorporateBillsTableProps) {
+export function CorporateBillsTable({ clientId, clientType }: CorporateBillsTableProps) {
     const [page, setPage] = useState(1);
     const [limit] = useState(20);
     const [selectedBillId, setSelectedBillId] = useState<string | null>(null);
@@ -28,6 +29,15 @@ export function CorporateBillsTable({ clientId }: CorporateBillsTableProps) {
     const { data: bills, isLoading } = useQuery({
         queryKey: ["corporateBills", clientId],
         queryFn: () => corporateApi.getBills(clientId),
+    });
+
+    const isNormalCorporate = clientType !== "limited_company";
+
+    const { data: accountBalance } = useQuery({
+        queryKey: ["corporateAccountBalance", clientId],
+        queryFn: () => corporateApi.getAccountBalance(clientId),
+        staleTime: 30_000,
+        enabled: isNormalCorporate,
     });
 
     const handlePrint = (e: React.MouseEvent, billId: string) => {
@@ -62,6 +72,30 @@ export function CorporateBillsTable({ clientId }: CorporateBillsTableProps) {
 
     return (
         <div className="flex flex-col h-full bg-white rounded-xl border border-slate-200/60 shadow-sm overflow-hidden min-h-0 relative">
+            {/* Corporate account balance — read-only finance view (FINANCE-AFTERCARE-01.2)
+                Only shown for Normal Corporate clients. Corporate Ltd. uses itemized allocation (Ticket 03). */}
+            {isNormalCorporate && accountBalance && (
+                <div className="flex flex-col sm:flex-row gap-3 sm:gap-6 p-4 border-b bg-slate-50/60">
+                    <div className="flex items-center gap-2 text-slate-600">
+                        <Wallet className="w-4 h-4 text-slate-400" />
+                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">Account Balance</span>
+                    </div>
+                    <div className="flex flex-wrap gap-4 sm:gap-8 text-sm">
+                        <div className="flex flex-col">
+                            <span className="text-xs text-slate-400">Total Billed</span>
+                            <span className="font-bold tabular-nums text-slate-700">৳ {accountBalance.totalBilled.toFixed(2)}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-xs text-slate-400">Total Received</span>
+                            <span className="font-bold tabular-nums text-emerald-600">৳ {accountBalance.totalReceived.toFixed(2)}</span>
+                        </div>
+                        <div className="flex flex-col">
+                            <span className="text-xs text-slate-400">Account Due</span>
+                            <span className="font-bold tabular-nums text-amber-600">৳ {accountBalance.totalDue.toFixed(2)}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
             {/* Toolbar */}
             <div className="p-4 border-b flex flex-col sm:flex-row gap-4 justify-between items-start md:items-center bg-white z-10 w-full shrink-0">
                 <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">

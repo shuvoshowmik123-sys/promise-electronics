@@ -1,0 +1,134 @@
+{
+  "schemaVersion": 1,
+  "baselineVersion": "v2026_07_20_corporate_declaration",
+  "registryHead": "2026_07_20_corporate_declaration",
+  "identityKind": "current_source_checksum_v1",
+  "algorithm": "sha256_16_of_id_description_upToString",
+  "note": "Identity B: frozen current source checksums for adopted historic ids. Do not equate to baseline ledger checksums (A). Regenerate only via this script after explicit review; never at acceptance time.",
+  "migrations": [
+    {
+      "id": "0000_promise_schema_migrations_ledger",
+      "sourceChecksum": "937d93fd25e4bd80"
+    },
+    {
+      "id": "0001_test_injected_failure",
+      "sourceChecksum": "fc26bc1b53c5c118"
+    },
+    {
+      "id": "2026_07_17_b2b_rule_profile",
+      "sourceChecksum": "89af80ef369a05eb"
+    },
+    {
+      "id": "2026_07_17_manual_payment_tables",
+      "sourceChecksum": "52804ab27cf7aa72"
+    },
+    {
+      "id": "2026_07_17_customer_repair_journey",
+      "sourceChecksum": "a24cd70dd047f0a2"
+    },
+    {
+      "id": "2026_07_17_staff_reset_codes",
+      "sourceChecksum": "134cde6e4969b299"
+    },
+    {
+      "id": "2026_07_17_password_changed_at",
+      "sourceChecksum": "2ff5ac596902f5dc"
+    },
+    {
+      "id": "2026_07_17_operational_fields_ddl",
+      "sourceChecksum": "481e054c43bbc3c8"
+    },
+    {
+      "id": "2026_07_17_call_attempts",
+      "sourceChecksum": "fbad848e09cf2c66"
+    },
+    {
+      "id": "2026_07_17_staff_invitations",
+      "sourceChecksum": "c32a70c6483e2a0b"
+    },
+    {
+      "id": "2026_07_17_corporate_setup_tokens",
+      "sourceChecksum": "c64eb31f8ea33f43"
+    },
+    {
+      "id": "2026_07_17_logistics_tasks_ddl",
+      "sourceChecksum": "226f159ebc3373d0"
+    },
+    {
+      "id": "2026_07_17_service_area_ddl",
+      "sourceChecksum": "ba0f8323bed985f7"
+    },
+    {
+      "id": "2026_07_17_job_ng_reports",
+      "sourceChecksum": "d6cbba85337b2fb3"
+    },
+    {
+      "id": "2026_07_17_job_ng_customer_decisions",
+      "sourceChecksum": "85c51c97deb32761"
+    },
+    {
+      "id": "2026_07_17_service_request_intake_ddl",
+      "sourceChecksum": "c3b55ca1ad5485a8"
+    },
+    {
+      "id": "2026_07_17_retail_quote_admin_acceptance",
+      "sourceChecksum": "7f4596972248174b"
+    },
+    {
+      "id": "2026_07_17_challan_ownership",
+      "sourceChecksum": "731926d0b54cd78e"
+    },
+    {
+      "id": "2026_07_17_attendance_location_ddl",
+      "sourceChecksum": "c6dc7e4f29611b9d"
+    },
+    {
+      "id": "2026_07_17_job_model_serial_outcome",
+      "sourceChecksum": "f8f105db7b703e36"
+    },
+    {
+      "id": "2026_07_17_job_warranty_columns",
+      "sourceChecksum": "6ceb643d9617c121"
+    },
+    {
+      "id": "2026_07_17_firebase_uid",
+      "sourceChecksum": "8e0126e43cda3a61"
+    },
+    {
+      "id": "2026_07_17_payment_blacklist",
+      "sourceChecksum": "707d1a3d1b28d20d"
+    },
+    {
+      "id": "2026_07_17_backup_metadata_r2_ddl",
+      "sourceChecksum": "e130b199ac1eb28b"
+    },
+    {
+      "id": "2026_07_17_hot_path_indexes",
+      "sourceChecksum": "ecce55d6130d092f"
+    },
+    {
+      "id": "2026_07_17_pos_integrity",
+      "sourceChecksum": "f13c55f26f700ab2"
+    },
+    {
+      "id": "2026_07_17_pos_idempotency",
+      "sourceChecksum": "384477c8ca6b41ab"
+    },
+    {
+      "id": "2026_07_19_scheduler_delivery_claim_ddl",
+      "sourceChecksum": "5d79d5adeb88a75d"
+    },
+    {
+      "id": "2026_07_19_scheduled_backup_runs_ddl",
+      "sourceChecksum": "f08a83e1f1e153ad"
+    },
+    {
+      "id": "2026_07_19_drawer_day_close_runs_ddl",
+      "sourceChecksum": "a53b60800d27ce6d"
+    },
+    {
+      "id": "2026_07_20_corporate_declaration",
+      "sourceChecksum": "77385452b6643f7e"
+    }
+  ]
+}

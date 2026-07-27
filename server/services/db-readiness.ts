@@ -1,29 +1,52 @@
 import { promises as dnsPromises } from 'dns';
 import { db, resetDbPool, getDbPoolDiagnostics } from '../db.js';
 import { sql } from 'drizzle-orm';
+import { getMainSchemaState, isMainSchemaComplete, isMainSchemaFailed, recordMainSchemaFailed, REQUIRED_MAIN_SCHEMA_VERSION } from './main-schema-migrate.service.js';
 
 type ReadinessState = 'initializing' | 'checking' | 'ready' | 'degraded';
+
+interface OptionalJobStatus {
+  name: string;
+  status: 'ok' | 'failed' | 'skipped';
+  error?: string;
+}
 
 interface ReadinessInfo {
   state: ReadinessState;
   dbConnected: boolean;
+  mainSchemaComplete: boolean;
+  mainSchemaFailed: boolean;
+  mainSchemaError: string | null;
+  mainSchemaVersion: string | null;
+  mainSchemaRequiredVersion: string;
+  /** @deprecated HOTFIX-2: observational only — never gates readiness. Prefer optionalJobsComplete. */
   migrationsComplete: boolean;
+  /** True when optional MAIN seeds/backfills finished (or were skipped). Never gates /ready. */
+  optionalJobsComplete: boolean;
   lastCheck: Date | null;
   lastError: string | null;
   checkCount: number;
   consecutiveFailures: number;
   degradedSince: Date | null;
+  optionalJobs: OptionalJobStatus[];
 }
 
 let readinessState: ReadinessInfo = {
   state: 'initializing',
   dbConnected: false,
+  mainSchemaComplete: false,
+  mainSchemaFailed: false,
+  mainSchemaError: null,
+  mainSchemaVersion: null,
+  mainSchemaRequiredVersion: REQUIRED_MAIN_SCHEMA_VERSION,
   migrationsComplete: false,
+  optionalJobsComplete: false,
   lastCheck: null,
   lastError: null,
   checkCount: 0,
   consecutiveFailures: 0,
   degradedSince: null,
+  optionalJobs: [],
 };
 
 const MAX_RETRIES = 10;
@@ -36,17 +59,68 @@ let watchdogInProgress = false;
 let startCalled = false;
 
 export function getReadinessState(): ReadinessInfo {
-  return { ...readinessState };
+  const mainState = getMainSchemaState();
+  return {
+    ...readinessState,
+    mainSchemaComplete: isMainSchemaComplete(),
+    mainSchemaFailed: isMainSchemaFailed(),
+    mainSchemaError: mainState.error,
+    mainSchemaVersion: mainState.currentVersion,
+    mainSchemaRequiredVersion: REQUIRED_MAIN_SCHEMA_VERSION,
+  };
 }
 
 export function isDbReady(): boolean {
   return readinessState.state === 'ready';
 }
 
-export function markMigrationsComplete(): void {
-  readinessState.migrationsComplete = true;
+export function isMainSchemaVerifiedComplete(): boolean {
+  return readinessState.mainSchemaComplete;
+}
+
+export function markMainSchemaComplete(version: string | null): void {
+  readinessState.mainSchemaComplete = true;
+  readinessState.mainSchemaVersion = version;
   updateReadinessState();
-  startWatchdog(); // ensure watchdog is running even if markMigrationsComplete fires late
+  startWatchdog();
+  // If first connection check has not finished, re-evaluate ASAP so /ready can flip without waiting for optional jobs.
+  if (!readinessState.dbConnected) {
+    forceReadinessCheck();
+  }
+}
+
+export function markMainSchemaFailed(error: string): void {
+  readinessState.mainSchemaFailed = true;
+  readinessState.mainSchemaComplete = false;
+  readinessState.mainSchemaError = error;
+  // Keep main-schema-migrate state in sync — getReadinessState() overwrites flags from isMainSchemaFailed().
+  recordMainSchemaFailed(error);
+  updateReadinessState();
+  startWatchdog();
+  // Safe consistency line for ops/proofs — no SQL, connection URL, or raw error body.
+  const snap = getReadinessState();
+  console.log(
+    `[DBReadiness] MAIN schema failure recorded: mainSchemaComplete=${snap.mainSchemaComplete} mainSchemaFailed=${snap.mainSchemaFailed} state=${snap.state}`,
+  );
+}
+
+export function recordOptionalJob(name: string, status: 'ok' | 'failed' | 'skipped', error?: string): void {
+  readinessState.optionalJobs.push({ name, status, error });
+}
+
+/**
+ * Records that optional MAIN jobs finished (seeds/backfills). Observability only.
+ * HOTFIX-2: never gates isDbReady() / /ready / fail-closed middleware.
+ */
+export function markOptionalJobsComplete(): void {
+  readinessState.optionalJobsComplete = true;
+  readinessState.migrationsComplete = true; // keep legacy field in sync for older admin readers
+  startWatchdog();
+}
+
+/** @deprecated Use markOptionalJobsComplete — name implied MAIN readiness ownership. */
+export function markMigrationsComplete(): void {
+  markOptionalJobsComplete();
 }
 
 async function checkDatabaseConnection(): Promise<{ connected: boolean; error: string | null }> {
@@ -69,14 +143,27 @@ function isConnectionError(error: string | null): boolean {
 }
 
 function updateReadinessState(): void {
-  const { dbConnected, migrationsComplete } = readinessState;
-  if (dbConnected && migrationsComplete) {
-    readinessState.state = 'ready';
-  } else if (dbConnected && !migrationsComplete) {
-    readinessState.state = 'checking';
-  } else {
+  // HOTFIX-2: MAIN traffic readiness is ONLY db connection + MAIN ledger.
+  // Optional MAIN jobs / Brain jobs / markMigrationsComplete must never gate /ready.
+  const { dbConnected, mainSchemaComplete, mainSchemaFailed } = readinessState;
+
+  if (!dbConnected) {
     readinessState.state = 'degraded';
+    return;
   }
+
+  if (mainSchemaFailed) {
+    readinessState.state = 'degraded';
+    return;
+  }
+
+  if (mainSchemaComplete) {
+    readinessState.state = 'ready';
+    return;
+  }
+
+  // Pending migrate, lock-timeout incomplete, or not yet verified.
+  readinessState.state = 'checking';
 }
 
 function resolveDnsForLog(hostname: string): void {
@@ -100,10 +187,10 @@ async function watchdogTick(): Promise<void> {
     readinessState.lastError = error;
 
     if (connected) {
-      if (readinessState.state === 'degraded') {
+      if (readinessState.state === 'degraded' && !readinessState.mainSchemaFailed) {
         const downSince = readinessState.degradedSince?.toISOString() ?? 'unknown';
         console.log(`[DBReadiness] Watchdog: DB recovered -- was degraded since ${downSince} (${readinessState.consecutiveFailures} failures)`);
-        readinessState.state = readinessState.migrationsComplete ? 'ready' : 'checking';
+        updateReadinessState();
       }
       readinessState.consecutiveFailures = 0;
       readinessState.degradedSince = null;
@@ -153,13 +240,11 @@ async function performReadinessCheck(attempt = 1): Promise<void> {
     return;
   }
 
-  // DB is up but migrations still pending — start watchdog and let markMigrationsComplete() transition to ready
   if (readinessState.dbConnected) {
     startWatchdog();
     return;
   }
 
-  // DB not reachable — retry with backoff
   if (attempt < MAX_RETRIES) {
     const delay = Math.min(INITIAL_RETRY_DELAY * Math.pow(1.5, attempt - 1), MAX_RETRY_DELAY);
     console.log(`[DBReadiness] Retry ${attempt}/${MAX_RETRIES} in ${delay}ms (state: ${readinessState.state})`);
@@ -167,13 +252,12 @@ async function performReadinessCheck(attempt = 1): Promise<void> {
   } else {
     console.warn('[DBReadiness] Max retries reached, staying in degraded state');
     readinessState.state = 'degraded';
-    startWatchdog(); // keep watching so we recover when DB comes back
+    startWatchdog();
   }
 }
 
 export function startReadinessChecks(): void {
   if (startCalled) {
-    // Idempotent: second call just ensures watchdog is running
     startWatchdog();
     return;
   }
@@ -191,4 +275,13 @@ export function stopReadinessChecks(): void {
 
 export function forceReadinessCheck(): void {
   watchdogTick().catch(() => {});
+}
+
+/** Test-only: mark MAIN DB ready without full startup (NODE_ENV=test). */
+export function forceReadyForTests(): void {
+  if (process.env.NODE_ENV !== "test") return;
+  readinessState.dbConnected = true;
+  readinessState.mainSchemaComplete = true;
+  readinessState.mainSchemaFailed = false;
+  readinessState.state = "ready";
 }

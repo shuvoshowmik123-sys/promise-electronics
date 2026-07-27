@@ -12,6 +12,7 @@ import { WarrantyClaimsTable } from '@/components/admin/corporate/WarrantyClaims
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { warrantyClaimsApi } from '@/lib/api';
 import { useAdminAuth } from '@/contexts/AdminAuthContext';
+import { OpenDisputeButton } from '@/components/admin/disputes/OpenDisputeButton';
 import { useAdminMobileMode } from '@/hooks/useAdminMobileMode';
 import {
     MobileTabLayout, MobileTabHeader, MobileScrollContent, MobileSegmentTabs,
@@ -274,6 +275,16 @@ function MobileWarrantyClaimSheet({
                             )}
                         </div>
                     )}
+                </div>
+
+                <div className="shrink-0 border-t border-slate-100 px-4 pt-3">
+                    <OpenDisputeButton
+                        targetType="warranty"
+                        targetId={claim.id}
+                        customerName={claim.customerName || claim.customer}
+                        customerPhone={claim.customerPhone || claim.phone}
+                        className="h-8 w-full gap-1 rounded-xl px-2 text-xs"
+                    />
                 </div>
 
                 {/* Footer — pending actions based on permission */}
@@ -555,7 +566,7 @@ export default function WarrantyClaimsTab() {
                     />
                 </MobileTabHeader>
 
-                <MobileScrollContent>
+                <MobileScrollContent className="pb-[calc(7.5rem+env(safe-area-inset-bottom))]">
                     {isLoading ? (
                         <div className="flex items-center justify-center py-16">
                             <Loader2 className="h-6 w-6 animate-spin text-slate-300" />

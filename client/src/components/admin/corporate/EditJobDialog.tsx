@@ -21,6 +21,7 @@ import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { Badge } from "@/components/ui/badge";
 import { VoiceTextInput } from "@/components/ui/VoiceTextInput";
 import { TechnicianPicker } from "@/components/admin/TechnicianPicker";
+import { getJobModelDisplay } from "@/pages/admin/bento/tabs/jobs/jobIdentityDisplay";
 
 interface EditJobDialogProps {
     job: any;
@@ -60,15 +61,6 @@ const PROBLEM_OPTIONS = [
     { value: "mainboard", label: "Mainboard Issue" },
     { value: "tcon", label: "T-Con Board" },
     { value: "other", label: "Other" },
-];
-
-const STATUS_OPTIONS = [
-    { value: "Pending", label: "Pending" },
-    { value: "Diagnosing", label: "Diagnosing" },
-    { value: "Pending Parts", label: "Pending Parts" },
-    { value: "In Progress", label: "In Progress" },
-    { value: "Ready", label: "Ready" },
-    { value: "Delivered", label: "Delivered" },
 ];
 
 export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobDialogProps) {
@@ -380,7 +372,7 @@ export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobD
         }
 
         updateMutation.mutate({
-            status,
+            // Lifecycle status is not patched here (server strips status changes).
             technician: technician || null,
             assignedTechnicianId,
             assistedByIds,
@@ -437,9 +429,17 @@ export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobD
                                         {job.corporateJobNumber}
                                     </Badge>
                                 </h1>
-                                <p className="mt-2 text-sm text-blue-100/90 font-medium">
-                                    {job.device} • SN: {job.tvSerialNumber || "N/A"}
-                                </p>
+                                <div className="mt-2 space-y-0.5 text-sm text-blue-100/90 font-medium">
+                                    <p className="truncate">{job.device || "—"}</p>
+                                    <p className="truncate">
+                                        <span className="text-blue-100/70">Model</span>{" "}
+                                        {getJobModelDisplay(job) || "—"}
+                                    </p>
+                                    <p className="truncate font-mono">
+                                        <span className="font-sans text-blue-100/70">Unit serial</span>{" "}
+                                        {job.tvSerialNumber?.trim() || "—"}
+                                    </p>
+                                </div>
                             </div>
                         </div>
 
@@ -452,19 +452,21 @@ export function EditJobDialog({ job, open, onOpenChange, technicians }: EditJobD
                                     </h3>
                                     <div className="grid gap-6">
                                         <div className="space-y-2">
-                                            <Label className="text-slate-600">Current Status</Label>
-                                            <Select value={status} onValueChange={setStatus}>
-                                                <SelectTrigger className="rounded-xl border-slate-200">
-                                                    <SelectValue placeholder="Select status" />
-                                                </SelectTrigger>
-                                                <SelectContent>
-                                                    {STATUS_OPTIONS.map((opt) => (
-                                                        <SelectItem key={opt.value} value={opt.value}>
-                                                            {opt.label}
-                                                        </SelectItem>
-                                                    ))}
-                                                </SelectContent>
-                                            </Select>
+                                            <Label className="text-slate-600">Lifecycle status (read-only)</Label>
+                                            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm font-semibold text-slate-800">
+                                                {job.status || "—"}
+                                            </div>
+                                            <p className="text-[11px] text-slate-500 leading-snug">
+                                                Use work-row actions for intake declaration, or Record final test when status is Testing. Generic save does not change lifecycle.
+                                            </p>
+                                            {(job.corporateDeclaration || job.corporate_declaration) && (
+                                                <p className="text-[11px] text-slate-600">
+                                                    Intake declaration:{" "}
+                                                    <span className="font-semibold">
+                                                        {String(job.corporateDeclaration || job.corporate_declaration)}
+                                                    </span>
+                                                </p>
+                                            )}
                                         </div>
 
                                         <div className="space-y-2 rounded-xl border border-slate-100 p-4 bg-slate-50/50">

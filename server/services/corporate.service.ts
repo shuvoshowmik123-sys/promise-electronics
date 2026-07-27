@@ -8,9 +8,11 @@
 
 import { db } from '../db.js';
 import * as schema from '../../shared/schema.js';
-import { eq, like, desc, and, gte, lte, count, inArray, sql } from 'drizzle-orm';
+import { eq, and, gte, lte, count, inArray, sql } from 'drizzle-orm';
 import { corporateRepo } from '../repositories/index.js';
+import { allocateJobIdsInTx } from '../repositories/job.repository.js';
 import { nanoid } from 'nanoid';
+import { mapLegacyTextToDeclaration } from './corporate-declaration.js';
 
 // Helper to normalize phone numbers (from original storage.ts)
 const normalizePhone = (phone: string): string => {
@@ -88,34 +90,27 @@ export class CorporateService {
                 notes: data.workType ? `Receive Work: ${data.workType}` : undefined,
             });
 
-            const jobTicketsToInsert: any[] = [];
             const year = new Date().getFullYear();
-            const prefix = `JOB-${year}-`;
-
-            const [lastJob] = await tx
-                .select({ id: schema.jobTickets.id })
-                .from(schema.jobTickets)
-                .where(like(schema.jobTickets.id, `${prefix}%`))
-                .orderBy(desc(schema.jobTickets.id))
-                .limit(1);
-
-            let maxNumber = 0;
-            if (lastJob?.id) {
-                const parts = lastJob.id.split('-');
-                const seqNum = parseInt(parts[parts.length - 1], 10);
-                if (!isNaN(seqNum)) {
-                    maxNumber = seqNum;
-                }
-            }
+            const allocatedIds = await allocateJobIdsInTx(tx, data.items.length, year);
+            const jobTicketsToInsert: any[] = [];
+            const jobIds: string[] = [];
 
             for (let i = 0; i < data.items.length; i++) {
                 const item = data.items[i];
-                const jobId = `${prefix}${String(maxNumber + i + 1).padStart(4, '0')}`;
+                const jobId = allocatedIds[i];
                 jobIds.push(jobId);
 
                 const slaHours = client.defaultSlaHours ?? 72;
                 const slaDeadline = new Date(now.getTime() + slaHours * 60 * 60 * 1000);
                 const serviceWarrantyDays = (client as any).serviceWarrantyEnabled === false ? 0 : Number((client as any).defaultServiceWarrantyDays || 30);
+
+                const declaration =
+                    mapLegacyTextToDeclaration(item.status || null) ||
+                    (item.initialStatus === "OK"
+                        ? "declared_ok"
+                        : item.initialStatus === "NG"
+                          ? "declared_ng"
+                          : "received");
 
                 jobTicketsToInsert.push({
                     id: jobId,
@@ -125,7 +120,9 @@ export class CorporateService {
                     device: item.deviceModel,
                     tvSerialNumber: item.serialNumber,
                     issue: item.reportedDefect,
-                    status: item.status || "Received",
+                    // Lifecycle always Pending at intake — never Ready from import "ready"/"done"
+                    status: "Pending",
+                    corporateDeclaration: declaration,
                     priority: "Medium",
                     technician: "Unassigned",
                     createdAt: now,
@@ -193,8 +190,9 @@ export class CorporateService {
     }
 
     /**
-     * Processes an outgoing Challan (Delivery).
-     * Marks associated Job Tickets as Delivered.
+     * CORPORATE-JOB-STATUS-01B — atomic physical handover.
+     * Repairable jobs require lifecycle Ready; parts_only is the only exception.
+     * Job Delivered + linked SR/journey projection + outgoing challan are one transaction.
      */
     async createChallanOut(data: {
         corporateClientId: string;
@@ -204,56 +202,132 @@ export class CorporateService {
         receiverPhone?: string;
         receiverSignature: string;
     }): Promise<string> {
+        const {
+            CorporateHandoverError,
+            normalizeHandoverJobIds,
+            assertJobEligibleForHandover,
+        } = await import("./corporate-handover.js");
+        const { projectJobSurfacesInTransaction } = await import(
+            "./job-status-transition.service.js"
+        );
+
+        const jobIds = normalizeHandoverJobIds(data.jobIds);
         const challanOutId = nanoid();
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10).replace(/-/g, "");
+        const startOfDay = new Date(now);
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(now);
+        endOfDay.setHours(23, 59, 59, 999);
 
-        // Generate Challan Number: CH-OUT-YYYYMMDD-###
-        const today = new Date();
-        const dateStr = today.toISOString().slice(0, 10).replace(/-/g, ""); // YYYYMMDD
+        return await db.transaction(async (tx) => {
+            const todaysChallans = await tx
+                .select({ count: count() })
+                .from(schema.corporateChallans)
+                .where(
+                    and(
+                        eq(schema.corporateChallans.type, "outgoing"),
+                        gte(schema.corporateChallans.createdAt, startOfDay),
+                        lte(schema.corporateChallans.createdAt, endOfDay),
+                    ),
+                );
+            const seq = (todaysChallans[0]?.count || 0) + 1;
+            const challanOutNumber = `CH-OUT-${dateStr}-${seq.toString().padStart(3, "0")}`;
 
-        const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-        const endOfDay = new Date(today.setHours(23, 59, 59, 999));
+            // Lock all targets in stable id order before any write.
+            const sortedIds = [...jobIds].sort();
+            const lockedJobs: Array<{
+                id: string;
+                status: string;
+                corporateClientId: string | null;
+                ticketType: string | null;
+                warrantyDays: number | null;
+            }> = [];
+            for (const id of sortedIds) {
+                const lock = await tx.execute(sql`
+                    SELECT id, status,
+                           corporate_client_id AS "corporateClientId",
+                           ticket_type AS "ticketType",
+                           warranty_days AS "warrantyDays"
+                    FROM job_tickets WHERE id = ${id} FOR UPDATE
+                `);
+                const row = ((lock as any).rows ?? lock)[0] as
+                    | {
+                          id: string;
+                          status: string;
+                          corporateClientId: string | null;
+                          ticketType: string | null;
+                          warrantyDays: number | null;
+                      }
+                    | undefined;
+                if (!row) {
+                    throw new CorporateHandoverError(
+                        400,
+                        "HANDOVER_JOB_NOT_FOUND",
+                        "One or more jobs were not found.",
+                    );
+                }
+                lockedJobs.push(row);
+            }
 
-        const todaysChallans = await db.select({ count: count() })
-            .from(schema.corporateChallans)
-            .where(and(
-                eq(schema.corporateChallans.type, 'outgoing'),
-                gte(schema.corporateChallans.createdAt, startOfDay),
-                lte(schema.corporateChallans.createdAt, endOfDay)
-            ));
+            for (const job of lockedJobs) {
+                assertJobEligibleForHandover(job, data.corporateClientId);
+            }
 
-        const seq = (todaysChallans[0]?.count || 0) + 1;
-        const challanOutNumber = `CH-OUT-${dateStr}-${seq.toString().padStart(3, '0')}`;
-
-        await db.transaction(async (tx) => {
             await tx.insert(schema.corporateChallans).values({
                 id: challanOutId,
                 challanNumber: challanOutNumber,
                 corporateClientId: data.corporateClientId,
-                type: 'outgoing',
-                items: data.jobIds, // Store Job IDs directly for reference
-                totalItems: data.jobIds.length,
-                status: 'delivered',
-                returnedDate: new Date(),
+                type: "outgoing",
+                items: jobIds,
+                totalItems: jobIds.length,
+                status: "delivered",
+                returnedDate: now,
                 receiverName: data.receiverName,
                 receiverPhone: data.receiverPhone,
-                receiverSignature: data.receiverSignature
+                receiverSignature: data.receiverSignature,
             });
 
-            if (data.jobIds.length > 0) {
-                await tx.update(schema.jobTickets)
-                    .set({
-                        billingStatus: 'delivered',
-                        status: 'Delivered', // Explicitly mark as Delivered
-                        completedAt: new Date(),
-                        warrantyExpiryDate: sql`CASE WHEN warranty_days > 0 THEN NOW() + (warranty_days || ' days')::interval ELSE NULL END`,
-                        // Intentionally not overwriting corporateChallanId with OUT if it had an IN.
-                        // Items structure contains the association.
-                    })
-                    .where(inArray(schema.jobTickets.id, data.jobIds));
-            }
-        });
+            const { ensureFeedbackOpportunityForDelivered } = await import(
+                "./service-feedback.service.js"
+            );
 
-        return challanOutId;
+            for (const job of lockedJobs) {
+                await tx
+                    .update(schema.jobTickets)
+                    .set({
+                        billingStatus: "delivered",
+                        status: "Delivered",
+                        completedAt: now,
+                        warrantyExpiryDate: sql`CASE WHEN warranty_days > 0 THEN NOW() + (warranty_days || ' days')::interval ELSE NULL END`,
+                        // Do not overwrite incoming corporateChallanId association.
+                    })
+                    .where(eq(schema.jobTickets.id, job.id));
+
+                // Projection uses the single JOB_TO_JOURNEY map; only status is required for Delivered mapping.
+                await projectJobSurfacesInTransaction(
+                    tx,
+                    { id: job.id, status: "Delivered" } as schema.JobTicket,
+                    "Corporate Challan Deliver",
+                );
+
+                // CUSTOMER-FEEDBACK-01A: one opportunity per job; immutable handover_event_id; source = challan out.
+                await ensureFeedbackOpportunityForDelivered({
+                    job: {
+                        id: job.id,
+                        status: "Delivered",
+                        corporateClientId: job.corporateClientId,
+                        completedAt: now,
+                    } as schema.JobTicket,
+                    handoverKind: "corporate_challan_out",
+                    handoverSourceId: challanOutId,
+                    handoverAt: now,
+                    tx,
+                });
+            }
+
+            return challanOutId;
+        });
     }
 }
 

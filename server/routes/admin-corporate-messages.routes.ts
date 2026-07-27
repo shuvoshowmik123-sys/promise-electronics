@@ -3,24 +3,18 @@ import { Router } from "express";
 import { db } from "../db.js";
 import { corporateMessageThreads, corporateMessages, corporateClients, users, InsertCorporateMessage } from "../../shared/schema.js";
 import { eq, desc, and, sql } from "drizzle-orm";
-import { requireAdminAuth } from "./middleware/auth.js";
+import { requireAdminAuth, requireAnyGranularPermission, requireGranularPermission } from "./middleware/auth.js";
 import { nanoid } from "nanoid";
 import { notifyCorporateClient } from "./middleware/sse-broker.js";
 
 const router = Router();
 
-// Middleware to check permissions
-const checkMessagePermission = (req: any, res: any, next: any) => {
-    // Only Super Admin and Manager should access this for now
-    if (req.user && ["Super Admin", "Manager"].includes(req.user.role)) {
-        return next();
-    }
-    return res.status(403).json({ error: "Unauthorized access to corporate messages" });
-};
+const messagesView = requireAnyGranularPermission(["corporateMessages.view", "corporateMessages.reply"]);
+const messagesReply = requireGranularPermission("corporateMessages.reply");
 
 // GET /api/admin/corporate-messages/threads
 // Get all threads with client details and unread count
-router.get("/threads", requireAdminAuth, checkMessagePermission, async (req, res) => {
+router.get("/threads", requireAdminAuth, messagesView, async (req, res) => {
     try {
         const threads = await db
             .select({
@@ -58,7 +52,7 @@ router.get("/threads", requireAdminAuth, checkMessagePermission, async (req, res
 
 // GET /api/admin/corporate-messages/threads/:threadId
 // Get thread details and messages
-router.get("/threads/:threadId", requireAdminAuth, checkMessagePermission, async (req, res) => {
+router.get("/threads/:threadId", requireAdminAuth, messagesView, async (req, res) => {
     try {
         const { threadId } = req.params;
 
@@ -124,7 +118,7 @@ router.get("/threads/:threadId", requireAdminAuth, checkMessagePermission, async
 
 // POST /api/admin/corporate-messages/threads/:threadId/reply
 // Admin replies to a thread
-router.post("/threads/:threadId/reply", requireAdminAuth, checkMessagePermission, async (req, res) => {
+router.post("/threads/:threadId/reply", requireAdminAuth, messagesReply, async (req, res) => {
     try {
         const { threadId } = req.params;
         const { content, messageType = "text", attachments } = req.body;
@@ -182,7 +176,7 @@ router.post("/threads/:threadId/reply", requireAdminAuth, checkMessagePermission
 
 // PATCH /api/admin/corporate-messages/threads/:threadId/mark-read
 // Manually mark thread as read
-router.patch("/threads/:threadId/mark-read", requireAdminAuth, checkMessagePermission, async (req, res) => {
+router.patch("/threads/:threadId/mark-read", requireAdminAuth, messagesView, async (req, res) => {
     try {
         const { threadId } = req.params;
 
@@ -206,7 +200,7 @@ router.patch("/threads/:threadId/mark-read", requireAdminAuth, checkMessagePermi
 
 // PATCH /api/admin/corporate-messages/threads/:threadId/status
 // Update thread status
-router.patch("/threads/:threadId/status", requireAdminAuth, checkMessagePermission, async (req, res) => {
+router.patch("/threads/:threadId/status", requireAdminAuth, messagesReply, async (req, res) => {
     try {
         const { threadId } = req.params;
         const { status } = req.body;

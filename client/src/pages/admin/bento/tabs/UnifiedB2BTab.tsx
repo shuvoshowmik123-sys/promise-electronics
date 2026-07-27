@@ -151,12 +151,16 @@ function CorporateClientList({ onSelectClient }: { onSelectClient: (id: string) 
                 ) : (
                     <div className="space-y-2">
                         {filteredClients.map((client: any) => (
-                            <button
+                            <article
                                 key={client.id}
-                                type="button"
-                                onClick={() => onSelectClient(client.id)}
-                                className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm active:scale-[0.99] transition"
+                                className="w-full rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition"
                             >
+                                <button
+                                    type="button"
+                                    onClick={() => onSelectClient(client.id)}
+                                    className="w-full text-left active:scale-[0.99]"
+                                    aria-label={`Open ${client.companyName || "client"}`}
+                                >
                                 <div className="flex items-center gap-3">
                                     <Avatar className="h-10 w-10 shrink-0 border-2 border-emerald-100">
                                         <AvatarFallback className="text-emerald-700 font-bold bg-emerald-50 text-xs">
@@ -177,6 +181,7 @@ function CorporateClientList({ onSelectClient }: { onSelectClient: (id: string) 
                                     <span className="text-slate-500 font-medium truncate">{client.contactPhone || "—"}</span>
                                     <span className="ml-auto shrink-0 rounded-md bg-slate-100 px-1.5 py-0.5 text-[10px] font-bold text-slate-600">{client.billingType}</span>
                                 </div>
+                                </button>
                                 <div className="mt-2 flex items-center gap-2">
                                     <button
                                         type="button"
@@ -193,7 +198,7 @@ function CorporateClientList({ onSelectClient }: { onSelectClient: (id: string) 
                                         <ExternalLink className="h-3 w-3" /> Portal
                                     </button>
                                 </div>
-                            </button>
+                            </article>
                         ))}
                     </div>
                 )}

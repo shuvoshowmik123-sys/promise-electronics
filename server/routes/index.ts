@@ -74,6 +74,14 @@ import staffInviteRoutes from './staff-invites.routes.js';
 import logisticsTasksRoutes from './logistics-tasks.routes.js';
 import catalogImportRoutes from './catalog-import.routes.js'; // Phase 35A: Bulk Import Center
 import serviceAreasRoutes from './service-areas.routes.js'; // Phase Map-01: Service Area Analytics
+import systemIncidentsRoutes from './system-incidents.routes.js';
+import serviceFeedbackRoutes from './service-feedback.routes.js';
+import externalIntakePartiesRoutes from './external-intake-parties.routes.js';
+import externalTechnicianIntakeRoutes from './external-technician-intake.routes.js';
+import disputesRoutes from './disputes.routes.js';
+import externalQrTrackingRoutes from './external-qr-tracking.routes.js';
+import b2bAccountIntakeRoutes from './b2b-account-intake.routes.js';
+import schemaUpdateRoutes from './schema-update.routes.js';
 
 /**
  * Register all routes with the Express application.
@@ -143,6 +151,18 @@ export async function registerRoutes(
     // Core business routes
     app.use(jobsRoutes);
     routeLog('[Routes] ✓ Jobs routes registered');
+
+    app.use(externalIntakePartiesRoutes);
+    routeLog('[Routes] ✓ External intake party routes registered');
+
+    app.use(externalTechnicianIntakeRoutes);
+    routeLog('[Routes] ✓ External technician intake routes registered');
+
+    app.use(externalQrTrackingRoutes);
+    routeLog('[Routes] ✓ External QR tracking routes registered');
+
+    app.use(b2bAccountIntakeRoutes);
+    routeLog('[Routes] ✓ B2B account intake routes registered');
 
     app.use(inventoryRoutes);
     routeLog('[Routes] ✓ Inventory routes registered');
@@ -239,6 +259,14 @@ export async function registerRoutes(
     app.use("/api/admin", adminBackupRoutes);
     routeLog('[Routes] ✓ Admin backup routes registered');
 
+    // Protected schema-update control plane (Super Admin; no DDL on request path)
+    app.use(schemaUpdateRoutes);
+    routeLog('[Routes] ✓ Schema update control-plane routes registered');
+
+    app.use(systemIncidentsRoutes);
+    app.use(serviceFeedbackRoutes);
+    routeLog('[Routes] ✓ System incidents routes registered');
+
     routeLog('[Routes] ✓ Corporate B2B routes registered');
 
     // Analytics (Phase 6)
@@ -252,6 +280,10 @@ export async function registerRoutes(
     // Refunds Management
     app.use(refundsRoutes);
     routeLog('[Routes] ✓ Refunds routes registered');
+
+    // Aftercare Disputes (Ticket 04)
+    app.use(disputesRoutes);
+    routeLog('[Routes] ✓ Disputes routes registered');
 
     // Approvals (Super Admin verification workflow)
     app.use("/api/approvals", approvalsRoutes);

@@ -46,7 +46,7 @@ interface PushPayload {
  */
 export function registerDeviceToken(userId: string, token: string, platform: string): void {
     adminDeviceTokens.set(token, { token, platform, userId });
-    console.log(`[FCM] Registered token for user ${userId}, total tokens: ${adminDeviceTokens.size}`);
+    console.log(`[FCM] Registered device token, total tokens: ${adminDeviceTokens.size}`);
 }
 
 /**
@@ -93,11 +93,11 @@ export async function sendPushToDevice(token: string, payload: PushPayload): Pro
             },
         };
 
-        const response = await admin.messaging().send(message);
-        console.log('[FCM] Push sent:', response);
+        await admin.messaging().send(message);
+        console.log('[FCM] Push sent');
         return true;
-    } catch (error: any) {
-        console.error('[FCM] Push failed:', error.message);
+    } catch {
+        console.error('[FCM] Push failed');
         return false;
     }
 }

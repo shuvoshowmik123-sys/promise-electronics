@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { Home, ShoppingBag, Wrench, Search, User, type LucideIcon } from "lucide-react";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
+import { useCustomerMobileChrome } from "@/contexts/CustomerMobileChromeContext";
 
 type DockKey = "dock.home" | "dock.shop" | "dock.repair" | "dock.track" | "dock.profile";
 
@@ -15,6 +16,7 @@ export function MobileBottomNav() {
   const [location] = useLocation();
   const { isAuthenticated } = useCustomerAuth();
   const { t } = useCustomerLanguage();
+  const { isBottomNavSuppressed } = useCustomerMobileChrome();
   const currentPath = location.split("?")[0].split("#")[0];
 
   const items: DockItem[] = [
@@ -39,7 +41,7 @@ export function MobileBottomNav() {
     >
       <nav
         aria-label="Customer navigation"
-        className="pointer-events-auto grid h-[82px] w-[calc(100%-0.5rem)] max-w-[520px] sm:max-w-[560px] grid-cols-5 items-center gap-1 rounded-[32px] border border-emerald-100/80 bg-white/95 p-2 shadow-[0_16px_42px_rgba(15,23,42,0.16)] backdrop-blur-xl"
+        className={`pointer-events-auto grid h-[82px] w-[calc(100%-0.5rem)] max-w-[520px] sm:max-w-[560px] grid-cols-5 items-center gap-1 rounded-[32px] border border-emerald-100/80 bg-white/95 p-2 shadow-[0_16px_42px_rgba(15,23,42,0.16)] backdrop-blur-xl transition-[transform,opacity] duration-200 ease-out ${isBottomNavSuppressed ? "pointer-events-none translate-y-[calc(100%+1rem)] opacity-0" : "translate-y-0 opacity-100"}`}
       >
         {items.map((item) => {
           const active = isActive(item.href);

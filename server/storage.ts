@@ -331,7 +331,8 @@ export interface IStorage {
   updateQuote(id: string, quoteAmount: number, quoteNotes?: string): Promise<ServiceRequest | undefined>;
   acceptQuote(id: string, pickupTier?: string | null, pickupAddress?: string, servicePreference?: string, scheduledPickupDate?: Date | null): Promise<ServiceRequest | undefined>;
   declineQuote(id: string): Promise<ServiceRequest | undefined>;
-  convertQuoteToServiceRequest(id: string): Promise<ServiceRequest | undefined>;
+  /** @deprecated 00C-A: use convertRetailQuoteToJob from retail-quote.service */
+  convertQuoteToServiceRequest?(id: string): Promise<ServiceRequest | undefined>;
 
   // Stage Transition (Unified Workflow)
   transitionStage(id: string, newStage: string, actorName?: string): Promise<{

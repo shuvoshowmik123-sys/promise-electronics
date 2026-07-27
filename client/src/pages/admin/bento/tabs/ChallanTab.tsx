@@ -46,6 +46,7 @@ import {
 import { challansApi } from "@/lib/api";
 import { toast } from "sonner";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import {
     BentoCard,
     DashboardSkeleton,
@@ -73,6 +74,9 @@ interface ChallanTabProps {
 export default function ChallanTab({ initialSearchQuery, initialChallanId, onSearchConsumed }: ChallanTabProps = {}) {
     const queryClient = useQueryClient();
     const isMobile = useIsMobile();
+    const { hasPermission, user } = useAdminAuth();
+    // Same effective gate as Challans tab visibility (hasPermission prefix covers view/viewOwn/create/…)
+    const canAccessChallans = user?.role === "Super Admin" || hasPermission("challans" as any);
     const [challanSearchQuery, setChallanSearchQuery] = useState("");
     const [challanFilterStatus, setChallanFilterStatus] = useState("all");
     const [challanFilterType, setChallanFilterType] = useState("all");
@@ -112,7 +116,16 @@ export default function ChallanTab({ initialSearchQuery, initialChallanId, onSea
     const { data: challansData, isLoading } = useQuery({
         queryKey: ["challans"],
         queryFn: () => challansApi.getAll(),
+        enabled: canAccessChallans,
+        retry: false,
     });
+
+    // On revoke: drop cached challan data so hidden mounts cannot refetch 403s after settle.
+    useEffect(() => {
+        if (canAccessChallans) return;
+        queryClient.cancelQueries({ queryKey: ["challans"] });
+        queryClient.removeQueries({ queryKey: ["challans"] });
+    }, [canAccessChallans, queryClient]);
 
     useEffect(() => {
         if (!initialSearchQuery) return;

@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { aiService } from "../services/ai.service.js";
 import { db } from "../db.js";
 import { aiDebugSuggestions } from "../../shared/schema.js";
+import { redactMessageForLog } from "../utils/safe-error.js";
 
 const KNOWN_ERRORS = [
     {
@@ -35,7 +36,7 @@ function shouldAnalyzeError(err: any) {
     if (process.env.NODE_ENV !== "production") return false;
     if (!process.env.GROQ_API_KEY) return false;
 
-    const text = `${err?.code || ""} ${err?.message || ""} ${err?.stack || ""}`;
+    const text = `${err?.code || ""} ${redactMessageForLog(err?.message)} ${redactMessageForLog(err?.stack)}`;
     if (/ETIMEDOUT|ECONNRESET|ENETUNREACH|Connection terminated|timeout exceeded|WebSocket was closed/i.test(text)) {
         return false;
     }
@@ -45,17 +46,15 @@ function shouldAnalyzeError(err: any) {
 
 export const aiErrorHandler = async (err: any, req: Request, res: Response, next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-    const stack = err.stack || "";
+    const message = redactMessageForLog(err.message) || "Internal Server Error";
+    const stack = redactMessageForLog(err.stack) || "";
 
-    // Only analyze 500 errors or explicit system errors
     if (status >= 500 && shouldAnalyzeError(err)) {
         console.error("[AI DEBUGGER] Analyzing error:", message);
 
         try {
             let diagnosis = null;
 
-            // 1. Check Known Patterns
             const knownMatch = KNOWN_ERRORS.find(e => e.pattern.test(message) || e.pattern.test(stack));
 
             if (knownMatch) {
@@ -66,29 +65,26 @@ export const aiErrorHandler = async (err: any, req: Request, res: Response, next
                 };
                 console.log("[AI DEBUGGER] Matched known pattern:", diagnosis.cause);
             } else {
-                // 2. Ask AI for unknown errors
                 console.log("[AI DEBUGGER] Unknown error, asking Gemini...");
                 const context = `Route: ${req.method} ${req.url}\nUser: ${(req as any).user?.id || 'Guest'}`;
                 diagnosis = await aiService.diagnoseError({ message, stack }, context);
             }
 
-            // 3. Store Suggestion
             if (diagnosis) {
                 await db.insert(aiDebugSuggestions).values({
-                    error: message,
-                    stackTrace: stack.substring(0, 1000), // Limit length
+                    error: message.slice(0, 500),
+                    stackTrace: stack.substring(0, 1000),
                     suggestion: JSON.stringify(diagnosis),
                     status: 'NEEDS_REVIEW'
                 });
             }
 
-        } catch (aiError) {
-            console.error("[AI DEBUGGER] Failed to analyze:", aiError);
+        } catch (aiError: any) {
+            console.error("[AI DEBUGGER] Failed to analyze:", redactMessageForLog(aiError?.message));
         }
     } else if (status >= 500) {
         console.error("[AI DEBUGGER] Skipped:", message);
     }
 
-    // Pass to default error handler
     next(err);
 };

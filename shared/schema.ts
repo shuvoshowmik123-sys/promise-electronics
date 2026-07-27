@@ -1,5 +1,5 @@
-import { pgTable, text, serial, integer, boolean, timestamp, date, jsonb, real, doublePrecision, index, uniqueIndex } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { pgTable, text, serial, integer, boolean, timestamp, date, jsonb, real, doublePrecision, index, uniqueIndex, check } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -228,6 +228,8 @@ export const jobTickets = pgTable("job_tickets", {
   // Corporate B2B Fields (Phase 5)
   // corporateChallanId and corporateJobNumber are already defined above
   initialStatus: text("initial_status"), // 'OK' | 'NG' for intake condition via Challan
+  /** Intake declaration only — never customer-ready. Values: received|checking|declared_ok|declared_ng|pending_hold */
+  corporateDeclaration: text("corporate_declaration"),
   reportedDefect: text("reported_defect"), // Client's specific defect description from Challan (Company Claim)
   problemFound: text("problem_found"), // Technician's diagnosis - what was actually found wrong
   corporateBillId: text("corporate_bill_id"), // Links to master invoice (Challan Invoice)
@@ -283,6 +285,15 @@ export const jobTickets = pgTable("job_tickets", {
   inspectionNote: text("inspection_note"),
   inspectedBy: text("inspected_by"),
   inspectedAt: timestamp("inspected_at"),
+
+  // JOB-INTAKE-UNIFICATION-01A-A / HOTFIX-1 — typed intake party pair (both null or external_technician+id)
+  intakePartyKind: text("intake_party_kind"),
+  externalPartyId: text("external_party_id"),
+
+  // TECHNICIAN-FLOW-01B — continuous active-work age + one-alert-per-interval
+  // DB default NOW() is authority for inserts that omit the field (bulk/direct).
+  activeWorkStartedAt: timestamp("active_work_started_at").defaultNow(),
+  activeWorkAlertSentAt: timestamp("active_work_alert_sent_at"),
 }, (table) => {
   return {
     statusIdx: index("idx_job_tickets_status").on(table.status),
@@ -296,6 +307,8 @@ export const jobTickets = pgTable("job_tickets", {
     statusDeadlineIdx: index("idx_job_tickets_status_deadline").on(table.status, table.deadline),
     statusCreatedIdx: index("idx_job_tickets_status_created_at").on(table.status, table.createdAt),
     serviceAreaIdx: index("idx_job_tickets_service_area_id").on(table.serviceAreaId),
+    externalPartyIdx: index("idx_job_tickets_external_party").on(table.externalPartyId),
+    intakePartyKindIdx: index("idx_job_tickets_intake_party_kind").on(table.intakePartyKind),
   };
 });
 
@@ -305,6 +318,202 @@ export const insertJobTicketSchema = createInsertSchema(jobTickets).omit({
 });
 export type InsertJobTicket = z.infer<typeof insertJobTicketSchema>;
 export type JobTicket = typeof jobTickets.$inferSelect;
+
+/** JOB-QUALITY-GATE-01B — append-only final-test evidence (immutable rows; supersede via new run). */
+export const jobFinalTestRuns = pgTable(
+  "job_final_test_runs",
+  {
+    id: text("id").primaryKey(),
+    jobId: text("job_id").notNull(),
+    outcome: text("outcome").notNull(), // pass | fail
+    checkCodes: jsonb("check_codes").notNull().default([]),
+    reinspectionReason: text("reinspection_reason"),
+    recordedBy: text("recorded_by").notNull(),
+    recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+    supersededAt: timestamp("superseded_at"),
+    supersededByRunId: text("superseded_by_run_id"),
+    supersedeReason: text("supersede_reason"),
+  },
+  (table) => ({
+    jobRecordedIdx: index("idx_job_final_test_runs_job_recorded").on(table.jobId, table.recordedAt),
+  }),
+);
+export type JobFinalTestRun = typeof jobFinalTestRuns.$inferSelect;
+
+/** CUSTOMER-FEEDBACK-01A — post-Delivered job feedback (not marketing customer_reviews) */
+export const serviceFeedbackOpportunities = pgTable(
+  "service_feedback_opportunities",
+  {
+    id: text("id").primaryKey(),
+    jobTicketId: text("job_ticket_id").notNull(),
+    customerId: text("customer_id"),
+    serviceRequestId: text("service_request_id"),
+    corporateClientId: text("corporate_client_id"),
+    handoverEventId: text("handover_event_id").notNull(),
+    handoverKind: text("handover_kind").notNull(),
+    handoverSourceId: text("handover_source_id"),
+    handoverAt: timestamp("handover_at").notNull(),
+    windowEndsAt: timestamp("window_ends_at").notNull(),
+    status: text("status").notNull().default("eligible"),
+    currentVersionId: text("current_version_id"),
+    publicConsent: boolean("public_consent").notNull().default(false),
+    publicConsentAt: timestamp("public_consent_at"),
+    consentWithdrawnAt: timestamp("consent_withdrawn_at"),
+    publicationStatus: text("publication_status").notNull().default("hidden"),
+    featured: boolean("featured").notNull().default(false),
+    featuredAt: timestamp("featured_at"),
+    publicDisplayName: text("public_display_name"),
+    publicExcerpt: text("public_excerpt"),
+    displayExpiresAt: timestamp("display_expires_at"),
+    retentionStatus: text("retention_status").notNull().default("none"),
+    lastRetentionReviewAt: timestamp("last_retention_review_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    jobUid: uniqueIndex("uidx_service_feedback_opp_job").on(table.jobTicketId),
+    handoverUid: uniqueIndex("uidx_service_feedback_opp_handover_event").on(table.handoverEventId),
+    customerIdx: index("idx_service_feedback_opp_customer").on(table.customerId),
+  }),
+);
+export type ServiceFeedbackOpportunity = typeof serviceFeedbackOpportunities.$inferSelect;
+
+export const serviceFeedbackVersions = pgTable(
+  "service_feedback_versions",
+  {
+    id: text("id").primaryKey(),
+    opportunityId: text("opportunity_id").notNull(),
+    versionNo: integer("version_no").notNull(),
+    rating: integer("rating").notNull(),
+    comment: text("comment"),
+    publicConsent: boolean("public_consent").notNull().default(false),
+    submittedAt: timestamp("submitted_at").notNull().defaultNow(),
+    supersededAt: timestamp("superseded_at"),
+  },
+  (table) => ({
+    versionUid: uniqueIndex("uidx_service_feedback_version_no").on(table.opportunityId, table.versionNo),
+    oppIdx: index("idx_service_feedback_versions_opp").on(table.opportunityId, table.submittedAt),
+  }),
+);
+export type ServiceFeedbackVersion = typeof serviceFeedbackVersions.$inferSelect;
+
+export const serviceFeedbackRecoveryCases = pgTable(
+  "service_feedback_recovery_cases",
+  {
+    id: text("id").primaryKey(),
+    opportunityId: text("opportunity_id").notNull(),
+    feedbackVersionId: text("feedback_version_id").notNull(),
+    ratingSnapshot: integer("rating_snapshot").notNull(),
+    status: text("status").notNull().default("open"),
+    assignedToUserId: text("assigned_to_user_id"),
+    assignmentScope: text("assignment_scope"),
+    logisticsTaskId: text("logistics_task_id"),
+    staffNotes: text("staff_notes"),
+    resolvedBy: text("resolved_by"),
+    resolvedAt: timestamp("resolved_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    versionUid: uniqueIndex("uidx_service_feedback_recovery_version").on(table.feedbackVersionId),
+    statusIdx: index("idx_service_feedback_recovery_status").on(table.status, table.createdAt),
+    assigneeIdx: index("idx_service_feedback_recovery_assignee").on(table.assignedToUserId),
+  }),
+);
+export type ServiceFeedbackRecoveryCase = typeof serviceFeedbackRecoveryCases.$inferSelect;
+
+/** Canonical NG report — technician evidence → manager review (JOBS-NG-02A) */
+export const JOB_NG_REPORT_STATUSES = ["pending_review", "verified", "returned"] as const;
+export type JobNgReportStatus = (typeof JOB_NG_REPORT_STATUSES)[number];
+
+export const JOB_NG_FAILED_REPAIR_TYPES = [
+  "panel_repair",
+  "motherboard",
+  "backlight",
+  "power_board",
+  "tcon",
+  "full_tv",
+  "other",
+] as const;
+export type JobNgFailedRepairType = (typeof JOB_NG_FAILED_REPAIR_TYPES)[number];
+
+export const jobNgReports = pgTable("job_ng_reports", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull().references(() => jobTickets.id, { onDelete: "restrict" }),
+  submissionId: text("submission_id").notNull(),
+  failedRepairType: text("failed_repair_type").notNull(),
+  diagnosis: text("diagnosis").notNull(),
+  technicalNotes: text("technical_notes").notNull(),
+  evidenceAttachments: jsonb("evidence_attachments").notNull().default([]),
+  partsSnapshot: jsonb("parts_snapshot").notNull().default({}),
+  sourceJobStatus: text("source_job_status").notNull(),
+  /** Snapshot of job.problemFound before NG diagnosis overwrote it (JOBS-NG-02G) */
+  sourceProblemFound: text("source_problem_found"),
+  /** Stable fingerprint of submit payload for idempotency authorization */
+  payloadFingerprint: text("payload_fingerprint"),
+  reportStatus: text("report_status").notNull().default("pending_review"),
+  reportedByUserId: text("reported_by_user_id").notNull(),
+  reportedBySnapshot: jsonb("reported_by_snapshot").notNull().default({}),
+  reportedAt: timestamp("reported_at").notNull().defaultNow(),
+  reviewedByUserId: text("reviewed_by_user_id"),
+  reviewedBySnapshot: jsonb("reviewed_by_snapshot"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewNotes: text("review_notes"),
+  revision: integer("revision").notNull().default(1),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  jobIdx: index("idx_job_ng_reports_job_id").on(table.jobId),
+  statusIdx: index("idx_job_ng_reports_status").on(table.reportStatus),
+  submissionUid: uniqueIndex("uidx_job_ng_reports_submission_id").on(table.submissionId),
+  reportedAtIdx: index("idx_job_ng_reports_reported_at").on(table.reportedAt),
+}));
+
+export type JobNgReport = typeof jobNgReports.$inferSelect;
+export type InsertJobNgReport = typeof jobNgReports.$inferInsert;
+
+/** Canonical NG customer decision — manager-recorded after verified NG (SYSTEM-UNIFICATION-00C-C) */
+export const JOB_NG_CUSTOMER_DECISION_TYPES = [
+  "decline",
+  "repair_alternative",
+  "replacement",
+  "quote_required",
+] as const;
+export type JobNgCustomerDecisionType = (typeof JOB_NG_CUSTOMER_DECISION_TYPES)[number];
+
+export const JOB_NG_CUSTOMER_DECISION_CHANNELS = [
+  "phone",
+  "in_person",
+  "message",
+] as const;
+export type JobNgCustomerDecisionChannel = (typeof JOB_NG_CUSTOMER_DECISION_CHANNELS)[number];
+
+export const jobNgCustomerDecisions = pgTable("job_ng_customer_decisions", {
+  id: text("id").primaryKey(),
+  jobId: text("job_id").notNull().references(() => jobTickets.id, { onDelete: "restrict" }),
+  submissionId: text("submission_id").notNull(),
+  decisionType: text("decision_type").notNull(),
+  contactChannel: text("contact_channel").notNull(),
+  decisionNotes: text("decision_notes").notNull(),
+  /** Stable fingerprint of submit payload for idempotency authorization */
+  payloadFingerprint: text("payload_fingerprint"),
+  /** Linked verified NG report identity */
+  ngReportId: text("ng_report_id").notNull().references(() => jobNgReports.id, { onDelete: "restrict" }),
+  ngReportSnapshot: jsonb("ng_report_snapshot").notNull().default({}),
+  recordedByUserId: text("recorded_by_user_id").notNull(),
+  recordedBySnapshot: jsonb("recorded_by_snapshot").notNull().default({}),
+  recordedAt: timestamp("recorded_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  jobIdx: index("idx_job_ng_customer_decisions_job_id").on(table.jobId),
+  decisionIdx: index("idx_job_ng_customer_decisions_type").on(table.decisionType),
+  submissionUid: uniqueIndex("uidx_job_ng_customer_decisions_submission_id").on(table.submissionId),
+  recordedAtIdx: index("idx_job_ng_customer_decisions_recorded_at").on(table.recordedAt),
+}));
+
+export type JobNgCustomerDecision = typeof jobNgCustomerDecisions.$inferSelect;
+export type InsertJobNgCustomerDecision = typeof jobNgCustomerDecisions.$inferInsert;
 
 // Inventory Items Table
 export const inventoryItems = pgTable("inventory_items", {
@@ -472,7 +681,7 @@ export const insertServiceCategorySchema = createInsertSchema(serviceCategories)
 export type InsertServiceCategory = z.infer<typeof insertServiceCategorySchema>;
 export type ServiceCategory = typeof serviceCategories.$inferSelect;
 
-// Challans Table
+// Challans Table (operational / retail custody)
 export const challans = pgTable("challans", {
   id: text("id").primaryKey(),
   receiver: text("receiver").notNull(),
@@ -489,18 +698,28 @@ export const challans = pgTable("challans", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
   deliveredAt: timestamp("delivered_at"),
   notes: text("notes"),
+  // UNIFIED-OPS-01A ownership (null on legacy rows → visible only via view-all)
+  createdByUserId: text("created_by_user_id"),
+  assignedDriverId: text("assigned_driver_id"),
 }, (table) => {
   return {
     statusIdx: index("idx_challans_status").on(table.status),
     typeIdx: index("idx_challans_type").on(table.type),
     createdAtIndex: index("idx_challans_created_at").on(table.createdAt),
+    createdByIdx: index("idx_challans_created_by_user_id").on(table.createdByUserId),
+    assignedDriverIdx: index("idx_challans_assigned_driver_id").on(table.assignedDriverId),
   };
 });
 
-export const insertChallanSchema = createInsertSchema(challans).omit({
-  createdAt: true,
-  deliveredAt: true,
-});
+export const insertChallanSchema = createInsertSchema(challans)
+  .omit({
+    id: true,
+    createdAt: true,
+    deliveredAt: true,
+  })
+  .extend({
+    id: z.string().min(1).optional(),
+  });
 export type InsertChallan = z.infer<typeof insertChallanSchema>;
 export type Challan = typeof challans.$inferSelect;
 
@@ -889,11 +1108,22 @@ export const corporateBills = pgTable("corporate_bills", {
   supersededReason: text("superseded_reason"),
   createdBy: text("created_by"),
   updatedAt: timestamp("updated_at"),
+
+  // FINANCE-AFTERCARE-01.3 — Corporate Ltd. itemized billing.
+  // itemizedMode=true marks a Corporate Ltd. bill issued through the preset flow.
+  // layoutSnapshot + recipientSnapshot are IMMUTABLE at issue time: later preset
+  // edits affect only future bills. Print renders from these snapshots, never
+  // current settings. Normal Corporate bills leave these null and use lineItems JSON.
+  itemizedMode: boolean("itemized_mode").default(false),
+  layoutSnapshot: jsonb("layout_snapshot"),
+  recipientSnapshot: jsonb("recipient_snapshot"),
+  clientTypeSnapshot: text("client_type_snapshot"),
 }, (table) => {
   return {
     corporateClientIdx: index("idx_corporate_bills_client_id").on(table.corporateClientId),
     paymentStatusIdx: index("idx_corporate_bills_payment_status").on(table.paymentStatus),
     billStatusIdx: index("idx_corporate_bills_bill_status").on(table.billStatus),
+    itemizedIdx: index("idx_corporate_bills_itemized_mode").on(table.itemizedMode),
   };
 });
 
@@ -1005,7 +1235,16 @@ export const posTransactions = pgTable("pos_transactions", {
   total: real("total").notNull(),
   paymentMethod: text("payment_method").notNull(),
   paymentStatus: text("payment_status").notNull().default("Paid"),
+  /** Sum of processed refunds against this invoice (never deletes the row). */
+  refundedAmount: real("refunded_amount").notNull().default(0),
+  /** none | partial | full — derived/updated on refund process */
+  refundStatus: text("refund_status").notNull().default("none"),
   serviceAreaId: text("service_area_id"),
+  /** Client/actor-scoped idempotency key (00C-B). Unique with createdByUserId when set. */
+  clientRequestId: text("client_request_id"),
+  createdByUserId: text("created_by_user_id"),
+  /** SHA-256 of canonical material request fields (00C-B-HOTFIX-1). */
+  idempotencyFingerprint: text("idempotency_fingerprint"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   drawerSessionId: text("drawer_session_id").references(() => drawerSessions.id), // Phase 7
 }, (table) => {
@@ -1018,8 +1257,25 @@ export const posTransactions = pgTable("pos_transactions", {
 });
 
 export const insertPosTransactionSchema = createInsertSchema(posTransactions).omit({
+  id: true,
   invoiceNumber: true,
   createdAt: true,
+  refundedAmount: true,
+  refundStatus: true,
+  createdByUserId: true,
+  idempotencyFingerprint: true,
+}).extend({
+  id: z.string().optional(),
+  clientRequestId: z.string().max(128).optional().nullable(),
+  paymentStatus: z.string().optional(),
+  taxRate: z.number().optional().nullable(),
+  discount: z.number().optional().nullable(),
+  customer: z.string().optional().nullable(),
+  customerPhone: z.string().optional().nullable(),
+  customerAddress: z.string().optional().nullable(),
+  linkedJobs: z.string().optional().nullable(),
+  serviceAreaId: z.string().optional().nullable(),
+  drawerSessionId: z.string().optional().nullable(),
 });
 export type InsertPosTransaction = z.infer<typeof insertPosTransactionSchema>;
 export type PosTransaction = typeof posTransactions.$inferSelect;
@@ -1119,6 +1375,13 @@ export const serviceRequests = pgTable("service_requests", {
 
   // Geographic area (optional, privacy-safe — operational area only, no exact coordinates)
   serviceAreaId: text("service_area_id"),
+
+  // SERVICE-INTAKE-RELIABILITY-01C — idempotency + duplicate-window fields
+  phoneNormalized: text("phone_normalized"),
+  intakeSource: text("intake_source"),
+  clientRequestId: text("client_request_id"),
+  idempotencyFingerprint: text("idempotency_fingerprint"),
+  source: text("source"),
 }, (table) => {
   return {
     customerIdIdx: index("idx_service_requests_customer_id").on(table.customerId),
@@ -1131,6 +1394,7 @@ export const serviceRequests = pgTable("service_requests", {
   };
 });
 
+// SERVICE-INTAKE-RELIABILITY-01D — aligned with server INTAKE_PAYLOAD_LIMITS
 export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({
   id: true,
   ticketNumber: true,
@@ -1154,7 +1418,24 @@ export const insertServiceRequestSchema = createInsertSchema(serviceRequests).om
   adminInteracted: true,
   adminInteractedAt: true,
   adminInteractedBy: true,
+  phoneNormalized: true,
+  intakeSource: true,
+  clientRequestId: true,
+  idempotencyFingerprint: true,
+  source: true,
 }).extend({
+  brand: z.string().min(1).max(80),
+  primaryIssue: z.string().min(1).max(300),
+  customerName: z.string().min(2).max(120),
+  phone: z.string().min(10).max(30),
+  screenSize: z.string().max(40).optional().nullable(),
+  modelNumber: z.string().max(80).optional().nullable(),
+  symptoms: z.string().max(1000).optional().nullable(),
+  description: z.string().max(2000).optional().nullable(),
+  address: z.string().max(500).optional().nullable(),
+  mediaUrls: z.string().max(12000).optional().nullable(),
+  serviceId: z.string().max(128).optional().nullable(),
+  serviceAreaId: z.string().max(128).optional().nullable(),
   scheduledPickupDate: z.union([z.date(), z.string(), z.null()]).optional().transform((val) => {
     if (typeof val === 'string') return new Date(val);
     return val;
@@ -1168,23 +1449,37 @@ export type InsertServiceRequest = z.infer<typeof insertServiceRequestSchema>;
 export type ServiceRequest = typeof serviceRequests.$inferSelect;
 
 export const insertQuoteRequestSchema = z.object({
-  serviceId: z.string().min(1, "Service selection is required"),
-  brand: z.string().min(1, "Brand is required"),
-  screenSize: z.string().optional(),
-  modelNumber: z.string().optional(),
-  primaryIssue: z.string().min(1, "Issue description is required"),
-  symptoms: z.string().optional(),
-  description: z.string().optional(),
-  customerName: z.string().min(2, "Name is required"),
-  phone: z.string().min(10, "Phone number is required"),
+  serviceId: z.string().min(1, "Service selection is required").max(128),
+  brand: z.string().min(1, "Brand is required").max(80),
+  screenSize: z.string().max(40).optional(),
+  modelNumber: z.string().max(80).optional(),
+  primaryIssue: z.string().min(1, "Issue description is required").max(300),
+  symptoms: z.string().max(1000).optional(),
+  description: z.string().max(2000).optional(),
+  customerName: z.string().min(2, "Name is required").max(120),
+  phone: z.string().min(10, "Phone number is required").max(30),
   servicePreference: z.enum(["home_pickup", "service_center", "both"]).optional(),
-  address: z.string().optional(),
+  address: z.string().max(500).optional(),
   requestIntent: z.enum(["quote", "repair"]).optional(),
   serviceMode: z.enum(["pickup", "service_center"]).optional(),
 });
 export type InsertQuoteRequest = z.infer<typeof insertQuoteRequestSchema>;
 
 // Service Request Events Table
+/** Admin-only retail quote acceptance confirmations (00C-A-HOTFIX). Never returned on customer routes. */
+export const retailQuoteAdminAcceptances = pgTable("retail_quote_admin_acceptances", {
+  id: text("id").primaryKey(),
+  serviceRequestId: text("service_request_id").notNull().references(() => serviceRequests.id, { onDelete: "cascade" }),
+  adminUserId: text("admin_user_id").notNull(),
+  adminName: text("admin_name"),
+  confirmationNote: text("confirmation_note").notNull(),
+  acceptedAt: timestamp("accepted_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  serviceRequestIdx: index("idx_rqaa_service_request_id").on(table.serviceRequestId),
+}));
+export type RetailQuoteAdminAcceptance = typeof retailQuoteAdminAcceptances.$inferSelect;
+
 export const serviceRequestEvents = pgTable("service_request_events", {
   id: text("id").primaryKey(),
   serviceRequestId: text("service_request_id").notNull(),
@@ -1248,13 +1543,23 @@ export const attendanceRecords = pgTable("attendance_records", {
   checkOutGeofenceStatus: text("check_out_geofence_status"),
   checkInReason: text("check_in_reason"),
   checkOutReason: text("check_out_reason"),
+  checkInReferenceLat: doublePrecision("check_in_reference_lat"),
+  checkInReferenceLng: doublePrecision("check_in_reference_lng"),
+  checkInReferenceRadiusMeters: real("check_in_reference_radius_meters"),
+  checkOutReferenceLat: doublePrecision("check_out_reference_lat"),
+  checkOutReferenceLng: doublePrecision("check_out_reference_lng"),
+  checkOutReferenceRadiusMeters: real("check_out_reference_radius_meters"),
   devicePlatform: text("device_platform"),
   deviceId: text("device_id"),
   date: text("date").notNull(),
   notes: text("notes"),
+  // WORKFORCE-UX-01 — approved effective overlay only (raw GPS times never overwritten)
+  effectiveCheckInTime: timestamp("effective_check_in_time"),
+  effectiveCheckOutTime: timestamp("effective_check_out_time"),
 }, (table) => {
   return {
-    userDateIdx: index("idx_attendance_user_date").on(table.userId, table.date),
+    // Race-safe one attendance record per user per calendar day
+    userDateUidx: uniqueIndex("uidx_attendance_user_date").on(table.userId, table.date),
     workLocationIdx: index("idx_attendance_work_location").on(table.workLocationId),
   };
 });
@@ -1266,6 +1571,39 @@ export const insertAttendanceRecordSchema = createInsertSchema(attendanceRecords
 });
 export type InsertAttendanceRecord = z.infer<typeof insertAttendanceRecordSchema>;
 export type AttendanceRecord = typeof attendanceRecords.$inferSelect;
+
+/** WORKFORCE-UX-01 — append-only attendance correction requests */
+export const ATTENDANCE_CORRECTION_PENDING = "pending" as const;
+export const ATTENDANCE_CORRECTION_APPROVED = "approved" as const;
+export const ATTENDANCE_CORRECTION_REJECTED = "rejected" as const;
+export const ATTENDANCE_CORRECTION_CANCELLED = "cancelled" as const;
+
+export const attendanceCorrectionRequests = pgTable(
+  "attendance_correction_requests",
+  {
+    id: text("id").primaryKey(),
+    attendanceRecordId: text("attendance_record_id").notNull(),
+    requesterUserId: text("requester_user_id").notNull(),
+    status: text("status").notNull().default(ATTENDANCE_CORRECTION_PENDING),
+    originalCheckInTime: timestamp("original_check_in_time").notNull(),
+    originalCheckOutTime: timestamp("original_check_out_time"),
+    proposedCheckInTime: timestamp("proposed_check_in_time").notNull(),
+    proposedCheckOutTime: timestamp("proposed_check_out_time"),
+    requestReason: text("request_reason").notNull(),
+    reviewerUserId: text("reviewer_user_id"),
+    reviewedAt: timestamp("reviewed_at"),
+    reviewReason: text("review_reason"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    attendanceIdx: index("idx_attendance_correction_record").on(table.attendanceRecordId),
+    requesterIdx: index("idx_attendance_correction_requester").on(table.requesterUserId),
+    statusIdx: index("idx_attendance_correction_status").on(table.status),
+  }),
+);
+export type AttendanceCorrectionRequest = typeof attendanceCorrectionRequests.$inferSelect;
+export type InsertAttendanceCorrectionRequest = typeof attendanceCorrectionRequests.$inferInsert;
 
 // Product Variants Table
 export const productVariants = pgTable("product_variants", {
@@ -1575,6 +1913,31 @@ export const insertAiQueryLogSchema = createInsertSchema(aiQueryLog).omit({
 export type InsertAiQueryLog = z.infer<typeof insertAiQueryLogSchema>;
 export type AiQueryLog = typeof aiQueryLog.$inferSelect;
 
+// Super Admin system incidents — allowlisted codes only (SYSTEM-OBSERVABILITY-01B)
+export const systemIncidents = pgTable("system_incidents", {
+  id: text("id").primaryKey(),
+  signature: text("signature").notNull().unique(),
+  component: text("component").notNull(),
+  code: text("code").notNull(),
+  category: text("category").notNull(),
+  severity: text("severity").notNull(),
+  status: text("status").notNull().default("open"),
+  count: integer("count").notNull().default(1),
+  firstSeenAt: timestamp("first_seen_at").notNull().defaultNow(),
+  lastSeenAt: timestamp("last_seen_at").notNull().defaultNow(),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgedBy: text("acknowledged_by"),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: text("resolved_by"),
+  safeTitleKey: text("safe_title_key").notNull(),
+  safeNextStepKey: text("safe_next_step_key").notNull(),
+  summaryDay: text("summary_day"),
+}, (table) => ({
+  statusLastSeenIdx: index("idx_system_incidents_status_last_seen").on(table.status, table.lastSeenAt),
+  componentLastSeenIdx: index("idx_system_incidents_component_last_seen").on(table.component, table.lastSeenAt),
+}));
+export type SystemIncident = typeof systemIncidents.$inferSelect;
+
 // Audit Logs Table
 export const auditLogs = pgTable("audit_logs", {
   id: text("id").primaryKey(),
@@ -1719,14 +2082,18 @@ export const insertWarrantyClaimSchema = createInsertSchema(warrantyClaims).omit
 export type InsertWarrantyClaim = z.infer<typeof insertWarrantyClaimSchema>;
 export type WarrantyClaim = typeof warrantyClaims.$inferSelect;
 
-// Refunds Table
+// Refunds Table — referenceId is always the canonical POS transaction ID after R1H2
 export const refunds = pgTable("refunds", {
   id: text("id").primaryKey(),
 
   // Reference
-  type: text("type").notNull(), // 'job' | 'pos' | 'warranty'
-  referenceId: text("reference_id").notNull(), // job_id or pos_transaction_id
+  type: text("type").notNull(), // request shape 'pos' | 'job' | 'warranty' (stored as pos after resolve)
+  referenceId: text("reference_id").notNull(), // always pos_transaction_id (canonical)
   referenceInvoice: text("reference_invoice"), // Original invoice number for quick lookup
+
+  /** invoice = whole POS correction; job_allocation = one job line only */
+  scope: text("scope").notNull().default("invoice"), // 'invoice' | 'job_allocation'
+  targetJobTicketId: text("target_job_ticket_id"),
 
   // Customer Info
   customer: text("customer").notNull(),
@@ -1770,6 +2137,21 @@ export const refunds = pgTable("refunds", {
   statusIdx: index("idx_refunds_status").on(table.status),
   customerPhoneIdx: index("idx_refunds_phone").on(table.customerPhone),
   createdAtIdx: index("idx_refunds_created_at").on(table.createdAt),
+  targetJobIdx: index("idx_refunds_target_job").on(table.targetJobTicketId),
+}));
+
+/** Deterministic per-job refund splits — financial authority for processing */
+export const refundAllocations = pgTable("refund_allocations", {
+  id: text("id").primaryKey(),
+  refundId: text("refund_id").notNull(),
+  transactionId: text("transaction_id").notNull(),
+  jobTicketId: text("job_ticket_id"),
+  refundAmount: real("refund_amount").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  refundIdx: index("idx_refund_alloc_refund").on(table.refundId),
+  txnIdx: index("idx_refund_alloc_txn").on(table.transactionId),
+  jobIdx: index("idx_refund_alloc_job").on(table.jobTicketId),
 }));
 
 export const insertRefundSchema = createInsertSchema(refunds).omit({
@@ -1778,6 +2160,7 @@ export const insertRefundSchema = createInsertSchema(refunds).omit({
 });
 export type InsertRefund = z.infer<typeof insertRefundSchema>;
 export type Refund = typeof refunds.$inferSelect;
+export type RefundAllocation = typeof refundAllocations.$inferSelect;
 // Corporate Messaging System
 export const corporateMessageThreads = pgTable("corporate_message_threads", {
   id: text("id").primaryKey(),
@@ -2459,18 +2842,26 @@ export type InsertTeamMessage = typeof teamMessages.$inferInsert;
 
 export const reminders = pgTable("reminders", {
   id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),       // who receives the reminder
-  createdBy: text("created_by").notNull(), // who set it (may differ for manager→staff)
+  userId: text("user_id").notNull(),
+  createdBy: text("created_by").notNull(),
   title: text("title").notNull(),
   body: text("body"),
   remindAt: timestamp("remind_at").notNull(),
-  repeat: text("repeat"),                  // null | 'daily' | 'weekly'
+  repeat: text("repeat"),
   jobId: text("job_id").references(() => jobTickets.id, { onDelete: "set null" }),
   isSent: boolean("is_sent").notNull().default(false),
   sentAt: timestamp("sent_at"),
   isDismissed: boolean("is_dismissed").notNull().default(false),
   dismissedAt: timestamp("dismissed_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+  claimOwner: text("claim_owner"),
+  claimToken: text("claim_token"),
+  claimUntil: timestamp("claim_until"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  deliveryStatus: text("delivery_status").notNull().default("pending"),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  nextAttemptAt: timestamp("next_attempt_at"),
+  lastFailureCode: text("last_failure_code"),
 }, (table) => ({
   userIdx: index("idx_reminders_user_id").on(table.userId),
   remindAtIdx: index("idx_reminders_remind_at").on(table.remindAt),
@@ -2478,6 +2869,75 @@ export const reminders = pgTable("reminders", {
 }));
 export type Reminder = typeof reminders.$inferSelect;
 export type InsertReminder = typeof reminders.$inferInsert;
+
+/** Data-minimal outbox for scheduler external deliveries (01C-B2-B1). No phone/body. */
+export const schedulerDeliveryOutbox = pgTable("scheduler_delivery_outbox", {
+  id: text("id").primaryKey(),
+  kind: text("kind").notNull(),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  deliveryStatus: text("delivery_status").notNull().default("pending"),
+  claimOwner: text("claim_owner"),
+  claimToken: text("claim_token"),
+  claimUntil: timestamp("claim_until"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  nextAttemptAt: timestamp("next_attempt_at"),
+  lastFailureCode: text("last_failure_code"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  idempotencyIdx: uniqueIndex("uidx_scheduler_outbox_idempotency").on(table.idempotencyKey),
+}));
+export type SchedulerDeliveryOutbox = typeof schedulerDeliveryOutbox.$inferSelect;
+export type InsertSchedulerDeliveryOutbox = typeof schedulerDeliveryOutbox.$inferInsert;
+
+/** One scheduled backup ownership row per Asia/Dhaka calendar day (01C-B2-B2A). */
+export const scheduledBackupRuns = pgTable("scheduled_backup_runs", {
+  id: text("id").primaryKey(),
+  runDay: date("run_day").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  status: text("status").notNull().default("pending"),
+  claimOwner: text("claim_owner"),
+  claimToken: text("claim_token"),
+  claimUntil: timestamp("claim_until"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  nextAttemptAt: timestamp("next_attempt_at"),
+  lastFailureCode: text("last_failure_code"),
+  backupMetadataId: text("backup_metadata_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  runDayUid: uniqueIndex("uidx_scheduled_backup_runs_day").on(table.runDay),
+  idempotencyUid: uniqueIndex("uidx_scheduled_backup_runs_idempotency").on(table.idempotencyKey),
+}));
+export type ScheduledBackupRun = typeof scheduledBackupRuns.$inferSelect;
+export type InsertScheduledBackupRun = typeof scheduledBackupRuns.$inferInsert;
+
+/** One drawer day-close ownership row per configured business-local day (01C-B2-B2B). */
+export const drawerDayCloseRuns = pgTable("drawer_day_close_runs", {
+  id: text("id").primaryKey(),
+  runDay: date("run_day").notNull(),
+  idempotencyKey: text("idempotency_key").notNull(),
+  status: text("status").notNull().default("pending"),
+  claimOwner: text("claim_owner"),
+  claimToken: text("claim_token"),
+  claimUntil: timestamp("claim_until"),
+  attemptCount: integer("attempt_count").notNull().default(0),
+  lastAttemptAt: timestamp("last_attempt_at"),
+  nextAttemptAt: timestamp("next_attempt_at"),
+  lastFailureCode: text("last_failure_code"),
+  drawerSessionId: text("drawer_session_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  runDayUid: uniqueIndex("uidx_drawer_day_close_runs_day").on(table.runDay),
+  idempotencyUid: uniqueIndex("uidx_drawer_day_close_runs_idempotency").on(table.idempotencyKey),
+}));
+export type DrawerDayCloseRun = typeof drawerDayCloseRuns.$inferSelect;
+export type InsertDrawerDayCloseRun = typeof drawerDayCloseRuns.$inferInsert;
 
 // ============================================================================
 // PHASE A — Client Class System
@@ -2507,6 +2967,9 @@ export const jobBatches = pgTable("job_batches", {
   clientClass: text("client_class").default("online"),
   corporateClientId: text("corporate_client_id").references(() => corporateClients.id),
   customerId: text("customer_id"),                      // FK to users.id for non-corporate
+  // JOB-INTAKE-UNIFICATION-01A-A / HOTFIX-1 — typed external party pair (do not overload customerId)
+  intakePartyKind: text("intake_party_kind"),
+  externalPartyId: text("external_party_id"),
   intakeDate: timestamp("intake_date").notNull().defaultNow(),
   receiver: text("receiver"),                           // staff who received the batch
   notes: text("notes"),
@@ -2522,9 +2985,55 @@ export const jobBatches = pgTable("job_batches", {
   corporateIdx: index("idx_job_batches_corporate").on(table.corporateClientId),
   createdAtIdx: index("idx_job_batches_created_at").on(table.createdAt),
   classIdx: index("idx_job_batches_client_class").on(table.clientClass),
+  externalPartyIdx: index("idx_job_batches_external_party").on(table.externalPartyId),
+  intakePartyKindIdx: index("idx_job_batches_intake_party_kind").on(table.intakePartyKind),
 }));
 export type JobBatch = typeof jobBatches.$inferSelect;
 export type InsertJobBatch = typeof jobBatches.$inferInsert;
+
+/** JOB-INTAKE-UNIFICATION-01A-A — external Technician/shop identity (not staff, not portal customer) */
+export const EXTERNAL_INTAKE_PARTY_KIND = "external_technician" as const;
+export const externalIntakeParties = pgTable(
+  "external_intake_parties",
+  {
+    id: text("id").primaryKey(),
+    kind: text("kind").notNull().default(EXTERNAL_INTAKE_PARTY_KIND),
+    name: text("name").notNull(),
+    phone: text("phone").notNull(),
+    phoneNormalized: text("phone_normalized").notNull(),
+    shortAddress: text("short_address"),
+    isActive: boolean("is_active").notNull().default(true),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    phoneNormUidx: uniqueIndex("uidx_external_intake_parties_phone_norm").on(table.phoneNormalized),
+    nameIdx: index("idx_external_intake_parties_name").on(table.name),
+  }),
+);
+export type ExternalIntakeParty = typeof externalIntakeParties.$inferSelect;
+export type InsertExternalIntakeParty = typeof externalIntakeParties.$inferInsert;
+
+/** TECHNICIAN-QR-TRACKING-01 — opaque public QR credentials (hash-only; raw never stored) */
+export const EXTERNAL_QR_ENTITY_JOB = "job" as const;
+export const EXTERNAL_QR_ENTITY_BATCH = "batch" as const;
+export const externalQrCredentials = pgTable(
+  "external_qr_credentials",
+  {
+    id: text("id").primaryKey(),
+    credentialHash: text("credential_hash").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    revokedAt: timestamp("revoked_at"),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+  },
+  (table) => ({
+    hashUidx: uniqueIndex("uidx_external_qr_credentials_hash").on(table.credentialHash),
+    entityIdx: index("idx_external_qr_credentials_entity").on(table.entityType, table.entityId),
+  }),
+);
+export type ExternalQrCredential = typeof externalQrCredentials.$inferSelect;
+export type InsertExternalQrCredential = typeof externalQrCredentials.$inferInsert;
 
 export const jobExtensionRequests = pgTable("job_extension_requests", {
   id: text("id").primaryKey(),
@@ -2675,6 +3184,16 @@ export const billLineItems = pgTable("bill_line_items", {
   movedAt: timestamp("moved_at"),
   movedByUserId: text("moved_by_user_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
+
+  // FINANCE-AFTERCARE-01.3 — normalized Corporate Ltd. issued line fields.
+  // Persisted for every future Corporate Ltd. bill so balances/allocations and
+  // print render from stable normalized rows, not the legacy lineItems JSON.
+  clientJobNumber: text("client_job_number"),
+  promiseJobNumber: text("promise_job_number"),
+  tvSerial: text("tv_serial"),
+  brandModel: text("brand_model"),
+  tvSize: text("tv_size"),
+  serviceDescription: text("service_description"),
 }, (table) => ({
   billIdx: index("idx_bill_line_items_bill").on(table.billId),
   jobIdx:  index("idx_bill_line_items_job").on(table.jobTicketId),
@@ -2761,8 +3280,11 @@ export const posTransactionAreaAllocations = pgTable("pos_transaction_area_alloc
   id: text("id").primaryKey(),
   transactionId: text("transaction_id").notNull(),
   jobTicketId: text("job_ticket_id"),
-  serviceAreaId: text("service_area_id").notNull(),
+  /** Nullable: job may lack service area; allocation still required for billing integrity */
+  serviceAreaId: text("service_area_id"),
   billedAmount: real("billed_amount").notNull(),
+  /** paid | due — mirrors POS payment method class for integrity checks */
+  settlementKind: text("settlement_kind").notNull().default("paid"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 }, (table) => ({
   transactionJobUnique: uniqueIndex("uq_pos_area_alloc_transaction_job").on(table.transactionId, table.jobTicketId),
@@ -2777,3 +3299,238 @@ export const insertPosTransactionAreaAllocationSchema = createInsertSchema(posTr
 });
 export type InsertPosTransactionAreaAllocation = z.infer<typeof insertPosTransactionAreaAllocationSchema>;
 export type PosTransactionAreaAllocation = typeof posTransactionAreaAllocations.$inferSelect;
+
+// Protected schema-update control plane (durable Super Admin request records only).
+// Ledger authority remains promise_schema_migrations via main-schema-migrate.service.
+// Bootstrap: applied only by trusted MAIN release command (see MAIN migration id).
+export const schemaUpdateRuns = pgTable("schema_update_runs", {
+  id: text("id").primaryKey(),
+  status: text("status").notNull(), // pending|running|succeeded|failed|blocked|timed_out|cancelled
+  requestedBy: text("requested_by").notNull(),
+  requestedAt: timestamp("requested_at").notNull().defaultNow(),
+  confirmedAt: timestamp("confirmed_at"),
+  startedAt: timestamp("started_at"),
+  finishedAt: timestamp("finished_at"),
+  requestSource: text("request_source").notNull().default("super_admin_settings"),
+  releaseVersion: text("release_version"),
+  targetPendingCount: integer("target_pending_count"),
+  appliedCount: integer("applied_count"),
+  errorCategory: text("error_category"),
+  errorMessage: text("error_message"),
+  resultSummary: jsonb("result_summary"),
+  auditRef: text("audit_ref"),
+}, (table) => ({
+  statusRequestedIdx: index("idx_schema_update_runs_status_requested").on(table.status, table.requestedAt),
+}));
+
+export type SchemaUpdateRunRow = typeof schemaUpdateRuns.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Corporate Account Receipts (FINANCE-AFTERCARE-01.2)
+// Normal Corporate payments settle the COMPANY ACCOUNT, not an invoice/bill.
+// A receipt belongs to a corporate_client_id only — never to a bill, job, or line.
+// Account balance = active corporate_bills grand_total − sum(receipts).
+// Isolated from POS, generic due_records, refunds, warranty, and jobs.
+// ----------------------------------------------------------------------------
+
+export const corporateAccountReceipts = pgTable("corporate_account_receipts", {
+  id: text("id").primaryKey(),
+  corporateClientId: text("corporate_client_id").notNull().references(() => corporateClients.id, { onDelete: "cascade" }),
+  amount: real("amount").notNull(),
+  method: text("method").notNull(), // 'cash' | 'bank' | 'bkash' | 'nagad' | 'cheque' | 'other'
+  reference: text("reference"),
+  receivedBy: text("received_by"),
+  receivedByName: text("received_by_name"),
+  // Idempotency: a client-scoped key so retries of the same receipt do not double-post.
+  idempotencyKey: text("idempotency_key"),
+  note: text("note"),
+  receivedAt: timestamp("received_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  clientIdx: index("idx_corporate_account_receipts_client").on(table.corporateClientId),
+  receivedAtIdx: index("idx_corporate_account_receipts_received_at").on(table.receivedAt),
+  createdAtIdx: index("idx_corporate_account_receipts_created_at").on(table.createdAt),
+  // Unique per (client, key) — PostgreSQL unique indexes allow multiple NULLs,
+  // so receipts without an idempotency key are never constrained. DB-enforced retry safety.
+  idempotencyUnique: uniqueIndex("uidx_corporate_account_receipts_idempotency").on(table.corporateClientId, table.idempotencyKey),
+}));
+
+export type CorporateAccountReceipt = typeof corporateAccountReceipts.$inferSelect;
+export type InsertCorporateAccountReceipt = typeof corporateAccountReceipts.$inferInsert;
+
+// Legacy corporate bill ↔ generic due_records link classification.
+// Backfill is EXACT-MATCH-ONLY: bill_number = due_records.invoice AND grand_total = due_records.amount.
+// Ambiguous (duplicate/multiple/no-match) rows stay review_needed — never guessed or rewritten.
+export const corporateBillDueLinks = pgTable("corporate_bill_due_links", {
+  id: text("id").primaryKey(),
+  billId: text("bill_id").notNull().references(() => corporateBills.id, { onDelete: "cascade" }),
+  dueRecordId: text("due_record_id"),
+  classification: text("classification").notNull().default("review_needed"), // 'exact_match' | 'review_needed' | 'unmatched'
+  reason: text("reason"),
+  classifiedAt: timestamp("classified_at").notNull().defaultNow(),
+}, (table) => ({
+  billIdx: index("idx_corporate_bill_due_links_bill").on(table.billId),
+  dueIdx: index("idx_corporate_bill_due_links_due").on(table.dueRecordId),
+  classIdx: index("idx_corporate_bill_due_links_class").on(table.classification),
+  billUnique: uniqueIndex("uidx_corporate_bill_due_links_bill").on(table.billId),
+}));
+
+export type CorporateBillDueLink = typeof corporateBillDueLinks.$inferSelect;
+
+// ----------------------------------------------------------------------------
+// Corporate Ltd. itemized receipts + allocations (FINANCE-AFTERCARE-01.3)
+// Corporate Ltd. (clientType === 'limited_company') settles per issued bill and,
+// where the client requires it, against selected TV/job lines. A receipt belongs
+// to one bill for one Corporate Ltd. client — never the company account.
+// Allocations reference the same client's issued bill and (optionally) a bill line.
+// Isolated from POS, generic due_records, normal Corporate account receipts,
+// refunds, warranty, and jobs. A receipt never changes job/repair status.
+// ----------------------------------------------------------------------------
+
+export const corporateLtdReceipts = pgTable("corporate_ltd_receipts", {
+  id: text("id").primaryKey(),
+  corporateClientId: text("corporate_client_id").notNull().references(() => corporateClients.id, { onDelete: "cascade" }),
+  billId: text("bill_id").notNull().references(() => corporateBills.id, { onDelete: "cascade" }),
+  amount: real("amount").notNull(),
+  method: text("method").notNull(), // 'cash' | 'bank' | 'bkash' | 'nagad' | 'cheque' | 'other'
+  reference: text("reference"),
+  receivedBy: text("received_by"),
+  receivedByName: text("received_by_name"),
+  idempotencyKey: text("idempotency_key"),
+  note: text("note"),
+  receivedAt: timestamp("received_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  clientIdx: index("idx_corporate_ltd_receipts_client").on(table.corporateClientId),
+  billIdx: index("idx_corporate_ltd_receipts_bill").on(table.billId),
+  receivedAtIdx: index("idx_corporate_ltd_receipts_received_at").on(table.receivedAt),
+  createdAtIdx: index("idx_corporate_ltd_receipts_created_at").on(table.createdAt),
+  idempotencyUnique: uniqueIndex("uidx_corporate_ltd_receipts_idempotency").on(table.billId, table.idempotencyKey),
+}));
+
+export type CorporateLtdReceipt = typeof corporateLtdReceipts.$inferSelect;
+export type InsertCorporateLtdReceipt = typeof corporateLtdReceipts.$inferInsert;
+
+export const corporateLtdReceiptAllocations = pgTable("corporate_ltd_receipt_allocations", {
+  id: text("id").primaryKey(),
+  receiptId: text("receipt_id").notNull().references(() => corporateLtdReceipts.id, { onDelete: "cascade" }),
+  corporateClientId: text("corporate_client_id").notNull().references(() => corporateClients.id, { onDelete: "cascade" }),
+  billId: text("bill_id").notNull().references(() => corporateBills.id, { onDelete: "cascade" }),
+  billLineItemId: text("bill_line_item_id").references(() => billLineItems.id, { onDelete: "cascade" }),
+  amount: real("amount").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  receiptIdx: index("idx_corporate_ltd_alloc_receipt").on(table.receiptId),
+  billIdx: index("idx_corporate_ltd_alloc_bill").on(table.billId),
+  lineIdx: index("idx_corporate_ltd_alloc_line").on(table.billLineItemId),
+  clientIdx: index("idx_corporate_ltd_alloc_client").on(table.corporateClientId),
+}));
+
+export type CorporateLtdReceiptAllocation = typeof corporateLtdReceiptAllocations.$inferSelect;
+export type InsertCorporateLtdReceiptAllocation = typeof corporateLtdReceiptAllocations.$inferInsert;
+
+// ----------------------------------------------------------------------------
+// Aftercare Disputes (Ticket 04)
+// Customer dispute cases linked to exactly one POS transaction, refund, or
+// warranty claim. Three nullable FKs with DB CHECK enforcing exactly-one.
+// Read-only cross-link: never creates/approves refund, alters warranty,
+// creates jobs, or touches POS/Due/refund/warranty/corporate settlement.
+// Review notes are append-only via dispute_notes (dedicated event rows).
+// ----------------------------------------------------------------------------
+
+export const disputes = pgTable("disputes", {
+  id: text("id").primaryKey(),
+
+  // Exactly-one target linking: three nullable FKs, CHECK enforced
+  // RESTRICT: target deletion is rejected rather than causing a CHECK-error surprise
+  posTransactionId: text("pos_transaction_id").references(() => posTransactions.id, { onDelete: "restrict" }),
+  refundId: text("refund_id").references(() => refunds.id, { onDelete: "restrict" }),
+  warrantyClaimId: text("warranty_claim_id").references(() => warrantyClaims.id, { onDelete: "restrict" }),
+
+  // Dispute classification
+  disputeType: text("dispute_type").notNull(), // 'billing' | 'service_quality' | 'refund' | 'warranty' | 'other'
+  status: text("status").notNull().default("open"), // 'open' | 'under_review' | 'resolved' | 'closed'
+
+  // Customer snapshot
+  customer: text("customer"),
+  customerPhone: text("customer_phone"),
+
+  // Dispute details
+  description: text("description").notNull(),
+  resolutionNotes: text("resolution_notes"),
+
+  // Opened-by staff snapshot
+  openedBy: text("opened_by").notNull(),
+  openedByName: text("opened_by_name").notNull(),
+  openedByRole: text("opened_by_role").notNull(),
+  openedAt: timestamp("opened_at").notNull().defaultNow(),
+
+  // Resolved-by staff snapshot
+  resolvedBy: text("resolved_by"),
+  resolvedByName: text("resolved_by_name"),
+  resolvedByRole: text("resolved_by_role"),
+  resolvedAt: timestamp("resolved_at"),
+
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  // Exactly-one target CHECK: (pos_transaction_id IS NOT NULL)::int
+  //   + (refund_id IS NOT NULL)::int + (warranty_claim_id IS NOT NULL)::int = 1
+  exactlyOneTarget: check(
+    "chk_disputes_exactly_one_target",
+    sql`(pos_transaction_id IS NOT NULL)::int + (refund_id IS NOT NULL)::int + (warranty_claim_id IS NOT NULL)::int = 1`
+  ),
+  statusIdx: index("idx_disputes_status").on(table.status),
+  posTransactionIdx: index("idx_disputes_pos_transaction").on(table.posTransactionId),
+  refundIdx: index("idx_disputes_refund").on(table.refundId),
+  warrantyClaimIdx: index("idx_disputes_warranty_claim").on(table.warrantyClaimId),
+  customerPhoneIdx: index("idx_disputes_phone").on(table.customerPhone),
+  createdAtIdx: index("idx_disputes_created_at").on(table.createdAt),
+}));
+
+export const insertDisputeSchema = createInsertSchema(disputes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  openedAt: true,
+  resolvedAt: true,
+  resolvedBy: true,
+  resolvedByName: true,
+  resolvedByRole: true,
+  resolutionNotes: true,
+}).extend({
+  posTransactionId: z.string().optional().nullable(),
+  refundId: z.string().optional().nullable(),
+  warrantyClaimId: z.string().optional().nullable(),
+});
+export type InsertDispute = z.infer<typeof insertDisputeSchema>;
+export type Dispute = typeof disputes.$inferSelect;
+
+// Append-only dispute review notes / event log (Ticket 04)
+export const disputeNotes = pgTable("dispute_notes", {
+  id: text("id").primaryKey(),
+  disputeId: text("dispute_id").notNull().references(() => disputes.id, { onDelete: "cascade" }),
+  noteType: text("note_type").notNull().default("note"), // 'note' | 'status_change' | 'internal' | 'resolution'
+  content: text("content").notNull(),
+
+  // Staff snapshot
+  authorId: text("author_id").notNull(),
+  authorName: text("author_name").notNull(),
+  authorRole: text("author_role").notNull(),
+
+  // Status transition tracking (populated only when noteType = 'status_change')
+  previousStatus: text("previous_status"),
+  newStatus: text("new_status"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  disputeIdx: index("idx_dispute_notes_dispute").on(table.disputeId),
+  createdAtIdx: index("idx_dispute_notes_created_at").on(table.createdAt),
+}));
+
+export const insertDisputeNoteSchema = createInsertSchema(disputeNotes).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertDisputeNote = z.infer<typeof insertDisputeNoteSchema>;
+export type DisputeNote = typeof disputeNotes.$inferSelect;

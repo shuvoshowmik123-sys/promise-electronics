@@ -10,9 +10,8 @@ import { and, desc, eq } from 'drizzle-orm';
 import { storage } from '../storage.js';
 import { financeRepo, notificationRepo, posRepo, serviceRequestRepo, userRepo } from '../repositories/index.js';
 import { insertManualPaymentSchema, insertPettyCashRecordSchema, manualPayments } from '../../shared/schema.js';
-import { requireAdminAuth, requirePermission } from './middleware/auth.js';
+import { requireAdminAuth, requirePermission, requireGranularPermission } from './middleware/auth.js';
 import { financeService } from '../services/finance.service.js';
-import { jobService } from '../services/job.service.js';
 import { db } from '../db.js';
 import { notifyCustomerUpdate } from './middleware/sse-broker.js';
 
@@ -281,7 +280,12 @@ router.post('/api/manual-payments', requireAdminAuth, requirePermission('process
     }
 });
 
-router.post('/api/manual-payments/:id/verify', requireAdminAuth, requirePermission('process_payment'), async (req: Request, res: Response) => {
+/**
+ * POST /api/manual-payments/:id/verify
+ * 00C-B-HOTFIX-1: applied_to_invoice only after canonical POS; staff_verified never sends accepted notify.
+ * Requires pos.processPayment when settlement can apply money.
+ */
+router.post('/api/manual-payments/:id/verify', requireAdminAuth, requireGranularPermission('pos.processPayment'), async (req: Request, res: Response) => {
     try {
         const [payment] = await db.select().from(manualPayments).where(eq(manualPayments.id, req.params.id)).limit(1);
         if (!payment) return res.status(404).json({ error: 'Manual payment not found' });
@@ -295,18 +299,78 @@ router.post('/api/manual-payments/:id/verify', requireAdminAuth, requirePermissi
         let appliedJob = null;
         let appliedDue = null;
 
+        let operatorActionRequired: string | null = null;
+        let posTransaction: any = null;
+        let settlementError: { status: number; code: string; message: string } | null = null;
+
         if (payment.jobTicketId) {
-            appliedJob = await jobService.recordJobPayment(payment.jobTicketId, {
-                paymentId: payment.transactionId || payment.id,
-                amount: Number(payment.amount),
-                method: payment.method,
-            });
-            status = 'applied_to_invoice';
+            const { settleJobPaymentViaPos, RetailMoneyError, mapToPosPaymentMethod } = await import(
+                '../services/retail-money-settlement.service.js'
+            );
+            const mapped = mapToPosPaymentMethod(payment.method);
+            if (!mapped) {
+                status = 'staff_verified';
+                operatorActionRequired =
+                    'Manual payment held as evidence. Unrecognized method — collect via POS (Cash/Bank/bKash/Nagad).';
+                settlementError = {
+                    status: 400,
+                    code: 'INVALID_PAYMENT_METHOD',
+                    message: 'Unrecognized payment method for retail POS settlement',
+                };
+            } else if (mapped === 'Due') {
+                status = 'staff_verified';
+                operatorActionRequired =
+                    'Manual payment held as evidence. Due/credit cannot apply job money through verify — use POS Due flow if required.';
+                settlementError = {
+                    status: 400,
+                    code: 'DUE_NOT_ALLOWED_ON_ADAPTER',
+                    message: 'Due/credit settlements cannot apply money through manual-payment verify',
+                };
+            } else {
+                try {
+                    const actorId = req.session.adminUserId!;
+                    const settlement = await settleJobPaymentViaPos({
+                        jobId: payment.jobTicketId,
+                        amount: Number(payment.amount),
+                        method: mapped,
+                        paymentId: payment.transactionId || undefined,
+                        clientRequestId: `manual_verify:${payment.id}`,
+                        actorUserId: actorId,
+                        customerName: payment.customerName,
+                        customerPhone: payment.customerPhone,
+                        req,
+                    });
+                    appliedJob = settlement.job;
+                    posTransaction = settlement.posTransaction;
+                    status = 'applied_to_invoice';
+                } catch (settleErr: any) {
+                    if (settleErr instanceof RetailMoneyError) {
+                        status = 'staff_verified';
+                        operatorActionRequired = settleErr.message || 'POS settlement required before money applies';
+                        settlementError = {
+                            status: settleErr.status,
+                            code: settleErr.code,
+                            message: settleErr.message,
+                        };
+                    } else if (settleErr?.code && settleErr?.status) {
+                        status = 'staff_verified';
+                        operatorActionRequired = settleErr.message || 'POS settlement required before money applies';
+                        settlementError = {
+                            status: Number(settleErr.status) || 400,
+                            code: String(settleErr.code),
+                            message: String(settleErr.message || 'Settlement failed'),
+                        };
+                    } else {
+                        throw settleErr;
+                    }
+                }
+            }
         } else if (payment.dueRecordId) {
             appliedDue = await financeService.recordDuePayment(payment.dueRecordId, Number(payment.amount), payment.method);
             status = 'applied_to_invoice';
         } else if (!canApplyManualPayment(payment)) {
             status = 'staff_verified';
+            operatorActionRequired = 'Link payment to a job or due record and settle via POS when applying money.';
         }
 
         const [updated] = await db.update(manualPayments)
@@ -320,11 +384,34 @@ router.post('/api/manual-payments/:id/verify', requireAdminAuth, requirePermissi
             .where(eq(manualPayments.id, payment.id))
             .returning();
 
-        await notifyCustomerPaymentDecision(updated, 'accepted');
-        res.json({ payment: updated, job: appliedJob, dueRecord: appliedDue });
+        // Only applied_to_invoice means money accepted — never notify success for staff_verified
+        if (status === 'applied_to_invoice') {
+            await notifyCustomerPaymentDecision(updated, 'accepted');
+        }
+
+        if (settlementError) {
+            return res.status(settlementError.status).json({
+                error: settlementError.message,
+                code: settlementError.code,
+                payment: updated,
+                job: appliedJob,
+                posTransaction,
+                operatorActionRequired,
+                moneyAuthority: 'pos_transactions',
+            });
+        }
+
+        res.json({
+            payment: updated,
+            job: appliedJob,
+            dueRecord: appliedDue,
+            posTransaction,
+            operatorActionRequired,
+            moneyAuthority: 'pos_transactions',
+        });
     } catch (error: any) {
-        console.error('[ManualPayments] Verify failed:', error.message);
-        res.status(400).json({ error: error.message || 'Failed to verify manual payment' });
+        console.error('[ManualPayments] Verify failed:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to verify manual payment' });
     }
 });
 

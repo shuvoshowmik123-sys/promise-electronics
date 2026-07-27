@@ -31,20 +31,26 @@ export function TechDashboard() {
     const [selectedJob, setSelectedJob] = useState<any | null>(null);
     const [isScanning, setIsScanning] = useState(false);
     const [search, setSearch] = useState("");
-    const [statusMode, setStatusMode] = useState<"active" | "all" | "done">("active");
+    const [statusMode, setStatusMode] = useState<"active" | "waiting" | "all" | "done">("active");
     const [inspectionFilter, setInspectionFilter] = useState<"pending" | "ng" | "rework" | "ok" | "all">("pending");
     const [visibleCount, setVisibleCount] = useState(24);
     const queryClient = useQueryClient();
 
     // Uses the dedicated workbench endpoint so technicians only see assigned work.
-    const { data: jobs = [] } = useQuery({
+    const { data: queuePayload } = useQuery({
         queryKey: ['technician-jobs'],
         queryFn: async () => {
-            const data = await fetchApi<{ items: any[]; total: number }>('/technician/workbench/jobs');
-            return data.items || [];
+            return fetchApi<{
+                items: any[];
+                workNow?: any[];
+                waiting?: any[];
+                kpis?: { workNow: number; waiting: number; clarificationNeeded: number };
+                total: number;
+            }>('/technician/workbench/jobs');
         },
         refetchInterval: 30000,
     });
+    const jobs = queuePayload?.items || [];
 
     const inspectionMutation = useMutation({
         mutationFn: async ({ job, result }: { job: any; result: "ok" | "ng" | "rework" }) => {
@@ -72,11 +78,13 @@ export function TechDashboard() {
         },
     });
 
-    // Simplified metrics for the technician
-    const myActiveJobs = jobs.filter(j => j.status === 'In Progress' || j.status === 'Pending').length;
-    const pendingPartsInfo = jobs.filter(j => j.status === 'Pending Parts').length;
+    // TECHNICIAN-FLOW-01B: work-now vs waiting (generic stickers only)
+    const myActiveJobs = queuePayload?.kpis?.workNow
+        ?? jobs.filter((j: any) => j.queueKind === "work_now" || j.status === "In Progress" || j.status === "Pending").length;
+    const waitingCount = queuePayload?.kpis?.waiting
+        ?? jobs.filter((j: any) => j.queueKind === "waiting").length;
     const completedToday = jobs.filter((j: any) =>
-        j.status === 'Completed' && j.completedAt && new Date(j.completedAt).toDateString() === new Date().toDateString()
+        j.status === "Completed" && j.completedAt && new Date(j.completedAt).toDateString() === new Date().toDateString()
     ).length;
     const inspectionCounts = jobs.reduce((acc: Record<string, number>, job: any) => {
         const result = job.inspectionResult || "pending";
@@ -86,7 +94,8 @@ export function TechDashboard() {
 
     const filteredJobs = jobs
         .filter((j: any) => {
-            if (statusMode === "active") return j.status === "In Progress" || j.status === "Pending" || j.status === "Pending Parts";
+            if (statusMode === "active") return j.queueKind === "work_now" || (!j.queueKind && (j.status === "In Progress" || j.status === "Pending" || j.status === "Diagnosing" || j.status === "On Workbench" || j.status === "Testing"));
+            if (statusMode === "waiting") return j.queueKind === "waiting" || j.status === "Pending Parts" || j.status === "Waiting on Parts" || j.status === "Awaiting Quote Approval" || j.status === "Awaiting Customer Decision" || j.status === "NG Review Pending";
             if (statusMode === "done") return j.status === "Completed" || j.status === "Delivered";
             return true;
         })
@@ -97,11 +106,21 @@ export function TechDashboard() {
         .filter((j: any) => {
             const q = search.trim().toLowerCase();
             if (!q) return true;
-            return [j.id, j.ticketNumber, j.corporateJobNumber, j.device, j.issue, j.customer, j.customerName, j.status]
+            return [j.id, j.ticketNumber, j.corporateJobNumber, j.device, j.issue, j.customer, j.customerName, j.status, j.waitingLabel, j.escalationReason]
                 .filter(Boolean)
                 .some((value) => String(value).toLowerCase().includes(q));
         });
     const visibleJobs = filteredJobs.slice(0, visibleCount);
+
+    const outlineClass = (job: any) => {
+        const band = job.escalationOutline || "normal";
+        if (band === "alarm") return "border-4 border-red-600 shadow-red-200 shadow-md";
+        if (band === "red") return "border-2 border-red-500";
+        if (band === "orange") return "border-2 border-orange-500";
+        if (band === "amber") return "border-2 border-amber-400";
+        if (job.queueKind === "waiting") return "border border-violet-200";
+        return "border border-slate-200";
+    };
 
     useEffect(() => {
         setVisibleCount(24);
@@ -155,13 +174,13 @@ export function TechDashboard() {
                         className="h-11 rounded-2xl border-slate-200 bg-slate-50 pl-9"
                     />
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 rounded-2xl bg-slate-100 p-1">
-                    {(["active", "all", "done"] as const).map((mode) => (
+                <div className="mt-3 grid grid-cols-4 gap-2 rounded-2xl bg-slate-100 p-1">
+                    {(["active", "waiting", "all", "done"] as const).map((mode) => (
                         <button
                             key={mode}
                             type="button"
                             onClick={() => setStatusMode(mode)}
-                            className={cn("rounded-xl px-3 py-2 text-xs font-black capitalize transition-all", statusMode === mode ? "bg-white text-blue-700 shadow-sm" : "text-slate-500")}
+                            className={cn("rounded-xl px-2 py-2 text-[11px] font-black capitalize transition-all", statusMode === mode ? "bg-white text-blue-700 shadow-sm" : "text-slate-500")}
                         >
                             {mode}
                         </button>
@@ -205,14 +224,14 @@ export function TechDashboard() {
                     </div>
                 </BentoCard>
                 <BentoCard
-                    title="Pending Parts"
+                    title="Waiting"
                     icon={<Package className="w-5 h-5" />}
                     variant="vibrant"
                     className="bg-gradient-to-br from-orange-500 to-amber-600"
                 >
                     <div className="mt-4 flex flex-col justify-end h-full">
-                        <h2 className="text-4xl font-bold mb-1">{pendingPartsInfo}</h2>
-                        <p className="text-sm opacity-80">Awaiting inventory check</p>
+                        <h2 className="text-4xl font-bold mb-1">{waitingCount}</h2>
+                        <p className="text-sm opacity-80">Blocked — not overdue</p>
                     </div>
                 </BentoCard>
                 <BentoCard
@@ -242,21 +261,36 @@ export function TechDashboard() {
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
                 {visibleJobs.map((job: any) => (
-                    <BentoCard key={job.id} className="hover:border-blue-200 transition-colors shadow-sm">
+                    <BentoCard key={job.id} className={cn("hover:border-blue-200 transition-colors shadow-sm", outlineClass(job))}>
                         <div className="flex justify-between items-start mb-3">
                             <span className="text-xs font-mono font-medium text-slate-500 bg-slate-100 px-2 py-1 rounded">
                                 #{getSafeJobDisplayRef(job)}
                             </span>
-                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${job.priority === 'High' || job.priority === 'Urgent'
-                                ? 'bg-red-100 text-red-700'
-                                : 'bg-slate-100 text-slate-700'
-                                }`}>
-                                {job.priority || 'Normal'}
-                            </span>
+                            <div className="flex flex-col items-end gap-1">
+                                <span className={`text-xs px-2 py-1 rounded-full font-medium ${job.priority === 'High' || job.priority === 'Urgent' || job.priority === 'Critical'
+                                    ? 'bg-red-100 text-red-700'
+                                    : 'bg-slate-100 text-slate-700'
+                                    }`}>
+                                    {job.priority || 'Normal'}
+                                </span>
+                                {job.waitingLabel && (
+                                    <span className="text-[10px] font-bold uppercase tracking-wide rounded-full bg-violet-100 px-2 py-0.5 text-violet-800">
+                                        {job.waitingLabel}
+                                    </span>
+                                )}
+                                {job.clarificationNeeded && (
+                                    <span className="text-[10px] font-black uppercase tracking-wide rounded-full bg-red-600 px-2 py-0.5 text-white">
+                                        Clarification needed
+                                    </span>
+                                )}
+                            </div>
                         </div>
 
                         <h3 className="font-medium text-slate-900 truncate mb-1">{job.device}</h3>
-                        <p className="text-sm text-slate-500 line-clamp-2 mb-4 h-10">{job.issue}</p>
+                        <p className="text-sm text-slate-500 line-clamp-2 mb-1 h-10">{job.issue}</p>
+                        {job.escalationReason && (
+                            <p className="mb-3 text-xs font-semibold text-slate-600">{job.escalationReason}</p>
+                        )}
 
                         <div className="mb-3 grid grid-cols-3 gap-2">
                             {inspectionOptions.map((option) => {

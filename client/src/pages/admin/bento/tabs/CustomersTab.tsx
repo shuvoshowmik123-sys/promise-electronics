@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { buildNavigateAdminTabPath } from "@/lib/admin-workspace-routing";
 import {
     Users, Search, Plus, Phone, Mail,
     Loader2, Trash2, Activity, ShoppingBag,
@@ -41,6 +43,7 @@ interface CustomersTabProps {
 export default function CustomersTab({ initialSearchQuery, initialCustomerId, onSearchConsumed }: CustomersTabProps = {}) {
     const queryClient = useQueryClient();
     const { user: currentUser } = useAdminAuth();
+    const [, setLocation] = useLocation();
     const [searchTerm, setSearchTerm] = useState(initialSearchQuery || "");
     const [viewMode, setViewMode] = useState<"list" | "grid">("list");
     const [mobileFilters, setMobileFilters] = useState<CustomerMobileFilters>({ status: "all", activity: "all", history: "all" });
@@ -222,11 +225,11 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
         setActivitySheet({ open: false, customer: null });
         setTimeout(() => {
             if (interaction.type === 'Service Request' || interaction.type === 'Repair') {
-                window.location.hash = `#service-requests?search=${interaction.reference}`;
+                setLocation(buildNavigateAdminTabPath("service-requests", { search: interaction.reference }));
             } else if (interaction.type === 'Shop Order') {
-                window.location.hash = `#orders?search=${interaction.reference}`;
+                setLocation(buildNavigateAdminTabPath("orders", { search: interaction.reference }));
             } else if (interaction.type === 'Job Ticket' || interaction.type === 'Invoice') {
-                window.location.hash = `#jobs?search=${interaction.reference}`;
+                setLocation(buildNavigateAdminTabPath("jobs", { search: interaction.reference }));
             }
         }, 100);
     };
@@ -755,7 +758,11 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                                 onClick={() => {
                                                     setActivitySheet({ open: false, customer: null });
                                                     setTimeout(() => {
-                                                        window.location.hash = `#quotations?search=${encodeURIComponent(activitySheet.customer.phone)}`;
+                                                        setLocation(
+                                                            buildNavigateAdminTabPath("quotations", {
+                                                                search: activitySheet.customer.phone,
+                                                            }),
+                                                        );
                                                     }, 100);
                                                 }}
                                             >
@@ -1086,7 +1093,11 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                                 onClick={() => {
                                                     setActivitySheet({ open: false, customer: null });
                                                     setTimeout(() => {
-                                                        window.location.hash = `#quotations?search=${encodeURIComponent(activitySheet.customer.phone)}`;
+                                                        setLocation(
+                                                            buildNavigateAdminTabPath("quotations", {
+                                                                search: activitySheet.customer.phone,
+                                                            }),
+                                                        );
                                                     }, 100);
                                                 }}
                                                 className="flex h-8 items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/10 px-2 text-[11px] font-black text-white"
@@ -1099,7 +1110,11 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                                 onClick={() => {
                                                     setActivitySheet({ open: false, customer: null });
                                                     setTimeout(() => {
-                                                        window.location.hash = `#service-requests?search=${encodeURIComponent(activitySheet.customer.phone)}`;
+                                                        setLocation(
+                                                            buildNavigateAdminTabPath("service-requests", {
+                                                                search: activitySheet.customer.phone,
+                                                            }),
+                                                        );
                                                     }, 100);
                                                 }}
                                                 className="flex h-8 items-center justify-center gap-1 rounded-lg border border-white/15 bg-white/10 px-2 text-[11px] font-black text-white"

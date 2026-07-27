@@ -17,6 +17,7 @@ export type CustomerJourneyStage =
     | "repair_approval_required"
     | "repair_approved"
     | "repair_in_progress"
+    | "final_testing"
     | "repair_completed"
     | "delivery_scheduled"
     | "delivered"
@@ -80,7 +81,6 @@ export interface CustomerRepairJourneyEnriched extends CustomerRepairJourney {
     deviceBrand: string | null;
     deviceModel: string | null;
     screenSize: string | null;
-    serialNumber: string | null;
     srTicketNumber: string | null;
     lastEventTitle: string | null;
     lastEventAt: string | null;
@@ -90,6 +90,10 @@ export interface CustomerRepairJourneyDetail extends CustomerRepairJourney {
     quoteAmount: number | null;
     events: CustomerRepairJourneyEvent[];
     schedules: CustomerRepairSchedule[];
+    /** Server-provided safe ticket only (never browser-derived). */
+    srTicketNumber?: string | null;
+    lastEventTitle?: string | null;
+    lastEventAt?: string | null;
 }
 
 export interface AcceptJourneyQuotePayload {
@@ -257,10 +261,11 @@ export const quoteRequestsApi = {
         address?: string;
         requestIntent?: string;
         serviceMode?: string;
-    }) =>
+    }, idempotencyKey?: string) =>
         fetchApi<ServiceRequest>("/quotes", {
             method: "POST",
             body: JSON.stringify(data),
+            ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
         }),
     accept: (id: string, data: { pickupTier?: string; servicePreference: string; address?: string }) =>
         fetchApi<ServiceRequest>(`/quotes/${id}/accept`, {

@@ -24,6 +24,7 @@ export const JOURNEY_STAGES = [
   "repair_approval_required",
   "repair_approved",
   "repair_in_progress",
+  "final_testing",
   "repair_completed",
   "delivery_scheduled",
   "delivered",
@@ -56,6 +57,7 @@ const FRIENDLY_STATUS: Record<string, string> = {
   repair_approval_required: "We need your approval to proceed with the repair.",
   repair_approved: "Repair has been approved and will begin shortly.",
   repair_in_progress: "Repair is in progress.",
+  final_testing: "Repair work is done. We are completing final testing before your device is ready for collection.",
   repair_completed: "Your TV is ready! We will arrange delivery or you can pick it up.",
   delivery_scheduled: "Delivery is scheduled. Your TV is on its way!",
   delivered: "Your TV has been delivered. Thank you for choosing Promise Electronics!",
@@ -85,6 +87,7 @@ const FRIENDLY_STAGE_TITLES: Record<string, string> = {
   repair_approval_required: "Approval Required",
   repair_approved: "Repair Approved",
   repair_in_progress: "Repair In Progress",
+  final_testing: "Final Testing",
   repair_completed: "Repair Completed",
   delivery_scheduled: "Delivery Scheduled",
   delivered: "Delivered",
@@ -523,13 +526,13 @@ export const repairJourneyService = {
   },
 
   async getCustomerJourneys(customerId: string) {
+    // Customer payloads never include serial_number / tv_serial_number (JOB-CUSTOMER-WORKFLOW-01B-HOTFIX-1).
     const rows = await db.execute(sql`
       SELECT j.*,
         sr.ticket_number AS sr_ticket_number,
         sr.brand AS device_brand,
         COALESCE(jt.model_number, sr.model_number) AS device_model,
         sr.screen_size AS sr_screen_size,
-        COALESCE(jt.serial_number, jt.tv_serial_number) AS serial_number,
         jt.device AS job_device,
         (SELECT title FROM customer_repair_journey_events WHERE journey_id = j.id AND is_customer_visible = true ORDER BY created_at DESC LIMIT 1) AS last_event_title,
         (SELECT created_at FROM customer_repair_journey_events WHERE journey_id = j.id AND is_customer_visible = true ORDER BY created_at DESC LIMIT 1) AS last_event_at
@@ -544,7 +547,6 @@ export const repairJourneyService = {
       deviceBrand: row.device_brand ?? row.job_device ?? null,
       deviceModel: row.device_model ?? null,
       screenSize: row.sr_screen_size ?? null,
-      serialNumber: row.serial_number ?? null,
       srTicketNumber: row.sr_ticket_number ?? null,
       lastEventTitle: row.last_event_title ?? null,
       lastEventAt: row.last_event_at ?? null,
@@ -553,15 +555,21 @@ export const repairJourneyService = {
 
   async getJourneyDetail(journeyId: string, customerId: string) {
     const journeyRows = await db.execute(sql`
-      SELECT * FROM customer_repair_journeys
-      WHERE id = ${journeyId} AND customer_id = ${customerId}
+      SELECT j.*,
+        sr.ticket_number AS sr_ticket_number,
+        (SELECT title FROM customer_repair_journey_events WHERE journey_id = j.id AND is_customer_visible = true ORDER BY created_at DESC LIMIT 1) AS last_event_title,
+        (SELECT created_at FROM customer_repair_journey_events WHERE journey_id = j.id AND is_customer_visible = true ORDER BY created_at DESC LIMIT 1) AS last_event_at
+      FROM customer_repair_journeys j
+      LEFT JOIN service_requests sr ON sr.id = COALESCE(j.service_request_id, j.quote_request_id)
+      WHERE j.id = ${journeyId} AND j.customer_id = ${customerId}
     `);
-    const journey = journeyRows.rows[0] as unknown as JourneyRow | undefined;
+    const journey = journeyRows.rows[0] as any;
     if (!journey) return null;
 
     const eventRows = await db.execute(sql`
       SELECT * FROM customer_repair_journey_events
       WHERE journey_id = ${journeyId}
+        AND is_customer_visible = true
       ORDER BY created_at ASC
     `);
 
@@ -579,8 +587,12 @@ export const repairJourneyService = {
       if (sr) quoteAmount = sr.quote_amount != null ? Number(sr.quote_amount) : (sr.total_amount != null ? Number(sr.total_amount) : null);
     }
 
+    // Customer detail: safe ticket + last public event only (no serial / estimate / staff fields).
     return {
-      ...toCustomerView(journey),
+      ...toCustomerView(journey as JourneyRow),
+      srTicketNumber: journey.sr_ticket_number ?? null,
+      lastEventTitle: journey.last_event_title ?? null,
+      lastEventAt: journey.last_event_at ?? null,
       quoteAmount,
       events: (eventRows.rows as unknown as EventRow[])
         .map((e) => toEventView(e, true))
@@ -783,15 +795,25 @@ export const repairJourneyService = {
         ? new Date(scheduledVisitDate)
         : null;
 
-    const updated = await serviceRequestRepo.acceptQuote(
-      quoteId,
-      actualPickupTier,
-      address || "",
-      servicePreference,
-      parsedScheduledVisitDate
-    );
-    if (!updated) {
-      return { success: false, error: "Failed to accept quote", status: 500 };
+    const { acceptRetailQuote, RetailQuoteError } = await import("./retail-quote.service.js");
+    let updated;
+    try {
+      const outcome = await acceptRetailQuote(
+        quoteId,
+        { kind: "customer", id: customerId },
+        {
+          pickupTier: actualPickupTier,
+          address: address || "",
+          servicePreference,
+          scheduledVisitDate: parsedScheduledVisitDate,
+        },
+      );
+      updated = outcome.serviceRequest;
+    } catch (err) {
+      if (err instanceof RetailQuoteError) {
+        return { success: false, error: err.message, status: err.status };
+      }
+      throw err;
     }
 
     await serviceRequestRepo.updateServiceRequest(quoteId, { trackingStatus } as any);
@@ -898,10 +920,17 @@ export const repairJourneyService = {
       "Waiting on Parts": { stage: "repair_in_progress", title: "Parts Needed",             message: "Your repair needs additional parts. Our team will update you when the parts are available." },
       "In Progress":    { stage: "repair_in_progress",  title: "Repair In Progress",       message: "Your device is being repaired." },
       "On Workbench":   { stage: "repair_in_progress",  title: "Repair In Progress",       message: "Your device is on the workbench." },
+      "Testing":        { stage: "final_testing",       title: "Final Testing",            message: "Repair work is done. We are completing final testing before your device is ready for collection." },
       "Ready":          { stage: "repair_completed",    title: "Repair Completed",         message: "Your device is ready! We will arrange delivery or you can pick it up." },
       "Completed":      { stage: "repair_completed",    title: "Repair Completed",         message: "Your repair is complete." },
       "Delivered":      { stage: "delivered",            title: "Delivered",                message: "Your device has been delivered. Thank you for choosing Promise Electronics!" },
       "Cancelled":      { stage: "cancelled",           title: "Cancelled",                message: "This repair has been cancelled." },
+      "NG Review Pending": { stage: "repair_in_progress", title: "Repair Update", message: "Our team is reviewing the next steps for your repair." },
+      "Awaiting Customer Decision": { stage: "repair_in_progress", title: "Decision Needed", message: "We will contact you about the next step for your repair." },
+      "Abandoned":      { stage: "cancelled",           title: "Service Update",           message: "Please contact the service center about your device." },
+      "Forfeited":      { stage: "cancelled",           title: "Service Update",           message: "Please contact the service center about your device." },
+      "Closed":         { stage: "cancelled",           title: "Service Closed",           message: "This service request has been closed." },
+      "Not OK":         { stage: "cancelled",           title: "Service Update",           message: "Please contact the service center about your device." },
     };
 
     const mapping = JOB_TO_JOURNEY[newStatus];

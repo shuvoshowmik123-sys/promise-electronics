@@ -65,18 +65,22 @@ export function MobileScrollContent({ children, className }: { children: ReactNo
         <div
             data-admin-mobile-scroll="true"
             className={cn(
-                "flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] px-3 pt-0 space-y-2 pb-4",
+                // Default dock clearance via CSS var (shell sets --admin-mobile-bottom-clearance).
+                // Use a Tailwind pb utility so tab className pb-* can win via tailwind-merge —
+                // an inline paddingBottom previously overrode every tab's pb-[calc(...)] class.
+                "flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] px-3 pt-0 space-y-2",
+                "pb-[var(--admin-mobile-bottom-clearance,calc(7.5rem+env(safe-area-inset-bottom)))]",
                 className,
             )}
             onPointerDown={(e) => syncScrollPosition(e.currentTarget)}
             onTouchStart={(e) => syncScrollPosition(e.currentTarget)}
             onScroll={onScroll}
-            style={{ paddingBottom: "var(--admin-mobile-bottom-clearance, calc(5.5rem + env(safe-area-inset-bottom)))" } as CSSProperties}
         >
             {children}
         </div>
     );
 }
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 type MobileKpiItem = {

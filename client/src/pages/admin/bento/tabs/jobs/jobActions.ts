@@ -1,5 +1,5 @@
 import {
-    CheckCircle2, CreditCard, Eye, PackageCheck, Play, Truck, UserCheck,
+    CheckCircle2, ClipboardCheck, CreditCard, Eye, PackageCheck, Play, Truck, UserCheck,
     type LucideIcon,
 } from "lucide-react";
 
@@ -14,7 +14,7 @@ export const mobileCardVariants = {
 };
 import type { JobTicket } from "@shared/schema";
 
-export type PrimaryActionType = "view" | "edit" | "advance" | "print";
+export type PrimaryActionType = "view" | "edit" | "advance" | "print" | "ngWorkflow";
 
 export interface PrimaryAction {
     label: string;
@@ -27,19 +27,38 @@ export interface PrimaryAction {
  * Shared by the desktop grid card, the mobile card, and the detail sheet
  * so the technician sees one consistent "next step" everywhere.
  */
-export function getPrimaryAction(job: JobTicket, canEdit: boolean): PrimaryAction {
+export function getPrimaryAction(
+    job: JobTicket,
+    canEdit: boolean,
+    canReviewNg = false,
+    canReportNg = false,
+): PrimaryAction {
     const status = job.status || "";
     const hasTechnician = Boolean(job.technician && job.technician !== "Unassigned");
 
-    if (!canEdit) return { label: "View Job", type: "view", Icon: Eye };
-    if (!hasTechnician && !["Delivered", "Completed", "Cancelled", "Abandoned", "Forfeited"].includes(status)) {
+    if (status === "NG Review Pending") {
+        return { label: canReviewNg ? "Review NG" : "View NG Report", type: "ngWorkflow", Icon: ClipboardCheck };
+    }
+    if (status === "Awaiting Customer Decision") {
+        return { label: "View Workflow", type: "ngWorkflow", Icon: ClipboardCheck };
+    }
+    // Report-only technicians may open result / NG workflow without generic canEdit
+    if (!canEdit && !canReportNg) return { label: "View Job", type: "view", Icon: Eye };
+    if (canEdit && !hasTechnician && !["Delivered", "Completed", "Cancelled", "Abandoned", "Forfeited"].includes(status)) {
         return { label: "Assign Technician", type: "edit", Icon: UserCheck };
     }
-    if (status === "Pending") return { label: "Start Repair", type: "advance", Icon: Play };
-    if (["Diagnosing", "In Progress", "On Workbench"].includes(status)) return { label: "Report Result", type: "advance", Icon: CheckCircle2 };
-    if (["Pending Parts", "Waiting on Parts"].includes(status)) return { label: "Parts Arrived", type: "advance", Icon: PackageCheck };
-    if (status === "Ready") return { label: "Complete & Bill", type: "advance", Icon: CreditCard };
-    if (status === "Completed") return { label: "Print & Deliver", type: "print", Icon: Truck };
+    if (status === "Pending" && canEdit) return { label: "Start Repair", type: "advance", Icon: Play };
+    if (["Diagnosing", "In Progress", "On Workbench"].includes(status) && (canEdit || canReportNg)) {
+        return { label: "Report Result", type: "advance", Icon: CheckCircle2 };
+    }
+    if (["Pending Parts", "Waiting on Parts"].includes(status) && canEdit) {
+        return { label: "Parts Arrived", type: "advance", Icon: PackageCheck };
+    }
+    if (status === "Testing" && canEdit) {
+        return { label: "Record Final Test", type: "advance", Icon: ClipboardCheck };
+    }
+    if (status === "Ready" && canEdit) return { label: "Complete & Bill", type: "advance", Icon: CreditCard };
+    if (status === "Completed" && canEdit) return { label: "Print & Deliver", type: "print", Icon: Truck };
     return { label: "View Job", type: "view", Icon: Eye };
 }
 
@@ -65,6 +84,12 @@ export function getStatusVisual(status: string | null | undefined): StatusVisual
         return { bar: "bg-indigo-500", badge: "bg-indigo-100 text-indigo-700", label: "REPAIRING" };
     if (["Pending Parts", "Waiting on Parts"].includes(s))
         return { bar: "bg-amber-500", badge: "bg-amber-100 text-amber-700", label: "WAITING PARTS" };
+    if (s === "Testing")
+        return { bar: "bg-violet-500", badge: "bg-violet-100 text-violet-800", label: "FINAL TESTING" };
+    if (s === "NG Review Pending")
+        return { bar: "bg-amber-500", badge: "bg-amber-100 text-amber-800", label: "REVIEW NG" };
+    if (s === "Awaiting Customer Decision")
+        return { bar: "bg-blue-500", badge: "bg-blue-100 text-blue-800", label: "CUSTOMER DECISION" };
     if (s === "Ready")
         return { bar: "bg-cyan-500", badge: "bg-cyan-100 text-cyan-700", label: "READY" };
     if (s === "Completed")

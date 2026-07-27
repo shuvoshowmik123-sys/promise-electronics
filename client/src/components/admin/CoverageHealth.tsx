@@ -14,6 +14,11 @@ const PERM_LABELS: Record<string, string> = {
     "corporateMessages.reply": "Reply to corporate messages",
     "repairJourney.customerUpdate": "Send customer updates",
     "users.inviteStaff": "Invite new staff",
+    "corporate.jobsOperate": "Corporate jobs in Jobs tab",
+    "corporate.challansOperate": "Corporate challans in Challans tab",
+    "corporate.workspace": "B2B workspace tab",
+    "corporate.billing": "Corporate billing",
+    "challans.viewOwn": "Own / assigned challans",
 };
 
 export function CoverageHealth() {

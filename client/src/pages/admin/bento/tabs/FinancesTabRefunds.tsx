@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { BentoCard, containerVariants, itemVariants } from "../shared";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { OpenDisputeButton } from "@/components/admin/disputes/OpenDisputeButton";
 
 interface RefundsTabProps {
     refundsData: any;
@@ -321,15 +322,23 @@ export function RefundsTab({
                         </div>
                         <div className="mt-2 flex items-center justify-between gap-2">
                             <Badge variant={refund.status === "processed" ? "default" : refund.status === "rejected" ? "destructive" : "secondary"}>{refund.status}</Badge>
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                            <OpenDisputeButton
+                                targetType="refund"
+                                targetId={refund.id}
+                                customerName={refund.customer}
+                                customerPhone={refund.customerPhone || refund.phone}
+                            />
                             {refund.status === 'pending' && (
-                                <div className="flex gap-1.5">
+                                <>
                                     <Button size="sm" className="h-7 scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-lg px-2" disabled={isProcessing} onClick={() => handleApproveRefund(refund)}>Approve</Button>
                                     <Button size="sm" variant="outline" className="h-7 scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-lg px-2" onClick={() => { setSelectedRefund(refund); setIsRejectDialogOpen(true); }}>Reject</Button>
-                                </div>
+                                </>
                             )}
                             {refund.status === 'approved' && (
                                 <Button size="sm" className="h-7 scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-lg bg-emerald-600 px-2 hover:bg-emerald-700" onClick={() => { setSelectedRefund(refund); setRefundMethod('cash'); setIsProcessDialogOpen(true); }}>Process</Button>
                             )}
+                            </div>
                         </div>
                     </div>
                 ))}
@@ -396,8 +405,15 @@ export function RefundsTab({
                                             </Badge>
                                         </TableCell>
                                         <TableCell className="py-4 px-4 text-right">
+                                            <div className="flex flex-wrap gap-2 justify-end">
+                                            <OpenDisputeButton
+                                                targetType="refund"
+                                                targetId={refund.id}
+                                                customerName={refund.customer}
+                                                customerPhone={refund.customerPhone || refund.phone}
+                                            />
                                             {refund.status === 'pending' && (
-                                                <div className="flex gap-2 justify-end">
+                                                <>
                                                     <Button
                                                         variant="default"
                                                         size="sm"
@@ -418,10 +434,9 @@ export function RefundsTab({
                                                         <XCircle className="h-4 w-4 mr-1" />
                                                         Reject
                                                     </Button>
-                                                </div>
+                                                </>
                                             )}
                                             {refund.status === 'approved' && (
-                                                <div className="flex gap-2 justify-end">
                                                     <Button
                                                         variant="default"
                                                         size="sm"
@@ -435,8 +450,8 @@ export function RefundsTab({
                                                         <CheckCircle className="h-4 w-4 mr-1" />
                                                         Process
                                                     </Button>
-                                                </div>
                                             )}
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))

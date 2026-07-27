@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { motion, useReducedMotion } from "framer-motion";
 import { navItems, images } from "@/lib/app-config";
 import { CustomerLanguageProvider, useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
+import { CustomerMobileChromeProvider } from "@/contexts/CustomerMobileChromeContext";
 import { Search, ShoppingCart, User, LogOut, UserCircle, Globe, Shield, Facebook, Twitter, Instagram, Linkedin, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -133,6 +134,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <CustomerLanguageProvider>
+      <CustomerMobileChromeProvider>
     <div className="customer-portal-shell min-h-screen flex flex-col bg-slate-50">
       <ScrollToTop />
       <ScrollProgressBar />
@@ -373,6 +375,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
         onSkip={handleSkipProfile}
       />
     </div>
+      </CustomerMobileChromeProvider>
     </CustomerLanguageProvider>
   );
 }

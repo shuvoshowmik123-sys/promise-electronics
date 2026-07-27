@@ -1,8 +1,18 @@
 {
   "mcpServers": {
     "playwright": {
-      "command": "node",
-      "args": ["node_modules/@playwright/mcp/cli.js", "--viewport-size", "1280,800"]
+      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "qa-tooling/playwright-mcp/launch-mcp.mjs",
+        "desktop"
+      ]
+    },
+    "playwright-mobile": {
+      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "args": [
+        "qa-tooling/playwright-mcp/launch-mcp.mjs",
+        "mobile"
+      ]
     }
   }
 }

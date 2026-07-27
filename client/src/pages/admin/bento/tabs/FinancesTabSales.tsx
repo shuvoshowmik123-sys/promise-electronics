@@ -16,6 +16,7 @@ import { BentoCard, containerVariants, itemVariants } from "../shared";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { posTransactionsApi } from "@/lib/api";
+import { OpenDisputeButton } from "@/components/admin/disputes/OpenDisputeButton";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 
 export function SalesTab({
@@ -396,17 +397,25 @@ export function SalesTab({
                                 <Badge variant="outline">{transaction.paymentMethod}</Badge>
                                 <Badge variant={transaction.paymentStatus === "Paid" ? "default" : "destructive"}>{transaction.paymentStatus === "Paid" ? "Paid" : "Due"}</Badge>
                             </div>
-                            <Button
-                                size="sm"
-                                variant="ghost"
-                                className="h-7 scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-lg px-2"
-                                onClick={() => {
-                                    setSelectedSaleTransaction(parseTransactionForPrint(transaction));
-                                    setIsInvoiceDialogOpen(true);
-                                }}
-                            >
-                                View
-                            </Button>
+                            <div className="flex flex-wrap items-center justify-end gap-1">
+                                <OpenDisputeButton
+                                    targetType="pos"
+                                    targetId={transaction.id}
+                                    customerName={transaction.customer}
+                                    customerPhone={transaction.customerPhone || transaction.phone}
+                                />
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="h-7 scroll-mb-[calc(8rem+env(safe-area-inset-bottom))] rounded-lg px-2"
+                                    onClick={() => {
+                                        setSelectedSaleTransaction(parseTransactionForPrint(transaction));
+                                        setIsInvoiceDialogOpen(true);
+                                    }}
+                                >
+                                    View
+                                </Button>
+                            </div>
                         </div>
                     </div>
                 ))}
@@ -481,6 +490,13 @@ export function SalesTab({
                                             <span className="font-bold text-slate-900">{getCurrencySymbol()}{Number(transaction.total).toLocaleString()}</span>
                                         </TableCell>
                                         <TableCell className="py-4 px-4 text-center">
+                                            <div className="flex flex-wrap items-center justify-center gap-1">
+                                                <OpenDisputeButton
+                                                    targetType="pos"
+                                                    targetId={transaction.id}
+                                                    customerName={transaction.customer}
+                                                    customerPhone={transaction.customerPhone || transaction.phone}
+                                                />
                                             <Button
                                                 size="sm"
                                                 variant="ghost"
@@ -492,6 +508,7 @@ export function SalesTab({
                                             >
                                                 <Eye className="h-4 w-4" />
                                             </Button>
+                                            </div>
                                         </TableCell>
                                     </TableRow>
                                 ))

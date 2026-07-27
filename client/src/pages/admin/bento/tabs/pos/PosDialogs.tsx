@@ -14,6 +14,8 @@ import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui
 import { cn } from "@/lib/utils";
 import { Invoice, Receipt as ReceiptPrint, PrintStyles } from "@/components/print";
 import { toast } from "sonner";
+import { refundsApi } from "@/lib/api/adminApi";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { TransactionData, LinkedJobCharge, parseTransactionForReprint, parseImages } from "./pos-types";
 
 // ── Customer Select Dialog ──
@@ -221,7 +223,7 @@ export function JobLinkDialog({ open, onOpenChange, billableJobs, jobsLoading, l
                                             <button type="button" onClick={() => onJobSelection(job.id, !isSel)} className="w-full text-left pl-3.5 pr-3 py-3">
                                                 <div className="flex items-start justify-between gap-2">
                                                     <span className={cn("inline-flex rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-wide", statusPill(job.status))}>{job.status}</span>
-                                                    <span className="font-mono text-[11px] text-slate-400 bg-slate-100 rounded px-1.5 py-0.5">#{job.id}</span>
+                                                    <span className="font-mono text-[11px] text-slate-400 bg-slate-100 rounded px-1.5 py-0.5">#{getSafeJobDisplayRef(job)}</span>
                                                 </div>
                                                 <div className="mt-1.5 flex items-center justify-between gap-2">
                                                     <p className="font-black text-slate-900 text-[15px] truncate">{job.device}</p>
@@ -286,12 +288,12 @@ export function JobLinkDialog({ open, onOpenChange, billableJobs, jobsLoading, l
                 ) : (
                     <div className="border rounded-md max-h-[300px] overflow-y-auto mt-4">
                         <Table>
-                            <TableHeader><TableRow><TableHead className="w-10"></TableHead><TableHead>Job ID</TableHead><TableHead>Customer</TableHead><TableHead>Device</TableHead><TableHead>Status</TableHead><TableHead>Warranty</TableHead></TableRow></TableHeader>
+                            <TableHeader><TableRow><TableHead className="w-10"></TableHead><TableHead>Job</TableHead><TableHead>Customer</TableHead><TableHead>Device</TableHead><TableHead>Status</TableHead><TableHead>Warranty</TableHead></TableRow></TableHeader>
                             <TableBody>
                                 {billableJobs.map((job) => (
                                     <TableRow key={job.id}>
                                         <TableCell><Checkbox checked={linkedJobCharges.some(j => j.jobId === job.id)} onCheckedChange={(checked) => onJobSelection(job.id, !!checked)} /></TableCell>
-                                        <TableCell className="font-mono">{job.id}</TableCell>
+                                        <TableCell className="font-mono">{getSafeJobDisplayRef(job)}</TableCell>
                                         <TableCell>{job.customer}</TableCell>
                                         <TableCell>{job.device}</TableCell>
                                         <TableCell><Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">{job.status}</Badge></TableCell>
@@ -806,7 +808,9 @@ export function HistoryDialog({ open, onOpenChange, posTransactions, getCurrency
                                         <div className="flex gap-1 justify-end">
                                             <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleReprintInvoice(transaction); }}><FileText className="h-4 w-4" /></Button>
                                             <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); handleReprintReceipt(transaction); }}><Receipt className="h-4 w-4" /></Button>
+                                            {String(transaction.paymentMethod || "").toLowerCase() !== "due" && String(transaction.paymentStatus || "").toLowerCase() !== "due" && (
                                             <Button size="sm" variant="ghost" className="text-rose-600 hover:text-rose-700 hover:bg-rose-50" onClick={(e) => { e.stopPropagation(); onRequestRefund(transaction); }} title="Request Refund"><RotateCcw className="h-4 w-4" /></Button>
+                                            )}
                                         </div>
                                     </TableCell>
                                 </TableRow>
@@ -831,7 +835,15 @@ export function HistoryDialog({ open, onOpenChange, posTransactions, getCurrency
     );
 }
 
-// ── Refund Dialog ──
+// ── Refund Dialog (00C-B-UI-QA: real maker request only — never fake success) ──
+function isCollectedPosPayment(txn: any): boolean {
+    const method = String(txn?.paymentMethod || "").trim().toLowerCase();
+    const status = String(txn?.paymentStatus || "").trim().toLowerCase();
+    if (method === "due" || status === "due") return false;
+    if (status === "paid" || status === "completed" || status === "settled") return true;
+    return ["cash", "bank", "bkash", "nagad", "card", "online"].includes(method);
+}
+
 export function RefundDialog({ open, onOpenChange, refundTransaction, getCurrencySymbol }: {
     open: boolean; onOpenChange: (v: boolean) => void;
     refundTransaction: any; getCurrencySymbol: () => string;
@@ -839,43 +851,82 @@ export function RefundDialog({ open, onOpenChange, refundTransaction, getCurrenc
     const [amount, setAmount] = useState("");
     const [reason, setReason] = useState("");
     const [submitting, setSubmitting] = useState(false);
+    const collected = isCollectedPosPayment(refundTransaction);
+    const netMax = Math.max(
+        0,
+        Number(refundTransaction?.total || 0) - Number(refundTransaction?.refundedAmount || 0),
+    );
 
     const handleSubmit = async () => {
         if (!refundTransaction || !amount) return;
+        if (!collected) {
+            toast.error("Refunds require a collected payment", {
+                description: "Unpaid Due invoices cannot be refunded here.",
+            });
+            return;
+        }
+        const refundAmount = Number(amount);
+        if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
+            toast.error("Enter a valid refund amount");
+            return;
+        }
+        if (refundAmount > netMax + 0.01) {
+            toast.error("Amount exceeds refundable balance", {
+                description: `Max ${getCurrencySymbol()}${netMax.toFixed(2)}`,
+            });
+            return;
+        }
         setSubmitting(true);
         try {
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            toast.success("Refund processed successfully", { description: `Refunded ${getCurrencySymbol()}${amount} for Invoice #${refundTransaction.invoiceNumber}` });
+            await refundsApi.create({
+                type: "pos",
+                referenceId: refundTransaction.id,
+                refundAmount,
+                reason: (reason || "POS refund request").slice(0, 500),
+            });
+            // Request only — approve/process is maker-checker on Refunds tab
+            toast.success("Refund request submitted", {
+                description: `Awaiting approval for ${getCurrencySymbol()}${refundAmount.toFixed(2)} on Invoice #${refundTransaction.invoiceNumber || ""}`,
+            });
             onOpenChange(false);
-        } catch { toast.error("Failed to process refund"); }
-        finally { setSubmitting(false); }
+        } catch (err: any) {
+            toast.error(err?.message || "Failed to request refund");
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
-        <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (v && refundTransaction) { setAmount(refundTransaction.total?.toString() || ""); setReason(""); } }}>
+        <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (v && refundTransaction) { setAmount(String(netMax || refundTransaction.total || "")); setReason(""); } }}>
             <DialogContent className="sm:max-w-md">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2 text-slate-800"><RotateCcw className="h-5 w-5 text-rose-600" /> Request Refund</DialogTitle>
                     <div className="text-sm text-slate-500">Invoice: <span className="font-mono text-slate-700">{refundTransaction?.invoiceNumber}</span></div>
                 </DialogHeader>
+                {!collected ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800">
+                        This invoice is Due or not collected. Refunds require a collected payment. Use a separate void/credit workflow if needed.
+                    </div>
+                ) : (
                 <div className="space-y-4 py-2">
                     <div className="space-y-2">
                         <Label>Refund Amount</Label>
                         <div className="relative">
                             <span className="absolute left-3 top-2.5 text-slate-400 font-bold text-sm">{getCurrencySymbol()}</span>
-                            <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} max={refundTransaction?.total} className="pl-8" />
+                            <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} max={netMax} className="pl-8" />
                         </div>
-                        <p className="text-xs text-slate-400 text-right">Max refundable: {getCurrencySymbol()}{refundTransaction?.total}</p>
+                        <p className="text-xs text-slate-400 text-right">Max refundable: {getCurrencySymbol()}{netMax.toFixed(2)}</p>
                     </div>
                     <div className="space-y-2">
                         <Label>Reason</Label>
                         <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Defective product, Customer returned" />
                     </div>
                 </div>
+                )}
                 <div className="flex justify-end gap-2">
                     <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button variant="destructive" onClick={handleSubmit} disabled={submitting || !amount}>
-                        {submitting ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Processing...</>) : "Confirm Refund"}
+                    <Button variant="destructive" onClick={handleSubmit} disabled={submitting || !amount || !collected}>
+                        {submitting ? (<><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Submitting...</>) : "Submit Refund Request"}
                     </Button>
                 </div>
             </DialogContent>

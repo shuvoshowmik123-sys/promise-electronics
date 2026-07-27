@@ -5,15 +5,28 @@ import { format } from "date-fns";
 import {
     QrCode, FileText, Clock, User, Monitor, AlertCircle,
     PenTool, Users, Edit, Printer, ShoppingCart,
-    ArrowLeft, Phone, ShieldCheck, Download, Wrench, ClipboardCheck,
+    ArrowLeft, Phone, ShieldCheck, Download, Wrench, ClipboardCheck, FileWarning,
+    MoreHorizontal, CircleDollarSign, Image as ImageIcon, Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { getPrimaryAction, getStatusVisual } from "./jobActions";
+import {
+    getJobModelDisplay,
+    getJobSerialDisplay,
+    getJobUnitSerialDisplay,
+} from "./jobIdentityDisplay";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
+import { MediaViewer } from "@/components/MediaViewer";
 
 interface JobDetailsSheetProps {
     job: any | null;
@@ -29,8 +42,16 @@ interface JobDetailsSheetProps {
     onSaveWorkFeedback?: (job: any, payload: WorkFeedbackPayload) => Promise<void>;
     onOutsidePurchase?: () => void;
     onAdvanceStage?: (job: any) => void;
+    onOpenNgWorkflow?: (job: any) => void;
+    canReviewNg?: boolean;
+    /** Report NG without requiring legacy canEdit (jobs.reportOutcome). */
+    canReportNg?: boolean;
     /** When set, shows a read-only banner (creator or non-assignee tech). */
     accessBanner?: string | null;
+    /** TECHNICIAN-FLOW-01B: generic hold/resume (no price/parts). */
+    canManageWorkHolds?: boolean;
+    onWorkHold?: (job: any) => void | Promise<void>;
+    onWorkResume?: (job: any) => void | Promise<void>;
 }
 
 export interface WorkFeedbackPayload {
@@ -44,11 +65,40 @@ export interface WorkFeedbackPayload {
     nextAction: string;
 }
 
-const RESULT_OPTIONS = ["Fixed", "Partially Fixed", "Waiting Parts", "Need Senior Check", "Unrepairable"];
+const RESULT_OPTIONS = ["Fixed", "Partially Fixed", "Waiting Parts", "Need Senior Check"];
 const WORK_DONE_OPTIONS = ["Diagnosis", "Backlight", "Panel Repair", "Panel GPR", "Laser Repair", "T-Con", "Main Board", "Power Board", "Software", "Cleaning"];
 const PART_OPTIONS = ["No parts used", "Backlight strip", "T-Con", "Panel COF", "Main board", "Power board", "Cable", "Fuse"];
 const PART_SOURCE_OPTIONS = ["Stock", "Outside", "Customer", "No Part"];
 const NEXT_ACTION_OPTIONS = ["Save only", "Mark Ready", "Wait Parts", "Senior Check"];
+
+type JobMedia = {
+    url: string;
+    caption?: string | null;
+};
+
+const getJobMedia = (value: unknown): JobMedia[] => {
+    const parsed = typeof value === "string"
+        ? (() => { try { return JSON.parse(value) as unknown; } catch { return []; } })()
+        : value;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap((item) => {
+        if (typeof item === "string" && item.trim()) return [{ url: item }];
+        if (!item || typeof item !== "object") return [];
+        const entry = item as { url?: unknown; caption?: unknown };
+        if (typeof entry.url !== "string" || !entry.url.trim()) return [];
+        return [{
+            url: entry.url,
+            caption: typeof entry.caption === "string" ? entry.caption : null,
+        }];
+    });
+};
+
+const isImageUrl = (url: string) => url.startsWith("data:image/") || /\.(jpg|jpeg|png|gif|webp)(\?.*)?$/i.test(url);
+
+const getPaymentLabel = (status?: string | null) => {
+    const normalized = (status || "unpaid").replace(/_/g, " ");
+    return normalized.charAt(0).toUpperCase() + normalized.slice(1);
+};
 
 export function JobDetailsSheet({
     job,
@@ -64,10 +114,19 @@ export function JobDetailsSheet({
     onSaveWorkFeedback,
     onOutsidePurchase,
     onAdvanceStage,
+    onOpenNgWorkflow,
+    canReviewNg = false,
+    canReportNg: canReportNgProp = false,
     accessBanner = null,
+    canManageWorkHolds = false,
+    onWorkHold,
+    onWorkResume,
 }: JobDetailsSheetProps) {
     const isMobile = useIsMobile();
     const [workSheetOpen, setWorkSheetOpen] = useState(false);
+    const [holdBusy, setHoldBusy] = useState(false);
+    const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
+    const [mediaViewerIndex, setMediaViewerIndex] = useState(0);
     const [savingFeedback, setSavingFeedback] = useState(false);
     const [workFeedback, setWorkFeedback] = useState<WorkFeedbackPayload>({
         result: "Fixed",
@@ -83,6 +142,8 @@ export function JobDetailsSheet({
     useEffect(() => {
         if (!job?.id) return;
         setWorkSheetOpen(false);
+        setMediaViewerOpen(false);
+        setMediaViewerIndex(0);
         setSavingFeedback(false);
         setWorkFeedback({
             result: "Fixed",
@@ -107,17 +168,72 @@ export function JobDetailsSheet({
             : (job.customer ? `${job.customer.split(" ")[0]} ***` : "Unknown"))
         : "";
 
-    const action = job ? getPrimaryAction(job, canEdit) : null;
+    const action = job ? getPrimaryAction(job, canEdit, canReviewNg, canReportNgProp) : null;
     const ActionIcon = action?.Icon;
-    const canRecordWork = canEdit && !!onSaveWorkFeedback && !!job && ["In Progress", "On Workbench", "Ready", "Pending Parts", "Waiting on Parts"].includes(job.status || "");
+    const protectedNgStatus = Boolean(job && ["NG Review Pending", "Awaiting Customer Decision"].includes(job.status || ""));
+    const canRecordWork = canEdit && !!onSaveWorkFeedback && !!job && ["In Progress", "On Workbench", "Testing", "Ready", "Pending Parts", "Waiting on Parts"].includes(job.status || "");
+    const canReportNg = canReportNgProp && !!onOpenNgWorkflow && !!job && ["Diagnosing", "In Progress", "On Workbench"].includes(job.status || "");
+    const modelDisplay = job ? getJobModelDisplay(job) : null;
+    const serialDisplay = job ? getJobSerialDisplay(job) : null;
+    const unitSerialDisplay = job ? getJobUnitSerialDisplay(job) : null;
+    const jobMedia = job ? getJobMedia(job.mobileMedia) : [];
+    const isFinalTesting = job?.status === "Testing";
     const handleTicketDocument = () => {
         if (!job) return;
         if (isMobile && onDownloadTicket) onDownloadTicket(job);
         else onPrintTicket(job);
     };
+    const canEditIntake = canEdit && !protectedNgStatus;
+    const canOutsidePurchase = canEdit && !!onOutsidePurchase;
+    // Mirror server: hold only from workable statuses (not parts/NG/terminal/already-held)
+    const blockedOrTerminalHoldSource = new Set([
+        "Pending Parts",
+        "Waiting on Parts",
+        "Awaiting Quote Approval",
+        "Awaiting Customer Decision",
+        "NG Review Pending",
+        "Completed",
+        "Delivered",
+        "Cancelled",
+        "Abandoned",
+        "Forfeited",
+        "Closed",
+        "Not OK",
+    ]);
+    const showGenericHold =
+        canManageWorkHolds &&
+        !!onWorkHold &&
+        !!job &&
+        !protectedNgStatus &&
+        !!job.status &&
+        !blockedOrTerminalHoldSource.has(job.status);
+    const showGenericResume =
+        canManageWorkHolds &&
+        !!onWorkResume &&
+        !!job &&
+        job.status === "Awaiting Quote Approval";
+    const runHold = async () => {
+        if (!job || !onWorkHold || holdBusy) return;
+        setHoldBusy(true);
+        try {
+            await onWorkHold(job);
+        } finally {
+            setHoldBusy(false);
+        }
+    };
+    const runResume = async () => {
+        if (!job || !onWorkResume || holdBusy) return;
+        setHoldBusy(true);
+        try {
+            await onWorkResume(job);
+        } finally {
+            setHoldBusy(false);
+        }
+    };
     const handlePrimaryAction = () => {
         if (!job || !action) return;
         if (action.type === "advance") { onClose(); onAdvanceStage?.(job); }
+        else if (action.type === "ngWorkflow") { onClose(); onOpenNgWorkflow?.(job); }
         else if (action.type === "edit") { onClose(); onEditJob(job); }
         else if (action.type === "print") handleTicketDocument();
         else onClose(); // view: already open
@@ -190,17 +306,11 @@ export function JobDetailsSheet({
                                 <div className="relative z-10">
                                     <MobileBottomSheetHandle className="mb-3 bg-slate-600" />
                                     <div className="flex items-center justify-between">
-                                        <button onClick={onClose} className="h-9 w-9 -ml-1 flex items-center justify-center rounded-full text-slate-300 active:bg-white/10">
+                                        <button onClick={onClose} className="h-9 w-9 -ml-1 flex items-center justify-center rounded-full text-slate-300 active:bg-white/10" aria-label="Close job detail">
                                             <ArrowLeft className="w-5 h-5" />
                                         </button>
                                         <span className="text-base font-bold">Job Detail</span>
-                                        <button
-                                            onClick={handleTicketDocument}
-                                            className="h-9 w-9 -mr-1 flex items-center justify-center rounded-full text-slate-300 active:bg-white/10"
-                                            aria-label="Download ticket PDF"
-                                        >
-                                            <Download className="w-5 h-5" />
-                                        </button>
+                                        <span className="h-9 w-9 -mr-1" aria-hidden />
                                     </div>
                                     <div className="mt-4 flex items-end justify-between gap-3">
                                         <div>
@@ -216,6 +326,11 @@ export function JobDetailsSheet({
                                             {getStatusVisual(job.status).label}
                                         </Badge>
                                     </div>
+                                    {isFinalTesting && (
+                                        <p className="relative z-10 mt-2 text-xs font-medium text-violet-100/90">
+                                            Repair complete — final testing before handover
+                                        </p>
+                                    )}
                                     {accessBanner && (
                                         <div className="relative z-10 mt-3 rounded-xl border border-amber-400/40 bg-amber-500/15 px-3 py-2 text-xs font-medium leading-snug text-amber-50">
                                             {accessBanner}
@@ -226,6 +341,52 @@ export function JobDetailsSheet({
 
                             {/* Scroll body */}
                             <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-28">
+                                {/* Device identity — unframed, above customer/issue */}
+                                <section className="px-0.5" data-testid="job-device-identity">
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Device identity</p>
+                                    <p className="mt-1 text-lg font-bold text-slate-900 leading-tight">
+                                        {job.device || "Device not recorded"}
+                                    </p>
+                                    <dl className="mt-2 grid grid-cols-1 gap-1.5 text-sm">
+                                        <div className="flex items-baseline justify-between gap-3">
+                                            <dt className="text-xs font-semibold text-slate-500 shrink-0">Size</dt>
+                                            <dd className="font-mono text-xs text-slate-800 text-right">
+                                                {job.screenSize ? `${job.screenSize}"` : "Not recorded"}
+                                            </dd>
+                                        </div>
+                                        <div className="flex items-baseline justify-between gap-3">
+                                            <dt className="text-xs font-semibold text-slate-500 shrink-0">Model</dt>
+                                            <dd className="font-mono text-xs text-slate-800 text-right">
+                                                {modelDisplay || "Not recorded"}
+                                            </dd>
+                                        </div>
+                                        <div className="flex items-baseline justify-between gap-3">
+                                            <dt className="text-xs font-semibold text-slate-500 shrink-0">Serial number</dt>
+                                            <dd className="font-mono text-xs text-slate-800 text-right break-all">
+                                                {serialDisplay || "Not recorded"}
+                                            </dd>
+                                        </div>
+                                        {unitSerialDisplay && (
+                                            <div className="flex items-baseline justify-between gap-3">
+                                                <dt className="text-xs font-semibold text-slate-500 shrink-0">Unit serial</dt>
+                                                <dd className="font-mono text-xs text-slate-800 text-right break-all">
+                                                    {unitSerialDisplay}
+                                                </dd>
+                                            </div>
+                                        )}
+                                    </dl>
+                                </section>
+
+                                {job.receivedAccessories && (
+                                    <section className="rounded-2xl border border-slate-200 bg-slate-100/70 p-4" data-testid="job-custody-details">
+                                        <div className="flex items-center gap-2 text-slate-700">
+                                            <Package className="h-4 w-4 text-slate-500" />
+                                            <p className="text-[10px] font-bold uppercase tracking-wider">Received with device</p>
+                                        </div>
+                                        <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-800">{job.receivedAccessories}</p>
+                                    </section>
+                                )}
+
                                 {/* Customer */}
                                 <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
                                     <div className="flex items-start justify-between gap-3">
@@ -242,29 +403,6 @@ export function JobDetailsSheet({
                                             )}
                                         </div>
                                         <User className="w-6 h-6 text-slate-300 shrink-0" />
-                                    </div>
-                                </div>
-
-                                {/* Device */}
-                                <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
-                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Device</p>
-                                    <p className="text-lg font-bold text-slate-900 mt-0.5">{job.device}</p>
-                                    <div className="mt-2 flex flex-wrap gap-2">
-                                        {job.screenSize && (
-                                            <span className="inline-block rounded-full bg-slate-100 px-3 py-1 text-xs font-mono text-slate-600 border border-slate-200">
-                                                {job.screenSize}"
-                                            </span>
-                                        )}
-                                        {(job.modelNumber || job.tvSerialNumber) && (
-                                            <span className="inline-block rounded-full bg-blue-50 px-3 py-1 text-xs font-mono text-blue-700 border border-blue-100">
-                                                Model: {job.modelNumber || job.tvSerialNumber}
-                                            </span>
-                                        )}
-                                        {job.serialNumber && (
-                                            <span className="inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-mono text-emerald-700 border border-emerald-100">
-                                                S/N: {job.serialNumber}
-                                            </span>
-                                        )}
                                     </div>
                                 </div>
 
@@ -294,6 +432,16 @@ export function JobDetailsSheet({
                                         </p>
                                         {job.closureReason && <p className="text-xs text-slate-600 mt-1">{job.closureReason}</p>}
                                     </div>
+                                )}
+
+                                {isFinalTesting && (
+                                    <section className="rounded-2xl border border-violet-200 bg-violet-50 p-4" data-testid="job-final-test-state">
+                                        <div className="flex items-center gap-2 text-violet-900">
+                                            <ClipboardCheck className="h-4 w-4" />
+                                            <p className="text-[10px] font-bold uppercase tracking-wider">Final testing in progress</p>
+                                        </div>
+                                        <p className="mt-1.5 text-sm font-semibold leading-relaxed text-violet-950">Record a final test pass before marking this job ready for collection or return.</p>
+                                    </section>
                                 )}
 
                                 {/* Technician notes */}
@@ -339,6 +487,51 @@ export function JobDetailsSheet({
                                     </div>
                                 </div>
 
+                                <section className="rounded-2xl border border-slate-100 bg-white p-4 shadow-sm" data-testid="job-billing-summary">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-2 text-slate-700">
+                                            <CircleDollarSign className="h-4 w-4 text-emerald-600" />
+                                            <p className="text-[10px] font-bold uppercase tracking-wider">Billing</p>
+                                        </div>
+                                        <Badge className={cn(
+                                            "border-0 text-[10px] font-bold uppercase",
+                                            job.paymentStatus === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800",
+                                        )}>
+                                            {getPaymentLabel(job.paymentStatus)}
+                                        </Badge>
+                                    </div>
+                                    <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                                        <div>
+                                            <p className="text-xs font-medium text-slate-500">Paid</p>
+                                            <p className="mt-0.5 font-mono font-bold text-slate-800">{currencySymbol}{Number(job.paidAmount || 0).toLocaleString()}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs font-medium text-slate-500">Remaining</p>
+                                            <p className="mt-0.5 font-mono font-bold text-slate-800">{currencySymbol}{Number(job.remainingAmount || 0).toLocaleString()}</p>
+                                        </div>
+                                    </div>
+                                    {job.billingStatus && <p className="mt-3 border-t border-slate-100 pt-3 text-xs font-medium text-slate-500">Billing record: {getPaymentLabel(job.billingStatus)}</p>}
+                                </section>
+
+                                {jobMedia.length > 0 && (
+                                    <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="job-work-media">
+                                        <div className="mb-3 flex items-center justify-between gap-3">
+                                            <div className="flex items-center gap-2 text-slate-700">
+                                                <ImageIcon className="h-4 w-4 text-blue-600" />
+                                                <p className="text-[10px] font-bold uppercase tracking-wider">Work media</p>
+                                            </div>
+                                            <span className="text-xs font-semibold text-slate-400">{jobMedia.length} file{jobMedia.length === 1 ? "" : "s"}</span>
+                                        </div>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {jobMedia.slice(0, 6).map((media, index) => (
+                                                <button key={`${media.url}-${index}`} type="button" onClick={() => { setMediaViewerIndex(index); setMediaViewerOpen(true); }} className="relative h-20 overflow-hidden rounded-xl border border-slate-200 bg-slate-100 text-left">
+                                                    {isImageUrl(media.url) ? <img src={media.url} alt={media.caption || "Job work media"} className="h-full w-full object-cover" /> : <ImageIcon className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-slate-400" />}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </section>
+                                )}
+
                                 {/* Assist team */}
                                 {names.length > 0 && (
                                     <div className="bg-violet-50 rounded-2xl border border-violet-100 shadow-sm p-4">
@@ -356,61 +549,95 @@ export function JobDetailsSheet({
                                     </div>
                                 )}
 
-                                {/* Secondary actions */}
-                                {canEdit && (
-                                    <div className="space-y-2 pt-1">
+                                {/* Workflow helpers — not equal to primary */}
+                                {(canRecordWork || canReportNg || showGenericHold || showGenericResume) && (
+                                    <div className="grid grid-cols-2 gap-2 pt-1">
                                         {canRecordWork && (
-                                            <Button
-                                                onClick={() => setWorkSheetOpen(true)}
-                                                className="h-12 w-full rounded-2xl bg-slate-900 text-white gap-2 font-bold shadow-sm"
-                                            >
+                                            <Button onClick={() => setWorkSheetOpen(true)} className="h-12 rounded-xl bg-slate-900 text-white gap-2 font-bold shadow-sm">
                                                 <Wrench className="w-4 h-4" /> Add Work Done
                                             </Button>
                                         )}
-                                        <div className="flex gap-2">
-                                        {onOutsidePurchase && (
-                                            <Button
-                                                variant="outline"
-                                                onClick={() => { onClose(); onOutsidePurchase(); }}
-                                                className="flex-1 h-11 rounded-xl border-slate-200 text-slate-700 gap-1.5 font-medium"
-                                            >
-                                                <ShoppingCart className="w-4 h-4" /> Purchase
+                                        {canReportNg && (
+                                            <Button variant="outline" onClick={() => { onClose(); onOpenNgWorkflow?.(job); }} className="h-12 rounded-xl border-rose-200 bg-rose-50 text-rose-700 gap-2 font-bold">
+                                                <FileWarning className="w-4 h-4" /> Report NG
                                             </Button>
                                         )}
-                                        <Button
-                                            variant="outline"
-                                            onClick={() => { onClose(); onEditJob(job); }}
-                                            className="flex-1 h-11 rounded-xl border-slate-200 text-slate-700 gap-1.5 font-medium"
-                                        >
-                                            <Edit className="w-4 h-4" /> Edit
-                                        </Button>
-                                        <Button
-                                            variant="outline"
-                                            onClick={handleTicketDocument}
-                                            className="flex-1 h-11 rounded-xl border-slate-200 text-slate-700 gap-1.5 font-medium"
-                                        >
-                                            <Download className="w-4 h-4" /> PDF
-                                        </Button>
-                                        </div>
+                                        {showGenericHold && (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                disabled={holdBusy}
+                                                onClick={runHold}
+                                                className="h-12 rounded-xl border-violet-200 bg-violet-50 text-violet-800 gap-2 font-bold col-span-2"
+                                            >
+                                                <Clock className="w-4 h-4" /> Hold for customer decision
+                                            </Button>
+                                        )}
+                                        {showGenericResume && (
+                                            <Button
+                                                type="button"
+                                                disabled={holdBusy}
+                                                onClick={runResume}
+                                                className="h-12 rounded-xl bg-violet-700 hover:bg-violet-800 text-white gap-2 font-bold col-span-2"
+                                            >
+                                                <Wrench className="w-4 h-4" /> Resume work
+                                            </Button>
+                                        )}
                                     </div>
                                 )}
                             </div>
 
-                            {/* Sticky contextual action */}
+                            {/* Sticky: one primary + icon overflow for low-frequency tools */}
                             {action && ActionIcon && (
                                 <div className="absolute inset-x-0 bottom-0 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gradient-to-t from-slate-50 via-slate-50 to-transparent pt-8">
-                                    <Button
-                                        onClick={handlePrimaryAction}
-                                        className={cn(
-                                            "w-full h-14 rounded-2xl gap-2 text-base font-bold shadow-lg shadow-blue-600/20",
-                                            action.type === "edit"
-                                                ? "bg-blue-600 hover:bg-blue-700 text-white"
-                                                : "bg-blue-600 hover:bg-blue-700 text-white",
-                                        )}
-                                    >
-                                        <ActionIcon className="w-5 h-5" />
-                                        {action.label}
-                                    </Button>
+                                    <div className="flex items-center gap-2">
+                                        <Button
+                                            onClick={handlePrimaryAction}
+                                            className="min-w-0 flex-1 h-14 rounded-2xl gap-2 text-base font-bold shadow-lg shadow-blue-600/20 bg-blue-600 hover:bg-blue-700 text-white"
+                                        >
+                                            <ActionIcon className="w-5 h-5 shrink-0" />
+                                            <span className="truncate">{action.label}</span>
+                                        </Button>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger asChild>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    className="h-14 w-14 shrink-0 rounded-2xl border-slate-200 bg-white text-slate-700"
+                                                    aria-label="More job tools"
+                                                >
+                                                    <MoreHorizontal className="w-5 h-5" />
+                                                </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end" className="z-[220] w-56">
+                                                {canEditIntake && (
+                                                    <DropdownMenuItem
+                                                        className="gap-2 cursor-pointer"
+                                                        onSelect={() => { onClose(); onEditJob(job); }}
+                                                    >
+                                                        <Edit className="w-4 h-4" />
+                                                        Edit intake details
+                                                    </DropdownMenuItem>
+                                                )}
+                                                {canOutsidePurchase && (
+                                                    <DropdownMenuItem
+                                                        className="gap-2 cursor-pointer"
+                                                        onSelect={() => { onClose(); onOutsidePurchase?.(); }}
+                                                    >
+                                                        <ShoppingCart className="w-4 h-4" />
+                                                        Record outside purchase
+                                                    </DropdownMenuItem>
+                                                )}
+                                                <DropdownMenuItem
+                                                    className="gap-2 cursor-pointer"
+                                                    onSelect={() => handleTicketDocument()}
+                                                >
+                                                    <Download className="w-4 h-4" />
+                                                    Download / Print ticket
+                                                </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </div>
                                 </div>
                             )}
                             {workSheetOpen && (
@@ -578,6 +805,13 @@ export function JobDetailsSheet({
                                 </div>
                             )}
                         </MobileBottomSheetFrame>
+                        <MediaViewer
+                            urls={jobMedia.map((media) => media.url)}
+                            initialIndex={mediaViewerIndex}
+                            isOpen={mediaViewerOpen}
+                            onClose={() => setMediaViewerOpen(false)}
+                            overlayClassName="z-[300]"
+                        />
                     </div>
                 )}
             </AnimatePresence>,
@@ -618,7 +852,7 @@ export function JobDetailsSheet({
                                 <div>
                                     <h2 className="text-2xl font-bold font-heading flex items-center gap-2">
                                         <FileText className="w-6 h-6 text-blue-400" />
-                                        Job <span className="font-mono text-blue-300">#{job?.ticketNumber || job?.id.slice(-6).toUpperCase()}</span>
+                                        Job <span className="font-mono text-blue-300">#{getSafeJobDisplayRef(job)}</span>
                                     </h2>
                                     <div className="flex items-center gap-2 mt-2 text-slate-400 text-xs font-mono">
                                         <Clock className="w-3 h-3" /> {job.createdAt ? format(new Date(job.createdAt), "PPP 'at' p") : "Unknown Date"}
@@ -626,10 +860,13 @@ export function JobDetailsSheet({
                                 </div>
                                 <div className="flex flex-col items-start sm:items-end gap-2">
                                     <Badge className={cn("px-3 py-1 font-bold tracking-wider uppercase border-0 backdrop-blur-md shadow-sm",
-                                        job.status === "Completed" ? "bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/50" :
-                                            job.status === "In Progress" ? "bg-blue-500/20 text-blue-300 ring-1 ring-blue-500/50" :
-                                                job.status === "Ready" ? "bg-cyan-500/20 text-cyan-300 ring-1 ring-cyan-500/50" : "bg-white/10 text-white ring-1 ring-white/20"
-                                    )}>{job.status}</Badge>
+                                        getStatusVisual(job.status).badge,
+                                    )}>{getStatusVisual(job.status).label}</Badge>
+                                    {isFinalTesting && (
+                                        <p className="text-[11px] text-violet-200 max-w-[14rem] text-right">
+                                            Repair complete — final testing before handover
+                                        </p>
+                                    )}
                                 </div>
                             </div>
                             {accessBanner && (
@@ -640,6 +877,44 @@ export function JobDetailsSheet({
                         </div>
 
                         <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-slate-50/50">
+                            {/* Device identity first — correct labels only */}
+                            <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm" data-testid="job-device-identity-desktop">
+                                <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5">
+                                    <Monitor className="w-3.5 h-3.5" /> Device identity
+                                </span>
+                                <p className="font-bold text-slate-800 text-lg leading-tight mt-1">{job.device || "Device not recorded"}</p>
+                                <dl className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
+                                    <div className="flex justify-between gap-2">
+                                        <dt className="text-xs font-semibold text-slate-500">Size</dt>
+                                        <dd className="font-mono text-xs text-slate-800">{job.screenSize ? `${job.screenSize}"` : "Not recorded"}</dd>
+                                    </div>
+                                    <div className="flex justify-between gap-2">
+                                        <dt className="text-xs font-semibold text-slate-500">Model</dt>
+                                        <dd className="font-mono text-xs text-slate-800">{modelDisplay || "Not recorded"}</dd>
+                                    </div>
+                                    <div className="flex justify-between gap-2">
+                                        <dt className="text-xs font-semibold text-slate-500">Serial number</dt>
+                                        <dd className="font-mono text-xs text-slate-800 break-all text-right">{serialDisplay || "Not recorded"}</dd>
+                                    </div>
+                                    {unitSerialDisplay && (
+                                        <div className="flex justify-between gap-2">
+                                            <dt className="text-xs font-semibold text-slate-500">Unit serial</dt>
+                                            <dd className="font-mono text-xs text-slate-800 break-all text-right">{unitSerialDisplay}</dd>
+                                        </div>
+                                    )}
+                                </dl>
+                            </div>
+
+                            {job.receivedAccessories && (
+                                <section className="rounded-xl border border-slate-200 bg-slate-100/70 p-4" data-testid="job-custody-details-desktop">
+                                    <div className="flex items-center gap-2 text-slate-700">
+                                        <Package className="h-4 w-4 text-slate-500" />
+                                        <p className="text-[10px] font-bold uppercase tracking-wider">Received with device</p>
+                                    </div>
+                                    <p className="mt-2 text-sm font-semibold leading-relaxed text-slate-800">{job.receivedAccessories}</p>
+                                </section>
+                            )}
+
                             {/* Summary Grid */}
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col gap-1.5 transition-all hover:shadow-md">
@@ -651,15 +926,6 @@ export function JobDetailsSheet({
                                         <span className="font-mono text-sm font-semibold text-blue-600">{job.customerPhone}</span>
                                     )}
                                 </div>
-                                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col gap-1.5 transition-all hover:shadow-md">
-                                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5"><Monitor className="w-3.5 h-3.5" /> Device</span>
-                                    <span className="font-bold text-slate-800 text-lg leading-tight mt-1 truncate">{job.device}</span>
-                                    <div className="flex flex-wrap gap-1.5 mt-1">
-                                        {job.screenSize && <span className="font-mono text-xs text-slate-500 bg-slate-50 w-fit px-2 py-0.5 rounded border border-slate-100">{job.screenSize}"</span>}
-                                        {(job.modelNumber || job.tvSerialNumber) && <span className="font-mono text-xs text-blue-600 bg-blue-50 w-fit px-2 py-0.5 rounded border border-blue-100">{job.modelNumber || job.tvSerialNumber}</span>}
-                                        {job.serialNumber && <span className="font-mono text-xs text-emerald-600 bg-emerald-50 w-fit px-2 py-0.5 rounded border border-emerald-100">S/N: {job.serialNumber}</span>}
-                                    </div>
-                                </div>
                             </div>
 
                             {/* Issue Block */}
@@ -668,6 +934,27 @@ export function JobDetailsSheet({
                                 <span className="text-[10px] uppercase font-bold text-red-500 tracking-wider flex items-center gap-1.5 mb-2"><AlertCircle className="w-3.5 h-3.5" /> Reported Problem</span>
                                 <p className="text-sm text-slate-700 leading-relaxed font-medium">{job.issue}</p>
                             </div>
+
+                            {isFinalTesting && (
+                                <section className="rounded-xl border border-violet-200 bg-violet-50 p-4" data-testid="job-final-test-state-desktop">
+                                    <div className="flex items-center gap-2 text-violet-900">
+                                        <ClipboardCheck className="h-4 w-4" />
+                                        <p className="text-[10px] font-bold uppercase tracking-wider">Final testing in progress</p>
+                                    </div>
+                                    <p className="mt-1.5 text-sm font-semibold text-violet-950">Record a final test pass before marking this job ready for collection or return.</p>
+                                </section>
+                            )}
+
+                            {job.repairOutcome && (
+                                <section className={cn(
+                                    "rounded-xl border p-4",
+                                    job.repairOutcome === "repair_ok" ? "border-emerald-200 bg-emerald-50" : job.repairOutcome === "needs_parts" ? "border-amber-200 bg-amber-50" : "border-rose-200 bg-rose-50",
+                                )}>
+                                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Repair outcome</p>
+                                    <p className="mt-1 text-sm font-bold text-slate-800">{job.repairOutcome === "repair_ok" ? "Repair successful" : job.repairOutcome === "needs_parts" ? "Needs parts" : job.repairOutcome === "not_repairable" ? "Not repairable" : job.repairOutcome === "customer_declined" ? "Customer declined" : job.repairOutcome}</p>
+                                    {job.closureReason && <p className="mt-1 text-xs text-slate-600">{job.closureReason}</p>}
+                                </section>
+                            )}
 
                             {/* Tech Notes Block */}
                             {job.notes && (
@@ -685,6 +972,11 @@ export function JobDetailsSheet({
                                         <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Assigned Tech</span>
                                         <span className="font-bold text-slate-800 text-[15px]">{job.technician || "Unassigned"}</span>
                                     </div>
+                                </div>
+                                <div className="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+                                    <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5" /> Warranty</span>
+                                    <p className="mt-2 text-sm font-bold text-slate-800">{job.warrantyExpiryDate ? format(new Date(job.warrantyExpiryDate), "MMM d, yyyy") : job.warrantyDays ? `${job.warrantyDays} days` : "Not recorded"}</p>
+                                    {job.warrantyNotes && <p className="mt-1 text-xs leading-relaxed text-slate-500">{job.warrantyNotes}</p>}
                                 </div>
                                 {/* Assist Team card */}
                                 {(() => {
@@ -715,6 +1007,37 @@ export function JobDetailsSheet({
                                     </div>
                                 )}
                             </div>
+
+                            <section className="rounded-xl border border-slate-100 bg-white p-4 shadow-sm" data-testid="job-billing-summary-desktop">
+                                <div className="flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-2 text-slate-700">
+                                        <CircleDollarSign className="h-4 w-4 text-emerald-600" />
+                                        <p className="text-[10px] font-bold uppercase tracking-wider">Billing</p>
+                                    </div>
+                                    <Badge className={cn("border-0 text-[10px] font-bold uppercase", job.paymentStatus === "paid" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-800")}>{getPaymentLabel(job.paymentStatus)}</Badge>
+                                </div>
+                                <div className="mt-3 grid grid-cols-2 gap-4">
+                                    <div><p className="text-xs font-medium text-slate-500">Paid</p><p className="mt-0.5 font-mono text-sm font-bold text-slate-800">{currencySymbol}{Number(job.paidAmount || 0).toLocaleString()}</p></div>
+                                    <div><p className="text-xs font-medium text-slate-500">Remaining</p><p className="mt-0.5 font-mono text-sm font-bold text-slate-800">{currencySymbol}{Number(job.remainingAmount || 0).toLocaleString()}</p></div>
+                                </div>
+                                {job.billingStatus && <p className="mt-3 border-t border-slate-100 pt-3 text-xs font-medium text-slate-500">Billing record: {getPaymentLabel(job.billingStatus)}</p>}
+                            </section>
+
+                            {jobMedia.length > 0 && (
+                                <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm" data-testid="job-work-media-desktop">
+                                    <div className="mb-3 flex items-center justify-between gap-3">
+                                        <div className="flex items-center gap-2 text-slate-700"><ImageIcon className="h-4 w-4 text-blue-600" /><p className="text-[10px] font-bold uppercase tracking-wider">Work media</p></div>
+                                        <span className="text-xs font-semibold text-slate-400">{jobMedia.length} file{jobMedia.length === 1 ? "" : "s"}</span>
+                                    </div>
+                                    <div className="grid grid-cols-4 gap-3">
+                                        {jobMedia.slice(0, 8).map((media, index) => (
+                                            <button key={`${media.url}-${index}`} type="button" onClick={() => { setMediaViewerIndex(index); setMediaViewerOpen(true); }} className="relative h-24 overflow-hidden rounded-lg border border-slate-200 bg-slate-100 text-left">
+                                                {isImageUrl(media.url) ? <img src={media.url} alt={media.caption || "Job work media"} className="h-full w-full object-cover" /> : <ImageIcon className="absolute left-1/2 top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-slate-400" />}
+                                            </button>
+                                        ))}
+                                    </div>
+                                </section>
+                            )}
                         </div>
 
                         <div className="p-4 sm:p-5 bg-white border-t border-slate-100 shrink-0 flex flex-row justify-between items-center rounded-b-2xl gap-2">
@@ -729,36 +1052,84 @@ export function JobDetailsSheet({
 
                             {/* Right: actions — consistent height/radius/weight */}
                             <div className="flex items-center gap-2">
-                                {canEdit && onOutsidePurchase && (
+                                {showGenericHold && (
                                     <Button
-                                        onClick={() => { onClose(); onOutsidePurchase(); }}
+                                        type="button"
                                         variant="outline"
-                                        className="rounded-xl h-10 border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5 text-sm font-medium"
-                                        title="Log outside/petty-cash part purchase for this job"
+                                        disabled={holdBusy}
+                                        onClick={runHold}
+                                        className="rounded-xl h-10 border-violet-200 bg-violet-50 text-violet-800 gap-1.5 text-sm font-medium"
                                     >
-                                        <ShoppingCart className="w-4 h-4 shrink-0" />
-                                        <span className="hidden sm:inline">Purchase</span>
+                                        <Clock className="w-4 h-4 shrink-0" />
+                                        <span className="hidden sm:inline">Hold for decision</span>
                                     </Button>
                                 )}
-                                {canEdit && (
+                                {showGenericResume && (
                                     <Button
-                                        onClick={() => { onClose(); onEditJob(job); }}
-                                        variant="outline"
-                                        className="rounded-xl h-10 border-slate-200 text-slate-700 hover:bg-slate-50 gap-1.5 text-sm font-medium"
+                                        type="button"
+                                        disabled={holdBusy}
+                                        onClick={runResume}
+                                        className="rounded-xl h-10 bg-violet-700 hover:bg-violet-800 text-white gap-1.5 text-sm font-medium"
                                     >
-                                        <Edit className="w-4 h-4 shrink-0" />
-                                        <span className="hidden sm:inline">Edit</span>
+                                        <Wrench className="w-4 h-4 shrink-0" />
+                                        <span className="hidden sm:inline">Resume work</span>
                                     </Button>
                                 )}
-                                <Button
-                                    onClick={() => onPrintTicket(job)}
-                                    className="rounded-xl h-10 px-5 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm gap-1.5 shadow-sm transition-all"
-                                >
-                                    <Printer className="w-4 h-4 shrink-0" />
-                                    <span>Print</span>
-                                </Button>
+                                {canReportNg && (
+                                    <Button
+                                        onClick={() => { onClose(); onOpenNgWorkflow(job); }}
+                                        variant="outline"
+                                        className="rounded-xl h-10 border-rose-200 bg-rose-50 text-rose-700 hover:bg-rose-100 gap-1.5 text-sm font-medium"
+                                    >
+                                        <FileWarning className="w-4 h-4 shrink-0" />
+                                        <span className="hidden sm:inline">Report NG</span>
+                                    </Button>
+                                )}
+                                {action && ActionIcon && action.type !== "print" && (
+                                    <Button
+                                        onClick={handlePrimaryAction}
+                                        className="rounded-xl h-10 px-4 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm gap-1.5 shadow-sm"
+                                    >
+                                        <ActionIcon className="w-4 h-4 shrink-0" />
+                                        <span className="hidden sm:inline">{action.label}</span>
+                                    </Button>
+                                )}
+                                <DropdownMenu>
+                                    <DropdownMenuTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="rounded-xl h-10 w-10 border-slate-200 text-slate-700"
+                                            aria-label="More job tools"
+                                        >
+                                            <MoreHorizontal className="w-4 h-4" />
+                                        </Button>
+                                    </DropdownMenuTrigger>
+                                    <DropdownMenuContent align="end" className="z-[220] w-56">
+                                        {canEditIntake && (
+                                            <DropdownMenuItem className="gap-2 cursor-pointer" onSelect={() => { onClose(); onEditJob(job); }}>
+                                                <Edit className="w-4 h-4" /> Edit intake details
+                                            </DropdownMenuItem>
+                                        )}
+                                        {canOutsidePurchase && (
+                                            <DropdownMenuItem className="gap-2 cursor-pointer" onSelect={() => { onClose(); onOutsidePurchase?.(); }}>
+                                                <ShoppingCart className="w-4 h-4" /> Record outside purchase
+                                            </DropdownMenuItem>
+                                        )}
+                                        <DropdownMenuItem className="gap-2 cursor-pointer" onSelect={() => onPrintTicket(job)}>
+                                            <Printer className="w-4 h-4" /> Download / Print ticket
+                                        </DropdownMenuItem>
+                                    </DropdownMenuContent>
+                                </DropdownMenu>
                             </div>
                         </div>
+                        <MediaViewer
+                            urls={jobMedia.map((media) => media.url)}
+                            initialIndex={mediaViewerIndex}
+                            isOpen={mediaViewerOpen}
+                            onClose={() => setMediaViewerOpen(false)}
+                            overlayClassName="z-[300]"
+                        />
                     </motion.div>
                 </div>
             )}

@@ -7,12 +7,51 @@
 
 import { db } from '../db.js';
 import * as schema from '../../shared/schema.js';
-import { eq, and } from 'drizzle-orm';
+import { eq, and, sql } from 'drizzle-orm';
 import { jobRepo, serviceRequestRepo, inventoryRepo } from '../repositories/index.js';
+import { allocateJobIdInTx } from '../repositories/job.repository.js';
 import { nanoid } from 'nanoid';
 import type { JobTicket, ServiceRequest } from '../../shared/schema.js';
 import { repairJourneyService } from './customer-repair-journey.service.js';
 import { normalizePhone } from '../utils/phone.js';
+
+class ConversionError extends Error {
+    status: number;
+    code: string;
+    constructor(status: number, code: string, message: string) {
+        super(message);
+        this.name = "ConversionError";
+        this.status = status;
+        this.code = code;
+    }
+}
+
+/** JOB-LIFECYCLE-TRUST-01A — converted SR cannot own post-custody lifecycle via transitionStage. */
+export class JobOwnsLifecycleError extends Error {
+    status = 409;
+    code = "JOB_OWNS_LIFECYCLE";
+    constructor(message: string) {
+        super(message);
+        this.name = "JobOwnsLifecycleError";
+    }
+}
+
+/**
+ * Stages that publish post-custody repair/ready/delivery conclusions on the SR timeline.
+ * Intake/custody stages (pickup_scheduled, picked_up, device_received, …) stay allowed when
+ * still valid for the workflow; after convert only Job may advance lifecycle.
+ */
+export const POST_CUSTODY_LIFECYCLE_STAGES = new Set([
+    "in_repair",
+    "ready",
+    "out_for_delivery",
+    "completed",
+    "closed",
+]);
+
+export function isPostCustodyLifecycleStage(stage: string): boolean {
+    return POST_CUSTODY_LIFECYCLE_STAGES.has(String(stage || "").trim());
+}
 
 function isPickupRequest(request: ServiceRequest): boolean {
     return request.servicePreference === "pickup"
@@ -20,7 +59,7 @@ function isPickupRequest(request: ServiceRequest): boolean {
         || request.serviceMode === "pickup";
 }
 
-function getProjectedTrackingStatus(request: ServiceRequest, job: JobTicket): string {
+export function getProjectedTrackingStatus(request: ServiceRequest, job: JobTicket): string {
     const isPickup = isPickupRequest(request);
 
     if (job.status === "Cancelled") return "Cancelled";
@@ -29,16 +68,38 @@ function getProjectedTrackingStatus(request: ServiceRequest, job: JobTicket): st
         return job.technician && job.technician !== "Unassigned" ? "Technician Assigned" : "Device Received";
     }
     if (job.status === "Diagnosing") return "Technician Assigned";
-    if (job.status === "Pending Parts") return "Awaiting Parts";
+    if (job.status === "Pending Parts" || job.status === "Waiting on Parts") return "Awaiting Parts";
     if (job.status === "In Progress" || job.status === "On Workbench") return "Repairing";
+    if (job.status === "Testing") return "Final Testing";
     if (job.status === "Ready") return isPickup ? "Ready for Return" : "Ready for Collection";
     if (job.status === "Completed" || job.status === "Delivered") return isPickup ? "Delivered" : "Collected";
+    if (job.status === "NG Review Pending" || job.status === "Awaiting Customer Decision") return "Repairing";
+    if (job.status === "Abandoned" || job.status === "Forfeited" || job.status === "Closed") return "Cancelled";
 
     return request.trackingStatus || "Device Received";
 }
 
-function getProjectedRequestStatus(job: JobTicket): string {
-    if (job.status === "Cancelled") return "Cancelled";
+function getProjectedTrackingStatusFromFields(
+    servicePreference: string | null,
+    serviceMode: string | null,
+    job: JobTicket,
+): string {
+    const isPickup =
+        servicePreference === "pickup" ||
+        servicePreference === "home_pickup" ||
+        serviceMode === "pickup";
+
+    if (job.status === "Pending") {
+        return job.technician && job.technician !== "Unassigned" ? "Technician Assigned" : "Device Received";
+    }
+    if (job.status === "Completed" || job.status === "Delivered") return isPickup ? "Delivered" : "Collected";
+    return "Device Received";
+}
+
+export function getProjectedRequestStatus(job: JobTicket): string {
+    if (job.status === "Cancelled" || job.status === "Abandoned" || job.status === "Forfeited" || job.status === "Closed") {
+        return "Cancelled";
+    }
     if (job.status === "Not OK") return "Unrepairable";
     if (job.status === "Completed" || job.status === "Delivered") return "Resolved";
     return "Work Order";
@@ -97,46 +158,19 @@ export class JobService {
     }
 
     /**
-     * Records a payment against a job ticket, updating paid amounts and statuses.
+     * @deprecated 00C-B — direct job paidAmount writes are forbidden.
+     * Use settleJobPaymentViaPos / createPosSaleAtomic only.
      */
-    async recordJobPayment(id: string, payment: { paymentId: string; amount: number; method: string; }): Promise<schema.JobTicket> {
-        const job = await jobRepo.getJobTicket(id);
-        if (!job) throw new Error("Job not found");
-
-        const newPaidAmount = (job.paidAmount || 0) + payment.amount;
-        const estimatedCost = job.estimatedCost || 0;
-        const remainingAmount = Math.max(0, estimatedCost - newPaidAmount);
-
-        let paymentStatus: "unpaid" | "paid" | "partial" = "partial";
-        if (remainingAmount <= 0) paymentStatus = "paid";
-        else if (newPaidAmount === 0 && estimatedCost > 0) paymentStatus = "unpaid";
-
-        const updates: Partial<schema.InsertJobTicket> = {
-            paidAmount: newPaidAmount,
-            remainingAmount: remainingAmount,
-            paymentStatus: paymentStatus,
-            lastPaymentAt: new Date(),
-        };
-
-        // First payment sets the main paymentId and paidAt
-        if (!job.paidAmount || job.paidAmount === 0) {
-            updates.paymentId = payment.paymentId;
-            updates.paidAt = new Date();
-        }
-
-        const [updatedJob] = await db
-            .update(schema.jobTickets)
-            .set(updates)
-            .where(eq(schema.jobTickets.id, id))
-            .returning();
-
-        repairJourneyService.syncPaymentToJourney({
-            jobId: id,
-            paymentStatus,
-            amount: payment.amount,
-        }).catch(err => console.error('[RepairJourney] Payment sync failed:', (err as Error).message));
-
-        return updatedJob;
+    async recordJobPayment(
+        id: string,
+        payment: { paymentId: string; amount: number; method: string },
+    ): Promise<schema.JobTicket> {
+        const err = new Error(
+            "Direct job payment writes are disabled. Use POS settlement (POST /api/pos-transactions or record-payment adapter).",
+        );
+        (err as any).status = 410;
+        (err as any).code = "USE_POS_SETTLEMENT";
+        throw err;
     }
 
     async syncLinkedServiceRequestFromJob(jobId: string, actorName: string = "System Projection"): Promise<{
@@ -183,6 +217,8 @@ export class JobService {
 
     /**
      * Universal Stage Transition Logic
+     * JOB-LIFECYCLE-TRUST-01A: after conversion, Job owns post-custody lifecycle —
+     * reject SR stages that would publish repair/ready/delivery conclusions.
      */
     async transitionStage(id: string, newStage: string, actorName: string = "System"): Promise<{
         serviceRequest: ServiceRequest;
@@ -191,6 +227,16 @@ export class JobService {
         const request = await serviceRequestRepo.getServiceRequest(id);
         if (!request) {
             throw new Error("Service request not found");
+        }
+
+        const convertedJobId =
+            request.convertedJobId != null && String(request.convertedJobId).trim()
+                ? String(request.convertedJobId).trim()
+                : null;
+        if (convertedJobId && isPostCustodyLifecycleStage(newStage)) {
+            throw new JobOwnsLifecycleError(
+                "This service request is linked to a job. Use the job lifecycle path for repair progress, ready, delivery, or close.",
+            );
         }
 
         // Get the valid stage flow for this request's specific workflow
@@ -263,79 +309,174 @@ export class JobService {
     }
 
     /**
-     * Verifies and converts a Service Request into a Job Ticket
+     * Verifies and converts a Service Request into a Job Ticket.
+     * Atomic, concurrency-safe: full flow runs inside one db.transaction with
+     * SELECT ... FOR UPDATE on the service request row + advisory lock for job number.
+     *
+     * Returns:
+     *   - Fresh conversion: { serviceRequest, jobTicket, idempotent: false }
+     *   - Retry/concurrent loser: { serviceRequest, jobTicket, idempotent: true }
      */
     async verifyAndConvertServiceRequest(
         id: string,
         actorName: string,
         verificationNotes?: string,
         priority: string = "Medium"
-    ): Promise<{ serviceRequest: ServiceRequest; jobTicket: JobTicket }> {
-        const request = await serviceRequestRepo.getServiceRequest(id);
-        if (!request) {
-            throw new Error("Service request not found");
-        }
+    ): Promise<{ serviceRequest: ServiceRequest; jobTicket: JobTicket; idempotent: boolean }> {
+        const { isRetailQuoteRow } = await import("./retail-quote.service.js");
 
-        if (request.convertedJobId) {
-            throw new Error(`This request was already converted to job ${request.convertedJobId}. Open the linked job instead.`);
-        }
+        const result = await db.transaction(async (tx) => {
+            // 1. Lock the service request row
+            const lockRes = await tx.execute(
+                sql`SELECT * FROM service_requests WHERE id = ${id} FOR UPDATE`,
+            );
+            const lockRows = (lockRes as any).rows ?? lockRes;
+            const raw = Array.isArray(lockRows) && lockRows.length > 0 ? lockRows[0] : null;
+            if (!raw) {
+                throw new ConversionError(404, "NOT_FOUND", "Service request not found");
+            }
 
-        const currentStage = request.stage || "intake";
-        if (!schema.JOB_CREATION_STAGES.includes(currentStage as any)) {
-            const allowed = schema.JOB_CREATION_STAGES.join('" or "');
-            throw new Error(`Cannot create job at stage "${currentStage}". Device custody must be confirmed first (stage must be "${allowed}").`);
-        }
+            // 2. Re-read conversion-critical fields from locked row
+            const convertedJobId: string | null = raw.converted_job_id ?? raw.convertedJobId ?? null;
+            const stage: string = raw.stage ?? "intake";
+            const requestIntent: string | null = raw.request_intent ?? raw.requestIntent ?? null;
+            const serviceMode: string | null = raw.service_mode ?? raw.serviceMode ?? null;
+            const servicePreference: string | null = raw.service_preference ?? raw.servicePreference ?? null;
+            const isQuote: boolean = raw.is_quote ?? raw.isQuote ?? false;
+            const quoteStatus: string | null = raw.quote_status ?? raw.quoteStatus ?? null;
+            const quoteAmount: number | null = raw.quote_amount ?? raw.quoteAmount ?? null;
 
-        const jobId = await jobRepo.getNextJobNumber();
+            // 3. Retail-quote guard
+            const isQuoteRow =
+                isQuote === true ||
+                String(requestIntent || "").toLowerCase() === "quote" ||
+                (quoteStatus && String(quoteStatus).trim() !== "") ||
+                (quoteAmount != null && Number(quoteAmount) > 0);
+            if (isQuoteRow) {
+                throw new ConversionError(
+                    409,
+                    "USE_RETAIL_QUOTE_CONVERT",
+                    "Retail repair quotes must be converted via POST /api/quotes/:id/convert after acceptance. Custody verify-and-convert is for non-quote service requests only.",
+                );
+            }
 
-        const [jobTicket] = await db.insert(schema.jobTickets).values({
-            id: jobId,
-            customer: request.customerName,
-            customerPhone: request.phone,
-            customerPhoneNormalized: normalizePhone(request.phone),
-            customerAddress: request.address || undefined,
-            device: `${request.brand} TV`,
-            tvSerialNumber: request.modelNumber || undefined,
-            modelNumber: request.modelNumber || undefined,
-            issue: request.primaryIssue,
-            status: "Pending", // Starts as Pending until Technician picks it up
-            priority: priority,
-            technician: "Unassigned",
-            screenSize: request.screenSize || undefined,
-            notes: verificationNotes || request.description || undefined,
-            warrantyDays: 30, // Default for new jobs
-            gracePeriodDays: 7, // Default grace period
-            estimatedCost: request.quoteAmount ? request.quoteAmount : undefined, // Carry over quote amount
-            parentJobId: request.id, // Track origin
-            corporateClientId: request.corporateClientId || undefined,
-            corporateChallanId: request.corporateChallanId || undefined,
-            serviceAreaId: request.corporateClientId ? undefined : request.serviceAreaId || undefined,
-        } as any).returning();
+            // 4. Idempotent retry — already converted
+            if (convertedJobId) {
+                const [existingJob] = await tx
+                    .select()
+                    .from(schema.jobTickets)
+                    .where(eq(schema.jobTickets.id, convertedJobId))
+                    .limit(1);
+                if (!existingJob) {
+                    throw new ConversionError(
+                        409,
+                        "LINKED_JOB_MISSING",
+                        "Service request is marked converted but the linked job is missing.",
+                    );
+                }
+                // Re-read the full SR row for the response
+                const srRow = await tx
+                    .select()
+                    .from(schema.serviceRequests)
+                    .where(eq(schema.serviceRequests.id, id))
+                    .limit(1);
+                return {
+                    serviceRequest: srRow[0],
+                    jobTicket: existingJob,
+                    idempotent: true,
+                };
+            }
 
-        const trackingStatus = getProjectedTrackingStatus(request, jobTicket);
+            // 5. Enforce custody stage after row lock
+            if (!schema.JOB_CREATION_STAGES.includes(stage as any)) {
+                const allowed = schema.JOB_CREATION_STAGES.join('" or "');
+                throw new ConversionError(
+                    400,
+                    "INVALID_STAGE",
+                    `Cannot create job at stage "${stage}". Device custody must be confirmed first (stage must be "${allowed}").`,
+                );
+            }
 
-        // Link and Update Service Request
-        const [updated] = await db
-            .update(schema.serviceRequests)
-            .set({
-                convertedJobId: jobId,
-                status: "Work Order",
-                stage: request.stage as any,
-                trackingStatus,
-            })
-            .where(eq(schema.serviceRequests.id, id))
-            .returning();
+            // 6. Generate job number safely inside transaction with advisory lock
+            const now = new Date();
+            const year = now.getFullYear();
+            const jobId = await allocateJobIdInTx(tx, year);
 
-        // Add Timeline Event
-        await db.insert(schema.serviceRequestEvents).values({
-            id: nanoid(),
-            serviceRequestId: id,
-            status: "Work Order" as any,
-            message: `Work order ${jobId} created by ${actorName}. ${verificationNotes ? `Notes: ${verificationNotes}` : ''}`,
-            actor: actorName,
+            // 7. Insert job ticket
+            const customerName: string = raw.customer_name ?? raw.customerName ?? "";
+            const phone: string = raw.phone ?? "";
+            const address: string | null = raw.address ?? null;
+            const brand: string = raw.brand ?? "";
+            const modelNumber: string | null = raw.model_number ?? raw.modelNumber ?? null;
+            const primaryIssue: string = raw.primary_issue ?? raw.primaryIssue ?? "";
+            const screenSize: string | null = raw.screen_size ?? raw.screenSize ?? null;
+            const description: string | null = raw.description ?? null;
+            const corporateClientId: string | null = raw.corporate_client_id ?? raw.corporateClientId ?? null;
+            const corporateChallanId: string | null = raw.corporate_challan_id ?? raw.corporateChallanId ?? null;
+            const serviceAreaId: string | null = raw.service_area_id ?? raw.serviceAreaId ?? null;
+
+            const [jobTicket] = await tx
+                .insert(schema.jobTickets)
+                .values({
+                    id: jobId,
+                    customer: customerName,
+                    customerPhone: phone,
+                    customerPhoneNormalized: normalizePhone(phone),
+                    customerAddress: address || undefined,
+                    device: `${brand} TV`,
+                    // DEVICE-IDENTITY-01A: model never writes into tvSerialNumber (unit serial is corporate-only)
+                    modelNumber: modelNumber || undefined,
+                    issue: primaryIssue,
+                    status: "Pending",
+                    priority: priority,
+                    technician: "Unassigned",
+                    screenSize: screenSize || undefined,
+                    notes: verificationNotes || description || undefined,
+                    warrantyDays: 30,
+                    gracePeriodDays: 7,
+                    estimatedCost: quoteAmount ? quoteAmount : undefined,
+                    parentJobId: id,
+                    corporateClientId: corporateClientId || undefined,
+                    corporateChallanId: corporateChallanId || undefined,
+                    serviceAreaId: corporateClientId ? undefined : serviceAreaId || undefined,
+                } as any)
+                .returning();
+
+            // Test-only fail point (C): after job insert, before SR update
+            if (process.env.NODE_ENV === "test" && process.env.ENABLE_CONVERSION_FAIL_POINT === "true") {
+                throw new Error("TEST_FAIL_POINT: forced failure after job insertion");
+            }
+
+            // 8. Update service request + insert timeline event in same transaction
+            const trackingStatus = getProjectedTrackingStatusFromFields(servicePreference, serviceMode, jobTicket);
+
+            const [updated] = await tx
+                .update(schema.serviceRequests)
+                .set({
+                    convertedJobId: jobId,
+                    status: "Work Order",
+                    stage: stage as any,
+                    trackingStatus,
+                })
+                .where(eq(schema.serviceRequests.id, id))
+                .returning();
+
+            await tx.insert(schema.serviceRequestEvents).values({
+                id: nanoid(),
+                serviceRequestId: id,
+                status: "Work Order" as any,
+                message: `Work order ${jobId} created by ${actorName}. ${verificationNotes ? `Notes: ${verificationNotes}` : ""}`,
+                actor: actorName,
+            });
+
+            return {
+                serviceRequest: updated,
+                jobTicket,
+                idempotent: false,
+            };
         });
 
-        return { serviceRequest: updated, jobTicket };
+        return result;
     }
 }
 

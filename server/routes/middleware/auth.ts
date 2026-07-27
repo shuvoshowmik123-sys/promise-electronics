@@ -15,7 +15,7 @@ import { storage } from '../../storage.js';
 import { db } from '../../db.js';
 import { requireCsrf } from './csrf.js';
 import { getDefaultPermissionsForRole } from '../../../shared/admin-permissions.js';
-import { LEGACY_TO_GRANULAR } from '../../../shared/permission-catalog.js';
+import { LEGACY_TO_GRANULAR, resolveGranularPermission } from '../../../shared/permission-catalog.js';
 
 // ============================================
 // Session Type Extensions
@@ -27,6 +27,15 @@ declare module 'express-session' {
         adminUserId?: string;
         corporateUserId?: string;
         authMethod?: 'phone' | 'google';
+        /** Epoch ms when this session was established. */
+        authenticatedAt?: number;
+        /**
+         * Snapshot of users.password_changed_at epoch-ms at login (0 if null).
+         * Missing stamp ⇒ SESSION_REAUTH_REQUIRED; mismatch ⇒ SESSION_REVOKED.
+         */
+        passwordChangedAtStamp?: number;
+        /** Set when customer identity cleared due to freshness failure — blocks silent anonymous downgrade. */
+        customerSessionRevoked?: "SESSION_REVOKED" | "SESSION_REAUTH_REQUIRED";
     }
 }
 
@@ -154,7 +163,8 @@ export const requirePermission = (permission: string) => async (req: Request, re
     }
 
     try {
-        const user = (req as any).user || await storage.getUser(req.session.adminUserId);
+        // Always reload from DB so Super Admin grant/revoke applies on the next request without re-login.
+        const user = await storage.getUser(req.session.adminUserId);
         if (!user) {
             return res.status(401).json({ error: 'User not found' });
         }
@@ -165,6 +175,10 @@ export const requirePermission = (permission: string) => async (req: Request, re
             return res.status(403).json({ error: 'Access denied: Insufficient permissions' });
         }
         (req as any).user = user;
+        if (req.session) {
+            req.session.adminUserPermissions = user.permissions ?? null;
+            req.session.adminUserRole = user.role;
+        }
         next();
     } catch (error) {
         console.error('[Auth] Permission check error:', (error as Error).message);
@@ -224,15 +238,11 @@ function hasLegacyOrMappedPermission(effectivePermissions: Record<string, any>, 
  * Resolution order:
  * 1. Wildcard `*` (Super Admin) → always allowed
  * 2. Direct granular key in user permissions → allowed
- * 3. Legacy broad permission that maps to the granular key via LEGACY_TO_GRANULAR → allowed
+ * 3. Deprecated granular expansions (e.g. challans.manage → create/edit, never delete)
+ * 4. Legacy broad permission that maps to the granular key via LEGACY_TO_GRANULAR → allowed
  */
 function hasGranularPerm(effectivePermissions: Record<string, any>, granularKey: string): boolean {
-    if (effectivePermissions['*']) return true;
-    if (effectivePermissions[granularKey]) return true;
-    for (const [legacyKey, granularKeys] of Object.entries(LEGACY_TO_GRANULAR)) {
-        if (granularKeys.includes(granularKey) && effectivePermissions[legacyKey]) return true;
-    }
-    return false;
+    return resolveGranularPermission(effectivePermissions, granularKey);
 }
 
 /** Shared helper for routes that need granular checks after auth (e.g. assignment rules). */
@@ -248,13 +258,17 @@ export const requireGranularPermission = (granularKey: string) => async (req: Re
         return res.status(401).json({ error: 'Admin authentication required' });
     }
     try {
-        const user = (req as any).user || await storage.getUser(req.session.adminUserId);
+        const user = await storage.getUser(req.session.adminUserId);
         if (!user) return res.status(401).json({ error: 'User not found' });
         const effectivePermissions = getEffectivePermissionsForUser(user);
         if (!hasGranularPerm(effectivePermissions, granularKey)) {
             return res.status(403).json({ error: `Access denied: Missing permission ${granularKey}` });
         }
         (req as any).user = user;
+        if (req.session) {
+            req.session.adminUserPermissions = user.permissions ?? null;
+            req.session.adminUserRole = user.role;
+        }
         next();
     } catch (error) {
         console.error('[Auth] Granular permission check error:', (error as Error).message);
@@ -267,13 +281,17 @@ export const requireAnyGranularPermission = (granularKeys: string[]) => async (r
         return res.status(401).json({ error: 'Admin authentication required' });
     }
     try {
-        const user = (req as any).user || await storage.getUser(req.session.adminUserId);
+        const user = await storage.getUser(req.session.adminUserId);
         if (!user) return res.status(401).json({ error: 'User not found' });
         const effectivePermissions = getEffectivePermissionsForUser(user);
         if (!granularKeys.some(k => hasGranularPerm(effectivePermissions, k))) {
             return res.status(403).json({ error: `Access denied: Missing one of ${granularKeys.join(', ')}` });
         }
         (req as any).user = user;
+        if (req.session) {
+            req.session.adminUserPermissions = user.permissions ?? null;
+            req.session.adminUserRole = user.role;
+        }
         next();
     } catch (error) {
         console.error('[Auth] Granular permission check error:', (error as Error).message);
@@ -282,54 +300,20 @@ export const requireAnyGranularPermission = (granularKeys: string[]) => async (r
 };
 
 /**
- * Middleware to require customer authentication.
- * Supports both session-based and Google OAuth authentication.
- * Rejects sessions that were created before the customer's last password change.
+ * Middleware to require customer authentication + session freshness (00C-A-HOTFIX-2).
+ * CSRF enforced only for non-safe methods.
  */
 export function requireCustomerAuth(req: any, res: Response, next: NextFunction) {
-    let customerId: string | undefined;
-
-    if (req.isAuthenticated && req.isAuthenticated() && req.user?.customerId) {
-        customerId = req.user.customerId;
-        req.session.customerId = customerId;
-    } else if (req.session?.customerId) {
-        customerId = req.session.customerId;
-    }
-
-    if (!customerId) {
-        return res.status(401).json({
-            error: 'Please login to continue',
-            code: 'NOT_AUTHENTICATED'
-        });
-    }
-
-    const authenticatedAt = req.session?.authenticatedAt as number | undefined;
-    if (authenticatedAt) {
-        db.execute(sql`SELECT password_changed_at FROM users WHERE id = ${customerId}`)
-            .then((rows) => {
-                const pca = (rows.rows[0] as any)?.password_changed_at;
-                if (pca && new Date(pca).getTime() > authenticatedAt) {
-                    console.log(`[CustomerAuth] Stale session rejected for user ${customerId}`);
-                    req.session.destroy(() => {});
-                    res.clearCookie('customer.sid');
-                    res.clearCookie('connect.sid');
-                    return res.status(401).json({
-                        error: 'Your password was changed. Please sign in again.',
-                        code: 'SESSION_REVOKED'
-                    });
-                }
-                return requireCsrf(req, res, next);
-            })
-            .catch((err: Error) => {
-                console.error('[CustomerAuth] Password change check failed:', err.message);
-                return res.status(503).json({
-                    error: 'Please try again shortly',
-                    code: 'AUTH_CHECK_UNAVAILABLE'
-                });
-            });
-    } else {
+    void (async () => {
+        const { assertCustomerSessionFresh } = await import('../../services/customer-session.service.js');
+        const fresh = await assertCustomerSessionFresh(req, res);
+        if (!fresh.ok) return;
+        const safeMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE'];
+        if (safeMethods.includes(req.method)) {
+            return next();
+        }
         return requireCsrf(req, res, next);
-    }
+    })();
 }
 
 /**

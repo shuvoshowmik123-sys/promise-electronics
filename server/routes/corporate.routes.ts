@@ -1,15 +1,54 @@
 
-import { Router } from "express";
+import { Router, Request, Response, NextFunction } from "express";
 import { storage } from "../storage.js";
 import { z } from "zod";
 import { Readable } from 'stream';
 import { insertCorporateClientSchema } from "../../shared/schema.js";
 import bcrypt from "bcryptjs";
-import { getDefaultPermissions, requireAdminAuth, requirePermission } from "./middleware/auth.js";
+import {
+    getDefaultPermissions,
+    requireAdminAuth,
+    requirePermission,
+    requireGranularPermission,
+    requireAnyGranularPermission,
+} from "./middleware/auth.js";
+
+/** Read-only corporate workspace/client data (not billing, not mutations). */
+const corpRead = requireAnyGranularPermission(["corporate.view", "corporate.workspace"]);
+/** Client create/update/rules mutations. */
+const corpManageClients = requireGranularPermission("corporate.manageClients");
+/** Corporate challan IN/OUT + import/parse. */
+const corpChallansOperate = requireGranularPermission("corporate.challansOperate");
+/** Corporate challan list/detail reads for workspace or ops challan workers. */
+const corpChallanRead = requireAnyGranularPermission([
+    "corporate.view",
+    "corporate.workspace",
+    "corporate.challansOperate",
+]);
+const corpBillsView = requireGranularPermission("corporate.bills.view");
+const corpBillsCreate = requireGranularPermission("corporate.bills.create");
+const corpBillsConfigureTemplates = requireGranularPermission("corporate.bills.configureTemplates");
+const corpBillsRecordPayment = requireGranularPermission("corporate.bills.recordPayment");
 import { db } from "../db.js";
 import { corporateService } from "../services/corporate.service.js";
+import {
+    corporateAccountReceiptService,
+    CorporateAccountReceiptError,
+    ALLOWED_METHODS,
+} from "../services/corporate-account-receipt.service.js";
+import {
+    corporateAccountReceiptRepo,
+    AccountBalanceDomainError,
+} from "../repositories/corporate-account-receipt.repository.js";
+import {
+    corporateLtdBillingRepo,
+    CorporateLtdBillingError,
+    ALL_COLUMN_KEYS,
+} from "../repositories/corporate-ltd-billing.repository.js";
+import { auditLogger } from "../utils/auditLogger.js";
 import { and, desc, inArray, eq, sql } from "drizzle-orm";
 import { jobTickets, corporateBills, billLineItems, billEditLog, billingProfiles, jobBatches, jobExtensionRequests } from "../../shared/schema.js";
+import { getSafeJobDisplayRef } from "../../shared/job-display-utils.js";
 import { nanoid } from "nanoid";
 
 const router = Router();
@@ -42,9 +81,9 @@ const createChallanInSchema = z.object({
 });
 
 const createChallanOutSchema = z.object({
-    challanInId: z.string().optional(), // Optional now, as we might not link to IN directly for numbering
-    corporateClientId: z.string(), // We need client ID if not linking to IN
-    jobIds: z.array(z.string()),
+    challanInId: z.string().optional(),
+    corporateClientId: z.string().min(1),
+    jobIds: z.array(z.string()).min(1).max(100),
     receiverName: z.string().optional(),
     receiverPhone: z.string().optional(),
     receiverSignature: z.string().optional().default(""),
@@ -90,7 +129,7 @@ const normalizeBangladeshPhone = (value?: string | null) => {
 // ----------------------------------------------------------------------
 
 // 0. Get All Corporate Clients (Management List)
-router.get("/clients", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.get("/clients", requireAdminAuth, corpRead, async (req, res) => {
     try {
         const clients = await storage.getAllCorporateClients();
         res.json(clients);
@@ -100,7 +139,7 @@ router.get("/clients", requireAdminAuth, requirePermission('corporate'), async (
 });
 
 // 0.2. Get Single Corporate Client
-router.get("/clients/:id", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.get("/clients/:id", requireAdminAuth, corpRead, async (req, res) => {
     try {
         const client = await storage.getCorporateClient(req.params.id);
         if (!client) {
@@ -114,7 +153,7 @@ router.get("/clients/:id", requireAdminAuth, requirePermission('corporate'), asy
 
 // 0.5. Create New Corporate Client
 // 0.5. Create New Corporate Client
-router.post("/clients", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.post("/clients", requireAdminAuth, corpManageClients, async (req, res) => {
     try {
         // Extended schema to include optional password
         const schema = insertCorporateClientSchema.extend({
@@ -153,6 +192,12 @@ router.post("/clients", requireAdminAuth, requirePermission('corporate'), async 
         // 2. Create Corporate Client
         const newClient = await storage.createCorporateClient(clientData);
 
+        try {
+            await storage.ensureBillingProfile(newClient.id);
+        } catch {
+            console.warn(`[CorporateRoutes] billing profile ensure failed for client ${newClient.id}`);
+        }
+
         // 3. Create Users if credentials provided
         for (const portalUser of preparedPortalUsers) {
             const hashedPassword = await bcrypt.hash(portalUser.password, 10);
@@ -183,7 +228,7 @@ router.post("/clients", requireAdminAuth, requirePermission('corporate'), async 
 });
 
 // 1. Get Challan Jobs (For Smart Table)
-router.get("/challans/:id/jobs", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.get("/challans/:id/jobs", requireAdminAuth, corpChallanRead, async (req, res) => {
     try {
         const jobs = await storage.getChallanJobs(req.params.id);
         res.json(jobs);
@@ -193,7 +238,9 @@ router.get("/challans/:id/jobs", requireAdminAuth, requirePermission('corporate'
 });
 
 // 1.5. Get All Jobs for a Corporate Client (for selection)
-router.get("/clients/:id/jobs", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.get("/clients/:id/jobs", requireAdminAuth, requireAnyGranularPermission([
+    "corporate.view", "corporate.workspace", "corporate.jobsOperate",
+]), async (req, res) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 50;
@@ -209,7 +256,7 @@ router.get("/clients/:id/jobs", requireAdminAuth, requirePermission('corporate')
 });
 
 // 1.5.1 Get Client Branches
-router.get("/clients/:id/branches", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.get("/clients/:id/branches", requireAdminAuth, corpRead, async (req, res) => {
     try {
         const branches = await storage.getCorporateClientBranches(req.params.id);
         res.json(branches);
@@ -219,7 +266,7 @@ router.get("/clients/:id/branches", requireAdminAuth, requirePermission('corpora
 });
 
 // 1.5.2 Update Corporate Client
-router.patch("/clients/:id", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.patch("/clients/:id", requireAdminAuth, corpManageClients, async (req, res) => {
     try {
         const client = await storage.updateCorporateClient(req.params.id, req.body);
         res.json(client);
@@ -228,7 +275,7 @@ router.patch("/clients/:id", requireAdminAuth, requirePermission('corporate'), a
     }
 });
 
-router.get("/clients/:id/rules", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.get("/clients/:id/rules", requireAdminAuth, corpRead, async (req, res) => {
     try {
         const client = await storage.getCorporateClient(req.params.id);
         if (!client) return res.status(404).json({ message: "Corporate client not found" });
@@ -248,7 +295,7 @@ router.get("/clients/:id/rules", requireAdminAuth, requirePermission('corporate'
     }
 });
 
-router.patch("/clients/:id/rules", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.patch("/clients/:id/rules", requireAdminAuth, corpManageClients, async (req, res) => {
     try {
         const data = clientRulesSchema.parse(req.body);
         const updated = await storage.updateCorporateClient(req.params.id, data as any);
@@ -262,7 +309,7 @@ router.patch("/clients/:id/rules", requireAdminAuth, requirePermission('corporat
     }
 });
 
-router.get("/clients/:id/batches", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.get("/clients/:id/batches", requireAdminAuth, corpRead, async (req, res) => {
     try {
         const batches = await db.select().from(jobBatches)
             .where(eq(jobBatches.corporateClientId, req.params.id))
@@ -294,7 +341,7 @@ router.get("/clients/:id/batches", requireAdminAuth, requirePermission('corporat
     }
 });
 
-router.get("/clients/:id/extension-requests", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.get("/clients/:id/extension-requests", requireAdminAuth, corpRead, async (req, res) => {
     try {
         const requests = await db.select().from(jobExtensionRequests)
             .where(eq(jobExtensionRequests.corporateClientId, req.params.id))
@@ -305,7 +352,7 @@ router.get("/clients/:id/extension-requests", requireAdminAuth, requirePermissio
     }
 });
 
-router.post("/batches/:batchId/extension-requests", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.post("/batches/:batchId/extension-requests", requireAdminAuth, corpManageClients, async (req, res) => {
     try {
         const data = extensionRequestSchema.parse(req.body);
         const [batch] = await db.select().from(jobBatches).where(eq(jobBatches.id, req.params.batchId)).limit(1);
@@ -344,7 +391,7 @@ router.post("/batches/:batchId/extension-requests", requireAdminAuth, requirePer
     }
 });
 
-router.patch("/extension-requests/:id", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.patch("/extension-requests/:id", requireAdminAuth, corpManageClients, async (req, res) => {
     try {
         const data = extensionDecisionSchema.parse(req.body);
         const [existing] = await db.select().from(jobExtensionRequests).where(eq(jobExtensionRequests.id, req.params.id)).limit(1);
@@ -378,7 +425,7 @@ router.patch("/extension-requests/:id", requireAdminAuth, requirePermission('cor
 });
 
 // 1.6. Get Corporate Client Challans (History)
-router.get("/clients/:id/challans", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.get("/clients/:id/challans", requireAdminAuth, corpChallanRead, async (req, res) => {
     try {
         const page = parseInt(req.query.page as string) || 1;
         const limit = parseInt(req.query.limit as string) || 50;
@@ -391,7 +438,7 @@ router.get("/clients/:id/challans", requireAdminAuth, requirePermission('corpora
 });
 
 // 2. Create Challan IN (Bulk Check-in)
-router.post("/challans/in", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.post("/challans/in", requireAdminAuth, corpChallansOperate, async (req, res) => {
     try {
         const data = createChallanInSchema.parse(req.body);
         const result = await corporateService.createChallanIn(data);
@@ -400,24 +447,36 @@ router.post("/challans/in", requireAdminAuth, requirePermission('corporate'), as
         if (error instanceof z.ZodError) {
             res.status(400).json({ message: "Invalid input", errors: error.errors });
         } else {
-            res.status(500).json({ message: (error as Error).message });
+            console.error("[CorporateRoutes] challan IN failed");
+            res.status(500).json({ message: "Failed to create challan IN" });
         }
     }
 });
 
-// 3. Create Challan OUT (Bulk Check-out)
-router.post("/challans/out", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+// 3. Create Challan OUT — atomic handover (CORPORATE-JOB-STATUS-01B)
+router.post("/challans/out", requireAdminAuth, corpChallansOperate, async (req, res) => {
     try {
         const data = createChallanOutSchema.parse(req.body);
         const challanOutId = await corporateService.createChallanOut(data);
         res.status(201).json({ challanOutId });
-    } catch (error) {
-        res.status(500).json({ message: (error as Error).message });
+    } catch (error: any) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ message: "Invalid input", code: "HANDOVER_INVALID_INPUT" });
+        }
+        if (error?.name === "CorporateHandoverError" || error?.code?.startsWith?.("HANDOVER_")) {
+            return res.status(error.status || 400).json({
+                message: error.message || "Handover rejected",
+                code: error.code || "HANDOVER_REJECTED",
+            });
+        }
+        // CORPORATE-JOB-STATUS-01B-HOTFIX-1-QA-CLOSE — stable safe log only (no raw error object/message fallback).
+        console.error("[CorporateRoutes] challan OUT failed");
+        res.status(500).json({ message: "Failed to create challan OUT" });
     }
 });
 
 // Get Client Bills
-router.get("/clients/:id/bills", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.get("/clients/:id/bills", requireAdminAuth, corpBillsView, async (req, res) => {
     try {
         const bills = await storage.getCorporateBills(req.params.id);
         res.json(bills);
@@ -427,7 +486,7 @@ router.get("/clients/:id/bills", requireAdminAuth, requirePermission('corporate'
 });
 
 // Get Single Bill
-router.get("/bills/:id", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.get("/bills/:id", requireAdminAuth, corpBillsView, async (req, res) => {
     try {
         const bill = await storage.getCorporateBill(req.params.id);
         if (!bill) return res.status(404).json({ error: "Bill not found" });
@@ -437,8 +496,353 @@ router.get("/bills/:id", requireAdminAuth, requirePermission('corporate'), async
     }
 });
 
+// GET /api/corporate/bills/:id/details — bill + normalized issued lines (itemized snapshot)
+router.get("/bills/:id/details", requireAdminAuth, corpBillsView, async (req, res) => {
+    try {
+        const result = await corporateLtdBillingRepo.getBillWithLines(req.params.id);
+        if (!result) return res.status(404).json({ error: "Bill not found" });
+        res.json(result);
+    } catch (error) {
+        if (error instanceof CorporateLtdBillingError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error("[CorporateRoutes] bill details failed");
+        res.status(500).json({ error: "Failed to fetch bill details" });
+    }
+});
+
+// ── FINANCE-AFTERCARE-01.2: Corporate account balance + receipts ──────────────
+// Normal Corporate payments settle the COMPANY ACCOUNT (not an invoice/bill/line).
+// Isolated from POS, generic Due, refunds, warranty, jobs, and repair status.
+
+// GET /api/corporate/clients/:id/account-balance — staff finance view
+// Returns total billed (active bills), total received (account receipts), total due.
+// Rejects Corporate Ltd. (limited_company) with 422 — it must use the itemized flow (Ticket 03).
+router.get("/clients/:id/account-balance", requireAdminAuth, corpBillsView, async (req, res) => {
+    try {
+        await corporateAccountReceiptRepo.assertNormalCorporateClient(req.params.id);
+        const balance = await corporateAccountReceiptRepo.getAccountBalance(req.params.id);
+        res.json(balance);
+    } catch (error) {
+        if (error instanceof AccountBalanceDomainError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error("[CorporateRoutes] account-balance failed");
+        res.status(500).json({ error: "Failed to fetch account balance" });
+    }
+});
+
+// GET /api/corporate/clients/:id/account-receipts — list account receipts
+router.get("/clients/:id/account-receipts", requireAdminAuth, corpBillsView, async (req, res) => {
+    try {
+        await corporateAccountReceiptRepo.assertNormalCorporateClient(req.params.id);
+        const limit = parseInt(req.query.limit as string) || 100;
+        const receipts = await corporateAccountReceiptRepo.listReceipts(req.params.id, Math.min(limit, 500));
+        res.json(receipts);
+    } catch (error) {
+        if (error instanceof AccountBalanceDomainError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error("[CorporateRoutes] account-receipts list failed");
+        res.status(500).json({ error: "Failed to fetch account receipts" });
+    }
+});
+
+const recordAccountReceiptSchema = z.object({
+    amount: z.number().positive().finite(),
+    method: z.enum([...ALLOWED_METHODS] as [string, ...string[]]),
+    reference: z.string().max(200).optional(),
+    note: z.string().max(2000).optional(),
+    idempotencyKey: z.string().max(200).optional(),
+});
+
+// POST /api/corporate/clients/:id/account-receipts — record an account receipt
+// Rejects Corporate Ltd. inside the service transaction (FOR UPDATE lock) with 422.
+router.post("/clients/:id/account-receipts", requireAdminAuth, corpBillsRecordPayment, async (req, res) => {
+    try {
+        const validated = recordAccountReceiptSchema.parse(req.body);
+        const adminUser = (req as any).user;
+        const receipt = await corporateAccountReceiptService.recordReceipt({
+            corporateClientId: req.params.id,
+            amount: validated.amount,
+            method: validated.method,
+            reference: validated.reference,
+            note: validated.note,
+            idempotencyKey: validated.idempotencyKey,
+            receivedBy: adminUser?.id,
+            receivedByName: adminUser?.name || adminUser?.username || undefined,
+        });
+
+        auditLogger.log({
+            userId: adminUser?.id || "system",
+            action: "CORPORATE_ACCOUNT_RECEIPT",
+            entity: "CorporateAccountReceipt",
+            entityId: receipt.id,
+            details: `Account receipt ৳${validated.amount} (${validated.method}) for client ${req.params.id}`,
+            newValue: { amount: validated.amount, method: validated.method, clientId: req.params.id },
+            req,
+        }).catch(() => {});
+
+        res.status(201).json(receipt);
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: "Invalid receipt data", details: error.errors });
+        }
+        if (error instanceof CorporateAccountReceiptError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        if (error && typeof error === "object" && "code" in error && (error as any).code === "23505") {
+            return res.status(409).json({ error: "Duplicate receipt — idempotency key already used for this client", code: "IDEMPOTENCY_CONFLICT" });
+        }
+        console.error("[CorporateRoutes] account-receipt record failed");
+        res.status(500).json({ error: "Failed to record account receipt" });
+    }
+});
+
+// GET /api/corporate/legacy-bill-due-classifications — legacy link report (review-needed visible)
+router.get("/legacy-bill-due-classifications", requireAdminAuth, corpBillsView, async (_req, res) => {
+    try {
+        const links = await corporateAccountReceiptRepo.listLegacyClassifications();
+        res.json(links);
+    } catch (error) {
+        console.error("[CorporateRoutes] legacy classification list failed");
+        res.status(500).json({ error: "Failed to fetch legacy classifications" });
+    }
+});
+
+// ── FINANCE-AFTERCARE-01.3: Corporate Ltd. itemized billing ────────────────────
+// Corporate Ltd. (clientType === 'limited_company') uses one saved billing preset
+// per client, itemized issued bill lines + immutable layout/recipient snapshot, and
+// bill/line receipt allocations. Isolated from POS, generic Due, normal Corporate
+// account receipts, refunds, warranty, and jobs. Server enforces every UI boundary.
+
+const billingPresetSchema = z.object({
+    recipientPolicy: z.enum(["company_only", "attention_person"]),
+    enabledColumns: z.array(z.enum([...ALL_COLUMN_KEYS] as [string, ...string[]])),
+    attentionName: z.string().max(200).optional().nullable(),
+    attentionContact: z.string().max(200).optional().nullable(),
+    billingAddress: z.string().max(500).optional().nullable(),
+});
+
+// GET /api/corporate/clients/:id/billing-preset — read the saved preset (billers read it to apply)
+router.get("/clients/:id/billing-preset", requireAdminAuth, corpBillsView, async (req, res) => {
+    try {
+        const preset = await corporateLtdBillingRepo.getBillingPreset(req.params.id);
+        res.json(preset);
+    } catch (error) {
+        if (error instanceof CorporateLtdBillingError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error("[CorporateRoutes] billing-preset get failed");
+        res.status(500).json({ error: "Failed to fetch billing preset" });
+    }
+});
+
+// PUT /api/corporate/clients/:id/billing-preset — configure the one saved preset.
+// Gated by corporate.bills.configureTemplates (Manager + Super Admin by default).
+// Server rejects non-Corporate-Ltd. clients. Edits affect future bills only.
+router.put("/clients/:id/billing-preset", requireAdminAuth, corpBillsConfigureTemplates, async (req, res) => {
+    try {
+        const data = billingPresetSchema.parse(req.body);
+        const adminUser = (req as any).user;
+        const preset = await corporateLtdBillingRepo.setBillingPreset(
+            req.params.id,
+            {
+                recipientPolicy: data.recipientPolicy,
+                enabledColumns: data.enabledColumns,
+                attentionName: data.attentionName ?? null,
+                attentionContact: data.attentionContact ?? null,
+                billingAddress: data.billingAddress ?? null,
+            },
+            adminUser?.id || "system",
+        );
+        auditLogger.log({
+            userId: adminUser?.id || "system",
+            action: "CORPORATE_LTD_PRESET_UPDATE",
+            entity: "CorporateClient",
+            entityId: req.params.id,
+            details: `Billing preset updated (recipient=${data.recipientPolicy}, cols=${data.enabledColumns.length})`,
+            newValue: { recipientPolicy: data.recipientPolicy, enabledColumns: data.enabledColumns },
+            req,
+        }).catch(() => {});
+        res.json(preset);
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: "Invalid preset data", details: error.errors });
+        }
+        if (error instanceof CorporateLtdBillingError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error("[CorporateRoutes] billing-preset update failed");
+        res.status(500).json({ error: "Failed to update billing preset" });
+    }
+});
+
+// GET /api/corporate/clients/:id/eligible-jobs — eligible unbilled jobs for itemized billing
+router.get("/clients/:id/eligible-jobs", requireAdminAuth, corpBillsCreate, async (req, res) => {
+    try {
+        const jobs = await corporateLtdBillingRepo.listEligibleJobs(req.params.id);
+        const safe = jobs.map((j) => ({
+            id: j.id,
+            clientJobNumber: j.corporateJobNumber,
+            promiseJobNumber: getSafeJobDisplayRef(j),
+            device: j.device,
+            tvSerialNumber: j.tvSerialNumber,
+            modelNumber: j.modelNumber,
+            screenSize: j.screenSize,
+            reportedDefect: j.reportedDefect,
+            estimatedCost: Number(j.estimatedCost) || 0,
+            charges: Array.isArray(j.charges) ? j.charges : [],
+        }));
+        res.json(safe);
+    } catch (error) {
+        if (error instanceof CorporateLtdBillingError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error("[CorporateRoutes] eligible-jobs failed");
+        res.status(500).json({ error: "Failed to fetch eligible jobs" });
+    }
+});
+
+const previewBillSchema = z.object({
+    jobIds: z.array(z.string().min(1)).min(1).max(500),
+});
+
+// POST /api/corporate/clients/:id/bills/preview — read-only preview applying the saved preset
+router.post("/clients/:id/bills/preview", requireAdminAuth, corpBillsCreate, async (req, res) => {
+    try {
+        const { jobIds } = previewBillSchema.parse(req.body);
+        const preset = await corporateLtdBillingRepo.getBillingPreset(req.params.id);
+        const jobs = await corporateLtdBillingRepo.listEligibleJobs(req.params.id);
+        const selected = jobs.filter((j) => jobIds.includes(j.id));
+        const preview = corporateLtdBillingRepo.buildPreview(preset, selected);
+        res.json(preview);
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: "Invalid preview data", details: error.errors });
+        }
+        if (error instanceof CorporateLtdBillingError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error("[CorporateRoutes] bill preview failed");
+        res.status(500).json({ error: "Failed to build bill preview" });
+    }
+});
+
+const issueBillSchema = z.object({
+    jobIds: z.array(z.string().min(1)).min(1).max(500),
+    periodStart: z.coerce.date(),
+    periodEnd: z.coerce.date(),
+});
+
+// POST /api/corporate/clients/:id/bills/issue — issue an itemized bill with immutable snapshot
+router.post("/clients/:id/bills/issue", requireAdminAuth, corpBillsCreate, async (req, res) => {
+    try {
+        const data = issueBillSchema.parse(req.body);
+        const adminUser = (req as any).user;
+        const result = await corporateLtdBillingRepo.issueBill(
+            req.params.id,
+            data.jobIds,
+            data.periodStart,
+            data.periodEnd,
+            adminUser?.id || "system",
+        );
+        auditLogger.log({
+            userId: adminUser?.id || "system",
+            action: "CORPORATE_LTD_BILL_ISSUED",
+            entity: "CorporateBill",
+            entityId: result.bill.id,
+            details: `Itemized bill ${result.bill.billNumber} issued (${result.lines.length} lines, ৳${result.bill.grandTotal})`,
+            req,
+        }).catch(() => {});
+        res.status(201).json(result);
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: "Invalid issue data", details: error.errors });
+        }
+        if (error instanceof CorporateLtdBillingError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error("[CorporateRoutes] bill issue failed");
+        res.status(500).json({ error: "Failed to issue bill" });
+    }
+});
+
+// GET /api/corporate/bills/:id/balance — bill + line balances for a Corporate Ltd. bill
+router.get("/bills/:id/balance", requireAdminAuth, corpBillsView, async (req, res) => {
+    try {
+        const balance = await corporateLtdBillingRepo.getBillBalance(req.params.id);
+        res.json(balance);
+    } catch (error) {
+        if (error instanceof CorporateLtdBillingError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error("[CorporateRoutes] bill balance failed");
+        res.status(500).json({ error: "Failed to fetch bill balance" });
+    }
+});
+
+const recordLtdReceiptSchema = z.object({
+    amount: z.number().positive().finite(),
+    method: z.enum([...ALLOWED_METHODS] as [string, ...string[]]),
+    reference: z.string().max(200).optional(),
+    note: z.string().max(2000).optional(),
+    idempotencyKey: z.string().max(200).optional(),
+    allocations: z.array(z.object({
+        billLineItemId: z.string().optional().nullable(),
+        amount: z.number().positive().finite(),
+    })).optional(),
+});
+
+// POST /api/corporate/bills/:id/receipts — record a Corporate Ltd. bill receipt + optional allocations
+router.post("/bills/:id/receipts", requireAdminAuth, corpBillsRecordPayment, async (req, res) => {
+    try {
+        const validated = recordLtdReceiptSchema.parse(req.body);
+        const adminUser = (req as any).user;
+        // Resolve the bill's client from the path (server re-verifies ownership inside the lock).
+        const billWithLines = await corporateLtdBillingRepo.getBillWithLines(req.params.id);
+        if (!billWithLines) {
+            return res.status(404).json({ error: "Bill not found" });
+        }
+        const result = await corporateLtdBillingRepo.recordReceiptAndAllocations({
+            corporateClientId: billWithLines.bill.corporateClientId || "",
+            billId: req.params.id,
+            amount: validated.amount,
+            method: validated.method,
+            reference: validated.reference,
+            note: validated.note,
+            idempotencyKey: validated.idempotencyKey,
+            receivedBy: adminUser?.id,
+            receivedByName: adminUser?.name || adminUser?.username || undefined,
+            allocations: validated.allocations,
+        });
+        auditLogger.log({
+            userId: adminUser?.id || "system",
+            action: "CORPORATE_LTD_RECEIPT",
+            entity: "CorporateLtdReceipt",
+            entityId: result.receipt.id,
+            details: `Itemized receipt ৳${validated.amount} (${validated.method}) for bill ${req.params.id}`,
+            newValue: { amount: validated.amount, method: validated.method, allocations: result.allocations.length },
+            req,
+        }).catch(() => {});
+        res.status(201).json(result);
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: "Invalid receipt data", details: error.errors });
+        }
+        if (error instanceof CorporateLtdBillingError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        if (error && typeof error === "object" && "code" in error && (error as any).code === "23505") {
+            return res.status(409).json({ error: "Duplicate receipt — idempotency key already used for this bill", code: "IDEMPOTENCY_CONFLICT" });
+        }
+        console.error("[CorporateRoutes] ltd receipt record failed");
+        res.status(500).json({ error: "Failed to record itemized receipt" });
+    }
+});
+
 // 4. Generate Corporate Master Bill (Manual selection)
-router.post("/bills/generate", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.post("/bills/generate", requireAdminAuth, corpBillsCreate, async (req, res) => {
     try {
         const data = generateBillSchema.parse(req.body);
         const bill = await storage.generateCorporateBill(data);
@@ -455,7 +859,7 @@ const autoGenerateStatementSchema = z.object({
     month: z.number().int().min(1).max(12),
 });
 
-router.post("/bills/auto-generate", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.post("/bills/auto-generate", requireAdminAuth, corpBillsCreate, async (req, res) => {
     try {
         const data = autoGenerateStatementSchema.parse(req.body);
 
@@ -518,7 +922,34 @@ import multer from 'multer';
 import JSZip from 'jszip';
 
 // Use memory storage for file uploads
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 10, parts: 10 } });
+
+// Safe upload wrapper to translate Multer errors into JSON responses
+function safeUpload(req: Request, res: Response, next: NextFunction) {
+    upload.single('file')(req, res, (err) => {
+        if (err) {
+            if (err instanceof multer.MulterError) {
+                if (err.code === 'LIMIT_FILE_SIZE') {
+                    return res.status(413).json({ error: 'Uploaded file is too large.' });
+                }
+                return res.status(400).json({ error: 'Invalid upload payload.' });
+            }
+            return next(err);
+        }
+        next();
+    });
+}
+
+const PARSE_MAX_WORKSHEETS = 5;
+const PARSE_MAX_ROWS = 5000;
+const PARSE_MAX_COLUMNS = 50;
+const PARSE_MAX_CELL_TEXT = 10000;
+
+function isValidZipBuffer(buffer: Buffer): boolean {
+    return buffer.length >= 4 && buffer[0] === 0x50 && buffer[1] === 0x4B;
+}
+
+const DANGEROUS_HEADER_NAMES = new Set(['__proto__', 'prototype', 'constructor', 'proto']);
 
 // Column name variations for smart detection
 const COLUMN_PATTERNS = {
@@ -566,6 +997,10 @@ const buildTableImportResult = (tableRows: string[][]) => {
     const columnMapping: Record<string, string> = {};
 
     headers.forEach((originalHeader, index) => {
+        const normalizedHeader = originalHeader.toLowerCase().replace(/[^a-z0-9]+/g, '');
+        if (DANGEROUS_HEADER_NAMES.has(normalizedHeader)) {
+            throw new Error('DANGEROUS_HEADER');
+        }
         for (const [field, patterns] of Object.entries(COLUMN_PATTERNS)) {
             if (patterns.some(pattern => matchesColumnPattern(originalHeader, pattern))) {
                 columnMapping[index.toString()] = field;
@@ -578,13 +1013,17 @@ const buildTableImportResult = (tableRows: string[][]) => {
     const rawRows: Record<string, string>[] = [];
 
     for (const row of tableRows.slice(1)) {
-        const device: any = {};
-        const rawRow: Record<string, string> = {};
+        const device: any = Object.create(null);
+        const rawRow: Record<string, string> = Object.create(null);
         let hasData = false;
 
         row.forEach((cellValue, index) => {
             const value = String(cellValue || '').trim();
             const header = headers[index] || `Column ${index + 1}`;
+            const normalizedHeader = header.toLowerCase().replace(/[^a-z0-9]+/g, '');
+            if (DANGEROUS_HEADER_NAMES.has(normalizedHeader)) {
+                throw new Error('DANGEROUS_HEADER');
+            }
             rawRow[header] = value;
             if (value) hasData = true;
 
@@ -749,45 +1188,69 @@ const extractPptxTableRows = async (buffer: Buffer) => {
     return [];
 };
 
-router.post("/clients/challans/parse-excel", requireAdminAuth, requirePermission('corporate'), upload.single('file'), async (req, res) => {
+router.post("/clients/challans/parse-excel", requireAdminAuth, corpChallansOperate, safeUpload, async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
     }
 
     try {
         const workbook = new ExcelJS.Workbook();
-
-        // Check if it's CSV or XLSX
         const fileName = req.file.originalname.toLowerCase();
+        const buffer = req.file.buffer;
 
         if (fileName.endsWith('.csv')) {
-            // Parse CSV using ExcelJS csv parser
+            if (buffer.length === 0) {
+                return res.status(400).json({ error: 'File is empty.' });
+            }
             const stream = new Readable();
-            stream.push(req.file.buffer);
+            stream.push(buffer);
             stream.push(null);
             await workbook.csv.read(stream);
         } else {
-            // Parse XLSX
-            const buffer = req.file.buffer;
-            await workbook.xlsx.load(buffer as any);
+            if (!isValidZipBuffer(buffer)) {
+                return res.status(400).json({ error: 'Invalid XLSX file. The file is not a valid spreadsheet.' });
+            }
+            try {
+                await workbook.xlsx.load(buffer as any);
+            } catch {
+                return res.status(400).json({ error: 'Invalid XLSX file. Could not read the spreadsheet structure.' });
+            }
         }
 
-        const worksheet = workbook.worksheets[0]; // First sheet
+        if (workbook.worksheets.length > PARSE_MAX_WORKSHEETS) {
+            return res.status(400).json({ error: `Spreadsheet has too many worksheets. Maximum allowed: ${PARSE_MAX_WORKSHEETS}.` });
+        }
+
+        const worksheet = workbook.worksheets[0];
+        if (!worksheet) {
+            return res.status(400).json({ error: 'No worksheets found in the file.' });
+        }
+
+        if (worksheet.rowCount > PARSE_MAX_ROWS) {
+            return res.status(400).json({ error: `Spreadsheet has too many rows. Maximum allowed: ${PARSE_MAX_ROWS}.` });
+        }
+
         const rows: any[] = [];
         const rawRows: Record<string, string>[] = [];
         const headers: string[] = [];
 
-        // Read header row (Assumed row 1)
         const headerRow = worksheet.getRow(1);
         const columnMapping: Record<string, string> = {};
         const headerByColumn: Record<number, string> = {};
+        let maxColNumber = 0;
 
-        // Auto-detect columns
         headerRow.eachCell((cell, colNumber) => {
             const originalHeader = cell.value?.toString().trim() || `Column ${colNumber}`;
             const headerText = originalHeader.toLowerCase();
+            const normalizedKey = headerText.replace(/[^a-z0-9]+/g, '');
+
+            if (DANGEROUS_HEADER_NAMES.has(normalizedKey)) {
+                throw new Error('DANGEROUS_HEADER');
+            }
+
             headers.push(originalHeader);
             headerByColumn[colNumber] = originalHeader;
+            maxColNumber = Math.max(maxColNumber, colNumber);
 
             for (const [field, patterns] of Object.entries(COLUMN_PATTERNS)) {
                 if (patterns.some(pattern => matchesColumnPattern(headerText, pattern))) {
@@ -797,9 +1260,12 @@ router.post("/clients/challans/parse-excel", requireAdminAuth, requirePermission
             }
         });
 
-        // Parse data rows
+        if (maxColNumber > PARSE_MAX_COLUMNS) {
+            return res.status(400).json({ error: `Spreadsheet has too many columns. Maximum allowed: ${PARSE_MAX_COLUMNS}.` });
+        }
+
         worksheet.eachRow((row, rowNumber) => {
-            if (rowNumber === 1) return; // Skip header
+            if (rowNumber === 1) return;
 
             const device: any = {};
             const rawRow: Record<string, string> = {};
@@ -808,6 +1274,9 @@ router.post("/clients/challans/parse-excel", requireAdminAuth, requirePermission
             row.eachCell((cell, colNumber) => {
                 const header = headerByColumn[colNumber] || `Column ${colNumber}`;
                 const value = cell.value?.toString().trim() || '';
+                if (value.length > PARSE_MAX_CELL_TEXT) {
+                    throw new Error('CELL_TEXT_TOO_LONG');
+                }
                 rawRow[header] = value;
                 if (value) hasData = true;
 
@@ -836,20 +1305,27 @@ router.post("/clients/challans/parse-excel", requireAdminAuth, requirePermission
         });
 
     } catch (error) {
-        console.error("[CorporateRoutes] Excel/CSV parse error:", error);
-        res.status(500).json({
-            message: "Failed to parse file",
-            error: error instanceof Error ? error.message : "Unknown error"
-        });
+        if (error instanceof Error && error.message === 'CELL_TEXT_TOO_LONG') {
+            return res.status(400).json({ error: `Cell text exceeds maximum length of ${PARSE_MAX_CELL_TEXT} characters.` });
+        }
+        if (error instanceof Error && error.message === 'DANGEROUS_HEADER') {
+            return res.status(400).json({ error: 'File contains a dangerous header name (__proto__, prototype, or constructor).' });
+        }
+        console.error("[CorporateRoutes] Excel/CSV parse failed:", (error as Error).message);
+        res.status(400).json({ error: 'Failed to parse file. Please check the file format and content.' });
     }
 });
 
 // DOCX PARSING (Microsoft Word)
 import mammoth from 'mammoth';
 
-router.post("/clients/challans/parse-docx", requireAdminAuth, requirePermission('corporate'), upload.single('file'), async (req, res) => {
+router.post("/clients/challans/parse-docx", requireAdminAuth, corpChallansOperate, safeUpload, async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    if (!isValidZipBuffer(req.file.buffer)) {
+        return res.status(400).json({ error: 'Invalid DOCX file. The file is not a valid Word document.' });
     }
 
     try {
@@ -873,17 +1349,21 @@ router.post("/clients/challans/parse-docx", requireAdminAuth, requirePermission(
         res.json(parsed.data);
 
     } catch (error) {
-        console.error("[CorporateRoutes] DOCX parse error:", error);
-        res.status(500).json({
-            message: "Failed to parse DOCX file",
-            error: error instanceof Error ? error.message : "Unknown error"
-        });
+        if (error instanceof Error && error.message === 'DANGEROUS_HEADER') {
+            return res.status(400).json({ error: 'File contains a dangerous header name (__proto__, prototype, or constructor).' });
+        }
+        console.error("[CorporateRoutes] DOCX parse failed:", (error as Error).message);
+        res.status(400).json({ error: 'Failed to parse DOCX file. Please check the file format.' });
     }
 });
 
-router.post("/clients/challans/parse-pptx", requireAdminAuth, requirePermission('corporate'), upload.single('file'), async (req, res) => {
+router.post("/clients/challans/parse-pptx", requireAdminAuth, corpChallansOperate, safeUpload, async (req, res) => {
     if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
+    }
+
+    if (!isValidZipBuffer(req.file.buffer)) {
+        return res.status(400).json({ error: 'Invalid PPTX file. The file is not a valid PowerPoint document.' });
     }
 
     try {
@@ -917,22 +1397,57 @@ router.post("/clients/challans/parse-pptx", requireAdminAuth, requirePermission(
 
         res.json(parsed.data);
     } catch (error) {
-        console.error("[CorporateRoutes] PPTX parse error:", error);
-        res.status(500).json({
-            message: "Failed to parse PPTX file",
-            error: error instanceof Error ? error.message : "Unknown error"
-        });
+        if (error instanceof Error && error.message === 'DANGEROUS_HEADER') {
+            return res.status(400).json({ error: 'File contains a dangerous header name (__proto__, prototype, or constructor).' });
+        }
+        console.error("[CorporateRoutes] PPTX parse failed:", (error as Error).message);
+        res.status(400).json({ error: 'Failed to parse PPTX file. Please check the file format.' });
     }
 });
 router.patch("/jobs/:id/status", requireAdminAuth, requirePermission('jobs'), async (req, res) => {
     try {
         const { status } = req.body;
-        if (!status) return res.status(400).json({ message: "Status required" });
+        if (!status) return res.status(400).json({ message: "Status required", code: "CORPORATE_DECLARATION_ONLY" });
 
         await storage.updateCorporateJobStatus(req.params.id, status);
+
+        try {
+            const { auditLogger } = await import("../utils/auditLogger.js");
+            await auditLogger.log({
+                userId: (req as any).session?.adminUserId || (req as any).user?.id || "system",
+                action: "CORPORATE_DECLARATION_SET",
+                entity: "JobTicket",
+                entityId: req.params.id,
+                details: `Corporate intake declaration updated via legacy status endpoint`,
+                newValue: { declarationInput: String(status).slice(0, 40) },
+                req,
+            });
+        } catch {
+            /* audit best-effort */
+        }
+
         res.json({ success: true });
-    } catch (error) {
-        res.status(500).json({ message: "Failed to update status" });
+    } catch (error: any) {
+        if (
+            error?.code === "CORPORATE_READY_REQUIRES_TESTING" ||
+            error?.code === "CORPORATE_JOB_REQUIRED" ||
+            error?.code === "CORPORATE_DECLARATION_ONLY" ||
+            error?.code === "JOB_NOT_FOUND" ||
+            error?.name === "CorporateDeclarationError"
+        ) {
+            return res.status(error.status || 409).json({
+                message: error.message || "Corporate declaration update rejected",
+                code: error.code || "CORPORATE_DECLARATION_ERROR",
+            });
+        }
+        if (error?.name === "ProtectedJobFieldError" || error?.code === "PROTECTED_JOB_FIELD") {
+            return res.status(400).json({ message: error.message, code: "PROTECTED_JOB_FIELD" });
+        }
+        if (error?.name === "NgWorkflowLockedError" || error?.code === "NG_WORKFLOW_LOCKED") {
+            return res.status(409).json({ message: error.message, code: "NG_WORKFLOW_LOCKED" });
+        }
+        console.error("[CorporateRoutes] Declaration update failed:", error?.message || error);
+        res.status(500).json({ message: "Failed to update corporate declaration" });
     }
 });
 
@@ -963,16 +1478,15 @@ router.patch("/jobs/bulk-priority", requireAdminAuth, requirePermission('jobs'),
 
 // ── Phase G: Billing profile read/update ─────────────────────────────────────
 
-router.get("/billing-profile/:clientId", requirePermission('corporate'), async (req, res) => {
+router.get("/billing-profile/:clientId", requireAdminAuth, corpBillsConfigureTemplates, async (req, res) => {
     try {
-        const rows = await db.select().from(billingProfiles)
-            .where(eq(billingProfiles.corporateClientId, req.params.clientId)).limit(1);
-        if (!rows[0]) return res.status(404).json({ message: "Billing profile not found" });
-        res.json(rows[0]);
+        const profile = await storage.ensureBillingProfile(req.params.clientId);
+        if (!profile) return res.status(404).json({ message: "Corporate client not found" });
+        res.json(profile);
     } catch { res.status(500).json({ message: "Failed to fetch billing profile" }); }
 });
 
-router.patch("/billing-profile/:clientId", requireAdminAuth, requirePermission('corporate'), async (req, res) => {
+router.patch("/billing-profile/:clientId", requireAdminAuth, corpBillsConfigureTemplates, async (req, res) => {
     try {
         const allowed = [
             'tier', 'scatterBillingEnabled', 'scatterBillingMode', 'requiresSerialMatch',
@@ -1005,7 +1519,7 @@ const scatterSchema = z.object({
     reason: z.string().optional(),
 });
 
-router.post("/bills/:billId/scatter", requireAdminAuth, requirePermission('corporate'), async (req: any, res) => {
+router.post("/bills/:billId/scatter", requireAdminAuth, corpBillsCreate, async (req: any, res) => {
     try {
         const staffId = req.admin?.id || req.session?.adminUserId || 'admin';
         const { splits, reason } = scatterSchema.parse(req.body);
@@ -1091,7 +1605,7 @@ const quoteLogSchema = z.object({
 
 import { quoteLogs } from "../../shared/schema.js";
 
-router.post("/quote-logs", requireAdminAuth, requirePermission('corporate'), async (req: any, res) => {
+router.post("/quote-logs", requireAdminAuth, corpManageClients, async (req: any, res) => {
     try {
         const data = quoteLogSchema.parse(req.body);
         const staffId = req.admin?.id || req.session?.adminUserId || 'admin';
@@ -1111,7 +1625,7 @@ router.post("/quote-logs", requireAdminAuth, requirePermission('corporate'), asy
     }
 });
 
-router.get("/quote-logs/:clientId", requirePermission('corporate'), async (req, res) => {
+router.get("/quote-logs/:clientId", requireAdminAuth, corpRead, async (req, res) => {
     try {
         const rows = await db.select().from(quoteLogs)
             .where(eq(quoteLogs.corporateClientId, req.params.clientId))

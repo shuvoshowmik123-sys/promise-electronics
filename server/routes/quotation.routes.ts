@@ -19,6 +19,12 @@ const router = Router();
 // ============================================
 
 /**
+ * Formal sales quotations (print/reprint ledger).
+ * NOT a retail repair-quote authority — cannot create/convert job tickets (00C-A).
+ * Retail quotes: service_requests + /api/quotes* + send-quote.
+ */
+
+/**
  * GET /api/admin/quotations
  * List all quotations (with items)
  */

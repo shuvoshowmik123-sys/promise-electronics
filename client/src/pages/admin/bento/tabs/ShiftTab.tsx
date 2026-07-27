@@ -1,15 +1,22 @@
 import { useMemo, useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { buildNavigateAdminTabPath } from "@/lib/admin-workspace-routing";
 import { format, parseISO } from "date-fns";
 import {
     UserCheck, LogOut, Clock, MapPin, CheckCircle2, AlertCircle,
-    Loader2, ShieldAlert, Navigation, WifiOff, Users, CalendarDays,
+    Loader2, ShieldAlert, WifiOff, Users, CalendarDays,
     Timer, Activity, ArrowRight, ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { attendanceApi } from "@/lib/api";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import type { AttendanceRecord } from "@shared/schema";
+import {
+    AttendanceLocationViewer,
+    ViewLocationButton,
+} from "@/components/admin/attendance/AttendanceLocationViewer";
+import { presentGeofenceStatus } from "@/lib/attendance-location";
 
 type GpsState = "idle" | "locating" | "ready" | "denied" | "error";
 interface GpsLocation { lat: number; lng: number; accuracy: number }
@@ -27,10 +34,6 @@ function captureLocation(opts?: { timeout?: number; maximumAge?: number }): Prom
             { timeout: opts?.timeout ?? 12000, maximumAge: opts?.maximumAge ?? 5000, enableHighAccuracy: true },
         );
     });
-}
-
-function mapsUrl(lat: number, lng: number) {
-    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
 }
 
 function formatT(t: string | Date | null | undefined) {
@@ -84,15 +87,6 @@ function GpsBar({ state, location }: { state: GpsState; location: GpsLocation | 
                             : `Location ready (+-${Math.round(location.accuracy)}m)`}
                     </span>
                 </div>
-                <a
-                    href={mapsUrl(location.lat, location.lng)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1.5 flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
-                >
-                    <Navigation className="h-2.5 w-2.5" />
-                    Open in Google Maps
-                </a>
             </div>
         );
     }
@@ -101,28 +95,32 @@ function GpsBar({ state, location }: { state: GpsState; location: GpsLocation | 
 
 function GeofenceBadge({ status }: { status: string | null | undefined }) {
     if (!status) return null;
-    if (status === "inside_office") {
-        return (
-            <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-2 py-0.5 text-[10px] font-bold text-emerald-700">
-                <MapPin className="h-2.5 w-2.5" />In Office
-            </span>
-        );
-    }
-    if (status === "outside_office") {
-        return (
-            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700">
-                <MapPin className="h-2.5 w-2.5" />Outside Office
-            </span>
-        );
-    }
+    const p = presentGeofenceStatus(status);
+    const cls =
+        p.tone === "success"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+            : p.tone === "warning"
+              ? "bg-amber-50 border-amber-200 text-amber-700"
+              : p.tone === "neutral"
+                ? "bg-sky-50 border-sky-200 text-sky-800"
+                : "bg-slate-100 border-slate-200 text-slate-500";
     return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-500">
-            <MapPin className="h-2.5 w-2.5" />Unverified
+        <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${cls}`}>
+            <MapPin className="h-2.5 w-2.5" />
+            {p.key === "inside" ? "In Office" : p.key === "outside" ? "Outside Office" : p.label}
         </span>
     );
 }
 
-function HistoryCard({ record, now }: { record: AttendanceRecord; now: Date }) {
+function HistoryCard({
+    record,
+    now,
+    onViewLocation,
+}: {
+    record: AttendanceRecord;
+    now: Date;
+    onViewLocation: (record: AttendanceRecord) => void;
+}) {
     return (
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
             <div className="flex items-start justify-between gap-2">
@@ -135,17 +133,14 @@ function HistoryCard({ record, now }: { record: AttendanceRecord; now: Date }) {
                         )}
                     </div>
                 </div>
-                {record.checkInLat != null && record.checkInLng != null && (
-                    <a
-                        href={mapsUrl(record.checkInLat, record.checkInLng)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"
-                        aria-label="Open shift location in Google Maps"
-                    >
-                        <Navigation className="h-3.5 w-3.5" />
-                    </a>
-                )}
+                <button
+                    type="button"
+                    onClick={() => onViewLocation(record)}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600"
+                    aria-label="View shift location"
+                >
+                    <MapPin className="h-3.5 w-3.5" />
+                </button>
             </div>
             <div className="mt-3 grid grid-cols-3 gap-2">
                 <div className="rounded-xl bg-slate-50 px-2 py-2">
@@ -166,7 +161,9 @@ function HistoryCard({ record, now }: { record: AttendanceRecord; now: Date }) {
 }
 
 function SuperAdminShiftMonitor({ now }: { now: Date }) {
+    const [, setLocation] = useLocation();
     const [kpiOpen, setKpiOpen] = useState(false);
+    const [viewerRecord, setViewerRecord] = useState<AttendanceRecord | null>(null);
 
     const { data: allAttendance = [], isLoading } = useQuery({
         queryKey: ["allAttendance"],
@@ -241,7 +238,7 @@ function SuperAdminShiftMonitor({ now }: { now: Date }) {
                 type="button"
                 variant="outline"
                 className="h-11 w-full rounded-2xl border-slate-200 bg-white text-sm font-black text-slate-700"
-                onClick={() => { window.location.hash = "#attendance"; }}
+                onClick={() => setLocation(buildNavigateAdminTabPath("attendance"))}
             >
                 Open Full Attendance Report
                 <ArrowRight className="ml-2 h-4 w-4" />
@@ -285,46 +282,65 @@ function SuperAdminShiftMonitor({ now }: { now: Date }) {
                                 <div className="text-xs font-black text-slate-800">{durationText(record.checkInTime, record.checkOutTime, now)}</div>
                             </div>
                         </div>
-                        {record.checkInLat != null && record.checkInLng != null && (
-                            <a
-                                href={mapsUrl(record.checkInLat, record.checkInLng)}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="mt-2 flex items-center gap-1 border-t border-slate-100 pt-2 text-[10px] font-bold text-blue-600"
-                            >
-                                <Navigation className="h-2.5 w-2.5" />
-                                Open in Google Maps
-                            </a>
-                        )}
+                        <div className="mt-2 border-t border-slate-100 pt-2">
+                            <ViewLocationButton
+                                compact
+                                onClick={() => setViewerRecord(record)}
+                            />
+                        </div>
                     </div>
                 ))}
             </div>
+
+            <AttendanceLocationViewer
+                open={Boolean(viewerRecord)}
+                onOpenChange={(o) => { if (!o) setViewerRecord(null); }}
+                recordId={viewerRecord?.id ?? null}
+                employeeName={viewerRecord?.userName}
+                recordDate={viewerRecord?.date}
+            />
         </div>
     );
 }
 
 export default function ShiftTab() {
-    const { user } = useAdminAuth();
+    const { user, permissions } = useAdminAuth();
     const qc = useQueryClient();
     const [gpsState, setGpsState] = useState<GpsState>("idle");
     const [location, setLocation] = useState<GpsLocation | null>(null);
     const [now, setNow] = useState(() => new Date());
+    const [viewerRecord, setViewerRecord] = useState<AttendanceRecord | null>(null);
     const isSuperAdmin = user?.role === "Super Admin";
+    // Self check-in only — not attendance.view alone.
+    const canCheckIn =
+        isSuperAdmin ||
+        (permissions as Record<string, boolean | undefined>)["attendance.checkIn"] === true ||
+        (permissions as Record<string, boolean | undefined>).attendance === true;
 
     const { data: record, isLoading } = useQuery<AttendanceRecord | null>({
         queryKey: ["attendanceToday"],
         queryFn: attendanceApi.getToday,
         refetchInterval: 60_000,
         staleTime: 30_000,
-        enabled: !isSuperAdmin,
+        enabled: canCheckIn && !isSuperAdmin,
+        retry: false,
     });
 
     const { data: history = [] } = useQuery<AttendanceRecord[]>({
         queryKey: ["attendanceMyHistory", 7],
         queryFn: () => attendanceApi.getMyHistory(7),
         staleTime: 60_000,
-        enabled: !isSuperAdmin,
+        enabled: canCheckIn && !isSuperAdmin,
+        retry: false,
     });
+
+    useEffect(() => {
+        if (canCheckIn) return;
+        qc.cancelQueries({ queryKey: ["attendanceToday"] });
+        qc.removeQueries({ queryKey: ["attendanceToday"] });
+        qc.cancelQueries({ queryKey: ["attendanceMyHistory"] });
+        qc.removeQueries({ queryKey: ["attendanceMyHistory"] });
+    }, [canCheckIn, qc]);
 
     const isCheckedIn = !!record?.checkInTime;
     const isCheckedOut = !!record?.checkOutTime;
@@ -397,9 +413,23 @@ export default function ShiftTab() {
         return <SuperAdminShiftMonitor now={now} />;
     }
 
+    if (!canCheckIn) {
+        return (
+            <div className="bg-[#f8fafc] px-3 pt-8 text-center space-y-2">
+                <h1 className="text-base font-black text-slate-900">My Shift</h1>
+                <p className="text-sm text-slate-500">You do not have check-in permission.</p>
+            </div>
+        );
+    }
+
     const today = format(now, "EEEE, d MMM yyyy");
     const mutationError = (checkIn.error as any)?.message || (checkOut.error as any)?.message || null;
-    const checkInDisabled = checkIn.isPending || gpsState === "denied" || gpsState === "locating" || gpsState === "idle";
+    const checkInDisabled =
+        !canCheckIn ||
+        checkIn.isPending ||
+        gpsState === "denied" ||
+        gpsState === "locating" ||
+        gpsState === "idle";
 
     return (
         <div
@@ -456,17 +486,9 @@ export default function ShiftTab() {
                     </div>
                 )}
 
-                {isCheckedIn && record?.checkInLat != null && record?.checkInLng != null && (
+                {isCheckedIn && record && (
                     <div className="mt-2 pt-2 border-t border-slate-200/60">
-                        <a
-                            href={mapsUrl(record.checkInLat, record.checkInLng)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-[10px] text-blue-600 hover:underline"
-                        >
-                            <Navigation className="h-2.5 w-2.5" />
-                            View check-in location in Google Maps
-                        </a>
+                        <ViewLocationButton compact onClick={() => setViewerRecord(record)} />
                     </div>
                 )}
             </div>
@@ -532,9 +554,22 @@ export default function ShiftTab() {
                         <p className="mt-1 text-xs text-slate-500">Your check-ins will appear here for quick review.</p>
                     </div>
                 ) : history.map((item) => (
-                    <HistoryCard key={item.id} record={item} now={now} />
+                    <HistoryCard
+                        key={item.id}
+                        record={item}
+                        now={now}
+                        onViewLocation={setViewerRecord}
+                    />
                 ))}
             </div>
+
+            <AttendanceLocationViewer
+                open={Boolean(viewerRecord)}
+                onOpenChange={(o) => { if (!o) setViewerRecord(null); }}
+                recordId={viewerRecord?.id ?? null}
+                employeeName={viewerRecord?.userName ?? user?.name}
+                recordDate={viewerRecord?.date}
+            />
         </div>
     );
 }

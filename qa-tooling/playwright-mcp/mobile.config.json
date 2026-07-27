@@ -1,0 +1,31 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "isolated": true,
+    "launchOptions": {
+      "channel": "chrome",
+      "headless": false
+    },
+    "contextOptions": {
+      "viewport": { "width": 390, "height": 844 },
+      "isMobile": true,
+      "hasTouch": true,
+      "deviceScaleFactor": 3,
+      "userAgent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1",
+      "locale": "en-US",
+      "timezoneId": "Asia/Dhaka"
+    }
+  },
+  "capabilities": ["core", "vision", "devtools", "network", "testing"],
+  "imageResponses": "allow",
+  "console": { "level": "warning" },
+  "saveSession": false,
+  "outputDir": "mobile-qa/grok-playwright-mcp-02/_unused-static-mobile",
+  "testIdAttribute": "data-testid",
+  "timeouts": {
+    "action": 10000,
+    "navigation": 60000,
+    "expect": 8000
+  },
+  "snapshot": { "mode": "full" }
+}

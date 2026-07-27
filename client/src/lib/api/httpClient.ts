@@ -6,10 +6,12 @@ const API_BASE = `${API_BASE_URL}/api`;
 export class ApiError extends Error {
     code?: string;
     statusCode?: number;
-    constructor(message: string, code?: string, statusCode?: number) {
+    data?: unknown;
+    constructor(message: string, code?: string, statusCode?: number, data?: unknown) {
         super(message);
         this.code = code;
         this.statusCode = statusCode;
+        this.data = data;
         this.name = 'ApiError';
     }
 }
@@ -111,8 +113,8 @@ export async function fetchApi<T>(url: string, options?: FetchApiOptions): Promi
             // Use message from server if available, fallback to error code or default
             const message = errorData.message || errorData.error || "Request failed";
             // Use error code from server (e.g. AI_SERVICE_UNAVAILABLE)
-            const code = errorData.error || errorData.code;
-            throw new ApiError(message, code, response.status);
+            const code = errorData.code || errorData.error;
+            throw new ApiError(message, code, response.status, errorData);
         }
     }
 

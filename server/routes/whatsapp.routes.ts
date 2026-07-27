@@ -216,24 +216,44 @@ async function processResponse(
     if (response.booking?.action === "BOOK_TICKET") {
         try {
             const booking = response.booking;
-            const newRequest = await storage.createServiceRequest({
+            const { createRetailServiceRequest } = await import('../services/retail-intake.service.js');
+            const result = await createRetailServiceRequest({
                 brand: booking.brand,
                 primaryIssue: booking.issue,
                 description: booking.description ?? "Via WhatsApp",
                 customerName: booking.customer_name ?? "WhatsApp User",
                 phone: booking.phone ?? senderPhone,
                 address: booking.address,
-                status: "Pending",
-                trackingStatus: "Request Received",
-                source: "WhatsApp",
-            } as any);
+                intakeSource: "whatsapp",
+                initialTrackingStatus: "Request Received",
+            });
 
+            if (result.duplicateWindow) {
+                await sendWhatsApp(
+                    senderPhone,
+                    "We already received a similar request. Our team will contact you soon.",
+                );
+                return;
+            }
+
+            if (result.idempotent) {
+                return;
+            }
+
+            const newRequest = result.serviceRequest;
             await sendWhatsApp(
                 senderPhone,
                 `✅ আপনার টিকিট কনফার্ম হয়েছে!\nTicket ID: ${newRequest.ticketNumber}\nআমরা শীঘ্রই আপনার সাথে যোগাযোগ করব।`
             );
-        } catch (err) {
-            console.error("[WhatsApp] Failed to create ticket:", err);
+        } catch (err: any) {
+            if (err?.name === "IntakeError" || err?.code === "INVALID_PHONE") {
+                await sendWhatsApp(
+                    senderPhone,
+                    "Please provide a valid Bangladesh mobile number (e.g. 01XXXXXXXXX) so we can create your ticket.",
+                );
+                return;
+            }
+            console.error("[WhatsApp] Failed to create ticket:", err?.message || err);
             await sendWhatsApp(senderPhone, "⚠️ দুঃখিত, টিকিট জেনারেট করতে সমস্যা হচ্ছে। আমাদের হটলাইনে কল করুন।");
         }
     }

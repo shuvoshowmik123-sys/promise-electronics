@@ -367,9 +367,9 @@ router.post('/api/warranty-claims/:id/create-job', requireGranularPermission('wa
             return res.status(404).json({ error: 'Original job not found' });
         }
 
-        const newJob = await storage.createJobTicket({
-            ...originalJob,
-            id: await jobRepo.getNextJobNumber(),
+        const { id: _drop, ...originalJobWithoutId } = originalJob as any;
+        const newJob = await jobRepo.createJobTicket({
+            ...originalJobWithoutId,
             parentJobId: claim.originalJobId,
             serviceAreaId: originalJob.corporateClientId || originalJob.corporateChallanId ? undefined : originalJob.serviceAreaId || undefined,
             jobType: 'warranty_claim',

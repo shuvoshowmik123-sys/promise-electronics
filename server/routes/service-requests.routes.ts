@@ -10,11 +10,11 @@ import { createHash, randomUUID } from 'crypto';
 
 import { jobRepo, serviceRequestRepo, userRepo, systemRepo, settingsRepo, notificationRepo } from '../repositories/index.js';
 import { insertServiceRequestSchema, otpCodes, type ServiceRequest } from '../../shared/schema.js';
-import { requireAdminAuth, requireGranularPermission, requireSuperAdmin } from './middleware/auth.js';
+import { requireAdminAuth, requireCustomerAuth, requireGranularPermission, requireSuperAdmin, getCustomerId } from './middleware/auth.js';
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { serviceRequestLimiter } from './middleware/rate-limit.js';
 import { auditLogger } from '../utils/auditLogger.js';
-import { jobService } from '../services/job.service.js';
+import { jobService, JobOwnsLifecycleError } from '../services/job.service.js';
 import { publishJobTicketEvent, publishServiceRequestEvent } from '../services/admin-realtime.service.js';
 import { deriveTrackingStatus } from '../lib/workflowAutomation.js';
 import { logRouteError } from '../utils/route-error.js';
@@ -25,6 +25,27 @@ import { repairJourneyService } from '../services/customer-repair-journey.servic
 import { loadRepairCaseByServiceRequest } from '../services/repair-case.service.js';
 import { getCallAttempts, createCallAttempt, updateCallAttempt, getIntakeSummaryBulk } from '../services/call-attempt.service.js';
 import { getActiveServiceAreaById } from '../repositories/service-area.repository.js';
+import { deriveServiceRequestPaymentState, applyDerivedPaymentState } from '../services/service-request-payment-projection.service.js';
+import {
+    sendOrPriceQuote,
+    acceptRetailQuote,
+    declineRetailQuote,
+    listAdminAcceptancesForServiceRequest,
+    RetailQuoteError,
+    attachCanonicalQuoteView,
+} from '../services/retail-quote.service.js';
+import {
+    createRetailServiceRequest,
+    IntakeError,
+    parseIdempotencyKeyHeader,
+    sanitizePublicServiceRequest,
+} from '../services/retail-intake.service.js';
+import {
+    assertNoWorkflowForge,
+    pickSafeServiceRequestPatch,
+    WorkflowManagedError,
+    SERVICE_REQUEST_WORKFLOW_MANAGED,
+} from '../services/service-request-mutation.guard.js';
 
 const router = Router();
 const SERVICE_REQUEST_REALTIME_TAGS = ["serviceRequests", "dashboardStats"] as const;
@@ -68,35 +89,67 @@ function getCustodyLabel(request: ServiceRequest, action: string): string {
  */
 router.get('/api/service-requests', requireAdminAuth, requireGranularPermission('serviceRequests.view'), async (req: Request, res: Response) => {
     try {
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = parseInt(req.query.limit as string) || 50;
-        const status = req.query.status as string;
-        const servicePreference = req.query.servicePreference as string;
+        // 01E: clamp unbounded page/limit; SQL filter/sort/total
+        const pageRaw = parseInt(String(req.query.page ?? "1"), 10);
+        const limitRaw = parseInt(String(req.query.limit ?? "50"), 10);
+        const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+        const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(100, limitRaw) : 50;
+        const status = typeof req.query.status === "string" ? req.query.status : undefined;
+        const servicePreference = typeof req.query.servicePreference === "string" ? req.query.servicePreference : undefined;
+        const search = typeof req.query.search === "string" ? req.query.search : undefined;
+        const sort = req.query.sort === "ticketNumber" ? "ticketNumber" as const : "createdAt" as const;
+        const order = req.query.order === "asc" ? "asc" as const : "desc" as const;
 
-        let items = await serviceRequestRepo.getAllServiceRequests();
-        if (status) items = items.filter(r => r.status === status);
-        if (servicePreference) items = items.filter(r => r.servicePreference === servicePreference);
+        let listed;
+        try {
+            listed = await serviceRequestRepo.listServiceRequestsPaginated({
+                page,
+                limit,
+                status,
+                servicePreference,
+                search,
+                sort,
+                order,
+            });
+        } catch (error: any) {
+            if (error?.code === "SERVICE_REQUEST_LIST_UNAVAILABLE" || error?.statusCode === 503) {
+                return res.status(503).json({ error: error.message, code: "SERVICE_REQUEST_LIST_UNAVAILABLE" });
+            }
+            throw error;
+        }
+        const items = listed.items;
 
-        // Batch-fetch all linked job tickets in ONE load (was an N+1: each
-        // getJobTicket() call loaded the whole job_tickets table).
+        // Enrich only the current page (not the full table)
         const linkedJobIds = items
             .filter(i => (i.status === 'Work Order' || i.status === 'Converted') && i.convertedJobId)
             .map(i => i.convertedJobId as string);
         const linkedJobs = await jobRepo.getJobTicketsByIds(linkedJobIds);
 
-        // Derive tracking status for each item
-        const enrichedItems = items.map((item) => {
+        const enrichedItems = await Promise.all(items.map(async (item) => {
             let jobStatus = undefined;
             let jobTechnician = undefined;
+            let derivedPayment: { paymentStatus: string; paidAmount: number | null; estimatedCost: number | null; paymentSource: 'job' | 'service_request' | 'none' } | undefined;
             if ((item.status === 'Work Order' || item.status === 'Converted') && item.convertedJobId) {
                 const jobTicket = linkedJobs.get(item.convertedJobId);
                 if (jobTicket) {
                     jobStatus = jobTicket.status;
                     jobTechnician = jobTicket.technician;
+                    derivedPayment = {
+                        paymentStatus: String(jobTicket.paymentStatus ?? 'unpaid'),
+                        paidAmount: jobTicket.paidAmount != null ? Number(jobTicket.paidAmount) : null,
+                        estimatedCost: jobTicket.estimatedCost != null ? Number(jobTicket.estimatedCost) : null,
+                        paymentSource: 'job',
+                    };
                 }
+            }
+            if (!derivedPayment) {
+                const state = await deriveServiceRequestPaymentState(item);
+                derivedPayment = state;
             }
             return {
                 ...item,
+                paymentStatus: derivedPayment.paymentStatus,
+                derivedPayment,
                 trackingStatus: deriveTrackingStatus(
                     item.status,
                     (item.servicePreference || item.serviceMode || "service_center") as any,
@@ -105,16 +158,16 @@ router.get('/api/service-requests', requireAdminAuth, requireGranularPermission(
                     item.scheduledPickupDate || item.expectedPickupDate
                 )
             };
-        });
+        }));
 
-        const result = {
+        // Preserve legacy top-level pagination fields used by admin clients
+        res.json({
             items: enrichedItems,
-            total: enrichedItems.length,
-            page: 1,
-            limit: enrichedItems.length > 0 ? enrichedItems.length : 50,
-            totalPages: 1
-        };
-        res.json(result);
+            total: listed.total,
+            page: listed.page,
+            limit: listed.limit,
+            totalPages: listed.totalPages,
+        });
     } catch (error) {
         logRouteError('ServiceRequests.List', req, error);
         res.status(500).json({ error: 'Failed to fetch service requests' });
@@ -142,8 +195,10 @@ router.get('/api/service-requests/:id', requireAdminAuth, requireGranularPermiss
             }
         }
 
-        const enrichedRequest = {
-            ...request,
+        const paymentState = await deriveServiceRequestPaymentState(request);
+        const enrichedRequest = applyDerivedPaymentState(request, paymentState);
+        const enrichedWithTracking = {
+            ...enrichedRequest,
             trackingStatus: deriveTrackingStatus(
                 request.status,
                 (request.servicePreference || request.serviceMode || "service_center") as any,
@@ -153,7 +208,7 @@ router.get('/api/service-requests/:id', requireAdminAuth, requireGranularPermiss
             )
         };
 
-        res.json(enrichedRequest);
+        res.json(enrichedWithTracking);
     } catch (error: any) {
         logRouteError('ServiceRequests.Detail', req, error);
         res.status(500).json({ error: 'Failed to fetch service request', details: error.message });
@@ -218,6 +273,7 @@ router.post('/api/admin/service-requests/sync-job/:jobId', requireAdminAuth, req
 
 /**
  * POST /api/service-requests - Create service request (rate limited - 10/hour)
+ * SERVICE-INTAKE-RELIABILITY-01C: Uses canonical retail intake service with idempotency + duplicate window.
  */
 router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ? [serviceRequestLimiter] : []), async (req: Request, res: Response) => {
     try {
@@ -230,54 +286,48 @@ router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ?
             }
         }
 
-        if (validated.mediaUrls) {
-            const thirtyDaysFromNow = new Date();
-            thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
-            (validated as any).expiresAt = thirtyDaysFromNow;
+        const idempotencyKey = parseIdempotencyKeyHeader(req.headers['idempotency-key']);
+        const customerId = req.session?.customerId || null;
+
+        const initialTrackingStatus =
+            validated.servicePreference === 'service_center' ? 'Awaiting Drop-off'
+            : validated.servicePreference === 'home_pickup' ? 'Arriving to Receive'
+            : 'Request Received';
+
+        const result = await createRetailServiceRequest({
+            brand: validated.brand,
+            primaryIssue: validated.primaryIssue,
+            customerName: validated.customerName,
+            phone: validated.phone,
+            screenSize: validated.screenSize || null,
+            modelNumber: validated.modelNumber || null,
+            symptoms: validated.symptoms || null,
+            description: validated.description || null,
+            address: validated.address || null,
+            mediaUrls: validated.mediaUrls || null,
+            servicePreference: validated.servicePreference || null,
+            serviceMode: validated.serviceMode || null,
+            requestIntent: validated.requestIntent || null,
+            serviceId: (validated as any).serviceId || null,
+            serviceAreaId: (validated as any).serviceAreaId || null,
+            customerId,
+            intakeSource: customerId ? "customer_portal" : "public_web",
+            idempotencyKey,
+            initialTrackingStatus,
+        });
+
+        if (result.duplicateWindow) {
+            return res.status(202).json({
+                error: "We already received a similar request. Our team will contact you soon.",
+                code: "DUPLICATE_REQUEST_WINDOW",
+            });
         }
 
-        let request = await serviceRequestRepo.createServiceRequest(validated);
-
-        let trackingStatus = 'Request Received';
-        if (validated.servicePreference === 'service_center') {
-            trackingStatus = 'Awaiting Drop-off';
-        } else if (validated.servicePreference === 'home_pickup') {
-            trackingStatus = 'Arriving to Receive';
+        if (result.idempotent) {
+            return res.status(200).json(sanitizePublicServiceRequest(result.serviceRequest as any));
         }
 
-        if (trackingStatus !== 'Request Received') {
-            request = await serviceRequestRepo.updateServiceRequest(request.id, { trackingStatus }) || request;
-        }
-
-        let customerIdToLink = req.session?.customerId;
-
-        if (!customerIdToLink && validated.phone) {
-            let user = await userRepo.getUserByPhoneNormalized(validated.phone);
-
-            if (!user) {
-                // Auto-create a customer account if they don't exist
-                const { nanoid } = await import('nanoid');
-                user = await userRepo.createUser({
-                    name: validated.customerName,
-                    phone: validated.phone,
-                    role: 'Customer',
-                    status: 'Active',
-                    password: await bcrypt.hash(nanoid(), 12),
-                    address: validated.address || null,
-                    permissions: '{}'
-                });
-            }
-
-            customerIdToLink = user.id;
-        }
-
-        if (customerIdToLink) {
-            await serviceRequestRepo.linkServiceRequestToCustomer(request.id, customerIdToLink);
-            const linkedRequest = await serviceRequestRepo.getServiceRequest(request.id);
-            if (linkedRequest) {
-                request = linkedRequest;
-            }
-        }
+        const request = result.serviceRequest;
 
         publishServiceRequestEvent({
             action: 'created',
@@ -302,111 +352,92 @@ router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ?
             : 'drop_off' as const;
         repairJourneyService.createJourneyFromServiceRequest({
             serviceRequestId: request.id,
-            customerId: customerIdToLink || null,
+            customerId: request.customerId || null,
             serviceMode: srServiceMode,
             customerNote: validated.description || undefined,
         }).catch(err => console.error('[RepairJourney] Failed to create journey from service request:', err));
 
-        res.status(201).json(request);
+        res.status(201).json(sanitizePublicServiceRequest(request as any));
     } catch (error: any) {
-        console.error('[ServiceRequests] Validation error:', (error as Error).message);
+        if (error instanceof IntakeError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error('[ServiceRequests] Intake error:', (error as Error).message);
         res.status(400).json({ error: 'Invalid service request data' });
     }
 });
 
 /**
- * PATCH /api/service-requests/:id - Update service request
- * PROTECTED: Admin only
+ * PATCH /api/service-requests/:id - Safe non-workflow field edits only (01D).
+ * Workflow/quote fields → 409 SERVICE_REQUEST_WORKFLOW_MANAGED (no writes/side effects).
+ * PROTECTED: Admin only + serviceRequests.edit
  */
 router.patch('/api/service-requests/:id', requireAdminAuth, requireGranularPermission('serviceRequests.edit'), async (req: Request, res: Response) => {
     try {
-        const updateData = { ...req.body };
-        if (updateData.trackingStatus) delete updateData.trackingStatus;
+        const body = (req.body && typeof req.body === 'object') ? req.body as Record<string, unknown> : {};
+
+        // Fail closed on protected workflow fields — do not strip and continue.
+        try {
+            assertNoWorkflowForge(body);
+        } catch (e) {
+            if (e instanceof WorkflowManagedError) {
+                return res.status(409).json({
+                    error: e.message,
+                    code: SERVICE_REQUEST_WORKFLOW_MANAGED,
+                });
+            }
+            throw e;
+        }
+
+        const updateData = pickSafeServiceRequestPatch(body);
+        if (Object.keys(updateData).length === 0) {
+            return res.status(400).json({ error: 'No valid fields to update' });
+        }
 
         if (updateData.serviceAreaId !== undefined && updateData.serviceAreaId !== null) {
-            const area = await getActiveServiceAreaById(updateData.serviceAreaId);
+            const area = await getActiveServiceAreaById(updateData.serviceAreaId as string);
             if (!area) {
                 return res.status(400).json({ error: 'Invalid or inactive service area' });
             }
         }
 
-        if (updateData.status === 'Work Order' || updateData.status === 'Converted') {
-            const existingRequest = await serviceRequestRepo.getServiceRequest(req.params.id);
-            if (!existingRequest) {
-                return res.status(404).json({ error: 'Service request not found' });
-            }
-
-            if (!existingRequest.convertedJobId) {
-                return res.status(409).json({
-                    error: 'Device custody must be confirmed before creating a job ticket',
-                    nextAction: 'Use Verify & Convert after pickup/drop-off is confirmed',
-                });
-            }
-
-            updateData.status = 'Work Order';
-        }
-
-        // Convert date strings to Date objects
         if (updateData.scheduledPickupDate && typeof updateData.scheduledPickupDate === 'string') {
-            updateData.scheduledPickupDate = new Date(updateData.scheduledPickupDate);
+            updateData.scheduledPickupDate = new Date(updateData.scheduledPickupDate as string);
+        }
+        if (updateData.estimatedDelivery && typeof updateData.estimatedDelivery === 'string') {
+            updateData.estimatedDelivery = new Date(updateData.estimatedDelivery as string);
+        }
+        for (const dk of ['expectedPickupDate', 'expectedReturnDate', 'expectedReadyDate'] as const) {
+            if (updateData[dk] && typeof updateData[dk] === 'string') {
+                updateData[dk] = new Date(updateData[dk] as string);
+            }
         }
 
-        const request = await serviceRequestRepo.updateServiceRequest(req.params.id, updateData);
+        const request = await serviceRequestRepo.updateServiceRequest(req.params.id, updateData as any);
         if (!request) {
             return res.status(404).json({ error: 'Service request not found' });
         }
 
-        // Notify customer if they have a linked account
-        if (request.customerId && (req.body.trackingStatus || req.body.paymentStatus || req.body.status)) {
-            notifyCustomerUpdate(request.customerId, {
-                type: 'order_update',
-                orderId: request.id,
-                ticketNumber: request.ticketNumber,
-                trackingStatus: request.trackingStatus,
-                paymentStatus: request.paymentStatus,
-                status: request.status,
-                convertedJobId: request.convertedJobId,
-                updatedAt: new Date().toISOString()
-            });
-
-            const notificationTitle = req.body.trackingStatus
-                ? `Update: ${req.body.trackingStatus}`
-                : req.body.status
-                    ? `Status: ${req.body.status}`
-                    : 'Service Request Updated';
-
-            const notificationMessage = req.body.trackingStatus
-                ? `Your service request #${request.ticketNumber} is now ${req.body.trackingStatus}`
-                : `Your service request #${request.ticketNumber} has been updated.`;
-
-            const notification = await notificationRepo.createNotification({
-                userId: request.customerId,
-                title: notificationTitle,
-                message: notificationMessage,
-                type: 'repair',
-                link: `/native/bookings`,
-            });
-
-            notifyCustomerUpdate(request.customerId, {
-                type: 'notification',
-                data: notification
-            });
-        }
-
         publishServiceRequestEvent({
-            action: req.body.trackingStatus || req.body.status ? 'status_changed' : 'updated',
+            action: 'updated',
             entityId: request.id,
             invalidate: [...SERVICE_REQUEST_REALTIME_TAGS],
             permissions: ['serviceRequests'],
             payload: {
                 serviceRequestId: request.id,
                 ticketNumber: request.ticketNumber || request.id,
-                status: request.status || request.trackingStatus || undefined,
+                status: request.status || undefined,
             },
         });
 
         res.json(request);
     } catch (error) {
+        if (error instanceof WorkflowManagedError) {
+            return res.status(409).json({
+                error: error.message,
+                code: SERVICE_REQUEST_WORKFLOW_MANAGED,
+            });
+        }
         console.error('Failed to update service request:', error);
         res.status(500).json({ error: 'Failed to update service request' });
     }
@@ -504,9 +535,20 @@ router.post('/api/admin/service-requests/:id/transition-stage', requireAdminAuth
             return res.status(404).json({ error: 'Service request not found' });
         }
 
-        const result = await jobService.transitionStage(req.params.id, stage, actor);
+        let result: Awaited<ReturnType<typeof jobService.transitionStage>>;
+        try {
+            result = await jobService.transitionStage(req.params.id, stage, actor);
+        } catch (err) {
+            if (err instanceof JobOwnsLifecycleError) {
+                return res.status(409).json({
+                    error: err.message,
+                    code: err.code,
+                });
+            }
+            throw err;
+        }
 
-        // Audit Log
+        // Audit Log — only after successful mutation
         await auditLogger.log({
             userId: req.session.adminUserId!,
             action: 'TRANSITION_SERVICE_REQUEST_STAGE',
@@ -748,15 +790,8 @@ router.post(
         try {
             const { verificationNotes, priority } = req.body;
 
-            // Use user ID to get name, or fallback to Admin
             const user = await userRepo.getUser(req.session?.adminUserId!);
             const actorName = user?.name || 'Manager';
-
-            // Get existing service request for audit trail
-            const existingRequest = await serviceRequestRepo.getServiceRequest(req.params.id);
-            if (!existingRequest) {
-                return res.status(404).json({ error: 'Service request not found' });
-            }
 
             const result = await jobService.verifyAndConvertServiceRequest(
                 req.params.id,
@@ -765,72 +800,87 @@ router.post(
                 priority
             );
 
-            // Audit Log for Service Request conversion
-            await auditLogger.log({
-                userId: req.session?.adminUserId!,
-                action: 'VERIFY_AND_CONVERT_SERVICE_REQUEST',
-                entity: 'ServiceRequest',
-                entityId: req.params.id,
-                details: `Service request verified and converted to Job Ticket ${result.jobTicket.id} by ${actorName}. Priority: ${priority}. ${verificationNotes ? `Notes: ${verificationNotes}` : ''}`,
-                oldValue: {
-                    status: existingRequest.status,
-                    stage: existingRequest.stage,
-                    convertedJobId: existingRequest.convertedJobId
-                },
-                newValue: {
-                    status: result.serviceRequest.status,
-                    stage: result.serviceRequest.stage,
-                    convertedJobId: result.serviceRequest.convertedJobId
-                },
-                req: req
+            // Post-commit side effects: fire-and-forget — must not turn a committed conversion into 500
+            if (!result.idempotent) {
+                auditLogger.log({
+                    userId: req.session?.adminUserId!,
+                    action: 'VERIFY_AND_CONVERT_SERVICE_REQUEST',
+                    entity: 'ServiceRequest',
+                    entityId: req.params.id,
+                    details: `Service request verified and converted to Job Ticket ${result.jobTicket.id} by ${actorName}. Priority: ${priority}. ${verificationNotes ? `Notes: ${verificationNotes}` : ''}`,
+                    newValue: {
+                        status: result.serviceRequest.status,
+                        stage: result.serviceRequest.stage,
+                        convertedJobId: result.serviceRequest.convertedJobId
+                    },
+                    req: req
+                }).catch(() => {});
+
+                auditLogger.log({
+                    userId: req.session?.adminUserId!,
+                    action: 'CREATE_JOB_FROM_SERVICE_REQUEST',
+                    entity: 'JobTicket',
+                    entityId: result.jobTicket.id,
+                    details: `Job ticket created from Service Request ${req.params.id} by ${actorName}`,
+                    newValue: result.jobTicket,
+                    req: req
+                }).catch(() => {});
+
+                publishServiceRequestEvent({
+                    action: 'status_changed',
+                    entityId: result.serviceRequest.id,
+                    invalidate: [...SERVICE_REQUEST_REALTIME_TAGS],
+                    permissions: ['serviceRequests'],
+                    payload: {
+                        serviceRequestId: result.serviceRequest.id,
+                        ticketNumber: result.serviceRequest.ticketNumber || result.serviceRequest.id,
+                        status: result.serviceRequest.status || undefined,
+                    },
+                });
+
+                publishJobTicketEvent({
+                    action: 'created',
+                    entityId: result.jobTicket.id,
+                    invalidate: [...JOB_CREATE_REALTIME_TAGS],
+                    permissions: ['jobs'],
+                    payload: {
+                        jobId: result.jobTicket.id,
+                        ticketNumber: result.jobTicket.id,
+                        status: result.jobTicket.status,
+                    },
+                    toast: {
+                        level: 'success',
+                        title: 'Job ticket created',
+                        message: `Job ${result.jobTicket.id} is ready for assignment.`,
+                        sound: true,
+                    },
+                });
+
+                repairJourneyService.syncJobConversionToJourney(req.params.id, result.jobTicket.id)
+                    .catch((err) => console.error('[RepairJourney] Job conversion sync failed:', (err as Error).message));
+            }
+
+            res.status(result.idempotent ? 200 : 201).json({
+                serviceRequest: result.serviceRequest,
+                jobTicket: result.jobTicket,
+                idempotent: result.idempotent,
             });
-
-            // Audit Log for Job Ticket creation
-            await auditLogger.log({
-                userId: req.session?.adminUserId!,
-                action: 'CREATE_JOB_FROM_SERVICE_REQUEST',
-                entity: 'JobTicket',
-                entityId: result.jobTicket.id,
-                details: `Job ticket created from Service Request ${req.params.id} by ${actorName}`,
-                newValue: result.jobTicket,
-                req: req
-            });
-
-            publishServiceRequestEvent({
-                action: 'status_changed',
-                entityId: result.serviceRequest.id,
-                invalidate: [...SERVICE_REQUEST_REALTIME_TAGS],
-                permissions: ['serviceRequests'],
-                payload: {
-                    serviceRequestId: result.serviceRequest.id,
-                    ticketNumber: result.serviceRequest.ticketNumber || result.serviceRequest.id,
-                    status: result.serviceRequest.status || undefined,
-                },
-            });
-
-            publishJobTicketEvent({
-                action: 'created',
-                entityId: result.jobTicket.id,
-                invalidate: [...JOB_CREATE_REALTIME_TAGS],
-                permissions: ['jobs'],
-                payload: {
-                    jobId: result.jobTicket.id,
-                    ticketNumber: result.jobTicket.id,
-                    status: result.jobTicket.status,
-                },
-                toast: {
-                    level: 'success',
-                    title: 'Job ticket created',
-                    message: `Job ${result.jobTicket.id} is ready for assignment.`,
-                    sound: true,
-                },
-            });
-
-            repairJourneyService.syncJobConversionToJourney(req.params.id, result.jobTicket.id)
-                .catch((err) => console.error('[RepairJourney] Job conversion sync failed:', (err as Error).message));
-
-            res.json(result);
         } catch (error: any) {
+            if (error?.code === 'USE_RETAIL_QUOTE_CONVERT') {
+                return res.status(error.status || 409).json({ error: error.message, code: error.code });
+            }
+            if (error?.code === 'LINKED_JOB_MISSING') {
+                return res.status(error.status || 409).json({ error: error.message, code: error.code });
+            }
+            if (error?.code === 'INVALID_STAGE') {
+                return res.status(error.status || 400).json({ error: error.message, code: error.code });
+            }
+            if (error?.code === 'NOT_FOUND') {
+                return res.status(404).json({ error: error.message });
+            }
+            if (process.env.NODE_ENV === "test" && error?.message?.includes("TEST_FAIL_POINT")) {
+                return res.status(500).json({ error: "Conversion failed due to forced test failure", code: "TEST_FAIL_POINT" });
+            }
             console.error('[ServiceRequests] Failed to verify and convert:', (error as Error).message);
             res.status(400).json({ error: error.message || 'Failed to verify and convert request' });
         }
@@ -918,10 +968,27 @@ router.put('/api/admin/service-requests/:id/expected-dates', requireAdminAuth, r
 
 /**
  * POST /api/admin/service-requests/:id/action - Execute contextual action
+ * Only actionId drives status — body cannot smuggle quote/workflow fields.
  */
 router.post('/api/admin/service-requests/:id/action', requireAdminAuth, requireGranularPermission('serviceRequests.transitionStage'), async (req: Request, res: Response) => {
     try {
-        const { actionId } = req.body;
+        const { actionId } = req.body || {};
+        // Reject bodies that try to forge quote/workflow columns alongside actionId
+        const smuggle = { ...(req.body || {}) };
+        delete smuggle.actionId;
+        delete smuggle.reason;
+        try {
+            assertNoWorkflowForge(smuggle);
+        } catch (e) {
+            if (e instanceof WorkflowManagedError) {
+                return res.status(409).json({
+                    error: e.message,
+                    code: SERVICE_REQUEST_WORKFLOW_MANAGED,
+                });
+            }
+            throw e;
+        }
+
         const request = await serviceRequestRepo.getServiceRequest(req.params.id);
         if (!request) return res.status(404).json({ error: 'Service request not found' });
 
@@ -1008,13 +1075,33 @@ router.post('/api/admin/service-requests/:id/action', requireAdminAuth, requireG
 
 /**
  * POST /api/admin/service-requests/:id/adjust-progress - Rollback/adjust workflow progress
+ * Only targetStatus/reason accepted — cannot smuggle quote fields.
  */
 router.post('/api/admin/service-requests/:id/adjust-progress', requireAdminAuth, requireGranularPermission('serviceRequests.transitionStage'), async (req: Request, res: Response) => {
     try {
-        const { targetStatus, reason } = req.body;
+        const { targetStatus, reason } = req.body || {};
+        if (!targetStatus || typeof targetStatus !== 'string') {
+            return res.status(400).json({ error: 'targetStatus is required' });
+        }
+        const smuggle = { ...(req.body || {}) };
+        delete smuggle.targetStatus;
+        delete smuggle.reason;
+        try {
+            assertNoWorkflowForge(smuggle);
+        } catch (e) {
+            if (e instanceof WorkflowManagedError) {
+                return res.status(409).json({
+                    error: e.message,
+                    code: SERVICE_REQUEST_WORKFLOW_MANAGED,
+                });
+            }
+            throw e;
+        }
+
         const request = await serviceRequestRepo.getServiceRequest(req.params.id);
         if (!request) return res.status(404).json({ error: 'Service request not found' });
 
+        // Explicit allowlist — never pass through full body
         const updatedRequest = await serviceRequestRepo.updateServiceRequest(req.params.id, {
             status: targetStatus
         });
@@ -1047,111 +1134,80 @@ router.post('/api/admin/service-requests/:id/adjust-progress', requireAdminAuth,
 
 /**
  * POST /api/admin/service-requests/:id/send-quote - Send quote to customer
+ * Canonical owner: retail-quote.service (00C-A)
  */
 router.post('/api/admin/service-requests/:id/send-quote', requireAdminAuth, requireGranularPermission('serviceRequests.quote'), async (req: Request, res: Response) => {
     try {
         const { quoteAmount, quoteNotes, quoteValidDays } = req.body;
+        const user = (req as any).user;
+        if (!user?.id) return res.status(401).json({ error: 'Admin authentication required' });
 
-        if (quoteAmount === undefined || isNaN(Number(quoteAmount)) || Number(quoteAmount) <= 0) {
-            return res.status(400).json({ error: 'A valid positive quote amount is required' });
-        }
+        const result = await sendOrPriceQuote(
+            req.params.id,
+            { quoteAmount, quoteNotes, quoteValidDays },
+            { kind: "admin", id: user.id, name: user.name || "Admin", role: user.role },
+            req,
+        );
 
-        const request = await serviceRequestRepo.getServiceRequest(req.params.id);
-        if (!request) return res.status(404).json({ error: 'Service request not found' });
-
-        if (request.requestIntent !== 'quote') {
-            return res.status(400).json({ error: 'Cannot send quote for a non-quote service request.' });
-        }
-
-        const validDays = Number(quoteValidDays) || 7;
-        const validUntil = new Date();
-        validUntil.setDate(validUntil.getDate() + validDays);
-
-        const updatedRequest = await serviceRequestRepo.updateServiceRequest(req.params.id, {
-            status: 'Quote Sent',
-            quoteAmount: Number(quoteAmount),
-            quoteNotes: quoteNotes || null,
-            quoteExpiresAt: validUntil,
+        const updatedRequest = result.serviceRequest;
+        publishServiceRequestEvent({
+            action: 'status_changed',
+            entityId: updatedRequest.id,
+            invalidate: [...SERVICE_REQUEST_REALTIME_TAGS],
+            permissions: ['serviceRequests'],
+            payload: {
+                serviceRequestId: updatedRequest.id,
+                status: updatedRequest.status,
+            },
         });
 
-        if (updatedRequest) {
-            await serviceRequestRepo.createServiceRequestEvent({
-                serviceRequestId: req.params.id,
-                status: 'Quote Sent',
-                message: `Quote sent for ৳${quoteAmount}. Notes: ${quoteNotes || 'None'}`,
-                actor: 'Admin',
+        if (updatedRequest.customerId) {
+            notifyCustomerUpdate(updatedRequest.customerId, {
+                type: 'order_update',
+                orderId: updatedRequest.id,
+                ticketNumber: updatedRequest.ticketNumber,
+                status: updatedRequest.status,
+                message: "You have received a new quote.",
+                updatedAt: new Date().toISOString()
             });
-
-            publishServiceRequestEvent({
-                action: 'status_changed',
-                entityId: updatedRequest.id,
-                invalidate: [...SERVICE_REQUEST_REALTIME_TAGS],
-                permissions: ['serviceRequests'],
-                payload: {
-                    serviceRequestId: updatedRequest.id,
-                    status: updatedRequest.status,
-                },
-            });
-
-            if (updatedRequest.customerId) {
-                notifyCustomerUpdate(updatedRequest.customerId, {
-                    type: 'order_update',
-                    orderId: updatedRequest.id,
-                    ticketNumber: updatedRequest.ticketNumber,
-                    status: updatedRequest.status,
-                    message: "You have received a new quote.",
-                    updatedAt: new Date().toISOString()
-                });
-            }
         }
 
-        res.json(updatedRequest);
+        res.json(attachCanonicalQuoteView(updatedRequest));
     } catch (error: any) {
-        res.status(500).json({ error: error.message || 'Failed to send quote' });
+        if (error instanceof RetailQuoteError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error('[ServiceRequests] send-quote failed:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to send quote' });
     }
 });
 
 /**
- * PATCH /api/service-requests/:id/quote-response - Customer responds to quote
+ * PATCH /api/service-requests/:id/quote-response — CUSTOMER ONLY (00C-A-HOTFIX)
+ * requireCustomerAuth enforces CSRF + stale session + ownership path in service.
  */
-router.patch('/api/service-requests/:id/quote-response', async (req: Request, res: Response) => {
-    try {
-        const { response } = req.body; // 'accepted' or 'rejected'
+router.patch(
+    '/api/service-requests/:id/quote-response',
+    requireCustomerAuth,
+    async (req: Request, res: Response) => {
+        try {
+            const { response } = req.body;
+            if (response !== 'accepted' && response !== 'rejected') {
+                return res.status(400).json({ error: 'Invalid response. Must be accepted or rejected.' });
+            }
 
-        if (response !== 'accepted' && response !== 'rejected') {
-            return res.status(400).json({ error: 'Invalid response. Must be accepted or rejected.' });
-        }
+            const customerId = getCustomerId(req);
+            if (!customerId) {
+                return res.status(401).json({ error: 'Authentication required', code: 'NOT_AUTHENTICATED' });
+            }
 
-        const request = await serviceRequestRepo.getServiceRequest(req.params.id);
-        if (!request) return res.status(404).json({ error: 'Service request not found' });
+            // Explicit customer actor only — never elevate if admin cookie also present
+            const actor = { kind: "customer" as const, id: customerId };
+            const outcome = response === 'accepted'
+                ? await acceptRetailQuote(req.params.id, actor, {}, req)
+                : await declineRetailQuote(req.params.id, actor, req);
 
-        // Verify user owns this request (or is admin)
-        const isOwner = req.session?.customerId && req.session.customerId === request.customerId;
-        const isAdmin = !!req.session?.adminUserId;
-
-        if (!isOwner && !isAdmin) {
-            return res.status(403).json({ error: 'Unauthorized to respond to this quote.' });
-        }
-
-        // Ensure request is in Quote Sent status
-        if (request.status !== 'Quote Sent') {
-            return res.status(400).json({ error: 'This request is not awaiting a quote response.' });
-        }
-
-        const newStatus = response === 'accepted' ? 'Quote Accepted' : 'Quote Rejected';
-
-        const updatedRequest = await serviceRequestRepo.updateServiceRequest(req.params.id, {
-            status: newStatus,
-        });
-
-        if (updatedRequest) {
-            await serviceRequestRepo.createServiceRequestEvent({
-                serviceRequestId: req.params.id,
-                status: newStatus,
-                message: `Quote was ${response} by customer.`,
-                actor: isAdmin ? 'Admin' : 'Customer',
-            });
-
+            const updatedRequest = outcome.serviceRequest;
             publishServiceRequestEvent({
                 action: 'status_changed',
                 entityId: updatedRequest.id,
@@ -1162,11 +1218,6 @@ router.patch('/api/service-requests/:id/quote-response', async (req: Request, re
                     status: updatedRequest.status,
                 },
             });
-
-            // Notify admins
-            if (!isAdmin) {
-                // ... (Admin notification logic could go here)
-            }
 
             const jStage = response === 'accepted' ? 'quote_accepted' as const : 'cancelled' as const;
             repairJourneyService.findJourneyByServiceRequest(req.params.id).then(async (journeyId) => {
@@ -1179,17 +1230,104 @@ router.patch('/api/service-requests/:id/quote-response', async (req: Request, re
                     message: response === 'accepted'
                         ? 'Quote accepted! We will schedule your service shortly.'
                         : 'Quote was declined by the customer.',
-                    actorType: isAdmin ? 'admin' : 'customer',
+                    actorType: 'customer',
                     isCustomerVisible: true,
                 });
             }).catch((err) => console.error('[RepairJourney] Quote response sync failed:', (err as Error).message));
-        }
 
-        res.json(updatedRequest);
-    } catch (error: any) {
-        res.status(500).json({ error: error.message || 'Failed to process quote response' });
-    }
-});
+            res.json(attachCanonicalQuoteView(updatedRequest));
+        } catch (error: any) {
+            if (error instanceof RetailQuoteError) {
+                return res.status(error.status).json({ error: error.message, code: error.code });
+            }
+            console.error('[ServiceRequests] customer quote-response failed:', (error as Error).message);
+            res.status(500).json({ error: 'Failed to process quote response' });
+        }
+    },
+);
+
+/**
+ * PATCH /api/admin/service-requests/:id/quote-response — ADMIN ONLY (00C-A-HOTFIX)
+ * requireAdminAuth + serviceRequests.quote + CSRF. Admin accept requires confirmationNote.
+ */
+router.patch(
+    '/api/admin/service-requests/:id/quote-response',
+    requireAdminAuth,
+    requireGranularPermission('serviceRequests.quote'),
+    async (req: Request, res: Response) => {
+        try {
+            const { response, confirmationNote } = req.body;
+            if (response !== 'accepted' && response !== 'rejected') {
+                return res.status(400).json({ error: 'Invalid response. Must be accepted or rejected.' });
+            }
+
+            const user = (req as any).user;
+            if (!user?.id) {
+                return res.status(401).json({ error: 'Admin authentication required' });
+            }
+
+            const actor = { kind: "admin" as const, id: user.id, name: user.name || "Admin", role: user.role };
+            const outcome = response === 'accepted'
+                ? await acceptRetailQuote(req.params.id, actor, { confirmationNote }, req)
+                : await declineRetailQuote(req.params.id, actor, req);
+
+            const updatedRequest = outcome.serviceRequest;
+            publishServiceRequestEvent({
+                action: 'status_changed',
+                entityId: updatedRequest.id,
+                invalidate: [...SERVICE_REQUEST_REALTIME_TAGS],
+                permissions: ['serviceRequests'],
+                payload: {
+                    serviceRequestId: updatedRequest.id,
+                    status: updatedRequest.status,
+                },
+            });
+
+            const jStage = response === 'accepted' ? 'quote_accepted' as const : 'cancelled' as const;
+            repairJourneyService.findJourneyByServiceRequest(req.params.id).then(async (journeyId) => {
+                if (!journeyId) return;
+                await repairJourneyService.updateJourneyStage(journeyId, jStage);
+                await repairJourneyService.addJourneyEvent({
+                    journeyId,
+                    eventType: `quote_${response}`,
+                    title: response === 'accepted' ? 'Quote Accepted' : 'Quote Rejected',
+                    message: response === 'accepted'
+                        ? 'Quote accepted! We will schedule your service shortly.'
+                        : 'Quote was declined.',
+                    actorType: 'admin',
+                    isCustomerVisible: true,
+                });
+            }).catch((err) => console.error('[RepairJourney] Admin quote response sync failed:', (err as Error).message));
+
+            res.json(attachCanonicalQuoteView(updatedRequest));
+        } catch (error: any) {
+            if (error instanceof RetailQuoteError) {
+                return res.status(error.status).json({ error: error.message, code: error.code });
+            }
+            console.error('[ServiceRequests] admin quote-response failed:', (error as Error).message);
+            res.status(500).json({ error: 'Failed to process quote response' });
+        }
+    },
+);
+
+/**
+ * GET /api/admin/service-requests/:id/quote-admin-acceptances
+ * Admin-only confirmation notes (never on customer routes).
+ */
+router.get(
+    '/api/admin/service-requests/:id/quote-admin-acceptances',
+    requireAdminAuth,
+    requireGranularPermission('serviceRequests.quote'),
+    async (req: Request, res: Response) => {
+        try {
+            const rows = await listAdminAcceptancesForServiceRequest(req.params.id);
+            res.json({ items: rows });
+        } catch (error) {
+            console.error('[ServiceRequests] quote-admin-acceptances failed:', (error as Error).message);
+            res.status(500).json({ error: 'Failed to load admin acceptance records' });
+        }
+    },
+);
 
 // ─── Test-only: OTP retrieval for e2e tests (dev only) ───
 if (process.env.NODE_ENV !== 'production') {
@@ -1208,12 +1346,22 @@ if (process.env.NODE_ENV !== 'production') {
     });
 }
 
-// ─── Intake Summary (bulk lane classification) ───
+// ─── Intake Summary (page-scoped lane enrichment; HOTFIX-2) ───
 
 router.get('/api/admin/service-requests/intake-summary', requireAdminAuth, requireGranularPermission('serviceRequests.view'), async (req: Request, res: Response) => {
     try {
-        const allSr = await serviceRequestRepo.getAllServiceRequests();
-        const summary = await getIntakeSummaryBulk(allSr.map(sr => ({
+        // Required: ids of the currently displayed page only. Empty ids → empty summary (never load-all).
+        const idsRaw = typeof req.query.ids === "string" ? req.query.ids : "";
+        const ids = idsRaw
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .slice(0, 100);
+        if (ids.length === 0) {
+            return res.json([]);
+        }
+        const pageSr = await serviceRequestRepo.getServiceRequestsByIds(ids);
+        const summary = await getIntakeSummaryBulk(pageSr.map(sr => ({
             id: sr.id,
             status: sr.status,
             stage: sr.stage,
@@ -1223,8 +1371,9 @@ router.get('/api/admin/service-requests/intake-summary', requireAdminAuth, requi
             adminInteracted: sr.adminInteracted,
         })));
         res.json(summary);
-    } catch (error: any) {
-        res.status(500).json({ error: error.message || 'Failed to load intake summary' });
+    } catch (error: unknown) {
+        logRouteError('GET /api/admin/service-requests/intake-summary', req, error);
+        res.status(500).json({ error: 'Failed to load intake summary' });
     }
 });
 

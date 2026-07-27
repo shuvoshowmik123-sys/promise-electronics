@@ -8,7 +8,8 @@ import type {
     LocalPurchase, InsertLocalPurchase, PickupSchedule, CustomerReview,
     Notification, Refund, InsertRefund, RollbackRequest, WastageLog, InsertWastageLog,
     DrawerSession, InsertDrawerSession, SystemModule, CorporateClient, InsertCorporateClient,
-    CorporateMessageThread, CorporateMessage, Quotation, InsertQuotation, QuotationItem, InsertQuotationItem
+    CorporateMessageThread, CorporateMessage, Quotation, InsertQuotation, QuotationItem, InsertQuotationItem,
+    JobNgReport, JobNgFailedRepairType
 } from "@shared/schema";
 import type { AdminNotificationItem } from "@shared/types/admin-notifications";
 import { ApiError, fetchApi } from "./httpClient";
@@ -38,9 +39,234 @@ export const auditLogsApi = {
     }
 };
 
+export type AdminSystemStatus = {
+    state: string;
+    dbConnected: boolean;
+    mainSchemaComplete: boolean;
+    mainSchemaFailed: boolean;
+    mainSchemaVersion: string | null;
+    registryHeadVersion: string | null;
+    appliedCount: number;
+    registryCount: number;
+    missingCount: number;
+    mismatchCount: number;
+    extraCount: number;
+    ledgerHealthy: boolean;
+    optionalJobsComplete: boolean;
+    optionalJobs: Array<{ name: string; status: string }>;
+    journeyLineage: {
+        status: "healthy" | "unhealthy" | "unavailable";
+        totalJourneys: number | null;
+        coalesceMissingParentCount: number | null;
+        brokenCustomerParentCount: number | null;
+        checkedAt: string | null;
+    };
+    schedulerIntegrity: {
+        status: "healthy" | "attention" | "unavailable";
+        checkedAt: string | null;
+        reminders: SchedulerQueueCounts;
+        smsOutbox: SchedulerQueueCounts;
+        scheduledBackups: SchedulerQueueCounts;
+        drawerDayClose: SchedulerQueueCounts;
+    };
+    ts: string;
+};
+
+export type SchedulerQueueCounts = {
+    pending: number | null;
+    active: number | null;
+    retrying: number | null;
+    failed: number | null;
+    expiredLease: number | null;
+};
+
+export const FINAL_TEST_CHECK_CODES = [
+    "power_on",
+    "picture",
+    "sound",
+    "ports",
+    "remote",
+    "menu",
+    "backlight",
+    "panel_basic",
+] as const;
+
+export const FINAL_TEST_REINSPECTION_REASONS = [
+    "picture_issue",
+    "sound_issue",
+    "intermittent",
+    "customer_request",
+    "manager_recheck",
+    "other_allowlisted",
+] as const;
+
+export type FinalTestCheckCode = (typeof FINAL_TEST_CHECK_CODES)[number];
+export type FinalTestReinspectionReason = (typeof FINAL_TEST_REINSPECTION_REASONS)[number];
+
+export type FinalTestRun = {
+    id: string;
+    jobId: string;
+    outcome: "pass" | "fail";
+    checkCodes: FinalTestCheckCode[];
+    reinspectionReason: FinalTestReinspectionReason | null;
+    recordedBy: string;
+    recordedAt: string | null;
+    supersededAt: string | null;
+    supersededByRunId: string | null;
+    supersedeReason: string | null;
+};
+
+export const adminSystemStatusApi = {
+    get: () => fetchApi<AdminSystemStatus>("/admin/readiness"),
+};
+
+/** Browser-safe schema-release state. This intentionally excludes SQL, checksums, URLs, and credentials. */
+export type SchemaUpdateRunStatus = "pending" | "running" | "succeeded" | "failed" | "blocked" | "timed_out" | "cancelled";
+
+export type SchemaUpdateRun = {
+    id: string;
+    status: SchemaUpdateRunStatus;
+    requestedAt: string;
+    confirmedAt: string | null;
+    startedAt: string | null;
+    finishedAt: string | null;
+    releaseVersion: string | null;
+    targetPendingCount: number | null;
+    appliedCount: number | null;
+    errorCategory: string | null;
+    errorMessage: string | null;
+    isActive: boolean;
+};
+
+export type SchemaUpdateStatus = {
+    controlPlane: "available" | "bootstrap_required" | "unavailable";
+    runnerEligible: boolean;
+    runnerMode: "disabled" | "development" | "production_explicit";
+    productionExecutionEnabled: boolean;
+    releaseVersion: string;
+    ledger: {
+        state: "ok" | "pending" | "blocked" | "empty" | "unknown";
+        appliedCount: number;
+        pendingCount: number;
+        mainSchemaVersion: string | null;
+        registryHeadVersion: string | null;
+        requiredVersion: string;
+    };
+    activeRun: SchemaUpdateRun | null;
+    lastRun: SchemaUpdateRun | null;
+    safeMessage: string | null;
+};
+
+export const schemaUpdateApi = {
+    getStatus: () => fetchApi<SchemaUpdateStatus>("/admin/schema-updates/status"),
+};
+
+export type SystemIncidentDto = {
+    id: string;
+    component: string;
+    code: string;
+    category: string;
+    severity: "info" | "warning" | "critical";
+    status: "open" | "acknowledged" | "resolved";
+    count: number;
+    firstSeenAt: string;
+    lastSeenAt: string;
+    acknowledgedAt: string | null;
+    resolvedAt: string | null;
+    safeTitle: string;
+    safeNextStep: string;
+    areaLabel: string;
+};
+
+export type SystemIncidentSummary = {
+    open: number;
+    acknowledged: number;
+    resolved: number;
+    criticalOpen: number;
+    warningOpen: number;
+};
+
+export const systemIncidentsApi = {
+    list: (params?: { status?: string; limit?: number; offset?: number }) => {
+        const q = new URLSearchParams();
+        if (params?.status) q.set("status", params.status);
+        if (params?.limit != null) q.set("limit", String(params.limit));
+        if (params?.offset != null) q.set("offset", String(params.offset));
+        const qs = q.toString();
+        return fetchApi<{ items: SystemIncidentDto[]; total: number }>(
+            `/admin/system-incidents${qs ? `?${qs}` : ""}`,
+        );
+    },
+    summary: () => fetchApi<SystemIncidentSummary>("/admin/system-incidents/summary"),
+    acknowledge: (id: string) =>
+        fetchApi<{ ok: boolean }>(`/admin/system-incidents/${id}/acknowledge`, { method: "POST", body: "{}" }),
+    resolve: (id: string) =>
+        fetchApi<{ ok: boolean }>(`/admin/system-incidents/${id}/resolve`, { method: "POST", body: "{}" }),
+};
+
+export interface NgEvidenceAttachment {
+    fileId: string;
+    url: string;
+    name?: string;
+    thumbnailUrl?: string;
+    size?: number;
+    fileType?: string;
+}
+
+export interface SubmitNgReportPayload {
+    submissionId: string;
+    failedRepairType: JobNgFailedRepairType;
+    diagnosis: string;
+    technicalNotes: string;
+    evidenceAttachments: NgEvidenceAttachment[];
+}
+
+export interface NgReportResponse {
+    report: JobNgReport;
+    job: JobTicket;
+    idempotent?: boolean;
+}
+
+export interface ReviewNgReportPayload {
+    action: "verify" | "return_for_correction";
+    reviewNotes?: string;
+}
+
 // Job Tickets API
+export type JobTicketsListParams = {
+    type?: "all" | "walk-in" | "corporate";
+    page?: number;
+    limit?: number;
+    search?: string;
+    status?: string;
+    /** Comma-separated or array of statuses for group filters */
+    statuses?: string[] | string;
+    priority?: string;
+    technician?: string;
+};
+
 export const jobTicketsApi = {
-    getAll: (type: "all" | "walk-in" | "corporate" = "walk-in") => fetchApi<{ items: JobTicket[]; pagination: { total: number; page: number; limit: number; pages: number } }>(`/job-tickets?type=${type}`),
+    getAll: (typeOrParams: "all" | "walk-in" | "corporate" | JobTicketsListParams = "walk-in") => {
+        const params =
+            typeof typeOrParams === "string"
+                ? { type: typeOrParams, page: 1, limit: 50 }
+                : { type: "walk-in" as const, page: 1, limit: 50, ...typeOrParams };
+        const qs = new URLSearchParams();
+        qs.set("type", params.type || "walk-in");
+        qs.set("page", String(params.page ?? 1));
+        qs.set("limit", String(Math.min(100, params.limit ?? 50)));
+        if (params.search?.trim()) qs.set("search", params.search.trim());
+        if (params.status?.trim()) qs.set("status", params.status.trim());
+        if (params.statuses) {
+            const s = Array.isArray(params.statuses) ? params.statuses.join(",") : params.statuses;
+            if (s.trim()) qs.set("statuses", s.trim());
+        }
+        if (params.priority?.trim() && params.priority !== "all") qs.set("priority", params.priority.trim());
+        if (params.technician?.trim() && params.technician !== "all") qs.set("technician", params.technician.trim());
+        return fetchApi<{ items: JobTicket[]; pagination: { total: number; page: number; limit: number; pages: number } }>(
+            `/job-tickets?${qs.toString()}`,
+        );
+    },
     getReadyForBilling: () => fetchApi<JobTicket[]>("/job-tickets/ready-for-billing"),
     getPendingRollbacks: () => fetchApi<RollbackRequest[]>("/job-tickets/pending-rollbacks"),
     getOne: (id: string) => fetchApi<JobTicket>(`/job-tickets/${id}`),
@@ -61,12 +287,44 @@ export const jobTicketsApi = {
             method: "POST",
             body: JSON.stringify(payload),
         }),
-    advanceStatus: (id: string) =>
+    advanceStatus: (id: string, body?: { testingConfirmed?: boolean }) =>
         fetchApi<JobTicket>(`/job-tickets/${id}/advance-status`, {
+            method: "POST",
+            body: body ? JSON.stringify(body) : undefined,
+        }),
+    getFinalTestRuns: (id: string) =>
+        fetchApi<{ items: FinalTestRun[] }>(`/job-tickets/${id}/final-test-runs`),
+    recordFinalTestRun: (id: string, data: {
+        outcome: "pass" | "fail";
+        checkCodes?: FinalTestCheckCode[];
+        reinspectionReason?: FinalTestReinspectionReason;
+    }) =>
+        fetchApi<FinalTestRun>(`/job-tickets/${id}/final-test-runs`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    returnToInspection: (id: string) =>
+        fetchApi<JobTicket>(`/job-tickets/${id}/return-to-inspection`, {
             method: "POST",
         }),
     setOutcome: (id: string, data: { outcome: string; reason?: string; notes?: string }) =>
         fetchApi<JobTicket>(`/job-tickets/${id}/set-outcome`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    submitNgReport: (id: string, data: SubmitNgReportPayload) =>
+        fetchApi<NgReportResponse>(`/job-tickets/${id}/ng-report`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    getNgReport: (id: string, opts?: { latest?: boolean }) =>
+        fetchApi<NgReportResponse>(
+            opts?.latest
+                ? `/job-tickets/${id}/ng-report/latest`
+                : `/job-tickets/${id}/ng-report`,
+        ),
+    reviewNgReport: (id: string, data: ReviewNgReportPayload) =>
+        fetchApi<NgReportResponse>(`/job-tickets/${id}/ng-report/review`, {
             method: "POST",
             body: JSON.stringify(data),
         }),
@@ -102,6 +360,132 @@ export const jobTicketsApi = {
         fetchApi<JobTicket>(`/job-tickets/${id}/write-off`, {
             method: "POST",
             body: JSON.stringify({ reason }),
+        }),
+};
+
+export type JobIntakeCustomerCard = {
+    id: string;
+    name: string;
+    phone: string;
+    shortAddress: string | null;
+};
+
+export type ExternalIntakePartyCard = {
+    id: string;
+    name: string;
+    phone: string;
+    shortAddress: string | null;
+};
+
+export type ExternalIntakeUnit = {
+    ticketType: "full_device" | "panel_only" | "motherboard_only" | "parts_only";
+    device: string;
+    modelNumber?: string;
+    serialNumber?: string;
+    issue?: string;
+    screenSize?: string;
+};
+
+type ExternalIntakePartyInput = {
+    name: string;
+    phone: string;
+    shortAddress?: string;
+};
+
+type ExternalTechnicianIntakeInput = {
+    externalPartyId?: string;
+    newExternalParty?: ExternalIntakePartyInput;
+    confirmDuplicates?: boolean;
+    assignedTechnicianId?: string;
+};
+
+export const jobIntakeApi = {
+    searchCustomers: (q: string) =>
+        fetchApi<{ items: JobIntakeCustomerCard[] }>(`/admin/job-intake/customer-lookup?q=${encodeURIComponent(q)}`),
+    searchExternalParties: (q: string) =>
+        fetchApi<{ items: ExternalIntakePartyCard[] }>(`/admin/external-intake-parties?q=${encodeURIComponent(q)}`),
+    createExternalParty: (data: ExternalIntakePartyInput) =>
+        fetchApi<ExternalIntakePartyCard>("/admin/external-intake-parties", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    createExternalSingle: (data: ExternalTechnicianIntakeInput & { unit: ExternalIntakeUnit }) =>
+        fetchApi<{
+            job: { id: string; status: string; batchId: string | null };
+            externalPartyId: string;
+            qrTracking: { path: string; token: string };
+        }>("/admin/external-technician-intake/single", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    createExternalBatch: (data: ExternalTechnicianIntakeInput & { units: ExternalIntakeUnit[] }) =>
+        fetchApi<{
+            batch: { id: string; batchNumber: string | null; totalItems: number };
+            jobs: { id: string; status: string }[];
+            externalPartyId: string;
+            qrTracking: { path: string; token: string };
+        }>("/admin/external-technician-intake/batch", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    issueExternalQrPrintTarget: (body: { jobId: string } | { batchId: string }) =>
+        fetchApi<{
+            path: string;
+            publicUrl: string;
+            entityType: "job" | "batch";
+            entityId: string;
+        }>("/admin/external-qr/print-target", {
+            method: "POST",
+            body: JSON.stringify(body),
+        }),
+};
+
+export type B2bLaneType = "corporate" | "limited_company";
+
+export type B2bAccountCard = {
+    id: string;
+    companyName: string;
+    shortCode: string;
+    clientType: B2bLaneType;
+};
+
+export type B2bIntakeUnit = ExternalIntakeUnit & { externalRef?: string };
+
+export const b2bAccountIntakeApi = {
+    searchAccounts: (lane: B2bLaneType, q: string) =>
+        fetchApi<{ items: B2bAccountCard[] }>(
+            `/admin/b2b-account-intake/accounts?lane=${encodeURIComponent(lane)}&q=${encodeURIComponent(q)}`,
+        ),
+    createSingle: (data: {
+        lane: B2bLaneType;
+        corporateClientId: string;
+        unit: B2bIntakeUnit;
+        assignedTechnicianId?: string;
+    }) =>
+        fetchApi<{
+            mode: "single";
+            lane: B2bLaneType;
+            job: { id: string; status: string; corporateClientId: string; batchId: string | null };
+            account: B2bAccountCard;
+        }>("/admin/b2b-account-intake/single", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    createBatch: (data: {
+        lane: B2bLaneType;
+        corporateClientId: string;
+        units: B2bIntakeUnit[];
+        assignedTechnicianId?: string;
+    }) =>
+        fetchApi<{
+            mode: "batch";
+            lane: B2bLaneType;
+            batch: { id: string; batchNumber: string | null; totalItems: number; corporateClientId: string };
+            jobs: { id: string; status: string }[];
+            account: B2bAccountCard;
+        }>("/admin/b2b-account-intake/batch", {
+            method: "POST",
+            body: JSON.stringify(data),
         }),
 };
 
@@ -511,13 +895,42 @@ export const usersApi = {
 };
 
 // Service Requests API
+export type ServiceRequestsListParams = {
+    page?: number;
+    limit?: number;
+    status?: string;
+    servicePreference?: string;
+    search?: string;
+    sort?: "createdAt" | "ticketNumber";
+    order?: "asc" | "desc";
+};
+
 export const serviceRequestsApi = {
-    getAll: () => fetchApi<{ items: ServiceRequest[]; pagination: { total: number; page: number; limit: number; pages: number } }>("/service-requests"),
+    /** Server-paginated list. Response uses flat total/page/limit/totalPages (legacy admin shape). */
+    getAll: (params: ServiceRequestsListParams = {}) => {
+        const qs = new URLSearchParams();
+        qs.set("page", String(params.page ?? 1));
+        qs.set("limit", String(Math.min(100, params.limit ?? 50)));
+        if (params.status?.trim()) qs.set("status", params.status.trim());
+        if (params.servicePreference?.trim()) qs.set("servicePreference", params.servicePreference.trim());
+        if (params.search?.trim()) qs.set("search", params.search.trim());
+        if (params.sort) qs.set("sort", params.sort);
+        if (params.order) qs.set("order", params.order);
+        return fetchApi<{
+            items: ServiceRequest[];
+            total: number;
+            page: number;
+            limit: number;
+            totalPages: number;
+            pagination?: { total: number; page: number; limit: number; pages: number };
+        }>(`/service-requests?${qs.toString()}`);
+    },
     getOne: (id: string) => fetchApi<ServiceRequest>(`/service-requests/${id}`),
-    create: (data: InsertServiceRequest) =>
+    create: (data: InsertServiceRequest, idempotencyKey?: string) =>
         fetchApi<ServiceRequest>("/service-requests", {
             method: "POST",
             body: JSON.stringify(data),
+            ...(idempotencyKey ? { headers: { "Idempotency-Key": idempotencyKey } } : {}),
         }),
     update: (id: string, data: Partial<InsertServiceRequest>) =>
         fetchApi<ServiceRequest>(`/service-requests/${id}`, {
@@ -539,8 +952,27 @@ export const serviceRequestsApi = {
         }),
 };
 
+export type IntakeSummaryItemDto = {
+    serviceRequestId: string;
+    lane: string;
+    callSummary: {
+        callAttemptCount: number;
+        lastCallOutcome: string | null;
+        nextCallbackAt: string | null;
+        noAnswerStreak: number;
+    };
+    needsStaffAction: boolean;
+};
+
 export const intakeSummaryApi = {
-    getAll: () => fetchApi<{ serviceRequestId: string; lane: string; callSummary: { callAttemptCount: number; lastCallOutcome: string | null; nextCallbackAt: string | null; noAnswerStreak: number }; needsStaffAction: boolean }[]>("/admin/service-requests/intake-summary"),
+    /** Page-scoped enrichment only — pass displayed request IDs (max 100). Never loads all SRs/attempts. */
+    byIds: (ids: string[]) => {
+        const cleaned = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean))).slice(0, 100);
+        if (cleaned.length === 0) return Promise.resolve([] as IntakeSummaryItemDto[]);
+        const qs = new URLSearchParams();
+        qs.set("ids", cleaned.join(","));
+        return fetchApi<IntakeSummaryItemDto[]>(`/admin/service-requests/intake-summary?${qs.toString()}`);
+    },
 };
 
 export const repairCaseApi = {
@@ -727,12 +1159,73 @@ export const adminUsersApi = {
 };
 
 // Attendance API
+export type AttendanceStaffMember = {
+    id: string;
+    name: string;
+    username: string;
+    role: string;
+    status: string;
+};
+
+/** Matches server LocationContextResponse (ATTENDANCE-LOCATION-01A). */
+export type AttendanceLocationContext = {
+    recordId: string;
+    workLocationId: string | null;
+    workLocationName: string | null;
+    referenceLatitude: number | null;
+    referenceLongitude: number | null;
+    referenceRadiusMeters: number | null;
+    referenceSource: "snapshot" | "current_fallback" | "none";
+    checkIn: {
+        latitude: number | null;
+        longitude: number | null;
+        accuracy: number | null;
+        distanceMeters: number | null;
+        status: string | null;
+        timestamp: string | null;
+    };
+    checkOut: {
+        latitude: number | null;
+        longitude: number | null;
+        accuracy: number | null;
+        distanceMeters: number | null;
+        status: string | null;
+        timestamp: string | null;
+    } | null;
+};
+
+export const attendanceLocationContextQueryKey = (recordId: string) =>
+    ["attendanceLocationContext", recordId] as const;
+
+export type AttendanceMonthSummary = {
+    presentDays: number;
+    absentDays: number;
+    eligibleDays: number;
+    daysInMonth: number;
+    calendarDays: number;
+    ratio: number;
+};
+
+export type AttendanceMonthResponse = {
+    userId: string;
+    month: string;
+    records: AttendanceRecord[];
+    summary: AttendanceMonthSummary;
+};
+
 export const attendanceApi = {
     getAll: () => fetchApi<AttendanceRecord[]>("/admin/attendance"),
     getByDate: (date: string) => fetchApi<AttendanceRecord[]>(`/admin/attendance/date/${date}`),
     getByUser: (userId: string) => fetchApi<AttendanceRecord[]>(`/admin/attendance/user/${userId}`),
+    getByUserMonth: (userId: string, month: string) =>
+        fetchApi<AttendanceMonthResponse>(`/admin/attendance/user/${encodeURIComponent(userId)}/month?month=${month}`),
+    /** Safe staff list for report filters — not /users/lookup */
+    getStaff: () => fetchApi<AttendanceStaffMember[]>("/admin/attendance/staff"),
     getToday: () => fetchApi<AttendanceRecord | null>("/admin/attendance/today"),
     getMyHistory: (days = 7) => fetchApi<AttendanceRecord[]>(`/admin/attendance/my-history?days=${days}`),
+    /** Map-ready context — only after user opens the location viewer. */
+    getLocationContext: (recordId: string) =>
+        fetchApi<AttendanceLocationContext>(`/admin/attendance/location-context/${encodeURIComponent(recordId)}`),
     checkIn: (notes?: string, lat?: number, lng?: number, accuracy?: number) =>
         fetchApi<AttendanceRecord>("/admin/attendance/check-in", {
             method: "POST",
@@ -853,6 +1346,16 @@ export const adminQuotesApi = {
             method: "PATCH",
             body: JSON.stringify(data),
         }),
+    /** Admin-only quote accept/decline (00C-A-HOTFIX). confirmationNote required for accept. */
+    quoteResponse: (id: string, data: { response: "accepted" | "rejected"; confirmationNote?: string }) =>
+        fetchApi<ServiceRequest>(`/admin/service-requests/${id}/quote-response`, {
+            method: "PATCH",
+            body: JSON.stringify(data),
+        }),
+    listAdminAcceptances: (id: string) =>
+        fetchApi<{ items: Array<{ id: string; confirmationNote: string; adminName: string | null; acceptedAt: string }> }>(
+            `/admin/service-requests/${id}/quote-admin-acceptances`,
+        ),
 };
 
 export const adminStageApi = {

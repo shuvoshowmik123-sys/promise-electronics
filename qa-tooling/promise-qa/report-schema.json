@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "promise-qa-run-report-v2",
+  "title": "Promise Electronics Grok Playwright QA Run (fail-closed)",
+  "type": "object",
+  "required": [
+    "phaseId",
+    "runId",
+    "startedAt",
+    "baseUrl",
+    "environment",
+    "mode",
+    "steps",
+    "executions",
+    "finalVerdict",
+    "cleanupResult",
+    "secretScanResult"
+  ],
+  "properties": {
+    "phaseId": { "type": "string" },
+    "runId": { "type": "string" },
+    "startedAt": { "type": "string" },
+    "completedAt": { "type": ["string", "null"] },
+    "baseUrl": { "type": "string" },
+    "environment": { "type": "string" },
+    "mode": { "type": "string", "enum": ["STRICT", "FAST"] },
+    "steps": { "type": "array", "minItems": 1 },
+    "executions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string" },
+          "server": { "type": "string" },
+          "profile": { "type": "string" },
+          "viewport": {
+            "type": "object",
+            "properties": {
+              "width": { "type": "number" },
+              "height": { "type": "number" }
+            }
+          },
+          "touch": { "type": "boolean" },
+          "coarsePointer": { "type": "boolean" },
+          "actorRole": { "type": "string" },
+          "tracePath": { "type": ["string", "null"] },
+          "verdict": { "type": "string" }
+        }
+      }
+    },
+    "mcpRuntime": {
+      "type": "object",
+      "properties": {
+        "desktop": { "type": "string" },
+        "mobile": { "type": "string" }
+      }
+    },
+    "mcpChallenges": { "type": "array" },
+    "requireMcpRuntime": { "type": "boolean" },
+    "secretScanResult": { "type": "string" },
+    "cleanupResult": { "type": "string" },
+    "binaryEvidencePrivacy": {
+      "type": "string",
+      "enum": ["NOT VERIFIED", "PASS", "FAIL"],
+      "description": "Authenticated screenshot/trace redaction status. Until PASS, authenticated multi-role stays NOT VERIFIED."
+    },
+    "schemaValid": { "type": "boolean" },
+    "evidenceValid": { "type": "boolean" },
+    "verdictReasons": { "type": "array", "items": { "type": "string" } },
+    "optionalMatrix": { "type": "object" },
+    "browserContextIsolation": { "type": "string" },
+    "finalVerdict": {
+      "type": "string",
+      "enum": ["INFRA PASS", "INFRA NO GO", "PARTIAL"]
+    },
+    "totals": { "type": "object" },
+    "findings": { "type": "array" }
+  }
+}

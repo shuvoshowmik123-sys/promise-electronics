@@ -1,15 +1,48 @@
 import { format } from "date-fns";
-import type { MouseEvent } from "react";
+import { Fragment, type MouseEvent } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { CheckCircle2, Clock, CreditCard, Eye, MoreVertical, PackageCheck, PenTool, Play, Printer, Truck, UserCheck, Zap } from "lucide-react";
+import { Clock, Eye, MoreVertical, PenTool, Printer, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { JobTicket } from "@shared/schema";
 import { getSafeJobDisplayRef } from "@shared/job-display-utils";
+import { getPrimaryAction, getStatusVisual } from "./jobActions";
+
+function escalationOutlineClass(job: any): string {
+    const status = String(job.status || "");
+    const blocked = [
+        "Pending Parts", "Waiting on Parts", "Awaiting Quote Approval",
+        "Awaiting Customer Decision", "NG Review Pending",
+    ];
+    const terminal = ["Completed", "Delivered", "Cancelled", "Abandoned", "Forfeited", "Closed", "Not OK"];
+    if (blocked.includes(status)) return "border-l-4 border-l-violet-400";
+    if (terminal.includes(status)) return "";
+    const start = job.activeWorkStartedAt;
+    if (!start) return "";
+    const days = Math.floor((Date.now() - new Date(start).getTime()) / (24 * 60 * 60 * 1000));
+    if (days >= 7) return "border-l-4 border-l-red-600 bg-red-50/40";
+    if (days === 6) return "border-l-4 border-l-red-500";
+    if (days === 5) return "border-l-4 border-l-orange-500";
+    if (days === 4) return "border-l-4 border-l-amber-400";
+    return "";
+}
+
+function escalationReasonText(job: any): string | null {
+    const status = String(job.status || "");
+    if (status === "Pending Parts" || status === "Waiting on Parts") return "Waiting for parts";
+    if (status === "Awaiting Quote Approval") return "Customer decision needed";
+    if (status === "Awaiting Customer Decision") return "NG / replacement decision";
+    if (status === "NG Review Pending") return "NG review in progress";
+    const start = job.activeWorkStartedAt;
+    if (!start) return null;
+    const days = Math.max(0, Math.floor((Date.now() - new Date(start).getTime()) / (24 * 60 * 60 * 1000)));
+    const pri = job.priority || "Normal";
+    return `${pri} priority · active ${days} day${days === 1 ? "" : "s"}${days >= 7 ? " · Clarification needed" : ""}`;
+}
 
 const HighlightMatch = ({ text, query }: { text: string | undefined | null; query: string }) => {
     if (!text) return null;
@@ -33,22 +66,6 @@ const HighlightMatch = ({ text, query }: { text: string | undefined | null; quer
     );
 };
 
-const getPrimaryAction = (job: JobTicket, canEdit: boolean) => {
-    const status = job.status || "";
-    const hasTechnician = Boolean(job.technician && job.technician !== "Unassigned");
-
-    if (!canEdit) return { label: "View Job", type: "view" as const, Icon: Eye };
-    if (!hasTechnician && !["Delivered", "Completed", "Cancelled", "Abandoned", "Forfeited"].includes(status)) {
-        return { label: "Assign Technician", type: "edit" as const, Icon: UserCheck };
-    }
-    if (status === "Pending") return { label: "Start Repair", type: "advance" as const, Icon: Play };
-    if (["Diagnosing", "In Progress", "On Workbench"].includes(status)) return { label: "Report Result", type: "advance" as const, Icon: CheckCircle2 };
-    if (["Pending Parts", "Waiting on Parts"].includes(status)) return { label: "Parts Arrived", type: "advance" as const, Icon: PackageCheck };
-    if (status === "Ready") return { label: "Complete & Bill", type: "advance" as const, Icon: CreditCard };
-    if (status === "Completed") return { label: "Print & Deliver", type: "print" as const, Icon: Truck };
-    return { label: "View Job", type: "view" as const, Icon: Eye };
-};
-
 interface JobTicketListProps {
     jobs: JobTicket[];
     searchQuery: string;
@@ -58,9 +75,13 @@ interface JobTicketListProps {
     onViewDetails: (job: JobTicket) => void;
     onEditJob: (job: JobTicket) => void;
     onAdvanceStage: (job: JobTicket) => void;
+    onOpenNgWorkflow: (job: JobTicket) => void;
     onPrintTicket: (job: JobTicket) => void;
     userRole?: string;
     canEdit: boolean;
+    canReviewNg: boolean;
+    canReportNg?: boolean;
+    canMutateJob: (job: JobTicket) => boolean;
 }
 
 export function JobTicketList({
@@ -72,9 +93,13 @@ export function JobTicketList({
     onViewDetails,
     onEditJob,
     onAdvanceStage,
+    onOpenNgWorkflow,
     onPrintTicket,
     userRole,
-    canEdit
+    canEdit,
+    canReviewNg,
+    canReportNg = false,
+    canMutateJob,
 }: JobTicketListProps) {
     return (
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
@@ -91,23 +116,58 @@ export function JobTicketList({
                     </TableRow>
                 </TableHeader>
                 <TableBody>
-                    {jobs.map((job: any) => {
+                    {jobs.map((job: any, index: number) => {
                         const isTechnician = userRole === "Technician";
-                        const showCustomerDetails = !isTechnician || canEdit;
-                        const primaryAction = getPrimaryAction(job, canEdit);
+                        const jobCanEdit = canEdit && canMutateJob(job);
+                        const jobCanReportNg = canReportNg && canMutateJob(job);
+                        const showCustomerDetails = !isTechnician || jobCanEdit;
+                        const primaryAction = getPrimaryAction(job, jobCanEdit, canReviewNg, jobCanReportNg);
+                        const statusVisual = getStatusVisual(job.status);
+                        const protectedStatus = ["NG Review Pending", "Awaiting Customer Decision"].includes(job.status || "");
                         const PrimaryActionIcon = primaryAction.Icon;
+                        const isB2b = !!(job.corporateClientId || job.source === "b2b_account_intake");
+                        const batchId = job.batchId as string | null | undefined;
+                        const prev = index > 0 ? jobs[index - 1] as any : null;
+                        const showBatchParent =
+                            isB2b &&
+                            batchId &&
+                            (!prev || prev.batchId !== batchId);
+                        const batchSiblings = batchId
+                            ? jobs.filter((j: any) => j.batchId === batchId)
+                            : [];
+                        const batchStatuses = Array.from(new Set(batchSiblings.map((j: any) => j.status).filter(Boolean)));
                         const handlePrimaryAction = (event: MouseEvent) => {
                             event.stopPropagation();
                             if (primaryAction.type === "edit") onEditJob(job);
                             else if (primaryAction.type === "advance") onAdvanceStage(job);
+                            else if (primaryAction.type === "ngWorkflow") onOpenNgWorkflow(job);
                             else if (primaryAction.type === "print") onPrintTicket(job);
                             else onViewDetails(job);
                         };
                         return (
-                            <TableRow key={job.id} onClick={() => {
+                            <Fragment key={job.id}>
+                            {showBatchParent && (
+                                <TableRow className="bg-sky-50/80 hover:bg-sky-50">
+                                    {isSelectionMode && <TableCell />}
+                                    <TableCell colSpan={isSelectionMode ? 6 : 5}>
+                                        <div className="flex flex-wrap items-center gap-2 py-0.5 text-xs">
+                                            <Badge className="bg-sky-100 text-sky-900 hover:bg-sky-100 border-0">B2B batch</Badge>
+                                            <span className="font-mono font-bold text-sky-900">{String(batchId).slice(0, 10)}</span>
+                                            <span className="text-sky-800">{batchSiblings.length} unit(s) shown</span>
+                                            <span className="text-sky-700">
+                                              {batchStatuses.length
+                                                ? `Statuses shown: ${batchStatuses.join(" · ")}`
+                                                : "Statuses shown: —"}
+                                            </span>
+                                            <span className="text-sky-600">Page view only · open any unit row</span>
+                                        </div>
+                                    </TableCell>
+                                </TableRow>
+                            )}
+                            <TableRow onClick={() => {
                                 if (isSelectionMode) onToggleSelection(job.id);
                                 else onViewDetails(job);
-                            }} className="cursor-pointer hover:bg-slate-50 group transition-colors">
+                            }} className={cn("cursor-pointer hover:bg-slate-50 group transition-colors", escalationOutlineClass(job))}>
                                 {isSelectionMode && (
                                     <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                                         <Checkbox
@@ -121,16 +181,35 @@ export function JobTicketList({
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                             <span className="font-mono text-sm font-bold text-blue-700 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100/50 w-fit">#{getSafeJobDisplayRef(job)}</span>
                                             <ClientClassBadge clientClass={(job as any).clientClass} size="xs" />
+                                            {isB2b && batchId && (
+                                                <Badge variant="outline" className="text-[9px] border-sky-200 text-sky-800">batch unit</Badge>
+                                            )}
                                         </div>
                                         <span className="text-[11px] text-slate-400 flex items-center gap-1.5"><Clock className="w-3 h-3" /> {job.createdAt ? format(new Date(job.createdAt), 'MMM dd, yyyy') : 'N/A'}</span>
+                                        {escalationReasonText(job) && (
+                                            <span className="text-[10px] font-semibold text-slate-600">{escalationReasonText(job)}</span>
+                                        )}
                                     </div>
                                 </TableCell>
                                 <TableCell>
                                     <div className="flex flex-col">
-                                        <span className="font-bold text-slate-700 text-sm">
-                                            {showCustomerDetails ? <HighlightMatch text={job.customer} query={searchQuery} /> : (job.customer ? <HighlightMatch text={job.customer.split(' ')[0] + ' ***'} query={searchQuery} /> : 'Unknown')}
-                                        </span>
-                                        {showCustomerDetails && job.customerPhone && <span className="text-xs text-slate-500 font-mono mt-0.5"><HighlightMatch text={job.customerPhone} query={searchQuery} /></span>}
+                                        {isB2b ? (
+                                            <>
+                                                <span className="font-bold text-slate-700 text-sm">B2B account</span>
+                                                {job.corporateJobNumber && (
+                                                    <span className="text-xs text-slate-500 font-mono mt-0.5">
+                                                        Ref {job.corporateJobNumber}
+                                                    </span>
+                                                )}
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className="font-bold text-slate-700 text-sm">
+                                                    {showCustomerDetails ? <HighlightMatch text={job.customer} query={searchQuery} /> : (job.customer ? <HighlightMatch text={job.customer.split(' ')[0] + ' ***'} query={searchQuery} /> : 'Unknown')}
+                                                </span>
+                                                {showCustomerDetails && job.customerPhone && <span className="text-xs text-slate-500 font-mono mt-0.5"><HighlightMatch text={job.customerPhone} query={searchQuery} /></span>}
+                                            </>
+                                        )}
                                     </div>
                                 </TableCell>
                                 <TableCell>
@@ -170,7 +249,7 @@ export function JobTicketList({
                                 </TableCell>
                                 <TableCell>
                                     <div className="flex flex-col gap-1.5 w-fit">
-                                        <Badge className={cn("shadow-sm font-bold text-[10px] uppercase tracking-wider border-0 justify-center", job.status === "Completed" ? "bg-emerald-100 text-emerald-700" : job.status === "In Progress" ? "bg-blue-100 text-blue-700" : job.status === "Ready" ? "bg-cyan-100 text-cyan-700" : job.status === "Cancelled" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-700")}>{job.status}</Badge>
+                                        <Badge className={cn("justify-center border-0 text-[10px] font-bold uppercase tracking-wider shadow-sm", statusVisual.badge)}>{statusVisual.label}</Badge>
                                         <Badge variant="outline" className={cn("text-[9px] font-bold uppercase tracking-wider border-0 shadow-sm justify-center", job.priority === 'High' ? "text-red-700 bg-red-100" : job.priority === 'Critical' ? "text-rose-700 bg-rose-100" : "text-slate-600 bg-slate-100")}>{job.priority}</Badge>
                                     </div>
                                 </TableCell>
@@ -194,8 +273,10 @@ export function JobTicketList({
                                             <DropdownMenuContent align="end" className="w-48 rounded-xl shadow-xl">
                                                 <DropdownMenuLabel className="font-bold text-[10px] uppercase text-slate-500 tracking-wider">More</DropdownMenuLabel>
                                                 <DropdownMenuItem onClick={() => onViewDetails(job)} className="cursor-pointer"><Eye className="w-4 h-4 mr-2" /> View Details</DropdownMenuItem>
-                                                {canEdit && <DropdownMenuItem onClick={() => onEditJob(job)} className="cursor-pointer"><PenTool className="w-4 h-4 mr-2" /> Edit Job</DropdownMenuItem>}
-                                                {canEdit && job.status !== 'Completed' && job.status !== 'Cancelled' && (
+                                                {jobCanEdit && !protectedStatus && <DropdownMenuItem onClick={() => onEditJob(job)} className="cursor-pointer"><PenTool className="w-4 h-4 mr-2" /> Edit Job</DropdownMenuItem>}
+                                                {protectedStatus ? (
+                                                    <DropdownMenuItem onClick={() => onOpenNgWorkflow(job)} className="cursor-pointer text-amber-700"><Zap className="w-4 h-4 mr-2" /> Open NG Workflow</DropdownMenuItem>
+                                                ) : jobCanEdit && job.status !== 'Completed' && job.status !== 'Cancelled' && (
                                                     <DropdownMenuItem onClick={() => onAdvanceStage(job)} className="cursor-pointer text-blue-600"><Zap className="w-4 h-4 mr-2" /> Move to Next Step</DropdownMenuItem>
                                                 )}
                                                 <DropdownMenuSeparator />
@@ -205,6 +286,7 @@ export function JobTicketList({
                                     </div>
                                 </TableCell>
                             </TableRow>
+                            </Fragment>
                         );
                     })}
                 </TableBody>

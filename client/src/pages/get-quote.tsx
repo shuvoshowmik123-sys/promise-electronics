@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { serviceCatalogApi, quoteRequestsApi, settingsApi } from "@/lib/api";
+import { materialIntakeKey, resolveIntakeIdempotencyKey } from "@/lib/intake-idempotency";
 import { CustomerAuthModal } from "@/components/auth/CustomerAuthModal";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -33,6 +34,8 @@ export default function GetQuotePage() {
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ticketNumber, setTicketNumber] = useState("");
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const payloadMaterialRef = useRef<string | null>(null);
 
   const [serviceType, setServiceType] = useState(preselectedService);
   const [brand, setBrand] = useState("");
@@ -123,14 +126,30 @@ export default function GetQuotePage() {
   ]);
 
   const submitQuoteMutation = useMutation({
-    mutationFn: quoteRequestsApi.submit,
-    onSuccess: (data) => {
+    mutationFn: (data: Parameters<typeof quoteRequestsApi.submit>[0]) => {
+      const material = materialIntakeKey(data);
+      const key = resolveIntakeIdempotencyKey(material, idempotencyKeyRef, payloadMaterialRef);
+      return quoteRequestsApi.submit(data, key);
+    },
+    onSuccess: (data: any) => {
+      if (data?.code === "DUPLICATE_REQUEST_WINDOW") {
+        toast.info("We already received a similar request. Our team will contact you soon.");
+        setStep(3);
+        setIsSubmitting(false);
+        return;
+      }
       setTicketNumber(data.ticketNumber || "");
       setStep(3);
       setIsSubmitting(false);
     },
     onError: (error: any) => {
-      toast.error(error.message || "Failed to submit quote request");
+      if (error?.code === "IDEMPOTENCY_CONFLICT") {
+        toast.error("The request details changed. Please review and try again.");
+        idempotencyKeyRef.current = null;
+        payloadMaterialRef.current = null;
+      } else {
+        toast.error(error.message || "Failed to submit quote request");
+      }
       setIsSubmitting(false);
     },
   });

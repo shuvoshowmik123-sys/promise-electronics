@@ -10,6 +10,8 @@ import {
     getTask,
     updateTask,
     updateTaskStatus,
+    updateTaskStatusWithLifecycle,
+    LogisticsLifecycleError,
     assignDriver,
     rescheduleTask,
     cancelTask,
@@ -208,31 +210,67 @@ router.post(
             if (!status) {
                 return res.status(400).json({ error: "status is required" });
             }
-            const task = await updateTaskStatus(req.params.id, status, {
-                failureReason,
-                notes,
-                proofPhotoUrl,
-                signatureUrl,
-            });
-            if (!task) {
-                return res.status(404).json({ error: "Logistics task not found" });
-            }
 
-            if (status === "completed" && task.serviceRequestId && (task.taskType === "pickup" || task.taskType === "delivery")) {
-                const journeyStatus = task.taskType === "delivery" ? "Delivered" : "PickedUp";
-                repairJourneyService.syncPickupStatusToJourney(task.serviceRequestId, journeyStatus)
+            const user = (req as any).user;
+            const actor = {
+                id: String(user?.id || req.session?.adminUserId || "system"),
+                name: String(user?.name || "Logistics"),
+                role: String(user?.role || "Manager"),
+            };
+
+            // JOB-LIFECYCLE-TRUST-01A: linked delivery → Job Ready → canonical Delivered before task complete
+            const outcome = await updateTaskStatusWithLifecycle(
+                req.params.id,
+                status,
+                { failureReason, notes, proofPhotoUrl, signatureUrl },
+                actor,
+            );
+            const task = outcome.task;
+
+            // Journey projection rules (HOTFIX-1):
+            // - pickup: existing PickedUp sync
+            // - delivery: only when proven unlinked (allowDirectJourneyProjection)
+            // - linked delivery: only via transitionJobStatus dual projection
+            if (status === "completed" && task.serviceRequestId && task.taskType === "pickup") {
+                repairJourneyService
+                    .syncPickupStatusToJourney(task.serviceRequestId, "PickedUp")
+                    .catch((err) => console.error("[Logistics] Journey sync failed:", (err as Error).message));
+            }
+            if (
+                status === "completed" &&
+                task.serviceRequestId &&
+                task.taskType === "delivery" &&
+                outcome.allowDirectJourneyProjection === true
+            ) {
+                repairJourneyService
+                    .syncPickupStatusToJourney(task.serviceRequestId, "Delivered")
                     .catch((err) => console.error("[Logistics] Journey sync failed:", (err as Error).message));
             }
 
-            const eventGen = LOGISTICS_EVENT_MESSAGES[status];
-            if (eventGen && task.serviceRequestId) {
+            const eventGen = LOGISTICS_EVENT_MESSAGES[status as keyof typeof LOGISTICS_EVENT_MESSAGES];
+            if (
+                eventGen !== undefined &&
+                task.serviceRequestId &&
+                (task.taskType !== "delivery" || outcome.allowDirectJourneyProjection === true)
+            ) {
                 const ev = eventGen(task.taskType);
-                syncLogisticsEventToJourney(task.serviceRequestId, task.taskType, `logistics_${status}`, ev.title, ev.message)
-                    .catch((err) => console.error("[Logistics] Journey event failed:", (err as Error).message));
+                syncLogisticsEventToJourney(
+                    task.serviceRequestId,
+                    task.taskType,
+                    `logistics_${status}`,
+                    ev.title,
+                    ev.message,
+                ).catch((err) => console.error("[Logistics] Journey event failed:", (err as Error).message));
             }
 
             res.json(task);
         } catch (error: any) {
+            if (error instanceof LogisticsLifecycleError) {
+                return res.status(error.status).json({
+                    error: error.message,
+                    code: error.code,
+                });
+            }
             console.error("[Logistics] Status update error:", error?.message);
             const is400 = error?.message?.includes("Invalid status");
             res.status(is400 ? 400 : 500).json({ error: error?.message || "Failed to update status" });

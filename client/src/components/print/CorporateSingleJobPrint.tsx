@@ -39,8 +39,12 @@ export function CorporateSingleJobPrint({ job }: CorporateSingleJobPrintProps) {
                     <p className="font-medium">{job.device}</p>
                 </div>
                 <div>
-                    <h3 className="text-xs font-bold uppercase text-gray-500 mb-1">Serial Number</h3>
-                    <p className="font-mono">{job.tvSerialNumber}</p>
+                    <h3 className="text-xs font-bold uppercase text-gray-500 mb-1">Model</h3>
+                    <p className="font-medium">{job.modelNumber?.trim() || "—"}</p>
+                </div>
+                <div className="col-span-2">
+                    <h3 className="text-xs font-bold uppercase text-gray-500 mb-1">Unit serial</h3>
+                    <p className="font-mono">{job.tvSerialNumber?.trim() || "—"}</p>
                 </div>
 
                 <div className="col-span-2">

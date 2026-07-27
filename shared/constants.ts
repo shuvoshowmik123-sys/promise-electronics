@@ -47,6 +47,12 @@ export const AUDIT_ACTIONS = {
     // System
     BACKUP_CREATED:     'BACKUP_CREATED',
     BACKUP_FAILED:      'BACKUP_FAILED',
+    // Protected schema-update control plane
+    SCHEMA_UPDATE_REQUESTED:        'SCHEMA_UPDATE_REQUESTED',
+    SCHEMA_UPDATE_REQUEST_DEDUPED:  'SCHEMA_UPDATE_REQUEST_DEDUPED',
+    SCHEMA_UPDATE_REAUTH_FAILED:    'SCHEMA_UPDATE_REAUTH_FAILED',
+    SCHEMA_UPDATE_RUN_CLAIMED:      'SCHEMA_UPDATE_RUN_CLAIMED',
+    SCHEMA_UPDATE_RUN_FINISHED:     'SCHEMA_UPDATE_RUN_FINISHED',
 } as const;
 
 export type AuditAction = typeof AUDIT_ACTIONS[keyof typeof AUDIT_ACTIONS];
@@ -62,6 +68,28 @@ export const CLIENT_CLASSES = [
 ] as const;
 export type ClientClass = typeof CLIENT_CLASSES[number];
 
+export const BILLING_PROFILE_TIERS = ["normal", "corporate"] as const;
+export type BillingProfileTier = typeof BILLING_PROFILE_TIERS[number];
+
+/** Derive the canonical billing-profile tier from a corporate client's client type. */
+export function deriveBillingTier(clientType: string | null | undefined): BillingProfileTier {
+  return clientType === "limited_company" ? "corporate" : "normal";
+}
+
+// FINANCE-AFTERCARE-01.2 — canonical client-type predicates.
+// Normal Corporate (`clientType === 'corporate'`) uses account-level settlement.
+// Corporate Ltd. (`clientType === 'limited_company'`) uses itemized bill/line allocation (Ticket 03).
+export const NORMAL_CORPORATE_CLIENT_TYPE = "corporate";
+export const CORPORATE_LIMITED_CLIENT_TYPE = "limited_company";
+
+export function isNormalCorporateClientType(clientType: string | null | undefined): boolean {
+  return clientType === NORMAL_CORPORATE_CLIENT_TYPE;
+}
+
+export function isCorporateLimitedClientType(clientType: string | null | undefined): boolean {
+  return clientType === CORPORATE_LIMITED_CLIENT_TYPE;
+}
+
 // Parts that can be missing on an incomplete TV at intake (technician + corporate)
 export const MISSING_PARTS_LIST = [
   'Motherboard', 'Panel', 'T-Con Board', 'Power Board', 'Remote',
@@ -70,7 +98,7 @@ export const MISSING_PARTS_LIST = [
 ] as const;
 export type MissingPart = typeof MISSING_PARTS_LIST[number];
 
-export const JOB_STATUSES =["Pending", "Diagnosing", "Pending Parts", "In Progress", "On Workbench", "Ready", "Not OK", "Delivered", "Cancelled", "Abandoned", "Forfeited"] as const;
+export const JOB_STATUSES =["Pending", "Diagnosing", "Pending Parts", "In Progress", "On Workbench", "Waiting on Parts", "Testing", "Ready", "Completed", "NG Review Pending", "Awaiting Customer Decision", "Awaiting Quote Approval", "Not OK", "Delivered", "Cancelled", "Abandoned", "Forfeited", "Closed"] as const;
 export const TICKET_TYPES = ["full_device", "panel_only", "motherboard_only", "parts_only"] as const;
 export const PANEL_TYPES = ["LED", "OLED", "QLED", "AMOLED", "VA", "IPS", "Other"] as const;
 export const TECHNICIAN_SKILLS = [
@@ -155,7 +183,7 @@ export const TRACKING_STATUSES = [
     "Booked", "Collection En Route", "Device Collected",
     "Awaiting Drop-off", "Device Received",
     "Technician Assigned", "Diagnosis Complete",
-    "Awaiting Parts", "Repairing",
+    "Awaiting Parts", "Repairing", "Final Testing",
     "Ready for Return", "Ready for Collection",
     "Delivered", "Collected",
     "Cancelled", "Unrepairable"

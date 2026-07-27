@@ -15,6 +15,7 @@ import { eq, and, sql, lt } from 'drizzle-orm';
 import { brainService } from '../brain/brain.service.js';
 import { upsertPresence } from './assignment.service.js';
 import { isDbReady } from './db-readiness.js';
+import { logBackgroundFailure } from '../utils/safe-error.js';
 
 type SlaState = 'ok' | 'at-risk' | 'breached';
 const lastSlaStates = new Map<string, SlaState>();
@@ -80,8 +81,8 @@ export async function checkSlaBreach() {
             console.log(`[SLA] Sweep: ${redded} breached, ${yellowed} at-risk${changed > 0 ? `, ${changed} changed` : ''}`);
             lastSlaSummary = summary;
         }
-    } catch (e: any) {
-        console.warn('[SLA] Sweep failed:', e.message?.slice(0, 80));
+    } catch {
+        logBackgroundFailure('SLA', 'SWEEP_FAILED');
     }
 }
 
@@ -156,8 +157,8 @@ export async function updateAcceptanceRatios() {
         }
 
         console.log(`[Phase I] Acceptance ratios updated for ${staffRows.length} staff`);
-    } catch (e: any) {
-        console.warn('[Phase I] Ratio update failed:', e.message?.slice(0, 80));
+    } catch {
+        logBackgroundFailure('Phase I', 'RATIO_UPDATE_FAILED');
     }
 }
 
@@ -181,8 +182,8 @@ export async function pruneOldAuditLogs() {
             );
         const deleted = (result as any).rowCount ?? 0;
         if (deleted > 0) console.log(`[NightlyJobs] Pruned ${deleted} old audit_log rows (info, >180d)`);
-    } catch (e: any) {
-        console.warn('[NightlyJobs] pruneOldAuditLogs failed:', e.message?.slice(0, 80));
+    } catch {
+        logBackgroundFailure('NightlyJobs', 'PRUNE_AUDIT_FAILED');
     }
 }
 
@@ -200,37 +201,74 @@ export async function pruneExpiredSessions() {
         const result = await db.execute(sql`DELETE FROM user_sessions WHERE expire < now()`);
         const deleted = (result as any).rowCount ?? 0;
         if (deleted > 0) console.log(`[NightlyJobs] Pruned ${deleted} expired rows from user_sessions`);
-    } catch (e: any) {
-        console.warn('[NightlyJobs] pruneExpiredSessions failed:', e.message?.slice(0, 80));
+    } catch {
+        logBackgroundFailure('NightlyJobs', 'PRUNE_SESSIONS_FAILED');
     }
 }
 
 // ─── Initializer (call from server/index.ts) ──────────────────────────────────
 
 let _started = false;
+const intervalHandles: ReturnType<typeof setInterval>[] = [];
+const timeoutHandles: ReturnType<typeof setTimeout>[] = [];
+
+function trackInterval(handle: ReturnType<typeof setInterval>): ReturnType<typeof setInterval> {
+    intervalHandles.push(handle);
+    return handle;
+}
+
+function trackTimeout(handle: ReturnType<typeof setTimeout>): ReturnType<typeof setTimeout> {
+    timeoutHandles.push(handle);
+    return handle;
+}
 
 export function initNightlyJobs() {
     if (_started) return;
     _started = true;
 
     // SLA check every 30min
-    setInterval(checkSlaBreach, 30 * 60 * 1000);
+    trackInterval(setInterval(checkSlaBreach, 30 * 60 * 1000));
 
     // Acceptance ratio every 6 hours
-    setInterval(updateAcceptanceRatios, 6 * 60 * 60 * 1000);
+    trackInterval(setInterval(updateAcceptanceRatios, 6 * 60 * 60 * 1000));
 
     // Audit log retention once per 24h (runs at 3 AM effectively — first run 24h after boot)
-    setInterval(pruneOldAuditLogs, 24 * 60 * 60 * 1000);
+    trackInterval(setInterval(pruneOldAuditLogs, 24 * 60 * 60 * 1000));
 
     // Session cleanup once per 24h alongside audit log retention
-    setInterval(pruneExpiredSessions, 24 * 60 * 60 * 1000);
+    trackInterval(setInterval(pruneExpiredSessions, 24 * 60 * 60 * 1000));
+
+    // TECHNICIAN-FLOW-01B: continuous active-work 7-day one-shot alerts (hourly)
+    trackInterval(setInterval(() => {
+        import('./technician-queue.service.js')
+            .then((m) => m.sweepActiveWorkAlerts())
+            .catch(() => logBackgroundFailure('ActiveWorkAlert', 'SWEEP_FAILED'));
+    }, 60 * 60 * 1000));
 
     // Stagger startup tasks so cold-start doesn't spike memory on 512MB free tier.
     // HTTP server must be accepting requests before any heavy DB work begins.
-    setTimeout(() => checkSlaBreach().catch(() => {}), 45_000);          // 45s
-    setTimeout(() => updateAcceptanceRatios().catch(() => {}), 90_000);  // 90s
-    setTimeout(() => pruneOldAuditLogs().catch(() => {}), 120_000);      // 2 min
-    setTimeout(() => pruneExpiredSessions().catch(() => {}), 150_000);   // 2.5 min
+    trackTimeout(setTimeout(() => checkSlaBreach().catch(() => {}), 45_000));
+    trackTimeout(setTimeout(() => updateAcceptanceRatios().catch(() => {}), 90_000));
+    trackTimeout(setTimeout(() => pruneOldAuditLogs().catch(() => {}), 120_000));
+    trackTimeout(setTimeout(() => pruneExpiredSessions().catch(() => {}), 150_000));
+    trackTimeout(setTimeout(() => {
+        import('./technician-queue.service.js')
+            .then((m) => m.sweepActiveWorkAlerts())
+            .catch(() => {});
+    }, 180_000));
 
-    console.log('[NightlyJobs] SLA + acceptance ratio jobs scheduled');
+    console.log('[NightlyJobs] SLA + acceptance ratio + active-work alert jobs scheduled');
+}
+
+/** Clear all Nightly Jobs intervals and delayed startups. Idempotent. */
+export function stopNightlyJobs(): void {
+    for (const handle of intervalHandles) {
+        clearInterval(handle);
+    }
+    intervalHandles.length = 0;
+    for (const handle of timeoutHandles) {
+        clearTimeout(handle);
+    }
+    timeoutHandles.length = 0;
+    _started = false;
 }

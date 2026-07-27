@@ -109,13 +109,11 @@ export function AdminRouter() {
 
     // Legacy Redirects
     if (location.startsWith("/admin/repairs")) {
-        return <Redirect to="/admin#jobs" />;
+        return <Redirect to="/admin/jobs" />;
     }
 
-    // Account Settings — lives in the Bento SPA as #account tab
-    if (location === "/admin/account") {
-        return <Redirect to="/admin#account" />;
-    }
+    // /admin/account is a canonical workspace path (design-concept account tab).
+    // Do not redirect to hash — ROUTING-01A path parser reads it.
 
     // Super Admin Workbench Route
     if (location === "/admin/workbench") {

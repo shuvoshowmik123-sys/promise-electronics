@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { serviceCatalogApi, serviceRequestsApi, settingsApi } from "@/lib/api";
+import { materialIntakeKey, resolveIntakeIdempotencyKey } from "@/lib/intake-idempotency";
 import { CustomerAuthModal } from "@/components/auth/CustomerAuthModal";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -47,6 +48,8 @@ export default function IntakeWizardPage() {
     const [intakeMethod, setIntakeMethod] = useState<IntakeMethod>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [ticketNumber, setTicketNumber] = useState("");
+    const idempotencyKeyRef = useRef<string | null>(null);
+    const payloadMaterialRef = useRef<string | null>(null);
 
     // Form Data (manually filled OR AI-prefilled)
     const [brand, setBrand] = useState("");
@@ -103,14 +106,30 @@ export default function IntakeWizardPage() {
 
     // API Mutation
     const submitMutation = useMutation({
-        mutationFn: serviceRequestsApi.create,
-        onSuccess: (data) => {
+        mutationFn: (data: Parameters<typeof serviceRequestsApi.create>[0]) => {
+            const material = materialIntakeKey(data);
+            const key = resolveIntakeIdempotencyKey(material, idempotencyKeyRef, payloadMaterialRef);
+            return serviceRequestsApi.create(data, key);
+        },
+        onSuccess: (data: any) => {
+            if (data?.code === "DUPLICATE_REQUEST_WINDOW") {
+                toast.info("We already received a similar request. Our team will contact you soon.");
+                setStep(4);
+                setIsSubmitting(false);
+                return;
+            }
             setTicketNumber(data.ticketNumber || "");
-            setStep(4); // Success Step
+            setStep(4);
             setIsSubmitting(false);
         },
         onError: (error: any) => {
-            toast.error(error.message || "Failed to submit request");
+            if (error?.code === "IDEMPOTENCY_CONFLICT") {
+                toast.error("The request details changed. Please review and try again.");
+                idempotencyKeyRef.current = null;
+                payloadMaterialRef.current = null;
+            } else {
+                toast.error(error.message || "Failed to submit request");
+            }
             setIsSubmitting(false);
         },
     });

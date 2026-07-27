@@ -11,26 +11,21 @@ import { serveStatic } from "./static.js";
 import { seedSuperAdmin } from "./seed.js";
 import { Request, Response, NextFunction } from "express";
 import { aiErrorHandler } from "./middleware/ai-error-handler.js";
+import { sanitizeErrorForResponse, logErrorSafe } from "./utils/safe-error.js";
 import { startDrawerDayCloseScheduler, stopDrawerDayCloseScheduler } from "./services/drawer-day-close.service.js";
 import { startAbandonmentScheduler, stopAbandonmentScheduler } from "./services/abandonment.service.js";
 import { startReminderScheduler, stopReminderScheduler } from "./services/reminder.service.js";
 import { startBackupScheduler, stopBackupScheduler } from "./services/backup-scheduler.service.js";
 import { seedDefaultCommissionRules } from "./services/commission.service.js";
-import { initNightlyJobs } from "./services/nightly-jobs.service.js";
+import { initNightlyJobs, stopNightlyJobs } from "./services/nightly-jobs.service.js";
+import {
+  startSystemIncidentSchedulers,
+  stopSystemIncidentSchedulers,
+} from "./services/system-incidents.service.js";
 import { brainService } from "./brain/brain.service.js";
-import { migrateB2BRuleProfileTables } from "./services/b2b-rule-profile.service.js";
-import { migrateManualPaymentTables } from "./services/manual-payment-migration.service.js";
-import { migrateCustomerRepairJourneyTables } from "./services/customer-repair-journey-migration.service.js";
-import { migrateStaffResetCodes } from "./services/staff-reset-migration.service.js";
-import { migratePasswordChangedAt } from "./services/password-changed-at-migration.service.js";
-import { migrateOperationalFields } from "./services/operational-fields-migration.service.js";
-import { migrateCallAttempts } from "./services/call-attempt.service.js";
-import { migrateStaffInvitations } from "./services/staff-invite.service.js";
-import { migrateSetupTokens } from "./services/corporate-setup-token.service.js";
-import { migrateLogisticsTasks } from "./services/logistics-task-migration.service.js";
-import { backfillPickupSchedulesToLogisticsTasks } from "./services/logistics-task.service.js";
-import { migrateServiceAreaTables } from "./services/service-area-migration.service.js";
-import { markMigrationsComplete, startReadinessChecks } from "./services/db-readiness.js";
+import { verifyMainSchemaLedger, recordMainSchemaVerified, REQUIRED_MAIN_SCHEMA_VERSION } from "./services/main-schema-migrate.service.js";
+import { markMainSchemaComplete, markMainSchemaFailed, markOptionalJobsComplete, recordOptionalJob, startReadinessChecks, stopReadinessChecks, isMainSchemaVerifiedComplete } from "./services/db-readiness.js";
+import { logRedactedLedgerReconciliationAudit } from "./services/ledger-reconciliation-audit.service.js";
 
 // ── Crash guards ────────────────────────────────────────────────────────────
 // Keep the server alive through transient failures (esp. Neon DB connection
@@ -55,7 +50,7 @@ async function runStartupTask(name: string, task: () => Promise<any>, retries = 
     } catch (e: any) {
       const message = e?.message || String(e);
       if (attempt === retries) {
-        console.warn(`[Startup] ${name} skipped after ${retries} attempts: ${message.slice(0, 120)}`);
+        console.error(`[Startup] ${name} FAILED after ${retries} attempts: ${message.slice(0, 200)}`);
         return false;
       }
       console.warn(`[Startup] ${name} retry ${attempt}/${retries}: ${message.slice(0, 100)}`);
@@ -65,106 +60,209 @@ async function runStartupTask(name: string, task: () => Promise<any>, retries = 
   return false;
 }
 
-// Seeds + idempotent schema migrations. Historically these ran BEFORE
-// httpServer.listen(), so on a cold Render boot the server refused all
-// connections (incl. /health) until ~10 serial round-trips to a cold Neon DB
-// finished — adding many seconds to every cold start. They now run in the
-// background AFTER the server is listening. Set SKIP_STARTUP_MIGRATIONS=true to
-// disable entirely (e.g. once they are moved to a dedicated deploy/release step).
-async function runStartupMigrations(): Promise<boolean> {
-  if (process.env.SKIP_STARTUP_MIGRATIONS === "true") {
-    console.log("[Startup] SKIP_STARTUP_MIGRATIONS=true — skipping background seeds/migrations.");
-    return true;
+// MAIN schema readiness is the PRIMARY readiness gate.
+// Normal server startup NEVER executes MAIN schema DDL in any environment (dev or production).
+// Startup performs read-only ledger verification only. Incomplete/mismatched ledgers leave
+// readiness degraded (503 on /ready, /api/ready, all dynamic API).
+// DDL is applied only via:
+//   - trusted release CLI: MAIN_MIGRATION_RELEASE_MODE=true npm run db:migrate:main
+//   - protected schema runner (after Super Admin request + integrity gate)
+async function runMainSchemaPhase(): Promise<void> {
+  const isProduction = process.env.NODE_ENV === "production";
+  const isReleaseMode = process.env.MAIN_MIGRATION_RELEASE_MODE === "true";
+
+  if (isReleaseMode && !process.env.ALLOW_PROD_RELEASE_MODE_IN_SERVER) {
+    console.error("[Startup] MAIN_MIGRATION_RELEASE_MODE=true is for db:migrate:main only. Normal server startup refuses migration execution.");
+    markMainSchemaFailed("Release mode flag set during server startup — refusing to run migrations");
+    return;
   }
 
-  // Super admin seed first — admin login depends on it. Idempotent.
-  const superAdminReady = await runStartupTask("super admin seed", seedSuperAdmin);
+  if (process.env.SKIP_STARTUP_MIGRATIONS === "true") {
+    console.log("[Startup] SKIP_STARTUP_MIGRATIONS=true — skipping MAIN schema auto-apply path.");
+    // Harness-only: never mark development/production ready without ledger verification.
+    const allowSkipAsReady =
+      process.env.ALLOW_SKIP_MIGRATIONS_AS_READY === "true" &&
+      process.env.NODE_ENV === "test";
+    if (allowSkipAsReady) {
+      console.log("[Startup] ALLOW_SKIP_MIGRATIONS_AS_READY=true with NODE_ENV=test — marking ready for test harness only.");
+      recordMainSchemaVerified("skip-test-harness", ["skip-test-harness"]);
+      markMainSchemaComplete("skip-test-harness");
+      return;
+    }
+    // Same verify-only path as normal boot so ops/proofs can detect no-DDL startup.
+    console.log("[Startup] SKIP_STARTUP_MIGRATIONS — performing read-only MAIN schema ledger verification (no DDL).");
+    await verifyMainSchemaReadOnly("SKIP_STARTUP_MIGRATIONS");
+    return;
+  }
 
-  // The rest are independent + idempotent — run concurrently to cut total time.
-  const results = await Promise.all([
-    runStartupTask("commission rule seed", seedDefaultCommissionRules),
+  console.log("[Startup] Performing read-only MAIN schema ledger verification (no DDL in any environment).");
+  await verifyMainSchemaReadOnly(isProduction ? "production" : "development");
+}
+
+async function verifyMainSchemaReadOnly(contextLabel: string): Promise<void> {
+  const verification = await verifyMainSchemaLedger();
+  if (verification.ok) {
+    recordMainSchemaVerified(verification.currentVersion, verification.appliedIds);
+    markMainSchemaComplete(verification.currentVersion);
+    console.log(
+      `[Startup] MAIN schema ledger verified complete (read-only, ${contextLabel}). Version: ${verification.currentVersion}. Required: ${REQUIRED_MAIN_SCHEMA_VERSION}.`
+    );
+    return;
+  }
+
+  console.error(
+    `[Startup] MAIN schema ledger verification FAILED (${contextLabel}) — staying not-ready / degraded. Missing: ${verification.missing.length}, Mismatched: ${verification.mismatched.length}, Extra: ${verification.extra.length}. Apply via trusted release CLI or protected runner after integrity is healthy.`
+  );
+  markMainSchemaFailed(
+    `Ledger verification failed (${contextLabel}): missing=${verification.missing.length} mismatched=${verification.mismatched.length} extra=${verification.extra.length}`
+  );
+  // Server-only redacted reconciliation audit — never mutates ledger; never prints secrets/SQL/checksums.
+  await logRedactedLedgerReconciliationAudit(verification);
+}
+
+// Optional jobs: seeds, backfills, reconciliations, Brain work.
+// These run ONLY after MAIN schema is verified complete.
+// MAIN optional jobs (seeds/backfills/reconciliations/schedulers) MUST NOT run if schema failed/pending.
+// Brain jobs remain separate and non-blocking.
+async function runOptionalJobsPhase(): Promise<void> {
+  const skipAsReadyTestHarness =
+    process.env.SKIP_STARTUP_MIGRATIONS === "true" &&
+    process.env.ALLOW_SKIP_MIGRATIONS_AS_READY === "true" &&
+    process.env.NODE_ENV === "test";
+  if (process.env.SKIP_STARTUP_MIGRATIONS === "true" && !skipAsReadyTestHarness) {
+    console.log("[Startup] SKIP_STARTUP_MIGRATIONS=true without test-only ALLOW_SKIP_MIGRATIONS_AS_READY — skipping optional jobs until ledger is verified ready.");
+    return;
+  }
+
+  if (!isMainSchemaVerifiedComplete()) {
+    console.warn("[Startup] MAIN schema not verified complete — skipping MAIN optional jobs (seeds, backfills, schedulers). Brain work continues separately.");
+    const brainResults = await Promise.all([
+      runStartupTask("Brain Phase 6 migration", () => brainService.migratePhase6Columns(), 2),
+      runStartupTask("Brain KG migration", () => brainService.migrateKGTables(), 2),
+      runStartupTask("Brain seed conversations", () => brainService.seedConversationsIfEmpty(), 2),
+      runStartupTask("Brain phase 2 seed", () => brainService.seedPhase2ConversationsIfNeeded(), 2),
+    ]);
+    recordOptionalJob("brain_phase6_migration", brainResults[0] ? "ok" : "failed");
+    recordOptionalJob("brain_kg_migration", brainResults[1] ? "ok" : "failed");
+    recordOptionalJob("brain_seed_conversations", brainResults[2] ? "ok" : "failed");
+    recordOptionalJob("brain_phase2_seed", brainResults[3] ? "ok" : "failed");
+    return;
+  }
+
+  // Super admin seed — optional MAIN job, runs only after schema verified complete
+  const superAdminOk = await runStartupTask("super admin seed", seedSuperAdmin);
+  recordOptionalJob("super_admin_seed", superAdminOk ? "ok" : "failed");
+
+  // Commission rule seed
+  let commissionOk = true;
+  if (process.env.MAIN_MIGRATION_TEST_INJECT_OPTIONAL_FAILURE === "true") {
+    console.log("[Startup] TEST: injecting optional job failure for P6 proof");
+    commissionOk = false;
+    recordOptionalJob("commission_rule_seed", "failed", "TEST_INJECTED_OPTIONAL_FAILURE");
+  } else {
+    commissionOk = await runStartupTask("commission rule seed", seedDefaultCommissionRules);
+    recordOptionalJob("commission_rule_seed", commissionOk ? "ok" : "failed");
+  }
+
+  // Brain work — separate DB (BRAIN_DATABASE_URL), never affects MAIN readiness
+  const brainResults = await Promise.all([
     runStartupTask("Brain Phase 6 migration", () => brainService.migratePhase6Columns(), 2),
     runStartupTask("Brain KG migration", () => brainService.migrateKGTables(), 2),
     runStartupTask("Brain seed conversations", () => brainService.seedConversationsIfEmpty(), 2),
     runStartupTask("Brain phase 2 seed", () => brainService.seedPhase2ConversationsIfNeeded(), 2),
-    runStartupTask("B2B rule profile migration", migrateB2BRuleProfileTables, 2),
-    runStartupTask("manual payment migration", migrateManualPaymentTables, 2),
-    runStartupTask("customer repair journey migration", migrateCustomerRepairJourneyTables, 2),
-    runStartupTask("staff reset codes migration", migrateStaffResetCodes, 2),
-    runStartupTask("password_changed_at migration", migratePasswordChangedAt, 2),
-    runStartupTask("operational fields migration", migrateOperationalFields, 2),
-    runStartupTask("call attempts migration", migrateCallAttempts, 2),
-    runStartupTask("staff invitations migration", migrateStaffInvitations, 2),
-    runStartupTask("corporate setup tokens migration", migrateSetupTokens, 2),
-    runStartupTask("logistics tasks migration + backfill", async () => {
-      await migrateLogisticsTasks();
-      await backfillPickupSchedulesToLogisticsTasks();
-    }, 2),
-    runStartupTask("service area tables migration", migrateServiceAreaTables, 2),
-    runStartupTask("job model+serial+outcome migration", async () => {
-      const { db } = await import("./db.js");
-      const { sql } = await import("drizzle-orm");
-      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS model_number TEXT`);
-      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS serial_number TEXT`);
-      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS repair_outcome TEXT`);
-      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS closure_reason TEXT`);
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_job_tickets_model ON job_tickets (model_number)`);
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_job_tickets_serial ON job_tickets (serial_number)`);
-    }, 2),
-    runStartupTask("job warranty columns migration", async () => {
-      const { db } = await import("./db.js");
-      const { sql } = await import("drizzle-orm");
-      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS tv_serial_number TEXT`);
-      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS warranty_days INTEGER DEFAULT 30`);
-      await db.execute(sql`ALTER TABLE job_tickets ADD COLUMN IF NOT EXISTS warranty_expiry_date TIMESTAMP`);
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_job_tickets_tv_serial_number ON job_tickets (tv_serial_number)`);
-    }, 2),
-    runStartupTask("firebase_uid migration", async () => {
-      const { db } = await import("./db.js");
-      const { sql } = await import("drizzle-orm");
-      await db.execute(sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS firebase_uid TEXT UNIQUE`);
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_users_firebase_uid ON users (firebase_uid)`);
-    }, 2),
-    runStartupTask("payment_blacklist migration", async () => {
-      const { db } = await import("./db.js");
-      const { sql } = await import("drizzle-orm");
-      await db.execute(sql`CREATE TABLE IF NOT EXISTS payment_blacklist (
-        id TEXT PRIMARY KEY,
-        phone TEXT NOT NULL,
-        reason TEXT,
-        added_by TEXT,
-        added_by_name TEXT,
-        service_request_id TEXT,
-        created_at TIMESTAMP NOT NULL DEFAULT now()
-      )`);
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_payment_blacklist_phone ON payment_blacklist (phone)`);
-    }, 2),
-    runStartupTask("backup_metadata R2 columns migration", async () => {
-      const { db } = await import("./db.js");
-      const { sql } = await import("drizzle-orm");
-      await db.execute(sql`ALTER TABLE backup_metadata ADD COLUMN IF NOT EXISTS storage_provider text NOT NULL DEFAULT 'google_drive'`);
-      await db.execute(sql`ALTER TABLE backup_metadata ADD COLUMN IF NOT EXISTS storage_object_key text`);
-      await db.execute(sql`ALTER TABLE backup_metadata ALTER COLUMN google_drive_file_id DROP NOT NULL`);
-      await db.execute(sql`UPDATE backup_metadata SET storage_object_key = google_drive_file_id WHERE storage_object_key IS NULL AND google_drive_file_id IS NOT NULL`);
-    }, 2),
-    runStartupTask("hot-path index migration", async () => {
-      const { db } = await import("./db.js");
-      const { sql } = await import("drizzle-orm");
-      // job_tickets: index on assigned_technician_id (used by technician route scoping)
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_job_tickets_assigned_tech ON job_tickets (assigned_technician_id)`);
-      // notifications: composite index for unread-count queries (user_id + read)
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_notifications_user_read ON notifications (user_id, read)`);
-      // notifications: created_at DESC for feed ordering
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_notifications_created_at ON notifications (created_at DESC)`);
-      // audit_logs: severity + created_at for filtered audit searches
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_audit_logs_severity_created ON audit_logs (severity, created_at)`);
-      // service_requests: admin_interacted for unread bell count query
-      await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_service_requests_admin_interacted ON service_requests (admin_interacted)`);
-    }, 2),
   ]);
-  const complete = superAdminReady && results.every(Boolean);
-  console.log(complete ? "[Startup] Background seeds/migrations complete." : "[Startup] Background seeds/migrations incomplete.");
-  return complete;
+  recordOptionalJob("brain_phase6_migration", brainResults[0] ? "ok" : "failed");
+  recordOptionalJob("brain_kg_migration", brainResults[1] ? "ok" : "failed");
+  recordOptionalJob("brain_seed_conversations", brainResults[2] ? "ok" : "failed");
+  recordOptionalJob("brain_phase2_seed", brainResults[3] ? "ok" : "failed");
+
+  // Optional MAIN data jobs (backfills, reconciliations) — best-effort, do not gate readiness
+  const optionalMainJobs = await Promise.all([
+    runStartupTask("operational fields creator backfill", async () => {
+      const { db } = await import("./db.js");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`
+        UPDATE job_tickets jt
+        SET
+          created_by_user_id = src.user_id,
+          created_by_name = COALESCE(u.name, jt.created_by_name)
+        FROM (
+          SELECT DISTINCT ON (entity_id)
+            entity_id,
+            user_id
+          FROM audit_logs
+          WHERE entity = 'JobTicket'
+            AND action = 'CREATE_JOB'
+            AND user_id IS NOT NULL
+            AND entity_id IS NOT NULL
+          ORDER BY entity_id, created_at DESC
+        ) src
+        LEFT JOIN users u ON u.id = src.user_id
+        WHERE jt.id = src.entity_id
+          AND (
+            jt.created_by_user_id IS NULL
+            OR jt.created_by_user_id IS DISTINCT FROM src.user_id
+          )
+      `);
+    }, 1),
+    runStartupTask("logistics pickup backfill", async () => {
+      const { backfillPickupSchedulesToLogisticsTasks } = await import("./services/logistics-task.service.js");
+      await backfillPickupSchedulesToLogisticsTasks();
+    }, 1),
+    runStartupTask("service request fingerprint scrub", async () => {
+      const { db } = await import("./db.js");
+      const { sql } = await import("drizzle-orm");
+      const { createHmac } = await import("crypto");
+      const secret = process.env.INTAKE_FINGERPRINT_SECRET;
+      if (!secret || secret.trim().length < 16) return;
+      const res = await db.execute(sql`
+        SELECT id, idempotency_fingerprint
+        FROM service_requests
+        WHERE idempotency_fingerprint IS NOT NULL
+          AND position('|' in idempotency_fingerprint) > 0
+      `);
+      const rows = ((res as any).rows ?? res) as Array<{ id: string; idempotency_fingerprint: string }>;
+      if (!Array.isArray(rows) || rows.length === 0) return;
+      for (const row of rows) {
+        const digest = createHmac("sha256", secret).update(row.idempotency_fingerprint, "utf8").digest("hex");
+        await db.execute(sql`
+          UPDATE service_requests
+          SET idempotency_fingerprint = ${digest}
+          WHERE id = ${row.id}
+            AND position('|' in idempotency_fingerprint) > 0
+        `);
+      }
+    }, 1),
+    runStartupTask("customer phone_normalized backfill", async () => {
+      const { backfillCustomerPhoneNormalized } = await import("./services/service-request-intake-migration.service.js");
+      await backfillCustomerPhoneNormalized();
+    }, 1),
+    runStartupTask("attendance location reconcile", async () => {
+      const { reconcileCanonicalServiceCenterWorkLocation } = await import("./services/attendance-location.service.js");
+      await reconcileCanonicalServiceCenterWorkLocation();
+    }, 1),
+    runStartupTask("backup_metadata data backfill", async () => {
+      const { db } = await import("./db.js");
+      const { sql } = await import("drizzle-orm");
+      await db.execute(sql`UPDATE backup_metadata SET storage_object_key = google_drive_file_id WHERE storage_object_key IS NULL AND google_drive_file_id IS NOT NULL`);
+    }, 1),
+  ]);
+
+  const jobNames = [
+    "operational_fields_backfill",
+    "logistics_pickup_backfill",
+    "fingerprint_scrub",
+    "phone_normalized_backfill",
+    "attendance_reconcile",
+    "backup_metadata_backfill",
+  ];
+  optionalMainJobs.forEach((ok, i) => {
+    recordOptionalJob(jobNames[i], ok ? "ok" : "failed");
+  });
+
+  // Observability only — HOTFIX-2: never gates /ready or isDbReady().
+  markOptionalJobsComplete();
+  console.log("[Startup] Optional jobs complete.");
 }
 
 (async () => {
@@ -182,14 +280,15 @@ async function runStartupMigrations(): Promise<boolean> {
     app.use(aiErrorHandler);
   }
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    console.error("[ERROR HANDLER]", err);
-
+  app.use((err: any, req: Request, res: Response, _next: NextFunction) => {
+    logErrorSafe("ERROR HANDLER", req, err);
     if (!res.headersSent) {
-      res.status(status).json({ message });
+      const payload = sanitizeErrorForResponse(err);
+      res.status(payload.statusCode).json({
+        error: payload.error,
+        ...(payload.code ? { code: payload.code } : {}),
+        requestId: (req as any).correlationId,
+      });
     }
   });
 
@@ -220,22 +319,28 @@ async function runStartupMigrations(): Promise<boolean> {
     },
     () => {
       log(`serving on port ${port}`);
-      // Fire seeds/migrations AFTER the server is accepting connections so they
-      // never block cold-start /health checks or the first request.
+      // Fire MAIN schema migration + readiness checks AFTER the server is accepting connections
+      // so /health and /ready are always available (503 until MAIN schema is complete).
       startReadinessChecks();
-      void runStartupMigrations().then((complete) => {
-        if (complete) markMigrationsComplete();
-        startReadinessChecks(); // idempotent — starts watchdog if not running
-        // Start schedulers only after migrations so they don't race DB setup.
-        // Each scheduler also guards with isDbReady() on every tick.
-        if (runBackgroundJobs) {
-          startDrawerDayCloseScheduler();
-          startAbandonmentScheduler();
-          startReminderScheduler();
-          startBackupScheduler();
-          initNightlyJobs();
-          console.log("[Startup] Background schedulers started after migrations.");
-        }
+      void runMainSchemaPhase().then(() => {
+        // After MAIN schema phase (complete or failed), start optional jobs (best-effort, separate status).
+        runOptionalJobsPhase().then(() => {
+          startReadinessChecks(); // idempotent — starts watchdog if not running
+          // Start schedulers ONLY if MAIN schema is verified complete.
+          // A pending/failed schema must run no MAIN schedulers (day-close, abandonment, reminders, backups, nightly).
+          // Each scheduler also guards with isDbReady() on every tick.
+          if (runBackgroundJobs && isMainSchemaVerifiedComplete()) {
+            startDrawerDayCloseScheduler();
+            startAbandonmentScheduler();
+            startReminderScheduler();
+            startBackupScheduler();
+            initNightlyJobs();
+            startSystemIncidentSchedulers();
+            console.log("[Startup] Background schedulers started after verified MAIN schema.");
+          } else if (runBackgroundJobs && !isMainSchemaVerifiedComplete()) {
+            console.warn("[Startup] MAIN schema not verified complete — background schedulers NOT started.");
+          }
+        });
       });
     },
   );
@@ -246,9 +351,13 @@ async function runStartupMigrations(): Promise<boolean> {
   const shutdown = (signal: string) => {
     log(`Received ${signal}. Closing HTTP server gracefully...`);
     stopDrawerDayCloseScheduler();
+    stopSystemIncidentSchedulers();
     stopAbandonmentScheduler();
     stopReminderScheduler();
     stopBackupScheduler();
+    stopNightlyJobs();
+    stopSystemIncidentSchedulers();
+    stopReadinessChecks();
     httpServer.close((err) => {
       if (err) {
         console.error("[Shutdown] Error closing server:", err);

@@ -70,6 +70,12 @@ export { hrRepo } from './hr.repository.js';
 // Warranty Repository (warranties, refunds)
 export { warrantyRepo } from './warranty.repository.js';
 
+// Job NG Report Repository (JOBS-NG-02A)
+export { jobNgReportRepo } from './job-ng-report.repository.js';
+
+// Job NG Customer Decision Repository (SYSTEM-UNIFICATION-00C-C)
+export { jobNgCustomerDecisionRepo } from './job-ng-customer-decision.repository.js';
+
 // System Repository (audit, modules, approvals)
 export { systemRepo } from './system.repository.js';
 
@@ -77,3 +83,6 @@ export { systemRepo } from './system.repository.js';
 export { employmentRepo } from './employment.repository.js';
 export { salaryStructureRepo } from './salary-structure.repository.js';
 export { offboardingRepo } from './offboarding.repository.js';
+
+// Disputes Repository (aftercare dispute cases — Ticket 04)
+export { disputesRepo } from './disputes.repository.js';

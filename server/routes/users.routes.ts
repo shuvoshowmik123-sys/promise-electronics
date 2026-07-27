@@ -21,6 +21,7 @@ import {
     adminUpdateUserSchema,
     getDefaultPermissions
 } from './middleware/auth.js';
+import { getNewStaffPermissionMap } from '../../shared/permission-catalog.js';
 
 import { notifySpecificAdmin } from './middleware/sse-broker.js';
 import { MailerService } from '../services/mailer.js';
@@ -269,6 +270,15 @@ router.post('/api/users', requireAdminAuth, requirePermission('users'), async (r
             toCreate.password = await bcrypt.hash(toCreate.password, 12);
         }
 
+        // New staff always get an explicit stored profile. Managers → Manager Basic (corporate-free).
+        // Do not leave null/empty so they never fall through to legacy dynamic defaults.
+        if (!toCreate.permissions || toCreate.permissions === '{}' || toCreate.permissions === 'null') {
+            const explicit = getNewStaffPermissionMap(toCreate.role || 'Technician');
+            if (Object.keys(explicit).length > 0) {
+                toCreate.permissions = JSON.stringify(explicit);
+            }
+        }
+
         const user = await userRepo.createUser(toCreate);
         const { password: _, ...safeUser } = user;
         res.status(201).json(safeUser);
@@ -370,6 +380,8 @@ function sanitizePermissions(raw: string | undefined, defaultPerms: Record<strin
     try {
         const parsed: Record<string, unknown> = JSON.parse(raw);
         DANGEROUS_PERM_KEYS.forEach(key => delete parsed[key]);
+        // Empty object → explicit role preset (e.g. Manager Basic), not legacy null-fallback.
+        if (Object.keys(parsed).length === 0) return JSON.stringify(defaultPerms);
         return JSON.stringify(parsed);
     } catch {
         return JSON.stringify(defaultPerms);
@@ -395,7 +407,12 @@ router.post('/api/admin/users', requireAdminAuth, requireSuperAdmin, async (req:
         }
 
         const hashedPassword = await bcrypt.hash(validated.password, 12);
-        const defaultPermissions = getDefaultPermissions(validated.role);
+        // Prefer explicit role preset (Manager Basic = corporate-free) over legacy dynamic defaults.
+        const presetPermissions = getNewStaffPermissionMap(validated.role);
+        const defaultPermissions =
+            Object.keys(presetPermissions).length > 0
+                ? presetPermissions
+                : getDefaultPermissions(validated.role);
 
         const user = await userRepo.createUser({
             username: validated.username,
@@ -1021,6 +1038,35 @@ router.get('/api/admin/customers/:id', requireAdminAuth, requirePermission('user
         });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch customer details' });
+    }
+});
+
+/**
+ * GET /api/admin/customers/:id/lifecycle — retail financial + warranty read model (SERVICE-LIFECYCLE-R1).
+ * Requires users permission (same as customer detail). No UI change in this phase.
+ */
+router.get('/api/admin/customers/:id/lifecycle', requireAdminAuth, requirePermission('users'), async (req: Request, res: Response) => {
+    try {
+        const { buildCustomerLifecycle } = await import('../services/customer-lifecycle.service.js');
+        const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 50));
+        const offset = Math.max(0, Number(req.query.offset) || 0);
+        const model = await buildCustomerLifecycle(req.params.id, { limit, offset });
+        if (!model) return res.status(404).json({ error: 'Customer not found' });
+
+        auditLogger.log({
+            userId: (req as any).session?.adminUserId || 'unknown',
+            action: AUDIT_ACTIONS.VIEW_CUSTOMER_PII,
+            entity: 'CustomerLifecycle',
+            entityId: req.params.id,
+            details: 'Admin viewed customer retail lifecycle summary',
+            req,
+            severity: 'info',
+        }).catch(() => {});
+
+        res.json(model);
+    } catch (error) {
+        console.error('[UsersRoutes] lifecycle failed:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to build customer lifecycle' });
     }
 });
 

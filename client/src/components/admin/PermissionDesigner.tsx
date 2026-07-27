@@ -227,7 +227,8 @@ export function PermissionDesigner({ userId, userName, userRole, onClose, onSave
             case 2: return (
                 <div className="space-y-3">
                     <p className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Permissions by Module</p>
-                    {modules.filter((m: any) => m.enabled > 0 || expandedModule === m.id).map((m: any) => {
+                    {/* All modules listed so zero-enabled modules can still be expanded and granted */}
+                    {modules.map((m: any) => {
                         const Icon = m.meta.icon;
                         const isExpanded = expandedModule === m.id;
                         return (
@@ -261,35 +262,78 @@ export function PermissionDesigner({ userId, userName, userRole, onClose, onSave
                             </div>
                         );
                     })}
-                    {modules.filter((m: any) => m.enabled > 0).length === 0 && (
-                        <p className="text-center text-sm text-slate-400 py-8">No modules enabled. Go back to Work Areas or apply a preset.</p>
-                    )}
                 </div>
             );
 
-            case 3: return (
-                <div className="space-y-3">
-                    <p className="text-xs font-black uppercase tracking-wider text-slate-400 mb-3">Permission Packs</p>
-                    {Object.entries(catalog.packs).map(([id, pack]: [string, any]) => {
-                        const alreadyHas = pack.permissions.every((k: string) => selected[k]);
-                        return (
-                            <div key={id} className="rounded-xl border border-slate-200 bg-white p-4">
-                                <div className="flex items-start justify-between">
-                                    <div>
-                                        <p className="text-sm font-bold text-slate-800">{pack.label}</p>
-                                        <p className="text-xs text-slate-500 mt-0.5">{pack.description}</p>
-                                        <p className="text-[10px] text-slate-400 mt-1">Adds: {pack.permissions.join(", ")}</p>
+            case 3: {
+                const simplePacks = (catalog as any).simplePacks || {};
+                const simpleIds = new Set(Object.keys(simplePacks));
+                const toggleSimplePack = (packId: string) => {
+                    const pack = simplePacks[packId] || catalog.packs[packId];
+                    if (!pack) return;
+                    const keys: string[] = pack.permissions;
+                    const alreadyHas = keys.every((k: string) => selected[k]);
+                    const n = { ...selected };
+                    if (alreadyHas) {
+                        for (const k of keys) delete n[k];
+                        setSelected(n);
+                        toast.success(`Removed ${pack.label}`);
+                    } else {
+                        for (const k of keys) n[k] = true;
+                        setSelected(n);
+                        toast.success(`Added ${pack.label}`);
+                    }
+                };
+                return (
+                <div className="space-y-4">
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-slate-400 mb-1">Simple work packs</p>
+                        <p className="text-xs text-slate-500 mb-3">One-click daily access. Corporate Operations does not open B2B Area or billing.</p>
+                        <div className="space-y-2">
+                            {Object.entries(simplePacks).filter(([, pack]: [string, any]) => pack.primary !== false).map(([id, pack]: [string, any]) => {
+                                const alreadyHas = pack.permissions.every((k: string) => selected[k]);
+                                return (
+                                    <div key={id} className={cn("rounded-xl border p-4", alreadyHas ? "border-blue-300 bg-blue-50/40" : "border-slate-200 bg-white")}>
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-bold text-slate-800">{pack.label}</p>
+                                                <p className="text-xs text-slate-500 mt-0.5">{pack.description}</p>
+                                            </div>
+                                            <Button size="sm" variant={alreadyHas ? "outline" : "default"}
+                                                onClick={() => toggleSimplePack(id)} className="rounded-lg h-8 text-xs shrink-0">
+                                                {alreadyHas ? "On — click off" : "Enable"}
+                                            </Button>
+                                        </div>
                                     </div>
-                                    <Button size="sm" variant={alreadyHas ? "outline" : "default"} disabled={alreadyHas}
-                                        onClick={() => applyPack(id)} className="rounded-lg h-8 text-xs shrink-0">
-                                        {alreadyHas ? "Applied" : "Add Pack"}
-                                    </Button>
-                                </div>
-                            </div>
-                        );
-                    })}
+                                );
+                            })}
+                        </div>
+                    </div>
+                    <div>
+                        <p className="text-xs font-black uppercase tracking-wider text-slate-400 mb-2">Advanced packs</p>
+                        <div className="space-y-2">
+                            {Object.entries(catalog.packs).filter(([id]) => !simpleIds.has(id)).map(([id, pack]: [string, any]) => {
+                                const alreadyHas = pack.permissions.every((k: string) => selected[k]);
+                                return (
+                                    <div key={id} className="rounded-xl border border-slate-200 bg-white p-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-sm font-bold text-slate-800">{pack.label}</p>
+                                                <p className="text-xs text-slate-500 mt-0.5">{pack.description}</p>
+                                            </div>
+                                            <Button size="sm" variant={alreadyHas ? "outline" : "default"} disabled={alreadyHas}
+                                                onClick={() => applyPack(id)} className="rounded-lg h-8 text-xs shrink-0">
+                                                {alreadyHas ? "Applied" : "Add"}
+                                            </Button>
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
                 </div>
-            );
+                );
+            }
 
             case 4: return (
                 <div className="space-y-4">

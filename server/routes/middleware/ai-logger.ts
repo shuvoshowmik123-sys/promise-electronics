@@ -5,6 +5,7 @@ import { notifications, users } from "../../../shared/schema.js";
 import { pushService } from "../../pushService.js";
 import { eq, or } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { redactMessageForLog } from "../../utils/safe-error.js";
 
 // Rate limiting: Map<ErrorSignature, Timestamp>
 const errorCache = new Map<string, number>();
@@ -15,7 +16,7 @@ function shouldRunAiWatchdog(err: any) {
     if (process.env.NODE_ENV !== "production") return false;
     if (!process.env.GROQ_API_KEY) return false;
 
-    const text = `${err?.code || ""} ${err?.message || ""} ${err?.stack || ""}`;
+    const text = `${err?.code || ""} ${redactMessageForLog(err?.message)} ${redactMessageForLog(err?.stack)}`;
     if (/ETIMEDOUT|ECONNRESET|ENETUNREACH|Connection terminated|timeout exceeded|WebSocket was closed/i.test(text)) {
         return false;
     }
@@ -44,11 +45,10 @@ export const aiErrorHandler = async (
         return next(err);
     }
 
-    console.error("[AI Watchdog] Caught error:", err);
+    console.error("[AI Watchdog] Caught error:", redactMessageForLog(err?.message));
 
     try {
-        // Generate error signature to prevent spam
-        const errorSignature = `${err.message}-${err.stack?.split("\n")[0]}`;
+        const errorSignature = `${redactMessageForLog(err?.message)}-${redactMessageForLog(err?.stack?.split("\n")[0])}`;
         const lastReported = errorCache.get(errorSignature);
 
         if (lastReported && Date.now() - lastReported < RATE_LIMIT_MS) {
@@ -58,11 +58,10 @@ export const aiErrorHandler = async (
 
         errorCache.set(errorSignature, Date.now());
 
-        // 1. Diagnose with AI
         const context = `
       Method: ${req.method}
       URL: ${req.originalUrl}
-      Body: ${JSON.stringify(req.body || {}).substring(0, 500)}
+      Body: [REDACTED]
       User: ${req.user ? (req.user as any).id : "Anonymous"}
     `;
 

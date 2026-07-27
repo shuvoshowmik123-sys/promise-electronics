@@ -156,6 +156,32 @@ export default function TechnicianTab() {
         : allJobs;
 
     const activeJobsList = scopedJobs.filter(j => !["Completed", "Delivered"].includes(j.status ?? ""));
+    const blockedStatuses = new Set([
+        "Pending Parts", "Waiting on Parts", "Awaiting Quote Approval",
+        "Awaiting Customer Decision", "NG Review Pending",
+    ]);
+    const terminalStatuses = new Set([
+        "Completed", "Delivered", "Cancelled", "Abandoned", "Forfeited", "Closed", "Not OK",
+    ]);
+    const clarificationNeededCount = scopedJobs.filter((j) => {
+        const status = j.status ?? "";
+        if (blockedStatuses.has(status) || terminalStatuses.has(status)) return false;
+        const start = (j as any).activeWorkStartedAt;
+        if (!start) return false;
+        const days = Math.floor((Date.now() - new Date(start).getTime()) / (24 * 60 * 60 * 1000));
+        return days >= 7;
+    }).length;
+    const unassignedAlertCount = !isPersonalView
+        ? scopedJobs.filter((j) => {
+            if (j.assignedTechnicianId || (j.technician && j.technician !== "Unassigned")) return false;
+            const status = j.status ?? "";
+            if (blockedStatuses.has(status) || terminalStatuses.has(status)) return false;
+            const start = (j as any).activeWorkStartedAt;
+            if (!start) return false;
+            const days = Math.floor((Date.now() - new Date(start).getTime()) / (24 * 60 * 60 * 1000));
+            return days >= 7;
+        }).length
+        : 0;
     const completedToday = scopedJobs.filter(j => {
         const done = j.completedAt ? new Date(j.completedAt) : null;
         const today = new Date();
@@ -199,12 +225,13 @@ export default function TechnicianTab() {
         ? [
             { label: "My Active", value: activeJobsList.length, tone: "blue" as const, icon: <Wrench className="w-3 h-3" /> },
             { label: "Done Today", value: completedToday, tone: "emerald" as const, icon: <CheckCircle2 className="w-3 h-3" /> },
+            { label: "Clarify", value: clarificationNeededCount, tone: "rose" as const, icon: <AlertTriangle className="w-3 h-3" /> },
           ]
         : [
             { label: "Active Jobs", value: activeJobsList.length, tone: "blue" as const, icon: <Wrench className="w-3 h-3" /> },
-            { label: "Done Today", value: completedToday, tone: "emerald" as const, icon: <CheckCircle2 className="w-3 h-3" /> },
-            { label: "Technicians", value: techOnly.length, tone: "amber" as const, icon: <Star className="w-3 h-3" /> },
-            { label: "Available", value: availableTechs, tone: "violet" as const, icon: <User className="w-3 h-3" /> },
+            { label: "Clarify 7d+", value: clarificationNeededCount, tone: "rose" as const, icon: <AlertTriangle className="w-3 h-3" /> },
+            { label: "Unassigned alert", value: unassignedAlertCount, tone: "amber" as const, icon: <Zap className="w-3 h-3" /> },
+            { label: "Technicians", value: techOnly.length, tone: "violet" as const, icon: <Star className="w-3 h-3" /> },
           ];
 
     // ── MOBILE BRANCH ─────────────────────────────────────────────────────────

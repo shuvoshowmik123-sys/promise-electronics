@@ -8,7 +8,7 @@ import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { settingsRepo, notificationRepo, systemRepo, userRepo, jobRepo, serviceRequestRepo, warrantyRepo, hrRepo } from '../repositories/index.js';
 import { insertQuoteRequestSchema } from '../../shared/schema.js';
-import { getCustomerId, requireAdminAuth, requireCustomerAuth, requireGranularPermission } from './middleware/auth.js';
+import { getCustomerId, requireAdminAuth, requireCustomerAuth, requireGranularPermission, requireAnyGranularPermission } from './middleware/auth.js';
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { pushService } from '../pushService.js';
 import { jobService } from '../services/job.service.js';
@@ -19,11 +19,36 @@ import { syncPickupScheduleToLogisticsTask } from '../services/logistics-task.se
 import { db } from '../db.js';
 import { sql } from 'drizzle-orm';
 import { auditLogger } from '../utils/auditLogger.js';
+import {
+    sendOrPriceQuote,
+    acceptRetailQuote,
+    declineRetailQuote,
+    convertRetailQuoteToJob,
+    RetailQuoteError,
+    attachCanonicalQuoteView,
+} from '../services/retail-quote.service.js';
+import {
+    createRetailServiceRequest,
+    IntakeError,
+    parseIdempotencyKeyHeader,
+    sanitizePublicServiceRequest,
+} from '../services/retail-intake.service.js';
+import {
+    createPosSaleAtomic,
+    derivePosRefundLifecycle,
+    findPosByClientRequest,
+    awaitPosByClientRequest,
+    fingerprintFromValidated,
+    assertIdempotentReplay,
+    PosBillingError,
+} from '../services/pos-billing.service.js';
+import { getSafeJobDisplayRef } from '../../shared/job-display-utils.js';
 
 const router = Router();
 const PICKUP_SCHEDULEABLE_STAGES = ['intake', 'assessment', 'authorized', 'pickup_scheduled'];
 const PICKUP_RECEIVED_STAGES = ['picked_up', 'device_received', 'in_repair', 'ready', 'out_for_delivery', 'completed', 'closed'];
 const PICKUP_DELIVERED_STAGES = ['completed', 'closed'];
+const JOB_NUMBER_RE = /^JOB-\d{4}-\d{4,}$/i;
 
 function validatePickupCustodyStatus(status: string | undefined, stage: string | null | undefined) {
     if (status === 'PickedUp' && !PICKUP_RECEIVED_STAGES.includes(stage || '')) {
@@ -47,84 +72,108 @@ router.post('/api/quotes', serviceRequestLimiter, async (req: Request, res: Resp
         const validated = insertQuoteRequestSchema.parse(req.body);
 
         const customerId = req.session?.customerId || null;
+        const idempotencyKey = parseIdempotencyKeyHeader(req.headers['idempotency-key']);
 
-        const quoteRequest = await storage.createServiceRequest({
-            ...validated,
-            customerId,
-            isQuote: true,
-            quoteStatus: 'Pending',
-            status: 'Pending',
+        const result = await createRetailServiceRequest({
+            brand: validated.brand,
+            primaryIssue: validated.primaryIssue,
+            customerName: validated.customerName,
+            phone: validated.phone,
+            screenSize: validated.screenSize || null,
+            modelNumber: validated.modelNumber || null,
+            symptoms: validated.symptoms || null,
+            description: validated.description || null,
             servicePreference: validated.servicePreference || null,
             requestIntent: validated.requestIntent || 'quote',
             serviceMode: validated.serviceMode || null,
+            serviceId: validated.serviceId || null,
+            isQuote: true,
+            customerId,
+            intakeSource: "quote_request",
+            idempotencyKey,
+            // Quotes stay at Request Received until acceptance — do not advance pickup/drop-off.
+            initialTrackingStatus: "Request Received",
         });
 
-        notifyAdminUpdate({
-            type: 'quote_request_created',
-            data: quoteRequest,
-            createdAt: new Date().toISOString()
-        });
+        if (result.duplicateWindow) {
+            return res.status(202).json({
+                error: 'We already received a similar request. Our team will contact you soon.',
+                code: 'DUPLICATE_REQUEST_WINDOW',
+            });
+        }
 
-        repairJourneyService.createJourneyFromQuote({
-            quoteRequestId: quoteRequest.id,
-            customerId: customerId || null,
-            customerNote: validated.description || undefined,
-            serviceMode: (validated.serviceMode as any) || undefined,
-        }).catch(err => console.error('[RepairJourney] Failed to create journey from quote:', (err as Error).message));
+        const quoteRequest = result.serviceRequest;
+        const publicQuote = sanitizePublicServiceRequest(quoteRequest as any);
 
-        res.status(201).json(quoteRequest);
+        if (!result.idempotent) {
+            notifyAdminUpdate({
+                type: 'quote_request_created',
+                data: publicQuote,
+                createdAt: new Date().toISOString()
+            });
+
+            repairJourneyService.createJourneyFromQuote({
+                quoteRequestId: quoteRequest.id,
+                customerId: customerId || null,
+                customerNote: validated.description || undefined,
+                serviceMode: (validated.serviceMode as any) || undefined,
+            }).catch(err => console.error('[RepairJourney] Failed to create journey from quote:', (err as Error).message));
+        }
+
+        res.status(result.idempotent ? 200 : 201).json(publicQuote);
     } catch (error: any) {
+        if (error instanceof IntakeError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
         console.error('[Quotes] Quote request failed:', (error as Error).message);
         res.status(400).json({ error: 'Invalid quote request' });
     }
 });
 
 /**
- * GET /api/admin/quotes - Get all quote requests (admin)
+ * GET /api/admin/quotes - List retail quote requests (00C-A-HOTFIX)
+ * Requires quote pricing or service-request view — not bare admin session.
  */
-router.get('/api/admin/quotes', requireAdminAuth, async (req: Request, res: Response) => {
-    try {
-        const quotes = await serviceRequestRepo.getQuoteRequests();
-        res.json(quotes);
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch quotes' });
-    }
-});
+router.get(
+    '/api/admin/quotes',
+    requireAdminAuth,
+    requireAnyGranularPermission(['serviceRequests.view', 'serviceRequests.quote']),
+    async (req: Request, res: Response) => {
+        try {
+            const quotes = await serviceRequestRepo.getQuoteRequests();
+            res.json(quotes);
+        } catch (error) {
+            res.status(500).json({ error: 'Failed to fetch quotes' });
+        }
+    },
+);
 
 /**
  * PATCH /api/admin/quotes/:id/price - Update quote with pricing (admin)
- * Money action — requires serviceRequests.quote permission.
+ * Canonical: retail-quote.service sendOrPriceQuote (00C-A)
  */
 router.patch('/api/admin/quotes/:id/price', requireAdminAuth, requireGranularPermission('serviceRequests.quote'), async (req: Request, res: Response) => {
     try {
-        const { quoteAmount, quoteNotes } = req.body;
-        if (!quoteAmount) {
-            return res.status(400).json({ error: 'Quote amount is required' });
-        }
+        const { quoteAmount, quoteNotes, quoteValidDays } = req.body;
+        const user = (req as any).user;
+        if (!user?.id) return res.status(401).json({ error: 'Admin authentication required' });
 
-        const updated = await serviceRequestRepo.updateQuote(req.params.id, quoteAmount, quoteNotes);
-        if (!updated) {
-            return res.status(404).json({ error: 'Quote not found' });
-        }
-
-        auditLogger.log({
-            userId: req.session.adminUserId!,
-            action: 'QUOTE_PRICE_UPDATED',
-            entity: 'ServiceRequest',
-            entityId: req.params.id,
-            newValue: { quoteAmount, quoteNotes: quoteNotes ?? null, ticketNumber: updated.ticketNumber || null },
+        const result = await sendOrPriceQuote(
+            req.params.id,
+            { quoteAmount, quoteNotes, quoteValidDays },
+            { kind: "admin", id: user.id, name: user.name || "Admin", role: user.role },
             req,
-        }).catch(() => {});
+        );
+        const updated = result.serviceRequest;
 
         if (updated.customerId) {
             notifyCustomerUpdate(updated.customerId, {
                 type: 'quote_updated',
-                data: updated,
+                data: attachCanonicalQuoteView(updated),
                 updatedAt: new Date().toISOString()
             });
 
-            // Send push notification: Quote Ready
-            pushService.notifyQuoteReady(updated.customerId, updated.id, quoteAmount)
+            pushService.notifyQuoteReady(updated.customerId, updated.id, Number(updated.quoteAmount || quoteAmount))
                 .catch(err => console.error('[Push] Failed to send quote ready notification:', (err as Error).message));
         }
 
@@ -135,28 +184,25 @@ router.patch('/api/admin/quotes/:id/price', requireAdminAuth, requireGranularPer
             }
         }).catch(err => console.error('[RepairJourney] Lookup error:', (err as Error).message));
 
-        res.json(updated);
-    } catch (error) {
+        res.json(attachCanonicalQuoteView(updated));
+    } catch (error: any) {
+        if (error instanceof RetailQuoteError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error('[Quotes] price failed:', (error as Error).message);
         res.status(500).json({ error: 'Failed to update quote' });
     }
 });
 
 /**
  * POST /api/quotes/:id/accept - Accept quote (customer)
+ * Canonical: acceptRetailQuote (00C-A). Logistics prefs still applied after accept.
  */
 router.post('/api/quotes/:id/accept', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
         const customerId = getCustomerId(req);
         if (!customerId) {
             return res.status(401).json({ error: 'Please login to continue', code: 'NOT_AUTHENTICATED' });
-        }
-
-        const existingRequest = await serviceRequestRepo.getServiceRequest(req.params.id);
-        if (!existingRequest) {
-            return res.status(404).json({ error: 'Quote not found' });
-        }
-        if (!existingRequest.customerId || existingRequest.customerId !== customerId) {
-            return res.status(403).json({ error: 'Forbidden: You can only manage your own quote' });
         }
 
         const { pickupTier, servicePreference, address, scheduledVisitDate } = req.body;
@@ -181,18 +227,20 @@ router.post('/api/quotes/:id/accept', requireCustomerAuth, async (req: Request, 
             ? new Date(scheduledVisitDate)
             : null;
 
-        const updated = await serviceRequestRepo.acceptQuote(
+        const outcome = await acceptRetailQuote(
             req.params.id,
-            actualPickupTier,
-            address || '',
-            servicePreference,
-            parsedScheduledVisitDate
+            { kind: "customer", id: customerId },
+            {
+                servicePreference,
+                pickupTier: actualPickupTier,
+                address: address || '',
+                scheduledVisitDate: parsedScheduledVisitDate,
+            },
+            req,
         );
-        if (!updated) {
-            return res.status(404).json({ error: 'Quote not found' });
-        }
 
-        await serviceRequestRepo.updateServiceRequest(req.params.id, { trackingStatus: trackingStatus as any });
+        let updated = outcome.serviceRequest;
+        updated = await serviceRequestRepo.updateServiceRequest(req.params.id, { trackingStatus: trackingStatus as any }) || updated;
 
         let eventMessage = servicePreference === 'home_pickup'
             ? 'Our team is on the way to collect your TV.'
@@ -203,12 +251,14 @@ router.post('/api/quotes/:id/accept', requireCustomerAuth, async (req: Request, 
             eventMessage = `Your visit is scheduled for ${visitDate.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}. Please bring your TV to our service center.`;
         }
 
-        await serviceRequestRepo.createServiceRequestEvent({
-            serviceRequestId: req.params.id,
-            status: trackingStatus,
-            message: eventMessage,
-            actor: 'System',
-        });
+        if (!outcome.idempotent) {
+            await serviceRequestRepo.createServiceRequestEvent({
+                serviceRequestId: req.params.id,
+                status: trackingStatus,
+                message: eventMessage,
+                actor: 'System',
+            });
+        }
 
         notifyAdminUpdate({
             type: 'quote_accepted',
@@ -216,7 +266,6 @@ router.post('/api/quotes/:id/accept', requireCustomerAuth, async (req: Request, 
             acceptedAt: new Date().toISOString()
         });
 
-        // Send push notification: Quote Accepted confirmation
         if (updated.customerId) {
             pushService.notifyQuoteAccepted(updated.customerId, updated.ticketNumber || updated.id)
                 .catch(err => console.error('[Push] Failed to send quote accepted notification:', (err as Error).message));
@@ -257,8 +306,17 @@ router.post('/api/quotes/:id/accept', requireCustomerAuth, async (req: Request, 
             });
         }).catch(err => console.error('[RepairJourney] Quote accept sync failed:', (err as Error).message));
 
-        res.json({ ...updated, servicePreference, trackingStatus, scheduledPickupDate: parsedScheduledVisitDate });
-    } catch (error) {
+        res.json({
+            ...attachCanonicalQuoteView(updated),
+            servicePreference,
+            trackingStatus,
+            scheduledPickupDate: parsedScheduledVisitDate,
+            idempotent: outcome.idempotent,
+        });
+    } catch (error: any) {
+        if (error instanceof RetailQuoteError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
         console.error('[Quotes] Error accepting quote:', (error as Error).message);
         res.status(500).json({ error: 'Failed to accept quote' });
     }
@@ -266,6 +324,7 @@ router.post('/api/quotes/:id/accept', requireCustomerAuth, async (req: Request, 
 
 /**
  * POST /api/quotes/:id/decline - Decline quote (customer)
+ * Canonical: declineRetailQuote (00C-A)
  */
 router.post('/api/quotes/:id/decline', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
@@ -274,59 +333,68 @@ router.post('/api/quotes/:id/decline', requireCustomerAuth, async (req: Request,
             return res.status(401).json({ error: 'Please login to continue', code: 'NOT_AUTHENTICATED' });
         }
 
-        const existingRequest = await serviceRequestRepo.getServiceRequest(req.params.id);
-        if (!existingRequest) {
-            return res.status(404).json({ error: 'Quote not found' });
-        }
-        if (!existingRequest.customerId || existingRequest.customerId !== customerId) {
-            return res.status(403).json({ error: 'Forbidden: You can only manage your own quote' });
-        }
-
-        const updated = await serviceRequestRepo.declineQuote(req.params.id);
-        if (!updated) {
-            return res.status(404).json({ error: 'Quote not found' });
-        }
+        const outcome = await declineRetailQuote(
+            req.params.id,
+            { kind: "customer", id: customerId },
+            req,
+        );
 
         notifyAdminUpdate({
             type: 'quote_declined',
-            data: updated,
+            data: outcome.serviceRequest,
             declinedAt: new Date().toISOString()
         });
 
-        res.json(updated);
-    } catch (error) {
+        res.json({ ...attachCanonicalQuoteView(outcome.serviceRequest), idempotent: outcome.idempotent });
+    } catch (error: any) {
+        if (error instanceof RetailQuoteError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error('[Quotes] decline failed:', (error as Error).message);
         res.status(500).json({ error: 'Failed to decline quote' });
     }
 });
 
 /**
- * POST /api/quotes/:id/convert - Convert quote to service request (admin only)
- * Money/flow action — requires serviceRequests.convertToJob permission.
+ * POST /api/quotes/:id/convert - Convert accepted retail quote to job ticket (admin)
+ * Requires serviceRequests.convertToJob AND jobs.create (00C-A-HOTFIX).
  */
-router.post('/api/quotes/:id/convert', requireAdminAuth, requireGranularPermission('serviceRequests.convertToJob'), async (req: Request, res: Response) => {
+router.post(
+    '/api/quotes/:id/convert',
+    requireAdminAuth,
+    requireGranularPermission('serviceRequests.convertToJob'),
+    requireGranularPermission('jobs.create'),
+    async (req: Request, res: Response) => {
     try {
-        const updated = await storage.convertQuoteToServiceRequest(req.params.id);
-        if (!updated) {
-            return res.status(404).json({ error: 'Quote not found' });
-        }
-
-        auditLogger.log({
-            userId: req.session.adminUserId!,
-            action: 'QUOTE_CONVERTED',
-            entity: 'ServiceRequest',
-            entityId: req.params.id,
-            newValue: { ticketNumber: updated.ticketNumber || null },
+        const user = (req as any).user;
+        if (!user?.id) return res.status(401).json({ error: 'Admin authentication required' });
+        const result = await convertRetailQuoteToJob(
+            req.params.id,
+            { kind: "admin", id: user.id, name: user.name || "Admin", role: user.role },
             req,
-        }).catch(() => {});
+        );
 
         notifyAdminUpdate({
             type: 'quote_converted',
-            data: updated,
+            data: {
+                serviceRequest: attachCanonicalQuoteView(result.serviceRequest),
+                jobTicket: result.jobTicket,
+            },
             convertedAt: new Date().toISOString()
         });
 
-        res.json(updated);
-    } catch (error) {
+        res.status(result.idempotent ? 200 : 201).json({
+            ...attachCanonicalQuoteView(result.serviceRequest),
+            jobTicket: result.jobTicket,
+            jobId: result.jobTicket.id,
+            estimatedCost: result.jobTicket.estimatedCost,
+            idempotent: result.idempotent,
+        });
+    } catch (error: any) {
+        if (error instanceof RetailQuoteError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error('[Quotes] convert failed:', (error as Error).message);
         res.status(500).json({ error: 'Failed to convert quote' });
     }
 });
@@ -426,9 +494,10 @@ router.post('/api/admin/service-requests/:id/transfer-to-pickup', requireAdminAu
 
 /**
  * POST /api/admin/pickups/:id/collect-payment
- * Records cash-on-delivery collected at handover. Mirrors POS posting:
- * petty-cash Income (Sales) + bumps active drawer expectedCash for Cash,
- * and marks the linked service request paid.
+ * SYSTEM-UNIFICATION-00C-B-COD-CLOSE: narrow adapter to canonical POS.
+ * Creates exactly one POS transaction + allocation linked to the converted job.
+ * No direct petty-cash / drawer / service-request payment writes.
+ * Fails safe 409 with zero money writes when no valid POS target exists.
  */
 router.post('/api/admin/pickups/:id/collect-payment', requireAdminAuth, requireGranularPermission('pos.processPayment'), async (req: Request, res: Response) => {
     try {
@@ -447,35 +516,140 @@ router.post('/api/admin/pickups/:id/collect-payment', requireAdminAuth, requireG
             return res.status(404).json({ error: 'Pickup schedule not found' });
         }
 
-        const activeDrawer = pay === 'Cash' ? await storage.getActiveDrawer() : null;
-        if (pay === 'Cash' && !activeDrawer) {
-            return res.status(409).json({ error: 'Open drawer first before collecting cash COD' });
+        const sr = await serviceRequestRepo.getServiceRequest(pickup.serviceRequestId);
+        if (!sr) {
+            return res.status(404).json({ error: 'Linked service request not found' });
+        }
+        const jobId = sr.convertedJobId;
+        if (!jobId) {
+            return res.status(409).json({
+                error: 'Cannot collect COD: service request has not been converted to a job yet.',
+                code: 'COD_NO_JOB_TARGET',
+            });
+        }
+        const job = await jobRepo.getJobTicket(jobId);
+        if (!job) {
+            return res.status(409).json({
+                error: 'Cannot collect COD: linked job not found.',
+                code: 'COD_NO_JOB_TARGET',
+            });
         }
 
-        await storage.createPettyCashRecord({
-            description: `COD - Pickup/Delivery ${pickup.serviceRequestId}`,
-            category: 'Sales',
-            amount: amt,
-            type: 'Income',
-        } as any);
+        const actor = (req as any).user;
+        const actorUserId = actor?.id || req.session?.adminUserId;
+        const bodyClientRequestId = (req.body?.clientRequestId as string | undefined) || null;
+        const headerKeyRaw = req.headers['idempotency-key'];
+        let headerClientRequestId: string | null = null;
+        try {
+            headerClientRequestId = parseIdempotencyKeyHeader(headerKeyRaw);
+        } catch (headerErr) {
+            return res.status(400).json({ error: (headerErr as Error).message, code: 'INVALID_IDEMPOTENCY_KEY' });
+        }
+        if (bodyClientRequestId && headerClientRequestId && bodyClientRequestId !== headerClientRequestId) {
+            return res.status(409).json({
+                error: 'Conflicting idempotency keys: body clientRequestId and Idempotency-Key header differ.',
+                code: 'IDEMPOTENCY_KEY_CONFLICT',
+            });
+        }
+        const clientRequestId = bodyClientRequestId || headerClientRequestId || null;
 
-        if (activeDrawer) {
-            await storage.updateDrawerExpectedCash(activeDrawer.id, amt);
+        const srTicket = sr.ticketNumber?.trim() || null;
+        const jobRef = getSafeJobDisplayRef({ id: job.id, corporateJobNumber: job.corporateJobNumber });
+        const safeDisplayRef = srTicket || (JOB_NUMBER_RE.test(jobRef) ? jobRef : null);
+        if (!safeDisplayRef) {
+            return res.status(409).json({
+                error: 'Cannot collect COD: no safe customer-facing reference available for invoice label.',
+                code: 'COD_NO_SAFE_REFERENCE',
+            });
         }
 
-        await serviceRequestRepo.updateServiceRequest(pickup.serviceRequestId, {
-            paymentStatus: 'paid',
-        } as any);
+        const taxRate = 0;
+        const subtotal = amt;
+        const tax = 0;
+        const discount = 0;
+        const validated = {
+            customer: job.customer || sr.customerName || null,
+            customerPhone: job.customerPhone || sr.phone || null,
+            customerAddress: job.customerAddress || sr.address || null,
+            items: JSON.stringify([{
+                name: `COD Collection — ${safeDisplayRef}`,
+                itemType: 'service',
+                quantity: 1,
+                price: amt,
+            }]),
+            linkedJobs: JSON.stringify([{ jobId, billedAmount: amt }]),
+            subtotal,
+            tax,
+            taxRate,
+            discount,
+            total: amt,
+            paymentMethod: pay,
+            paymentStatus: 'Paid',
+            clientRequestId: clientRequestId || undefined,
+        };
 
+        const cartItems = [{ name: `COD Collection — ${safeDisplayRef}`, itemType: 'service', quantity: 1, price: amt }];
+        const linkedJobs = [{ jobId, billedAmount: amt }];
+        const fingerprint = fingerprintFromValidated(validated as any, cartItems, linkedJobs);
+
+        if (clientRequestId && actorUserId) {
+            const prior = await findPosByClientRequest(String(actorUserId), String(clientRequestId));
+            if (prior) {
+                assertIdempotentReplay(prior, fingerprint, String(clientRequestId));
+                const lifecycle = derivePosRefundLifecycle(prior as any);
+                return res.status(200).json({ ...prior, ...lifecycle, idempotent: true, codAdapter: true });
+            }
+        }
+
+        const sale = await createPosSaleAtomic({
+            validated: validated as any,
+            cartItems,
+            linkedJobs,
+            actorUserId,
+            clientRequestId,
+            req,
+        });
+
+        const lifecycle = derivePosRefundLifecycle(sale.transaction as any);
         notifyAdminUpdate({
             type: 'cod_collected',
-            data: { pickupId: pickup.id, serviceRequestId: pickup.serviceRequestId, amount: amt, method: pay },
+            data: { pickupId: pickup.id, serviceRequestId: pickup.serviceRequestId, jobId, invoiceNumber: sale.transaction.invoiceNumber, amount: amt, method: pay },
             updatedAt: new Date().toISOString()
         });
 
-        res.json({ success: true, amount: amt, method: pay });
+        if (sale.idempotent) {
+            return res.status(200).json({ ...sale.transaction, ...lifecycle, idempotent: true, codAdapter: true });
+        }
+        res.status(201).json({ ...sale.transaction, ...lifecycle, idempotent: false, codAdapter: true });
     } catch (error: any) {
-        res.status(500).json({ error: error?.message || 'Failed to record COD payment' });
+        if (error instanceof PosBillingError) {
+            if (error.code === 'IDEMPOTENCY_RACE' && error.details?.clientRequestId && error.details?.requestFingerprint) {
+                const actorUserId = (req as any).user?.id || req.session?.adminUserId;
+                if (actorUserId) {
+                    try {
+                        const prior = await awaitPosByClientRequest(
+                            String(actorUserId),
+                            String(error.details.clientRequestId),
+                            String(error.details.requestFingerprint),
+                        );
+                        const lifecycle = derivePosRefundLifecycle(prior as any);
+                        return res.status(200).json({ ...prior, ...lifecycle, idempotent: true, codAdapter: true });
+                    } catch (replayErr: any) {
+                        if (replayErr instanceof PosBillingError) {
+                            const code = replayErr.code === 'IDEMPOTENCY_RACE' ? 'IDEMPOTENCY_IN_FLIGHT' : replayErr.code;
+                            return res.status(replayErr.status).json({ error: replayErr.message, code });
+                        }
+                    }
+                }
+                return res.status(409).json({
+                    error: 'A concurrent COD sale with this clientRequestId has not committed yet; retry the identical request',
+                    code: 'IDEMPOTENCY_IN_FLIGHT',
+                });
+            }
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error('[COD] collect-payment failed:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to record COD payment' });
     }
 });
 

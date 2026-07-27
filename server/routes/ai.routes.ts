@@ -267,36 +267,32 @@ router.post("/chat", aiLimiter, async (req, res) => {
         // Handle auto-booking if AI detected booking intent
         if (response.booking) {
             try {
-                // Import serviceRequests schema if needed
                 const { serviceRequests } = await import("../../shared/schema.js");
+                const {
+                    createRetailServiceRequest,
+                    sanitizePublicServiceRequest,
+                } = await import('../services/retail-intake.service.js');
                 const bookingData = response.booking as any;
 
                 let ticket: any;
                 let isUpdate = false;
+                let skipTicketAttach = false;
 
-                // Smart Booking Logic: Update if existing pending ticket found AND it seems to be the same item
-                // We define "same item" as: Same Brand AND Same Primary Issue
                 const isSameItem = existingTicket &&
                     (!bookingData.brand || existingTicket.brand === bookingData.brand) &&
                     (!bookingData.issue || existingTicket.primaryIssue === bookingData.issue);
 
                 if (existingTicket && isSameItem) {
                     isUpdate = true;
-                    // Update existing ticket
                     const [updatedTicket] = await db
                         .update(serviceRequests)
                         .set({
-                            // Allow updating specific fields if provided, else keep existing
                             customerName: bookingData.customer_name || existingTicket.customerName,
                             phone: bookingData.phone || existingTicket.phone,
                             brand: bookingData.brand || existingTicket.brand,
-                            // Model number extracted from conversation
                             modelNumber: bookingData.model || existingTicket.modelNumber,
-                            // Screen size in inches
                             screenSize: bookingData.screenSize || existingTicket.screenSize,
-                            // Primary Issue is the Category (e.g. Display Issue)
                             primaryIssue: bookingData.issue || existingTicket.primaryIssue,
-                            // Description is the User's words
                             description: bookingData.description
                                 ? `${existingTicket.description}\n[Update]: ${bookingData.description}`
                                 : existingTicket.description,
@@ -307,11 +303,7 @@ router.post("/chat", aiLimiter, async (req, res) => {
 
                     ticket = updatedTicket;
                     console.log("Existing Pending Ticket updated:", ticket.id);
-
                 } else {
-                    // Create NEW ticket (Standard Flow)
-
-                    // Attempt to link to existing customer by phone if not logged in
                     let customerIdToLink = userContext?.id;
                     if (!customerIdToLink && bookingData.phone) {
                         const user = await storage.getUserByPhoneNormalized(bookingData.phone);
@@ -320,32 +312,50 @@ router.post("/chat", aiLimiter, async (req, res) => {
                         }
                     }
 
-                    // Use storage method to handle ID generation, ticket number, and timeline creation
-                    ticket = await storage.createServiceRequest({
+                    const result = await createRetailServiceRequest({
                         customerName: bookingData.customer_name,
                         phone: bookingData.phone,
                         address: bookingData.address || null,
-                        primaryIssue: bookingData.issue || "Other", // Default to Other if AI fails
+                        primaryIssue: bookingData.issue || "Other",
                         description: bookingData.description || `AI Chat Booking: ${bookingData.issue}`,
                         brand: bookingData.brand || "Unknown",
                         modelNumber: bookingData.model || null,
                         screenSize: bookingData.screenSize || null,
-                        status: "Pending",
-                        customerId: customerIdToLink,
+                        customerId: customerIdToLink || undefined,
+                        intakeSource: "ai_chat",
+                        initialTrackingStatus: "Request Received",
                     });
-                    console.log("Auto-booking created:", ticket.id);
+
+                    if (result.duplicateWindow) {
+                        response.text +=
+                            "\n\nWe already received a similar request. Our team will contact you soon.";
+                        (response as any).bookingType = "duplicate_window";
+                        skipTicketAttach = true;
+                    } else if (result.idempotent) {
+                        (response as any).bookingType = "idempotent";
+                        skipTicketAttach = true;
+                    } else {
+                        ticket = result.serviceRequest;
+                        console.log("Auto-booking created:", ticket.id);
+                    }
                 }
 
-                (response as any).ticketData = ticket;
-                (response as any).bookingType = isUpdate ? "updated" : "created";
-
-                // If AI didn't explicitly mention it's an update, we might want to hint frontend (optional)
-                // but usually the AI text response will cover it if prompt is good.
+                if (!skipTicketAttach && ticket) {
+                    (response as any).ticketData = sanitizePublicServiceRequest(ticket as any);
+                    (response as any).bookingType = isUpdate ? "updated" : "created";
+                }
 
             } catch (bookingError: any) {
-                console.error("Auto-booking failed:", bookingError);
-                response.text += "\n\n⚠️ Booking e ektu problem hoyeche. Please call: 01711-XXXXXX";
-                (response as any).bookingError = true;
+                if (bookingError?.code === "INVALID_PHONE") {
+                    response.text +=
+                        "\n\nPlease provide a valid Bangladesh mobile number (e.g. 01XXXXXXXXX) so we can create your ticket.";
+                    (response as any).bookingError = true;
+                    (response as any).bookingErrorCode = "INVALID_PHONE";
+                } else {
+                    console.error("Auto-booking failed:", bookingError?.message || bookingError);
+                    response.text += "\n\n⚠️ Booking e ektu problem hoyeche. Please call: 01711-XXXXXX";
+                    (response as any).bookingError = true;
+                }
             }
         }
 

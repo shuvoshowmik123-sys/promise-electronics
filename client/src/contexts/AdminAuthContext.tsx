@@ -3,6 +3,7 @@ import type { User, UserPermissions } from "@shared/schema";
 import { getDefaultPermissionsForRole } from "@shared/admin-permissions";
 import { adminAuthApi } from "@/lib/api";
 import { clearPersistedClientState } from "@/lib/queryClient";
+import { getAdminRoleLandingPath } from "@/lib/admin-workspace-routing";
 
 type SafeUser = Omit<User, "password">;
 
@@ -121,10 +122,5 @@ export function useAdminAuth() {
 }
 
 export function getRoleLandingPath(role: string): string {
-  switch (role) {
-    case "Technician": return "/admin#technician";
-    case "Driver": return "/admin#pickup";
-    case "Cashier": return "/admin#pos";
-    default: return "/admin";
-  }
+  return getAdminRoleLandingPath(role);
 }

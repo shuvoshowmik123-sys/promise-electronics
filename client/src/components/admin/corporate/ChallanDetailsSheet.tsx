@@ -172,8 +172,14 @@ export function ChallanDetailsSheet({ challan, client, onClose, onReprint, isPri
                                                 </div>
                                                 <div className="grid grid-cols-2 gap-4 mt-1">
                                                     <div>
-                                                        <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold block mb-0.5">Serial No</span>
-                                                        <span className="text-xs text-slate-600 font-mono">{job.tvSerialNumber || "N/A"}</span>
+                                                        <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold block mb-0.5">Unit serial</span>
+                                                        <span className="text-xs text-slate-600 font-mono">{job.tvSerialNumber?.trim() || "—"}</span>
+                                                        {job.modelNumber?.trim() ? (
+                                                            <>
+                                                                <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold block mb-0.5 mt-1.5">Model</span>
+                                                                <span className="text-xs text-slate-600 truncate block">{job.modelNumber.trim()}</span>
+                                                            </>
+                                                        ) : null}
                                                     </div>
                                                     <div>
                                                         <span className="text-[10px] uppercase tracking-wider text-slate-400 font-semibold block mb-0.5">Problem</span>

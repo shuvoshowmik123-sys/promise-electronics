@@ -1,4 +1,11 @@
 import type { AttendanceRecord, JobTicket, WorkLocation } from '../../shared/schema.js';
+import {
+    evaluateGeofenceForWorkLocation,
+    haversineMeters,
+    isConfidentOutsideStatus,
+    type CanonicalGeofenceStatus,
+    type GeofenceEvaluation as SharedGeofenceEvaluation,
+} from '../services/attendance-location.service.js';
 
 export type GeofenceInput = {
     latitude: number;
@@ -6,14 +13,13 @@ export type GeofenceInput = {
     accuracy?: number | null;
 };
 
+/** Mobile-facing geofence shape (canonical statuses). */
 export type GeofenceEvaluation = {
-    status: 'inside' | 'outside';
+    status: CanonicalGeofenceStatus;
     distanceMeters: number;
     radiusMeters: number;
     accuracy: number | null;
 };
-
-const EARTH_RADIUS_METERS = 6371000;
 
 export function calculateDistanceMeters(
     fromLat: number,
@@ -21,36 +27,23 @@ export function calculateDistanceMeters(
     toLat: number,
     toLng: number
 ): number {
-    const toRadians = (value: number) => (value * Math.PI) / 180;
-    const dLat = toRadians(toLat - fromLat);
-    const dLng = toRadians(toLng - fromLng);
-    const lat1 = toRadians(fromLat);
-    const lat2 = toRadians(toLat);
-
-    const a =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-    return Math.round(EARTH_RADIUS_METERS * c);
+    return Math.round(haversineMeters(fromLat, fromLng, toLat, toLng));
 }
 
 export function evaluateGeofence(
     location: WorkLocation,
     input: GeofenceInput
 ): GeofenceEvaluation {
-    const distanceMeters = calculateDistanceMeters(
-        location.latitude,
-        location.longitude,
-        input.latitude,
-        input.longitude
-    );
-
+    const result: SharedGeofenceEvaluation = evaluateGeofenceForWorkLocation(location, {
+        latitude: input.latitude,
+        longitude: input.longitude,
+        accuracy: input.accuracy,
+    });
     return {
-        status: distanceMeters <= location.radiusMeters ? 'inside' : 'outside',
-        distanceMeters,
-        radiusMeters: location.radiusMeters,
-        accuracy: input.accuracy ?? null,
+        status: result.status,
+        distanceMeters: result.distanceMeters ?? 0,
+        radiusMeters: result.radiusMeters ?? location.radiusMeters,
+        accuracy: result.accuracyMeters,
     };
 }
 
@@ -72,17 +65,22 @@ export function buildWorkStatusBanner(
     }
 
     if (!record) {
+        const liveOutside = isConfidentOutsideStatus(geofence?.status);
         return {
             label: 'Checked Out',
-            variant: geofence?.status === 'outside' ? 'warning' : 'neutral',
-            message: geofence?.status === 'outside'
+            variant: liveOutside ? 'warning' : 'neutral',
+            message: liveOutside
                 ? `You are outside ${location.name}. Attendance will be flagged.`
-                : `You are within ${location.name}.`,
+                : geofence?.status === 'accuracy_uncertain'
+                    ? `GPS accuracy is uncertain relative to ${location.name}.`
+                    : `You are within ${location.name}.`,
         };
     }
 
     if (!record.checkOutTime) {
-        const offsite = record.checkInGeofenceStatus === 'outside' || geofence?.status === 'outside';
+        const offsite =
+            isConfidentOutsideStatus(record.checkInGeofenceStatus) ||
+            isConfidentOutsideStatus(geofence?.status);
         return {
             label: offsite ? 'Checked In Off-site' : 'Checked In On-site',
             variant: offsite ? 'warning' : 'success',
@@ -99,13 +97,16 @@ export function buildWorkStatusBanner(
     };
 }
 
+/** Canonical JOB_STATUSES only (JOB-CUSTOMER-WORKFLOW-01A). Legacy aliases normalized before check. */
 export const MOBILE_JOB_TRANSITIONS: Record<string, string[]> = {
-    Pending: ['In Progress', 'Parts Pending'],
-    Assigned: ['In Progress', 'Parts Pending'],
-    Approved: ['In Progress', 'Parts Pending'],
-    'In Progress': ['Parts Pending', 'Ready for Delivery', 'Completed'],
-    'Parts Pending': ['In Progress'],
-    'Ready for Delivery': ['Completed', 'Delivered'],
+    Pending: ['In Progress', 'Waiting on Parts'],
+    Diagnosing: ['In Progress', 'Waiting on Parts'],
+    'In Progress': ['Waiting on Parts', 'Testing', 'On Workbench'],
+    'On Workbench': ['Waiting on Parts', 'Testing', 'In Progress'],
+    'Pending Parts': ['In Progress'],
+    'Waiting on Parts': ['In Progress'],
+    Testing: ['Ready', 'In Progress'],
+    Ready: ['Completed', 'Delivered'],
     Completed: ['Delivered'],
 };
 

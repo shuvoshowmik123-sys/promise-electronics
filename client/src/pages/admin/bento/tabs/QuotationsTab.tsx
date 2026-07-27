@@ -371,7 +371,7 @@ export default function QuotationsTab() {
                 </BentoCard>
                 <div className="md:col-span-2 bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 rounded-3xl p-6 flex flex-col justify-center items-start">
                     <h3 className="text-lg font-bold text-slate-800 mb-2">Create &amp; Print Quotations</h3>
-                    <p className="text-sm text-slate-600">Quickly generate professional quotations for your customers. All generated quotations are permanently stored here as a ledger and can be reprinted at any time.</p>
+                    <p className="text-sm text-slate-600">Formal sales quotations for print and reprint only. These documents do not convert into repair job tickets — retail repair quotes live on Service Requests.</p>
                 </div>
             </div>
 

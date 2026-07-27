@@ -22,6 +22,7 @@ interface ImageKitUploadProps {
     multiple?: boolean;
     children?: React.ReactNode;
     hideError?: boolean; // Hide error UI and only log to console
+    onUploadingChange?: (uploading: boolean) => void;
 }
 
 const urlEndpoint = import.meta.env.VITE_IMAGEKIT_URL_ENDPOINT || "";
@@ -45,6 +46,7 @@ export function ImageKitUpload({
     accept = "image/*,video/*",
     children,
     hideError = false,
+    onUploadingChange,
 }: ImageKitUploadProps) {
     const resolvedFolder = getIKFolder(folder);
     const { toast } = useToast();
@@ -94,6 +96,7 @@ export function ImageKitUpload({
 
     const handleSuccess = (res: any) => {
         setIsUploading(false);
+        onUploadingChange?.(false);
         onUploadSuccess({
             url: res.url,
             fileId: res.fileId,
@@ -104,6 +107,7 @@ export function ImageKitUpload({
 
     const handleError = (err: any) => {
         setIsUploading(false);
+        onUploadingChange?.(false);
         const error = new Error(err?.message || "Upload failed");
         toast({
             title: "Upload Failed",
@@ -136,7 +140,10 @@ export function ImageKitUpload({
             <div ref={containerRef} className={cn("relative", className)}>
                 <IKUpload
                     folder={resolvedFolder}
-                    onUploadStart={() => setIsUploading(true)}
+                    onUploadStart={() => {
+                        setIsUploading(true);
+                        onUploadingChange?.(true);
+                    }}
                     onSuccess={handleSuccess}
                     onError={handleError}
                     ref={uploadRef}
@@ -144,7 +151,7 @@ export function ImageKitUpload({
                     style={{ display: "none" }}
                 />
                 {children ? (
-                    <div onClick={() => uploadRef.current?.click()}>
+                    <div onClick={() => { if (!isUploading) uploadRef.current?.click(); }} aria-disabled={isUploading}>
                         {children}
                     </div>
                 ) : (

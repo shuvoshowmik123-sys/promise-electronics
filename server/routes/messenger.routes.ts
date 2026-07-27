@@ -272,26 +272,49 @@ async function processAIResponse(sender_psid: string, userMessageText: string | 
     if (response.booking?.action === "BOOK_TICKET") {
         try {
             const booking = response.booking;
-            console.log("[Messenger] Creating Service Request:", booking);
-
-            const newRequest = await storage.createServiceRequest({
+            console.log("[Messenger] Creating Service Request for sender");
+            if (!booking.phone || String(booking.phone).trim().toUpperCase() === "N/A") {
+                await callSendAPI(sender_psid, {
+                    text: "Please provide a valid Bangladesh mobile number (e.g. 01XXXXXXXXX) so we can create your ticket.",
+                });
+                return;
+            }
+            const { createRetailServiceRequest } = await import('../services/retail-intake.service.js');
+            const result = await createRetailServiceRequest({
                 brand: booking.brand,
                 primaryIssue: booking.issue,
                 description: booking.description || "Via Messenger",
                 customerName: booking.customer_name || "Messenger User",
-                phone: booking.phone || "N/A",
+                phone: booking.phone,
                 address: booking.address,
                 mediaUrls: booking.imageUrl ? JSON.stringify([booking.imageUrl]) : null,
-                status: "Pending",
-                trackingStatus: "Request Received",
-                source: "Facebook Messenger"
-            } as any);
+                intakeSource: "messenger",
+                initialTrackingStatus: "Request Received",
+            });
 
+            if (result.duplicateWindow) {
+                await callSendAPI(sender_psid, {
+                    text: "We already received a similar request. Our team will contact you soon.",
+                });
+                return;
+            }
+
+            if (result.idempotent) {
+                return;
+            }
+
+            const newRequest = result.serviceRequest;
             const ticketMsg = `✅ আপনার টিকিট কনফার্ম হয়েছে!\nTicket ID: ${newRequest.ticketNumber}\nআমরা শীঘ্রই আপনার সাথে যোগাযোগ করব।`;
             await callSendAPI(sender_psid, { text: ticketMsg });
 
-        } catch (err) {
-            console.error("[Messenger] Failed to create ticket:", err);
+        } catch (err: any) {
+            if (err?.code === "INVALID_PHONE") {
+                await callSendAPI(sender_psid, {
+                    text: "Please provide a valid Bangladesh mobile number (e.g. 01XXXXXXXXX) so we can create your ticket.",
+                });
+                return;
+            }
+            console.error("[Messenger] Failed to create ticket:", err?.message || err);
             await callSendAPI(sender_psid, { text: "⚠️ দুঃখিত, টিকিট জেনারেট করতে সমস্যা হচ্ছে। আমাদের হটলাইনে কল করুন।" });
         }
     }

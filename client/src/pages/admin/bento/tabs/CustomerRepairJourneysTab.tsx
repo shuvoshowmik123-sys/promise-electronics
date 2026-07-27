@@ -803,8 +803,8 @@ export default function CustomerRepairJourneysTab() {
             ]} />
           </div>
         </MobileTabHeader>
-        <MobileScrollContent className="pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
-          <div className="grid grid-cols-2 gap-2">
+        <MobileScrollContent className="pb-[calc(8.5rem+env(safe-area-inset-bottom))]">
+          <div className="grid grid-cols-2 gap-2" data-rj-profile-grid>
             {profiles.map((profile) => (
               <ProfileCard key={profile.key} profile={profile} mobile selected={selectedProfile?.key === profile.key} onSelect={() => selectProfile(profile, true)} />
             ))}
@@ -812,6 +812,8 @@ export default function CustomerRepairJourneysTab() {
           {!listQuery.isLoading && profiles.length === 0 && (
             <div className="py-12 text-center text-sm text-slate-400">No repair profiles match this search.</div>
           )}
+          {/* End marker: last profile cards must park above dock after native scroll to max */}
+          <div data-rj-list-end aria-hidden className="h-px w-full shrink-0" />
         </MobileScrollContent>
       </MobileTabLayout>
 

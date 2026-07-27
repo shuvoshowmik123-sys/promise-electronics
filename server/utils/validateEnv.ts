@@ -4,6 +4,21 @@ const REQUIRED_PROD_OPTIONAL = [
     'BRAIN_DATABASE_URL'
 ];
 
+/**
+ * SERVICE-INTAKE-RELIABILITY-01C-HOTFIX-1
+ * INTAKE_FINGERPRINT_SECRET is required in every environment (production fail-closed;
+ * test/local must set it explicitly). Never expose to client or logs.
+ */
+function assertIntakeFingerprintSecret() {
+    const secret = process.env.INTAKE_FINGERPRINT_SECRET;
+    if (!secret || secret.trim().length < 16) {
+        const msg =
+            'Missing or weak INTAKE_FINGERPRINT_SECRET (min 16 chars). Required for retail intake fingerprint HMAC.';
+        console.error(`❌ Startup Error: ${msg}`);
+        throw new Error(msg);
+    }
+}
+
 export function validateEnv() {
     const missing = REQUIRED_ALWAYS.filter(k => !process.env[k]);
 
@@ -14,6 +29,9 @@ export function validateEnv() {
         // Instead, throw an error that can be caught by the caller
         throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
     }
+
+    // Fail closed always — production, test, and local must configure explicitly.
+    assertIntakeFingerprintSecret();
 
     if (process.env.NODE_ENV === 'production') {
         const missingOptional = REQUIRED_PROD_OPTIONAL.filter(k => !process.env[k]);

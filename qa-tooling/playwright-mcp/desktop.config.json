@@ -1,0 +1,27 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "isolated": true,
+    "launchOptions": {
+      "channel": "chrome",
+      "headless": false
+    },
+    "contextOptions": {
+      "viewport": { "width": 1440, "height": 900 },
+      "locale": "en-US",
+      "timezoneId": "Asia/Dhaka"
+    }
+  },
+  "capabilities": ["core", "vision", "devtools", "network", "testing"],
+  "imageResponses": "allow",
+  "console": { "level": "warning" },
+  "saveSession": false,
+  "outputDir": "mobile-qa/grok-playwright-mcp-02/_unused-static-desktop",
+  "testIdAttribute": "data-testid",
+  "timeouts": {
+    "action": 10000,
+    "navigation": 60000,
+    "expect": 8000
+  },
+  "snapshot": { "mode": "full" }
+}

@@ -30,7 +30,6 @@ import {
     X
 } from "lucide-react";
 import Papa from 'papaparse';
-import * as XLSX from 'xlsx';
 import { motion, AnimatePresence } from "framer-motion";
 import { autoMapColumns, applyMapping, FieldMapping } from "@/lib/columnMapper";
 import { ColumnMappingDialog } from "@/components/corporate/ColumnMappingDialog";
@@ -347,14 +346,61 @@ export default function CorporateServiceRequest() {
         }
     };
 
-    const handleFileParse = (file: File) => {
+    const CLIENT_MAX_FILE_SIZE = 10 * 1024 * 1024;
+    const CLIENT_MAX_ROWS = 5000;
+    const CLIENT_MAX_COLUMNS = 50;
+    const CLIENT_MAX_CELL_TEXT = 10000;
+    const CLIENT_DANGEROUS_HEADERS = new Set(['__proto__', 'prototype', 'constructor', 'proto']);
+
+    const handleFileParse = async (file: File) => {
         setIsParsing(true);
         setParseErrors([]);
         setParsedRows([]);
         setRawRows([]);
         setErrorRows([]);
 
+        if (file.size === 0) {
+            setParseErrors(["File is empty."]);
+            setIsParsing(false);
+            return;
+        }
+
+        if (file.size > CLIENT_MAX_FILE_SIZE) {
+            setParseErrors([`File is too large. Maximum size is 10 MB.`]);
+            setIsParsing(false);
+            return;
+        }
+
+        if (!file.name.endsWith('.csv') && !file.name.endsWith('.xlsx')) {
+            setParseErrors(["Unsupported file format. Please use CSV or XLSX."]);
+            setIsParsing(false);
+            return;
+        }
+
+        const checkDangerousHeader = (header: string): boolean => {
+            const normalized = header.toLowerCase().replace(/[\s\-_]+/g, '').trim();
+            return CLIENT_DANGEROUS_HEADERS.has(normalized);
+        };
+
         const processRawData = (rows: Record<string, string>[], headers: string[]) => {
+            for (const h of headers) {
+                if (checkDangerousHeader(h)) {
+                    setParseErrors(["File contains a dangerous header name (__proto__, prototype, or constructor)."]);
+                    setIsParsing(false);
+                    return;
+                }
+            }
+            if (headers.length > CLIENT_MAX_COLUMNS) {
+                setParseErrors([`File exceeds the maximum of ${CLIENT_MAX_COLUMNS} columns.`]);
+                setIsParsing(false);
+                return;
+            }
+            if (rows.length > CLIENT_MAX_ROWS) {
+                setParseErrors([`File exceeds the maximum of ${CLIENT_MAX_ROWS} rows.`]);
+                setIsParsing(false);
+                return;
+            }
+
             setRawRows(rows);
             setUploadedHeaders(headers);
 
@@ -380,6 +426,15 @@ export default function CorporateServiceRequest() {
                 complete: (results: any) => {
                     const rows = results.data;
                     const headers = results.meta.fields || [];
+                    for (const row of rows) {
+                        for (const [key, value] of Object.entries(row)) {
+                            if (typeof value === 'string' && value.length > CLIENT_MAX_CELL_TEXT) {
+                                setParseErrors([`Cell text exceeds the maximum of ${CLIENT_MAX_CELL_TEXT} characters.`]);
+                                setIsParsing(false);
+                                return;
+                            }
+                        }
+                    }
                     processRawData(rows, headers);
                 },
                 error: (error: any) => {
@@ -388,19 +443,58 @@ export default function CorporateServiceRequest() {
                 },
             });
         } else if (file.name.endsWith('.xlsx')) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const data = e.target?.result;
-                const workbook = XLSX.read(data, { type: 'binary' });
-                const sheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[sheetName];
-                const rows = XLSX.utils.sheet_to_json<Record<string, string>>(worksheet, { defval: "" });
-
-                // Get headers from first row
-                const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
+            try {
+                const ExcelJS = await import('exceljs');
+                const arrayBuffer = await file.arrayBuffer();
+                const workbook = new ExcelJS.default.Workbook();
+                await workbook.xlsx.load(arrayBuffer);
+                const worksheet = workbook.worksheets[0];
+                if (!worksheet) {
+                    setParseErrors(["The XLSX file has no worksheets."]);
+                    setIsParsing(false);
+                    return;
+                }
+                if (worksheet.rowCount > CLIENT_MAX_ROWS) {
+                    setParseErrors([`File exceeds the maximum of ${CLIENT_MAX_ROWS} rows.`]);
+                    setIsParsing(false);
+                    return;
+                }
+                const headers: string[] = [];
+                const headerRow = worksheet.getRow(1);
+                headerRow.eachCell((cell, colNumber) => {
+                    headers.push(cell.value?.toString().trim() || `Column ${colNumber}`);
+                });
+                if (headers.length > CLIENT_MAX_COLUMNS) {
+                    setParseErrors([`File exceeds the maximum of ${CLIENT_MAX_COLUMNS} columns.`]);
+                    setIsParsing(false);
+                    return;
+                }
+                const rows: Record<string, string>[] = [];
+                const rowCount = worksheet.rowCount;
+                for (let rowNumber = 2; rowNumber <= rowCount; rowNumber++) {
+                    const row = worksheet.getRow(rowNumber);
+                    const rowData: Record<string, string> = {};
+                    let hasData = false;
+                    headerRow.eachCell((_cell, colNumber) => {
+                        const header = headers[colNumber - 1] || `Column ${colNumber}`;
+                        const value = row.getCell(colNumber).value?.toString().trim() || '';
+                        if (value.length > CLIENT_MAX_CELL_TEXT) {
+                            setParseErrors([`Cell text exceeds the maximum of ${CLIENT_MAX_CELL_TEXT} characters.`]);
+                            setIsParsing(false);
+                            return;
+                        }
+                        if (value) {
+                            rowData[header] = value;
+                            hasData = true;
+                        }
+                    });
+                    if (hasData) rows.push(rowData);
+                }
                 processRawData(rows, headers);
-            };
-            reader.readAsBinaryString(file);
+            } catch (parseError) {
+                setParseErrors(["Failed to parse XLSX file. Please check the file format."]);
+                setIsParsing(false);
+            }
         } else {
             setParseErrors(["Unsupported file format. Please use CSV or XLSX."]);
             setIsParsing(false);

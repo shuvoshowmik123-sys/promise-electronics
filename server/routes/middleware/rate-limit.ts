@@ -21,7 +21,7 @@ export const apiLimiter = rateLimit({
     },
     standardHeaders: true, // Return rate limit info in headers
     legacyHeaders: false, // Disable X-RateLimit-* headers
-    // Skip rate limiting for admin users (optional)
+    // Skip rate limiting for authenticated admin sessions only (not customer sessions).
     skip: (req: Request) => {
         return !!(req.session as any)?.adminUserId;
     },
@@ -53,7 +53,7 @@ export const authLimiter = rateLimit({
  */
 export const serviceRequestLimiter = rateLimit({
     windowMs: 60 * 60 * 1000, // 1 hour
-    max: 10, // 10 submissions per hour
+    max: 10, // 10 submissions per hour per IP
     message: {
         error: 'Too many service requests',
         message: 'You can submit up to 10 requests per hour. Please try again later.',
@@ -61,6 +61,7 @@ export const serviceRequestLimiter = rateLimit({
     },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => process.env.NODE_ENV === 'test',
 });
 
 /**

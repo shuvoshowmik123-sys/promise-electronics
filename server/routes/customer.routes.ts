@@ -8,6 +8,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { and, desc, eq, or, ne, sql } from 'drizzle-orm';
+// sql used for session auth time stamp
 import { storage } from '../storage.js';
 import { userRepo, customerRepo, orderRepo, corporateRepo, notificationRepo } from '../repositories/index.js';
 import {
@@ -30,15 +31,16 @@ import { isPhoneBlacklisted } from './blacklist.routes.js';
 import { normalizePhone } from '../utils/phone.js';
 import { z } from 'zod';
 import { customerService } from '../services/customer.service.js';
+import { establishCustomerSession, assertCustomerSessionFresh } from '../services/customer-session.service.js';
+import { deriveServiceRequestPaymentState, applyCustomerSafePaymentState } from '../services/service-request-payment-projection.service.js';
 
 const router = Router();
 
 function regenerateSession(req: Request): Promise<void> {
     return new Promise((resolve, reject) => {
-        const oldData = { csrfToken: req.session?.csrfToken };
+        // Do not preserve prior CSRF across regenerate (HOTFIX-2)
         req.session.regenerate((err) => {
             if (err) return reject(err);
-            if (oldData.csrfToken) req.session.csrfToken = oldData.csrfToken;
             resolve();
         });
     });
@@ -115,9 +117,10 @@ router.post('/api/customer/register', registrationLimiter, async (req: Request, 
         await customerService.linkServiceRequestsByPhone(validated.phone, user.id);
 
         await regenerateSession(req);
-        req.session.customerId = user.id;
-        req.session.authMethod = 'phone';
-        req.session.authenticatedAt = Date.now();
+        const { csrfToken } = await establishCustomerSession(req, res, {
+            customerId: user.id,
+            authMethod: 'phone',
+        });
 
         const { password: _, ...safeUser } = user;
 
@@ -127,7 +130,7 @@ router.post('/api/customer/register', registrationLimiter, async (req: Request, 
             createdAt: new Date().toISOString(),
         });
 
-        res.status(201).json(safeUser);
+        res.status(201).json({ ...safeUser, csrfToken });
     } catch (error: any) {
         if (error instanceof z.ZodError) {
             return res.status(400).json({ error: 'Invalid registration data' });
@@ -161,16 +164,17 @@ router.post('/api/customer/login', authLimiter, async (req: Request, res: Respon
         await userRepo.updateUserLastLogin(user.id);
 
         await regenerateSession(req);
-        req.session.customerId = user.id;
-        req.session.authMethod = 'phone';
-        req.session.authenticatedAt = Date.now();
+        const { csrfToken } = await establishCustomerSession(req, res, {
+            customerId: user.id,
+            authMethod: 'phone',
+        });
 
         if (user.phone) {
             await customerService.linkServiceRequestsByPhone(user.phone, user.id);
         }
 
         const { password: _, ...safeUser } = user;
-        res.json(safeUser);
+        res.json({ ...safeUser, csrfToken });
     } catch (error: any) {
         if (error instanceof z.ZodError) {
             return res.status(400).json({ error: 'Invalid login data' });
@@ -210,16 +214,17 @@ router.post('/api/customer/google-auth', authLimiter, async (req: Request, res: 
         await userRepo.updateUserLastLogin(user.id);
 
         await regenerateSession(req);
-        req.session.customerId = user.id;
-        req.session.authMethod = 'google';
-        req.session.authenticatedAt = Date.now();
+        const { csrfToken } = await establishCustomerSession(req, res, {
+            customerId: user.id,
+            authMethod: 'google',
+        });
 
         if (user.phone) {
             await customerService.linkServiceRequestsByPhone(user.phone, user.id);
         }
 
         const { password: _, ...safeUser } = user;
-        res.json(safeUser);
+        res.json({ ...safeUser, csrfToken });
 
     } catch (error) {
         console.error('[CustomerAuth] Google auth failed:', (error as Error).message);
@@ -289,6 +294,24 @@ router.post('/api/customer/link-google', requireCustomerAuth, async (req: Reques
         res.status(500).json({ error: 'Failed to link Google account' });
     }
 });
+
+/**
+ * TEST-PROCESS ONLY (HOTFIX-2A): strip passwordChangedAtStamp for SESSION_REAUTH_REQUIRED proof.
+ * Registered only when NODE_ENV=test AND QA_SESSION_TEST_HOOK=1.
+ * Development / production / staging-like: route not registered → normal API 404.
+ */
+if (process.env.NODE_ENV === "test" && process.env.QA_SESSION_TEST_HOOK === "1") {
+    router.post("/api/test/customer-session/strip-password-stamp", async (req: Request, res: Response) => {
+        if (!req.session?.customerId) {
+            return res.status(401).json({ error: "Not authenticated", code: "NOT_AUTHENTICATED" });
+        }
+        delete (req.session as any).passwordChangedAtStamp;
+        req.session.save((err) => {
+            if (err) return res.status(500).json({ error: "Session save failed" });
+            res.json({ ok: true });
+        });
+    });
+}
 
 /**
  * POST /api/customer/logout - Customer logout
@@ -581,7 +604,13 @@ router.get('/api/customer/events', requireCustomerAuth, (req: Request, res: Resp
 router.get('/api/customer/service-requests', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
         const orders = await storage.getServiceRequestsByCustomerId(req.session.customerId!);
-        res.json(orders);
+        const enriched = await Promise.all(
+            orders.map(async (o) => {
+                const state = await deriveServiceRequestPaymentState(o);
+                return applyCustomerSafePaymentState(o, state);
+            }),
+        );
+        res.json(enriched);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch service requests' });
     }
@@ -601,9 +630,13 @@ router.get('/api/customer/service-requests/:id', requireCustomerAuth, async (req
             return res.status(403).json({ error: 'Access denied' });
         }
 
-        const events = await storage.getServiceRequestEvents(order.id);
+        const rawEvents = await storage.getServiceRequestEvents(order.id);
+        const { filterCustomerVisibleTimelineEvents } = await import('../services/retail-quote.service.js');
+        const events = filterCustomerVisibleTimelineEvents(rawEvents);
         const payments = await getServiceRequestPayments(order.id, order.convertedJobId);
-        res.json({ ...order, timeline: events, paymentSubmissions: payments });
+        const paymentState = await deriveServiceRequestPaymentState(order);
+        const safeOrder = applyCustomerSafePaymentState(order, paymentState);
+        res.json({ ...safeOrder, timeline: events, paymentSubmissions: payments });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch service request details' });
     }
@@ -693,9 +726,24 @@ router.get('/api/customer/track/:ticketNumber', async (req: Request, res: Respon
             return res.status(404).json({ error: 'Order not found' });
         }
 
-        const sessionCustomerId = req.session?.customerId;
+        // Revoked session marker: never silent anonymous downgrade (HOTFIX-2)
+        const revoked = (req.session as any)?.customerSessionRevoked as string | undefined;
+        if (revoked === 'SESSION_REVOKED' || revoked === 'SESSION_REAUTH_REQUIRED') {
+            return res.status(401).json({
+                error:
+                    revoked === 'SESSION_REVOKED'
+                        ? 'Your password was changed. Please sign in again.'
+                        : 'Please sign in again to continue.',
+                code: revoked,
+            });
+        }
 
-        if (!sessionCustomerId) {
+        const hasCustomerSession =
+            Boolean(req.session?.customerId) ||
+            Boolean((req as any).isAuthenticated?.() && (req as any).user?.customerId);
+
+        // Anonymous: limited public projection only
+        if (!hasCustomerSession) {
             return res.json({
                 ticketNumber: order.ticketNumber,
                 trackingStatus: order.trackingStatus,
@@ -703,6 +751,11 @@ router.get('/api/customer/track/:ticketNumber', async (req: Request, res: Respon
                 message: 'Login to see full details',
             });
         }
+
+        // Logged-in cookie: freshness required before full projection
+        const fresh = await assertCustomerSessionFresh(req, res, { allowMissingSession: false });
+        if (!fresh.ok) return;
+        const sessionCustomerId = fresh.customerId;
 
         if (order.customerId && order.customerId !== sessionCustomerId) {
             return res.status(404).json({ error: 'Order not found' });
@@ -718,9 +771,13 @@ router.get('/api/customer/track/:ticketNumber', async (req: Request, res: Respon
             await customerService.linkServiceRequestToCustomer(order.id, customer.id);
         }
 
-        const events = await storage.getServiceRequestEvents(order.id);
+        const rawEvents = await storage.getServiceRequestEvents(order.id);
+        const { filterCustomerVisibleTimelineEvents } = await import('../services/retail-quote.service.js');
+        const events = filterCustomerVisibleTimelineEvents(rawEvents);
         const payments = await getServiceRequestPayments(order.id, order.convertedJobId);
-        res.json({ ...order, timeline: events, paymentSubmissions: payments });
+        const paymentState = await deriveServiceRequestPaymentState(order);
+        const safeOrder = applyCustomerSafePaymentState(order, paymentState);
+        res.json({ ...safeOrder, timeline: events, paymentSubmissions: payments });
     } catch (error) {
         res.status(500).json({ error: 'Failed to track order' });
     }

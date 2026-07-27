@@ -13,7 +13,7 @@ import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { JobCardMobile } from "./JobCardMobile";
-import { getPrimaryAction, mobileListVariants } from "./jobActions";
+import { getPrimaryAction, getStatusVisual, mobileListVariants } from "./jobActions";
 
 // We need a local or imported HighlightMatch. Let's assume it exists in JobTicketsTab or we can recreate it.
 // Assuming HighlightMatch from JobTicketsTab can be imported if it was exported, or we'll recreate a simple one.
@@ -58,10 +58,14 @@ interface JobTicketGridProps {
     onViewDetails: (job: JobTicket) => void;
     onEditJob: (job: JobTicket) => void;
     onAdvanceStage: (job: JobTicket) => void;
+    onOpenNgWorkflow: (job: JobTicket) => void;
     onPrintTicket: (job: JobTicket) => void;
     onGenerateQr: (job: JobTicket) => void;
     userRole?: string;
     canEdit: boolean;
+    canReviewNg: boolean;
+    canReportNg?: boolean;
+    canMutateJob: (job: JobTicket) => boolean;
     currencySymbol?: string;
 }
 
@@ -74,10 +78,14 @@ export function JobTicketGrid({
     onViewDetails,
     onEditJob,
     onAdvanceStage,
+    onOpenNgWorkflow,
     onPrintTicket,
     onGenerateQr,
     userRole,
     canEdit,
+    canReviewNg,
+    canReportNg = false,
+    canMutateJob,
     currencySymbol = "৳",
 }: JobTicketGridProps) {
     const isMobile = useIsMobile();
@@ -99,9 +107,12 @@ export function JobTicketGrid({
                         onViewDetails={onViewDetails}
                         onEditJob={onEditJob}
                         onAdvanceStage={onAdvanceStage}
+                        onOpenNgWorkflow={onOpenNgWorkflow}
                         onPrintTicket={onPrintTicket}
                         userRole={userRole}
-                        canEdit={canEdit}
+                        canEdit={canEdit && canMutateJob(job)}
+                        canReviewNg={canReviewNg}
+                        canReportNg={canReportNg && canMutateJob(job)}
                         currencySymbol={currencySymbol}
                     />
                 ))}
@@ -113,13 +124,18 @@ export function JobTicketGrid({
         <motion.div variants={containerVariants} initial="hidden" animate="visible" className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
             {jobs.map((job: any) => {
                 const isTechnician = userRole === "Technician";
-                const showCustomerDetails = !isTechnician || canEdit;
-                const primaryAction = getPrimaryAction(job, canEdit);
+                const jobCanEdit = canEdit && canMutateJob(job);
+                const jobCanReportNg = canReportNg && canMutateJob(job);
+                const showCustomerDetails = !isTechnician || jobCanEdit;
+                const primaryAction = getPrimaryAction(job, jobCanEdit, canReviewNg, jobCanReportNg);
+                const statusVisual = getStatusVisual(job.status);
+                const protectedStatus = ["NG Review Pending", "Awaiting Customer Decision"].includes(job.status || "");
                 const PrimaryActionIcon = primaryAction.Icon;
                 const handlePrimaryAction = (event: MouseEvent) => {
                     event.stopPropagation();
                     if (primaryAction.type === "edit") onEditJob(job);
                     else if (primaryAction.type === "advance") onAdvanceStage(job);
+                    else if (primaryAction.type === "ngWorkflow") onOpenNgWorkflow(job);
                     else if (primaryAction.type === "print") onPrintTicket(job);
                     else onViewDetails(job);
                 };
@@ -163,13 +179,8 @@ export function JobTicketGrid({
                                     </div>
                                 </div>
                                 <div className="flex items-center gap-1">
-                                    <Badge className={cn("shadow-sm font-bold px-2 py-0.5 rounded text-[9px] uppercase tracking-wider border-0 mr-1",
-                                        job.status === "Completed" ? "bg-emerald-100 text-emerald-700" :
-                                            job.status === "In Progress" ? "bg-blue-100 text-blue-700" :
-                                                job.status === "Ready" ? "bg-cyan-100 text-cyan-700" :
-                                                    job.status === "Cancelled" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-700"
-                                    )}>
-                                        {job.status}
+                                    <Badge className={cn("mr-1 rounded border-0 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider shadow-sm", statusVisual.badge)}>
+                                        {statusVisual.label}
                                     </Badge>
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
@@ -180,8 +191,12 @@ export function JobTicketGrid({
                                         <DropdownMenuContent align="end" className="w-48 rounded-xl bg-white/95 backdrop-blur-xl border-white/20 shadow-xl" onClick={(e) => e.stopPropagation()}>
                                             <DropdownMenuLabel className="font-bold text-[10px] uppercase text-slate-500 tracking-wider">More</DropdownMenuLabel>
                                             <DropdownMenuItem onClick={() => onViewDetails(job)} className="font-medium cursor-pointer"><Eye className="w-4 h-4 mr-2" /> View Details</DropdownMenuItem>
-                                            {canEdit && <DropdownMenuItem onClick={() => onEditJob(job)} className="font-medium cursor-pointer"><PenTool className="w-4 h-4 mr-2" /> Edit Job</DropdownMenuItem>}
-                                            {canEdit && job.status !== 'Completed' && job.status !== 'Cancelled' && (
+                                            {jobCanEdit && !protectedStatus && <DropdownMenuItem onClick={() => onEditJob(job)} className="font-medium cursor-pointer"><PenTool className="w-4 h-4 mr-2" /> Edit Job</DropdownMenuItem>}
+                                            {protectedStatus ? (
+                                                <DropdownMenuItem onClick={() => onOpenNgWorkflow(job)} className="font-medium cursor-pointer text-amber-700">
+                                                    <Zap className="w-4 h-4 mr-2" /> Open NG Workflow
+                                                </DropdownMenuItem>
+                                            ) : jobCanEdit && job.status !== 'Completed' && job.status !== 'Cancelled' && (
                                                 <DropdownMenuItem onClick={() => onAdvanceStage(job)} className="font-medium cursor-pointer text-blue-600">
                                                     <Zap className="w-4 h-4 mr-2" /> Move to Next Step
                                                 </DropdownMenuItem>

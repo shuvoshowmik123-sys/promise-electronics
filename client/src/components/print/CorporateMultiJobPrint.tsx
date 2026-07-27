@@ -28,7 +28,7 @@ export function CorporateMultiJobPrint({ jobs, client }: CorporateMultiJobPrintP
                         <th className="p-2 border border-gray-300 w-32">Job No</th>
                         <th className="p-2 border border-gray-300 w-24">Date</th>
                         <th className="p-2 border border-gray-300 w-40">Device</th>
-                        <th className="p-2 border border-gray-300 w-32">Serial No</th>
+                        <th className="p-2 border border-gray-300 w-32">Unit serial</th>
                         <th className="p-2 border border-gray-300">Reported Defect</th>
                         <th className="p-2 border border-gray-300">Problem Found</th>
                         <th className="p-2 border border-gray-300 w-24">Status</th>
@@ -43,8 +43,13 @@ export function CorporateMultiJobPrint({ jobs, client }: CorporateMultiJobPrintP
                             <td className="p-2 border border-gray-300">
                                 {job.createdAt ? format(new Date(job.createdAt), "dd MMM yyyy") : "-"}
                             </td>
-                            <td className="p-2 border border-gray-300">{job.device}</td>
-                            <td className="p-2 border border-gray-300 font-mono">{job.tvSerialNumber}</td>
+                            <td className="p-2 border border-gray-300">
+                                <div>{job.device}</div>
+                                {job.modelNumber?.trim() ? (
+                                    <div className="text-[10px] text-gray-600 mt-0.5">Model: {job.modelNumber.trim()}</div>
+                                ) : null}
+                            </td>
+                            <td className="p-2 border border-gray-300 font-mono">{job.tvSerialNumber?.trim() || "—"}</td>
                             <td className="p-2 border border-gray-300">{job.reportedDefect}</td>
                             <td className="p-2 border border-gray-300">{job.problemFound || "-"}</td>
                             <td className="p-2 border border-gray-300">

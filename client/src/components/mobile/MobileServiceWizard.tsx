@@ -27,6 +27,7 @@ import { PhoneInput } from "@/components/ui/phone-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { publicAreaMapApi, publicSettingsApi, quoteRequestsApi, serviceCatalogApi, serviceRequestsApi } from "@/lib/api";
+import { materialIntakeKey, resolveIntakeIdempotencyKey } from "@/lib/intake-idempotency";
 import { getApiUrl } from "@/lib/config";
 import { getIKFolder } from "@/lib/imagekit-config";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
@@ -149,6 +150,8 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [phone, setPhone] = useState(normalizePhone(customer?.phone || ""));
   const [address, setAddress] = useState(customer?.address || "");
   const [ticketNumber, setTicketNumber] = useState("");
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const payloadMaterialRef = useRef<string | null>(null);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
 
   // Pre-fill from calculator query params (?brand=...&size=...&issue=...)
@@ -318,26 +321,56 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   };
 
   const repairMutation = useMutation({
-    mutationFn: serviceRequestsApi.create,
-    onSuccess: (data) => {
+    mutationFn: (data: Parameters<typeof serviceRequestsApi.create>[0]) => {
+      const material = materialIntakeKey(data);
+      const key = resolveIntakeIdempotencyKey(material, idempotencyKeyRef, payloadMaterialRef);
+      return serviceRequestsApi.create(data, key);
+    },
+    onSuccess: (data: any) => {
+      if (data?.code === "DUPLICATE_REQUEST_WINDOW") {
+        toast.info("We already received a similar request. Our team will contact you soon.");
+        setStep(6);
+        return;
+      }
       setTicketNumber(data.ticketNumber || data.id);
       queryClient.invalidateQueries({ queryKey: ["customer-service-requests"] });
       queryClient.invalidateQueries({ queryKey: ["/customer/service-requests"] });
       setStep(6);
     },
-    onError: (error: unknown) => {
-      toast.error(error instanceof Error ? error.message : "Failed to submit request");
+    onError: (error: any) => {
+      if (error?.code === "IDEMPOTENCY_CONFLICT") {
+        toast.error("The request details changed. Please review and try again.");
+        idempotencyKeyRef.current = null;
+        payloadMaterialRef.current = null;
+      } else {
+        toast.error(error instanceof Error ? error.message : "Failed to submit request");
+      }
     },
   });
 
   const quoteMutation = useMutation({
-    mutationFn: quoteRequestsApi.submit,
-    onSuccess: (data) => {
+    mutationFn: (data: Parameters<typeof quoteRequestsApi.submit>[0]) => {
+      const material = materialIntakeKey(data);
+      const key = resolveIntakeIdempotencyKey(material, idempotencyKeyRef, payloadMaterialRef);
+      return quoteRequestsApi.submit(data, key);
+    },
+    onSuccess: (data: any) => {
+      if (data?.code === "DUPLICATE_REQUEST_WINDOW") {
+        toast.info("We already received a similar request. Our team will contact you soon.");
+        setStep(6);
+        return;
+      }
       setTicketNumber(data.ticketNumber || data.id);
       setStep(6);
     },
-    onError: (error: unknown) => {
-      toast.error(error instanceof Error ? error.message : "Failed to submit quote request");
+    onError: (error: any) => {
+      if (error?.code === "IDEMPOTENCY_CONFLICT") {
+        toast.error("The request details changed. Please review and try again.");
+        idempotencyKeyRef.current = null;
+        payloadMaterialRef.current = null;
+      } else {
+        toast.error(error instanceof Error ? error.message : "Failed to submit quote request");
+      }
     },
   });
 

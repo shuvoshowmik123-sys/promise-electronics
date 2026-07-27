@@ -9,6 +9,7 @@ import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { HighlightMatch } from "../../shared";
 import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
 import { getPrimaryAction, getStatusVisual, mobileCardVariants } from "./jobActions";
+import { getJobModelDisplay } from "./jobIdentityDisplay";
 
 interface JobCardMobileProps {
     job: JobTicket;
@@ -16,9 +17,12 @@ interface JobCardMobileProps {
     onViewDetails: (job: JobTicket) => void;
     onEditJob: (job: JobTicket) => void;
     onAdvanceStage: (job: JobTicket) => void;
+    onOpenNgWorkflow: (job: JobTicket) => void;
     onPrintTicket: (job: JobTicket) => void;
     userRole?: string;
     canEdit: boolean;
+    canReviewNg: boolean;
+    canReportNg?: boolean;
     currencySymbol: string;
 }
 
@@ -34,16 +38,19 @@ export function JobCardMobile({
     onViewDetails,
     onEditJob,
     onAdvanceStage,
+    onOpenNgWorkflow,
     onPrintTicket,
     userRole,
     canEdit,
+    canReviewNg,
+    canReportNg = false,
     currencySymbol,
 }: JobCardMobileProps) {
     const j = job as any;
     const isTechnician = userRole === "Technician";
     const showCustomerDetails = !isTechnician || canEdit;
     const status = getStatusVisual(job.status);
-    const action = getPrimaryAction(job, canEdit);
+    const action = getPrimaryAction(job, canEdit, canReviewNg, canReportNg);
     const ActionIcon = action.Icon;
     const actionLabel = action.label === "Assign Technician" ? "Assign" : action.label === "Print & Deliver" ? "Deliver" : action.label;
 
@@ -51,6 +58,7 @@ export function JobCardMobile({
         event.stopPropagation();
         if (action.type === "edit") onEditJob(job);
         else if (action.type === "advance") onAdvanceStage(job);
+        else if (action.type === "ngWorkflow") onOpenNgWorkflow(job);
         else if (action.type === "print") onPrintTicket(job);
         else onViewDetails(job);
     };
@@ -96,14 +104,18 @@ export function JobCardMobile({
                     </div>
                 </div>
 
-                {/* device + issue */}
+                {/* device + size · model (no full serial on list) + issue */}
                 <div>
                     <h3 className="text-[13px] font-bold text-slate-900 leading-tight line-clamp-2 min-h-[2rem]">
                         <HighlightMatch text={job.device} query={searchQuery} />
                     </h3>
                     <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
-                        {job.screenSize ? `${job.screenSize}" · ` : ""}
-                        <HighlightMatch text={job.issue} query={searchQuery} />
+                        {[
+                            job.screenSize ? `${job.screenSize}"` : null,
+                            getJobModelDisplay(job as any),
+                        ].filter(Boolean).join(" · ")}
+                        {((job.screenSize || getJobModelDisplay(job as any)) && job.issue) ? " · " : ""}
+                        {job.issue ? <HighlightMatch text={job.issue} query={searchQuery} /> : null}
                     </p>
                 </div>
 

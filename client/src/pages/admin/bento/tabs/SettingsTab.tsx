@@ -7,7 +7,8 @@ import {
     Search, X, Wrench, Star, Upload, LayoutTemplate, Building2, Clock3, PlayCircle,
     Shield, AlertTriangle, Code2, ChevronRight, ChevronDown, Percent,
     Phone, MapPin, Clock, Trash2, ShoppingBag, Tv, Ruler, AlertCircle, Filter,
-    Mail, MessageCircle, Facebook, Instagram, Youtube, Languages, CheckCircle2
+    Mail, MessageCircle, Facebook, Instagram, Youtube, Languages, CheckCircle2,
+    MessageSquareHeart,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,6 +33,9 @@ const AboutUsSection = lazy(() => import("./settings/AboutUsSection"));
 const BulkImportSection = lazy(() => import("./settings/BulkImportSection"));
 const ServiceConfigEditor = lazy(() => import("./settings/ServiceConfigEditor").then(m => ({ default: m.ServiceConfigEditor })));
 import { TagListCard } from "./settings/TagListCard";
+import SystemIntegritySummary from "./settings/SystemIntegritySummary";
+import { canOpenServiceFeedbackWorkspace } from "@/lib/service-feedback-capabilities";
+const ServiceFeedbackSection = lazy(() => import("./settings/ServiceFeedbackSection"));
 
 function BodyPortal({ children }: { children: React.ReactNode }) {
     if (typeof document === "undefined") return null;
@@ -48,6 +52,7 @@ function resolveSettingsDestination(query: string): { sheet?: 'identity' | 'fina
     if (/(logo|company|site|phone|contact|business|identity|profile)/.test(normalized)) return { sheet: "identity" };
     if (/(vat|tax|currency|timezone|drawer|day.?end|pos|invoice|payment|bkash|nagad)/.test(normalized)) return { sheet: "finance" };
     if (/(service|category|brand|inch|symptom|catalog|stock|shop)/.test(normalized)) return { sheet: "catalog" };
+    if (/(feedback|recovery|testimonial|review queue|annual review)/.test(normalized)) return { panel: "feedback" };
     if (/(home|homepage|hero|faq|pricing|banner|cms|website)/.test(normalized)) return { panel: "cmshome" };
     if (/(about|team|mission|vision|address)/.test(normalized)) return { panel: "about" };
     if (/(import|bulk|csv|data setup)/.test(normalized)) return { panel: "bulkimport" };
@@ -56,8 +61,12 @@ function resolveSettingsDestination(query: string): { sheet?: 'identity' | 'fina
 
 export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: SettingsTabProps = {}) {
     const { toast } = useToast();
-    const { user } = useAdminAuth();
+    const { user, permissions } = useAdminAuth();
     const isSuperAdmin = user?.role === "Super Admin";
+    const canServiceFeedback = canOpenServiceFeedbackWorkspace(
+        user,
+        permissions as Record<string, boolean | undefined>,
+    );
 
     // Sheet State Management
     const [activeSheet, setActiveSheet] = useState<'identity' | 'finance' | 'catalog' | null>(null);
@@ -688,6 +697,13 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         right={<StatusPill label={developerMode ? "On" : "Off"} tone={developerMode ? "bg-amber-50 text-amber-700" : "bg-slate-100 text-slate-600"} />} onClick={() => setGeneralDialogTrigger("developer")} />
                 </MobilePanel>
 
+                {isSuperAdmin && (
+                    <>
+                        <MobileSectionTitle>System Integrity</MobileSectionTitle>
+                        <MobilePanel><SystemIntegritySummary variant="mobile" /></MobilePanel>
+                    </>
+                )}
+
                 {/* Conflict Center — only shown when conflicts exist */}
                 {conflictGroups.length > 0 && (
                     <>
@@ -799,6 +815,22 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             onClick={() => document.dispatchEvent(new CustomEvent('open-sheet', { detail: 'catalog' }))} />
                     ))}
                 </MobilePanel>
+
+                {/* Service Feedback */}
+                {canServiceFeedback && <MobileSectionTitle>Service Feedback</MobileSectionTitle>}
+                {canServiceFeedback && (
+                <MobilePanel>
+                    <MobileSettingsRow
+                        icon={MessageSquareHeart}
+                        iconColor="text-emerald-600"
+                        iconBg="bg-emerald-50"
+                        label="Feedback workspace"
+                        helper="Recovery, public reviews, annual retention"
+                        right={null}
+                        onClick={() => setSelectedPanel("feedback")}
+                    />
+                </MobilePanel>
+                )}
 
                 {/* Website Content */}
                 <MobileSectionTitle>Website Content</MobileSectionTitle>
@@ -913,6 +945,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                     developerMode={developerMode} setDeveloperMode={setDeveloperMode}
                 />
 
+                {isSuperAdmin && <motion.div variants={itemVariants} className="w-full"><SystemIntegritySummary variant="desktop" /></motion.div>}
+
                 {/* Row 3: Drawer Day-End Controls */}
                 <motion.div variants={itemVariants} className="w-full">
                     <BentoCard
@@ -981,6 +1015,27 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         serviceFilterCategories={serviceFilterCategories} setServiceFilterCategories={setServiceFilterCategories}
                     />
                 </div>
+
+                {/* Service Feedback workspace */}
+                {canServiceFeedback && (
+                <motion.div variants={itemVariants} className="w-full">
+                    <BentoCard
+                        className="cursor-pointer group relative overflow-hidden hover:-translate-y-1 hover:shadow-xl transition-all duration-300"
+                        title="Service Feedback"
+                        icon={<MessageSquareHeart className="w-5 h-5 text-emerald-600" />}
+                        variant="glass"
+                        onClick={() => setSelectedPanel("feedback")}
+                    >
+                        <div className="mt-2 space-y-2 relative z-10">
+                            <p className="text-sm text-slate-600">Recovery cases, public review moderation, featured homepage, and annual retention.</p>
+                            <p className="text-xs font-semibold text-emerald-700">Permission-aware · customer wording is never editable</p>
+                            <div className="text-emerald-600 font-semibold text-sm pt-2 opacity-0 group-hover:opacity-100 transition-all">
+                                Open feedback workspace &rarr;
+                            </div>
+                        </div>
+                    </BentoCard>
+                </motion.div>
+                )}
 
                 {/* Row 5: CMS & About Summary Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -1119,11 +1174,14 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             <MobileBottomSheetHandle />
                             <div className="border-b border-slate-100 bg-white px-4 py-3">
                                 <h2 className="flex min-w-0 items-center gap-2 text-base font-black text-slate-900">
-                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-5 h-5 text-indigo-500" /> : selectedPanel === "about" ? <Building2 className="w-5 h-5 text-emerald-500" /> : <Upload className="w-5 h-5 text-blue-600" />}
-                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS" : selectedPanel === "about" ? "About Us" : "Bulk Import Center"}</span>
+                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-5 h-5 text-indigo-500" /> : selectedPanel === "about" ? <Building2 className="w-5 h-5 text-emerald-500" /> : selectedPanel === "feedback" ? <MessageSquareHeart className="w-5 h-5 text-emerald-600" /> : <Upload className="w-5 h-5 text-blue-600" />}
+                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS" : selectedPanel === "about" ? "About Us" : selectedPanel === "feedback" ? "Service Feedback" : "Bulk Import Center"}</span>
                                 </h2>
                             </div>
                             <div className="custom-scrollbar flex-1 overflow-y-auto bg-slate-50/30 px-3 pb-4">
+                                {selectedPanel === "feedback" && (
+                                    <Suspense fallback={null}><ServiceFeedbackSection /></Suspense>
+                                )}
                                 {selectedPanel === "cmshome" && (
                                     <Suspense fallback={null}><CmsHomeSection
                                         heroTitle={heroTitle} setHeroTitle={setHeroTitle}
@@ -1182,7 +1240,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             </div>
                             <div className="flex flex-col gap-2 border-t border-slate-100 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                                 <Button variant="outline" className="h-11 rounded-xl" onClick={() => setSelectedPanel(null)}>Close</Button>
-                                {selectedPanel !== "bulkimport" && (
+                                {selectedPanel !== "bulkimport" && selectedPanel !== "feedback" && (
                                     <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
                                         {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                         Save & Close
@@ -1201,14 +1259,17 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         >
                             <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 p-6">
                                 <h2 className="flex min-w-0 items-center gap-3 text-2xl font-black text-slate-900">
-                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-6 h-6 text-indigo-500" /> : selectedPanel === "about" ? <Building2 className="w-6 h-6 text-emerald-500" /> : <Upload className="w-6 h-6 text-blue-600" />}
-                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS Editor" : selectedPanel === "about" ? "About Us Editor" : "Bulk Import Center"}</span>
+                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-6 h-6 text-indigo-500" /> : selectedPanel === "about" ? <Building2 className="w-6 h-6 text-emerald-500" /> : selectedPanel === "feedback" ? <MessageSquareHeart className="w-6 h-6 text-emerald-600" /> : <Upload className="w-6 h-6 text-blue-600" />}
+                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS Editor" : selectedPanel === "about" ? "About Us Editor" : selectedPanel === "feedback" ? "Service Feedback" : "Bulk Import Center"}</span>
                                 </h2>
                                 <Button variant="ghost" size="icon" onClick={() => setSelectedPanel(null)} className="h-10 w-10 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200">
                                     <X className="w-5 h-5" />
                                 </Button>
                             </div>
                             <div className="custom-scrollbar flex-1 overflow-y-auto bg-slate-50/30 p-6">
+                                {selectedPanel === "feedback" && (
+                                    <Suspense fallback={null}><ServiceFeedbackSection /></Suspense>
+                                )}
                                 {selectedPanel === "cmshome" && (
                                     <Suspense fallback={null}><CmsHomeSection
                                         heroTitle={heroTitle} setHeroTitle={setHeroTitle}

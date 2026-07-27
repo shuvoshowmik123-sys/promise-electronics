@@ -17,7 +17,10 @@ export function setCsrfToken(req: Request, res: Response, next: NextFunction) {
     }
 
     const shouldCreateToken = req.path === '/api/admin/csrf-token'
-        || req.path === '/api/corporate/auth/csrf-token';
+        || req.path === '/api/corporate/auth/csrf-token'
+        || req.path === '/api/customer/csrf-token'
+        // Customer quote accept and other state changes need a session CSRF after login
+        || Boolean(req.session.customerId);
 
     if (!req.session.csrfToken && !shouldCreateToken) {
         return next();

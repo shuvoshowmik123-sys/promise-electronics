@@ -5,7 +5,7 @@
  * Includes timeline events, quotes, and stage transitions.
  */
 
-import { db, nanoid, eq, desc, like, isNull, and, lt, sql, schema, type ServiceRequest, type InsertServiceRequest, type ServiceRequestEvent, type InsertServiceRequestEvent } from './base.js';
+import { db, nanoid, eq, desc, asc, like, isNull, and, or, lt, sql, count, inArray, schema, type ServiceRequest, type InsertServiceRequest, type ServiceRequestEvent, type InsertServiceRequestEvent } from './base.js';
 import { executeLegacyQuery, isMissingColumnError, mapLegacyServiceRequestRow } from './legacy-schema.js';
 
 const SERVICE_REQUESTS_LEGACY_COLUMNS = [
@@ -71,6 +71,113 @@ export async function getAllServiceRequests(): Promise<ServiceRequest[]> {
     return loadAllServiceRequests();
 }
 
+/** SERVICE-INTAKE-RELIABILITY-01E — SQL-bounded list/search for active admin/mobile queues. */
+const SR_LIST_MAX_LIMIT = 100;
+const SR_SORT_ALLOWLIST = {
+    createdAt: schema.serviceRequests.createdAt,
+    ticketNumber: schema.serviceRequests.ticketNumber,
+} as const;
+
+export type ServiceRequestListQuery = {
+    page?: number;
+    limit?: number;
+    status?: string;
+    servicePreference?: string;
+    stage?: string;
+    quoteStatus?: string;
+    search?: string;
+    sort?: keyof typeof SR_SORT_ALLOWLIST;
+    order?: "asc" | "desc";
+};
+
+export type ServiceRequestListResult = {
+    items: ServiceRequest[];
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+};
+
+export async function listServiceRequestsPaginated(
+    query: ServiceRequestListQuery = {},
+): Promise<ServiceRequestListResult> {
+    const page = Number.isFinite(query.page) && (query.page as number) > 0 ? Math.floor(query.page as number) : 1;
+    const rawLimit = Number.isFinite(query.limit) && (query.limit as number) > 0 ? Math.floor(query.limit as number) : 50;
+    const limit = Math.min(SR_LIST_MAX_LIMIT, Math.max(1, rawLimit));
+    const offset = (page - 1) * limit;
+
+    const conditions = [];
+    if (query.status?.trim()) {
+        conditions.push(eq(schema.serviceRequests.status, query.status.trim()));
+    }
+    if (query.servicePreference?.trim()) {
+        conditions.push(eq(schema.serviceRequests.servicePreference, query.servicePreference.trim()));
+    }
+    if (query.stage?.trim()) {
+        conditions.push(eq(schema.serviceRequests.stage, query.stage.trim()));
+    }
+    if (query.quoteStatus?.trim()) {
+        conditions.push(eq(schema.serviceRequests.quoteStatus, query.quoteStatus.trim()));
+    }
+    const search = query.search?.trim();
+    if (search && search.length > 0) {
+        // position() is literal (not LIKE) — only strip backslash noise; keep _ and spaces.
+        const needle = search.replace(/[\\]/g, "").toLowerCase().slice(0, 80);
+        if (needle.length > 0) {
+            conditions.push(
+                or(
+                    sql`position(${needle} in lower(coalesce(${schema.serviceRequests.ticketNumber}, ''))) > 0`,
+                    sql`position(${needle} in lower(coalesce(${schema.serviceRequests.customerName}, ''))) > 0`,
+                    sql`position(${needle} in lower(coalesce(${schema.serviceRequests.phone}, ''))) > 0`,
+                    sql`position(${needle} in lower(coalesce(${schema.serviceRequests.brand}, ''))) > 0`,
+                    sql`position(${needle} in lower(coalesce(${schema.serviceRequests.id}, ''))) > 0`,
+                )!,
+            );
+        }
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const sortKey = query.sort && SR_SORT_ALLOWLIST[query.sort] ? query.sort : "createdAt";
+    const sortCol = SR_SORT_ALLOWLIST[sortKey];
+    const orderDesc = (query.order ?? "desc") !== "asc";
+    // Stable ordering: primary sort + id tie-breaker
+    const orderBy = orderDesc
+        ? [desc(sortCol), desc(schema.serviceRequests.id)]
+        : [asc(sortCol), asc(schema.serviceRequests.id)];
+
+    try {
+        const [items, countRows] = await Promise.all([
+            db
+                .select()
+                .from(schema.serviceRequests)
+                .where(where)
+                .orderBy(...orderBy)
+                .limit(limit)
+                .offset(offset),
+            db.select({ total: count() }).from(schema.serviceRequests).where(where),
+        ]);
+        const total = Number(countRows[0]?.total ?? 0);
+        return {
+            items,
+            total,
+            page,
+            limit,
+            totalPages: Math.max(1, Math.ceil(total / limit) || 1),
+        };
+    } catch (error) {
+        // HOTFIX-1: never load-all on list path. Missing columns → safe availability error.
+        if (isMissingServiceRequestColumn(error)) {
+            const err = new Error(
+                "Service request list is temporarily unavailable due to schema drift. Run MAIN migrations.",
+            ) as Error & { code?: string; statusCode?: number };
+            err.code = "SERVICE_REQUEST_LIST_UNAVAILABLE";
+            err.statusCode = 503;
+            throw err;
+        }
+        throw error;
+    }
+}
+
 // Fallback-to-0 on error prevents bell count failure from breaking the admin shell.
 export async function getUnreadServiceRequestCount(): Promise<number> {
     try {
@@ -84,8 +191,45 @@ export async function getUnreadServiceRequestCount(): Promise<number> {
 }
 
 export async function getServiceRequest(id: string): Promise<ServiceRequest | undefined> {
-    const requests = await loadAllServiceRequests();
-    return requests.find((request) => request.id === id);
+    try {
+        const [row] = await db
+            .select()
+            .from(schema.serviceRequests)
+            .where(eq(schema.serviceRequests.id, id))
+            .limit(1);
+        return row;
+    } catch (error) {
+        if (!isMissingServiceRequestColumn(error)) {
+            throw error;
+        }
+        console.warn('[LegacySchema][service_requests] Falling back to raw SELECT by id.', error);
+        const rows = await executeLegacyQuery(
+            sql`SELECT * FROM service_requests WHERE id = ${id} LIMIT 1`,
+            mapLegacyServiceRequestRow,
+        );
+        return rows[0];
+    }
+}
+
+/** HOTFIX-2: bounded multi-id load for page-scoped intake enrichment. */
+export async function getServiceRequestsByIds(ids: string[]): Promise<ServiceRequest[]> {
+    const wanted = Array.from(new Set(ids.map((id) => id.trim()).filter(Boolean))).slice(0, 100);
+    if (wanted.length === 0) return [];
+    try {
+        return await db
+            .select()
+            .from(schema.serviceRequests)
+            .where(inArray(schema.serviceRequests.id, wanted));
+    } catch (error) {
+        if (!isMissingServiceRequestColumn(error)) throw error;
+        // HOTFIX-2-QA-CLOSE: no raw error object in logs (message-only via safe path if needed).
+        console.warn('[LegacySchema][service_requests] Falling back to raw SELECT for getServiceRequestsByIds.');
+        const idList = sql.join(wanted.map((id) => sql`${id}`), sql`, `);
+        return executeLegacyQuery(
+            sql`SELECT * FROM service_requests WHERE id IN (${idList})`,
+            mapLegacyServiceRequestRow,
+        );
+    }
 }
 
 export async function getServiceRequestByTicketNumber(ticketNumber: string): Promise<ServiceRequest | undefined> {
@@ -336,7 +480,8 @@ export async function linkServiceRequestsByPhone(phone: string, customerId: stri
 }
 
 // ============================================
-// Quote Operations
+// Quote Operations — delegate to retail-quote.service (00C-A)
+// Prefer importing the service directly from routes.
 // ============================================
 
 export async function updateQuote(
@@ -344,12 +489,13 @@ export async function updateQuote(
     quoteAmount: number,
     quoteNotes?: string
 ): Promise<ServiceRequest | undefined> {
-    return updateServiceRequest(id, {
-        quoteAmount,
-        quoteNotes,
-        quoteStatus: 'Quoted',
-        quotedAt: new Date(),
-    } as any);
+    const { sendOrPriceQuote } = await import('../services/retail-quote.service.js');
+    const result = await sendOrPriceQuote(
+        id,
+        { quoteAmount, quoteNotes },
+        { kind: 'admin', id: 'system', name: 'System' },
+    );
+    return result.serviceRequest;
 }
 
 export async function acceptQuote(
@@ -359,20 +505,25 @@ export async function acceptQuote(
     servicePreference?: string,
     scheduledPickupDate?: Date | null
 ): Promise<ServiceRequest | undefined> {
-    return updateServiceRequest(id, {
-        quoteStatus: 'Accepted',
-        acceptedAt: new Date(),
-        pickupTier,
-        pickupAddress,
-        servicePreference,
-        scheduledPickupDate
-    } as any);
+    const { acceptRetailQuote } = await import('../services/retail-quote.service.js');
+    const result = await acceptRetailQuote(
+        id,
+        { kind: 'admin', id: 'system', name: 'System' },
+        {
+            confirmationNote: 'Legacy acceptQuote repository bridge (system). Prefer route-level acceptRetailQuote with customer or admin confirmation.',
+            pickupTier,
+            address: pickupAddress,
+            servicePreference,
+            scheduledVisitDate: scheduledPickupDate,
+        },
+    );
+    return result.serviceRequest;
 }
 
 export async function declineQuote(id: string): Promise<ServiceRequest | undefined> {
-    return updateServiceRequest(id, {
-        quoteStatus: 'Declined',
-    } as any);
+    const { declineRetailQuote } = await import('../services/retail-quote.service.js');
+    const result = await declineRetailQuote(id, { kind: 'admin', id: 'system', name: 'System' });
+    return result.serviceRequest;
 }
 
 export async function getServiceRequestByConvertedJobId(jobId: string): Promise<ServiceRequest | undefined> {

@@ -19,8 +19,9 @@ import { sql } from 'drizzle-orm';
 import { isDbReady } from '../services/db-readiness.js';
 import { normalizePhone } from '../utils/phone.js';
 import {
-    PERMISSION_CATALOG, ROLE_PRESETS, CUSTOM_PACKS,
+    PERMISSION_CATALOG, ROLE_PRESETS, CUSTOM_PACKS, SIMPLE_WORK_PACKS,
     COVERAGE_CRITICAL_PERMISSIONS, DEPRECATED_BROAD_PERMISSIONS,
+    DEPRECATED_GRANULAR_EXPANSIONS,
     LEGACY_TO_GRANULAR, getModules, getPermissionsByModule,
 } from '../../shared/permission-catalog.js';
 import { notifySpecificAdmin } from './middleware/sse-broker.js';
@@ -490,6 +491,11 @@ function translateLegacyToGranular(stored: Record<string, any>): string[] {
         if (mapped) {
             for (const g of mapped) granular.add(g);
         }
+        // Deprecated granular expansions (challans.manage → create+edit, never delete)
+        const deprecated = DEPRECATED_GRANULAR_EXPANSIONS[key];
+        if (deprecated) {
+            for (const g of deprecated) granular.add(g);
+        }
     }
     return Array.from(granular).sort();
 }
@@ -513,6 +519,7 @@ router.get("/api/admin/permissions/catalog", requireAdminAuth, async (_req: Requ
         modules,
         presets: ROLE_PRESETS,
         packs: CUSTOM_PACKS,
+        simplePacks: SIMPLE_WORK_PACKS,
         coverageCritical: COVERAGE_CRITICAL_PERMISSIONS,
         deprecated: DEPRECATED_BROAD_PERMISSIONS,
     });
@@ -597,6 +604,16 @@ router.patch("/api/admin/users/:id/permission-profile", requireAdminAuth, requir
         const cleanPerms: Record<string, boolean> = {};
         for (const k of permKeys) cleanPerms[k] = true;
 
+        let previousRaw: Record<string, any> = {};
+        try { previousRaw = JSON.parse(target.permissions || "{}"); } catch { /* empty */ }
+        const previousKeys = Object.keys(previousRaw).filter((k) => previousRaw[k]);
+        const nextKeySet: Record<string, true> = {};
+        for (const k of permKeys) nextKeySet[k] = true;
+        const prevKeySet: Record<string, true> = {};
+        for (const k of previousKeys) prevKeySet[k] = true;
+        const granted = permKeys.filter((k) => !prevKeySet[k]);
+        const revoked = previousKeys.filter((k) => !nextKeySet[k]);
+
         await storage.updateUser(targetId, { permissions: JSON.stringify(cleanPerms) } as any);
 
         // Notify the target user's live session to reload permissions immediately.
@@ -608,11 +625,19 @@ router.patch("/api/admin/users/:id/permission-profile", requireAdminAuth, requir
             action: "UPDATE_USER_PERMISSIONS",
             entity: "User",
             entityId: targetId,
-            details: `Set ${permKeys.length} granular permissions: ${permKeys.slice(0, 10).join(", ")}${permKeys.length > 10 ? "..." : ""}`,
+            details: `Permissions updated: +${granted.length} -${revoked.length} (total ${permKeys.length})`,
+            oldValue: { revoked: revoked.slice(0, 40), previousCount: previousKeys.length },
+            newValue: { granted: granted.slice(0, 40), nextCount: permKeys.length },
             req,
+            severity: "warning",
         }).catch(() => {});
 
-        res.json({ success: true, permissionCount: permKeys.length });
+        res.json({
+            success: true,
+            permissionCount: permKeys.length,
+            granted,
+            revoked,
+        });
     } catch (error: any) {
         console.error("[Permissions] Save error:", error?.message);
         res.status(500).json({ error: "Failed to save permissions" });

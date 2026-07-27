@@ -5,3 +5,5 @@ export * from "./customerApi";
 export * from "./publicApi";
 export * from "./corporateApi";
 export * from "./mapApi";
+export * from "./serviceFeedbackApi";
+export * from "./disputesApi";

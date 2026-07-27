@@ -1,6 +1,6 @@
 import { useState, lazy, Suspense, useEffect, useRef, useCallback, type CSSProperties, type UIEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { variants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
@@ -11,8 +11,9 @@ import {
     Banknote, UserCheck, UserCog, HardHat, Building2,
     FileText, HelpCircle, Settings, Bell, Search, User, Zap,
     PieChart, Users, LineChart, Menu, LogOut,
-    ShieldCheck, RotateCcw, FileWarning, Brain, WifiOff, Wrench, MapPinned
+    ShieldCheck, RotateCcw, FileWarning, Brain, WifiOff, Wrench, MapPinned, Clock, Scale
 } from "lucide-react";
+import { canViewDisputes } from "@/lib/disputes-capabilities";
 
 // Contexts
 import { RollbackProvider } from "@/contexts/RollbackContext";
@@ -20,6 +21,7 @@ import { useModules } from "@/contexts/ModuleContext";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import type { UserPermissions } from "@shared/schema";
 import { useOffline } from "@/contexts/OfflineContext";
+import { canAttendanceCheckIn, canViewAttendanceReport } from "@/lib/attendance-capabilities";
 
 // Shared Components & Utilities
 import { OfflineBanner } from "@/components/admin/OfflineBanner";
@@ -27,12 +29,22 @@ import { QRScanButton } from "@/components/admin/QRScanButton";
 import { SyncConflictReview } from "@/components/admin/SyncConflictReview";
 import { ReminderBell } from "@/components/admin/ReminderBell";
 import { TeamChatPanel } from "@/components/admin/TeamChatPanel";
+import { AdminPwaInstallPrompt } from "@/components/admin/AdminPwaInstallPrompt";
 import { DatabaseSyncStatus } from "@/components/admin/DatabaseSyncStatus";
+import {
+    adminQueryFromTabSearch,
+    buildNavigateAdminTabPath,
+    normalizeAdminTabId,
+    parseAdminNotificationLink,
+    resolveAdminWorkspaceIntent,
+    type AdminWorkspaceQuery,
+    type NavigateAdminTabHistory,
+} from "@/lib/admin-workspace-routing";
 import { usePullToRefresh } from "@/hooks/usePullToRefresh";
 import { DashboardSkeleton } from "./bento/shared/DashboardSkeleton";
 import { MobileMoreMenu } from "./bento/shared/MobileMoreMenu";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { GlobalSearch, type SearchNavigationPayload } from "./bento/shared/GlobalSearch";
+import { GlobalSearch } from "./bento/shared/GlobalSearch";
 import { NotificationPanel } from "./bento/shared/NotificationPanel";
 import {
     DropdownMenu,
@@ -75,6 +87,7 @@ const UnifiedB2BTab = lazy(() => import("./bento/tabs/UnifiedB2BTab"));
 const CorporateMessagesAdminTab = lazy(() => import("./bento/tabs/CorporateMessagesTab"));
 const PurchasingTab = lazy(() => import("./bento/tabs/PurchasingTab"));
 const WarrantyClaimsTab = lazy(() => import("./bento/tabs/WarrantyClaimsTab"));
+const DisputesTab = lazy(() => import("./bento/tabs/DisputesTab"));
 const WastageTab = lazy(() => import('./bento/tabs/WastageTab'));
 
 // People & Staff Tabs
@@ -142,6 +155,7 @@ const ADMIN_SIDEBAR_NAV_GROUPS: SidebarGroup[] = [
             { label: "Purchasing (POs)", id: "purchasing", icon: ShoppingCart, color: "pink", layout: "scroll" },
             { label: "Warranty Claims", id: "warranty", icon: ShieldCheck, color: "green", layout: "fixed" },
             { label: "Refunds", id: "refunds", icon: RotateCcw, color: "rose", layout: "fixed" },
+            { label: "Disputes", id: "disputes", icon: Scale, color: "violet", layout: "fixed" },
             { label: "Wastage", id: "wastage", icon: FileWarning, color: "orange", layout: "fixed" },
         ]
     },
@@ -149,7 +163,8 @@ const ADMIN_SIDEBAR_NAV_GROUPS: SidebarGroup[] = [
         title: "People & Staff",
         items: [
             { label: "Users", id: "users", icon: UserCog, color: "indigo", layout: "fixed" },
-            { label: "Attendance", id: "attendance", icon: UserCheck, color: "green", layout: "scroll" },
+            { label: "Staff Attendance", id: "attendance", icon: UserCheck, color: "green", layout: "scroll" },
+            { label: "My Shift", id: "shift", icon: Clock, color: "emerald", layout: "scroll" },
             { label: "Salary & HR", id: "salary", icon: Banknote, color: "emerald", layout: "scroll" },
             { label: "Cashier", id: "cashier", icon: ShoppingCart, color: "blue", layout: "scroll" },
             { label: "Technician", id: "technician", icon: HardHat, color: "orange", layout: "scroll" },
@@ -179,22 +194,24 @@ export default function DesignConcept() {
      * This normalizes them to the current 'b2b' tab identifier.
      * Safe to remove once no legacy URLs are in circulation.
      */
-    const normalizeTab = (tab: string) => tab === "corp-repairs" ? "b2b" : tab;
+    const normalizeTab = (tab: string) => normalizeAdminTabId(tab);
     const isLikelyEntityId = (value: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-    const buildHash = (tab: string, searchQuery?: string, payload?: SearchNavigationPayload) => {
-        const params = new URLSearchParams();
-        const resolvedSearch = payload?.searchQuery || searchQuery;
-        if (resolvedSearch) params.set("search", resolvedSearch);
-        if (payload?.targetId) params.set("target", payload.targetId);
-        if (payload?.clientId) params.set("client", payload.clientId);
-        if (payload?.recordType) params.set("type", payload.recordType);
-        const query = params.toString();
-        return query ? `#${tab}?${query}` : `#${tab}`;
-    };
+
+    const readWorkspaceIntent = useCallback(() => {
+        return resolveAdminWorkspaceIntent({
+            pathname: window.location.pathname,
+            search: window.location.search,
+            hash: window.location.hash,
+        });
+    }, []);
 
     const [activeTab, setActiveTab] = useState(() => {
-        const hash = window.location.hash.replace("#", "");
-        return normalizeTab(hash.split("?")[0] || "dashboard");
+        const intent = resolveAdminWorkspaceIntent({
+            pathname: window.location.pathname,
+            search: window.location.search,
+            hash: window.location.hash,
+        });
+        return intent.kind === "workspace" ? intent.tabId : "dashboard";
     });
 
     const activeTabRef = useRef(activeTab);
@@ -229,68 +246,16 @@ export default function DesignConcept() {
     });
 
     const [globalSearchQuery, setGlobalSearchQuery] = useState(() => {
-        const hash = window.location.hash.replace("#", "");
-        const query = hash.split("?")[1];
-        if (query) {
-            return new URLSearchParams(query).get("search") || "";
-        }
-        return "";
+        const intent = resolveAdminWorkspaceIntent({
+            pathname: window.location.pathname,
+            search: window.location.search,
+            hash: window.location.hash,
+        });
+        return intent.query.search || "";
     });
 
     // When deep-linking from System Health, override the job type to fetch all types
     const [jobTypeOverride, setJobTypeOverride] = useState<"all" | "walk-in" | "corporate" | undefined>(undefined);
-
-    useEffect(() => {
-        if (activeTab) {
-            const currentHash = window.location.hash;
-            const hasQuery = currentHash.includes('?');
-            if (hasQuery && currentHash.split('?')[0].replace('#', '') === activeTab) {
-                // Keep the hash with query intact
-            } else {
-                window.history.replaceState(null, "", `#${activeTab}`);
-            }
-        }
-    }, [activeTab]);
-
-    useEffect(() => {
-        const handleHashChange = () => {
-            const rawHash = window.location.hash.replace("#", "");
-            const tabName = normalizeTab(rawHash.split("?")[0]);
-            const query = rawHash.split("?")[1];
-
-            const params = query ? new URLSearchParams(query) : null;
-
-            if (params) {
-                const search = params.get("search");
-                if (search) setGlobalSearchQuery(search);
-            } else {
-                setGlobalSearchQuery("");
-            }
-
-            setSelectedCorporateClientId(tabName === "b2b" ? params?.get("client") || null : null);
-            setSelectedCorporateJobId(tabName === "b2b" ? params?.get("target") || null : null);
-            setSelectedInventoryItemId(tabName === "inventory" ? params?.get("target") || null : null);
-            setSelectedChallanId(tabName === "challans" ? params?.get("target") || null : null);
-            // New target parsing for Smart Search deep-linking
-            setSelectedJobId(tabName === "jobs" ? params?.get("target") || null : null);
-            setSelectedServiceRequestId(tabName === "service-requests" ? params?.get("target") || null : null);
-            setSelectedCustomerId(tabName === "customers" ? params?.get("target") || null : null);
-            setSelectedPosTransactionId(tabName === "pos" ? params?.get("target") || null : null);
-            setSelectedFinanceRecordId(tabName === "finance" ? params?.get("target") || null : null);
-            setSelectedFinanceRecordType(tabName === "finance" ? params?.get("type") || null : null);
-
-            if (tabName !== "jobs") {
-                setJobTypeOverride(undefined);
-            }
-
-            if (tabName && tabName !== activeTabRef.current) {
-                setActiveTab(tabName);
-            }
-        };
-        handleHashChange();
-        window.addEventListener("hashchange", handleHashChange);
-        return () => window.removeEventListener("hashchange", handleHashChange);
-    }, []);
 
     const [selectedCorporateClientId, setSelectedCorporateClientId] = useState<string | null>(null);
     const [selectedCorporateJobId, setSelectedCorporateJobId] = useState<string | null>(null);
@@ -303,6 +268,99 @@ export default function DesignConcept() {
     const [selectedPosTransactionId, setSelectedPosTransactionId] = useState<string | null>(null);
     const [selectedFinanceRecordId, setSelectedFinanceRecordId] = useState<string | null>(null);
     const [selectedFinanceRecordType, setSelectedFinanceRecordType] = useState<string | null>(null);
+
+    const applyWorkspaceQuery = useCallback((tabName: string, query: AdminWorkspaceQuery) => {
+        setGlobalSearchQuery(query.search || "");
+        setSelectedCorporateClientId(tabName === "b2b" ? query.client || null : null);
+        setSelectedCorporateJobId(tabName === "b2b" ? query.target || null : null);
+        setSelectedInventoryItemId(tabName === "inventory" ? query.target || null : null);
+        setSelectedChallanId(tabName === "challans" ? query.target || null : null);
+        setSelectedJobId(tabName === "jobs" ? query.target || null : null);
+        setSelectedServiceRequestId(tabName === "service-requests" ? query.target || null : null);
+        setSelectedCustomerId(tabName === "customers" ? query.target || null : null);
+        setSelectedPosTransactionId(tabName === "pos" ? query.target || null : null);
+        setSelectedFinanceRecordId(tabName === "finance" ? query.target || null : null);
+        setSelectedFinanceRecordType(tabName === "finance" ? query.type || null : null);
+        if (tabName !== "jobs") {
+            setJobTypeOverride(undefined);
+        }
+    }, []);
+
+    const [location, setLocation] = useLocation();
+
+    /** Shell navigation: canonical path + push by default; replace for normalize/fallback only. */
+    const navigateAdminTab = useCallback((
+        tab: string,
+        query?: AdminWorkspaceQuery | null,
+        options?: { history?: NavigateAdminTabHistory },
+    ) => {
+        const tabId = normalizeAdminTabId(tab);
+        const nextQuery = adminQueryFromTabSearch(tabId, query?.search, {
+            targetId: query?.target,
+            clientId: query?.client,
+            recordType: query?.type,
+        });
+        const path = buildNavigateAdminTabPath(tabId, nextQuery);
+        const mode = options?.history ?? "push";
+        if (mode === "replace") {
+            setLocation(path, { replace: true });
+        } else {
+            setLocation(path);
+        }
+        setActiveTab(tabId);
+        applyWorkspaceQuery(tabId, nextQuery);
+    }, [applyWorkspaceQuery, setLocation]);
+
+    // Sync workspace state from Wouter location (path navigation + browser history).
+    useEffect(() => {
+        const intent = resolveAdminWorkspaceIntent({
+            pathname: window.location.pathname,
+            search: window.location.search,
+            hash: window.location.hash,
+        });
+        if (intent.kind !== "workspace") return;
+
+        if (intent.shouldReplace) {
+            const target = intent.canonicalPath;
+            const current =
+                window.location.pathname +
+                window.location.search +
+                (window.location.hash || "");
+            if (current !== target) {
+                // Clear hash + normalize query without relying on dual path/hash state.
+                window.history.replaceState(null, "", target);
+                setLocation(target, { replace: true });
+            }
+        }
+
+        applyWorkspaceQuery(intent.tabId, intent.query);
+        if (intent.tabId !== activeTabRef.current) {
+            setActiveTab(intent.tabId);
+        }
+    }, [location, applyWorkspaceQuery, setLocation]);
+
+    // Legacy hash reader for any remaining external writers until headed QA close.
+    useEffect(() => {
+        const handleHashChange = () => {
+            const rawHash = window.location.hash.replace("#", "");
+            if (!rawHash) return;
+            const tabName = normalizeTab(rawHash.split("?")[0]);
+            const queryPart = rawHash.includes("?") ? rawHash.slice(rawHash.indexOf("?") + 1) : "";
+            const params = new URLSearchParams(queryPart);
+            const query = adminQueryFromTabSearch(tabName, params.get("search"), {
+                targetId: params.get("target"),
+                clientId: params.get("client"),
+                recordType: params.get("type"),
+            });
+            applyWorkspaceQuery(tabName, query);
+            if (tabName && tabName !== activeTabRef.current) {
+                setActiveTab(tabName);
+            }
+        };
+        window.addEventListener("hashchange", handleHashChange);
+        return () => window.removeEventListener("hashchange", handleHashChange);
+    }, [applyWorkspaceQuery]);
+
     // Thread pre-selection for notification deep-links to corp-msg tab
     const [selectedCorpMsgThreadId, setSelectedCorpMsgThreadId] = useState<string | null>(null);
     const [searchOpen, setSearchOpen] = useState(false);
@@ -315,7 +373,7 @@ export default function DesignConcept() {
     const mobileScrollTickingRef = useRef(false);
 
     const { isEnabled, isLoading: modulesLoading } = useModules();
-    const { logout, user, hasPermission, status } = useAdminAuth();
+    const { logout, user, hasPermission, permissions, status } = useAdminAuth();
     const [moreOpen, setMoreOpen] = useState(false);
     const { isOnline, getTabTier } = useOffline();
     const {
@@ -384,11 +442,12 @@ export default function DesignConcept() {
         'settings': 'settings',
         'challans': 'challans',
         'finance': 'finance',
-        'b2b': 'corporate',
-        'corp-msg': ['corporateMessages', 'corporate'], // corporateMessages.* = catalog module; corporate = legacy B2B fallback
-        'attendance': 'attendance',
-        // 'shift' intentionally omitted: shift tab is universal check-in for all staff;
-        // gated only by the 'attendance' module in TAB_TO_MODULE, not by a permission key.
+        // UNIFIED-OPS-01A: B2B tab requires workspace (or legacy corporate:true) — NOT ops-only keys
+        'b2b': 'corporate.workspace',
+        'corp-msg': ['corporateMessages', 'corporate.workspace'],
+        // Special-cased in isTabEnabled via attendance-capabilities (exact keys, no checkIn→report).
+        'attendance': 'attendance.view',
+        'shift': 'attendance.checkIn',
         'salary': 'salary',
         'cashier': 'pos',          // cashier is a POS subset
         'reports': 'reports',
@@ -422,13 +481,38 @@ export default function DesignConcept() {
         // Super Admins bypass (handled inside hasPermission)
         const permKey = TAB_TO_PERMISSION[tabId];
         if (!permKey) return true; // No permission mapping -> allow
+
+        // B2B Area: never open from corporate.jobsOperate / challansOperate alone.
+        // Legacy corporate:true still counts as full B2B until accounts are migrated.
+        if (tabId === "b2b") {
+            if (user?.role === "Super Admin") return true;
+            const p = permissions as Record<string, boolean | undefined>;
+            if (p["corporate.workspace"] === true) return true;
+            if (p.corporate === true) return true; // legacy broad flag only
+            if (p["corporate.bills.configureTemplates"] === true) return true; // billing-only access
+            return false;
+        }
+
+        // Attendance report vs Shift check-in — exact capabilities (no prefix bleed).
+        if (tabId === "attendance") {
+            return canViewAttendanceReport(user, permissions as Record<string, boolean | undefined>);
+        }
+        if (tabId === "shift") {
+            return canAttendanceCheckIn(user, permissions as Record<string, boolean | undefined>);
+        }
+        // Disputes desk requires exact disputes.view (create-only must not open the tab).
+        if (tabId === "disputes") {
+            return canViewDisputes(user, permissions as Record<string, boolean | undefined>);
+        }
+
         if (Array.isArray(permKey)) {
             return permKey.some((k) => hasPermission(k as keyof UserPermissions));
         }
         return hasPermission(permKey as keyof UserPermissions);
     };
 
-    // Display names for breadcrumb
+    // Display names for breadcrumb — Super Admin shift surface is team monitor, not personal check-in.
+    const shiftNavLabel = user?.role === "Super Admin" ? "Shift Monitor" : "My Shift";
     const TAB_DISPLAY_NAMES: Record<string, string> = {
         'dashboard': 'Dashboard', 'overview': 'Overview', 'area-intelligence': 'Area Intelligence',
         'system-health': 'System Health', 'service-requests': 'Service Requests', 'repair-journeys': 'Repair Journeys',
@@ -436,11 +520,11 @@ export default function DesignConcept() {
         'pos': 'Point of Sale', 'orders': 'Orders', 'inventory': 'Inventory',
         'finance': 'Finance', 'b2b': 'B2B Workspace', 'corp-msg': 'Corp. Messages',
         'users': 'User Management', 'settings': 'System Settings',
-        'reports': 'Reports', 'quality': 'Quality Analytics', 'attendance': 'Staff Attendance', 'shift': 'My Shift',
+        'reports': 'Reports', 'quality': 'Quality Analytics', 'attendance': 'Staff Attendance', 'shift': shiftNavLabel,
         'customers': 'Customers', 'inquiries': 'Inquiries', 'quotations': 'Quotations',
         'workflow-demo': 'Workflow Design Demo',
         'salary': 'Salary & HR', 'cashier': 'Cashier Dashboard', 'technician': 'Technician View',
-        'purchasing': 'Purchasing (POs)', 'warranty': 'Warranty Claims', 'refunds': 'Refunds', 'wastage': 'Wastage',
+        'purchasing': 'Purchasing (POs)', 'warranty': 'Warranty Claims', 'refunds': 'Refunds', 'disputes': 'Disputes', 'wastage': 'Wastage',
         'shipments': 'Shipments', 'procurement': 'Procurement', 'stock-manager': 'Stock Manager',
         'audit-logs': 'Audit Logs', 'brain': 'AI Brain',
         'account': 'My Account'
@@ -448,14 +532,21 @@ export default function DesignConcept() {
 
     const sidebarNavGroups = ADMIN_SIDEBAR_NAV_GROUPS;
 
-    // Filter sidebar groups based on enabled modules
+    // Filter sidebar groups based on enabled modules; apply role-aware shift label.
     const filteredSidebarGroups = sidebarNavGroups.map(group => ({
         ...group,
-        items: group.items.filter(item => {
-            return isTabEnabled(item.id);
-        })
+        items: group.items
+            .filter(item => isTabEnabled(item.id))
+            .map((item) =>
+                item.id === "shift"
+                    ? { ...item, label: shiftNavLabel }
+                    : item.id === "attendance"
+                      ? { ...item, label: "Staff Attendance" }
+                      : item,
+            ),
     })).filter(g => g.items.length > 0);
 
+    // Dock stays short "Shift"; full role label appears in More menu / sidebar / breadcrumb.
     const mobileNavItems = (() => {
         if (user?.role === "Technician") {
             return [
@@ -496,6 +587,36 @@ export default function DesignConcept() {
             return [...tabs, activeTab].slice(-8);
         });
     }, [activeTab]);
+
+    // Revocation while inside a newly forbidden tab → navigate to first authorized tab.
+    // Also prune visited disabled tabs so their feature trees unmount (no hidden 403 fetches).
+    useEffect(() => {
+        if (status !== "authenticated") return;
+
+        setVisitedTabs((tabs) => {
+            const next = tabs.filter((id) => id === activeTab || isTabEnabled(id) || id === "account");
+            return next.length === tabs.length && next.every((t, i) => t === tabs[i]) ? tabs : next;
+        });
+
+        if (activeTab === "account" || activeTab === "menu") return;
+        if (isTabEnabled(activeTab)) return;
+
+        // Prefer Shift only when check-in is effective; never Attendance without report capability.
+        const candidates: string[] = [];
+        if (isTabEnabled("shift")) candidates.push("shift");
+        for (const group of ADMIN_SIDEBAR_NAV_GROUPS) {
+            for (const item of group.items) {
+                if (!candidates.includes(item.id) && isTabEnabled(item.id)) candidates.push(item.id);
+            }
+        }
+        candidates.push("account");
+        const first = candidates.find((id) => id !== activeTab) || "account";
+        if (first !== activeTab) {
+            navigateAdminTab(first, {}, { history: "replace" });
+        }
+        // permissions object identity changes after force_refresh_user / refreshUser
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [permissions, activeTab, status, user?.role, user?.permissions, navigateAdminTab]);
 
     useEffect(() => {
         if (activeTab !== "b2b" && selectedCorporateClientId) {
@@ -610,7 +731,7 @@ export default function DesignConcept() {
                                 <SidebarContent
                                     groups={filteredSidebarGroups}
                                     activeTab={activeTab}
-                                    setActiveTab={setActiveTab}
+                                    onSelectTab={(tab) => navigateAdminTab(tab)}
                                     isOnline={isOnline}
                                     getTabTier={getTabTier}
                                 />
@@ -663,7 +784,7 @@ export default function DesignConcept() {
                                             user={user}
                                             isOnline={isOnline}
                                             dockItemIds={mobileDockItemIds}
-                                            onSelect={(tab) => { setActiveTab(tab); setMoreOpen(false); }}
+                                            onSelect={(tab) => { navigateAdminTab(tab); setMoreOpen(false); }}
                                             onLogout={() => { setMoreOpen(false); logout(); }}
                                         />
                                     )}
@@ -672,7 +793,7 @@ export default function DesignConcept() {
                         ) : (
                             <button
                                 key={item.id}
-                                onClick={() => setActiveTab(item.id)}
+                                onClick={() => navigateAdminTab(item.id)}
                                 onPointerEnter={() => preloadTab(item.id)}
                                 onTouchStart={() => preloadTab(item.id)}
                                 className={cn(
@@ -706,9 +827,7 @@ export default function DesignConcept() {
                         )}
                     >
                         <QRScanButton onJobFound={(jobId) => {
-                            setActiveTab("jobs");
-                            setGlobalSearchQuery(jobId);
-                            window.location.hash = `#jobs?search=${encodeURIComponent(jobId)}`;
+                            navigateAdminTab("jobs", { search: jobId });
                         }} />
                         <button
                             onClick={() => setSearchOpen(true)}
@@ -785,7 +904,7 @@ export default function DesignConcept() {
                                     <DropdownMenuSeparator className="bg-slate-100/80 mb-1" />
                                     <DropdownMenuItem
                                         className="cursor-pointer focus:bg-slate-50 text-slate-700 font-medium rounded-lg px-3 py-2"
-                                        onClick={() => { window.location.hash = "#account"; }}
+                                        onClick={() => navigateAdminTab("account")}
                                     >
                                         <User className="mr-3 h-4 w-4 text-slate-400" />
                                         My Account
@@ -870,7 +989,7 @@ export default function DesignConcept() {
                                             <>
                                                 {tabId === 'dashboard' && <DashboardTab onNavigate={(tab: string, searchQuery?: string) => {
                                                     const nextTab = normalizeTab(tab);
-                                                    window.location.hash = searchQuery ? `#${nextTab}?search=${encodeURIComponent(searchQuery)}` : `#${nextTab}`;
+                                                    navigateAdminTab(nextTab, adminQueryFromTabSearch(nextTab, searchQuery));
                                                 }} />}
 
                                                 {/* Overview Group */}
@@ -881,10 +1000,10 @@ export default function DesignConcept() {
                                                 {tabId === 'system-health' && <SystemHealthTab onNavigate={(tab: string, searchQuery?: string, clientId?: string) => {
                                                     const nextTab = normalizeTab(tab);
                                                     if (nextTab === 'jobs') setJobTypeOverride('all');
-                                                    if (nextTab === 'b2b' && clientId) {
-                                                        setSelectedCorporateClientId(clientId);
-                                                    }
-                                                    window.location.hash = searchQuery ? `#${nextTab}?search=${encodeURIComponent(searchQuery)}` : `#${nextTab}`;
+                                                    navigateAdminTab(
+                                                        nextTab,
+                                                        adminQueryFromTabSearch(nextTab, searchQuery, { clientId }),
+                                                    );
                                                 }} />}
 
                                                 {/* Operations Group */}
@@ -955,6 +1074,7 @@ export default function DesignConcept() {
                                                 {tabId === 'purchasing' && <PurchasingTab />}
                                                 {tabId === 'warranty' && <WarrantyClaimsTab />}
                                                 {tabId === 'refunds' && <FinancesTab defaultTab="refunds" />}
+                                                {tabId === 'disputes' && <DisputesTab />}
                                                 {tabId === 'wastage' && <WastageTab />}
 
                                                 {/* People & Staff Group */}
@@ -979,7 +1099,7 @@ export default function DesignConcept() {
                                                 {tabId === 'workflow-demo' && <Suspense fallback={<DashboardSkeleton />}><PlaceholderTab tabName={tabId} /></Suspense>}
                                                 {tabId === 'audit-logs' && <Suspense fallback={<DashboardSkeleton />}><AuditLogsTab /></Suspense>}
 
-                                                {!['dashboard', 'overview', 'area-intelligence', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'shift', 'customers', 'quotations', 'inquiries', 'workflow-demo', 'salary', 'cashier', 'technician', 'purchasing', 'warranty', 'refunds', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain', 'account'].includes(tabId) && (
+                                                {!['dashboard', 'overview', 'area-intelligence', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'shift', 'customers', 'quotations', 'inquiries', 'workflow-demo', 'salary', 'cashier', 'technician', 'purchasing', 'warranty', 'refunds', 'disputes', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain', 'account'].includes(tabId) && (
                                                     <Suspense fallback={<DashboardSkeleton />}>
                                                         <PlaceholderTab tabName={tabId} />
                                                     </Suspense>
@@ -998,45 +1118,64 @@ export default function DesignConcept() {
                     onOpenChange={setSearchOpen}
                     onNavigate={(tab, query, payload) => {
                         const nextTab = normalizeTab(tab);
-                        if (nextTab === 'b2b') {
-                            setSelectedCorporateClientId(payload?.clientId || (query && isLikelyEntityId(query) ? query : null));
-                            setSelectedCorporateJobId(payload?.targetId || null);
-                            window.location.hash = buildHash("b2b", query, payload);
+                        if (nextTab === "corp-msg") {
+                            // Thread id stays in memory only — never path/query/hash.
+                            if (query) setSelectedCorpMsgThreadId(query);
+                            navigateAdminTab("corp-msg");
                             return;
                         }
-                        if (nextTab === 'corp-msg' && query) {
-                            setSelectedCorpMsgThreadId(query);
-                            window.location.hash = `#corp-msg`;
+                        if (nextTab === "b2b") {
+                            const clientId =
+                                payload?.clientId ||
+                                (query && isLikelyEntityId(query) ? query : undefined);
+                            const searchValue =
+                                payload?.searchQuery ||
+                                (query && !isLikelyEntityId(query) ? query : undefined);
+                            navigateAdminTab("b2b", {
+                                search: searchValue,
+                                target: payload?.targetId,
+                                client: clientId,
+                            });
                             return;
                         }
-                        if (nextTab === "inventory") setSelectedInventoryItemId(payload?.targetId || null);
-                        if (nextTab === "challans") setSelectedChallanId(payload?.targetId || null);
-                        if (nextTab === "jobs") setSelectedJobId(payload?.targetId || null);
-                        if (nextTab === "service-requests") setSelectedServiceRequestId(payload?.targetId || null);
-                        if (nextTab === "customers") setSelectedCustomerId(payload?.targetId || null);
-                        if (nextTab === "pos") setSelectedPosTransactionId(payload?.targetId || null);
-                        if (nextTab === "finance") {
-                            setSelectedFinanceRecordId(payload?.targetId || null);
-                            setSelectedFinanceRecordType(payload?.recordType || null);
-                        }
-                        window.location.hash = buildHash(nextTab, query, payload);
+                        navigateAdminTab(
+                            nextTab,
+                            adminQueryFromTabSearch(nextTab, payload?.searchQuery || query, {
+                                targetId: payload?.targetId,
+                                clientId: payload?.clientId,
+                                recordType: payload?.recordType,
+                            }),
+                        );
                     }}
                 />
                 <NotificationPanel
                     open={notificationOpen}
                     onOpenChange={setNotificationOpen}
                     onNavigate={(tab, id) => {
-                        const nextTab = normalizeTab(tab);
-                        if (nextTab === 'corp-msg' && id) {
-                            setSelectedCorpMsgThreadId(id);
-                            window.location.hash = `#corp-msg`;
+                        const parsed = parseAdminNotificationLink(tab, id);
+                        if (parsed.kind === "workspace") {
+                            if (parsed.tabId === "corp-msg") {
+                                const threadId = parsed.corpMsgThreadId || id;
+                                if (threadId) setSelectedCorpMsgThreadId(threadId);
+                                navigateAdminTab("corp-msg");
+                                return;
+                            }
+                            navigateAdminTab(parsed.tabId, {
+                                search: parsed.search,
+                                target: parsed.target,
+                            });
                             return;
                         }
-                        window.location.hash = id ? `#${nextTab}?search=${encodeURIComponent(id)}` : `#${nextTab}`;
+                        if (parsed.kind === "standalone") {
+                            setLocation(parsed.path);
+                            return;
+                        }
+                        // Unsupported/ambiguous: do not coerce to Dashboard (leave destination unopened).
                     }}
                 />
                 <SyncConflictReview />
                 <TeamChatPanel />
+                <AdminPwaInstallPrompt />
             </div>
         </RollbackProvider>
     );
@@ -1047,7 +1186,8 @@ function MainContentWrapper({ children, isFixed, activeTab, mobileChromeHidden }
     const mobileChromeOffset = mobileChromeHidden ? "-translate-y-16" : "translate-y-0";
     const mobileHeight = mobileChromeHidden ? "h-[calc(100%+4rem)]" : "h-full";
     const mobileShellStyle = {
-        "--admin-mobile-bottom-clearance": "calc(5.5rem + env(safe-area-inset-bottom))",
+        // 7.5rem keeps final list cards fully above the floating dock when chrome is visible at end.
+        "--admin-mobile-bottom-clearance": "calc(7.5rem + env(safe-area-inset-bottom))",
     } as CSSProperties;
 
     if (isFixed) {
@@ -1086,7 +1226,7 @@ interface SidebarGroup {
 }
 
 // Extracted Sidebar Content Component
-function SidebarContent({ groups, activeTab, setActiveTab, isOnline, getTabTier }: { groups: SidebarGroup[], activeTab: string, setActiveTab: (id: string) => void, isOnline: boolean, getTabTier: (id: string) => string }) {
+function SidebarContent({ groups, activeTab, onSelectTab, isOnline, getTabTier }: { groups: SidebarGroup[], activeTab: string, onSelectTab: (id: string) => void, isOnline: boolean, getTabTier: (id: string) => string }) {
     const gradients: Record<string, string> = {
         blue: "bg-gradient-to-br from-blue-500 to-blue-600 shadow-blue-500/30",
         indigo: "bg-gradient-to-br from-indigo-500 to-indigo-600 shadow-indigo-500/30",
@@ -1121,7 +1261,7 @@ function SidebarContent({ groups, activeTab, setActiveTab, isOnline, getTabTier 
                             return (
                                 <div
                                     key={item.id}
-                                    onClick={() => setActiveTab(item.id)}
+                                    onClick={() => onSelectTab(item.id)}
                                     onMouseEnter={() => preloadTab(item.id)}
                                     title={item.label}
                                     className={cn(

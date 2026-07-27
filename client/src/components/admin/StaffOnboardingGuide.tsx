@@ -28,7 +28,7 @@ const ROLE_GUIDES: Record<string, { Icon: LucideIcon; color: string; steps: Guid
             { title: "Check In", description: "Start your day by tapping Shift in the bottom dock and pressing Check In. Start your day from Shift so attendance and duty records stay correct." },
             { title: "Your Job Queue", description: "The Quick Workbench shows jobs assigned to you. Active repairs are sorted by priority — work top-down." },
             { title: "Device Details", description: "Each job shows the device type, model, serial number, and the customer's reported issue. Read them before starting." },
-            { title: "Report Your Result", description: "After diagnosis, tap the outcome: Repair OK, Needs Parts, Not Repairable, or Customer Declined. Add clear notes." },
+            { title: "Report Your Result", description: "After diagnosis, choose Repair Successful or Needs Parts. For not-good cases, use Report NG with evidence — a Manager must review before customer decision." },
         ],
     },
     Cashier: {

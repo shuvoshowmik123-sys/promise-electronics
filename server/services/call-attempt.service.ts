@@ -218,6 +218,8 @@ export interface IntakeSummaryItem {
 
 const ACTION_LANES: IntakeLane[] = ['new_intake', 'needs_call', 'needs_reply', 'schedule_needed'];
 
+const INTAKE_SUMMARY_MAX_IDS = 100;
+
 export async function getIntakeSummaryBulk(serviceRequests: {
     id: string;
     status: string;
@@ -229,20 +231,29 @@ export async function getIntakeSummaryBulk(serviceRequests: {
 }[]): Promise<IntakeSummaryItem[]> {
     if (serviceRequests.length === 0) return [];
 
+    // HOTFIX-2: call attempts only for the provided IDs — never all attempts.
+    const ids = serviceRequests.map((sr) => sr.id).slice(0, INTAKE_SUMMARY_MAX_IDS);
+    const idList = sql.join(ids.map((id) => sql`${id}`), sql`, `);
     const rows = await db.execute(sql`
         SELECT service_request_id, outcome, callback_at, created_at
         FROM service_request_call_attempts
+        WHERE service_request_id IN (${idList})
         ORDER BY created_at DESC
     `);
 
     const attemptsBySr = new Map<string, any[]>();
-    for (const row of rows.rows as any[]) {
+    const attemptRows: any[] = Array.isArray((rows as any)?.rows)
+        ? (rows as any).rows
+        : Array.isArray(rows)
+            ? (rows as any[])
+            : [];
+    for (const row of attemptRows) {
         const srId = row.service_request_id;
         if (!attemptsBySr.has(srId)) attemptsBySr.set(srId, []);
         attemptsBySr.get(srId)!.push(row);
     }
 
-    return serviceRequests.map(sr => {
+    return serviceRequests.slice(0, INTAKE_SUMMARY_MAX_IDS).map(sr => {
         const attempts = attemptsBySr.get(sr.id) || [];
         let noAnswerStreak = 0;
         for (const a of attempts) {

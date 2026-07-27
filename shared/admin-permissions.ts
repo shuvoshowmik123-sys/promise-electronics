@@ -26,11 +26,17 @@ export function getDefaultPermissionsForRole(role: string): Record<string, boole
         view_financials: true,
       };
     case "Manager":
+      // LEGACY dynamic defaults for existing accounts with null/empty stored permissions.
+      // corporate:true preserves pre-01A B2B access until those accounts are explicitly migrated.
+      // NEW Managers must receive an explicit stored "Manager Basic" profile (corporate-free)
+      // via getNewStaffPermissionMap — not this fallback.
       return {
         dashboard: true,
         jobs: true,
         inventory: true,
         pos: true,
+        refunds: true,
+        "pos.refund": true,
         challans: true,
         finance: true,
         attendance: true,
@@ -43,6 +49,8 @@ export function getDefaultPermissionsForRole(role: string): Record<string, boole
         users: false,
         settings: false,
         corporate: true,
+        "corporateMessages.view": true,
+        "corporateMessages.reply": true,
         canCreate: true,
         canEdit: true,
         canDelete: false,
@@ -87,7 +95,7 @@ export function getDefaultPermissionsForRole(role: string): Record<string, boole
         jobs: true,
         inventory: false,
         pos: false,
-        challans: true,
+        challans: false,
         finance: false,
         attendance: true,
         reports: false,
@@ -98,6 +106,7 @@ export function getDefaultPermissionsForRole(role: string): Record<string, boole
         systemHealth: false,
         users: false,
         settings: false,
+        corporate: false,
         canCreate: false,
         canEdit: true,
         canDelete: false,

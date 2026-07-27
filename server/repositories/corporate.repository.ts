@@ -1,5 +1,5 @@
 import { db } from "../db.js";
-import { count, desc, eq, and, sql, not, inArray, sum, gte, lt, asc, like, lte } from "drizzle-orm";
+import { count, desc, eq, and, sql, not, inArray, sum, gte, lt, asc, lte } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import * as schema from "../../shared/schema.js";
 import { PaginationResult } from "./base.js";
@@ -15,6 +15,8 @@ import type {
 } from "../../shared/schema.js";
 import { normalizePhone } from "../utils/phone.js";
 import { getSafeJobDisplayRef } from "../../shared/job-display-utils.js";
+import { deriveBillingTier, isNormalCorporateClientType } from "../../shared/constants.js";
+import { allocateJobIdsInTx } from "./job.repository.js";
 
 export class CorporateRepository {
     async getAllCorporateClients(): Promise<CorporateClient[]> {
@@ -32,6 +34,25 @@ export class CorporateRepository {
             id: nanoid()
         }).returning();
         return created;
+    }
+
+    /** Idempotently ensure a billing profile exists for a corporate client. */
+    async ensureBillingProfile(clientId: string): Promise<schema.BillingProfile | undefined> {
+        const client = await this.getCorporateClient(clientId);
+        if (!client) return undefined;
+
+        await db.insert(schema.billingProfiles)
+            .values({
+                id: nanoid(),
+                corporateClientId: clientId,
+                tier: deriveBillingTier((client as any).clientType),
+            })
+            .onConflictDoNothing({ target: schema.billingProfiles.corporateClientId });
+
+        const [profile] = await db.select().from(schema.billingProfiles)
+            .where(eq(schema.billingProfiles.corporateClientId, clientId))
+            .limit(1);
+        return profile;
     }
 
     async updateCorporateClient(id: string, updates: Partial<schema.InsertCorporateClient>): Promise<CorporateClient | undefined> {
@@ -162,29 +183,14 @@ export class CorporateRepository {
                 status: 'received',
             });
 
-            const jobTicketsToInsert: any[] = [];
             const year = new Date().getFullYear();
-            const prefix = `JOB-${year}-`;
-
-            const [lastJob] = await tx
-                .select({ id: schema.jobTickets.id })
-                .from(schema.jobTickets)
-                .where(like(schema.jobTickets.id, `${prefix}%`))
-                .orderBy(desc(schema.jobTickets.id))
-                .limit(1);
-
-            let maxNumber = 0;
-            if (lastJob?.id) {
-                const parts = lastJob.id.split('-');
-                const seq = parseInt(parts[parts.length - 1], 10);
-                if (!isNaN(seq)) {
-                    maxNumber = seq;
-                }
-            }
+            const allocatedIds = await allocateJobIdsInTx(tx, data.items.length, year);
+            const jobTicketsToInsert: any[] = [];
+            const jobIds: string[] = [];
 
             for (let i = 0; i < data.items.length; i++) {
                 const item = data.items[i];
-                const jobId = `${prefix}${String(maxNumber + i + 1).padStart(4, '0')}`;
+                const jobId = allocatedIds[i];
                 jobIds.push(jobId);
 
                 const slaHours = client.defaultSlaHours ?? 72;
@@ -220,6 +226,10 @@ export class CorporateRepository {
         });
     }
 
+    /**
+     * @deprecated CORPORATE-JOB-STATUS-01B — use corporateService.createChallanOut (atomic).
+     * Legacy path kept only for storage interface compatibility; delegates to service.
+     */
     async createChallanOut(data: {
         corporateClientId: string;
         challanInId?: string;
@@ -228,51 +238,11 @@ export class CorporateRepository {
         receiverPhone?: string;
         receiverSignature: string;
     }): Promise<string> {
-        const challanOutId = nanoid();
-        const today = new Date();
-        const dateStr = today.toISOString().slice(0, 10).replace(/-/g, "");
-
-        const startOfDay = new Date(today.setHours(0, 0, 0, 0));
-        const endOfDay = new Date(today.setHours(23, 59, 59, 999));
-
-        const todaysChallans = await db.select({ count: count() })
-            .from(schema.corporateChallans)
-            .where(and(
-                eq(schema.corporateChallans.type, 'outgoing'),
-                gte(schema.corporateChallans.createdAt, startOfDay),
-                lte(schema.corporateChallans.createdAt, endOfDay)
-            ));
-
-        const seq = (todaysChallans[0]?.count || 0) + 1;
-        const challanOutNumber = `CH-OUT-${dateStr}-${seq.toString().padStart(3, '0')}`;
-
-        await db.transaction(async (tx) => {
-            await tx.insert(schema.corporateChallans).values({
-                id: challanOutId,
-                challanNumber: challanOutNumber,
-                corporateClientId: data.corporateClientId,
-                type: 'outgoing',
-                items: data.jobIds,
-                totalItems: data.jobIds.length,
-                status: 'delivered',
-                returnedDate: new Date(),
-                receiverName: data.receiverName,
-                receiverPhone: data.receiverPhone,
-                receiverSignature: data.receiverSignature
-            });
-
-            if (data.jobIds.length > 0) {
-                await tx.update(schema.jobTickets)
-                    .set({
-                        billingStatus: 'delivered',
-                        status: 'Delivered',
-                        corporateChallanId: data.challanInId || undefined
-                    })
-                    .where(inArray(schema.jobTickets.id, data.jobIds));
-            }
+        const { corporateService } = await import("../services/corporate.service.js");
+        return corporateService.createChallanOut({
+            ...data,
+            receiverSignature: data.receiverSignature ?? "",
         });
-
-        return challanOutId;
     }
 
     async getChallanJobs(challanId: string): Promise<JobTicket[]> {
@@ -312,8 +282,55 @@ export class CorporateRepository {
         };
     }
 
+    /**
+     * CORPORATE-JOB-STATUS-01A: declaration-only writer.
+     * Never sets lifecycle Ready/Testing, never projects SR/journey/notification.
+     * `status` body accepts legacy declaration labels only (Checking, Declared OK, …).
+     */
     async updateCorporateJobStatus(jobId: string, status: string): Promise<void> {
-        await db.update(schema.jobTickets).set({ status }).where(eq(schema.jobTickets.id, jobId));
+        const {
+            assertJobNotNgProtected,
+            isNgWorkflowError,
+        } = await import('../services/job-ng-protected.js');
+        const { parseCorporateStatusEndpointInput } = await import(
+            "../services/corporate-declaration.js"
+        );
+        const declaration = parseCorporateStatusEndpointInput(status);
+
+        await db.transaction(async (tx) => {
+            const lock = await tx.execute(
+                sql`SELECT id, status, corporate_client_id AS "corporateClientId"
+                    FROM job_tickets WHERE id = ${jobId} FOR UPDATE`,
+            );
+            const row = ((lock as any).rows ?? lock)[0] as
+                | { id: string; status: string; corporateClientId: string | null }
+                | undefined;
+            if (!row) {
+                const err = new Error("Job not found");
+                (err as any).status = 404;
+                (err as any).code = "JOB_NOT_FOUND";
+                (err as any).name = "CorporateDeclarationError";
+                throw err;
+            }
+            const corpId = row.corporateClientId != null ? String(row.corporateClientId).trim() : "";
+            if (!corpId) {
+                const err = new Error("Corporate declaration applies only to corporate-linked jobs.");
+                (err as any).status = 400;
+                (err as any).code = "CORPORATE_JOB_REQUIRED";
+                (err as any).name = "CorporateDeclarationError";
+                throw err;
+            }
+            try {
+                assertJobNotNgProtected(row.status, "corporate declaration update");
+            } catch (err) {
+                if (isNgWorkflowError(err)) throw err;
+                throw err;
+            }
+            await tx
+                .update(schema.jobTickets)
+                .set({ corporateDeclaration: declaration })
+                .where(eq(schema.jobTickets.id, jobId));
+        });
     }
 
     async getCorporateBills(clientId: string): Promise<schema.CorporateBill[]> {
@@ -408,14 +425,22 @@ export class CorporateRepository {
             dueDate: new Date(Date.now() + 30 * 86400000),
         }).returning();
 
-        await db.insert(schema.dueRecords).values({
-            id: nanoid(),
-            customer: client.companyName,
-            amount: grandTotal,
-            status: 'Pending',
-            invoice: billNumber,
-            dueDate: new Date(Date.now() + 30 * 86400000),
-        });
+        // FINANCE-AFTERCARE-01.2: Only Normal Corporate clients (clientType === 'corporate')
+        // stop creating a generic per-invoice due_records row — their payments settle the
+        // company account via corporate_account_receipts. Corporate Ltd. (limited_company)
+        // preserves its current Due behavior until Ticket 03 deliberately replaces it.
+        if (isNormalCorporateClientType((client as any).clientType)) {
+            // No due_records row for Normal Corporate — account balance is the authority.
+        } else {
+            await db.insert(schema.dueRecords).values({
+                id: nanoid(),
+                customer: client.companyName,
+                amount: grandTotal,
+                status: 'Pending',
+                invoice: billNumber,
+                dueDate: new Date(Date.now() + 30 * 86400000),
+            });
+        }
 
         // Stamp ONLY the jobs actually billed (the unbilled subset) — using
         // data.jobIds here would re-attach already-billed jobs to this new bill.

@@ -19,7 +19,7 @@ function canSeeFullWorkbench(role: string): boolean {
  * GET /api/technician/workbench/jobs
  * Super Admin / Manager: all jobs + customerPhone.
  * Technician: assigned jobs only, customerPhone masked.
- * Any other role with jobs.view: 403.
+ * Ranked work-now + separate waiting list metadata (TECHNICIAN-FLOW-01B).
  */
 router.get('/api/technician/workbench/jobs', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
     try {
@@ -35,35 +35,120 @@ router.get('/api/technician/workbench/jobs', requireAdminAuth, requireGranularPe
             ? await jobRepo.getAllJobTickets()
             : await jobRepo.getJobTicketsByTechnicianUser(user.id, user.name);
 
-        const workbench = jobs.map((j: any) => ({
-            id: j.id,
-            customer: j.customer,
-            customerPhone: isTeam ? j.customerPhone : null,
-            device: j.device,
-            issue: j.issue,
-            status: j.status,
-            priority: j.priority,
-            technician: j.technician,
-            assignedTechnicianId: j.assignedTechnicianId,
-            inspectionResult: j.inspectionResult || 'pending',
-            inspectionNote: j.inspectionNote || null,
-            inspectedBy: j.inspectedBy || null,
-            inspectedAt: j.inspectedAt || null,
-            initialStatus: j.initialStatus || null,
-            problemFound: j.problemFound || null,
-            reportedDefect: j.reportedDefect || null,
-            corporateClientId: j.corporateClientId || null,
-            batchId: j.batchId || null,
-            ticketType: j.ticketType || 'full_device',
-            createdAt: j.createdAt,
-        }));
+        const { buildTechnicianQueueResponse } = await import('../services/technician-queue.service.js');
+        const queue = buildTechnicianQueueResponse(jobs as any[], {
+            includeCustomerPhone: isTeam,
+        });
 
-        res.json({ items: workbench, total: workbench.length });
+        res.json(queue);
     } catch (error: any) {
         console.error('[Workbench] Failed to fetch jobs:', error.message);
         res.status(500).json({ error: 'Failed to fetch workbench jobs' });
     }
 });
+
+/**
+ * POST /api/technician/workbench/jobs/:id/hold
+ * Generic non-NG hold → Awaiting Quote Approval (jobs.manageWorkHolds).
+ */
+router.post(
+    '/api/technician/workbench/jobs/:id/hold',
+    requireAdminAuth,
+    requireGranularPermission('jobs.manageWorkHolds'),
+    async (req: Request, res: Response) => {
+        try {
+            const user = (req as any).user;
+            const jobId = req.params.id;
+            const { transitionJobStatus } = await import('../services/job-status-transition.service.js');
+            const { STATUS_AWAITING_QUOTE_APPROVAL } = await import('../services/technician-queue.service.js');
+
+            const result = await transitionJobStatus({
+                jobId,
+                toStatus: STATUS_AWAITING_QUOTE_APPROVAL,
+                actor: { id: user.id, name: user.name || 'Staff', role: user.role },
+                reason: 'work_hold',
+            });
+
+            await auditLogger.log({
+                userId: user.id,
+                action: 'JOB_WORK_HOLD',
+                entity: 'JobTicket',
+                entityId: jobId,
+                details: 'Entered Awaiting Quote Approval (generic hold, no price)',
+                req,
+            }).catch(() => {});
+
+            res.json({
+                id: result.job.id,
+                status: result.job.status,
+                previousStatus: result.previousStatus,
+            });
+        } catch (error: any) {
+            if (error?.name === 'JobStatusTransitionError') {
+                return res.status(error.status).json({ error: error.message, code: error.code });
+            }
+            console.error('[Workbench] Hold failed:', error.message);
+            res.status(500).json({ error: 'Failed to place work hold' });
+        }
+    },
+);
+
+/**
+ * POST /api/technician/workbench/jobs/:id/resume
+ * Resume from Awaiting Quote Approval → In Progress (default) or body.toStatus if workable.
+ */
+router.post(
+    '/api/technician/workbench/jobs/:id/resume',
+    requireAdminAuth,
+    requireGranularPermission('jobs.manageWorkHolds'),
+    async (req: Request, res: Response) => {
+        try {
+            const user = (req as any).user;
+            const jobId = req.params.id;
+            const requested =
+                typeof req.body?.toStatus === 'string' && req.body.toStatus.trim()
+                    ? req.body.toStatus.trim()
+                    : 'In Progress';
+
+            const { isWorkableStatus } = await import('../services/technician-queue.service.js');
+            if (!isWorkableStatus(requested)) {
+                return res.status(400).json({
+                    error: 'Resume target must be a workable (non-blocked, non-terminal) status',
+                    code: 'INVALID_RESUME_STATUS',
+                });
+            }
+
+            const { transitionJobStatus } = await import('../services/job-status-transition.service.js');
+            const result = await transitionJobStatus({
+                jobId,
+                toStatus: requested,
+                actor: { id: user.id, name: user.name || 'Staff', role: user.role },
+                reason: 'work_resume',
+            });
+
+            await auditLogger.log({
+                userId: user.id,
+                action: 'JOB_WORK_RESUME',
+                entity: 'JobTicket',
+                entityId: jobId,
+                details: `Resumed work hold → ${requested}`,
+                req,
+            }).catch(() => {});
+
+            res.json({
+                id: result.job.id,
+                status: result.job.status,
+                previousStatus: result.previousStatus,
+            });
+        } catch (error: any) {
+            if (error?.name === 'JobStatusTransitionError') {
+                return res.status(error.status).json({ error: error.message, code: error.code });
+            }
+            console.error('[Workbench] Resume failed:', error.message);
+            res.status(500).json({ error: 'Failed to resume work hold' });
+        }
+    },
+);
 
 /**
  * PATCH /api/technician/workbench/jobs/:id/inspection

@@ -3,7 +3,7 @@ import { storage } from "../storage.js";
 import { z } from "zod";
 import { requireCorporateAuth } from "./middleware/auth.js";
 import multer from 'multer';
-import XLSX from 'xlsx';
+import ExcelJS from 'exceljs';
 import csvParser from 'csv-parser';
 import * as streamModule from 'stream';
 import { InsertJobTicket } from '../../shared/schema.js';
@@ -11,10 +11,163 @@ import { notifyAdminUpdate } from './middleware/sse-broker.js';
 import { db } from '../db.js';
 import { corporateClients, jobExtensionRequests, jobTickets } from '../../shared/schema.js';
 import { and, desc, eq } from 'drizzle-orm';
+import { jobRepo } from '../repositories/index.js';
+
+const PORTAL_MAX_WORKSHEETS = 5;
+const PORTAL_MAX_ROWS = 5000;
+const PORTAL_MAX_COLUMNS = 50;
+const PORTAL_MAX_CELL_TEXT = 10000;
+
+const DANGEROUS_HEADERS = new Set(['__proto__', 'prototype', 'constructor', 'proto']);
+
+const PORTAL_HEADER_ALIASES: Record<string, string[]> = {
+    corporateJobNumber: ['corporatejobnumber', 'job no', 'job number', 'job #', 'job id', 'corporate job', 'ref', 'reference', 'ref no', 'ticket id', 'ticket no', 'jobnum', 'jobnumber'],
+    deviceBrand: ['devicebrand', 'brand', 'make', 'manufacturer', 'device brand', 'brand name', 'oem'],
+    model: ['model', 'model name', 'model number', 'model no', 'device model', 'product', 'device', 'unit type', 'item'],
+    serialNumber: ['serialnumber', 'serial', 'serial no', 'serial #', 's/n', 'sn', 'serial number', 'imei', 'service tag', 'tag', 'mn', 'machine no'],
+    reportedDefect: ['reporteddefect', 'defect', 'issue', 'problem', 'fault', 'reported issue', 'complaint', 'description', 'defect description', 'symptom', 'error'],
+    initialStatus: ['initialstatus', 'status', 'initial status', 'condition', 'ok/ng', 'ok ng', 'check status', 'state'],
+    physicalCondition: ['physicalcondition', 'physical', 'physical state', 'body condition', 'cosmetic', 'appearance', 'damage'],
+    accessories: ['accessories', 'accessory', 'included accessories', 'items', 'included items', 'parts', 'cable', 'remotes', 'box'],
+    notes: ['notes', 'note', 'remarks', 'comment', 'comments', 'additional info', 'memo'],
+    priority: ['priority', 'urgency', 'priority level', 'urgency level'],
+};
+
+const PORTAL_ALLOWED_FIELDS = new Set(Object.keys(PORTAL_HEADER_ALIASES));
+
+function normalizeHeaderText(text: string): string {
+    return text.toLowerCase().replace(/[\s\-_]+/g, ' ').trim();
+}
+
+function checkDangerousHeader(header: string): boolean {
+    const normalized = header.toLowerCase().replace(/[^a-z0-9]+/g, '');
+    return DANGEROUS_HEADERS.has(normalized);
+}
+
+function mapPortalHeader(header: string): string | null {
+    const normalized = normalizeHeaderText(header);
+    if (!normalized) return null;
+    for (const [field, aliases] of Object.entries(PORTAL_HEADER_ALIASES)) {
+        if (field === normalized.replace(/\s+/g, '') || aliases.includes(normalized)) {
+            return field;
+        }
+    }
+    return null;
+}
+
+async function parseXlsxWithExcelJS(buffer: Buffer): Promise<Record<string, string>[]> {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+
+    if (workbook.worksheets.length > PORTAL_MAX_WORKSHEETS) {
+        throw new Error('Too many worksheets');
+    }
+
+    const worksheet = workbook.worksheets[0];
+    if (!worksheet) return [];
+
+    const rows: Record<string, string>[] = [];
+    const headerRow = worksheet.getRow(1);
+    const columnMapping: Record<number, string> = {};
+    let columnCount = 0;
+
+    headerRow.eachCell((cell, colNumber) => {
+        const headerText = cell.value?.toString().trim() || '';
+        if (checkDangerousHeader(headerText)) {
+            throw new Error('Dangerous header detected');
+        }
+        const mappedField = mapPortalHeader(headerText);
+        if (mappedField) {
+            columnMapping[colNumber] = mappedField;
+        }
+        columnCount = Math.max(columnCount, colNumber);
+    });
+
+    if (columnCount > PORTAL_MAX_COLUMNS) {
+        throw new Error('Too many columns');
+    }
+
+    const rowCount = worksheet.rowCount;
+    if (rowCount > PORTAL_MAX_ROWS) {
+        throw new Error('Too many rows');
+    }
+
+    for (let rowNumber = 2; rowNumber <= rowCount; rowNumber++) {
+        const row = worksheet.getRow(rowNumber);
+        const rowData: Record<string, string> = Object.create(null);
+        let hasData = false;
+
+        for (const [colNumberStr, field] of Object.entries(columnMapping)) {
+            const colNumber = Number(colNumberStr);
+            const cell = row.getCell(colNumber);
+            const cellValue = cell.value?.toString().trim() || '';
+            if (cellValue.length > PORTAL_MAX_CELL_TEXT) {
+                throw new Error('Cell text exceeds maximum length');
+            }
+            if (cellValue) {
+                rowData[field] = cellValue;
+                hasData = true;
+            }
+        }
+
+        if (hasData) {
+            rows.push(rowData);
+        }
+    }
+
+    return rows;
+}
+
+async function parseCsvWithLimits(buffer: Buffer): Promise<Record<string, string>[]> {
+    const rows: Record<string, string>[] = [];
+    const stream = streamModule.Readable.from(buffer);
+    let headers: string[] | null = null;
+    let rowCount = 0;
+
+    return new Promise((resolve, reject) => {
+        stream
+            .pipe(csvParser())
+            .on('headers', (headerList: string[]) => {
+                for (const h of headerList) {
+                    if (checkDangerousHeader(h)) {
+                        reject(new Error('Dangerous header detected'));
+                        stream.destroy();
+                        return;
+                    }
+                }
+                if (headerList.length > PORTAL_MAX_COLUMNS) {
+                    reject(new Error('Too many columns'));
+                    stream.destroy();
+                    return;
+                }
+                headers = headerList;
+            })
+            .on('data', (row: Record<string, string>) => {
+                rowCount++;
+                if (rowCount > PORTAL_MAX_ROWS) {
+                    reject(new Error('Too many rows'));
+                    stream.destroy();
+                    return;
+                }
+                const safeRow: Record<string, string> = Object.create(null);
+                for (const [key, value] of Object.entries(row)) {
+                    if (typeof value === 'string' && value.length > PORTAL_MAX_CELL_TEXT) {
+                        reject(new Error('Cell text exceeds maximum length'));
+                        stream.destroy();
+                        return;
+                    }
+                    safeRow[key] = value;
+                }
+                rows.push(safeRow);
+            })
+            .on('end', () => resolve(rows))
+            .on('error', (err: Error) => reject(err));
+    });
+}
 
 const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 10, parts: 10 },
     fileFilter: (req, file, cb) => {
         if (file.mimetype === 'text/csv' || file.mimetype === 'application/vnd.ms-excel' || file.mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
             cb(null, true);
@@ -23,6 +176,30 @@ const upload = multer({
         }
     }
 });
+
+function safePortalUpload(req: Request, res: Response, next: NextFunction) {
+    upload.single('file')(req, res, (err) => {
+        if (err) {
+            if (err instanceof multer.MulterError) {
+                if (err.code === 'LIMIT_FILE_SIZE') {
+                    return res.status(413).json({ error: 'Uploaded file is too large.' });
+                }
+                if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') {
+                    return res.status(400).json({ error: 'Too many files uploaded.' });
+                }
+                if (err.code === 'LIMIT_FIELD_COUNT' || err.code === 'LIMIT_FIELD_KEY' || err.code === 'LIMIT_FIELD_VALUE' || err.code === 'LIMIT_PART_COUNT') {
+                    return res.status(400).json({ error: 'Multipart payload exceeds limits.' });
+                }
+                return res.status(400).json({ error: 'Invalid upload payload.' });
+            }
+            return next(err);
+        }
+        if (!req.file || req.file.size === 0) {
+            return res.status(400).json({ error: 'No file uploaded or file is empty.' });
+        }
+        next();
+    });
+}
 
 const router = Router();
 
@@ -183,7 +360,7 @@ router.post("/service-requests", async (req: Request, res: Response) => {
             if (corpRow?.clientClass) clientClass = corpRow.clientClass;
         }
 
-        const newJob = await storage.createJobTicket({
+        const newJob = await jobRepo.createJobTicket({
             customer: user.name,
             customerPhone: user.phone || "",
             device: data.deviceModel,
@@ -208,44 +385,93 @@ router.post("/service-requests", async (req: Request, res: Response) => {
 });
 
 // Bulk service requests from CSV/XLSX
-router.post('/service-requests/bulk', upload.single('file'), async (req: Request, res: Response) => {
+router.post('/service-requests/bulk', safePortalUpload, async (req: Request, res: Response) => {
     try {
         const user = getCorpUser(req);
         if (!req.file) {
             return res.status(400).json({ error: 'No file uploaded' });
         }
 
-        const rows: any[] = [];
+        const fileName = req.file.originalname.toLowerCase();
+        const isCsv = fileName.endsWith('.csv');
+        const isXlsx = fileName.endsWith('.xlsx');
         const mimetype = req.file.mimetype;
 
-        if (mimetype === 'text/csv' || mimetype === 'application/vnd.ms-excel') {
-            // CSV parsing
-            const stream = streamModule.Readable.from(req.file.buffer);
-            await new Promise((resolve, reject) => {
-                stream
-                    .pipe(csvParser())
-                    .on('data', (row: Record<string, string>) => rows.push(row))
-                    .on('end', resolve)
-                    .on('error', reject);
-            });
-        } else if (mimetype === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') {
-            // XLSX parsing
-            const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-            const sheetName = workbook.SheetNames[0];
-            const worksheet = workbook.Sheets[sheetName];
-            rows.push(...XLSX.utils.sheet_to_json(worksheet));
+        if (!isCsv && !isXlsx) {
+            return res.status(400).json({ error: 'Unsupported file format. Please use CSV or XLSX.' });
+        }
+
+        if (isCsv && mimetype !== 'text/csv' && mimetype !== 'application/vnd.ms-excel' && mimetype !== 'application/octet-stream') {
+            return res.status(400).json({ error: 'File extension does not match content type.' });
+        }
+
+        if (isXlsx && mimetype !== 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' && mimetype !== 'application/octet-stream') {
+            return res.status(400).json({ error: 'File extension does not match content type.' });
+        }
+
+        const rows: any[] = [];
+
+        if (isCsv) {
+            try {
+                const csvRows = await parseCsvWithLimits(req.file.buffer);
+                rows.push(...csvRows);
+            } catch (parseError) {
+                const msg = (parseError as Error).message;
+                if (msg === 'Dangerous header detected') {
+                    return res.status(400).json({ error: 'File contains a dangerous header name (__proto__, prototype, or constructor).' });
+                }
+                if (msg === 'Too many rows') {
+                    return res.status(400).json({ error: `Spreadsheet exceeds the maximum of ${PORTAL_MAX_ROWS} rows.` });
+                }
+                if (msg === 'Too many columns') {
+                    return res.status(400).json({ error: `Spreadsheet exceeds the maximum of ${PORTAL_MAX_COLUMNS} columns.` });
+                }
+                if (msg === 'Cell text exceeds maximum length') {
+                    return res.status(400).json({ error: `Cell text exceeds the maximum of ${PORTAL_MAX_CELL_TEXT} characters.` });
+                }
+                return res.status(400).json({ error: 'Failed to parse CSV file. Please check the file format.' });
+            }
         } else {
-            return res.status(400).json({ error: 'Unsupported file type' });
+            if (req.file.buffer.length < 4 || req.file.buffer[0] !== 0x50 || req.file.buffer[1] !== 0x4B) {
+                return res.status(400).json({ error: 'Invalid XLSX file. The file is not a valid spreadsheet.' });
+            }
+            try {
+                const xlsxRows = await parseXlsxWithExcelJS(req.file.buffer);
+                rows.push(...xlsxRows);
+            } catch (parseError) {
+                const msg = (parseError as Error).message;
+                if (msg === 'Dangerous header detected') {
+                    return res.status(400).json({ error: 'File contains a dangerous header name (__proto__, prototype, or constructor).' });
+                }
+                if (msg === 'Too many worksheets') {
+                    return res.status(400).json({ error: `Spreadsheet exceeds the maximum of ${PORTAL_MAX_WORKSHEETS} worksheets.` });
+                }
+                if (msg === 'Too many rows') {
+                    return res.status(400).json({ error: `Spreadsheet exceeds the maximum of ${PORTAL_MAX_ROWS} rows.` });
+                }
+                if (msg === 'Too many columns') {
+                    return res.status(400).json({ error: `Spreadsheet exceeds the maximum of ${PORTAL_MAX_COLUMNS} columns.` });
+                }
+                if (msg === 'Cell text exceeds maximum length') {
+                    return res.status(400).json({ error: `Cell text exceeds the maximum of ${PORTAL_MAX_CELL_TEXT} characters.` });
+                }
+                return res.status(400).json({ error: 'Failed to parse XLSX file. Please check the file format.' });
+            }
         }
 
         const results = { success: 0, failed: 0, errors: [] as string[], createdJobs: [] as string[] };
         const validJobs: InsertJobTicket[] = [];
+        const seenJobNumbers = new Set<string>();
 
         for (const row of rows) {
             try {
                 const validatedRow = bulkRowSchema.parse(row);
 
-                // Check for duplicate job number
+                if (seenJobNumbers.has(validatedRow.corporateJobNumber)) {
+                    throw new Error(`Duplicate job number ${validatedRow.corporateJobNumber} within this batch`);
+                }
+                seenJobNumbers.add(validatedRow.corporateJobNumber);
+
                 if (await storage.checkCorporateJobExists(user.corporateClientId, validatedRow.corporateJobNumber)) {
                     throw new Error(`Job Number ${validatedRow.corporateJobNumber} already exists`);
                 }
@@ -287,9 +513,9 @@ router.post('/service-requests/bulk', upload.single('file'), async (req: Request
         }
 
         res.json(results);
-    } catch (error: any) {
-        console.error('Bulk upload error:', error);
-        res.status(500).json({ error: 'Processing failed', details: error.message });
+    } catch (error) {
+        console.error('[CorporatePortal] Bulk upload failed:', (error as Error).message);
+        res.status(500).json({ error: 'Processing failed' });
     }
 });
 // Check for existing job numbers in bulk
@@ -320,14 +546,43 @@ router.post('/service-requests/bulk-json', async (req: Request, res: Response) =
             return res.status(400).json({ error: 'Invalid input: rows array is required' });
         }
 
+        if (rows.length > PORTAL_MAX_ROWS) {
+            return res.status(400).json({ error: `Batch exceeds the maximum of ${PORTAL_MAX_ROWS} rows.` });
+        }
+
+        for (const row of rows) {
+            if (row && typeof row === 'object') {
+                const keys = Object.keys(row);
+                if (keys.length > PORTAL_MAX_COLUMNS) {
+                    return res.status(400).json({ error: `Row exceeds the maximum of ${PORTAL_MAX_COLUMNS} columns.` });
+                }
+                for (const key of keys) {
+                    const normalized = String(key).toLowerCase().replace(/[^a-z0-9]+/g, '');
+                    if (normalized === 'proto' || normalized === 'prototype' || normalized === 'constructor') {
+                        return res.status(400).json({ error: 'File contains a dangerous header name (__proto__, prototype, or constructor).' });
+                    }
+                }
+                for (const [key, value] of Object.entries(row)) {
+                    if (typeof value === 'string' && value.length > PORTAL_MAX_CELL_TEXT) {
+                        return res.status(400).json({ error: `Field "${key}" exceeds the maximum of ${PORTAL_MAX_CELL_TEXT} characters.` });
+                    }
+                }
+            }
+        }
+
         const results = { success: 0, failed: 0, errors: [] as string[], createdJobs: [] as string[] };
         const validJobs: InsertJobTicket[] = [];
+        const seenJobNumbers = new Set<string>();
 
         for (const row of rows) {
             try {
                 const validatedRow = bulkRowSchema.parse(row);
 
-                // Check for duplicate job number
+                if (seenJobNumbers.has(validatedRow.corporateJobNumber)) {
+                    throw new Error(`Duplicate job number ${validatedRow.corporateJobNumber} within this batch`);
+                }
+                seenJobNumbers.add(validatedRow.corporateJobNumber);
+
                 if (await storage.checkCorporateJobExists(user.corporateClientId, validatedRow.corporateJobNumber)) {
                     throw new Error(`Job Number ${validatedRow.corporateJobNumber} already exists`);
                 }
@@ -368,9 +623,9 @@ router.post('/service-requests/bulk-json', async (req: Request, res: Response) =
         }
 
         res.json(results);
-    } catch (error: any) {
-        console.error('Bulk JSON upload error:', error);
-        res.status(500).json({ error: 'Processing failed', details: error.message });
+    } catch (error) {
+        console.error('[CorporatePortal] Bulk JSON upload failed:', (error as Error).message);
+        res.status(500).json({ error: 'Processing failed' });
     }
 });
 

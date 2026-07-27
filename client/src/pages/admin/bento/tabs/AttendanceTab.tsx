@@ -1,11 +1,11 @@
-import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useMemo, useEffect } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-    format, startOfMonth, endOfMonth, eachDayOfInterval, isToday, parseISO
+    format, startOfMonth, endOfMonth, eachDayOfInterval, parseISO
 } from "date-fns";
 import {
     Calendar, Clock, Users, CheckCircle, Download, UserCheck,
-    MapPin, Navigation, Loader2, Activity, ShieldAlert, CheckCircle2, Filter,
+    MapPin, Loader2, Activity, ShieldAlert, CheckCircle2, Filter,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -21,29 +21,48 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 
 import { BentoCard } from "../shared/BentoCard";
 import { containerVariants, itemVariants, tableRowVariants } from "../shared/animations";
-import { attendanceApi, adminUsersApi } from "@/lib/api";
+import { attendanceApi } from "@/lib/api";
 import { useAdminMobileMode } from "@/hooks/useAdminMobileMode";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { canViewAttendanceReport } from "@/lib/attendance-capabilities";
 import type { AttendanceRecord } from "@shared/schema";
+import { getAttendanceDateDhaka, hasAttendanceCorrection } from "@shared/attendance-utils";
+import {
+    AttendanceLocationViewer,
+    ViewLocationButton,
+} from "@/components/admin/attendance/AttendanceLocationViewer";
+import { StaffAttendanceCalendar } from "@/components/admin/attendance/StaffAttendanceCalendar";
+import { presentGeofenceStatus } from "@/lib/attendance-location";
 
-function mapsUrl(lat: number, lng: number) {
-    return `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
+/**
+ * Resolve the display-time pair for an attendance record.
+ * When an approved correction overlay exists, the effective times replace the
+ * raw GPS timestamps for report rendering. Raw fields remain untouched in data.
+ */
+function resolveDisplayAttendanceTimes(record: AttendanceRecord) {
+    const checkIn = record.effectiveCheckInTime ?? record.checkInTime;
+    const checkOut = record.effectiveCheckOutTime != null
+        ? record.effectiveCheckOutTime
+        : record.checkOutTime ?? null;
+    return { checkIn, checkOut };
 }
 
 function GeofenceBadge({ status }: { status: string | null | undefined }) {
     if (!status) return null;
-    if (status === "inside_office") return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 text-[9px] font-bold text-emerald-700 shrink-0">
-            <MapPin className="h-2 w-2" />In Office
-        </span>
-    );
-    if (status === "outside_office") return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 shrink-0">
-            <MapPin className="h-2 w-2" />Outside
-        </span>
-    );
+    const p = presentGeofenceStatus(status);
+    const cls =
+        p.tone === "success"
+            ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+            : p.tone === "warning"
+              ? "bg-amber-50 border-amber-200 text-amber-700"
+              : p.tone === "neutral"
+                ? "bg-sky-50 border-sky-200 text-sky-800"
+                : "bg-slate-100 border-slate-200 text-slate-500";
+    const short =
+        p.key === "inside" ? "In Office" : p.key === "outside" ? "Outside" : p.label;
     return (
-        <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 border border-slate-200 px-1.5 py-0.5 text-[9px] font-bold text-slate-500 shrink-0">
-            <MapPin className="h-2 w-2" />Unverified
+        <span className={`inline-flex items-center gap-1 rounded-full border px-1.5 py-0.5 text-[9px] font-bold shrink-0 ${cls}`}>
+            <MapPin className="h-2 w-2" />{short}
         </span>
     );
 }
@@ -59,9 +78,18 @@ interface MobileAttendanceReportProps {
     selectedUser: string;
     setSelectedUser: (v: string) => void;
     filteredAttendance: AttendanceRecord[];
+    onViewLocation: (record: AttendanceRecord) => void;
 }
 
-function MobileAttendanceRecord({ record }: { record: AttendanceRecord }) {
+function MobileAttendanceRecord({
+    record,
+    onViewLocation,
+}: {
+    record: AttendanceRecord;
+    onViewLocation: (record: AttendanceRecord) => void;
+}) {
+    const display = resolveDisplayAttendanceTimes(record);
+
     const formatTime = (d: string | Date | null) =>
         d ? format(new Date(d), "h:mm a") : "—";
 
@@ -82,7 +110,7 @@ function MobileAttendanceRecord({ record }: { record: AttendanceRecord }) {
                         <span className="text-sm font-black text-slate-900">
                             {format(parseISO(record.date), "EEE, MMM d")}
                         </span>
-                        {record.date === format(new Date(), "yyyy-MM-dd") && (
+                        {record.date === getAttendanceDateDhaka() && (
                             <span className="rounded-full bg-blue-50 px-1.5 py-0.5 text-[9px] font-bold text-blue-700">Today</span>
                         )}
                     </div>
@@ -107,36 +135,30 @@ function MobileAttendanceRecord({ record }: { record: AttendanceRecord }) {
             <div className="mt-2.5 grid grid-cols-3 gap-1.5">
                 <div className="rounded-xl bg-slate-50 px-2 py-1.5">
                     <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">In</div>
-                    <div className="text-xs font-black text-emerald-700">{formatTime(record.checkInTime)}</div>
+                    <div className="text-xs font-black text-emerald-700">{formatTime(display.checkIn)}</div>
                 </div>
                 <div className="rounded-xl bg-slate-50 px-2 py-1.5">
                     <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Out</div>
-                    <div className="text-xs font-black text-slate-700">{formatTime(record.checkOutTime)}</div>
+                    <div className="text-xs font-black text-slate-700">{formatTime(display.checkOut)}</div>
                 </div>
                 <div className="rounded-xl bg-slate-50 px-2 py-1.5">
                     <div className="text-[9px] font-bold uppercase tracking-wide text-slate-400">Hours</div>
                     <div className="text-xs font-black text-slate-700">
-                        {record.checkInTime ? duration(record.checkInTime, record.checkOutTime) : "—"}
+                        {display.checkIn ? duration(display.checkIn, display.checkOut) : "—"}
                     </div>
                 </div>
             </div>
-            {(record.checkInAccuracy != null || (record.checkInLat != null && record.checkInLng != null)) && (
-                <div className="mt-2 flex items-center gap-3 border-t border-slate-100 pt-2">
-                    {record.checkInAccuracy != null && (
-                        <span className="text-[10px] text-slate-400">±{Math.round(record.checkInAccuracy as number)}m</span>
-                    )}
-                    {record.checkInLat != null && record.checkInLng != null && (
-                        <a
-                            href={mapsUrl(record.checkInLat, record.checkInLng)}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 text-[10px] font-bold text-blue-600 hover:underline"
-                        >
-                            <Navigation className="h-2.5 w-2.5" />Maps
-                        </a>
-                    )}
-                </div>
-            )}
+            <div className="mt-2 flex items-center gap-3 border-t border-slate-100 pt-2">
+                {record.checkInAccuracy != null && (
+                    <span className="text-[10px] text-slate-400">±{Math.round(record.checkInAccuracy as number)}m</span>
+                )}
+                {hasAttendanceCorrection(record) && (
+                    <span className="inline-flex items-center gap-0.5 rounded-full border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-bold text-amber-700">
+                        <CheckCircle className="h-2 w-2" />Corrected
+                    </span>
+                )}
+                <ViewLocationButton compact onClick={() => onViewLocation(record)} />
+            </div>
         </div>
     );
 }
@@ -150,21 +172,63 @@ function MobileAttendanceReport({
     selectedUser,
     setSelectedUser,
     filteredAttendance,
+    onViewLocation,
 }: MobileAttendanceReportProps) {
-    const today = format(new Date(), "yyyy-MM-dd");
+    const today = getAttendanceDateDhaka();
+    const [staffSearch, setStaffSearch] = useState("");
+    const [showFilters, setShowFilters] = useState(false);
+
     const todayRecords = useMemo(
         () => allAttendance.filter((r) => r.date === today),
         [allAttendance, today],
     );
 
-    const stats = useMemo(() => ({
+    const todayStats = useMemo(() => ({
         present: todayRecords.length,
         working: todayRecords.filter((r) => r.checkInTime && !r.checkOutTime).length,
         outside: todayRecords.filter((r) => r.checkInGeofenceStatus === "outside_office").length,
         complete: todayRecords.filter((r) => r.checkOutTime).length,
     }), [todayRecords]);
 
-    const [showFilters, setShowFilters] = useState(false);
+    const monthlyAllStaff = useMemo(() => {
+        const currentMonthStr = today.slice(0, 7);
+        const [y, m] = selectedMonth.split("-").map(Number);
+        const calendarDays = new Date(y, m, 0).getDate();
+        let eligibleDays: number;
+        if (selectedMonth > currentMonthStr) {
+            eligibleDays = 0;
+        } else if (selectedMonth === currentMonthStr) {
+            eligibleDays = Math.min(parseInt(today.slice(8, 10), 10), calendarDays);
+        } else {
+            eligibleDays = calendarDays;
+        }
+        const monthRecords = eligibleDays > 0
+            ? allAttendance.filter((r) => r.date.startsWith(selectedMonth) && r.date <= today)
+            : [];
+        const uniquePresent = new Set(monthRecords.map((r) => r.userId)).size;
+        const totalStaff = staffUsers.length;
+        const expectedSlots = totalStaff * eligibleDays;
+        const ratio = expectedSlots > 0 ? Math.round((monthRecords.length / expectedSlots) * 100) : 0;
+        return { presentDays: monthRecords.length, uniquePresent, totalStaff, eligibleDays, ratio };
+    }, [allAttendance, selectedMonth, staffUsers, today]);
+
+    const selectedStaffMember = useMemo(
+        () => staffUsers.find((u) => u.id === selectedUser),
+        [staffUsers, selectedUser],
+    );
+
+    const { data: selectedMonthData, isLoading: selectedMonthLoading } = useQuery({
+        queryKey: ["attendanceUserMonth", selectedUser, selectedMonth],
+        queryFn: () => attendanceApi.getByUserMonth(selectedUser, selectedMonth),
+        enabled: selectedUser !== "all" && !!selectedStaffMember,
+        retry: false,
+    });
+
+    const filteredStaff = useMemo(() => {
+        if (!staffSearch.trim()) return staffUsers;
+        const q = staffSearch.toLowerCase();
+        return staffUsers.filter((u) => u.name.toLowerCase().includes(q) || u.role.toLowerCase().includes(q));
+    }, [staffUsers, staffSearch]);
 
     return (
         <div
@@ -175,7 +239,7 @@ function MobileAttendanceReport({
             <div className="pb-1 flex items-start justify-between">
                 <div>
                     <h1 className="text-base font-black text-slate-900">Attendance Report</h1>
-                    <p className="text-xs text-slate-500">{format(new Date(), "MMMM yyyy")} · {allAttendance.length} total records</p>
+                    <p className="text-xs text-slate-500">{format(new Date(parseInt(getAttendanceDateDhaka().slice(0, 4)), parseInt(getAttendanceDateDhaka().slice(5, 7)) - 1), "MMMM yyyy")} · {allAttendance.length} total records</p>
                 </div>
                 <Button
                     variant="ghost"
@@ -191,16 +255,47 @@ function MobileAttendanceReport({
             {/* Today summary chips */}
             <div className="grid grid-cols-4 gap-1.5">
                 {[
-                    { label: "Present", value: stats.present, tone: "text-blue-700 bg-blue-50 border-blue-100", icon: Users },
-                    { label: "Working", value: stats.working, tone: "text-emerald-700 bg-emerald-50 border-emerald-100", icon: Activity },
-                    { label: "Outside", value: stats.outside, tone: "text-amber-700 bg-amber-50 border-amber-100", icon: ShieldAlert },
-                    { label: "Done", value: stats.complete, tone: "text-slate-700 bg-white border-slate-200", icon: CheckCircle2 },
+                    { label: "Present", value: todayStats.present, tone: "text-blue-700 bg-blue-50 border-blue-100" },
+                    { label: "Working", value: todayStats.working, tone: "text-emerald-700 bg-emerald-50 border-emerald-100" },
+                    { label: "Outside", value: todayStats.outside, tone: "text-amber-700 bg-amber-50 border-amber-100" },
+                    { label: "Done", value: todayStats.complete, tone: "text-slate-700 bg-white border-slate-200" },
                 ].map((chip) => (
                     <div key={chip.label} className={`rounded-2xl border p-2.5 flex flex-col items-center gap-1 ${chip.tone}`}>
                         <span className="text-lg font-black leading-none">{chip.value}</span>
                         <span className="text-[8px] font-black uppercase tracking-wide">{chip.label}</span>
                     </div>
                 ))}
+            </div>
+
+            {/* Monthly summary strip */}
+            <div className="rounded-2xl border border-slate-200 bg-white px-3 py-2.5">
+                <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">Monthly Summary</span>
+                    <span className="text-[10px] font-bold text-slate-500">{selectedMonth}</span>
+                </div>
+                <div className="mt-1.5 grid grid-cols-3 gap-2">
+                    <div className="flex items-center gap-1.5">
+                        <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
+                        <div>
+                            <span className="text-sm font-black text-emerald-700">{monthlyAllStaff.presentDays}</span>
+                            <span className="text-[9px] font-bold text-slate-400 ml-1">days</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <Users className="h-3.5 w-3.5 text-blue-600" />
+                        <div>
+                            <span className="text-sm font-black text-blue-700">{monthlyAllStaff.uniquePresent}</span>
+                            <span className="text-[9px] font-bold text-slate-400 ml-1">staff</span>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                        <Activity className="h-3.5 w-3.5 text-violet-600" />
+                        <div>
+                            <span className="text-sm font-black text-violet-700">{monthlyAllStaff.ratio}%</span>
+                            <span className="text-[9px] font-bold text-slate-400 ml-1">ratio</span>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             {/* Filters (collapsible) */}
@@ -234,6 +329,64 @@ function MobileAttendanceReport({
                 </div>
             )}
 
+            {/* Staff search */}
+            <div className="relative">
+                <input
+                    type="text"
+                    value={staffSearch}
+                    onChange={(e) => setStaffSearch(e.target.value)}
+                    placeholder="Search staff..."
+                    className="w-full h-9 rounded-xl border border-slate-200 bg-white px-3 pl-8 text-xs font-medium text-slate-700 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-200 focus:border-blue-300"
+                />
+                <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+            </div>
+
+            {/* Staff chips (horizontal scroll) */}
+            <div className="flex gap-1.5 overflow-x-auto pb-1 -mx-1 px-1 scrollbar-none">
+                <button
+                    type="button"
+                    onClick={() => { setSelectedUser("all"); setStaffSearch(""); }}
+                    className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors ${
+                        selectedUser === "all"
+                            ? "border-blue-300 bg-blue-50 text-blue-700"
+                            : "border-slate-200 bg-white text-slate-500"
+                    }`}
+                >
+                    All
+                </button>
+                {filteredStaff.map((u) => (
+                    <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => { setSelectedUser(u.id); setStaffSearch(""); }}
+                        className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-bold transition-colors ${
+                            selectedUser === u.id
+                                ? "border-blue-300 bg-blue-50 text-blue-700"
+                                : "border-slate-200 bg-white text-slate-500"
+                        }`}
+                    >
+                        {u.name}
+                    </button>
+                ))}
+            </div>
+
+            {/* Per-person calendar when a staff member is selected */}
+            {selectedUser !== "all" && selectedStaffMember && selectedMonthData && (
+                <StaffAttendanceCalendar
+                    records={selectedMonthData.records}
+                    summary={selectedMonthData.summary}
+                    userId={selectedUser}
+                    userName={selectedStaffMember.name}
+                    selectedMonth={selectedMonth}
+                    onMonthChange={setSelectedMonth}
+                />
+            )}
+            {selectedUser !== "all" && selectedStaffMember && !selectedMonthData && selectedMonthLoading && (
+                <div className="flex h-24 items-center justify-center rounded-2xl border border-slate-200 bg-white text-xs font-bold text-slate-500">
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading calendar...
+                </div>
+            )}
+
             {/* Record count */}
             <div className="flex items-center justify-between px-0.5">
                 <span className="text-[10px] font-black uppercase tracking-wide text-slate-400">Records</span>
@@ -254,7 +407,11 @@ function MobileAttendanceReport({
             ) : (
                 <div className="space-y-2">
                     {filteredAttendance.map((record) => (
-                        <MobileAttendanceRecord key={record.id} record={record} />
+                        <MobileAttendanceRecord
+                            key={record.id}
+                            record={record}
+                            onViewLocation={onViewLocation}
+                        />
                     ))}
                 </div>
             )}
@@ -264,20 +421,39 @@ function MobileAttendanceReport({
 
 export default function AttendanceTab() {
     const isMobile = useAdminMobileMode();
-    const [selectedMonth, setSelectedMonth] = useState(() => format(new Date(), "yyyy-MM"));
+    const queryClient = useQueryClient();
+    const { user, permissions } = useAdminAuth();
+    // Exact capabilities — attendance.checkIn alone must NOT enable report queries.
+    const canReport = canViewAttendanceReport(user, permissions as Record<string, boolean | undefined>);
+    const [selectedMonth, setSelectedMonth] = useState(() => getAttendanceDateDhaka().slice(0, 7));
     const [selectedUser, setSelectedUser] = useState<string>("all");
+    const [viewerRecord, setViewerRecord] = useState<AttendanceRecord | null>(null);
 
     const { data: allAttendance = [], isLoading: attendanceLoading } = useQuery({
         queryKey: ["allAttendance"],
         queryFn: attendanceApi.getAll,
+        enabled: canReport,
+        retry: false,
     });
 
-    const { data: users = [] } = useQuery({
-        queryKey: ["adminUsers"],
-        queryFn: adminUsersApi.lookup,
+    const { data: staffList = [] } = useQuery({
+        queryKey: ["attendanceStaff"],
+        queryFn: attendanceApi.getStaff,
+        enabled: canReport,
+        retry: false,
     });
 
-    const staffUsers = users.filter(u => ["Technician", "Cashier", "Manager", "Driver"].includes(u.role));
+    useEffect(() => {
+        if (canReport) return;
+        queryClient.cancelQueries({ queryKey: ["allAttendance"] });
+        queryClient.removeQueries({ queryKey: ["allAttendance"] });
+        queryClient.cancelQueries({ queryKey: ["attendanceStaff"] });
+        queryClient.removeQueries({ queryKey: ["attendanceStaff"] });
+    }, [canReport, queryClient]);
+
+    const staffUsers = staffList.filter((u) =>
+        ["Technician", "Cashier", "Manager", "Driver"].includes(u.role),
+    );
 
     const filteredAttendance = useMemo(() => {
         let filtered = allAttendance;
@@ -292,7 +468,7 @@ export default function AttendanceTab() {
     }, [allAttendance, selectedMonth, selectedUser]);
 
     const stats = useMemo(() => {
-        const today = format(new Date(), "yyyy-MM-dd");
+        const today = getAttendanceDateDhaka();
         const todayRecords = allAttendance.filter((r: AttendanceRecord) => r.date === today);
         return {
             presentToday: todayRecords.length,
@@ -323,24 +499,40 @@ export default function AttendanceTab() {
         if (!checkOut) return "In Progress";
         const start = new Date(checkIn);
         const end = new Date(checkOut);
-        const diffHours = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+        const ms = end.getTime() - start.getTime();
+        if (ms <= 0) return "0m";
+        const diffHours = ms / (1000 * 60 * 60);
         const hours = Math.floor(diffHours);
         const minutes = Math.floor((diffHours - hours) * 60);
         return `${hours}h ${minutes}m`;
     };
 
+    const locationViewer = (
+        <AttendanceLocationViewer
+            open={Boolean(viewerRecord)}
+            onOpenChange={(o) => { if (!o) setViewerRecord(null); }}
+            recordId={viewerRecord?.id ?? null}
+            employeeName={viewerRecord?.userName}
+            recordDate={viewerRecord?.date}
+        />
+    );
+
     if (isMobile) {
         return (
-            <MobileAttendanceReport
-                allAttendance={allAttendance}
-                isLoading={attendanceLoading}
-                staffUsers={staffUsers}
-                selectedMonth={selectedMonth}
-                setSelectedMonth={setSelectedMonth}
-                selectedUser={selectedUser}
-                setSelectedUser={setSelectedUser}
-                filteredAttendance={filteredAttendance}
-            />
+            <>
+                <MobileAttendanceReport
+                    allAttendance={allAttendance}
+                    isLoading={attendanceLoading}
+                    staffUsers={staffUsers}
+                    selectedMonth={selectedMonth}
+                    setSelectedMonth={setSelectedMonth}
+                    selectedUser={selectedUser}
+                    setSelectedUser={setSelectedUser}
+                    filteredAttendance={filteredAttendance}
+                    onViewLocation={setViewerRecord}
+                />
+                {locationViewer}
+            </>
         );
     }
 
@@ -477,7 +669,7 @@ export default function AttendanceTab() {
                                                 >
                                                     <TableCell className="font-medium whitespace-nowrap">
                                                         {format(parseISO(record.date), "MMM d")}
-                                                        {record.date === format(new Date(), "yyyy-MM-dd") && (
+                                                        {record.date === getAttendanceDateDhaka() && (
                                                             <Badge variant="outline" className="ml-2 border-blue-200 bg-blue-50 text-blue-700 h-5 px-1.5 text-[10px]">Today</Badge>
                                                         )}
                                                     </TableCell>
@@ -488,24 +680,31 @@ export default function AttendanceTab() {
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className="text-green-600 font-mono text-xs">
-                                                        {formatTime(record.checkInTime)}
+                                                        {formatTime(resolveDisplayAttendanceTimes(record).checkIn)}
                                                     </TableCell>
                                                     <TableCell className="text-slate-500 font-mono text-xs">
-                                                        {formatTime(record.checkOutTime)}
+                                                        {formatTime(resolveDisplayAttendanceTimes(record).checkOut)}
                                                     </TableCell>
                                                     <TableCell className="text-xs text-slate-600 font-medium">
-                                                        {calculateDuration(record.checkInTime, record.checkOutTime)}
+                                                        {(() => { const d = resolveDisplayAttendanceTimes(record); return calculateDuration(d.checkIn, d.checkOut); })()}
                                                     </TableCell>
                                                     <TableCell>
-                                                        {record.checkOutTime ? (
-                                                            <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 pl-1 pr-2">
-                                                                <CheckCircle className="w-3 h-3" /> Complete
-                                                            </Badge>
-                                                        ) : (
-                                                            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 gap-1 pl-1 pr-2 animate-pulse">
-                                                                <Clock className="w-3 h-3" /> Working
-                                                            </Badge>
-                                                        )}
+                                                        <div className="flex flex-col gap-1">
+                                                            {record.checkOutTime ? (
+                                                                <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 gap-1 pl-1 pr-2">
+                                                                    <CheckCircle className="w-3 h-3" /> Complete
+                                                                </Badge>
+                                                            ) : (
+                                                                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 gap-1 pl-1 pr-2 animate-pulse">
+                                                                    <Clock className="w-3 h-3" /> Working
+                                                                </Badge>
+                                                            )}
+                                                            {hasAttendanceCorrection(record) && (
+                                                                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 gap-1 pl-1 pr-2 text-[10px]">
+                                                                    <CheckCircle className="w-2.5 h-2.5" /> Corrected
+                                                                </Badge>
+                                                            )}
+                                                        </div>
                                                     </TableCell>
                                                     <TableCell>
                                                         <div className="flex flex-col gap-1 min-w-[80px]">
@@ -513,16 +712,10 @@ export default function AttendanceTab() {
                                                             {record.checkInAccuracy != null && (
                                                                 <span className="text-[10px] text-slate-400">+-{Math.round(record.checkInAccuracy as number)}m</span>
                                                             )}
-                                                            {record.checkInLat != null && record.checkInLng != null && (
-                                                                <a
-                                                                    href={mapsUrl(record.checkInLat!, record.checkInLng!)}
-                                                                    target="_blank"
-                                                                    rel="noopener noreferrer"
-                                                                    className="flex items-center gap-0.5 text-[10px] text-blue-600 hover:underline"
-                                                                >
-                                                                    <Navigation className="h-2.5 w-2.5" />Maps
-                                                                </a>
-                                                            )}
+                                                            <ViewLocationButton
+                                                                compact
+                                                                onClick={() => setViewerRecord(record)}
+                                                            />
                                                         </div>
                                                     </TableCell>
                                                 </motion.tr>
@@ -567,7 +760,10 @@ export default function AttendanceTab() {
                                         ))}
                                         {daysInMonth.map((day, i) => {
                                             const attendance = getAttendanceForDay(selectedUser, day);
+                                            const dateStr = format(day, "yyyy-MM-dd");
                                             const isWeekend = day.getDay() === 0 || day.getDay() === 6;
+                                            const isTodayCell = dateStr === getAttendanceDateDhaka();
+                                            const isFutureDay = dateStr > getAttendanceDateDhaka();
 
                                             return (
                                                 <motion.div
@@ -577,19 +773,21 @@ export default function AttendanceTab() {
                                                     transition={{ delay: i * 0.01 }}
                                                     className={`
                             aspect-square rounded-lg flex flex-col items-center justify-center text-xs border relative
-                            ${isToday(day) ? "ring-2 ring-primary ring-offset-1 z-10" : ""}
+                            ${isTodayCell ? "ring-2 ring-primary ring-offset-1 z-10" : ""}
                             ${attendance
                                                             ? "bg-green-100 border-green-200 text-green-700"
                                                             : isWeekend
                                                                 ? "bg-slate-100 border-slate-200 text-slate-400"
-                                                                : day > new Date()
+                                                                : isFutureDay
                                                                     ? "bg-transparent border-transparent text-slate-300"
                                                                     : "bg-rose-50 border-rose-100 text-rose-400"
                                                         }
                           `}
                                                 >
                                                     <span className="font-semibold">{format(day, "d")}</span>
-                                                    {attendance && <div className="w-1 h-1 bg-green-500 rounded-full mt-1" />}
+                                                    {attendance && (
+                                                        <div className={`w-1 h-1 rounded-full mt-1 ${hasAttendanceCorrection(attendance) ? "bg-amber-400" : "bg-green-500"}`} />
+                                                    )}
                                                 </motion.div>
                                             );
                                         })}
@@ -605,6 +803,9 @@ export default function AttendanceTab() {
                                         <div className="flex items-center gap-2 text-xs text-slate-600">
                                             <div className="w-3 h-3 rounded bg-slate-100 border border-slate-200" /> Weekend / Off
                                         </div>
+                                        <div className="flex items-center gap-2 text-xs text-slate-600">
+                                            <div className="w-2 h-2 rounded-full bg-amber-400" /> Corrected
+                                        </div>
                                     </div>
                                 </CardContent>
                             </Card>
@@ -612,6 +813,7 @@ export default function AttendanceTab() {
                     )}
                 </AnimatePresence>
             </div>
+            {locationViewer}
         </motion.div>
     );
 }

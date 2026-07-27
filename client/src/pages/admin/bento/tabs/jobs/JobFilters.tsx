@@ -41,6 +41,8 @@ export function JobFilters({
                                     <SelectItem value="all">All Status</SelectItem>
                                     <SelectItem value="Pending">Pending</SelectItem>
                                     <SelectItem value="In Progress">In Progress</SelectItem>
+                                    <SelectItem value="NG Review Pending">NG Review Pending</SelectItem>
+                                    <SelectItem value="Awaiting Customer Decision">Awaiting Customer Decision</SelectItem>
                                     <SelectItem value="Ready">Ready</SelectItem>
                                     <SelectItem value="Delivered">Delivered</SelectItem>
                                     <SelectItem value="Cancelled">Cancelled</SelectItem>

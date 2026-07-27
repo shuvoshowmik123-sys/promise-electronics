@@ -10,6 +10,7 @@ import cors from "cors";
 import compression from "compression";
 import helmet from "helmet";
 import { validateEnv } from "./utils/validateEnv.js";
+import { assertProductionCorsConfig, getAllowedOrigins, isOriginAllowed } from "./utils/cors-config.js";
 import { setCsrfToken } from "./routes/middleware/csrf.js";
 import { redactLogData } from "./utils/redact.js";
 import { registerRoutes } from "./routes/index.js";
@@ -17,10 +18,13 @@ import { aiErrorHandler } from "./routes/middleware/ai-logger.js";
 import { setupSwagger } from "./swagger.js";
 import { errorHandler } from "./routes/middleware/error-handler.js";
 import { apiLimiter } from "./routes/middleware/rate-limit.js";
-import { coldStartCacheMiddleware, getColdStartCacheState } from "./middleware/cold-start-cache.js";
-import { pool as sharedPool, getDbPoolDiagnostics } from "./db.js";
+import { coldStartCacheMiddleware } from "./middleware/cold-start-cache.js";
+import { pool as sharedPool } from "./db.js";
 import { getReadinessState, isDbReady } from "./services/db-readiness.js";
-import { requireAdminAuth } from "./routes/middleware/auth.js";
+import { requireAdminAuth, requireSuperAdmin } from "./routes/middleware/auth.js";
+import { failClosedReadinessMiddleware } from "./middleware/main-schema-readiness.js";
+import { attendanceCheckInGateMiddleware } from "./middleware/attendance-check-in-gate.js";
+import { buildAdminSystemStatus } from "./services/admin-system-status.service.js";
 
 // Load environment variables early - required for local dev and module-level repository evaluation
 const envFile = process.env.NODE_ENV === "production" ? ".env.production" : ".env";
@@ -56,6 +60,7 @@ export async function createApp(): Promise<Express> {
 
     // ─── 1. Validate required environment variables ───────────────────────────
     validateEnv();
+    assertProductionCorsConfig();
 
     // ─── 2. Create Express app ────────────────────────────────────────────────
     const app = express();
@@ -98,21 +103,10 @@ export async function createApp(): Promise<Express> {
     app.use(cors({
         origin: (origin, callback) => {
             if (!origin) return callback(null, true);
-            if (origin.startsWith('http://localhost') || origin.startsWith('http://127.0.0.1')) {
-                return callback(null, true);
-            }
-            const allowedOrigins = [
-                "https://promiseelectronics.com",
-                "https://www.promiseelectronics.com",
-                "capacitor://localhost",
-                // Render backend + Vercel/Netlify frontend (set FRONTEND_URL in env when separated)
-                ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
-                ...(process.env.EXTRA_ALLOWED_ORIGINS ?? "").split(",").map(s => s.trim()).filter(Boolean),
-            ];
-            if (allowedOrigins.includes(origin)) return callback(null, true);
-            if (origin.endsWith(".vercel.app")) return callback(null, true);
+            const allowed = getAllowedOrigins();
+            if (isOriginAllowed(origin, allowed)) return callback(null, true);
             console.log(`[CORS] Rejected origin: ${origin}`);
-            callback(new Error('Not allowed by CORS'));
+            callback(null, false);
         },
         credentials: true,
         methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -218,21 +212,15 @@ export async function createApp(): Promise<Express> {
     });
 
     // ─── 7. Health check (Render keep-alive + load balancer probe) ───────────
-    // Returns 503 when DB watchdog marks the pool as degraded so Render's health
-    // check can restart the dyno instead of continuing to serve broken responses.
+    // /health is LIVENESS only: 200 while process and MAIN DB are alive.
+    // 503 only if MAIN DB is unavailable. Never exposes schema/migration details.
     app.get('/health', (_req, res) => {
         const state = getReadinessState();
-        const degraded = state.state === 'degraded';
-        res.status(degraded ? 503 : 200).json({
-            status: degraded ? 'degraded' : 'ok',
+        const dbDown = state.state === 'degraded' && !state.dbConnected;
+        res.status(dbDown ? 503 : 200).json({
+            status: dbDown ? 'degraded' : 'ok',
             ts: new Date().toISOString(),
             uptime: Math.floor(process.uptime()),
-            env: process.env.NODE_ENV,
-            db: {
-                state: state.state,
-                lastCheck: state.lastCheck?.toISOString() ?? null,
-                lastError: state.lastError ? state.lastError.slice(0, 80) : null,
-            },
         });
     });
 
@@ -241,31 +229,45 @@ export async function createApp(): Promise<Express> {
         res.status(204).end();
     });
 
+    // /ready and /api/ready are STRICT traffic gates.
+    // 503 until MAIN schema ledger is complete, lock-waiting, or failed.
+    // Never exposes SQL, stack traces, connection URLs, migration source, or checksums.
     app.get('/ready', (_req: Request, res: Response) => {
         const ready = isDbReady();
         res.status(ready ? 200 : 503).json(
-            ready ? { ready: true } : { ready: false, message: 'Service warming up' }
+            ready ? { ready: true } : { ready: false, code: 'MAIN_SCHEMA_PENDING' }
         );
     });
     app.get('/api/ready', (_req: Request, res: Response) => {
         const ready = isDbReady();
         res.status(ready ? 200 : 503).json(
-            ready ? { ready: true } : { ready: false, message: 'Service warming up' }
+            ready ? { ready: true } : { ready: false, code: 'MAIN_SCHEMA_PENDING' }
         );
     });
-    app.get('/api/admin/readiness', requireAdminAuth, (_req: Request, res: Response) => {
-        res.json({
-            ...getReadinessState(),
-            cache: getColdStartCacheState(),
-            pool: getDbPoolDiagnostics(),
-            ts: new Date().toISOString(),
-        });
+    // Super Admin only — safe system status (ledger + journey lineage aggregates).
+    // RELEASE-OPERATIONS-01B-A: no pool host, no SQL/errors, no migration control.
+    app.get('/api/admin/readiness', requireAdminAuth, requireSuperAdmin, async (_req: Request, res: Response) => {
+        try {
+            const body = await buildAdminSystemStatus();
+            res.json(body);
+        } catch {
+            res.status(500).json({ error: "Failed to load system status" });
+        }
     });
+
+    // ─── 7a. Fail-closed readiness middleware (before API routes) ────────────
+    // While MAIN schema is pending, lock-waiting, or failed, return safe 503 JSON
+    // for all dynamic API routes. Allow only health/readiness endpoints.
+    app.use('/api', failClosedReadinessMiddleware);
 
     // ─── 8. Global API rate limiter (non-admin IPs: 100 req/min) ────────────
     // Skips authenticated admin sessions (see rate-limit.ts skip logic)
     app.use('/api/', apiLimiter);
     app.use(coldStartCacheMiddleware);
+
+    // ─── 8b. Daily attendance gate (WORKFORCE-UX-01) — after session identity;
+    // blocks protected staff ops until check-in. No scheduler. Super Admin exempt.
+    app.use(attendanceCheckInGateMiddleware);
 
     // ─── 9. Routes & error handlers ───────────────────────────────────────────
     setupSwagger(app);

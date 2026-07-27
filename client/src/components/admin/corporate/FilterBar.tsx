@@ -93,20 +93,20 @@ export function FilterBar({
                                     <SelectValue placeholder="Status" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="all">All Statuses</SelectItem>
-                                    <SelectItem value="Received">Received</SelectItem>
-                                    <SelectItem value="Checking">Checking</SelectItem>
-                                    <SelectItem value="Declared OK">Declared OK</SelectItem>
-                                    <SelectItem value="Declared NG">Declared NG</SelectItem>
+                                    <SelectItem value="all">All lifecycle</SelectItem>
                                     <SelectItem value="Pending">Pending</SelectItem>
-                                    <SelectItem value="Approval Requested">Approval Requested</SelectItem>
                                     <SelectItem value="Diagnosing">Diagnosing</SelectItem>
+                                    <SelectItem value="In Progress">In Progress</SelectItem>
                                     <SelectItem value="Pending Parts">Pending Parts</SelectItem>
-                                    <SelectItem value="Repairing">Repairing</SelectItem>
-                                    <SelectItem value="Ready">Ready</SelectItem>
+                                    <SelectItem value="Testing">Testing</SelectItem>
+                                    <SelectItem value="Ready">Ready (after testing)</SelectItem>
                                     <SelectItem value="Completed">Completed</SelectItem>
                                     <SelectItem value="Delivered">Delivered</SelectItem>
                                     <SelectItem value="Cancelled">Cancelled</SelectItem>
+                                    <SelectItem value="Checking">Legacy: Checking</SelectItem>
+                                    <SelectItem value="Declared OK">Legacy: Declared OK</SelectItem>
+                                    <SelectItem value="Declared NG">Legacy: Declared NG</SelectItem>
+                                    <SelectItem value="Received">Legacy: Received</SelectItem>
                                 </SelectContent>
                             </Select>
 

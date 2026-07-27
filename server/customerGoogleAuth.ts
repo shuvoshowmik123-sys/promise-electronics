@@ -18,6 +18,7 @@ declare module 'express-session' {
     customerId?: string;
     authMethod?: 'google' | 'phone';
     authenticatedAt?: number;
+    passwordChangedAtStamp?: number;
   }
 }
 
@@ -126,13 +127,24 @@ export async function setupCustomerAuth(app: Express) {
             return res.redirect("/?error=session_failed");
           }
 
-          req.logIn(user, (loginErr) => {
+          req.logIn(user, async (loginErr) => {
             if (loginErr) {
               console.error("[CustomerAuth] Passport login failed:", (loginErr as Error).message);
               return res.redirect("/?error=auth_failed");
             }
 
-            req.session.authenticatedAt = Date.now();
+            try {
+              const { establishCustomerSession } = await import("./services/customer-session.service.js");
+              await establishCustomerSession(req, res, {
+                customerId: user.customerId,
+                authMethod: "google",
+                issueCsrfCookie: true,
+              });
+            } catch (stampErr) {
+              console.error("[CustomerAuth] Session establish failed:", (stampErr as Error).message);
+              return res.redirect("/?error=session_failed");
+            }
+
             req.session.save((saveErr) => {
               if (saveErr) {
                 console.error("[CustomerAuth] Session save failed:", (saveErr as Error).message);
@@ -250,24 +262,30 @@ export async function setupCustomerAuth(app: Express) {
         profileImageUrl
       });
 
-      const oldCsrf = req.session?.csrfToken;
-      req.session.regenerate((regenErr) => {
+      req.session.regenerate(async (regenErr) => {
         if (regenErr) {
           console.error("[CustomerAuth] Native Google session regenerate failed:", (regenErr as Error).message);
           return res.status(500).json({ message: "Session creation failed" });
         }
-        if (oldCsrf) req.session.csrfToken = oldCsrf;
-        req.session.customerId = user.id;
-        req.session.authMethod = 'google';
-        req.session.authenticatedAt = Date.now();
-        req.session.save((err) => {
-          if (err) {
-            console.error("[CustomerAuth] Native Google session save failed:", (err as Error).message);
-            return res.status(500).json({ message: "Session creation failed" });
-          }
-          const { password: _, ...safeUser } = user;
-          res.json({ message: "Logged in successfully", user: safeUser });
-        });
+        try {
+          const { establishCustomerSession } = await import("./services/customer-session.service.js");
+          const { csrfToken } = await establishCustomerSession(req, res, {
+            customerId: user.id,
+            authMethod: "google",
+            issueCsrfCookie: true,
+          });
+          req.session.save((err) => {
+            if (err) {
+              console.error("[CustomerAuth] Native Google session save failed:", (err as Error).message);
+              return res.status(500).json({ message: "Session creation failed" });
+            }
+            const { password: _, ...safeUser } = user;
+            res.json({ message: "Logged in successfully", user: safeUser, csrfToken });
+          });
+        } catch (establishErr) {
+          console.error("[CustomerAuth] Native Google session establish failed:", (establishErr as Error).message);
+          return res.status(500).json({ message: "Session creation failed" });
+        }
       });
 
     } catch (error) {

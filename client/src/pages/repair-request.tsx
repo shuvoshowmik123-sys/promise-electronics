@@ -16,6 +16,7 @@ import { format } from "date-fns";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { publicAreaMapApi, publicSettingsApi, serviceRequestsApi } from "@/lib/api";
+import { materialIntakeKey, resolveIntakeIdempotencyKey } from "@/lib/intake-idempotency";
 import { toast } from "sonner";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 const CustomerAuthModal = lazy(() => import("@/components/auth/CustomerAuthModal").then(m => ({ default: m.CustomerAuthModal })));
@@ -48,6 +49,8 @@ export default function RepairRequestPage() {
   const queryClient = useQueryClient();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [ticketNumber, setTicketNumber] = useState("");
+  const idempotencyKeyRef = useRef<string | null>(null);
+  const payloadMaterialRef = useRef<string | null>(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [accountCreatedDuringSession, setAccountCreatedDuringSession] = useState(false);
   const { isAuthenticated, customer, register, updateProfile, checkAuth } = useCustomerAuth();
@@ -133,12 +136,27 @@ export default function RepairRequestPage() {
   }, [settingsError]);
 
   const createRequestMutation = useMutation({
-    mutationFn: serviceRequestsApi.create,
-    onSuccess: (data) => {
+    mutationFn: (data: Parameters<typeof serviceRequestsApi.create>[0]) => {
+      const material = materialIntakeKey(data);
+      const key = resolveIntakeIdempotencyKey(material, idempotencyKeyRef, payloadMaterialRef);
+      return serviceRequestsApi.create(data, key);
+    },
+    onSuccess: (data: any) => {
+      if (data?.code === "DUPLICATE_REQUEST_WINDOW") {
+        toast.info("We already received a similar request. Our team will contact you soon.");
+        setStep(5);
+        return;
+      }
       setTicketNumber(data.ticketNumber || "");
     },
     onError: (error: any) => {
-      toast.error(error.message || "Failed to submit request");
+      if (error?.code === "IDEMPOTENCY_CONFLICT") {
+        toast.error("The request details changed. Please review and try again.");
+        idempotencyKeyRef.current = null;
+        payloadMaterialRef.current = null;
+      } else {
+        toast.error(error.message || "Failed to submit request");
+      }
       setIsSubmitting(false);
     },
   });

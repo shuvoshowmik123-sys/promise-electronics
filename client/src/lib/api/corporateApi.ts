@@ -96,6 +96,34 @@ export const corporateApi = {
 
     getBills: (clientId: string) => fetchApi<any[]>(`/corporate/clients/${clientId}/bills`),
     getBill: (id: string) => fetchApi<any>(`/corporate/bills/${id}`),
+    getBillDetails: (id: string) => fetchApi<{ bill: any; lines: any[] }>(`/corporate/bills/${id}/details`),
+
+    // ── FINANCE-AFTERCARE-01.2: Corporate account settlement ──
+    getAccountBalance: (clientId: string) => fetchApi<{
+        corporateClientId: string;
+        totalBilled: number;
+        totalReceived: number;
+        totalDue: number;
+        activeBillCount: number;
+        receiptCount: number;
+    }>(`/corporate/clients/${clientId}/account-balance`),
+
+    getAccountReceipts: (clientId: string, limit = 100) =>
+        fetchApi<any[]>(`/corporate/clients/${clientId}/account-receipts?limit=${limit}`),
+
+    recordAccountReceipt: (clientId: string, data: {
+        amount: number;
+        method: "cash" | "bank" | "bkash" | "nagad" | "cheque" | "other";
+        reference?: string;
+        note?: string;
+        idempotencyKey?: string;
+    }) => fetchApi<any>(`/corporate/clients/${clientId}/account-receipts`, {
+        method: "POST",
+        body: JSON.stringify(data),
+    }),
+
+    getLegacyBillDueClassifications: () =>
+        fetchApi<any[]>("/corporate/legacy-bill-due-classifications"),
 
     generateBill: (data: {
         corporateClientId: string;
@@ -107,6 +135,89 @@ export const corporateApi = {
         body: JSON.stringify(data)
     }),
 
+    // ── FINANCE-AFTERCARE-01.3: Corporate Ltd. itemized billing ──
+    getBillingPreset: (clientId: string) => fetchApi<{
+        recipientPolicy: "company_only" | "attention_person";
+        enabledColumns: string[];
+        attentionName?: string | null;
+        attentionContact?: string | null;
+        billingAddress?: string | null;
+        updatedAt?: string | null;
+        updatedBy?: string | null;
+    }>(`/corporate/clients/${clientId}/billing-preset`),
+
+    updateBillingPreset: (clientId: string, data: {
+        recipientPolicy: "company_only" | "attention_person";
+        enabledColumns: string[];
+        attentionName?: string | null;
+        attentionContact?: string | null;
+        billingAddress?: string | null;
+    }) => fetchApi<any>(`/corporate/clients/${clientId}/billing-preset`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+    }),
+
+    getEligibleJobs: (clientId: string) => fetchApi<Array<{
+        id: string;
+        clientJobNumber: string | null;
+        promiseJobNumber: string;
+        device: string | null;
+        tvSerialNumber: string | null;
+        modelNumber: string | null;
+        screenSize: string | null;
+        reportedDefect: string | null;
+        estimatedCost: number;
+        charges: any[];
+    }>>(`/corporate/clients/${clientId}/eligible-jobs`),
+
+    previewLtdBill: (clientId: string, data: { jobIds: string[] }) =>
+        fetchApi<{
+            lines: Array<{
+                jobTicketId: string;
+                clientJobNumber: string;
+                promiseJobNumber: string;
+                tvSerial: string;
+                brandModel: string;
+                tvSize: string;
+                serviceDescription: string;
+                amount: number;
+            }>;
+            subtotal: number;
+            preset: any;
+        }>(`/corporate/clients/${clientId}/bills/preview`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+
+    issueLtdBill: (clientId: string, data: {
+        jobIds: string[];
+        periodStart: Date;
+        periodEnd: Date;
+    }) => fetchApi<{ bill: any; lines: any[] }>(`/corporate/clients/${clientId}/bills/issue`, {
+        method: "POST",
+        body: JSON.stringify(data),
+    }),
+
+    getLtdBillBalance: (billId: string) => fetchApi<{
+        billId: string;
+        totalBilled: number;
+        totalReceived: number;
+        totalDue: number;
+        paymentStatus: string;
+    }>(`/corporate/bills/${billId}/balance`),
+
+    recordLtdReceipt: (billId: string, data: {
+        amount: number;
+        method: "cash" | "bank" | "bkash" | "nagad" | "cheque" | "other";
+        reference?: string;
+        note?: string;
+        idempotencyKey?: string;
+        allocations?: Array<{ billLineItemId?: string | null; amount: number }>;
+    }) => fetchApi<{ receipt: any; allocations: any[] }>(`/corporate/bills/${billId}/receipts`, {
+        method: "POST",
+        body: JSON.stringify(data),
+    }),
+
     autoGenerateStatement: (data: {
         corporateClientId: string;
         year: number;
@@ -116,10 +227,27 @@ export const corporateApi = {
         body: JSON.stringify(data)
     }),
 
+    /** Intake declaration only (Checking / Declared OK / Declared NG). Never sets lifecycle Ready. */
     updateJobStatus: (id: string, status: string) =>
         fetchApi<void>(`/corporate/jobs/${id}/status`, {
             method: "PATCH",
             body: JSON.stringify({ status })
+        }),
+    updateJobDeclaration: (id: string, declaration: "checking" | "declared_ok" | "declared_ng" | "received" | "pending_hold") =>
+        fetchApi<void>(`/corporate/jobs/${id}/status`, {
+            method: "PATCH",
+            body: JSON.stringify({
+                status:
+                    declaration === "declared_ok"
+                        ? "Declared OK"
+                        : declaration === "declared_ng"
+                          ? "Declared NG"
+                          : declaration === "pending_hold"
+                            ? "Pending"
+                            : declaration === "received"
+                              ? "Received"
+                              : "Checking",
+            }),
         }),
 
     updateJob: (id: string, data: Partial<{

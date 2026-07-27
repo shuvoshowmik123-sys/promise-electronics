@@ -272,6 +272,20 @@ export async function getAllChallans(): Promise<Challan[]> {
     return db.select().from(schema.challans).orderBy(desc(schema.challans.createdAt));
 }
 
+/** Scope operational challans for view-own users (creator or assigned driver). */
+export async function getChallansVisibleToUser(userId: string): Promise<Challan[]> {
+    return db
+        .select()
+        .from(schema.challans)
+        .where(
+            or(
+                eq(schema.challans.createdByUserId, userId),
+                eq(schema.challans.assignedDriverId, userId),
+            ),
+        )
+        .orderBy(desc(schema.challans.createdAt));
+}
+
 export async function getChallan(id: string): Promise<Challan | undefined> {
     const [challan] = await db.select().from(schema.challans).where(eq(schema.challans.id, id));
     return challan;

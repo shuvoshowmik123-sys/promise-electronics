@@ -12,7 +12,7 @@ export function TechRouter() {
             if (!user) {
                 setLocation("/admin/login");
             } else {
-                setLocation("/admin#technician");
+                setLocation("/admin/technician");
             }
         }
     }, [user, isLoading, setLocation]);

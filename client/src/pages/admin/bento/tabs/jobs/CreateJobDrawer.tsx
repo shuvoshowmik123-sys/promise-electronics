@@ -1,137 +1,44 @@
-import { useState, useEffect, useMemo, useRef } from "react";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
-import {
-    Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetFooter,
-} from "@/components/ui/sheet";
+import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
-    AlertTriangle, ArrowLeft, ArrowRight, Building2, CheckCircle2, ChevronDown, ChevronUp, Cpu,
-    Layers, Loader2, MessageSquare, Monitor, Package, Plus, ShieldCheck, Sparkles,
-    Trash2, UploadCloud, User, UserCheck, Wrench,
+    ArrowLeft, ArrowRight, Building2, CheckCircle2, Cpu, Layers, Loader2,
+    Monitor, Package, Plus, Trash2, User, UserCheck, Wrench,
 } from "lucide-react";
-import { jobTicketsApi, aiApi, adminCustomersApi, publicAreaMapApi } from "@/lib/api";
-import { toast } from "sonner";
+import {
+    ApiError,
+    B2bAccountCard,
+    B2bLaneType,
+    ExternalIntakePartyCard,
+    ExternalIntakeUnit,
+    b2bAccountIntakeApi,
+    jobIntakeApi,
+    jobTicketsApi,
+} from "@/lib/api";
 import { TechnicianPicker } from "@/components/admin/TechnicianPicker";
-import { InsertJobTicket, JobTicket } from "@shared/schema";
 import { MISSING_PARTS_LIST } from "@shared/constants";
-import type { AdminCustomer } from "@/lib/api/types";
+import { toast } from "sonner";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 
-const PANEL_MODEL_MEMORY_KEY = "promise.panelModelMemory.v1";
+type Lane = "customer" | "technician" | "corporate" | "limited_company";
+type TechnicianMode = "single" | "batch";
+type TicketType = ExternalIntakeUnit["ticketType"];
 
-interface PanelModelMemoryItem {
-    model: string;
-    inches: string;
-    usedAt: number;
-}
-
-function normalizePanelModel(model: string) {
-    return model.toUpperCase().replace(/[^A-Z0-9]/g, "");
-}
-
-function parsePanelModel(model: string): { inches: string; type: string } {
-    const clean = normalizePanelModel(model);
-    const knownCodes: Record<string, string> = {
-        "315": "32",
-        "546": "55",
-    };
-    for (const [code, inch] of Object.entries(knownCodes)) {
-        if (clean.includes(code)) return { inches: inch, type: "LED" };
-    }
-
-    const sizeCode = clean.match(/(?:^|[A-Z])([2-9]\d{2})(?:[A-Z]|\d|$)/)?.[1];
-    if (sizeCode) {
-        const roundedInches = Math.round(Number(sizeCode) / 10);
-        if (roundedInches >= 19 && roundedInches <= 98) {
-            return { inches: String(roundedInches), type: "LED" };
-        }
-    }
-    return { inches: "", type: "LED" };
-}
-
-function loadPanelModelMemory(): PanelModelMemoryItem[] {
-    try {
-        const raw = window.localStorage.getItem(PANEL_MODEL_MEMORY_KEY);
-        if (!raw) return [];
-        const parsed = JSON.parse(raw);
-        if (!Array.isArray(parsed)) return [];
-        return parsed
-            .filter(item => typeof item?.model === "string")
-            .map(item => ({
-                model: item.model,
-                inches: typeof item.inches === "string" ? item.inches : parsePanelModel(item.model).inches,
-                usedAt: typeof item.usedAt === "number" ? item.usedAt : 0,
-            }))
-            .slice(0, 80);
-    } catch {
-        return [];
-    }
-}
-
-function normalizeDigits(value: string | null | undefined) {
-    return (value || "").replace(/\D/g, "");
-}
-
-function isDemoCustomerRecord(customer: Partial<AdminCustomer> | null | undefined) {
-    if (!customer) return false;
-    const name = (customer.name || "").toLowerCase();
-    const address = (customer.address || "").toLowerCase();
-    const phone = normalizeDigits(customer.phone);
-    const demoPhones = ["01700000000", "01234567890", "8801234567890", "1234567890"];
-    return demoPhones.includes(phone)
-        || name.includes("demo")
-        || name.includes("test")
-        || name.includes("promise electronics")
-        || address.includes("promise electronics")
-        || address.includes("office address")
-        || address.includes("dhanmondi, dhaka 1205");
-}
-
-export interface PanelItem {
-    panelModel: string;
-    panelInches: string;
-    panelType: string;
-    quantity: number;
-    fault: string;
-}
-
-function emptyPanelItem(): PanelItem {
-    return { panelModel: "", panelInches: "", panelType: "LED", quantity: 1, fault: "" };
-}
-
-const TICKET_TYPE_OPTIONS = [
-    { value: "full_device", label: "Full TV", icon: Monitor, desc: "Customer brought a complete TV" },
-    { value: "panel_only", label: "Panel Batch", icon: Layers, desc: "One or more panel models" },
-    { value: "motherboard_only", label: "Motherboard", icon: Cpu, desc: "Board or circuit repair" },
-    { value: "parts_only", label: "Parts/Other", icon: Package, desc: "Small parts or other work" },
-] as const;
-
-type TicketType = typeof TICKET_TYPE_OPTIONS[number]["value"];
-
-const CREATE_JOB_STEPS = [
-    { title: "Job Type", helper: "Choose what kind of work this is." },
-    { title: "Customer", helper: "Write who owns this job." },
-    { title: "Device", helper: "Write what came in and what is wrong." },
-    { title: "Intake Check", helper: "Capture only what matters for this job type." },
-    { title: "Assign", helper: "Choose priority and technician." },
-    { title: "Review", helper: "Check once before creating the job." },
-] as const;
-
-const RECEIVED_ACCESSORY_OPTIONS = ["Remote", "Stand", "Screws", "Wall Mount", "AC Cord", "Adapter"] as const;
-const BOARD_ATTACHMENT_OPTIONS = ["Heatsink", "Shield Plate", "LVDS Cable", "IR/WiFi Board", "Button Board", "Cable Set"] as const;
-const COMMON_SCREEN_SIZES = ["24", "32", "40", "43", "50", "55", "65", "75"] as const;
-const PRIORITY_OPTIONS = [
-    { value: "Low", label: "Low", helper: "Can wait", className: "border-slate-200 bg-white text-slate-600 hover:border-slate-300" },
-    { value: "Medium", label: "Normal", helper: "Regular job", className: "border-blue-500 bg-blue-50 text-blue-700" },
-    { value: "High", label: "Urgent", helper: "Do sooner", className: "border-orange-500 bg-orange-50 text-orange-700" },
-    { value: "Critical", label: "Very Urgent", helper: "Top priority", className: "border-red-500 bg-red-50 text-red-700" },
-] as const;
-
-type JobMode = "single" | "corporate_bulk";
+type IntakeUnit = {
+    ticketType: TicketType;
+    device: string;
+    modelNumber: string;
+    serialNumber: string;
+    issue: string;
+    screenSize: string;
+    externalRef: string;
+};
 
 interface CreateJobDrawerProps {
     isOpen: boolean;
@@ -140,6 +47,40 @@ interface CreateJobDrawerProps {
     tvInches: string[];
     canAssignTechnician?: boolean;
     lookupFailed?: boolean;
+}
+
+const CUSTOMER_STEPS = ["Choose lane", "Customer", "Full TV", "Review"];
+const TECHNICIAN_STEPS = ["Choose lane", "Shop", "Units", "Review"];
+const B2B_STEPS = ["Choose lane", "Account", "Units", "Review"];
+const ACCESSORIES = ["Remote", "Stand", "Screws", "Wall Mount", "AC Cord", "Adapter"];
+const PRIORITIES = ["Low", "Medium", "High", "Critical"] as const;
+const TICKET_OPTIONS: { value: TicketType; label: string; icon: typeof Monitor }[] = [
+    { value: "full_device", label: "Full TV", icon: Monitor },
+    { value: "panel_only", label: "Panel", icon: Layers },
+    { value: "motherboard_only", label: "Motherboard", icon: Cpu },
+    { value: "parts_only", label: "Parts", icon: Package },
+];
+
+function emptyUnit(): IntakeUnit {
+    return { ticketType: "full_device", device: "", modelNumber: "", serialNumber: "", issue: "", screenSize: "", externalRef: "" };
+}
+
+function isB2bLane(lane: Lane): lane is "corporate" | "limited_company" {
+    return lane === "corporate" || lane === "limited_company";
+}
+
+function laneToB2bType(lane: "corporate" | "limited_company"): B2bLaneType {
+    return lane;
+}
+
+function compactAddress(address: string | null | undefined) {
+    if (!address) return "No address saved";
+    return address.length > 76 ? `${address.slice(0, 73)}...` : address;
+}
+
+function partyErrorData(error: unknown) {
+    if (error instanceof ApiError && error.data && typeof error.data === "object") return error.data as { signals?: unknown[] };
+    return null;
 }
 
 export function CreateJobDrawer({
@@ -152,1133 +93,640 @@ export function CreateJobDrawer({
 }: CreateJobDrawerProps) {
     const queryClient = useQueryClient();
     const { user } = useAdminAuth();
-    const autoFilledPhoneRef = useRef("");
-    // Technicians create unassigned jobs (manager assigns later). Always read-only assignment panel for techs without assign.
-    const isCreatingTech = user?.role === "Technician";
-    const techCreatesUnassigned = isCreatingTech && !canAssignTechnician;
-
-    const [activeStep, setActiveStep] = useState(0);
-    const [jobMode, setJobMode] = useState<JobMode>("single");
-    const [formData, setFormData] = useState<Partial<InsertJobTicket> & { ticketType?: TicketType; quantity?: number }>({
-        status: "Pending",
-        priority: "Medium",
-        technician: "Unassigned",
-        assignedTechnicianId: undefined,
-        ticketType: "full_device",
-    });
-    const [panelItems, setPanelItems] = useState<PanelItem[]>([emptyPanelItem()]);
-    const [nextJobNumber, setNextJobNumber] = useState<string>("");
-    const [selectedAssistedBy, setSelectedAssistedBy] = useState<string[]>([]);
-    const [isSuggesting, setIsSuggesting] = useState(false);
-    const [chatHandlerAccepted, setChatHandlerAccepted] = useState(false);
+    const [lane, setLane] = useState<Lane>("customer");
+    const [step, setStep] = useState(0);
+    const [customerName, setCustomerName] = useState("");
+    const [customerPhone, setCustomerPhone] = useState("");
+    const [customerAddress, setCustomerAddress] = useState("");
+    const [customerDevice, setCustomerDevice] = useState("");
+    const [customerModel, setCustomerModel] = useState("");
+    const [customerSerial, setCustomerSerial] = useState("");
+    const [customerIssue, setCustomerIssue] = useState("");
+    const [customerScreenSize, setCustomerScreenSize] = useState("");
     const [missingParts, setMissingParts] = useState<string[]>([]);
-    const [showMissingParts, setShowMissingParts] = useState(true);
-    const [customMissingPart, setCustomMissingPart] = useState("");
-    const [receivedAccessories, setReceivedAccessories] = useState<string[]>([]);
-    const [customAccessory, setCustomAccessory] = useState("");
-    const [customScreenSize, setCustomScreenSize] = useState("");
-    const [panelModelMemory, setPanelModelMemory] = useState<PanelModelMemoryItem[]>([]);
+    const [accessories, setAccessories] = useState<string[]>([]);
+    const [priority, setPriority] = useState<(typeof PRIORITIES)[number]>("Medium");
+    const [assignedTechnicianId, setAssignedTechnicianId] = useState<string | undefined>();
+    const [assignedTechnicianName, setAssignedTechnicianName] = useState("Unassigned");
+    const [technicianMode, setTechnicianMode] = useState<TechnicianMode>("single");
+    const [b2bMode, setB2bMode] = useState<TechnicianMode>("single");
+    const [partySearch, setPartySearch] = useState("");
+    const [selectedParty, setSelectedParty] = useState<ExternalIntakePartyCard | null>(null);
+    const [creatingParty, setCreatingParty] = useState(false);
+    const [newPartyName, setNewPartyName] = useState("");
+    const [newPartyPhone, setNewPartyPhone] = useState("");
+    const [newPartyAddress, setNewPartyAddress] = useState("");
+    const [accountSearch, setAccountSearch] = useState("");
+    const [selectedAccount, setSelectedAccount] = useState<B2bAccountCard | null>(null);
+    const [units, setUnits] = useState<IntakeUnit[]>([emptyUnit()]);
+    const [nextJobNumber, setNextJobNumber] = useState("");
+    const [duplicateSignals, setDuplicateSignals] = useState<unknown[] | null>(null);
 
-    const { data: customers = [] } = useQuery({
-        queryKey: ["admin-customers"],
-        queryFn: adminCustomersApi.getAll,
-        enabled: isOpen,
-        staleTime: 60_000,
-    });
-    const { data: serviceAreas = [] } = useQuery({
-        queryKey: ['public-service-area-list'],
-        queryFn: publicAreaMapApi.getList,
-        enabled: isOpen,
-        staleTime: 0,
-        gcTime: 0,
-        refetchOnMount: 'always',
-    });
+    const customerQuery = customerName.trim().length >= 2 ? customerName.trim() : customerPhone.trim();
+    const partyQuery = partySearch.trim();
+    const accountQuery = accountSearch.trim();
+    const isCreatingTech = user?.role === "Technician";
+    const forceUnassigned = isCreatingTech && !canAssignTechnician;
+    const steps = lane === "customer" ? CUSTOMER_STEPS : isB2bLane(lane) ? B2B_STEPS : TECHNICIAN_STEPS;
+    const isLastStep = step === steps.length - 1;
+    const unitSkillType =
+        lane === "technician" || isB2bLane(lane) ? units[0]?.ticketType || "full_device" : "full_device";
 
-    const { data: existingJobsData } = useQuery({
-        queryKey: ["jobTickets", "model-suggestions"],
-        queryFn: () => jobTicketsApi.getAll("walk-in"),
-        enabled: isOpen,
-        staleTime: 60_000,
+    const { data: customerLookup = { items: [] } } = useQuery({
+        queryKey: ["job-intake-customer-lookup", customerQuery],
+        queryFn: () => jobIntakeApi.searchCustomers(customerQuery),
+        enabled: isOpen && lane === "customer" && customerQuery.length >= 2,
+        staleTime: 30_000,
     });
-
-    const phoneDigits = (formData.customerPhone || "").replace(/\D/g, "").slice(-10);
-    const { data: messengerSession } = useQuery({
-        queryKey: ["brain-session-phone", phoneDigits],
-        queryFn: async () => {
-            const res = await fetch(`/api/brain/sessions/by-phone/${phoneDigits}`);
-            if (!res.ok) return null;
-            return res.json();
-        },
-        enabled: phoneDigits.length >= 10 && isOpen,
-        staleTime: 60_000,
+    const { data: partyLookup = { items: [] } } = useQuery({
+        queryKey: ["external-intake-party-lookup", partyQuery],
+        queryFn: () => jobIntakeApi.searchExternalParties(partyQuery),
+        enabled: isOpen && lane === "technician" && !creatingParty && partyQuery.length >= 2,
+        staleTime: 30_000,
+    });
+    const { data: accountLookup = { items: [] } } = useQuery({
+        queryKey: ["b2b-account-lookup", lane, accountQuery],
+        queryFn: () => b2bAccountIntakeApi.searchAccounts(laneToB2bType(lane as "corporate" | "limited_company"), accountQuery),
+        enabled: isOpen && isB2bLane(lane) && accountQuery.length >= 1,
+        staleTime: 30_000,
     });
 
     useEffect(() => {
-        if (isOpen) {
+        if (!isOpen) return;
+        if (lane === "customer" || isB2bLane(lane)) {
             jobTicketsApi.getNextNumber().then(({ nextNumber }) => setNextJobNumber(nextNumber)).catch(() => setNextJobNumber(""));
-            setPanelModelMemory(loadPanelModelMemory());
         } else {
-            setActiveStep(0);
-            setJobMode("single");
-            setFormData({ status: "Pending", priority: "Medium", technician: "Unassigned", assignedTechnicianId: undefined, ticketType: "full_device" });
-            setPanelItems([emptyPanelItem()]);
-            setSelectedAssistedBy([]);
-            setChatHandlerAccepted(false);
-            setMissingParts([]);
-            setShowMissingParts(true);
-            setCustomMissingPart("");
-            setReceivedAccessories([]);
-            setCustomAccessory("");
-            setCustomScreenSize("");
-            autoFilledPhoneRef.current = "";
+            setNextJobNumber("");
         }
+    }, [isOpen, lane]);
+
+    useEffect(() => {
+        if (isOpen) return;
+        setLane("customer");
+        setStep(0);
+        setCustomerName("");
+        setCustomerPhone("");
+        setCustomerAddress("");
+        setCustomerDevice("");
+        setCustomerModel("");
+        setCustomerSerial("");
+        setCustomerIssue("");
+        setCustomerScreenSize("");
+        setMissingParts([]);
+        setAccessories([]);
+        setPriority("Medium");
+        setAssignedTechnicianId(undefined);
+        setAssignedTechnicianName("Unassigned");
+        setTechnicianMode("single");
+        setB2bMode("single");
+        setPartySearch("");
+        setSelectedParty(null);
+        setCreatingParty(false);
+        setNewPartyName("");
+        setNewPartyPhone("");
+        setNewPartyAddress("");
+        setAccountSearch("");
+        setSelectedAccount(null);
+        setUnits([emptyUnit()]);
+        setDuplicateSignals(null);
     }, [isOpen]);
 
-    const createMutation = useMutation({
-        mutationFn: (data: Record<string, unknown>) => jobTicketsApi.create(data as InsertJobTicket & Record<string, unknown>),
-        onSuccess: async () => {
-            // Refetch active Jobs list (Technician-scoped) so the new self-assigned job appears immediately
+    const customerMutation = useMutation({
+        mutationFn: () => jobTicketsApi.create({
+            customer: customerName.trim(),
+            customerPhone: customerPhone.trim() || undefined,
+            customerAddress: customerAddress.trim() || undefined,
+            device: customerDevice.trim(),
+            modelNumber: customerModel.trim() || undefined,
+            serialNumber: customerSerial.trim() || undefined,
+            issue: customerIssue.trim(),
+            screenSize: customerScreenSize.trim() || undefined,
+            ticketType: "full_device",
+            status: "Pending",
+            priority,
+            missingParts: missingParts.length ? missingParts : undefined,
+            receivedAccessories: accessories.length ? accessories.join(", ") : undefined,
+            ...(canAssignTechnician && assignedTechnicianId ? { assignedTechnicianId } : {}),
+        }),
+        onSuccess: async (job) => {
             await queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
-            await queryClient.refetchQueries({ queryKey: ["jobTickets"] });
+            toast.success(`Job ${job.id} created`);
             onClose();
-            toast.success("Job created successfully");
         },
-        onError: (error: Error) => toast.error(error.message || "Failed to create job"),
+        onError: (error: Error) => toast.error(error.message || "Could not create job"),
     });
 
-    const ticketType = formData.ticketType || "full_device";
-    const isCorporateMode = jobMode === "corporate_bulk";
-    const isPanelBatch = ticketType === "panel_only";
-    const validPanelItems = panelItems.filter(p => p.panelModel.trim());
-    const totalPanelPieces = panelItems.reduce((s, p) => s + (p.quantity || 0), 0);
-    const selectedTicket = TICKET_TYPE_OPTIONS.find(option => option.value === ticketType);
-    const assignedName = techCreatesUnassigned
-        ? "Unassigned (manager will assign)"
-        : formData.technician && formData.technician !== "Unassigned"
-            ? formData.technician
-            : "Not assigned";
-    const activeStepInfo = CREATE_JOB_STEPS[activeStep];
-    const isLastStep = activeStep === CREATE_JOB_STEPS.length - 1;
-    const intakeTitle = ticketType === "full_device" ? "Missing Parts" : ticketType === "panel_only" ? "Panel Check" : ticketType === "motherboard_only" ? "Board Check" : "Item Check";
-    const intakeHelper = ticketType === "full_device"
-        ? "Tick missing TV body parts and received accessories."
-        : ticketType === "panel_only"
-            ? "Panel model, inch, quantity, and fault are already captured."
-            : ticketType === "motherboard_only"
-                ? "Track board attachments only if they came with the board."
-                : "No TV body checklist needed for parts-only jobs.";
-    const stepTitle = activeStep === 3 ? intakeTitle : activeStepInfo.title;
-    const stepHelper = activeStep === 3 ? intakeHelper : activeStepInfo.helper;
-    const missingPartOptions = ticketType === "full_device" ? MISSING_PARTS_LIST : [];
-    const accessoryOptions = ticketType === "full_device"
-        ? RECEIVED_ACCESSORY_OPTIONS
-        : ticketType === "motherboard_only"
-            ? BOARD_ATTACHMENT_OPTIONS
-            : [];
-    const customerSearch = `${formData.customer || ""} ${formData.customerPhone || ""}`.trim().toLowerCase();
-    const customerMatches = customerSearch.length >= 2
-        ? customers.filter((customer: AdminCustomer) => {
-            const phone = (customer.phone || "").replace(/\D/g, "");
-            const typedPhone = (formData.customerPhone || "").replace(/\D/g, "");
-            return customer.name.toLowerCase().includes(customerSearch)
-                || (customer.phone || "").toLowerCase().includes(customerSearch)
-                || (typedPhone.length >= 4 && phone.endsWith(typedPhone.slice(-4)));
-        }).slice(0, 5)
-        : [];
-    const matchedCustomer = phoneDigits.length >= 10
-        ? customers.find((customer: AdminCustomer) => normalizeDigits(customer.phone).endsWith(phoneDigits))
-        : undefined;
-    const isReferenceChatMatch = Boolean(messengerSession?.found);
-    const isDemoReferenceCustomer = isDemoCustomerRecord(matchedCustomer);
-    const existingJobs = existingJobsData?.items ?? [];
-    const deviceQuery = (formData.device || "").trim().toLowerCase();
-    const deviceSuggestions = useMemo(() => {
-        if (activeStep !== 2 || isPanelBatch || deviceQuery.length < 2) return [];
-
-        const byDevice = new Map<string, { device: string; screenSize: string; issue: string; count: number }>();
-        existingJobs.forEach((job: JobTicket) => {
-            const device = job.device?.trim();
-            if (!device) return;
-
-            const haystack = `${device} ${job.screenSize || ""} ${job.issue || ""}`.toLowerCase();
-            if (!haystack.includes(deviceQuery)) return;
-
-            const key = device.toLowerCase();
-            const current = byDevice.get(key);
-            if (current) {
-                current.count += 1;
-                if (!current.screenSize && job.screenSize) current.screenSize = job.screenSize;
-                if (!current.issue && job.issue) current.issue = job.issue;
+    const technicianMutation = useMutation({
+        mutationFn: async (confirmDuplicates: boolean) => {
+            const party = selectedParty
+                ? { externalPartyId: selectedParty.id }
+                : { newExternalParty: { name: newPartyName.trim(), phone: newPartyPhone.trim(), shortAddress: newPartyAddress.trim() || undefined } };
+            const assignment = canAssignTechnician && assignedTechnicianId ? { assignedTechnicianId } : {};
+            if (technicianMode === "single") {
+                return jobIntakeApi.createExternalSingle({ ...party, ...assignment, confirmDuplicates, unit: toExternalUnit(units[0]) });
+            }
+            return jobIntakeApi.createExternalBatch({ ...party, ...assignment, confirmDuplicates, units: units.map(toExternalUnit) });
+        },
+        onSuccess: async (result) => {
+            await queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+            if ("jobs" in result) {
+                toast.success(`${result.jobs.length} technician jobs created — print the batch QR from the job list`);
             } else {
-                byDevice.set(key, {
-                    device,
-                    screenSize: job.screenSize || "",
-                    issue: job.issue || "",
-                    count: 1,
+                toast.success(`Job ${result.job.id} created — print slip for shop QR`);
+            }
+            onClose();
+        },
+        onError: (error: Error) => {
+            if (error instanceof ApiError && error.code === "DUPLICATE_CONFIRMATION_REQUIRED") {
+                setDuplicateSignals(partyErrorData(error)?.signals ?? []);
+                return;
+            }
+            toast.error(error.message || "Could not create technician intake");
+        },
+    });
+
+    const b2bMutation = useMutation({
+        mutationFn: async () => {
+            if (!isB2bLane(lane) || !selectedAccount) throw new Error("Select an existing account");
+            const assignment = canAssignTechnician && assignedTechnicianId ? { assignedTechnicianId } : {};
+            const payloadLane = laneToB2bType(lane);
+            if (b2bMode === "single") {
+                return b2bAccountIntakeApi.createSingle({
+                    lane: payloadLane,
+                    corporateClientId: selectedAccount.id,
+                    unit: toB2bUnit(units[0]),
+                    ...assignment,
                 });
             }
-        });
-
-        return Array.from(byDevice.values())
-            .sort((a, b) => b.count - a.count || a.device.localeCompare(b.device))
-            .slice(0, 6);
-    }, [activeStep, deviceQuery, existingJobs, isPanelBatch]);
-    const screenSizeChoices = useMemo(() => {
-        const values = new Set<string>();
-        deviceSuggestions.forEach(suggestion => {
-            if (suggestion.screenSize) values.add(suggestion.screenSize);
-        });
-        [...COMMON_SCREEN_SIZES, ...tvInches].forEach(size => {
-            if (size) values.add(size);
-        });
-        return Array.from(values).slice(0, 12);
-    }, [deviceSuggestions, tvInches]);
-
-    useEffect(() => {
-        if (!isOpen || activeStep !== 1 || phoneDigits.length < 10 || autoFilledPhoneRef.current === phoneDigits) return;
-
-        const exactCustomer = customers.find((customer: AdminCustomer) => {
-            const phone = (customer.phone || "").replace(/\D/g, "");
-            return phone.endsWith(phoneDigits);
-        });
-
-        if (exactCustomer) {
-            autoFilledPhoneRef.current = phoneDigits;
-            setFormData(prev => ({
-                ...prev,
-                customer: prev.customer || exactCustomer.name,
-                customerPhone: prev.customerPhone || exactCustomer.phone,
-                customerAddress: prev.customerAddress || exactCustomer.address || "",
-            }));
-        }
-    }, [activeStep, customers, formData.customerPhone, isOpen, phoneDigits]);
-
-    useEffect(() => {
-        if (ticketType !== "full_device") {
-            setMissingParts([]);
-            setCustomMissingPart("");
-        }
-        if (ticketType === "panel_only" || ticketType === "parts_only") {
-            setReceivedAccessories([]);
-            setCustomAccessory("");
-        }
-    }, [ticketType]);
-
-    const updatePanelItem = (index: number, field: keyof PanelItem, value: string | number) => {
-        setPanelItems(prev => {
-            const next = [...prev];
-            if (field === "panelModel" && typeof value === "string") {
-                const parsed = parsePanelModel(value);
-                const remembered = panelModelMemory.find(item => normalizePanelModel(item.model) === normalizePanelModel(value));
-                next[index] = {
-                    ...next[index],
-                    panelModel: value,
-                    panelInches: remembered?.inches || parsed.inches || next[index].panelInches,
-                    panelType: next[index].panelType || parsed.type,
-                };
-            } else {
-                next[index] = { ...next[index], [field]: value };
-            }
-            return next;
-        });
-    };
-
-    const getPanelModelSuggestions = (query: string) => {
-        const normalizedQuery = normalizePanelModel(query);
-        if (normalizedQuery.length < 2) return [];
-        return panelModelMemory
-            .filter(item => normalizePanelModel(item.model).includes(normalizedQuery))
-            .sort((a, b) => b.usedAt - a.usedAt)
-            .slice(0, 5);
-    };
-
-    const applyPanelModelSuggestion = (index: number, suggestion: PanelModelMemoryItem) => {
-        setPanelItems(prev => {
-            const next = [...prev];
-            next[index] = {
-                ...next[index],
-                panelModel: suggestion.model,
-                panelInches: suggestion.inches || parsePanelModel(suggestion.model).inches || next[index].panelInches,
-                panelType: next[index].panelType || "LED",
-            };
-            return next;
-        });
-    };
-
-    const rememberPanelModels = (items: PanelItem[]) => {
-        const saved = new Map(panelModelMemory.map(item => [normalizePanelModel(item.model), item]));
-        const now = Date.now();
-        items.forEach(item => {
-            const model = item.panelModel.trim();
-            if (!model) return;
-            saved.set(normalizePanelModel(model), {
-                model,
-                inches: item.panelInches || parsePanelModel(model).inches,
-                usedAt: now,
+            return b2bAccountIntakeApi.createBatch({
+                lane: payloadLane,
+                corporateClientId: selectedAccount.id,
+                units: units.map(toB2bUnit),
+                ...assignment,
             });
-        });
-        const next = Array.from(saved.values()).sort((a, b) => b.usedAt - a.usedAt).slice(0, 80);
-        setPanelModelMemory(next);
-        window.localStorage.setItem(PANEL_MODEL_MEMORY_KEY, JSON.stringify(next));
-    };
-
-    const addPanelRow = () => setPanelItems(prev => [...prev, emptyPanelItem()]);
-
-    const removePanelRow = (index: number) => {
-        if (panelItems.length === 1) return;
-        setPanelItems(prev => prev.filter((_, i) => i !== index));
-    };
-
-    const getStepMessage = () => {
-        if (activeStep === 1 && !formData.customer?.trim()) return "Enter customer name to continue.";
-        if (activeStep === 2 && isPanelBatch && validPanelItems.length === 0) return "Add at least one panel model.";
-        if (activeStep === 2 && ticketType === "full_device" && !formData.device?.trim()) return "Enter TV/device model.";
-        if (activeStep === 2 && ticketType === "full_device" && !formData.issue?.trim()) return "Enter the customer problem.";
-        if (activeStep === 2 && ticketType !== "full_device" && !isPanelBatch && !formData.device?.trim()) return "Enter item or board model.";
-        return "";
-    };
-
-    const canGoNext = isCorporateMode || !getStepMessage();
-
-    const goNext = () => {
-        if (isCorporateMode) {
-            onClose();
-            window.location.hash = "#b2b";
-            toast.success("Open B2B Workspace for corporate bulk jobs");
-            return;
-        }
-        const message = getStepMessage();
-        if (message) {
-            toast.error(message);
-            return;
-        }
-        setActiveStep(step => Math.min(CREATE_JOB_STEPS.length - 1, step + 1));
-    };
-
-    const goBack = () => {
-        setActiveStep(step => Math.max(0, step - 1));
-    };
-
-    const applyCustomer = (customer: AdminCustomer) => {
-        setFormData(prev => ({
-            ...prev,
-            customer: customer.name,
-            customerPhone: customer.phone,
-            customerAddress: customer.address || prev.customerAddress,
-        }));
-        toast.success("Customer details filled");
-    };
-
-    const applyDeviceSuggestion = (suggestion: { device: string; screenSize: string }) => {
-        setFormData(prev => ({
-            ...prev,
-            device: suggestion.device,
-            screenSize: ticketType === "full_device" && suggestion.screenSize ? suggestion.screenSize : prev.screenSize,
-        }));
-        if (suggestion.screenSize) setCustomScreenSize(suggestion.screenSize);
-    };
-
-    const selectScreenSize = (size: string) => {
-        setCustomScreenSize("");
-        setFormData(prev => ({ ...prev, screenSize: size }));
-    };
-
-    const addCustomMissingPart = () => {
-        const value = customMissingPart.trim();
-        if (!value || missingParts.includes(value)) return;
-        setMissingParts(prev => [...prev, value]);
-        setCustomMissingPart("");
-    };
-
-    const addCustomAccessory = () => {
-        const value = customAccessory.trim();
-        if (!value || receivedAccessories.includes(value)) return;
-        setReceivedAccessories(prev => [...prev, value]);
-        setCustomAccessory("");
-    };
-
-    const handleCreate = () => {
-        if (!formData.customer) { toast.error("Customer name is required"); return; }
-
-        if (isPanelBatch) {
-            if (!validPanelItems.length) { toast.error("Add at least one panel model"); return; }
-        } else if (ticketType === "full_device" && (!formData.device || !formData.issue)) {
-            toast.error("Device and Issue are required for full TV jobs");
-            return;
-        }
-
-        const jobData: Record<string, unknown> = { ...formData };
-        delete jobData.corporateJobNumber;
-        delete jobData.corporateClientId;
-        delete jobData.corporateChallanId;
-        delete jobData.batchId;
-
-        if (jobData.customerPhone) {
-            jobData.customerPhone = "+880" + (jobData.customerPhone as string).replace(/^(\+880|880)/, "");
-        }
-
-        if (isPanelBatch) {
-            rememberPanelModels(validPanelItems);
-            jobData.panelItems = JSON.stringify(validPanelItems);
-            const summary = validPanelItems.map(p => `${p.panelInches || "?"} inch ${p.panelModel} x${p.quantity}`).join(", ");
-            jobData.device = `Panel Batch (${totalPanelPieces} pcs)`;
-            jobData.issue = `Panel repair/replacement: ${summary}`;
-        }
-
-        if (missingParts.length > 0) {
-            jobData.missingParts = JSON.stringify(missingParts);
-        }
-
-        if (receivedAccessories.length > 0) {
-            jobData.receivedAccessories = receivedAccessories.join(", ");
-        }
-
-        // Server enforces assignment. Create-only techs never send assignment fields.
-        if (techCreatesUnassigned || !canAssignTechnician) {
-            delete jobData.assignedTechnicianId;
-            delete jobData.technician;
-            delete jobData.assistedByIds;
-            delete jobData.assistedByNames;
-            delete jobData.assistedBy;
-        } else {
-            const finalAssisted = [...selectedAssistedBy];
-            if (finalAssisted.length > 0) {
-                jobData.assistedByIds = JSON.stringify(finalAssisted);
-                jobData.assistedByNames = finalAssisted
-                    .map(id => technicianUsers.find(t => t.id === id)?.name ?? messengerSession?.claimedByName ?? id)
-                    .filter(Boolean).join(", ") || null;
+        },
+        onSuccess: async (result) => {
+            await queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+            await queryClient.invalidateQueries({ queryKey: ["jobBatches"] });
+            await queryClient.invalidateQueries({ queryKey: ["corporateClients"] });
+            if (result.mode === "batch") {
+                toast.success(`Batch ${result.batch.batchNumber || result.batch.id}: ${result.jobs.length} unit job(s) created`);
+            } else {
+                toast.success(`Job ${result.job.id} created for ${result.account.shortCode}`);
             }
+            onClose();
+        },
+        onError: (error: Error) => toast.error(error.message || "Could not create B2B intake"),
+    });
+
+    const currentStepMessage = useMemo(() => {
+        if (step === 0) return "";
+        if (lane === "customer" && step === 1 && !customerName.trim()) return "Enter or select a customer.";
+        if (lane === "customer" && step === 2 && (!customerDevice.trim() || !customerIssue.trim())) return "Enter the TV/device and the reported problem.";
+        if (lane === "technician" && step === 1) {
+            if (creatingParty && (!newPartyName.trim() || newPartyPhone.trim().length < 10)) return "Enter the shop name and phone.";
+            if (!creatingParty && !selectedParty) return "Select an existing shop or create one.";
         }
+        if (lane === "technician" && step === 2 && units.some((unit) => !unit.device.trim() || !unit.issue.trim())) return "Each unit needs a device and a reported problem.";
+        if (isB2bLane(lane) && step === 1 && !selectedAccount) return "Select an existing account. Account creation is not available here.";
+        if (isB2bLane(lane) && step === 2 && units.some((unit) => !unit.device.trim() || !unit.issue.trim())) return "Each unit needs a device and a reported problem.";
+        return "";
+    }, [creatingParty, customerDevice, customerIssue, customerName, lane, newPartyName, newPartyPhone, selectedAccount, selectedParty, step, units]);
 
-        createMutation.mutate(jobData);
+    const selectCustomer = (item: { name: string; phone: string; shortAddress: string | null }) => {
+        setCustomerName(item.name);
+        setCustomerPhone(item.phone.replace(/^\+?880/, "").replace(/^0/, ""));
+        setCustomerAddress(item.shortAddress || "");
     };
 
-    const handleSuggestTechnician = async (issue: string) => {
-        if (!issue) { toast.error("Enter problem first"); return; }
-        setIsSuggesting(true);
-        try {
-            const suggestion = await aiApi.suggestTechnician(issue);
-            if (suggestion) {
-                const tech = technicianUsers.find(u => u.id === suggestion.technicianId);
-                if (tech) {
-                    setFormData(prev => ({ ...prev, technician: tech.name, assignedTechnicianId: tech.id }));
-                    toast.success(`AI Suggested: ${tech.name}`, { description: suggestion.reason });
-                } else toast.error("Suggested technician not found");
-            } else toast.error("AI could not suggest");
-        } catch { toast.error("Failed to get AI suggestion"); }
-        finally { setIsSuggesting(false); }
+    const chooseParty = (party: ExternalIntakePartyCard) => {
+        setSelectedParty(party);
+        setCreatingParty(false);
+        setPartySearch("");
     };
+
+    const chooseAccount = (account: B2bAccountCard) => {
+        setSelectedAccount(account);
+        setAccountSearch("");
+    };
+
+    const updateUnit = (index: number, patch: Partial<IntakeUnit>) => {
+        setUnits((current) => current.map((unit, unitIndex) => unitIndex === index ? { ...unit, ...patch } : unit));
+    };
+
+    const addUnit = () => setUnits((current) => [...current, emptyUnit()]);
+    const removeUnit = (index: number) => setUnits((current) => current.length === 1 ? current : current.filter((_, unitIndex) => unitIndex !== index));
+
+    const continueFlow = () => {
+        if (currentStepMessage) {
+            toast.error(currentStepMessage);
+            return;
+        }
+        setStep((current) => Math.min(current + 1, steps.length - 1));
+    };
+
+    const create = () => {
+        if (lane === "customer") customerMutation.mutate();
+        else if (lane === "technician") technicianMutation.mutate(false);
+        else b2bMutation.mutate();
+    };
+    const pending = customerMutation.isPending || technicianMutation.isPending || b2bMutation.isPending;
 
     return (
-        <Sheet open={isOpen} onOpenChange={onClose}>
-            <SheetContent className="flex h-[100dvh] w-full flex-col overflow-hidden border-0 bg-slate-50 p-0 shadow-2xl z-[250] sm:h-full sm:max-w-2xl sm:border-l sm:border-white/20 sm:bg-white/95 sm:p-6 sm:backdrop-blur-xl [&>button]:right-4 [&>button]:top-4 [&>button]:z-20 [&>button]:rounded-full [&>button]:bg-white/90 [&>button]:p-2 [&>button]:shadow-sm sm:[&>button]:bg-transparent sm:[&>button]:shadow-none">
-                <SheetHeader className="shrink-0 border-b border-slate-200/70 bg-slate-50/95 px-5 pb-3 pt-7 text-left backdrop-blur sm:mb-5 sm:mt-6 sm:border-slate-100 sm:bg-transparent sm:px-0 sm:pb-4 sm:pt-0">
-                    <SheetTitle className="flex items-center gap-2 font-heading text-2xl font-bold text-slate-900 sm:text-slate-800">
-                        <Wrench className="w-6 h-6 text-blue-600" /> New Job
-                    </SheetTitle>
-                    <SheetDescription className="text-sm text-slate-500">
-                        Step {activeStep + 1} of {CREATE_JOB_STEPS.length}: {stepTitle}
-                    </SheetDescription>
-                </SheetHeader>
+        <>
+            <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
+                <SheetContent className="z-[250] flex h-[100dvh] w-full flex-col overflow-hidden border-0 bg-slate-50 p-0 shadow-2xl sm:h-full sm:max-w-2xl sm:border-l sm:border-white/20 sm:bg-white/95 sm:p-6 sm:backdrop-blur-xl [&>button]:right-4 [&>button]:top-4 [&>button]:z-20 [&>button]:rounded-full [&>button]:bg-white/90 [&>button]:p-2 [&>button]:shadow-sm sm:[&>button]:bg-transparent sm:[&>button]:shadow-none">
+                    <SheetHeader className="shrink-0 border-b border-slate-200/70 bg-slate-50/95 px-5 pb-3 pt-7 text-left backdrop-blur sm:mb-5 sm:mt-6 sm:border-slate-100 sm:bg-transparent sm:px-0 sm:pb-4 sm:pt-0">
+                        <SheetTitle className="flex items-center gap-2 font-heading text-2xl font-bold text-slate-900 sm:text-slate-800"><Wrench className="h-6 w-6 text-blue-600" /> New Job</SheetTitle>
+                        <SheetDescription className="text-sm text-slate-500">Step {step + 1} of {steps.length}: {steps[step]}</SheetDescription>
+                    </SheetHeader>
 
-                <div className="flex-1 space-y-4 overflow-y-auto px-5 pb-32 pt-4 sm:space-y-5 sm:px-0 sm:pt-0">
-                    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:rounded-xl sm:border-slate-100 sm:bg-slate-50/70 sm:shadow-none">
-                        <div className="flex items-center justify-between gap-3">
-                            <div>
-                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Current Step</div>
-                                <div className="text-base font-bold text-slate-800">{stepTitle}</div>
-                                <div className="hidden text-xs text-slate-500 sm:block">{stepHelper}</div>
+                    <div className="flex-1 space-y-4 overflow-y-auto px-5 pb-32 pt-4 sm:space-y-5 sm:px-0 sm:pt-0">
+                        <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm sm:border-slate-100 sm:bg-slate-50/70 sm:shadow-none">
+                            <div className="flex items-center justify-between gap-3">
+                                <div><div className="text-xs font-bold uppercase tracking-wider text-slate-400">Current step</div><div className="font-bold text-slate-800">{steps[step]}</div></div>
+                                {lane === "customer" && <div className="text-right"><div className="text-xs font-bold uppercase tracking-wider text-slate-400">Preview</div><div className="font-mono text-sm font-bold text-blue-700">{nextJobNumber || "Loading..."}</div></div>}
                             </div>
-                            <div className="text-right">
-                                <div className="text-xs font-bold uppercase tracking-wider text-slate-400">Job No.</div>
-                                <div className="font-mono text-sm font-bold text-blue-700">{nextJobNumber || "Loading..."}</div>
-                            </div>
+                            <div className="mt-3 grid gap-1.5" style={{ gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }}>{steps.map((item, index) => <button key={item} type="button" onClick={() => index <= step && setStep(index)} className={`h-2 rounded-full ${index <= step ? "bg-blue-600" : "bg-slate-200"}`} aria-label={item} />)}</div>
                         </div>
-                        <div className="mt-3 grid grid-cols-6 gap-1.5">
-                            {CREATE_JOB_STEPS.map((step, index) => (
-                                <button
-                                    key={step.title}
-                                    type="button"
-                                    onClick={() => index <= activeStep && setActiveStep(index)}
-                                    className={`h-2 rounded-full transition-colors ${index <= activeStep ? "bg-blue-600" : "bg-slate-200"}`}
-                                    aria-label={step.title}
-                                />
-                            ))}
-                        </div>
-                    </div>
 
-                    {activeStep === 0 && (
-                        <div className="space-y-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <button
-                                    type="button"
-                                    onClick={() => setJobMode("single")}
-                                    className={`rounded-2xl border-2 p-4 text-left shadow-sm transition-all sm:rounded-xl sm:shadow-none ${
-                                        jobMode === "single"
-                                            ? "border-blue-500 bg-blue-50 text-blue-700"
-                                            : "border-slate-200 bg-white text-slate-600 hover:border-blue-300"
-                                    }`}
-                                >
-                                    <div className="flex items-center gap-2 font-bold">
-                                        <Wrench className="h-4 w-4" /> Single Customer Job
-                                    </div>
-                                    <div className="mt-1 text-xs text-slate-500">Use this for one TV, one board, one parts job, or one panel batch.</div>
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setJobMode("corporate_bulk")}
-                                    className={`rounded-2xl border-2 p-4 text-left shadow-sm transition-all sm:rounded-xl sm:shadow-none ${
-                                        jobMode === "corporate_bulk"
-                                            ? "border-sky-500 bg-sky-50 text-sky-700"
-                                            : "border-slate-200 bg-white text-slate-600 hover:border-sky-300"
-                                    }`}
-                                >
-                                    <div className="flex items-center gap-2 font-bold">
-                                        <Building2 className="h-4 w-4" /> Corporate / Bulk Job
-                                    </div>
-                                    <div className="mt-1 text-xs text-slate-500">Use B2B Workspace for company jobs, full TV bulk, and uploaded job lists.</div>
-                                </button>
-                            </div>
+                        {step === 0 && <LanePicker lane={lane} onLane={(next) => {
+                            setLane(next);
+                            setStep(1);
+                            setSelectedAccount(null);
+                            setAccountSearch("");
+                            setUnits([emptyUnit()]);
+                            setB2bMode("single");
+                        }} />}
 
-                            {isCorporateMode && (
-                                <div className="rounded-xl border border-sky-100 bg-sky-50 p-3">
-                                    <div className="flex items-start gap-3">
-                                        <UploadCloud className="mt-0.5 h-4 w-4 shrink-0 text-sky-600" />
-                                        <div>
-                                            <div className="text-sm font-bold text-sky-800">Corporate bulk upload belongs in B2B Workspace.</div>
-                                            <div className="mt-1 text-xs text-sky-700">Press Next to leave this drawer and open the corporate job area. This keeps normal jobs simple for new staff.</div>
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
+                        {lane === "customer" && step === 1 && <section className="space-y-4">
+                            <SectionTitle icon={<User className="h-4 w-4" />} title="Customer" copy="Search a saved customer or enter a first-time customer." />
+                            <div className="grid gap-4 sm:grid-cols-2"><Field label="Customer name *"><Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} placeholder="Type customer name" /></Field><Field label="Phone"><PhoneInput value={customerPhone} onChange={(event) => setCustomerPhone(event.target.value)} /></Field></div>
+                            <Field label="Short address"><Input value={customerAddress} onChange={(event) => setCustomerAddress(event.target.value)} placeholder="Area, road, or landmark" /></Field>
+                            {customerQuery.length >= 2 && <CompactResults title="Suggested customers" empty="No saved customer matched. You can continue with a new customer." items={customerLookup.items} onChoose={selectCustomer} />}
+                        </section>}
 
-                            {!isCorporateMode && (
+                        {lane === "customer" && step === 2 && <section className="space-y-4">
+                            <SectionTitle icon={<Monitor className="h-4 w-4" />} title="Full TV intake" copy="Customer jobs in this flow are always a complete TV." />
+                            <div className="grid gap-4 sm:grid-cols-2"><Field label="TV / device *"><Input value={customerDevice} onChange={(event) => setCustomerDevice(event.target.value)} placeholder="e.g. 50 inch LED TV" /></Field><Field label="Model number"><Input value={customerModel} onChange={(event) => setCustomerModel(event.target.value)} placeholder="Model number" /></Field></div>
+                            <div className="grid gap-4 sm:grid-cols-2"><Field label="Serial number"><Input value={customerSerial} onChange={(event) => setCustomerSerial(event.target.value)} placeholder="Optional serial" /></Field><Field label="Screen size"><Input value={customerScreenSize} onChange={(event) => setCustomerScreenSize(event.target.value)} placeholder="e.g. 43" list="customer-screen-sizes" /><datalist id="customer-screen-sizes">{tvInches.map((size) => <option key={size} value={size} />)}</datalist></Field></div>
+                            <Field label="Reported problem *"><Textarea value={customerIssue} onChange={(event) => setCustomerIssue(event.target.value)} placeholder="What is wrong with the TV?" /></Field>
+                            <ToggleGroup title="Missing parts" items={MISSING_PARTS_LIST} selected={missingParts} onChange={setMissingParts} />
+                            <ToggleGroup title="Received accessories" items={ACCESSORIES} selected={accessories} onChange={setAccessories} />
+                        </section>}
+
+                        {lane === "technician" && step === 1 && <section className="space-y-4">
+                            <SectionTitle icon={<Wrench className="h-4 w-4" />} title="Outside technician or shop" copy="This is not an internal staff technician and is never a customer profile." />
+                            {!creatingParty && !selectedParty && <><Field label="Search saved shop"><Input value={partySearch} onChange={(event) => setPartySearch(event.target.value)} placeholder="Shop name or phone" /></Field>{partyQuery.length >= 2 && <CompactResults title="Saved shops" empty="No shop matched. Create a new shop below." items={partyLookup.items} onChoose={chooseParty} />}</>}
+                            {selectedParty && <SelectedParty party={selectedParty} onChange={() => setSelectedParty(null)} />}
+                            {!selectedParty && <button type="button" onClick={() => setCreatingParty((current) => !current)} className="text-sm font-semibold text-blue-700 hover:text-blue-800">{creatingParty ? "Use a saved shop" : "Create a new shop"}</button>}
+                            {creatingParty && !selectedParty && <div className="space-y-4 rounded-xl border border-blue-100 bg-blue-50/50 p-3"><Field label="Shop name *"><Input value={newPartyName} onChange={(event) => setNewPartyName(event.target.value)} placeholder="Shop or outside technician name" /></Field><Field label="Shop phone *"><PhoneInput value={newPartyPhone} onChange={(event) => setNewPartyPhone(event.target.value)} /></Field><Field label="Short address"><Input value={newPartyAddress} onChange={(event) => setNewPartyAddress(event.target.value)} placeholder="Area, road, or landmark" /></Field></div>}
+                            <div className="grid grid-cols-2 gap-2"><ModeButton active={technicianMode === "single"} icon={<Monitor className="h-4 w-4" />} label="Single" copy="One physical unit" onClick={() => { setTechnicianMode("single"); setUnits((current) => [current[0] || emptyUnit()]); }} /><ModeButton active={technicianMode === "batch"} icon={<Layers className="h-4 w-4" />} label="Batch" copy="One job per unit" onClick={() => setTechnicianMode("batch")} /></div>
+                        </section>}
+
+                        {lane === "technician" && step === 2 && <section className="space-y-4">
+                            <SectionTitle icon={<Layers className="h-4 w-4" />} title={technicianMode === "batch" ? "Batch units" : "Unit details"} copy={technicianMode === "batch" ? "Every row creates one separate job number." : "Add the physical unit received from the shop."} />
+                            <div className="space-y-3">{units.map((unit, index) => <UnitEditor key={index} unit={unit} index={index} removable={technicianMode === "batch" && units.length > 1} showExternalRef={false} onChange={(patch) => updateUnit(index, patch)} onRemove={() => removeUnit(index)} />)}</div>
+                            {technicianMode === "batch" && <Button type="button" variant="outline" className="w-full" onClick={addUnit}><Plus className="mr-2 h-4 w-4" /> Add another unit</Button>}
+                            <p className="text-xs text-slate-500">After create, print the job or batch slip — the QR opens only that shop job/batch status (no customer data).</p>
+                        </section>}
+
+                        {isB2bLane(lane) && step === 1 && <section className="space-y-4">
+                            <SectionTitle
+                                icon={<Building2 className="h-4 w-4" />}
+                                title={lane === "corporate" ? "Corporate account" : "Corporate Ltd. account"}
+                                copy="Select existing account. No account creation in this flow."
+                            />
+                            {!selectedAccount && (
                                 <>
-                            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4 sm:gap-2">
-                                {TICKET_TYPE_OPTIONS.map(({ value, label, icon: Icon, desc }) => (
-                                    <button
-                                        key={value}
-                                        type="button"
-                                        onClick={() => setFormData(prev => ({ ...prev, ticketType: value }))}
-                                        className={`flex items-center gap-3 rounded-2xl border-2 p-4 text-left shadow-sm transition-all sm:flex-col sm:gap-1 sm:rounded-xl sm:p-3 sm:text-center sm:shadow-none ${
-                                            ticketType === value
-                                                ? "border-blue-500 bg-blue-50 text-blue-700"
-                                                : "border-slate-200 bg-white hover:border-blue-300 text-slate-600"
-                                        }`}
-                                    >
-                                        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm sm:h-auto sm:w-auto sm:bg-transparent sm:shadow-none">
-                                            <Icon size={18} />
-                                        </span>
-                                        <span className="min-w-0">
-                                            <span className="block text-base font-bold sm:text-xs">{label}</span>
-                                            <span className="block text-xs leading-tight text-slate-500 sm:text-[10px]">{desc}</span>
-                                        </span>
-                                    </button>
+                                    <Field label="Search existing account">
+                                        <Input
+                                            value={accountSearch}
+                                            onChange={(event) => setAccountSearch(event.target.value)}
+                                            placeholder="Company name or short code"
+                                        />
+                                    </Field>
+                                    {accountQuery.length >= 1 && (
+                                        <B2bAccountResults
+                                            empty={lane === "corporate" ? "No corporate account matched." : "No limited-company account matched."}
+                                            items={accountLookup.items}
+                                            onChoose={chooseAccount}
+                                        />
+                                    )}
+                                </>
+                            )}
+                            {selectedAccount && (
+                                <SelectedAccount account={selectedAccount} onChange={() => setSelectedAccount(null)} />
+                            )}
+                            <div className="grid grid-cols-2 gap-2">
+                                <ModeButton active={b2bMode === "single"} icon={<Monitor className="h-4 w-4" />} label="Single" copy="One physical unit" onClick={() => { setB2bMode("single"); setUnits((current) => [current[0] || emptyUnit()]); }} />
+                                <ModeButton active={b2bMode === "batch"} icon={<Layers className="h-4 w-4" />} label="Batch" copy="One job per unit" onClick={() => setB2bMode("batch")} />
+                            </div>
+                        </section>}
+
+                        {isB2bLane(lane) && step === 2 && <section className="space-y-4">
+                            <SectionTitle
+                                icon={<Layers className="h-4 w-4" />}
+                                title={b2bMode === "batch" ? "Batch units" : "Unit details"}
+                                copy={b2bMode === "batch" ? `Every row creates one system job. Units: ${units.length}` : "One system job number is generated for this unit."}
+                            />
+                            <div className="space-y-3">
+                                {units.map((unit, index) => (
+                                    <UnitEditor
+                                        key={index}
+                                        unit={unit}
+                                        index={index}
+                                        removable={b2bMode === "batch" && units.length > 1}
+                                        showExternalRef
+                                        onChange={(patch) => updateUnit(index, patch)}
+                                        onRemove={() => removeUnit(index)}
+                                    />
                                 ))}
                             </div>
-                            <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-xs font-semibold text-emerald-800 sm:rounded-xl">
-                                Normal jobs are for individual customers only. Use B2B Workspace for company, batch, or challan work.
-                            </div>
-                                </>
+                            {b2bMode === "batch" && (
+                                <Button type="button" variant="outline" className="w-full" onClick={addUnit}>
+                                    <Plus className="mr-2 h-4 w-4" /> Add another unit
+                                </Button>
                             )}
-                        </div>
-                    )}
+                            <p className="text-xs text-slate-500">
+                                Optional external reference must be unique on this account. System job numbers are assigned by the server.
+                            </p>
+                        </section>}
 
-                    {activeStep === 1 && (
-                        <div className="space-y-4">
-                            <h4 className="flex items-center gap-2 rounded-xl border border-blue-100 bg-blue-50 p-2 text-sm font-bold uppercase tracking-wider text-blue-600">
-                                <User className="w-4 h-4" /> Customer Details
-                            </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Customer Name *</Label>
-                                    <Input placeholder="Customer name" value={formData.customer || ""} onChange={(e) => setFormData({ ...formData, customer: e.target.value })} className="h-12 rounded-xl bg-white shadow-sm sm:h-10 sm:bg-slate-50 sm:shadow-none" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Phone Number</Label>
-                                    <PhoneInput value={formData.customerPhone || ""} onChange={(e) => setFormData({ ...formData, customerPhone: e.target.value })} />
-                                </div>
-                            </div>
-                            {customerMatches.length > 0 && (
-                                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-2">
-                                    <div className="px-1 pb-2 text-[11px] font-bold uppercase tracking-wider text-blue-700">Existing customer found</div>
-                                    <div className="space-y-1">
-                                        {customerMatches.map((customer: AdminCustomer) => (
-                                            <button
-                                                key={customer.id}
-                                                type="button"
-                                                onClick={() => applyCustomer(customer)}
-                                                className="w-full rounded-lg bg-white px-3 py-2 text-left hover:bg-blue-50 border border-blue-100 transition-colors"
-                                            >
-                                                <div className="text-sm font-bold text-slate-800">{customer.name}</div>
-                                                <div className="text-xs text-slate-500">{customer.phone}{customer.address ? ` · ${customer.address}` : ""}</div>
-                                            </button>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                            {isReferenceChatMatch && (
-                                <div className={`flex items-start gap-3 rounded-xl border p-3 transition-all ${
-                                    chatHandlerAccepted
-                                        ? "bg-green-50 border-green-200"
-                                        : isDemoReferenceCustomer
-                                            ? "bg-amber-50 border-amber-200"
-                                            : "bg-blue-50 border-blue-200"
-                                }`}>
-                                    <MessageSquare className={`h-4 w-4 mt-0.5 shrink-0 ${chatHandlerAccepted ? "text-green-600" : isDemoReferenceCustomer ? "text-amber-600" : "text-blue-500"}`} />
-                                    <div className="flex-1 min-w-0">
-                                        {messengerSession.claimedByName ? (
-                                            <>
-                                                <p className="text-xs font-semibold text-slate-700">
-                                                    Imported chat reference: <span className={isDemoReferenceCustomer ? "text-amber-700" : "text-blue-700"}>{messengerSession.claimedByName}</span>
-                                                </p>
-                                                <p className="text-[11px] text-slate-500 mt-0.5">
-                                                    {chatHandlerAccepted
-                                                        ? "Reference kept for this intake"
-                                                        : isDemoReferenceCustomer
-                                                            ? "Likely demo/office customer. Use as sample reference only."
-                                                            : "Scraped history only. Not a verified handler record yet."}
-                                                </p>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <p className="text-xs font-semibold text-slate-700">Imported chat reference found</p>
-                                                <p className="text-[11px] text-slate-500 mt-0.5">No reliable staff handler is recorded for this old chat.</p>
-                                            </>
-                                        )}
-                                    </div>
-                                    {messengerSession.claimedByName && !chatHandlerAccepted && (
-                                        <button
-                                            type="button"
-                                            onClick={() => setChatHandlerAccepted(true)}
-                                            className="h-7 px-2 rounded-lg bg-blue-600 text-white text-[11px] font-bold shrink-0 hover:bg-blue-700 transition-colors flex items-center gap-1"
-                                        >
-                                            <UserCheck className="h-3 w-3" /> Keep ref
-                                        </button>
-                                    )}
-                                </div>
-                            )}
-                            <div className="space-y-2">
-                                <Label>Address</Label>
-                                <Textarea placeholder="Pickup or delivery address..." value={formData.customerAddress || ""} onChange={(e) => setFormData({ ...formData, customerAddress: e.target.value })} rows={3} className="resize-none rounded-xl bg-white shadow-sm sm:bg-slate-50 sm:shadow-none" />
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Service area <span className="font-normal text-slate-400">(optional)</span></Label>
-                                <select value={formData.serviceAreaId || ''} onChange={(event) => setFormData({ ...formData, serviceAreaId: event.target.value || null })} className="h-12 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-800 outline-none focus:border-blue-500 sm:h-10 sm:bg-slate-50">
-                                    <option value="">No area selected</option>
-                                    {serviceAreas.map((area) => <option key={area.id} value={area.id}>{[area.blockOrSector, area.subareaName, area.areaName, area.city].filter(Boolean).join(', ')}</option>)}
-                                </select>
-                            </div>
-                        </div>
-                    )}
+                        {step === 3 && <section className="space-y-4">
+                            <SectionTitle icon={<CheckCircle2 className="h-4 w-4" />} title="Review and assign" copy="The job stays unassigned unless you have assignment permission." />
+                            {lane === "customer" && <div className="grid grid-cols-2 gap-2">{PRIORITIES.map((item) => <ModeButton key={item} active={priority === item} label={item === "Medium" ? "Normal" : item} copy="" onClick={() => setPriority(item)} />)}</div>}
+                            {forceUnassigned || !canAssignTechnician ? <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600"><div className="font-semibold text-slate-800">Unassigned</div><div className="mt-1">A manager can assign an internal technician later.</div></div> : lookupFailed ? <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">Technician list could not be loaded. Retry after checking access.</div> : <TechnicianPicker users={technicianUsers} ticketType={unitSkillType} issue={lane === "customer" ? customerIssue : units[0]?.issue} assignedTechnicianId={assignedTechnicianId} onAssignedChange={(id, name) => { setAssignedTechnicianId(id || undefined); setAssignedTechnicianName(name); }} onAssistedChange={() => {}} />}
+                            <ReviewCards
+                                lane={lane}
+                                customerName={customerName}
+                                customerPhone={customerPhone}
+                                customerDevice={customerDevice}
+                                customerIssue={customerIssue}
+                                selectedParty={selectedParty}
+                                newPartyName={newPartyName}
+                                selectedAccount={selectedAccount}
+                                mode={isB2bLane(lane) ? b2bMode : technicianMode}
+                                units={units}
+                                assignedName={assignedTechnicianName}
+                                priority={priority}
+                                nextJobNumber={nextJobNumber}
+                            />
+                        </section>}
 
-                    {activeStep === 2 && (
-                        <div className="space-y-4">
-                            <h4 className="flex items-center gap-2 rounded-xl border border-purple-100 bg-purple-50 p-2 text-sm font-bold uppercase tracking-wider text-purple-600">
-                                <Monitor className="w-4 h-4" />
-                                {isPanelBatch ? `Panel Batch (${totalPanelPieces} pcs total)` : "Device and Problem"}
-                            </h4>
-
-                            {isPanelBatch ? (
-                                <div className="space-y-2">
-                                    <p className="text-xs text-slate-500">Add each panel model. Inch auto-fills from known model codes and your saved entries.</p>
-                                    <div className="space-y-3 sm:hidden">
-                                        {panelItems.map((item, idx) => (
-                                            <div key={idx} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                                                <div className="mb-3 flex items-center justify-between">
-                                                    <div>
-                                                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Panel</div>
-                                                        <div className="text-sm font-bold text-slate-800">Panel {idx + 1}</div>
-                                                    </div>
-                                                    <button type="button" onClick={() => removePanelRow(idx)} disabled={panelItems.length === 1} className="flex h-10 w-10 items-center justify-center rounded-xl text-slate-400 transition-colors hover:bg-red-50 hover:text-red-500 disabled:opacity-30">
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-                                                <div className="space-y-3">
-                                                    <div className="space-y-1.5">
-                                                        <Label>Model No.</Label>
-                                                        <Input placeholder="V315, ST546, BOE HV430..." value={item.panelModel} onChange={e => updatePanelItem(idx, "panelModel", e.target.value)} className="h-12 rounded-xl bg-slate-50 font-mono text-sm" />
-                                                        {getPanelModelSuggestions(item.panelModel).length > 0 && (
-                                                            <div className="flex gap-2 overflow-x-auto pb-1">
-                                                                {getPanelModelSuggestions(item.panelModel).map(suggestion => (
-                                                                    <button
-                                                                        key={`${suggestion.model}-${suggestion.usedAt}`}
-                                                                        type="button"
-                                                                        onClick={() => applyPanelModelSuggestion(idx, suggestion)}
-                                                                        className="shrink-0 rounded-xl border border-blue-100 bg-blue-50 px-3 py-2 text-left text-xs font-bold text-blue-700"
-                                                                    >
-                                                                        <span className="font-mono">{suggestion.model}</span>
-                                                                        {suggestion.inches && <span className="ml-2 text-blue-500">{suggestion.inches}"</span>}
-                                                                    </button>
-                                                                ))}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    <div className="grid grid-cols-2 gap-2">
-                                                        <div className="space-y-1.5">
-                                                            <Label>Inch</Label>
-                                                            <Input placeholder="43" value={item.panelInches} onChange={e => updatePanelItem(idx, "panelInches", e.target.value)} className="h-12 rounded-xl bg-slate-50 text-sm" />
-                                                        </div>
-                                                        <div className="space-y-1.5">
-                                                            <Label>Qty</Label>
-                                                            <Input type="number" min={1} value={item.quantity} onChange={e => updatePanelItem(idx, "quantity", parseInt(e.target.value) || 1)} className="h-12 rounded-xl bg-slate-50 text-sm" />
-                                                        </div>
-                                                    </div>
-                                                    <div className="space-y-1.5">
-                                                        <Label>Fault</Label>
-                                                        <Input placeholder="Cracked, lines..." value={item.fault} onChange={e => updatePanelItem(idx, "fault", e.target.value)} className="h-12 rounded-xl bg-slate-50 text-sm" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ))}
-                                        <Button type="button" variant="outline" onClick={addPanelRow} className="h-12 w-full rounded-xl border-dashed border-blue-300 bg-white font-bold text-blue-600 hover:bg-blue-50">
-                                            <Plus size={16} className="mr-2" /> Add Panel Model
-                                        </Button>
-                                    </div>
-                                    <div className="hidden overflow-x-auto -mx-1 px-1 pb-1 sm:block" role="region" aria-label="Panel batch table" tabIndex={0}>
-                                        <div className="min-w-[520px]">
-                                            <datalist id="panel-model-memory">
-                                                {panelModelMemory.map(item => (
-                                                    <option key={`${item.model}-${item.usedAt}`} value={item.model}>
-                                                        {item.inches ? `${item.inches} inch` : "Saved panel"}
-                                                    </option>
-                                                ))}
-                                            </datalist>
-                                            <div className="grid gap-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider px-1" style={{ gridTemplateColumns: "2fr 1fr 1fr 2fr auto" }}>
-                                                <span>Model No.</span>
-                                                <span>Inch</span>
-                                                <span>Qty</span>
-                                                <span>Fault</span>
-                                                <span></span>
-                                            </div>
-                                            {panelItems.map((item, idx) => (
-                                                <div key={idx} className="grid gap-1 items-center" style={{ gridTemplateColumns: "2fr 1fr 1fr 2fr auto" }}>
-                                                    <Input list="panel-model-memory" placeholder="V315, ST546, BOE HV430..." value={item.panelModel} onChange={e => updatePanelItem(idx, "panelModel", e.target.value)} className="bg-slate-50 font-mono text-xs h-9" />
-                                                    <Input placeholder="43" value={item.panelInches} onChange={e => updatePanelItem(idx, "panelInches", e.target.value)} className="bg-slate-50 text-xs h-9" />
-                                                    <Input type="number" min={1} value={item.quantity} onChange={e => updatePanelItem(idx, "quantity", parseInt(e.target.value) || 1)} className="bg-slate-50 text-xs h-9" />
-                                                    <Input placeholder="Cracked, lines..." value={item.fault} onChange={e => updatePanelItem(idx, "fault", e.target.value)} className="bg-slate-50 text-xs h-9" />
-                                                    <button type="button" onClick={() => removePanelRow(idx)} disabled={panelItems.length === 1} className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 disabled:opacity-30 transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center">
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                            <Button type="button" variant="outline" size="sm" onClick={addPanelRow} className="mt-1 border-dashed border-blue-300 text-blue-600 hover:bg-blue-50 w-full h-9">
-                                                <Plus size={14} className="mr-1" /> Add Panel Model
-                                            </Button>
-                                        </div>
-                                    </div>
-                                    {validPanelItems.length > 0 && (
-                                        <div className="mt-2 p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-600">
-                                            <strong>Batch summary:</strong>{" "}
-                                            {validPanelItems.map(p => `${p.panelInches || "?"} inch ${p.panelModel} x${p.quantity}`).join(" · ")}
-                                            {" "}= <strong>{totalPanelPieces} pcs total</strong>
-                                        </div>
-                                    )}
-                                </div>
-                            ) : (
-                                <div className="space-y-4">
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                        <div className="space-y-2">
-                                            <Label>{ticketType === "motherboard_only" ? "Board Model / Device" : ticketType === "parts_only" ? "Part / Item Name" : "Device / Model"} *</Label>
-                                            <Input
-                                                placeholder={ticketType === "motherboard_only" ? "Type board model..." : ticketType === "parts_only" ? "Type part name..." : "Type TV model..."}
-                                                value={formData.device || ""}
-                                                onChange={e => setFormData({ ...formData, device: e.target.value })}
-                                                className="h-12 rounded-xl bg-white shadow-sm sm:h-10 sm:bg-slate-50 sm:shadow-none"
-                                            />
-                                            {deviceSuggestions.length > 0 && (
-                                                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-2">
-                                                    <div className="px-1 pb-2 text-[11px] font-bold uppercase tracking-wider text-blue-700">Model suggestions</div>
-                                                    <div className="space-y-1">
-                                                        {deviceSuggestions.map(suggestion => (
-                                                            <button
-                                                                key={suggestion.device}
-                                                                type="button"
-                                                                onClick={() => applyDeviceSuggestion(suggestion)}
-                                                                className="w-full rounded-lg border border-blue-100 bg-white px-3 py-2 text-left transition-colors hover:bg-blue-50"
-                                                            >
-                                                                <div className="flex items-center justify-between gap-2">
-                                                                    <span className="text-sm font-bold text-slate-800">{suggestion.device}</span>
-                                                                    {suggestion.screenSize && <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">{suggestion.screenSize}</span>}
-                                                                </div>
-                                                                <div className="mt-0.5 text-xs text-slate-500 line-clamp-1">
-                                                                    Used {suggestion.count} time{suggestion.count === 1 ? "" : "s"}{suggestion.issue ? ` - ${suggestion.issue}` : ""}
-                                                                </div>
-                                                            </button>
-                                                        ))}
-                                                    </div>
-                                                </div>
-                                            )}
-                                        </div>
-                                        {ticketType === "full_device" && (
-                                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                                <div className="space-y-2">
-                                                    <Label>Model Number</Label>
-                                                    <Input
-                                                        placeholder="e.g. UA55BU8000"
-                                                        value={(formData as any).modelNumber || ""}
-                                                        onChange={e => setFormData({ ...formData, modelNumber: e.target.value } as any)}
-                                                        className="h-12 rounded-xl bg-white shadow-sm sm:h-10 sm:bg-slate-50 sm:shadow-none font-mono"
-                                                    />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <Label>Serial Number</Label>
-                                                    <Input
-                                                        placeholder="Optional — enter if visible"
-                                                        value={(formData as any).serialNumber || ""}
-                                                        onChange={e => setFormData({ ...formData, serialNumber: e.target.value } as any)}
-                                                        className="h-12 rounded-xl bg-white shadow-sm sm:h-10 sm:bg-slate-50 sm:shadow-none font-mono"
-                                                    />
-                                                </div>
-                                            </div>
-                                        )}
-                                        {ticketType === "full_device" && (
-                                            <div className="space-y-2">
-                                                <Label>Screen Size</Label>
-                                                <div className="flex gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-4 sm:overflow-visible sm:pb-0">
-                                                    {screenSizeChoices.map(size => (
-                                                        <button
-                                                            key={size}
-                                                            type="button"
-                                                            onClick={() => selectScreenSize(size)}
-                                                            className={`min-w-14 rounded-xl border px-3 py-2 text-sm font-bold transition-colors sm:min-w-0 sm:rounded-lg sm:px-2 sm:text-xs ${
-                                                                formData.screenSize === size
-                                                                    ? "border-blue-500 bg-blue-50 text-blue-700"
-                                                                    : "border-slate-200 bg-white text-slate-600 hover:border-blue-300"
-                                                            }`}
-                                                        >
-                                                            {size}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                                <Input
-                                                    placeholder="Or write custom size..."
-                                                    value={customScreenSize || (screenSizeChoices.includes(formData.screenSize || "") ? "" : formData.screenSize || "")}
-                                                    onChange={e => {
-                                                        setCustomScreenSize(e.target.value);
-                                                        setFormData({ ...formData, screenSize: e.target.value });
-                                                    }}
-                                                    className="h-12 rounded-xl bg-white shadow-sm sm:h-10 sm:bg-slate-50 sm:shadow-none"
-                                                />
-                                            </div>
-                                        )}
-                                        {ticketType === "parts_only" && (
-                                            <div className="space-y-2">
-                                                <Label>Quantity</Label>
-                                                <Input type="number" min={1} value={formData.quantity ?? 1} onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value) || 1 })} className="bg-slate-50" />
-                                            </div>
-                                        )}
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Label>{ticketType === "full_device" ? "Problem *" : "Problem / Note"}</Label>
-                                        <Textarea placeholder="Write the problem in simple words..." value={formData.issue || ""} onChange={e => setFormData({ ...formData, issue: e.target.value })} rows={4} className="resize-none rounded-xl bg-white shadow-sm sm:bg-slate-50 sm:shadow-none" />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {activeStep === 3 && (
-                        <div className="space-y-3">
-                            {ticketType === "panel_only" || ticketType === "parts_only" ? (
-                                <div className="rounded-2xl border border-blue-100 bg-blue-50/70 p-4">
-                                    <div className="flex items-start gap-3">
-                                        <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
-                                        <div>
-                                            <div className="text-sm font-bold text-blue-900">
-                                                {ticketType === "panel_only" ? "Panel batch details are already captured" : "Parts-only job does not need TV body checks"}
-                                            </div>
-                                            <p className="mt-1 text-xs text-blue-700">
-                                                {ticketType === "panel_only"
-                                                    ? "Model, inch, quantity, and fault are enough for this intake. No motherboard, T-con, stand, or remote checklist is shown."
-                                                    : "Use the item/model and problem note from the previous step. Add special notes there if needed."}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            ) : (
-                                <>
-                                    {missingPartOptions.length > 0 && (
-                                        <>
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowMissingParts(v => !v)}
-                                                className={`w-full flex items-center justify-between p-3 rounded-lg border text-sm font-bold uppercase tracking-wider transition-colors ${
-                                                    missingParts.length > 0
-                                                        ? "bg-orange-50 border-orange-200 text-orange-700"
-                                                        : "bg-slate-50 border-slate-200 text-slate-500 hover:border-slate-300"
-                                                }`}
-                                            >
-                                                <span className="flex items-center gap-2">
-                                                    <AlertTriangle className="w-4 h-4" />
-                                                    Missing TV Body Parts
-                                                    {missingParts.length > 0 && (
-                                                        <span className="bg-orange-500 text-white text-[10px] font-bold rounded-full px-1.5 py-0.5">
-                                                            {missingParts.length}
-                                                        </span>
-                                                    )}
-                                                </span>
-                                                {showMissingParts ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                                            </button>
-                                            {showMissingParts && (
-                                                <div className="border border-orange-100 rounded-xl p-3 bg-orange-50/50">
-                                                    <p className="text-[11px] text-slate-500 mb-3">Only for incomplete full-TV intake. If nothing is missing, leave this empty.</p>
-                                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                                        {missingPartOptions.map(part => (
-                                                            <label key={part} className="flex items-center gap-2 cursor-pointer group">
-                                                                <input
-                                                                    type="checkbox"
-                                                                    checked={missingParts.includes(part)}
-                                                                    onChange={e => {
-                                                                        setMissingParts(prev =>
-                                                                            e.target.checked
-                                                                                ? [...prev, part]
-                                                                                : prev.filter(p => p !== part)
-                                                                        );
-                                                                    }}
-                                                                    className="w-3.5 h-3.5 accent-orange-500 shrink-0"
-                                                                />
-                                                                <span className="text-xs text-slate-700 group-hover:text-orange-700 transition-colors leading-tight">{part}</span>
-                                                            </label>
-                                                        ))}
-                                                    </div>
-                                                    <div className="mt-3 flex gap-2">
-                                                        <Input
-                                                            placeholder="Other missing item..."
-                                                            value={customMissingPart}
-                                                            onChange={e => setCustomMissingPart(e.target.value)}
-                                                            className="bg-white"
-                                                        />
-                                                        <Button type="button" variant="outline" onClick={addCustomMissingPart} className="shrink-0">Add</Button>
-                                                    </div>
-                                                    {missingParts.length > 0 && (
-                                                        <div className="mt-3 flex flex-wrap gap-1.5">
-                                                            {missingParts.map(part => (
-                                                                <button
-                                                                    key={part}
-                                                                    type="button"
-                                                                    onClick={() => setMissingParts(prev => prev.filter(item => item !== part))}
-                                                                    className="rounded-full bg-orange-100 px-2 py-1 text-[11px] font-semibold text-orange-700 hover:bg-orange-200"
-                                                                >
-                                                                    {part} x
-                                                                </button>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </div>
-                                            )}
-                                        </>
-                                    )}
-                                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                                        <div className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                                            {ticketType === "motherboard_only" ? "Received board attachments" : "Received accessories / add-ons"}
-                                        </div>
-                                        <p className="mt-1 text-[11px] text-slate-500">
-                                            {ticketType === "motherboard_only"
-                                                ? "Tick only what physically came with the board."
-                                                : "Tick what came with the TV. Add custom items if needed."}
-                                        </p>
-                                        <div className="mt-3 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                            {accessoryOptions.map(accessory => (
-                                                <label key={accessory} className="flex items-center gap-2 cursor-pointer group">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={receivedAccessories.includes(accessory)}
-                                                        onChange={e => {
-                                                            setReceivedAccessories(prev =>
-                                                                e.target.checked
-                                                                    ? [...prev, accessory]
-                                                                    : prev.filter(item => item !== accessory)
-                                                            );
-                                                        }}
-                                                        className="w-3.5 h-3.5 accent-blue-600 shrink-0"
-                                                    />
-                                                    <span className="text-xs text-slate-700 group-hover:text-blue-700 transition-colors leading-tight">{accessory}</span>
-                                                </label>
-                                            ))}
-                                        </div>
-                                        <div className="mt-3 flex gap-2">
-                                            <Input
-                                                placeholder={ticketType === "motherboard_only" ? "Other board attachment..." : "Other accessory..."}
-                                                value={customAccessory}
-                                                onChange={e => setCustomAccessory(e.target.value)}
-                                                className="bg-white"
-                                            />
-                                            <Button type="button" variant="outline" onClick={addCustomAccessory} className="shrink-0">Add</Button>
-                                        </div>
-                                        {receivedAccessories.length > 0 && (
-                                            <div className="mt-3 flex flex-wrap gap-1.5">
-                                                {receivedAccessories.map(accessory => (
-                                                    <button
-                                                        key={accessory}
-                                                        type="button"
-                                                        onClick={() => setReceivedAccessories(prev => prev.filter(item => item !== accessory))}
-                                                        className="rounded-full bg-blue-100 px-2 py-1 text-[11px] font-semibold text-blue-700 hover:bg-blue-200"
-                                                    >
-                                                        {accessory} x
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </>
-                            )}
-                        </div>
-                    )}
-
-                    {activeStep === 4 && (
-                        <div className="space-y-4">
-                            <h4 className="flex items-center gap-2 rounded-xl border border-emerald-100 bg-emerald-50 p-2 text-sm font-bold uppercase tracking-wider text-emerald-600">
-                                <ShieldCheck className="w-4 h-4" /> Assignment
-                            </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Priority Level</Label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {PRIORITY_OPTIONS.map(priority => {
-                                            const selected = formData.priority === priority.value;
-                                            return (
-                                                <button
-                                                    key={priority.value}
-                                                    type="button"
-                                                    onClick={() => setFormData({ ...formData, priority: priority.value as InsertJobTicket["priority"] })}
-                                                    className={`rounded-xl border-2 px-3 py-2 text-left transition-all ${
-                                                        selected
-                                                            ? priority.className
-                                                            : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                                                    }`}
-                                                >
-                                                    <div className="text-sm font-bold">{priority.label}</div>
-                                                    <div className="text-[11px] opacity-75">{priority.helper}</div>
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-                                </div>
-                                {techCreatesUnassigned ? (
-                                    <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                        <div className="flex items-start gap-3">
-                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-200 text-slate-600">
-                                                <User className="h-5 w-5" />
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-bold text-slate-800">Unassigned</p>
-                                                <p className="mt-1 text-xs text-slate-600">
-                                                    You can create this job and will see it in your list as <span className="font-semibold">read-only</span> until a manager assigns it
-                                                    {user?.name ? ` (created as ${user.name})` : ""}.
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ) : canAssignTechnician ? (
-                                    <>
-                                        <div className="flex items-end">
-                                            <Button variant="ghost" size="sm" type="button" className="h-9 px-3 text-[11px] bg-purple-100 text-purple-700 hover:bg-purple-200 uppercase tracking-wider font-bold rounded w-full" onClick={() => handleSuggestTechnician(formData.issue || "")} disabled={isSuggesting || lookupFailed}>
-                                                {isSuggesting ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Sparkles className="w-3 h-3 mr-1" />} AI Assign
-                                            </Button>
-                                        </div>
-                                        {lookupFailed ? (
-                                            <div className="sm:col-span-2 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
-                                                Technician list could not be loaded. Check your connection or assignment permission, then retry.
-                                            </div>
-                                        ) : (
-                                            <TechnicianPicker
-                                                users={technicianUsers}
-                                                ticketType={ticketType}
-                                                issue={formData.issue}
-                                                assignedTechnicianId={formData.assignedTechnicianId}
-                                                assistedByIds={selectedAssistedBy}
-                                                onAssignedChange={(id, name) => setFormData({ ...formData, assignedTechnicianId: id ?? undefined, technician: name })}
-                                                onAssistedChange={setSelectedAssistedBy}
-                                            />
-                                        )}
-                                    </>
-                                ) : (
-                                    <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
-                                        <div className="flex items-start gap-3">
-                                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-200 text-slate-600">
-                                                <User className="h-5 w-5" />
-                                            </div>
-                                            <div>
-                                                <p className="text-sm font-bold text-slate-800">Unassigned</p>
-                                                <p className="mt-1 text-xs text-slate-600">A manager can assign a technician later. You do not have assignment permission.</p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {activeStep === 5 && (
-                        <div className="space-y-4">
-                            <h4 className="flex items-center gap-2 rounded-xl border border-slate-100 bg-white p-2 text-sm font-bold uppercase tracking-wider text-slate-700 shadow-sm sm:bg-slate-50 sm:shadow-none">
-                                <CheckCircle2 className="w-4 h-4 text-blue-600" /> Review Before Create
-                            </h4>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                                <div className="rounded-xl border border-slate-100 bg-white p-3">
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Job Type</div>
-                                    <div className="font-semibold text-slate-800">{selectedTicket?.label || "Full TV"}</div>
-                                </div>
-                                <div className="rounded-xl border border-slate-100 bg-white p-3">
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Customer</div>
-                                    <div className="font-semibold text-slate-800">{formData.customer || "Missing"}</div>
-                                    <div className="text-xs text-slate-500">{formData.customerPhone || "No phone"}</div>
-                                </div>
-                                <div className="rounded-xl border border-slate-100 bg-white p-3">
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Device / Work</div>
-                                    <div className="font-semibold text-slate-800">{isPanelBatch ? `Panel Batch (${totalPanelPieces} pcs)` : formData.device || "Missing"}</div>
-                                    <div className="text-xs text-slate-500 line-clamp-2">{isPanelBatch ? validPanelItems.map(p => p.panelModel).join(", ") : formData.issue || "No problem note"}</div>
-                                </div>
-                                <div className="rounded-xl border border-slate-100 bg-white p-3">
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Assign</div>
-                                    <div className="font-semibold text-slate-800">{assignedName}</div>
-                                    <div className="text-xs text-slate-500">Priority: {formData.priority || "Medium"}</div>
-                                </div>
-                            </div>
-                            {missingParts.length > 0 && (
-                                <div className="rounded-xl border border-orange-100 bg-orange-50/50 p-3">
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-orange-600">Missing Parts</div>
-                                    <div className="text-sm font-medium text-orange-800">{missingParts.join(", ")}</div>
-                                </div>
-                            )}
-                            {receivedAccessories.length > 0 && (
-                                <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-3">
-                                    <div className="text-[10px] font-bold uppercase tracking-wider text-blue-600">Received Accessories</div>
-                                    <div className="text-sm font-medium text-blue-800">{receivedAccessories.join(", ")}</div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {getStepMessage() && (
-                        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">
-                            {getStepMessage()}
-                        </div>
-                    )}
-                </div>
-
-                <SheetFooter className="absolute bottom-0 left-0 right-0 z-10 flex flex-row items-center justify-between gap-2 border-t border-slate-200 bg-white/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-10px_40px_rgba(0,0,0,0.06)] backdrop-blur sm:gap-3 sm:border-slate-100 sm:bg-white/90">
-                    <Button variant="outline" onClick={onClose} className="hidden rounded-xl border-slate-200 bg-white sm:inline-flex">Cancel</Button>
-                    <div className="flex w-full items-center gap-2 sm:w-auto">
-                        {activeStep > 0 && (
-                            <Button variant="outline" onClick={goBack} className="h-12 min-w-16 rounded-xl border-slate-200 bg-white px-3 sm:h-10 sm:min-w-0">
-                                <ArrowLeft className="w-4 h-4 sm:mr-2" /><span className="hidden sm:inline">Back</span>
-                            </Button>
-                        )}
-                        {!isLastStep ? (
-                            <Button onClick={goNext} disabled={!canGoNext} className="h-12 flex-1 rounded-xl bg-blue-600 px-7 font-bold tracking-wide shadow-md hover:bg-blue-700 sm:h-10 sm:flex-none">
-                                {isCorporateMode ? "Open B2B Workspace" : activeStep === 0 ? "Continue to customer" : activeStep === 1 ? "Continue to device" : activeStep === 2 ? "Continue to parts" : activeStep === 3 ? "Continue to assign" : "Continue to review"} <ArrowRight className="ml-2 h-4 w-4" />
-                            </Button>
-                        ) : (
-                            <Button onClick={handleCreate} disabled={createMutation.isPending} className="h-12 flex-1 rounded-xl bg-blue-600 px-7 font-bold tracking-wide shadow-md hover:bg-blue-700 sm:h-10 sm:flex-none">
-                                {createMutation.isPending ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
-                                Create Job
-                            </Button>
-                        )}
+                        {currentStepMessage && <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">{currentStepMessage}</div>}
                     </div>
-                </SheetFooter>
-            </SheetContent>
-        </Sheet>
+
+                    <SheetFooter className="absolute bottom-0 left-0 right-0 z-10 flex flex-row items-center justify-between gap-2 border-t border-slate-200 bg-white/95 p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-[0_-10px_40px_rgba(0,0,0,0.06)] backdrop-blur sm:gap-3 sm:border-slate-100 sm:bg-white/90">
+                        <Button variant="outline" onClick={onClose} className="hidden rounded-xl sm:inline-flex">Cancel</Button>
+                        <div className="flex w-full gap-2 sm:w-auto">{step > 0 && <Button type="button" variant="outline" onClick={() => setStep((current) => Math.max(0, current - 1))} className="h-12 rounded-xl sm:h-10"><ArrowLeft className="h-4 w-4 sm:mr-2" /><span className="hidden sm:inline">Back</span></Button>}{!isLastStep ? <Button type="button" onClick={continueFlow} className="h-12 flex-1 rounded-xl bg-blue-600 px-7 font-bold hover:bg-blue-700 sm:h-10 sm:flex-none">Continue <ArrowRight className="ml-2 h-4 w-4" /></Button> : <Button type="button" onClick={create} disabled={pending} className="h-12 flex-1 rounded-xl bg-blue-600 px-7 font-bold hover:bg-blue-700 sm:h-10 sm:flex-none">{pending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />} Create job</Button>}</div>
+                    </SheetFooter>
+                </SheetContent>
+            </Sheet>
+            <Dialog open={duplicateSignals !== null} onOpenChange={(open) => !open && setDuplicateSignals(null)}><DialogContent><DialogHeader><DialogTitle>Existing shop work found</DialogTitle><DialogDescription>This shop already has active work that may match this intake. Confirm only after checking the job references.</DialogDescription></DialogHeader>{duplicateSignals && <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-600">{duplicateSignals.length ? `${duplicateSignals.length} duplicate signal${duplicateSignals.length === 1 ? "" : "s"} found.` : "An existing-work signal was found."}</div>}<DialogFooter><Button variant="outline" onClick={() => setDuplicateSignals(null)}>Back</Button><Button onClick={() => { setDuplicateSignals(null); technicianMutation.mutate(true); }}>Confirm create</Button></DialogFooter></DialogContent></Dialog>
+        </>
     );
+}
+
+function toExternalUnit(unit: IntakeUnit): ExternalIntakeUnit {
+    return {
+        ticketType: unit.ticketType,
+        device: unit.device.trim(),
+        modelNumber: unit.modelNumber.trim() || undefined,
+        serialNumber: unit.serialNumber.trim() || undefined,
+        issue: unit.issue.trim() || undefined,
+        screenSize: unit.screenSize.trim() || undefined,
+    };
+}
+
+function toB2bUnit(unit: IntakeUnit) {
+    return {
+        ...toExternalUnit(unit),
+        externalRef: unit.externalRef.trim() || undefined,
+    };
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+    return <div className="space-y-2"><Label>{label}</Label>{children}</div>;
+}
+
+function SectionTitle({ icon, title, copy }: { icon: React.ReactNode; title: string; copy: string }) {
+    return <div className="flex items-start gap-2 rounded-xl border border-blue-100 bg-blue-50 p-3 text-blue-800"><span className="mt-0.5">{icon}</span><div><div className="font-bold">{title}</div><p className="mt-0.5 text-xs text-blue-700">{copy}</p></div></div>;
+}
+
+function LanePicker({ lane, onLane }: { lane: Lane; onLane: (lane: Lane) => void }) {
+    return (
+        <section className="space-y-4">
+            <SectionTitle icon={<Wrench className="h-4 w-4" />} title="Who brought the work?" copy="Choose the right owner first. Customer, shop, and B2B accounts stay separate." />
+            <div className="grid grid-cols-2 gap-2">
+                <ModeButton active={lane === "customer"} icon={<User className="h-4 w-4" />} label="Customer" copy="Full TV repair" onClick={() => onLane("customer")} />
+                <ModeButton active={lane === "technician"} icon={<Wrench className="h-4 w-4" />} label="Technician" copy="Outside shop" onClick={() => onLane("technician")} />
+                <ModeButton active={lane === "corporate"} icon={<Building2 className="h-4 w-4" />} label="Corporate" copy="Select existing account" onClick={() => onLane("corporate")} />
+                <ModeButton active={lane === "limited_company"} icon={<Building2 className="h-4 w-4" />} label="Corporate Ltd." copy="Select existing account" onClick={() => onLane("limited_company")} />
+            </div>
+        </section>
+    );
+}
+
+function ModeButton({ active = false, icon, label, copy, onClick }: { active?: boolean; icon?: React.ReactNode; label: string; copy: string; onClick: () => void }) {
+    return <button type="button" onClick={onClick} className={`min-h-[76px] rounded-xl border p-3 text-left transition-colors ${active ? "border-blue-500 bg-blue-50 text-blue-800" : "border-slate-200 bg-white text-slate-700 hover:border-blue-300"}`}><div className="flex items-center gap-2 font-bold">{icon}{label}</div>{copy && <div className="mt-1 text-xs text-slate-500">{copy}</div>}</button>;
+}
+
+function CompactResults({ title, empty, items, onChoose }: { title: string; empty: string; items: Array<{ id: string; name: string; phone: string; shortAddress: string | null }>; onChoose: (item: { id: string; name: string; phone: string; shortAddress: string | null }) => void }) {
+    return <div className="rounded-xl border border-slate-200 bg-white p-2"><div className="px-1 pb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">{title}</div>{items.length ? <div className="space-y-1">{items.map((item) => <button key={item.id} type="button" onClick={() => onChoose(item)} className="w-full rounded-lg border border-slate-100 px-3 py-2 text-left hover:bg-blue-50"><div className="font-semibold text-slate-800">{item.name}</div><div className="mt-0.5 text-xs text-slate-500">{item.phone} · {compactAddress(item.shortAddress)}</div></button>)}</div> : <div className="px-1 py-2 text-xs text-slate-500">{empty}</div>}</div>;
+}
+
+function SelectedParty({ party, onChange }: { party: ExternalIntakePartyCard; onChange: () => void }) {
+    return <div className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3"><div><div className="font-bold text-emerald-900">{party.name}</div><div className="mt-1 text-xs text-emerald-800">{party.phone} · {compactAddress(party.shortAddress)}</div></div><Button type="button" variant="ghost" size="sm" onClick={onChange}>Change</Button></div>;
+}
+
+function UnitEditor({
+    unit,
+    index,
+    removable,
+    showExternalRef = false,
+    onChange,
+    onRemove,
+}: {
+    unit: IntakeUnit;
+    index: number;
+    removable: boolean;
+    showExternalRef?: boolean;
+    onChange: (patch: Partial<IntakeUnit>) => void;
+    onRemove: () => void;
+}) {
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white p-3">
+            <div className="mb-3 flex items-center justify-between">
+                <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Physical unit</div>
+                    <div className="font-bold text-slate-800">Unit {index + 1}</div>
+                </div>
+                {removable && (
+                    <Button type="button" variant="ghost" size="icon" onClick={onRemove} aria-label={`Remove unit ${index + 1}`}>
+                        <Trash2 className="h-4 w-4 text-rose-600" />
+                    </Button>
+                )}
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+                {TICKET_OPTIONS.map((option) => (
+                    <ModeButton
+                        key={option.value}
+                        active={unit.ticketType === option.value}
+                        icon={<option.icon className="h-4 w-4" />}
+                        label={option.label}
+                        copy=""
+                        onClick={() => onChange({ ticketType: option.value })}
+                    />
+                ))}
+            </div>
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Field label="Device *"><Input value={unit.device} onChange={(event) => onChange({ device: event.target.value })} placeholder="Device or item" /></Field>
+                <Field label="Model number"><Input value={unit.modelNumber} onChange={(event) => onChange({ modelNumber: event.target.value })} placeholder="Optional model" /></Field>
+                <Field label="Serial number"><Input value={unit.serialNumber} onChange={(event) => onChange({ serialNumber: event.target.value })} placeholder="Optional serial" /></Field>
+                <Field label="Screen size"><Input value={unit.screenSize} onChange={(event) => onChange({ screenSize: event.target.value })} placeholder="Optional size" /></Field>
+                {showExternalRef && (
+                    <Field label="External ref (optional)">
+                        <Input
+                            value={unit.externalRef}
+                            onChange={(event) => onChange({ externalRef: event.target.value })}
+                            placeholder="Account unit / corporate ref"
+                        />
+                    </Field>
+                )}
+            </div>
+            <div className="mt-3">
+                <Field label="Reported problem *">
+                    <Textarea value={unit.issue} onChange={(event) => onChange({ issue: event.target.value })} placeholder="Fault, repair request, or item condition" />
+                </Field>
+            </div>
+        </div>
+    );
+}
+
+function B2bAccountResults({
+    empty,
+    items,
+    onChoose,
+}: {
+    empty: string;
+    items: B2bAccountCard[];
+    onChoose: (item: B2bAccountCard) => void;
+}) {
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white p-2">
+            <div className="px-1 pb-2 text-[11px] font-bold uppercase tracking-wider text-slate-500">Existing accounts</div>
+            {items.length ? (
+                <div className="space-y-1">
+                    {items.map((item) => (
+                        <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => onChoose(item)}
+                            className="w-full rounded-lg border border-slate-100 px-3 py-2 text-left hover:bg-blue-50"
+                        >
+                            <div className="font-semibold text-slate-800">{item.companyName}</div>
+                            <div className="mt-0.5 text-xs text-slate-500">
+                                {item.shortCode} · {item.clientType === "limited_company" ? "Corporate Ltd." : "Corporate"}
+                            </div>
+                        </button>
+                    ))}
+                </div>
+            ) : (
+                <div className="px-1 py-2 text-xs text-slate-500">{empty}</div>
+            )}
+        </div>
+    );
+}
+
+function SelectedAccount({ account, onChange }: { account: B2bAccountCard; onChange: () => void }) {
+    return (
+        <div className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+            <div>
+                <div className="font-bold text-emerald-900">{account.companyName}</div>
+                <div className="mt-1 text-xs text-emerald-800">
+                    {account.shortCode} · {account.clientType === "limited_company" ? "Corporate Ltd." : "Corporate"}
+                </div>
+            </div>
+            <Button type="button" variant="ghost" size="sm" onClick={onChange}>Change</Button>
+        </div>
+    );
+}
+
+function ToggleGroup({ title, items, selected, onChange }: { title: string; items: readonly string[]; selected: string[]; onChange: (items: string[]) => void }) {
+    return <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="mb-2 text-sm font-semibold text-slate-800">{title}</div><div className="flex flex-wrap gap-2">{items.map((item) => { const active = selected.includes(item); return <button key={item} type="button" onClick={() => onChange(active ? selected.filter((value) => value !== item) : [...selected, item])} className={`rounded-lg border px-2 py-1 text-xs font-medium ${active ? "border-blue-500 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600"}`}>{item}</button>; })}</div></div>;
+}
+
+function ReviewCards({
+    lane,
+    customerName,
+    customerPhone,
+    customerDevice,
+    customerIssue,
+    selectedParty,
+    newPartyName,
+    selectedAccount,
+    mode,
+    units,
+    assignedName,
+    priority,
+    nextJobNumber,
+}: {
+    lane: Lane;
+    customerName: string;
+    customerPhone: string;
+    customerDevice: string;
+    customerIssue: string;
+    selectedParty: ExternalIntakePartyCard | null;
+    newPartyName: string;
+    selectedAccount: B2bAccountCard | null;
+    mode: TechnicianMode;
+    units: IntakeUnit[];
+    assignedName: string;
+    priority: string;
+    nextJobNumber?: string;
+}) {
+    if (isB2bLane(lane)) {
+        const refs = units.map((u) => u.externalRef.trim()).filter(Boolean);
+        return (
+            <div className="grid gap-3 sm:grid-cols-2">
+                <ReviewCard
+                    label="Account"
+                    value={selectedAccount ? `${selectedAccount.companyName} (${selectedAccount.shortCode})` : "Missing account"}
+                    copy={lane === "limited_company" ? "Corporate Ltd. · existing account only" : "Corporate · existing account only"}
+                />
+                <ReviewCard
+                    label="Mode"
+                    value={mode === "batch" ? `Batch · ${units.length} unit(s)` : "Single unit"}
+                    copy="Server assigns system job numbers"
+                />
+                <ReviewCard
+                    label="Work"
+                    value={units.map((unit) => unit.device || "Missing device").join(", ") || "Missing"}
+                    copy={units.map((unit) => unit.issue).filter(Boolean).join(" · ") || "No problem note"}
+                />
+                <ReviewCard
+                    label="References"
+                    value={refs.length ? `${refs.length} external ref(s)` : "No external refs"}
+                    copy={refs.length ? "Must be unique on this account" : "Optional; empty is allowed"}
+                />
+                <ReviewCard label="Assignment" value={assignedName || "Unassigned"} copy={nextJobNumber ? `Preview next: ${nextJobNumber}` : "No customer fields on this path"} />
+            </div>
+        );
+    }
+    const title = lane === "customer" ? customerName || "Customer" : selectedParty?.name || newPartyName || "Shop";
+    const detail = lane === "customer" ? customerPhone || "No phone" : mode === "batch" ? `${units.length} physical units` : units[0]?.device || "One physical unit";
+    const work = lane === "customer" ? customerDevice : units.map((unit) => unit.device || "Missing device").join(", ");
+    const issue = lane === "customer" ? customerIssue : units.map((unit) => unit.issue).filter(Boolean).join(" · ");
+    return (
+        <div className="grid gap-3 sm:grid-cols-2">
+            <ReviewCard label={lane === "customer" ? "Customer" : "Shop"} value={title} copy={detail} />
+            <ReviewCard label="Work" value={work || "Missing"} copy={issue || "No problem note"} />
+            <ReviewCard label="Assignment" value={assignedName || "Unassigned"} copy={lane === "customer" ? `Priority: ${priority}` : "External party stays separate from staff assignment"} />
+        </div>
+    );
+}
+
+function ReviewCard({ label, value, copy }: { label: string; value: string; copy: string }) {
+    return <div className="rounded-xl border border-slate-200 bg-white p-3"><div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</div><div className="mt-1 font-semibold text-slate-800">{value}</div><div className="mt-1 text-xs text-slate-500">{copy}</div></div>;
 }

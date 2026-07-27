@@ -26,6 +26,7 @@ interface EditJobDrawerProps {
     userRole?: string;
     canEdit: boolean;
     currencySymbol: string;
+    onOpenNgWorkflow: (job: JobTicket) => void;
 }
 
 export function EditJobDrawer({
@@ -35,7 +36,8 @@ export function EditJobDrawer({
     technicianUsers,
     userRole,
     canEdit,
-    currencySymbol
+    currencySymbol,
+    onOpenNgWorkflow,
 }: EditJobDrawerProps) {
     const queryClient = useQueryClient();
 
@@ -44,6 +46,7 @@ export function EditJobDrawer({
 
     const [isAdvanceDialogOpen, setIsAdvanceDialogOpen] = useState(false);
     const [isRollbackDialogOpen, setIsRollbackDialogOpen] = useState(false);
+    const protectedNgStatus = ["NG Review Pending", "Awaiting Customer Decision"].includes(job?.status || "");
 
     useEffect(() => {
         if (job && isOpen) {
@@ -234,20 +237,32 @@ export function EditJobDrawer({
                                 <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Original Issue</div>
                                 <div className="text-sm text-slate-600 mt-1">{editFormData.issue}</div>
                             </div>
-                            {((job as any)?.modelNumber || (job as any)?.tvSerialNumber || (job as any)?.serialNumber) && (
-                                <div className="flex flex-wrap gap-2 pt-1">
-                                    {((job as any)?.modelNumber || (job as any)?.tvSerialNumber) && (
-                                        <span className="inline-block rounded-full bg-blue-50 px-3 py-1 text-xs font-mono text-blue-700 border border-blue-100">
-                                            Model: {(job as any)?.modelNumber || (job as any)?.tvSerialNumber}
-                                        </span>
-                                    )}
-                                    {(job as any)?.serialNumber && (
-                                        <span className="inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-mono text-emerald-700 border border-emerald-100">
-                                            S/N: {(job as any)?.serialNumber}
-                                        </span>
-                                    )}
-                                </div>
-                            )}
+                            {(() => {
+                                const modelOnly = String((job as any)?.modelNumber || "").trim() || null;
+                                const serialOnly = String((job as any)?.serialNumber || "").trim() || null;
+                                const isCorp = Boolean((job as any)?.corporateClientId || (job as any)?.corporateChallanId);
+                                const unitSerial = isCorp ? (String((job as any)?.tvSerialNumber || "").trim() || null) : null;
+                                if (!modelOnly && !serialOnly && !unitSerial) return null;
+                                return (
+                                    <div className="flex flex-wrap gap-2 pt-1" data-testid="edit-job-identity">
+                                        {modelOnly && (
+                                            <span className="inline-block rounded-full bg-blue-50 px-3 py-1 text-xs font-mono text-blue-700 border border-blue-100">
+                                                Model: {modelOnly}
+                                            </span>
+                                        )}
+                                        {serialOnly && (
+                                            <span className="inline-block rounded-full bg-emerald-50 px-3 py-1 text-xs font-mono text-emerald-700 border border-emerald-100">
+                                                Serial number: {serialOnly}
+                                            </span>
+                                        )}
+                                        {unitSerial && (
+                                            <span className="inline-block rounded-full bg-violet-50 px-3 py-1 text-xs font-mono text-violet-700 border border-violet-100">
+                                                Unit serial: {unitSerial}
+                                            </span>
+                                        )}
+                                    </div>
+                                );
+                            })()}
                         </div>
 
                         <div className="space-y-3 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
@@ -261,7 +276,15 @@ export function EditJobDrawer({
                             </Label>
                             <div className="flex items-center justify-between bg-white p-3 rounded-xl border border-blue-200 shadow-sm">
                                 <span className="font-bold text-lg text-slate-800">{editFormData.status}</span>
-                                {editFormData.status !== 'Completed' && editFormData.status !== 'Cancelled' && (
+                                {protectedNgStatus ? (
+                                    <Button
+                                        onClick={() => { onClose(); if (job) onOpenNgWorkflow(job); }}
+                                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold tracking-wide shadow-md"
+                                        type="button"
+                                    >
+                                        Open NG Workflow <ArrowRight className="w-4 h-4 ml-2" />
+                                    </Button>
+                                ) : editFormData.status !== 'Completed' && editFormData.status !== 'Cancelled' && (
                                     <Button
                                         onClick={() => setIsAdvanceDialogOpen(true)}
                                         className="bg-blue-600 hover:bg-blue-700 text-white font-bold tracking-wide shadow-md"
@@ -341,6 +364,11 @@ export function EditJobDrawer({
                         }}
                         onSetOutcome={(outcome, reason) => {
                             outcomeMutation.mutate({ id: job.id, outcome, reason });
+                        }}
+                        onReportNg={() => {
+                            setIsAdvanceDialogOpen(false);
+                            onClose();
+                            onOpenNgWorkflow(job);
                         }}
                         isPending={advanceStatusMutation.isPending || outcomeMutation.isPending}
                     />

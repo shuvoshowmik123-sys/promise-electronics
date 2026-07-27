@@ -1,6 +1,11 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
+import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+    buildNavigateAdminTabPath,
+    isAdminWorkspaceTabActive,
+} from "@/lib/admin-workspace-routing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +18,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { inventoryApi, jobTicketsApi, posTransactionsApi, settingsApi, adminCustomersApi, drawerApi, publicAreaMapApi } from "@/lib/api";
 import { toast } from "sonner";
 import { CartItem, LinkedJobCharge, TransactionData, PAYMENT_METHODS, parseImages, parseTransactionForReprint } from "./pos/pos-types";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 const CustomerDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.CustomerDialog })));
 const JobLinkDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.JobLinkDialog })));
 const InventoryDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.InventoryDialog })));
@@ -52,6 +58,7 @@ interface PosTabProps {
 }
 
 export default function PosTab({ initialSearchQuery, initialTransactionId, onSearchConsumed }: PosTabProps = {}) {
+    const [, setLocation] = useLocation();
     const queryClient = useQueryClient();
     const [isMobile, setIsMobile] = useState(false);
     const { user } = useAdminAuth();
@@ -108,7 +115,11 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     // ── Data Queries ──
     const { data: products, isLoading: productsLoading } = useQuery({ queryKey: ["products"], queryFn: inventoryApi.getAll });
     const { data: inventoryItems, isLoading: inventoryLoading } = useQuery({ queryKey: ["inventory"], queryFn: inventoryApi.getAll });
-    const { data: jobTickets, isLoading: jobsLoading } = useQuery({ queryKey: ["jobTickets"], queryFn: () => jobTicketsApi.getAll() });
+    // Purpose-built billable jobs endpoint — avoid unbounded/truncated job list for POS.
+    const { data: billableJobsRaw, isLoading: jobsLoading } = useQuery({
+        queryKey: ["jobTickets", "ready-for-billing"],
+        queryFn: () => jobTicketsApi.getReadyForBilling(),
+    });
     const { data: posTransactions } = useQuery({ queryKey: ["pos-transactions"], queryFn: () => posTransactionsApi.getAll() });
     const { data: settings } = useQuery({ queryKey: ["settings"], queryFn: settingsApi.getAll });
     const { data: customers, isLoading: customersLoading } = useQuery({ queryKey: ["admin-customers"], queryFn: adminCustomersApi.getAll });
@@ -128,8 +139,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     });
     const lastDrawerSession = (recentDrawerHistory as any)?.items?.[0] ?? null;
 
-    const jobsList = Array.isArray(jobTickets) ? jobTickets : (jobTickets?.items || []);
-    const billableJobs = jobsList.filter((job: any) => ["Completed", "Delivered", "Ready for Delivery"].includes(job.status));
+    const billableJobs = Array.isArray(billableJobsRaw) ? billableJobsRaw : [];
     const serviceItems = inventoryItems?.filter((item: any) => item.itemType === "service") || [];
 
     // ── Helpers ──
@@ -217,17 +227,36 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
         }
     }, [isMobile, mobileCartOpen, showPaymentReview, isCustomerDialogOpen, isJobDialogOpen, isInventoryDialogOpen, showSuccessDialog, showInvoicePreview, showReceiptPreview, showHistoryDialog, showRefundDialog, drawerModalType]);
 
-    // Close mobile-only surfaces on tab/hash change so POS cart doesn't cover other tabs
+    // Close mobile cart/payment-review when leaving POS via any workspace navigation path.
+    // Wouter emits custom "pushState"/"replaceState" events (see wouter use-browser-location);
+    // hashchange covers the temporary legacy bridge; popstate covers browser Back/Forward.
     useEffect(() => {
-        const onHash = () => {
+        const closeTransientIfLeftPos = () => {
             if (!isMobile) return;
-            if (!window.location.hash.includes('pos')) {
+            const onPos = isAdminWorkspaceTabActive(
+                "pos",
+                window.location.pathname,
+                window.location.search,
+                window.location.hash,
+            );
+            if (!onPos) {
                 setMobileCartOpen(false);
                 setShowPaymentReview(false);
             }
         };
-        window.addEventListener("hashchange", onHash);
-        return () => window.removeEventListener("hashchange", onHash);
+
+        closeTransientIfLeftPos();
+
+        // Event names match wouter's patched History API notifications.
+        const navEvents = ["hashchange", "popstate", "pushState", "replaceState"] as const;
+        for (const eventName of navEvents) {
+            window.addEventListener(eventName, closeTransientIfLeftPos);
+        }
+        return () => {
+            for (const eventName of navEvents) {
+                window.removeEventListener(eventName, closeTransientIfLeftPos);
+            }
+        };
     }, [isMobile]);
 
     const posDialogOpenRef = useRef(false);
@@ -510,14 +539,14 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
         <div className="bg-gradient-to-br from-indigo-50 to-violet-50 p-3 rounded-xl border border-indigo-100">
             <p className="text-xs font-bold text-indigo-700 mb-2 flex items-center gap-1"><Link className="w-3 h-3" /> Linked Jobs ({linkedJobCharges.length})</p>
             {linkedJobCharges.map(charge => {
-                const job = jobsList?.find((j: any) => j.id === charge.jobId);
+                const job = billableJobs?.find((j: any) => j.id === charge.jobId) as any;
                 const svcActive = job?.serviceExpiryDate && new Date(job.serviceExpiryDate) > new Date();
                 const partsActive = job?.partsExpiryDate && new Date(job.partsExpiryDate) > new Date();
                 const hasWarranty = job && (job.serviceWarrantyDays !== undefined || job.partsWarrantyDays !== undefined || job.serviceExpiryDate || job.partsExpiryDate);
                 return (
                     <div key={charge.jobId} className="mb-3 pb-3 border-b border-indigo-100 last:border-b-0 last:pb-0 last:mb-0">
                         <div className="flex justify-between text-xs text-indigo-600 mb-1">
-                            <span className="font-medium font-mono">{charge.jobId}</span>
+                            <span className="font-medium font-mono">{getSafeJobDisplayRef({ id: charge.jobId, corporateJobNumber: (job as any)?.corporateJobNumber })}</span>
                             <Button variant="ghost" size="icon" className="h-5 w-5 text-indigo-400 hover:text-red-500 rounded-full hover:bg-red-50" onClick={() => handleJobSelection(charge.jobId, false)}><Trash2 className="h-3 w-3" /></Button>
                         </div>
                         <div className="text-[10px] text-indigo-500 mb-2">
@@ -632,7 +661,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                 type="button"
                                 className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-950 text-white shadow-sm active:scale-95"
                                 onClick={() => {
-                                    window.location.hash = "dashboard";
+                                    setLocation(buildNavigateAdminTabPath("dashboard"));
                                 }}
                                 aria-label="Back"
                             >

@@ -21,7 +21,9 @@ import {
     workLocationRepo,
 } from '../repositories/index.js';
 import { pushService } from '../pushService.js';
-import { requireAdminAuth } from './middleware/auth.js';
+import { requireAdminAuth, requireGranularPermission } from './middleware/auth.js';
+
+const mobileAttendanceCheckIn = requireGranularPermission('attendance.checkIn');
 import {
     buildWorkStatusBanner,
     canAdvanceMobileJob,
@@ -29,6 +31,23 @@ import {
     sortMobileJobs,
 } from '../lib/mobile-workforce.js';
 import { jobService } from '../services/job.service.js';
+import {
+    createRetailServiceRequest,
+    parseIdempotencyKeyHeader,
+    IntakeError,
+} from '../services/retail-intake.service.js';
+import {
+    assertNoWorkflowForge,
+    WorkflowManagedError,
+    SERVICE_REQUEST_WORKFLOW_MANAGED,
+} from '../services/service-request-mutation.guard.js';
+import {
+    isConfidentOutsideStatus,
+    resolveAttendanceWorkLocation,
+    snapshotFieldsFromLocation,
+} from '../services/attendance-location.service.js';
+import { getAttendanceDateDhaka } from '../services/attendance-day.service.js';
+import { AttendanceDuplicateDayError } from '../repositories/attendance.repository.js';
 
 const router = Router();
 
@@ -49,6 +68,7 @@ const attendancePayloadSchema = locationPayloadSchema.extend({
 const mobileJobStatusSchema = z.object({
     status: z.string().min(1),
     note: z.string().max(1000).optional(),
+    testingConfirmed: z.boolean().optional(),
 });
 
 const mobileJobNoteSchema = z.object({
@@ -72,14 +92,15 @@ const mobileServiceRequestListQuerySchema = z.object({
     limit: z.coerce.number().int().min(1).max(100).optional().default(20),
 });
 
+// Aligned with INTAKE_PAYLOAD_LIMITS (01D) — service still re-validates.
 const mobileQuickServiceRequestSchema = z.object({
-    customerName: z.string().min(1).max(255),
-    phone: z.string().min(6).max(50),
-    brand: z.string().min(1).max(255),
-    primaryIssue: z.string().min(1).max(500),
+    customerName: z.string().min(2).max(120),
+    phone: z.string().min(10).max(30),
+    brand: z.string().min(1).max(80),
+    primaryIssue: z.string().min(1).max(300),
     requestIntent: z.enum(['quote', 'repair']).default('repair'),
     serviceMode: z.enum(['pickup', 'service_center']).default('service_center'),
-    notes: z.string().max(1000).optional(),
+    notes: z.string().max(2000).optional(),
 });
 
 const mobileServiceRequestAdvanceSchema = z.object({
@@ -132,23 +153,7 @@ async function withSchemaFallback<T>(
 
 async function resolveAssignedWorkLocation(user: schema.User): Promise<schema.WorkLocation | null> {
     try {
-        if (user.defaultWorkLocationId) {
-            const direct = await workLocationRepo.getWorkLocation(user.defaultWorkLocationId);
-            if (direct) {
-                return direct;
-            }
-        }
-
-        const activeLocations = await workLocationRepo.getActiveWorkLocations();
-
-        if (user.storeId) {
-            const storeLocation = activeLocations.find((location) => location.storeId === user.storeId);
-            if (storeLocation) {
-                return storeLocation;
-            }
-        }
-
-        return activeLocations.length === 1 ? activeLocations[0] : null;
+        return await resolveAttendanceWorkLocation(user);
     } catch (error) {
         if (isMissingSchemaDependency(error)) {
             console.warn('[Mobile Bootstrap] Work location schema unavailable, continuing without location.');
@@ -365,10 +370,10 @@ function buildAttendanceTimeline(record: schema.AttendanceRecord | null, locatio
         {
             label: 'Check-in captured',
             value: record.checkInTime?.toISOString() ?? null,
-            detail: record.checkInGeofenceStatus === 'outside'
+            detail: isConfidentOutsideStatus(record.checkInGeofenceStatus)
                 ? `Outside ${location?.name || 'assigned branch'}`
                 : `Inside ${location?.name || 'assigned branch'}`,
-            tone: record.checkInGeofenceStatus === 'outside' ? 'warning' : 'success',
+            tone: isConfidentOutsideStatus(record.checkInGeofenceStatus) ? 'warning' : 'success',
         },
     ];
 
@@ -376,10 +381,10 @@ function buildAttendanceTimeline(record: schema.AttendanceRecord | null, locatio
         timeline.push({
             label: 'Check-out captured',
             value: record.checkOutTime.toISOString(),
-            detail: record.checkOutGeofenceStatus === 'outside'
+            detail: isConfidentOutsideStatus(record.checkOutGeofenceStatus)
                 ? `Outside ${location?.name || 'assigned branch'}`
                 : `Inside ${location?.name || 'assigned branch'}`,
-            tone: record.checkOutGeofenceStatus === 'outside' ? 'warning' : 'success',
+            tone: isConfidentOutsideStatus(record.checkOutGeofenceStatus) ? 'warning' : 'success',
         });
     }
 
@@ -443,7 +448,7 @@ router.get('/api/mobile/bootstrap', requireAdminAuth, async (req: Request, res: 
             ),
             withSchemaFallback(
                 'attendance records',
-                () => attendanceRepo.getTodayAttendanceForUser(user.id, new Date().toISOString().split('T')[0]),
+                () => attendanceRepo.getTodayAttendanceForUser(user.id, getAttendanceDateDhaka()),
                 null,
             ),
             withSchemaFallback(
@@ -512,11 +517,11 @@ router.get('/api/mobile/bootstrap', requireAdminAuth, async (req: Request, res: 
     }
 });
 
-router.get('/api/mobile/attendance/status', requireAdminAuth, async (req: Request, res: Response) => {
+router.get('/api/mobile/attendance/status', requireAdminAuth, mobileAttendanceCheckIn, async (req: Request, res: Response) => {
     try {
         const user = getCurrentUser(req);
         const location = await resolveAssignedWorkLocation(user);
-        const today = new Date().toISOString().split('T')[0];
+        const today = getAttendanceDateDhaka();
         const record = await attendanceRepo.getTodayAttendanceForUser(user.id, today);
 
         let geofence = null;
@@ -541,7 +546,7 @@ router.get('/api/mobile/attendance/status', requireAdminAuth, async (req: Reques
             geofence,
             workStatus: banner,
             requiresAssignment: !location,
-            reasonRequired: geofence?.status === 'outside' || false,
+            reasonRequired: isConfidentOutsideStatus(geofence?.status) || false,
             distanceMeters: geofence?.distanceMeters ?? record?.checkInDistanceMeters ?? 0,
             todayTimeline: buildAttendanceTimeline(record ?? null, location),
         });
@@ -551,7 +556,7 @@ router.get('/api/mobile/attendance/status', requireAdminAuth, async (req: Reques
     }
 });
 
-router.post('/api/mobile/attendance/check-in', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/mobile/attendance/check-in', requireAdminAuth, mobileAttendanceCheckIn, async (req: Request, res: Response) => {
     try {
         const payload = attendancePayloadSchema.safeParse(req.body);
         if (!payload.success) {
@@ -569,14 +574,14 @@ router.post('/api/mobile/attendance/check-in', requireAdminAuth, async (req: Req
             return res.status(400).json({ error: 'No work location assigned for this user' });
         }
 
-        const today = new Date().toISOString().split('T')[0];
+        const today = getAttendanceDateDhaka();
         const existing = await attendanceRepo.getTodayAttendanceForUser(user.id, today);
         if (existing) {
             return res.status(400).json({ error: 'Already checked in today', record: existing });
         }
 
         const geofence = evaluateGeofence(workLocation, payload.data);
-        if (geofence.status === 'outside' && !payload.data.reason?.trim()) {
+        if (isConfidentOutsideStatus(geofence.status) && !payload.data.reason?.trim()) {
             return res.status(400).json({ error: 'Reason is required for off-site attendance' });
         }
 
@@ -595,9 +600,10 @@ router.post('/api/mobile/attendance/check-in', requireAdminAuth, async (req: Req
             deviceId: payload.data.deviceId || null,
             date: today,
             notes: payload.data.notes?.trim() || null,
+            ...snapshotFieldsFromLocation(workLocation, 'checkIn'),
         });
 
-        if (geofence.status === 'outside') {
+        if (isConfidentOutsideStatus(geofence.status)) {
             await notifySuperAdminsAboutOffsiteAttendance({
                 actor: user,
                 workLocation,
@@ -614,12 +620,15 @@ router.post('/api/mobile/attendance/check-in', requireAdminAuth, async (req: Req
             workStatus: buildWorkStatusBanner(record, workLocation, geofence),
         });
     } catch (error) {
+        if (error instanceof AttendanceDuplicateDayError) {
+            return res.status(409).json({ error: error.message, code: error.code });
+        }
         console.error('Failed to check in from mobile:', error);
         res.status(500).json({ error: 'Failed to check in' });
     }
 });
 
-router.post('/api/mobile/attendance/check-out', requireAdminAuth, async (req: Request, res: Response) => {
+router.post('/api/mobile/attendance/check-out', requireAdminAuth, mobileAttendanceCheckIn, async (req: Request, res: Response) => {
     try {
         const payload = attendancePayloadSchema.safeParse(req.body);
         if (!payload.success) {
@@ -637,7 +646,7 @@ router.post('/api/mobile/attendance/check-out', requireAdminAuth, async (req: Re
             return res.status(400).json({ error: 'No work location assigned for this user' });
         }
 
-        const today = new Date().toISOString().split('T')[0];
+        const today = getAttendanceDateDhaka();
         const existing = await attendanceRepo.getTodayAttendanceForUser(user.id, today);
 
         if (!existing) {
@@ -649,7 +658,7 @@ router.post('/api/mobile/attendance/check-out', requireAdminAuth, async (req: Re
         }
 
         const geofence = evaluateGeofence(workLocation, payload.data);
-        if (geofence.status === 'outside' && !payload.data.reason?.trim()) {
+        if (isConfidentOutsideStatus(geofence.status) && !payload.data.reason?.trim()) {
             return res.status(400).json({ error: 'Reason is required for off-site attendance' });
         }
 
@@ -666,9 +675,10 @@ router.post('/api/mobile/attendance/check-out', requireAdminAuth, async (req: Re
             notes: payload.data.notes?.trim()
                 ? appendTimelineEntry(existing.notes, `[Check-out note] ${payload.data.notes.trim()}`)
                 : existing.notes,
+            ...snapshotFieldsFromLocation(workLocation, 'checkOut'),
         });
 
-        if (geofence.status === 'outside') {
+        if (isConfidentOutsideStatus(geofence.status)) {
             await notifySuperAdminsAboutOffsiteAttendance({
                 actor: user,
                 workLocation,
@@ -697,7 +707,7 @@ router.get('/api/mobile/action-queue', requireAdminAuth, async (req: Request, re
             return;
         }
 
-        const today = new Date().toISOString().split('T')[0];
+        const today = getAttendanceDateDhaka();
         const [serviceRequests, orders, attendanceRecords, workLocations] = await Promise.all([
             serviceRequestRepo.getAllServiceRequests(),
             orderRepo.getAllOrders(),
@@ -741,17 +751,21 @@ router.get('/api/mobile/action-queue', requireAdminAuth, async (req: Request, re
         });
 
         const attendanceExceptions = attendanceRecords
-            .filter((record) => record.checkInGeofenceStatus === 'outside' || record.checkOutGeofenceStatus === 'outside')
+            .filter((record) =>
+                isConfidentOutsideStatus(record.checkInGeofenceStatus) ||
+                isConfidentOutsideStatus(record.checkOutGeofenceStatus),
+            )
             .map((record) => {
+                const outOff = isConfidentOutsideStatus(record.checkOutGeofenceStatus);
                 const distanceMeters = Math.round(
-                    record.checkOutGeofenceStatus === 'outside'
+                    outOff
                         ? Number(record.checkOutDistanceMeters || 0)
                         : Number(record.checkInDistanceMeters || 0)
                 );
-                const reason = record.checkOutGeofenceStatus === 'outside'
+                const reason = outOff
                     ? record.checkOutReason
                     : record.checkInReason;
-                const timestamp = record.checkOutGeofenceStatus === 'outside' && record.checkOutTime
+                const timestamp = outOff && record.checkOutTime
                     ? record.checkOutTime.toISOString()
                     : record.checkInTime.toISOString();
                 const workLocation = record.workLocationId ? locationMap.get(record.workLocationId) : undefined;
@@ -798,21 +812,16 @@ router.get('/api/mobile/service-requests', requireAdminAuth, async (req: Request
             return res.status(400).json({ error: query.error.issues[0]?.message || 'Invalid service request query' });
         }
 
-        let items = await serviceRequestRepo.getAllServiceRequests();
-
-        if (query.data.stage) {
-            items = items.filter((request) => request.stage === query.data.stage);
-        }
-
-        if (query.data.quoteStatus) {
-            items = items.filter((request) => request.quoteStatus === query.data.quoteStatus);
-        }
-
-        const total = items.length;
+        const listed = await serviceRequestRepo.listServiceRequestsPaginated({
+            page: 1,
+            limit: query.data.limit,
+            stage: query.data.stage,
+            quoteStatus: query.data.quoteStatus,
+        });
 
         res.json({
-            items: items.slice(0, query.data.limit).map(summarizeServiceRequest),
-            total,
+            items: listed.items.map(summarizeServiceRequest),
+            total: listed.total,
         });
     } catch (error) {
         console.error('Failed to load mobile service requests:', error);
@@ -833,7 +842,12 @@ router.post('/api/mobile/service-requests/quick', requireAdminAuth, async (req: 
         }
 
         const servicePreference = payload.data.serviceMode === 'pickup' ? 'home_pickup' : 'service_center';
-        const created = await serviceRequestRepo.createServiceRequest({
+        const idempotencyKey = parseIdempotencyKeyHeader(req.headers['idempotency-key']);
+        const initialTrackingStatus =
+            servicePreference === 'service_center' ? 'Awaiting Drop-off'
+            : servicePreference === 'home_pickup' ? 'Arriving to Receive'
+            : 'Request Received';
+        const result = await createRetailServiceRequest({
             customerName: payload.data.customerName.trim(),
             phone: payload.data.phone.trim(),
             brand: payload.data.brand.trim(),
@@ -842,16 +856,24 @@ router.post('/api/mobile/service-requests/quick', requireAdminAuth, async (req: 
             serviceMode: payload.data.serviceMode,
             servicePreference,
             description: payload.data.notes?.trim() || undefined,
-            status: 'Pending',
-        } as any);
+            intakeSource: "mobile_admin",
+            idempotencyKey,
+            initialTrackingStatus,
+        });
 
-        const existingCustomer = await userRepo.getUserByPhoneNormalized(payload.data.phone.trim());
-        if (existingCustomer) {
-            await serviceRequestRepo.linkServiceRequestToCustomer(created.id, existingCustomer.id);
+        if (result.duplicateWindow) {
+            return res.status(202).json({
+                error: 'We already received a similar request. Our team will contact you soon.',
+                code: 'DUPLICATE_REQUEST_WINDOW',
+            });
         }
 
-        res.status(201).json(summarizeServiceRequest(created));
-    } catch (error) {
+        const created = result.serviceRequest;
+        res.status(result.idempotent ? 200 : 201).json(summarizeServiceRequest(created));
+    } catch (error: any) {
+        if (error instanceof IntakeError || error?.name === 'IntakeError') {
+            return res.status(error.status || 400).json({ error: error.message, code: error.code });
+        }
         console.error('Failed to create mobile quick service request:', error);
         res.status(500).json({ error: 'Failed to create service request' });
     }
@@ -862,6 +884,22 @@ router.post('/api/mobile/service-requests/:id/advance', requireAdminAuth, async 
         const user = getCurrentUser(req);
         if (!requireAnyRole(user, ['Super Admin', 'Manager'], res)) {
             return;
+        }
+
+        // Reject smuggled quote/workflow forge fields on advance body
+        const smuggle = { ...(req.body || {}) };
+        delete smuggle.nextStage;
+        delete smuggle.note;
+        try {
+            assertNoWorkflowForge(smuggle);
+        } catch (e) {
+            if (e instanceof WorkflowManagedError) {
+                return res.status(409).json({
+                    error: e.message,
+                    code: SERVICE_REQUEST_WORKFLOW_MANAGED,
+                });
+            }
+            throw e;
         }
 
         const payload = mobileServiceRequestAdvanceSchema.safeParse(req.body);
@@ -1078,19 +1116,72 @@ router.post('/api/mobile/jobs/:id/status', requireAdminAuth, async (req: Request
             return res.status(403).json({ error: 'You do not have access to update this job' });
         }
 
-        if (user.role !== 'Super Admin' && !canAdvanceMobileJob(job.status, payload.data.status)) {
-            return res.status(400).json({ error: `Mobile update from ${job.status} to ${payload.data.status} is not allowed` });
+        // JOBS-NG-02G: all roles including Super Admin respect NG current-state lock
+        const { assertJobNotNgProtected, isNgProtectedStatus, isNgWorkflowError } = await import('../services/job-ng-protected.js');
+        try {
+            assertJobNotNgProtected(job.status, "mobile status update");
+        } catch (err) {
+            if (isNgWorkflowError(err)) {
+                return res.status(err.status).json({ error: err.message, code: err.code });
+            }
+            throw err;
+        }
+        if (isNgProtectedStatus(payload.data.status)) {
+            return res.status(409).json({
+                error: 'Cannot set NG workflow status via mobile. Use the NG report review APIs.',
+                code: 'NG_WORKFLOW_LOCKED',
+            });
         }
 
-        const timelineEntry = `[${new Date().toISOString()}] ${user.name} updated status to ${payload.data.status}${payload.data.note ? `: ${payload.data.note}` : ''}`;
-        const updatedJob = await jobRepo.updateJobTicket(job.id, {
-            status: payload.data.status,
-            notes: appendTimelineEntry(job.notes, timelineEntry),
-            lastMobileUpdateAt: new Date(),
-        });
+        const {
+            normalizeMobileJobStatus,
+            isCanonicalJobStatus,
+            transitionJobStatus,
+            JobStatusTransitionError,
+        } = await import('../services/job-status-transition.service.js');
 
-        res.json(updatedJob);
-    } catch (error) {
+        const targetStatus = normalizeMobileJobStatus(payload.data.status);
+        if (!isCanonicalJobStatus(targetStatus)) {
+            return res.status(400).json({
+                error: `Unknown mobile job status: ${payload.data.status}`,
+                code: 'INVALID_JOB_STATUS',
+            });
+        }
+
+        if (user.role !== 'Super Admin' && !canAdvanceMobileJob(job.status, targetStatus)) {
+            return res.status(400).json({ error: `Mobile update from ${job.status} to ${targetStatus} is not allowed` });
+        }
+
+        // Explicit true only — never infer confirmation from target Ready
+        const testingConfirmed = payload.data.testingConfirmed === true;
+        const timelineEntry = `[${new Date().toISOString()}] ${user.name} updated status to ${targetStatus}${payload.data.note ? `: ${payload.data.note}` : ''}`;
+
+        try {
+            const transition = await transitionJobStatus({
+                jobId: job.id,
+                toStatus: targetStatus,
+                actor: { id: user.id, name: user.name, role: user.role },
+                reason: targetStatus === 'Ready' ? 'confirm_testing' : targetStatus === 'In Progress' && job.status === 'Testing'
+                    ? 'return_to_inspection'
+                    : 'mobile',
+                testingConfirmed: targetStatus === 'Ready' ? testingConfirmed : undefined,
+                extraPatch: {
+                    notes: appendTimelineEntry(job.notes, timelineEntry),
+                    lastMobileUpdateAt: new Date(),
+                },
+            });
+            res.json(transition.job);
+        } catch (err: any) {
+            if (err instanceof JobStatusTransitionError) {
+                return res.status(err.status).json({ error: err.message, code: err.code });
+            }
+            throw err;
+        }
+    } catch (error: any) {
+        const { isNgWorkflowError } = await import('../services/job-ng-protected.js');
+        if (isNgWorkflowError(error)) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
         console.error('Failed to update mobile job status:', error);
         res.status(500).json({ error: 'Failed to update job status' });
     }

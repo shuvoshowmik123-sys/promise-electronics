@@ -6,9 +6,10 @@ interface MediaViewerProps {
   initialIndex?: number;
   isOpen: boolean;
   onClose: () => void;
+  overlayClassName?: string;
 }
 
-export function MediaViewer({ urls, initialIndex = 0, isOpen, onClose }: MediaViewerProps) {
+export function MediaViewer({ urls, initialIndex = 0, isOpen, onClose, overlayClassName = "z-[100]" }: MediaViewerProps) {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
   // Reset to initialIndex whenever the modal opens or urls change
@@ -69,7 +70,7 @@ export function MediaViewer({ urls, initialIndex = 0, isOpen, onClose }: MediaVi
 
   return (
     <div
-      className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center"
+      className={`fixed inset-0 ${overlayClassName} bg-black/90 flex items-center justify-center`}
       onClick={onClose}
       data-testid="media-viewer-overlay"
     >

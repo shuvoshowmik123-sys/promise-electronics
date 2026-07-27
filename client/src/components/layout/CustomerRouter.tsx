@@ -24,6 +24,7 @@ const QuoteApprovalPage = lazy(() => import("@/pages/quote-approval"));
 const ShopHoldingPage = lazy(() => import("@/pages/shop-holding"));
 const TrackOrderPage = lazy(() => import("@/pages/track-order"));
 const TrackJobPage = lazy(() => import("@/pages/track-job"));
+const TrackExternalQrPage = lazy(() => import("@/pages/track-external-qr"));
 const SupportPage = lazy(() => import("@/pages/support"));
 const MyProfilePage = lazy(() => import("@/pages/my-profile"));
 const MyWarrantiesPage = lazy(() => import("@/pages/my-warranties"));
@@ -150,6 +151,10 @@ export function CustomerRouter() {
                                 {/* QR code deep-link: /track/:id — printed job tickets */}
                                 <Route path="/track/:id">
                                     <CustomerErrorBoundary fallbackTitle="Track Job Error"><TrackJobPage /></CustomerErrorBoundary>
+                                </Route>
+                                {/* External technician printed QR — opaque token, no self-service */}
+                                <Route path="/ext-track/:token">
+                                    <CustomerErrorBoundary fallbackTitle="Shop Track Error"><TrackExternalQrPage /></CustomerErrorBoundary>
                                 </Route>
                                 <Route path="/support">
                                     <CustomerErrorBoundary fallbackTitle="Support Error"><SupportPage /></CustomerErrorBoundary>

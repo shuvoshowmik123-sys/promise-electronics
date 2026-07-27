@@ -11,7 +11,7 @@ import { format, isWithinInterval } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { useToast } from "@/hooks/use-toast";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { corporateApi, adminUsersApi } from "@/lib/api";
+import { corporateApi, adminUsersApi, jobTicketsApi } from "@/lib/api";
 import { smartMatch } from "../shared/smartMatch";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { getSafeJobDisplayRef } from "@shared/job-display-utils";
@@ -42,6 +42,8 @@ import { ChallanOutPrint, type ChallanOutData } from "@/components/print/Challan
 import { ChallanHistoryTable } from "@/components/admin/corporate/ChallanHistoryTable";
 import { WarrantyClaimsTable } from "@/components/admin/corporate/WarrantyClaimsTable";
 import { CorporateBillsTable } from "@/components/admin/corporate/CorporateBillsTable";
+import { LtdBillingPresetEditor } from "@/components/admin/corporate/LtdBillingPresetEditor";
+import { LtdBillComposer } from "@/components/admin/corporate/LtdBillComposer";
 import { CorporateUsersTable } from "@/components/admin/corporate/CorporateUsersTable";
 import { EditJobDialog } from "@/components/admin/corporate/EditJobDialog";
 import { GenerateBillDialog } from "@/components/admin/corporate/GenerateBillDialog";
@@ -50,8 +52,18 @@ import { JobDetailsSheet } from "@/components/admin/corporate/JobDetailsSheet";
 import { CreateWarrantyClaimDialog } from "@/components/admin/corporate/CreateWarrantyClaimDialog";
 import { ChallanInWizard } from "@/components/admin/challan/ChallanInWizard";
 import { SlaTimer } from "@/components/admin/corporate/SlaTimer";
+import { FinalTestDialog } from "@/components/admin/workflow/FinalTestDialog";
 
 import { DashboardSkeleton, BentoCard, containerVariants, itemVariants, tableRowVariants } from "../shared";
+import { getJobModelDisplay } from "./jobs/jobIdentityDisplay";
+
+function corpModelLabel(job: { modelNumber?: string | null }) {
+    return getJobModelDisplay(job) || "—";
+}
+function corpUnitSerialLabel(job: { tvSerialNumber?: string | null }) {
+    const s = job.tvSerialNumber?.trim();
+    return s || "—";
+}
 
 interface CorporateRepairsTabProps {
     initialClientId?: string | null;
@@ -66,17 +78,42 @@ const isServiceWarrantyActive = (job: any) => {
     return new Date(job.warrantyExpiryDate) > new Date();
 };
 
+/** Safe legacy fallback during declaration transition (01A). Never treats Ready as Declared OK. */
+const jobDeclarationKey = (job: any): string | null => {
+    const d = job.corporateDeclaration || job.corporate_declaration;
+    if (d) return String(d).toLowerCase();
+    const s = String(job.status || "").trim().toLowerCase();
+    if (s === "checking") return "checking";
+    if (s === "declared ok" || s === "declared_ok") return "declared_ok";
+    if (s === "declared ng" || s === "declared not ok" || s === "declared_ng") return "declared_ng";
+    if (s === "received") return "received";
+    if (s === "pending") return "pending_hold";
+    return null;
+};
+
+const displayDeclaration = (job: any): string => {
+    const key = jobDeclarationKey(job);
+    if (key === "checking") return "Checking";
+    if (key === "declared_ok") return "Declared OK (intake)";
+    if (key === "declared_ng") return "Declared NG (intake)";
+    if (key === "received") return "Received";
+    if (key === "pending_hold") return "Pending hold";
+    return "—";
+};
+
 const matchesCockpitFilter = (job: any, filter: string) => {
     const status = job.status || "";
+    const decl = jobDeclarationKey(job);
     switch (filter) {
         case "received":
             return true;
         case "checking":
-            return ["Checking", "Diagnosing", "Repairing", "In Progress"].includes(status);
+            return decl === "checking" || ["Diagnosing", "Repairing", "In Progress"].includes(status);
         case "declared-ok":
-            return ["Declared OK", "Ready", "Delivered", "Completed"].includes(status) || job.initialStatus === "OK";
+            // Intake only — never Ready/Delivered/Completed
+            return decl === "declared_ok" || job.initialStatus === "OK";
         case "declared-not-ok":
-            return ["Declared NG", "Declared Not OK", "Cancelled"].includes(status) || job.initialStatus === "NG";
+            return decl === "declared_ng" || job.initialStatus === "NG";
         case "pending":
             return ["Pending", "Approval Requested", "Quote Sent", "Pending Parts"].includes(status);
         case "ready":
@@ -91,12 +128,19 @@ const matchesCockpitFilter = (job: any, filter: string) => {
             return isServiceWarrantyActive(job);
         case "crr":
             return ["warranty_claim", "repeat_repair"].includes(job.jobType) && !["Delivered", "Closed", "Cancelled"].includes(status);
+        case "testing":
+            return status === "Testing";
         default:
             return true;
     }
 };
 
-const displayJobStatus = (status?: string | null) => status === "Declared Not OK" ? "Declared NG" : status;
+const displayJobStatus = (status?: string | null) => {
+    if (status === "Declared Not OK") return "Declared NG";
+    if (status === "Declared OK") return "Declared OK (legacy status)";
+    if (status === "Checking") return "Checking (legacy status)";
+    return status;
+};
 
 const clientTypeOptions = [
     { value: "limited_company", label: "Limited Company" },
@@ -166,6 +210,7 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
     // Dialog States
     const [isDetailsOpen, setIsDetailsOpen] = useState(false);
     const [selectedJobForDetails, setSelectedJobForDetails] = useState<any>(null);
+    const [jobForFinalTest, setJobForFinalTest] = useState<any>(null);
     const [isBulkAssignOpen, setIsBulkAssignOpen] = useState(false);
     const [isGenerateBillOpen, setIsGenerateBillOpen] = useState(false);
     const [isEditJobOpen, setIsEditJobOpen] = useState(false);
@@ -299,8 +344,18 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
     const createChallanOutMutation = useMutation({
         mutationFn: async () => {
             if (!selectedClientId) throw new Error("Client ID missing");
-            const selectedJobObjects = jobs?.filter((j: any) => selectedJobs.includes(j.id));
-            const challanInId = selectedJobObjects?.[0]?.corporateChallanId || "unknown";
+            const selectedJobObjects = jobs?.filter((j: any) => selectedJobs.includes(j.id)) || [];
+            // Calm client gate — server remains authoritative (01B).
+            const blocked = selectedJobObjects.filter((j: any) => {
+                if (j.ticketType === "parts_only") return false;
+                return j.status !== "Ready";
+            });
+            if (blocked.length > 0) {
+                throw new Error(
+                    "Handover blocked: repairable items must be Ready (after final testing). Parts-only items may deliver without Ready.",
+                );
+            }
+            const challanInId = selectedJobObjects[0]?.corporateChallanId || undefined;
             return corporateApi.createChallanOut({
                 corporateClientId: selectedClientId,
                 challanInId: challanInId,
@@ -320,7 +375,7 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                 receiverName, receiverPhone,
                 items: selectedJobObjects.map((j: any) => ({
                     id: j.id, jobNo: getSafeJobDisplayRef(j), brand: (j.device || '').split(' ')[0] || "Unknown",
-                    model: j.device || "Unknown", serial: j.tvSerialNumber || "", problem: j.reportedDefect || "", status: j.status
+                    model: j.device || "Unknown", serial: j.tvSerialNumber || "", problem: j.reportedDefect || "", status: "Delivered"
                 }))
             });
             toast({ title: "Delivery Created" });
@@ -329,17 +384,26 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
             queryClient.invalidateQueries({ queryKey: ["corporateJobs"] });
             queryClient.invalidateQueries({ queryKey: ["corporateClient", selectedClientId] });
         },
-        onError: (err) => toast({ variant: "destructive", title: "Failed", description: err.message })
+        onError: (err: any) =>
+            toast({
+                variant: "destructive",
+                title: "Handover blocked",
+                description: err?.message || "Server rejected delivery. Status was not changed locally.",
+            }),
     });
 
+    /** Intake declaration only — never lifecycle Ready. */
     const updateSelectedStatusMutation = useMutation({
         mutationFn: async ({ status, jobIds }: { status: string; jobIds?: string[] }) => {
             const targetIds = jobIds || selectedJobs;
+            if (/^ready$/i.test(status)) {
+                throw new Error("Ready requires a recorded final test on a single Testing job.");
+            }
             await Promise.all(targetIds.map((id) => corporateApi.updateJobStatus(id, status)));
             return { status, count: targetIds.length };
         },
         onSuccess: ({ status, count }) => {
-            toast({ title: "Status Updated", description: `${count} item(s) marked ${status}.` });
+            toast({ title: "Declaration updated", description: `${count} item(s): ${status}.` });
             setSelectedJobs([]);
             queryClient.invalidateQueries({ queryKey: ["corporateJobs"] });
             queryClient.invalidateQueries({ queryKey: ["corporateClient", selectedClientId] });
@@ -424,7 +488,10 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                 job.id
             );
 
-            const matchesStatus = statusFilter === "all" || job.status === statusFilter;
+            const matchesStatus =
+                statusFilter === "all" ||
+                job.status === statusFilter ||
+                (statusFilter === "Testing" && job.status === "Testing");
             const matchesTechnician = technicianFilter === "all" || (technicianFilter === "unassigned" && !job.technician) || job.technician === technicianFilter;
             const matchesDate = !dateRange?.from || !job.createdAt ? true : isWithinInterval(new Date(job.createdAt), { start: dateRange.from, end: dateRange.to || dateRange.from });
             const matchesBilling =
@@ -513,6 +580,14 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
     const handleSelectedStatus = (status: string) => {
         if (selectedJobs.length === 0) {
             toast({ variant: "destructive", title: "Select Items", description: "Select one or more work items first." });
+            return;
+        }
+        if (/^ready$/i.test(status)) {
+            toast({
+                variant: "destructive",
+                title: "Bulk Ready disabled",
+                description: "Use Record final test on a single job that is in Testing.",
+            });
             return;
         }
         updateSelectedStatusMutation.mutate({ status });
@@ -895,8 +970,11 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                                                         >
                                                             <div className="flex items-center gap-2">
                                                                 <span className="font-mono text-[13px] font-black text-blue-700">#{job.corporateJobNumber || "N/A"}</span>
-                                                                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${job.status === "Ready" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : job.status === "Delivered" ? "bg-blue-50 text-blue-700 border-blue-200" : job.status === "Pending" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-slate-100 text-slate-700"}`}>
+                                                                <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${job.status === "Ready" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : job.status === "Testing" ? "bg-indigo-50 text-indigo-700 border-indigo-200" : job.status === "Delivered" ? "bg-blue-50 text-blue-700 border-blue-200" : job.status === "Pending" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-slate-100 text-slate-700"}`}>
                                                                     {displayJobStatus(job.status)}
+                                                                </Badge>
+                                                                <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-slate-50 text-slate-600 border-slate-200">
+                                                                    {displayDeclaration(job)}
                                                                 </Badge>
                                                                 <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${job.corporateBillId ? "bg-violet-50 text-violet-700 border-violet-200" : "bg-orange-50 text-orange-700 border-orange-200"}`}>
                                                                     {job.corporateBillId ? "Billed" : "Unbilled"}
@@ -904,14 +982,23 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                                                             </div>
                                                             <p className="mt-1 text-[13px] font-bold text-slate-900 truncate">{job.device || "Unknown device"}</p>
                                                             <p className="text-[11px] text-slate-500 truncate">{job.reportedDefect || "No defect reported"}</p>
-                                                            <div className="mt-1.5 flex items-center gap-3 text-[10px] text-slate-500">
-                                                                <span className="font-mono">{job.tvSerialNumber || "No serial"}</span>
-                                                                {job.batchTargetClearDate && (
-                                                                    <span className="font-bold text-slate-600">Batch {format(new Date(job.batchTargetClearDate), "dd MMM")}</span>
-                                                                )}
-                                                                {job.technician && (
-                                                                    <span className="flex items-center gap-1 font-medium"><Users className="h-2.5 w-2.5" />{job.technician}</span>
-                                                                )}
+                                                            <div className="mt-1.5 min-w-0 space-y-0.5 text-[10px] text-slate-500">
+                                                                <div className="truncate">
+                                                                    <span className="font-medium text-slate-400">Model </span>
+                                                                    <span className="font-semibold text-slate-700">{corpModelLabel(job)}</span>
+                                                                </div>
+                                                                <div className="truncate">
+                                                                    <span className="font-medium text-slate-400">Unit serial </span>
+                                                                    <span className="font-mono font-semibold text-slate-700">{corpUnitSerialLabel(job)}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-3">
+                                                                    {job.batchTargetClearDate && (
+                                                                        <span className="font-bold text-slate-600">Batch {format(new Date(job.batchTargetClearDate), "dd MMM")}</span>
+                                                                    )}
+                                                                    {job.technician && (
+                                                                        <span className="flex items-center gap-1 font-medium"><Users className="h-2.5 w-2.5" />{job.technician}</span>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                             {job.slaDeadline && <div className="mt-1.5"><SlaTimer deadline={job.slaDeadline} status={job.status} /></div>}
                                                         </button>
@@ -921,19 +1008,26 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                                                                     <MoreVertical className="h-3.5 w-3.5" />
                                                                 </Button>
                                                             </DropdownMenuTrigger>
-                                                            <DropdownMenuContent align="end" className="w-48">
+                                                            <DropdownMenuContent align="end" className="w-56">
                                                                 <DropdownMenuItem onClick={() => { setSelectedJobForDetails(job); setIsDetailsOpen(true); }}>
                                                                     <Eye className="mr-2 h-4 w-4" /> View Details
                                                                 </DropdownMenuItem>
                                                                 <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Checking", jobIds: [job.id] })}>
-                                                                    <Clock className="mr-2 h-4 w-4" /> Mark Checking
+                                                                    <Clock className="mr-2 h-4 w-4" /> Checking
                                                                 </DropdownMenuItem>
                                                                 <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Declared OK", jobIds: [job.id] })}>
-                                                                    <Check className="mr-2 h-4 w-4" /> Declare OK
+                                                                    <Check className="mr-2 h-4 w-4" /> Declared OK (intake)
                                                                 </DropdownMenuItem>
-                                                                <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Ready", jobIds: [job.id] })}>
-                                                                    <PackageCheck className="mr-2 h-4 w-4" /> Mark Ready
+                                                                <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Declared NG", jobIds: [job.id] })}>
+                                                                    <AlertTriangle className="mr-2 h-4 w-4" /> Declared NG (intake)
                                                                 </DropdownMenuItem>
+                                                                {job.status === "Testing" && (
+                                                                    <DropdownMenuItem
+                                                                        onClick={() => setJobForFinalTest(job)}
+                                                                    >
+                                                                        <PackageCheck className="mr-2 h-4 w-4" /> Record final test
+                                                                    </DropdownMenuItem>
+                                                                )}
                                                                 <DropdownMenuItem onClick={() => setSelectedJobForCrr(job)}>
                                                                     <RotateCcw className="mr-2 h-4 w-4" /> CRR / Reservice
                                                                 </DropdownMenuItem>
@@ -990,16 +1084,30 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                                                             </TableCell>
                                                             <TableCell>
                                                                 <div className="font-mono text-sm font-black text-blue-700">#{job.corporateJobNumber || "N/A"}</div>
-                                                                <div className="mt-1 text-xs text-slate-500">{job.tvSerialNumber || "No serial"}</div>
+                                                                <div className="mt-1 min-w-0 max-w-[200px] space-y-0.5 text-[11px] text-slate-500">
+                                                                    <div className="truncate">
+                                                                        <span className="font-medium text-slate-400">Model </span>
+                                                                        <span className="font-semibold text-slate-700">{corpModelLabel(job)}</span>
+                                                                    </div>
+                                                                    <div className="truncate">
+                                                                        <span className="font-medium text-slate-400">Unit serial </span>
+                                                                        <span className="font-mono font-semibold text-slate-700">{corpUnitSerialLabel(job)}</span>
+                                                                    </div>
+                                                                </div>
                                                             </TableCell>
                                                             <TableCell>
                                                                 <div className="font-bold text-slate-900">{job.device || "Unknown device"}</div>
                                                                 <div className="mt-1 max-w-[260px] truncate text-xs text-slate-500">{job.reportedDefect || "No defect reported"}</div>
                                                             </TableCell>
                                                             <TableCell>
-                                                                <Badge variant="outline" className={job.status === "Ready" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : job.status === "Delivered" ? "bg-blue-50 text-blue-700 border-blue-200" : job.status === "Pending" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-slate-100 text-slate-700"}>
-                                                                    {displayJobStatus(job.status)}
-                                                                </Badge>
+                                                                <div className="space-y-1">
+                                                                    <Badge variant="outline" className={job.status === "Ready" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : job.status === "Testing" ? "bg-indigo-50 text-indigo-700 border-indigo-200" : job.status === "Delivered" ? "bg-blue-50 text-blue-700 border-blue-200" : job.status === "Pending" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-slate-100 text-slate-700"}>
+                                                                        {displayJobStatus(job.status)}
+                                                                    </Badge>
+                                                                    <div className="text-[10px] text-slate-500 font-medium truncate max-w-[120px]" title={displayDeclaration(job)}>
+                                                                        Intake: {displayDeclaration(job)}
+                                                                    </div>
+                                                                </div>
                                                             </TableCell>
                                                             <TableCell className="text-xs">
                                                                 <div className="font-bold text-slate-700">{job.batchTargetClearDate ? format(new Date(job.batchTargetClearDate), "dd MMM") : "No target"}</div>
@@ -1027,19 +1135,23 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                                                                                 <MoreVertical className="h-4 w-4" />
                                                                             </Button>
                                                                         </DropdownMenuTrigger>
-                                                                        <DropdownMenuContent align="end" className="w-52">
+                                                                        <DropdownMenuContent align="end" className="w-56">
                                                                             <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Checking", jobIds: [job.id] })}>
-                                                                                <Clock className="mr-2 h-4 w-4" /> Mark Checking
+                                                                                <Clock className="mr-2 h-4 w-4" /> Checking
                                                                             </DropdownMenuItem>
                                                                             <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Declared OK", jobIds: [job.id] })}>
-                                                                                <Check className="mr-2 h-4 w-4" /> Declare OK
+                                                                                <Check className="mr-2 h-4 w-4" /> Declared OK (intake)
                                                                             </DropdownMenuItem>
                                                                             <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Declared NG", jobIds: [job.id] })}>
-                                                                                <AlertTriangle className="mr-2 h-4 w-4" /> Declare NG
+                                                                                <AlertTriangle className="mr-2 h-4 w-4" /> Declared NG (intake)
                                                                             </DropdownMenuItem>
-                                                                            <DropdownMenuItem onClick={() => updateSelectedStatusMutation.mutate({ status: "Ready", jobIds: [job.id] })}>
-                                                                                <PackageCheck className="mr-2 h-4 w-4" /> Mark Ready
-                                                                            </DropdownMenuItem>
+                                                                            {job.status === "Testing" && (
+                                                                                <DropdownMenuItem
+                                                                                    onClick={() => setJobForFinalTest(job)}
+                                                                                >
+                                                                                    <PackageCheck className="mr-2 h-4 w-4" /> Record final test
+                                                                                </DropdownMenuItem>
+                                                                            )}
                                                                             <DropdownMenuItem onClick={() => { setSelectedJobs([job.id]); setIsExtensionRequestOpen(true); }}>
                                                                                 <RotateCcw className="mr-2 h-4 w-4" /> Request Extension
                                                                             </DropdownMenuItem>
@@ -1123,7 +1235,11 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                             </div>
                         </TabsContent>
                         <TabsContent value="billing" className="m-0 flex-1 overflow-auto bg-slate-50/60 p-4">
-                            <CorporateBillsTable clientId={client?.id || ""} />
+                            <div className="flex flex-col gap-4">
+                                <LtdBillingPresetEditor clientId={client?.id || ""} clientType={client?.clientType} />
+                                <LtdBillComposer clientId={client?.id || ""} clientType={client?.clientType} />
+                                <CorporateBillsTable clientId={client?.id || ""} clientType={client?.clientType} />
+                            </div>
                         </TabsContent>
 
                         <TabsContent value="portal-access" className="m-0 flex-1 overflow-hidden bg-slate-50/60 p-4">
@@ -1467,7 +1583,16 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                                                     <TableCell className="font-mono font-medium text-blue-600">{job.corporateJobNumber}</TableCell>
                                                     <TableCell>
                                                         <div className="font-medium text-slate-900">{job.device}</div>
-                                                        <div className="text-xs text-slate-500 font-mono mt-0.5">{job.tvSerialNumber}</div>
+                                                        <div className="mt-0.5 min-w-0 max-w-[220px] space-y-0.5 text-[11px] text-slate-500">
+                                                            <div className="truncate">
+                                                                <span className="font-medium text-slate-400">Model </span>
+                                                                <span className="font-semibold text-slate-700">{corpModelLabel(job)}</span>
+                                                            </div>
+                                                            <div className="truncate">
+                                                                <span className="font-medium text-slate-400">Unit serial </span>
+                                                                <span className="font-mono font-semibold text-slate-700">{corpUnitSerialLabel(job)}</span>
+                                                            </div>
+                                                        </div>
                                                     </TableCell>
                                                     <TableCell className="max-w-[200px] truncate text-xs text-slate-600" title={job.reportedDefect || undefined}>
                                                         {job.reportedDefect || "No defect reported"}
@@ -1540,9 +1665,15 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
 
                                                     <div className="mb-4">
                                                         <h3 className="text-lg font-bold text-slate-800 leading-tight mb-1.5">{job.device}</h3>
-                                                        <div className="flex items-center gap-1.5 text-xs text-slate-500 font-mono bg-slate-50 w-fit px-2 py-1 rounded-md">
-                                                            <span className="font-bold tracking-widest text-slate-400">SN</span>
-                                                            {job.tvSerialNumber || "N/A"}
+                                                        <div className="min-w-0 space-y-1 text-xs text-slate-600 bg-slate-50 w-fit max-w-full px-2 py-1.5 rounded-md">
+                                                            <div className="truncate">
+                                                                <span className="font-medium text-slate-400">Model </span>
+                                                                <span className="font-semibold text-slate-800">{corpModelLabel(job)}</span>
+                                                            </div>
+                                                            <div className="truncate font-mono">
+                                                                <span className="font-sans font-medium text-slate-400">Unit serial </span>
+                                                                <span className="font-semibold text-slate-800">{corpUnitSerialLabel(job)}</span>
+                                                            </div>
                                                         </div>
                                                         {job.slaDeadline && (
                                                             <div className="mt-3">
@@ -1649,7 +1780,11 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                     </TabsContent>
 
                     <TabsContent value="billing" className="flex-1 lg:overflow-hidden p-4">
-                        <CorporateBillsTable clientId={client?.id || ""} />
+                        <div className="flex flex-col gap-4">
+                            <LtdBillingPresetEditor clientId={client?.id || ""} clientType={client?.clientType} />
+                            <LtdBillComposer clientId={client?.id || ""} clientType={client?.clientType} />
+                            <CorporateBillsTable clientId={client?.id || ""} clientType={client?.clientType} />
+                        </div>
                     </TabsContent>
 
                     <TabsContent value="portal-access" className="flex-1 overflow-hidden p-4">
@@ -1899,10 +2034,21 @@ export default function CorporateRepairsTab({ initialClientId, initialJobId, ini
                 job={selectedJobForDetails}
                 open={isDetailsOpen}
                 onOpenChange={setIsDetailsOpen}
+                onRecordFinalTest={(job) => setJobForFinalTest(job)}
                 onEditClick={() => {
                     setIsDetailsOpen(false);
                     setSelectedJobForEdit(selectedJobForDetails);
                     setTimeout(() => setIsEditJobOpen(true), 300);
+                }}
+            />
+            <FinalTestDialog
+                job={jobForFinalTest}
+                open={!!jobForFinalTest}
+                onOpenChange={(open) => { if (!open) setJobForFinalTest(null); }}
+                onComplete={({ status }) => {
+                    queryClient.invalidateQueries({ queryKey: ["corporateJobs"] });
+                    queryClient.invalidateQueries({ queryKey: ["corporateClient", selectedClientId] });
+                    setSelectedJobForDetails((current: any) => current ? { ...current, status } : current);
                 }}
             />
             <EditJobDialog

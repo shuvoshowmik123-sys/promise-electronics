@@ -10,7 +10,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { formatJourneyRef, labelJourneyFriendly, labelJourneyStage, labelJourneyStatus, labelNextAction, labelScheduleType } from "@/lib/customerRepairJourneyLabels";
+import {
+  isCustomerSafeEventTitle,
+  labelJourneyStatus,
+  labelNextAction,
+  labelScheduleType,
+  presentCustomerJourney,
+  safeCustomerTicketRef,
+} from "@/lib/customerRepairJourneyLabels";
+import { ServiceFeedbackCard } from "@/components/customer/ServiceFeedbackCard";
 
 type Sheet = "quote" | "schedule" | "reschedule" | "question" | null;
 
@@ -299,10 +307,16 @@ export default function MyRepairDetailPage() {
       {sheet === "question" && <QuestionForm busy={askQuestion.isPending} onSubmit={(question) => askQuestion.mutate(question)} />}
     </>
   );
-  const stageLabel = labelJourneyStage(detail.currentStage, t);
-  const friendlyLabel = labelJourneyFriendly(detail.currentStage, detail.customerFriendlyStatus, t);
-  const statusLabel = labelJourneyStatus(detail.currentStatus, stageLabel, t);
+  const presentation = presentCustomerJourney(
+    {
+      ...detail,
+      events: detail.events,
+    },
+    t,
+  );
+  const ticketRef = safeCustomerTicketRef(detail as { srTicketNumber?: string | null });
   const nextActionLabel = labelNextAction(detail.nextAction, detail.nextActionLabel, t, language);
+  const safeEvents = detail.events.filter((event) => isCustomerSafeEventTitle(event.title));
 
   return (
     <>
@@ -311,17 +325,35 @@ export default function MyRepairDetailPage() {
           <button type="button" onClick={() => setLocation("/my-repairs")} className="inline-flex h-10 items-center gap-2 rounded-full bg-white px-4 text-sm font-bold text-slate-600 shadow-sm">
             <ArrowLeft className="h-4 w-4" /> {t("journey.title")}
           </button>
+
           <section className="rounded-[2rem] bg-gradient-to-br from-slate-950 via-emerald-900 to-emerald-600 p-5 text-white shadow-xl shadow-emerald-100">
-            <RefBadge className="bg-white/15 text-white">{formatJourneyRef(detail)}</RefBadge>
-            <h1 className="mt-4 text-3xl font-black tracking-tight">{stageLabel}</h1>
-            <p className="mt-3 text-sm leading-6 text-emerald-50/90">{friendlyLabel}</p>
-            <StatusChip className="mt-4 bg-white/15 text-white" tone="neutral">{statusLabel}</StatusChip>
+            {ticketRef ? <RefBadge className="bg-white/15 text-white">{ticketRef}</RefBadge> : null}
+            <p className="mt-3 text-[11px] font-bold uppercase tracking-wide text-emerald-100/90">{t("journey.status")}</p>
+            <h1 className="mt-1 text-3xl font-black tracking-tight break-words">{presentation.title}</h1>
+            <StatusChip className="mt-4 bg-white/15 text-white" tone={toneForStatus(presentation.toneStage)}>
+              {presentation.title}
+            </StatusChip>
+          </section>
+
+          <section className="rounded-[1.75rem] border border-emerald-100 bg-white p-4">
+            <SectionEyebrow>{t("journey.whatWeAreDoing")}</SectionEyebrow>
+            <p className="mt-2 text-sm leading-6 text-slate-600 break-words">{presentation.explanation}</p>
+            {presentation.reassurance ? (
+              <p className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-xs font-semibold leading-5 text-amber-800 break-words">
+                {presentation.reassurance}
+              </p>
+            ) : null}
+          </section>
+
+          <section className="rounded-[1.75rem] border border-emerald-100 bg-white p-4">
+            <SectionEyebrow>{t("journey.whatHappensNext")}</SectionEyebrow>
+            <p className="mt-2 text-sm font-bold leading-6 text-slate-800 break-words">{presentation.nextLine}</p>
           </section>
 
           {(detail.nextAction || detail.nextActionLabel) && (
             <section className="rounded-[1.75rem] border border-emerald-100 bg-white p-4">
               <SectionEyebrow>{t("journey.nextAction")}</SectionEyebrow>
-              <p className="mt-2 text-lg font-black text-slate-950">{nextActionLabel}</p>
+              <p className="mt-2 text-lg font-black text-slate-950 break-words">{nextActionLabel}</p>
             </section>
           )}
 
@@ -335,14 +367,16 @@ export default function MyRepairDetailPage() {
 
           <BillingSummary events={detail.events} />
 
+          <ServiceFeedbackCard ticketNumber={ticketRef} />
+
           <section className="rounded-[1.75rem] border border-emerald-100 bg-white p-4">
             <SectionEyebrow>{t("journey.timeline")}</SectionEyebrow>
             <div className="mt-4 space-y-4">
-              {detail.events.map((event) => (
+              {safeEvents.map((event) => (
                 <div key={event.id} className="relative pl-6">
                   <span className="absolute left-0 top-1.5 h-3 w-3 rounded-full bg-emerald-500" />
-                  <p className="text-sm font-black text-slate-900">{event.title}</p>
-                  <p className="mt-1 text-xs leading-5 text-slate-500">{formatEventMessage(event.message, language)}</p>
+                  <p className="text-sm font-black text-slate-900 break-words">{event.title}</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-500 break-words">{formatEventMessage(event.message, language)}</p>
                   <p className="mt-1 text-[11px] font-bold text-slate-400">{formatDate(event.createdAt)}</p>
                 </div>
               ))}
@@ -356,16 +390,11 @@ export default function MyRepairDetailPage() {
                 <p className="text-sm text-slate-500">{t("journey.requestSchedule")}</p>
               ) : detail.schedules.map((item) => (
                 <div key={item.id} className="rounded-2xl bg-slate-50 p-3 text-sm">
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between gap-2">
                     <span className="font-black text-slate-800">{labelScheduleType(item.scheduleType, t)}</span>
                     <StatusChip tone={toneForStatus(item.status)}>{labelJourneyStatus(item.status, item.status, t)}</StatusChip>
                   </div>
-                  <p className="mt-2 text-slate-500">{formatDate(item.confirmedDate || item.requestedDate)} · {item.confirmedTimeWindow || item.requestedTimeWindow || t("journey.timeWindow")}</p>
-                  {(item.zone || item.routeOrder || item.assignedDriverId) && (
-                    <p className="mt-1 text-xs font-bold text-emerald-700">
-                      {[item.zone, item.routeOrder ? "#" + item.routeOrder : null].filter(Boolean).join(" · ")}
-                    </p>
-                  )}
+                  <p className="mt-2 text-slate-500 break-words">{formatDate(item.confirmedDate || item.requestedDate)} · {item.confirmedTimeWindow || item.requestedTimeWindow || t("journey.timeWindow")}</p>
                 </div>
               ))}
             </div>
@@ -377,17 +406,31 @@ export default function MyRepairDetailPage() {
         <div className="mx-auto grid max-w-7xl grid-cols-[minmax(0,1fr)_360px] gap-6">
           <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <Button variant="ghost" className="rounded-full" onClick={() => setLocation("/my-repairs")}><ArrowLeft className="mr-2 h-4 w-4" />{t("journey.title")}</Button>
-            <h1 className="mt-6 text-4xl font-black text-slate-950">{stageLabel}</h1>
-            <p className="mt-3 max-w-2xl text-slate-500">{friendlyLabel}</p>
+            {ticketRef ? <p className="mt-4 text-xs font-bold text-slate-400">{ticketRef}</p> : null}
+            <h1 className="mt-2 text-4xl font-black text-slate-950">{presentation.title}</h1>
+            <div className="mt-6 rounded-3xl border border-emerald-100 bg-emerald-50/40 p-5">
+              <SectionEyebrow>{t("journey.whatWeAreDoing")}</SectionEyebrow>
+              <p className="mt-2 max-w-2xl text-slate-600 leading-7">{presentation.explanation}</p>
+              {presentation.reassurance ? (
+                <p className="mt-3 text-sm font-semibold text-amber-800">{presentation.reassurance}</p>
+              ) : null}
+            </div>
+            <div className="mt-4 rounded-3xl border border-slate-100 p-5">
+              <SectionEyebrow>{t("journey.whatHappensNext")}</SectionEyebrow>
+              <p className="mt-2 font-bold text-slate-800">{presentation.nextLine}</p>
+            </div>
             <div className="mt-6"><BillingSummary events={detail.events} /></div>
+            <div className="mt-6">
+              <ServiceFeedbackCard ticketNumber={ticketRef} />
+            </div>
             <div className="mt-8 rounded-3xl border border-slate-100 p-5">
               <SectionEyebrow>{t("journey.timeline")}</SectionEyebrow>
               <div className="mt-5 space-y-5">
-                {detail.events.map((event) => (
+                {safeEvents.map((event) => (
                   <div key={event.id} className="rounded-2xl bg-slate-50 p-4">
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-3">
                       <p className="font-black text-slate-900">{event.title}</p>
-                      <span className="text-xs font-bold text-slate-400">{formatDate(event.createdAt)}</span>
+                      <span className="shrink-0 text-xs font-bold text-slate-400">{formatDate(event.createdAt)}</span>
                     </div>
                     <p className="mt-2 text-sm text-slate-500">{formatEventMessage(event.message, language)}</p>
                   </div>

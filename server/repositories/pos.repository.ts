@@ -236,6 +236,32 @@ export async function updateDrawerSession(id: string, updates: Partial<InsertDra
         .returning();
     return updated;
 }
+
+/**
+ * Conditional day-close mutation (01C-B2-B2B).
+ * Updates only when session id matches, status is the expected unresolved state, and closed_at is null.
+ */
+export async function updateDrawerSessionForDayClose(params: {
+    id: string;
+    expectedStatus: string;
+    status: string;
+    closedAt: Date;
+    notes: string;
+}): Promise<DrawerSession | undefined> {
+    const [updated] = await db.update(schema.drawerSessions)
+        .set({
+            status: params.status,
+            closedAt: params.closedAt,
+            notes: params.notes,
+        })
+        .where(and(
+            eq(schema.drawerSessions.id, params.id),
+            eq(schema.drawerSessions.status, params.expectedStatus),
+            isNull(schema.drawerSessions.closedAt),
+        ))
+        .returning();
+    return updated;
+}
 export async function getActiveDrawerSession(userId: string): Promise<DrawerSession | undefined> {
     const [session] = await db.select().from(schema.drawerSessions)
         .where(and(eq(schema.drawerSessions.openedBy, userId), isNull(schema.drawerSessions.closedAt)));

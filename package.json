@@ -6,7 +6,7 @@
   "scripts": {
     "dev:client": "vite dev --port 5082",
     "predev": "kill-port 5083 || true",
-    "dev": "cross-env NODE_ENV=development tsx server/index.ts",
+    "dev": "cross-env PORT=5083 NODE_ENV=development tsx server/index.ts",
     "api-docs:generate": "tsx scripts/generate-api-contract.ts",
     "build": "npm run api-docs:generate && tsx build.ts",
     "build:server": "tsx build-server.ts",
@@ -23,7 +23,19 @@
     "test:e2e:debug": "playwright test --debug",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:update-snapshots": "playwright test e2e/visual --update-snapshots",
+    "qa:infra-pilots": "node qa-tooling/promise-qa/run-infra-pilots.mjs",
+    "qa:infra-pilots:fast": "node qa-tooling/promise-qa/run-infra-pilots.mjs --mode FAST",
+    "qa:multi-role-probe": "node qa-tooling/promise-qa/multi-role-context.mjs --probe",
+    "qa:harness-tests": "node qa-tooling/promise-qa/harness-tests.mjs",
+    "qa:validate-report": "node qa-tooling/promise-qa/validate-report.mjs",
+    "qa:evidence-index": "node qa-tooling/promise-qa/generate-evidence-index.mjs",
+    "qa:show-trace": "playwright show-trace",
     "db:push": "drizzle-kit push",
+    "db:migrate:main": "tsx server/db-migrate-main.ts",
+    "schema:runner": "tsx scripts/protected-schema-runner.ts",
+    "schema:audit:ledger": "tsx scripts/ledger-reconciliation-audit.ts",
+    "schema:adoption:proof": "tsx scripts/disposable-baseline-adoption-proof.ts",
+    "schema:adoption:emit-frozen-identity": "tsx scripts/emit-frozen-source-identity.ts",
     "schema:check:prod": "tsx scripts/check-production-schema.ts"
   },
   "dependencies": {
@@ -133,7 +145,7 @@
     "maplibre-gl": "^5.24.0",
     "memoizee": "^0.4.17",
     "memorystore": "^1.6.7",
-    "multer": "^2.0.2",
+    "multer": "^2.2.0",
     "next-themes": "^0.4.6",
     "node-cache": "^5.1.2",
     "nodemailer": "^8.0.1",
@@ -160,7 +172,6 @@
     "vaul": "^1.1.2",
     "wouter": "^3.3.5",
     "ws": "^8.18.0",
-    "xlsx": "^0.18.5",
     "zod": "^3.25.76",
     "zod-validation-error": "^3.4.0"
   },
@@ -215,5 +226,13 @@
   },
   "optionalDependencies": {
     "bufferutil": "^4.0.8"
+  },
+  "overrides": {
+    "websocket-driver": "0.7.5",
+    "form-data": "4.0.6",
+    "@grpc/grpc-js": "1.14.4",
+    "dompurify": "3.4.12",
+    "js-yaml": "4.3.0",
+    "protobufjs": "7.6.5"
   }
 }

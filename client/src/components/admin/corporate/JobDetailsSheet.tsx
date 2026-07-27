@@ -11,13 +11,19 @@ import { jobTicketsApi, adminUsersApi } from "@/lib/api";
 import { JobTicket, InsertJobTicket } from "@shared/schema"; // Ensure shared/schema is available
 import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 import { format } from "date-fns";
-import { AlertTriangle, Check, Clock, Loader2, Save, History, Shield, Info, DollarSign, Building, Plus, X, Pencil, ShoppingCart, PackageCheck, RotateCcw } from "lucide-react";
+import { AlertTriangle, Check, Clock, Loader2, Save, History, Shield, Info, DollarSign, Building, Plus, X, Pencil, ShoppingCart, PackageCheck, RotateCcw, ClipboardCheck } from "lucide-react";
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { JobChargesDialog } from "@/components/admin/corporate/JobChargesDialog";
 import { CreateWarrantyClaimDialog } from "@/components/admin/corporate/CreateWarrantyClaimDialog";
 import { LocalPurchaseModal } from "@/components/inventory/LocalPurchaseModal";
 import { SlaTimer } from "@/components/admin/corporate/SlaTimer";
+import { getJobModelDisplay } from "@/pages/admin/bento/tabs/jobs/jobIdentityDisplay";
+
+function displayOrDash(value: string | null | undefined): string {
+    const s = value?.trim();
+    return s ? s : "—";
+}
 
 interface JobDetailsSheetProps {
     job: JobTicket | null;
@@ -28,6 +34,7 @@ interface JobDetailsSheetProps {
     onDeclareOk?: (job: JobTicket) => void;
     onDeclareNg?: (job: JobTicket) => void;
     onMarkReady?: (job: JobTicket) => void;
+    onRecordFinalTest?: (job: JobTicket) => void;
     onRequestExtension?: (job: JobTicket) => void;
     onCreateCrr?: (job: JobTicket) => void;
 }
@@ -41,6 +48,7 @@ export function JobDetailsSheet({
     onDeclareOk,
     onDeclareNg,
     onMarkReady,
+    onRecordFinalTest,
     onRequestExtension,
     onCreateCrr,
 }: JobDetailsSheetProps) {
@@ -150,7 +158,24 @@ export function JobDetailsSheet({
                                 <p className="mt-1 text-sm text-slate-500">
                                     {job.device} - {job.issue}
                                 </p>
-                                {(onMarkChecking || onDeclareOk || onDeclareNg || onMarkReady || onRequestExtension || onCreateCrr) && (
+                                <div
+                                    data-testid="corporate-job-device-identity"
+                                    className="mt-2 space-y-0.5 text-xs text-slate-600"
+                                >
+                                    <div className="flex flex-wrap items-baseline gap-x-1.5 min-w-0">
+                                        <span className="shrink-0 font-medium text-slate-500">Model</span>
+                                        <span className="min-w-0 truncate font-semibold text-slate-800">
+                                            {displayOrDash(getJobModelDisplay(job))}
+                                        </span>
+                                    </div>
+                                    <div className="flex flex-wrap items-baseline gap-x-1.5 min-w-0">
+                                        <span className="shrink-0 font-medium text-slate-500">Unit serial</span>
+                                        <span className="min-w-0 truncate font-mono font-semibold text-slate-800">
+                                            {displayOrDash(job.tvSerialNumber)}
+                                        </span>
+                                    </div>
+                                </div>
+                                {(onMarkChecking || onDeclareOk || onDeclareNg || onMarkReady || onRecordFinalTest || onRequestExtension || onCreateCrr) && (
                                     <div className="mt-4 flex flex-wrap gap-2 pr-10">
                                         {onMarkChecking && (
                                             <Button size="sm" variant="outline" className="h-8 rounded-xl bg-white" onClick={() => onMarkChecking(job)}>
@@ -170,6 +195,11 @@ export function JobDetailsSheet({
                                         {onMarkReady && (
                                             <Button size="sm" variant="outline" className="h-8 rounded-xl bg-teal-50 text-teal-700 hover:bg-teal-100" onClick={() => onMarkReady(job)}>
                                                 <PackageCheck className="mr-1.5 h-3.5 w-3.5" /> Ready
+                                            </Button>
+                                        )}
+                                        {onRecordFinalTest && job.status === "Testing" && (
+                                            <Button size="sm" variant="outline" className="h-8 rounded-xl bg-blue-50 text-blue-700 hover:bg-blue-100" onClick={() => onRecordFinalTest(job)}>
+                                                <ClipboardCheck className="mr-1.5 h-3.5 w-3.5" /> Final Test
                                             </Button>
                                         )}
                                         {onRequestExtension && (
@@ -257,6 +287,18 @@ export function JobDetailsSheet({
                                                     <span className="text-slate-500 font-medium mt-0.5">Device:</span>
                                                     <span className="text-right max-w-[200px] text-slate-700 leading-snug">
                                                         {job.device || "N/A"}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-start group gap-3">
+                                                    <span className="text-slate-500 font-medium shrink-0">Model:</span>
+                                                    <span className="text-right min-w-0 max-w-[220px] truncate font-semibold text-slate-800">
+                                                        {displayOrDash(getJobModelDisplay(job))}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between items-start group gap-3">
+                                                    <span className="text-slate-500 font-medium shrink-0">Unit serial:</span>
+                                                    <span className="text-right min-w-0 max-w-[220px] truncate font-mono font-semibold text-slate-800">
+                                                        {displayOrDash(job.tvSerialNumber)}
                                                     </span>
                                                 </div>
                                             </div>

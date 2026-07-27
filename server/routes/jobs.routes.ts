@@ -18,16 +18,81 @@ import { logModelCase } from '../brain/kg.service.js';
 import { bindCustomerToJob, recordJobClosed } from '../services/canonical-customer.service.js';
 import { db } from '../db.js';
 import { localPurchases } from '../../shared/schema.js';
-import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 import { eq, sql } from 'drizzle-orm';
+import {
+    transitionJobStatus,
+    nextLinearStatus,
+    statusForRepairOutcome,
+    JobStatusTransitionError,
+    isCanonicalJobStatus,
+    isExplicitTestingConfirmed,
+} from '../services/job-status-transition.service.js';
+import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 import { loadRepairCaseByJobTicket } from '../services/repair-case.service.js';
 import { normalizePhone } from '../utils/phone.js';
 import { getActiveServiceAreaById } from '../repositories/service-area.repository.js';
+import {
+    submitNgReport,
+    reviewNgReport,
+    getActiveNgReport,
+    getLatestNgReport,
+    assertCanViewNgReport,
+    NgReportServiceError,
+} from '../services/job-ng-report.service.js';
+import {
+    recordNgCustomerDecision,
+    getActiveNgCustomerDecision,
+    assertCanViewNgCustomerDecision,
+    NgCustomerDecisionServiceError,
+} from '../services/job-ng-customer-decision.service.js';
+import {
+    assertJobPatchNotProtected,
+    assertNgCurrentStateAllowsMutation,
+    assertJobNotNgProtected,
+    isNgProtectedStatus,
+    ProtectedJobFieldError,
+    NgWorkflowLockedError,
+    isNgWorkflowError,
+} from '../services/job-ng-protected.js';
 
 const router = Router();
 const JOB_REALTIME_TAGS = ["jobTickets", "jobOverview", "dashboardStats"] as const;
 const JOB_CREATE_REALTIME_TAGS = [...JOB_REALTIME_TAGS, "adminNotifications", "adminNotificationCount"] as const;
 const ROLLBACK_REALTIME_TAGS = ["pendingRollbacks", "adminNotifications", "adminNotificationCount"] as const;
+
+type CustomerLookupCard = {
+    id: string;
+    name: string;
+    phone: string;
+    shortAddress: string | null;
+};
+
+async function searchCustomerLookup(qRaw: unknown): Promise<CustomerLookupCard[]> {
+    if (typeof qRaw !== 'string') return [];
+    const q = qRaw.trim().replace(/\s+/g, ' ');
+    if (q.length < 2) return [];
+
+    const digits = q.replace(/\D/g, '').slice(-10);
+    const escaped = q.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+    const namePattern = `%${escaped}%`;
+    const rows = await db.execute(sql`
+        SELECT id, name, primary_phone AS phone, address AS short_address
+        FROM customers
+        WHERE name ILIKE ${namePattern} ESCAPE '\\'
+           OR (${digits.length >= 3} AND right(regexp_replace(primary_phone, '[^0-9]', '', 'g'), 10) LIKE ${digits + '%'} )
+        ORDER BY updated_at DESC NULLS LAST, last_job_at DESC NULLS LAST, name ASC NULLS LAST
+        LIMIT 20
+    `);
+
+    return (((rows as any).rows ?? rows) as Array<Record<string, unknown>>)
+        .filter((row) => typeof row.id === 'string' && typeof row.name === 'string' && typeof row.phone === 'string')
+        .map((row) => ({
+            id: row.id as string,
+            name: row.name as string,
+            phone: row.phone as string,
+            shortAddress: typeof row.short_address === 'string' && row.short_address.trim() ? row.short_address : null,
+        }));
+}
 
 function techCanViewAllJobs(user: { role: string; permissions?: string | null }) {
     return userHasGranularPermission(user, 'jobs.viewAll');
@@ -62,18 +127,22 @@ function techCanMutateJob(
  */
 router.get('/api/job-tickets/list', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
     try {
-        const limit = parseInt(req.query.limit as string) || 50;
-        const page = parseInt(req.query.page as string) || 1;
+        const pageRaw = parseInt(String(req.query.page ?? "1"), 10);
+        const limitRaw = parseInt(String(req.query.limit ?? "50"), 10);
+        const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+        const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(100, limitRaw) : 50;
 
         const user = (req as any).user;
         if (user?.role === 'Technician') {
-            const myJobs = techCanViewAllJobs(user)
-                ? await jobRepo.getAllJobTickets()
-                : await jobRepo.getJobTicketsVisibleToTechnician(user.id, user.name);
-            return res.json({
-                items: myJobs,
-                pagination: { total: myJobs.length, page: 1, limit: myJobs.length, pages: 1 },
+            const result = await jobRepo.listJobTicketsPaginated({
+                page,
+                limit,
+                type: "all",
+                technicianScope: techCanViewAllJobs(user)
+                    ? undefined
+                    : { userId: user.id, technicianName: user.name },
             });
+            return res.json(result);
         }
 
         const result = await jobRepo.getJobTicketsList(page, limit);
@@ -88,48 +157,85 @@ router.get('/api/job-tickets/list', requireAdminAuth, requireGranularPermission(
  */
 router.get('/api/job-tickets', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
     try {
-        const page = parseInt(req.query.page as string) || 1;
-        const limit = parseInt(req.query.limit as string) || 50;
-        const type = (req.query.type as 'all' | 'walk-in' | 'corporate') || 'walk-in';
+        const pageRaw = parseInt(String(req.query.page ?? "1"), 10);
+        const limitRaw = parseInt(String(req.query.limit ?? "50"), 10);
+        const page = Number.isFinite(pageRaw) && pageRaw > 0 ? pageRaw : 1;
+        const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(100, limitRaw) : 50;
+        const typeRaw = String(req.query.type ?? "walk-in");
+        const type = (typeRaw === "all" || typeRaw === "corporate" || typeRaw === "walk-in"
+            ? typeRaw
+            : "walk-in") as "all" | "walk-in" | "corporate";
+        const search = typeof req.query.search === "string" ? req.query.search : undefined;
+        const status = typeof req.query.status === "string" ? req.query.status : undefined;
+        const statusesRaw = typeof req.query.statuses === "string" ? req.query.statuses : undefined;
+        const statuses = statusesRaw
+            ? statusesRaw.split(",").map((s) => s.trim()).filter(Boolean)
+            : undefined;
+        const priority = typeof req.query.priority === "string" ? req.query.priority : undefined;
+        const technician = typeof req.query.technician === "string" ? req.query.technician : undefined;
 
         const user = (req as any).user;
-        if (user?.role === 'Technician') {
-            // viewAll → shop-wide list; else assigned OR created-by-me
-            const scoped = techCanViewAllJobs(user)
-                ? await jobRepo.getAllJobTickets()
-                : await jobRepo.getJobTicketsVisibleToTechnician(user.id, user.name);
-            const myJobs = jobRepo.filterJobTicketsByLane(scoped, type);
-            return res.json({
-                items: myJobs,
-                pagination: { total: myJobs.length, page: 1, limit: myJobs.length, pages: 1 },
-            });
-        }
+        try {
+            if (user?.role === 'Technician') {
+                const result = await jobRepo.listJobTicketsPaginated({
+                    page,
+                    limit,
+                    type,
+                    search,
+                    status,
+                    statuses,
+                    priority,
+                    technician,
+                    technicianScope: techCanViewAllJobs(user)
+                        ? undefined
+                        : { userId: user.id, technicianName: user.name },
+                });
+                return res.json(result);
+            }
 
-        // Managers/Admins/Super Admin — see all
-        const result = jobRepo.filterJobTicketsByLane(await jobRepo.getAllJobTickets(), type);
-        res.json({
-            items: result,
-            pagination: {
-                total: result.length,
+            const result = await jobRepo.listJobTicketsPaginated({
                 page,
                 limit,
-                pages: Math.ceil(result.length / limit) || 1,
-            },
-        });
+                type,
+                search,
+                status,
+                statuses,
+                priority,
+                technician,
+            });
+            res.json(result);
+        } catch (error: any) {
+            if (error?.code === "JOB_LIST_UNAVAILABLE" || error?.statusCode === 503) {
+                return res.status(503).json({ error: error.message, code: "JOB_LIST_UNAVAILABLE" });
+            }
+            throw error;
+        }
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch job tickets' });
     }
 });
 
 /**
- * GET /api/job-tickets/next-number - Get next auto-generated job number
+ * GET /api/job-tickets/next-number — preview of the next JOB-YYYY-NNNN display value.
+ * Preview only: not reserved, not write authority. Real ID is allocated at insert.
  */
 router.get('/api/job-tickets/next-number', requireAdminAuth, requireGranularPermission('jobs.create'), async (req: Request, res: Response) => {
     try {
         const nextNumber = await jobRepo.getNextJobNumber();
-        res.json({ nextNumber });
+        res.json({ nextNumber, preview: true, reserved: false });
     } catch (error) {
-        res.status(500).json({ error: 'Failed to generate job number' });
+        res.status(500).json({ error: 'Failed to preview next job number' });
+    }
+});
+
+router.get('/api/admin/job-intake/customer-lookup', requireAdminAuth, requireGranularPermission('jobs.create'), async (req: Request, res: Response) => {
+    try {
+        const items = await searchCustomerLookup(req.query.q);
+        return res.json({ items });
+    } catch (error: any) {
+        const code = typeof error?.code === 'string' ? error.code : 'LOOKUP_FAILED';
+        console.error(`[JobIntake] customer lookup failed code=${code}`);
+        return res.status(500).json({ error: 'Customer lookup is unavailable' });
     }
 });
 
@@ -221,14 +327,18 @@ router.post('/api/job-tickets', requireAdminAuth, requireGranularPermission('job
             return res.status(401).json({ error: 'Admin authentication required' });
         }
 
-        // Auto-generate job ID if not provided
+        // job_tickets.id is server-owned. Client must not choose it.
         let jobData = { ...req.body };
-        if (!jobData.id) {
-            jobData.id = await jobRepo.getNextJobNumber();
+        if (jobData.id !== undefined && jobData.id !== null && String(jobData.id).trim() !== '') {
+            return res.status(400).json({
+                error: 'Job ID is assigned by the server. Do not supply id.',
+                code: 'JOB_ID_SERVER_ASSIGNED',
+            });
         }
+        delete jobData.id;
 
-        if (jobData.corporateClientId || jobData.corporateChallanId || jobData.corporateJobNumber || jobData.batchId || jobData.source === 'corporate_portal' || jobData.source === 'challan_in') {
-            return res.status(400).json({ error: 'Corporate and batch jobs must be created from the B2B workspace.' });
+        if (jobData.corporateClientId || jobData.corporateChallanId || jobData.corporateJobNumber || jobData.batchId || jobData.source === 'corporate_portal' || jobData.source === 'challan_in' || jobData.source === 'b2b_account_intake') {
+            return res.status(400).json({ error: 'Corporate and batch jobs must be created from the dedicated B2B intake path.' });
         }
 
         // Convert deadline string to Date if present
@@ -311,7 +421,8 @@ router.post('/api/job-tickets', requireAdminAuth, requireGranularPermission('job
             jobData.technician = 'Unassigned';
         }
 
-        const validated = insertJobTicketSchema.parse(jobData);
+        // id is server-owned; omit from client body schema (createJobTicket allocates)
+        const validated = insertJobTicketSchema.omit({ id: true }).parse(jobData);
         const job = await jobRepo.createJobTicket(validated);
 
         // Phase C: bind canonical customer record (fire-and-forget — don't block response)
@@ -402,29 +513,24 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGran
         }
 
         const currentStatus = job.status;
+        try {
+            assertJobNotNgProtected(currentStatus, "advance-status");
+        } catch (err) {
+            if (isNgWorkflowError(err)) {
+                return res.status(err.status).json({ error: err.message, code: err.code });
+            }
+            throw err;
+        }
 
-        // Linear Progression State Machine Map
-        const stateMachine: Record<string, string> = {
-            'Pending': 'In Progress',
-            'Ready': 'Completed',
-        };
-        // Handle alternate/legacy states mapping nicely
-        stateMachine['Diagnosing'] = 'In Progress';
-        stateMachine['Pending Parts'] = 'In Progress';
-        stateMachine['Waiting on Parts'] = 'In Progress';
-
-        // Work/diagnosis statuses require set-outcome instead of blind advance
         if (['In Progress', 'On Workbench', 'Diagnosing'].includes(currentStatus)) {
             return res.status(400).json({ error: 'Jobs in repair/diagnosis must use set-outcome to report repair result (OK, needs parts, not repairable, etc.) instead of blind advance.' });
         }
 
-        const nextStatus = stateMachine[currentStatus];
-
+        const nextStatus = nextLinearStatus(currentStatus);
         if (!nextStatus) {
             return res.status(400).json({ error: `Cannot mathematically advance from terminal status: ${currentStatus}` });
         }
 
-        // Phase E: block Completed if any outside purchase has no receipt or is not Consumed
         if (nextStatus === 'Completed') {
             const purchases = await db.select().from(localPurchases).where(eq(localPurchases.jobTicketId, jobId));
             const dirty = purchases.filter(p => !p.receiptImageUrl || p.status !== 'Consumed');
@@ -436,27 +542,36 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGran
             }
         }
 
-        // On completion, stamp completedAt and the warranty expiry window.
-        // advance-status bypasses completeJobTicket(), so both must be set here or
-        // normal repairs finish with completedAt/warrantyExpiryDate = NULL — which
-        // makes every warranty read as expired (warranty.routes + customer warranties view).
-        const completionPatch: Partial<typeof job> = { status: nextStatus } as any;
+        const testingConfirmed = isExplicitTestingConfirmed(req.body?.testingConfirmed);
+        const extraPatch: Record<string, unknown> = {};
         if (nextStatus === 'Completed') {
-            (completionPatch as any).completedAt = new Date();
+            extraPatch.completedAt = new Date();
             const warrantyDays = (job as any).warrantyDays ?? 30;
             if (warrantyDays > 0 && !(job as any).warrantyExpiryDate) {
                 const expiry = new Date();
                 expiry.setDate(expiry.getDate() + warrantyDays);
-                (completionPatch as any).warrantyExpiryDate = expiry;
+                extraPatch.warrantyExpiryDate = expiry;
             }
         }
 
-        const updatedJob = await jobRepo.updateJobTicket(jobId, completionPatch as any);
-        if (!updatedJob) {
-            return res.status(500).json({ error: 'Failed to update job status' });
+        if (!user?.id || !user?.role) {
+            return res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' });
         }
 
-        // Audit Tracking
+        const transition = await transitionJobStatus({
+            jobId,
+            toStatus: nextStatus,
+            actor: {
+                id: user.id,
+                name: user.name || 'Staff',
+                role: user.role,
+            },
+            reason: nextStatus === 'Ready' ? 'confirm_testing' : 'advance',
+            testingConfirmed: nextStatus === 'Ready' ? testingConfirmed : undefined,
+            extraPatch,
+        });
+        const updatedJob = transition.job;
+
         await auditLogger.log({
             userId: req.session?.adminUserId || 'system',
             action: 'FORWARD_PROGRESSED_STATUS',
@@ -480,7 +595,6 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGran
             },
         });
 
-        // Smart Sync SSE prompt for staff — includes job info for SmartSyncPrompt component
         notifyAdminUpdate({
             type: 'smart_sync_needed',
             jobId: updatedJob?.id,
@@ -490,7 +604,6 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGran
             customerId: (updatedJob as any)?.customerId,
         });
 
-        // Auto-log model case to AI brain when repair is completed
         if (nextStatus === 'Completed' && updatedJob) {
             logModelCase({
                 device:       (updatedJob as any).device,
@@ -503,58 +616,29 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGran
                 jobId:        updatedJob.id,
             }).catch(() => {});
 
-            // Phase C: update canonical customer lifetime stats
             const totalCharge = ((updatedJob as any).charges as any[] ?? [])
                 .reduce((s: number, c: any) => s + (parseFloat(c.amount) || 0), 0);
             recordJobClosed((updatedJob as any).customerPhone ?? null, totalCharge).catch(() => {});
         }
 
-        // Phase O — Auto-trigger: notify customer when job becomes Ready (checks setting)
-        if (nextStatus === 'Ready') {
-            try {
-                const settings = await settingsRepo.getAllSettings();
-                const triggerEnabled = settings.find?.((s: any) => s.key === 'trigger_notify_ready');
-                if (!triggerEnabled || triggerEnabled.value === 'true') {
-                    const customerId = (updatedJob as any)?.customerId;
-                    if (customerId) {
-                        await notificationRepo.createNotification({
-                            userId: customerId,
-                            title: '🎉 Your device is ready!',
-                            message: `${(updatedJob as any)?.device || 'Your device'} is ready for pickup. Job #${updatedJob?.id?.slice(-6)?.toUpperCase() || updatedJob?.id}`,
-                            type: 'job_ready',
-                            jobId: updatedJob?.id,
-                        } as any);
-                    }
-                }
-            } catch (notifyErr) {
-                console.error('[AutoTrigger] Failed to notify customer:', notifyErr);
-            }
-        }
-
-        // Project customer-facing service request state from the linked job.
-        try {
-            const projection = await jobService.syncLinkedServiceRequestFromJob(jobId, "System Projection");
-            if (projection.serviceRequest?.customerId && projection.changed) {
-                notifyCustomerUpdate(projection.serviceRequest.customerId, {
+        if (transition.srChanged && transition.serviceRequestId) {
+            const sr = await serviceRequestRepo.getServiceRequest(transition.serviceRequestId);
+            if (sr?.customerId) {
+                notifyCustomerUpdate(sr.customerId, {
                     type: 'order_update',
-                    orderId: projection.serviceRequest.id,
-                    trackingStatus: projection.trackingStatus,
-                    status: projection.status,
+                    orderId: sr.id,
+                    trackingStatus: transition.trackingStatus,
+                    status: transition.requestStatus,
                     updatedAt: new Date().toISOString()
                 });
             }
-        } catch (syncErr) {
-            console.error('[Projection] Failed to project SR from advance-status:', (syncErr as Error).message);
         }
-
-        repairJourneyService.syncJobStatusToJourney(jobId, nextStatus, {
-            device: (updatedJob as any)?.device,
-            warrantyDays: (updatedJob as any)?.warrantyDays,
-            warrantyExpiryDate: (updatedJob as any)?.warrantyExpiryDate,
-        }).catch((err) => console.error('[RepairJourney] Job sync failed:', (err as Error).message));
 
         res.json(updatedJob);
     } catch (error: any) {
+        if (error instanceof JobStatusTransitionError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
         res.status(500).json({ error: 'Failed to advance job status', details: error.message });
     }
 });
@@ -562,15 +646,42 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGran
 /**
  * POST /api/job-tickets/:id/set-outcome - Set repair outcome with branching status
  * Used when a job is In Progress / On Workbench and technician reports result.
+ * JOBS-NG-02A: not_repairable / customer_declined no longer go through this path.
  */
 router.post('/api/job-tickets/:id/set-outcome', requireAdminAuth, requireGranularPermission('jobs.reportOutcome'), async (req: Request, res: Response) => {
     try {
         const jobId = req.params.id;
         const { outcome, reason, notes } = req.body;
 
-        const validOutcomes = ['repair_ok', 'needs_parts', 'not_repairable', 'customer_declined', 'cancelled'];
+        if (outcome === 'not_repairable') {
+            return res.status(400).json({
+                error: 'not_repairable is no longer accepted via set-outcome. Submit an NG report instead.',
+                code: 'USE_NG_REPORT',
+                contract: {
+                    method: 'POST',
+                    path: `/api/job-tickets/${jobId}/ng-report`,
+                    required: ['submissionId', 'failedRepairType', 'diagnosis', 'technicalNotes', 'evidenceAttachments'],
+                },
+            });
+        }
+
+        if (outcome === 'customer_declined') {
+            return res.status(400).json({
+                error: 'customer_declined cannot be recorded as an unaudited technician outcome. Use the customer decision workflow (after manager-verified NG) or manager-audited decision tools.',
+                code: 'CUSTOMER_DECLINED_NOT_VIA_SET_OUTCOME',
+            });
+        }
+
+        if (outcome === 'cancelled') {
+            return res.status(400).json({
+                error: 'Cancellation is not available via set-outcome. Unrepairable cases require an NG report; other cancellations need an authorized manager workflow.',
+                code: 'CANCEL_REQUIRES_MANAGER_WORKFLOW',
+            });
+        }
+
+        const validOutcomes = ['repair_ok', 'needs_parts'];
         if (!outcome || !validOutcomes.includes(outcome)) {
-            return res.status(400).json({ error: `outcome must be one of: ${validOutcomes.join(', ')}` });
+            return res.status(400).json({ error: `outcome must be one of: ${validOutcomes.join(', ')} (use POST .../ng-report for not-good / not repairable)` });
         }
 
         const job = await jobRepo.getJobTicket(jobId);
@@ -585,28 +696,26 @@ router.post('/api/job-tickets/:id/set-outcome', requireAdminAuth, requireGranula
             return res.status(400).json({ error: `set-outcome only applies to jobs In Progress/On Workbench/Diagnosing, current: ${job.status}` });
         }
 
-        if (['not_repairable', 'customer_declined', 'cancelled'].includes(outcome) && !reason) {
-            return res.status(400).json({ error: 'reason is required for this outcome' });
+        const nextStatus = statusForRepairOutcome(outcome as 'repair_ok' | 'needs_parts');
+        const extraPatch: Record<string, unknown> = { repairOutcome: outcome };
+        if (reason) extraPatch.closureReason = reason;
+        if (notes) extraPatch.notes = ((job.notes || '') + '\n' + notes).trim();
+
+        if (!user?.id || !user?.role) {
+            return res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' });
         }
-
-        const OUTCOME_STATUS: Record<string, string> = {
-            'repair_ok': 'Ready',
-            'needs_parts': 'Waiting on Parts',
-            'not_repairable': 'Cancelled',
-            'customer_declined': 'Cancelled',
-            'cancelled': 'Cancelled',
-        };
-
-        const nextStatus = OUTCOME_STATUS[outcome];
-        const patch: Record<string, unknown> = {
-            status: nextStatus,
-            repairOutcome: outcome,
-        };
-        if (reason) patch.closureReason = reason;
-        if (notes) patch.notes = ((job.notes || '') + '\n' + notes).trim();
-
-        const updatedJob = await jobRepo.updateJobTicket(jobId, patch as any);
-        if (!updatedJob) return res.status(500).json({ error: 'Failed to update job' });
+        const transition = await transitionJobStatus({
+            jobId,
+            toStatus: nextStatus,
+            actor: {
+                id: user.id,
+                name: user.name || 'Staff',
+                role: user.role,
+            },
+            reason: outcome === 'repair_ok' ? 'set_outcome_repair_ok' : 'set_outcome_needs_parts',
+            extraPatch,
+        });
+        const updatedJob = transition.job;
 
         await auditLogger.log({
             userId: req.session?.adminUserId || 'system',
@@ -627,19 +736,342 @@ router.post('/api/job-tickets/:id/set-outcome', requireAdminAuth, requireGranula
             payload: { jobId: updatedJob.id, status: nextStatus },
         });
 
-        try {
-            await jobService.syncLinkedServiceRequestFromJob(jobId, "System Projection");
-        } catch (syncErr) {
-            console.error('[Projection] Failed to project SR from set-outcome:', (syncErr as Error).message);
-        }
-
-        repairJourneyService.syncJobStatusToJourney(jobId, nextStatus, {
-            device: (updatedJob as any)?.device,
-        }).catch((err) => console.error('[RepairJourney] Outcome journey sync failed:', (err as Error).message));
-
         res.json(updatedJob);
     } catch (error: any) {
+        if (error instanceof JobStatusTransitionError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
         res.status(500).json({ error: 'Failed to set outcome', details: error.message });
+    }
+});
+
+/**
+ * POST /api/job-tickets/:id/final-test-runs — record durable final-test evidence (Testing only).
+ * JOB-QUALITY-GATE-01B. Staff-only; never projected to customers.
+ */
+router.post(
+  "/api/job-tickets/:id/final-test-runs",
+  requireAdminAuth,
+  requireGranularPermission("jobs.advanceStatus"),
+  async (req: Request, res: Response) => {
+    try {
+      const user = (req as any).user;
+      if (!user?.id || !user?.role) {
+        return res.status(401).json({ error: "Unauthorized", code: "AUTH_REQUIRED" });
+      }
+      const { recordFinalTestRun, FinalTestServiceError } = await import(
+        "../services/job-final-test.service.js"
+      );
+      const outcome = req.body?.outcome === "fail" ? "fail" : req.body?.outcome === "pass" ? "pass" : null;
+      if (!outcome) {
+        return res.status(400).json({ error: "outcome must be pass or fail", code: "INVALID_OUTCOME" });
+      }
+      const run = await recordFinalTestRun({
+        jobId: req.params.id,
+        outcome,
+        checkCodes: req.body?.checkCodes,
+        reinspectionReason: req.body?.reinspectionReason,
+        actor: {
+          id: user.id,
+          name: user.name || "Staff",
+          role: user.role,
+        },
+      });
+      await auditLogger.log({
+        userId: user.id,
+        action: "FINAL_TEST_RECORDED",
+        entity: "JobTicket",
+        entityId: req.params.id,
+        details: `Final test ${outcome}`,
+        newValue: { runId: run.id, outcome },
+        req,
+      });
+      return res.status(201).json(run);
+    } catch (error: any) {
+      if (error?.name === "FinalTestServiceError") {
+        return res.status(error.status).json({ error: error.message, code: error.code });
+      }
+      console.error("[Jobs] final-test-runs failed:", error?.message);
+      return res.status(500).json({ error: "Failed to record final test" });
+    }
+  },
+);
+
+/**
+ * GET /api/job-tickets/:id/final-test-runs — authorized staff only (not customer).
+ */
+router.get(
+  "/api/job-tickets/:id/final-test-runs",
+  requireAdminAuth,
+  requireGranularPermission("jobs.view"),
+  async (req: Request, res: Response) => {
+    try {
+      const { listFinalTestRunsForJob } = await import("../services/job-final-test.service.js");
+      const items = await listFinalTestRunsForJob(req.params.id);
+      return res.json({ items });
+    } catch (error: any) {
+      console.error("[Jobs] list final-test-runs failed:", error?.message);
+      return res.status(500).json({ error: "Failed to list final tests" });
+    }
+  },
+);
+
+/**
+ * POST /api/job-tickets/:id/return-to-inspection
+ * Manager/Super Admin (or assigned tech from Testing) returns job to In Progress with one calm public update.
+ */
+router.post('/api/job-tickets/:id/return-to-inspection', requireAdminAuth, requireGranularPermission('jobs.advanceStatus'), async (req: Request, res: Response) => {
+    try {
+        const jobId = req.params.id;
+        const job = await jobRepo.getJobTicket(jobId);
+        if (!job) return res.status(404).json({ error: 'Job ticket not found' });
+        const user = (req as any).user;
+
+        if (!['Testing', 'Ready'].includes(job.status)) {
+            return res.status(400).json({
+                error: `return-to-inspection only applies from Testing or Ready, current: ${job.status}`,
+                code: 'INVALID_RETURN_SOURCE',
+            });
+        }
+
+        try {
+            assertJobNotNgProtected(job.status, "return-to-inspection");
+        } catch (err) {
+            if (isNgWorkflowError(err)) {
+                return res.status(err.status).json({ error: err.message, code: err.code });
+            }
+            throw err;
+        }
+
+        const transition = await transitionJobStatus({
+            jobId,
+            toStatus: 'In Progress',
+            actor: {
+                id: user?.id || req.session?.adminUserId || 'system',
+                name: user?.name || 'System',
+                role: user?.role || 'Manager',
+            },
+            reason: 'return_to_inspection',
+            extraPatch: { repairOutcome: null },
+            suppressReadyNotify: true,
+        });
+
+        await auditLogger.log({
+            userId: req.session?.adminUserId || 'system',
+            action: 'RETURN_TO_INSPECTION',
+            entity: 'JobTicket',
+            entityId: jobId,
+            details: `Returned from ${job.status} to In Progress`,
+            oldValue: { status: job.status },
+            newValue: { status: 'In Progress' },
+            req,
+        });
+
+        publishJobTicketEvent({
+            action: 'status_changed',
+            entityId: transition.job.id,
+            invalidate: [...JOB_REALTIME_TAGS],
+            permissions: ['jobs'],
+            payload: { jobId: transition.job.id, status: 'In Progress' },
+        });
+
+        res.json(transition.job);
+    } catch (error: any) {
+        if (error instanceof JobStatusTransitionError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        res.status(500).json({ error: 'Failed to return to inspection', details: error.message });
+    }
+});
+
+/**
+ * POST /api/job-tickets/:id/ng-report — Technician NG evidence (JOBS-NG-02A)
+ * Sets job to "NG Review Pending" — never Cancelled. No replacement / invoice / warranty.
+ */
+router.post('/api/job-tickets/:id/ng-report', requireAdminAuth, requireGranularPermission('jobs.reportOutcome'), async (req: Request, res: Response) => {
+    try {
+        const user = (req as any).user;
+        if (!user?.id) return res.status(401).json({ error: 'Unauthorized' });
+
+        const { submissionId, failedRepairType, diagnosis, technicalNotes, evidenceAttachments } = req.body || {};
+        const result = await submitNgReport(
+            req.params.id,
+            { id: user.id, name: user.name || 'Unknown', role: user.role || 'Technician' },
+            { submissionId, failedRepairType, diagnosis, technicalNotes, evidenceAttachments },
+            req,
+        );
+
+        res.status(result.idempotent ? 200 : 201).json({
+            report: result.report,
+            job: result.job,
+            idempotent: result.idempotent,
+        });
+    } catch (error: any) {
+        if (error instanceof NgReportServiceError) {
+            return res.status(error.statusCode).json({ error: error.message, code: error.code });
+        }
+        console.error('[NgReport] submit failed:', error?.message || error);
+        res.status(500).json({ error: 'Failed to submit NG report' });
+    }
+});
+
+/**
+ * POST /api/job-tickets/:id/ng-report/review — Manager verify / return (JOBS-NG-02A)
+ */
+router.post('/api/job-tickets/:id/ng-report/review', requireAdminAuth, requireGranularPermission('jobs.reviewOutcome'), async (req: Request, res: Response) => {
+    try {
+        const user = (req as any).user;
+        if (!user?.id) return res.status(401).json({ error: 'Unauthorized' });
+
+        const { action, reviewNotes } = req.body || {};
+        const result = await reviewNgReport(
+            req.params.id,
+            { id: user.id, name: user.name || 'Unknown', role: user.role || 'Manager' },
+            { action, reviewNotes },
+            req,
+        );
+
+        res.json({
+            report: result.report,
+            job: result.job,
+            idempotent: result.idempotent,
+        });
+    } catch (error: any) {
+        if (error instanceof NgReportServiceError) {
+            return res.status(error.statusCode).json({ error: error.message, code: error.code });
+        }
+        console.error('[NgReport] review failed:', error?.message || error);
+        res.status(500).json({ error: 'Failed to review NG report' });
+    }
+});
+
+/**
+ * GET /api/job-tickets/:id/ng-report — Active NG report (staff)
+ * Query: ?scope=latest — latest pending/verified/returned (JOBS-NG-02G)
+ */
+router.get('/api/job-tickets/:id/ng-report', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
+    try {
+        const job = await jobRepo.getJobTicket(req.params.id);
+        if (!job) return res.status(404).json({ error: 'Job ticket not found' });
+        const user = (req as any).user;
+        if (!user?.id) return res.status(401).json({ error: 'Unauthorized' });
+        try {
+            await assertCanViewNgReport(
+                { id: user.id, name: user.name || 'Unknown', role: user.role || 'Technician' },
+                job as any,
+            );
+        } catch (err) {
+            if (err instanceof NgReportServiceError) {
+                return res.status(err.statusCode).json({ error: err.message, code: err.code });
+            }
+            throw err;
+        }
+        const scope = String(req.query.scope || '').toLowerCase();
+        const report = scope === 'latest'
+            ? await getLatestNgReport(req.params.id)
+            : await getActiveNgReport(req.params.id);
+        if (!report) {
+            return res.status(404).json({
+                error: scope === 'latest' ? 'No NG report found for this job' : 'No active NG report',
+            });
+        }
+        res.json({ report, job });
+    } catch (error: any) {
+        res.status(500).json({ error: 'Failed to load NG report' });
+    }
+});
+
+/**
+ * GET /api/job-tickets/:id/ng-report/latest — latest report including returned
+ */
+router.get('/api/job-tickets/:id/ng-report/latest', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
+    try {
+        const job = await jobRepo.getJobTicket(req.params.id);
+        if (!job) return res.status(404).json({ error: 'Job ticket not found' });
+        const user = (req as any).user;
+        if (!user?.id) return res.status(401).json({ error: 'Unauthorized' });
+        try {
+            await assertCanViewNgReport(
+                { id: user.id, name: user.name || 'Unknown', role: user.role || 'Technician' },
+                job as any,
+            );
+        } catch (err) {
+            if (err instanceof NgReportServiceError) {
+                return res.status(err.statusCode).json({ error: err.message, code: err.code });
+            }
+            throw err;
+        }
+        const report = await getLatestNgReport(req.params.id);
+        if (!report) return res.status(404).json({ error: 'No NG report found for this job' });
+        res.json({ report, job });
+    } catch (error: any) {
+        res.status(500).json({ error: 'Failed to load NG report' });
+    }
+});
+
+/**
+ * POST /api/job-tickets/:id/ng-customer-decision — Manager records customer decision (SYSTEM-UNIFICATION-00C-C)
+ * Requires verified NG report. decline → repairOutcome=customer_declined + status=Cancelled.
+ * Other decision types keep Awaiting Customer Decision status (no new ad-hoc statuses).
+ */
+router.post('/api/job-tickets/:id/ng-customer-decision', requireAdminAuth, requireGranularPermission('jobs.reviewOutcome'), async (req: Request, res: Response) => {
+    try {
+        const user = (req as any).user;
+        if (!user?.id) return res.status(401).json({ error: 'Unauthorized' });
+
+        const { submissionId, decisionType, contactChannel, decisionNotes } = req.body || {};
+        const result = await recordNgCustomerDecision(
+            req.params.id,
+            { id: user.id, name: user.name || 'Unknown', role: user.role || 'Manager' },
+            { submissionId, decisionType, contactChannel, decisionNotes },
+            req,
+        );
+
+        res.status(result.idempotent ? 200 : 201).json({
+            decision: result.decision,
+            job: result.job,
+            idempotent: result.idempotent,
+        });
+    } catch (error: any) {
+        if (error instanceof NgCustomerDecisionServiceError) {
+            return res.status(error.statusCode).json({ error: error.message, code: error.code });
+        }
+        console.error('[NgCustomerDecision] record failed:', error?.message || error);
+        res.status(500).json({ error: 'Failed to record customer decision' });
+    }
+});
+
+/**
+ * GET /api/job-tickets/:id/ng-customer-decision — Active customer decision (staff)
+ * Applies the same job/NG visibility policy as GET NG report.
+ */
+router.get('/api/job-tickets/:id/ng-customer-decision', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
+    try {
+        const job = await jobRepo.getJobTicket(req.params.id);
+        if (!job) return res.status(404).json({ error: 'Job ticket not found' });
+        const user = (req as any).user;
+        if (!user?.id) return res.status(401).json({ error: 'Unauthorized' });
+        try {
+            await assertCanViewNgCustomerDecision(
+                { id: user.id, name: user.name || 'Unknown', role: user.role || 'Technician' },
+                job as any,
+            );
+        } catch (err) {
+            if (err instanceof NgCustomerDecisionServiceError) {
+                return res.status(err.statusCode).json({ error: err.message, code: err.code });
+            }
+            throw err;
+        }
+        const decision = await getActiveNgCustomerDecision(req.params.id);
+        if (!decision) {
+            return res.status(404).json({ error: 'No customer decision recorded for this job' });
+        }
+        res.json({ decision, job });
+    } catch (error: any) {
+        if (error instanceof NgCustomerDecisionServiceError) {
+            return res.status(error.statusCode).json({ error: error.message, code: error.code });
+        }
+        res.status(500).json({ error: 'Failed to load customer decision' });
     }
 });
 
@@ -653,23 +1085,83 @@ router.post('/api/job-tickets/bulk-update', requireAdminAuth, requireGranularPer
             return res.status(400).json({ error: 'Array of jobIds is required' });
         }
 
-        const results = await Promise.all(jobIds.map(async (id) => {
-            const job = await jobRepo.getJobTicket(id);
-            if (!job) return null;
-
-            // Mirror advance-status: stamp completion + warranty window when bulk-set to Completed.
-            const bulkPatch = { ...updates };
-            if (bulkPatch.status === 'Completed') {
-                if (!bulkPatch.completedAt) bulkPatch.completedAt = new Date();
-                const warrantyDays = (job as any).warrantyDays ?? 30;
-                if (warrantyDays > 0 && !(job as any).warrantyExpiryDate && !bulkPatch.warrantyExpiryDate) {
-                    const expiry = new Date();
-                    expiry.setDate(expiry.getDate() + warrantyDays);
-                    bulkPatch.warrantyExpiryDate = expiry;
-                }
+        try {
+            assertJobPatchNotProtected(updates || {});
+        } catch (guardErr) {
+            if (guardErr instanceof ProtectedJobFieldError) {
+                return res.status(400).json({ error: guardErr.message, code: guardErr.code });
             }
+            throw guardErr;
+        }
 
-            const updatedJob = await jobRepo.updateJobTicket(id, bulkPatch);
+        // Preflight ALL jobs — no partial updates if any is NG-locked
+        for (const id of jobIds) {
+            const job = await jobRepo.getJobTicket(id);
+            if (!job) continue;
+            try {
+                assertNgCurrentStateAllowsMutation(job.status, updates || {});
+            } catch (guardErr) {
+                if (guardErr instanceof NgWorkflowLockedError) {
+                    return res.status(409).json({
+                        error: guardErr.message,
+                        code: guardErr.code,
+                        jobId: id,
+                    });
+                }
+                throw guardErr;
+            }
+        }
+
+        const user = (req as any).user;
+        if (!user?.id || !user?.role) {
+            return res.status(401).json({ error: 'Unauthorized', code: 'AUTH_REQUIRED' });
+        }
+        if (updates?.status === 'Ready') {
+            return res.status(409).json({
+                error: 'Cannot bulk-set Ready. Confirm testing on each job individually with testingConfirmed: true.',
+                code: 'BULK_READY_FORBIDDEN',
+            });
+        }
+        const results: any[] = [];
+        for (const id of jobIds) {
+            const job = await jobRepo.getJobTicket(id);
+            if (!job) continue;
+
+            let updatedJob;
+            if (updates.status && updates.status !== job.status) {
+                if (!isCanonicalJobStatus(updates.status)) {
+                    return res.status(400).json({ error: `Unknown job status: ${updates.status}`, code: 'INVALID_JOB_STATUS', jobId: id });
+                }
+                const bulkPatch = { ...updates };
+                delete bulkPatch.status;
+                if (updates.status === 'Completed') {
+                    if (!bulkPatch.completedAt) bulkPatch.completedAt = new Date();
+                    const warrantyDays = (job as any).warrantyDays ?? 30;
+                    if (warrantyDays > 0 && !(job as any).warrantyExpiryDate && !bulkPatch.warrantyExpiryDate) {
+                        const expiry = new Date();
+                        expiry.setDate(expiry.getDate() + warrantyDays);
+                        bulkPatch.warrantyExpiryDate = expiry;
+                    }
+                }
+                const transition = await transitionJobStatus({
+                    jobId: id,
+                    toStatus: updates.status,
+                    actor: {
+                        id: user.id,
+                        name: user.name || 'Staff',
+                        role: user.role,
+                    },
+                    reason: 'bulk',
+                    extraPatch: bulkPatch,
+                });
+                updatedJob = transition.job;
+            } else {
+                const bulkPatch = { ...updates };
+                delete bulkPatch.status;
+                updatedJob = Object.keys(bulkPatch).length
+                    ? await jobRepo.updateJobTicket(id, bulkPatch)
+                    : job;
+            }
 
             await auditLogger.log({
                 userId: req.session?.adminUserId || 'system',
@@ -681,22 +1173,8 @@ router.post('/api/job-tickets/bulk-update', requireAdminAuth, requireGranularPer
                 req: req
             });
 
-            // Project linked service request + journey from job status change.
-            if (updates.status && updatedJob) {
-                try {
-                    await jobService.syncLinkedServiceRequestFromJob(id, "System Projection");
-                } catch (syncErr) {
-                    console.error('[Projection] Failed to project SR from bulk-update:', syncErr);
-                }
-                repairJourneyService.syncJobStatusToJourney(id, updates.status, {
-                    device: (updatedJob as any)?.device,
-                    warrantyDays: (updatedJob as any)?.warrantyDays,
-                    warrantyExpiryDate: (updatedJob as any)?.warrantyExpiryDate,
-                }).catch((err) => console.error('[RepairJourney] Bulk-update journey sync failed:', (err as Error).message));
-            }
-
-            return updatedJob;
-        }));
+            results.push(updatedJob);
+        }
 
         const successfulUpdates = results.filter(Boolean);
         if (successfulUpdates.length > 0) {
@@ -715,6 +1193,9 @@ router.post('/api/job-tickets/bulk-update', requireAdminAuth, requireGranularPer
 
         res.json({ success: true, count: successfulUpdates.length, updated: successfulUpdates });
     } catch (error: any) {
+        if (isNgWorkflowError(error)) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
         res.status(500).json({ error: 'Failed to perform bulk update', details: error.message });
     }
 });
@@ -789,7 +1270,57 @@ router.post('/api/job-tickets/:id/verify-rollback', requireAdminAuth, requirePer
         if (!rollback) return res.status(404).json({ error: 'Rollback request not found' });
 
         if (approved && rollback.jobTicketId) {
-            await jobRepo.updateJobTicket(rollback.jobTicketId, { status: rollback.targetStatus });
+            const targetJob = await jobRepo.getJobTicket(rollback.jobTicketId);
+            if (targetJob) {
+                try {
+                    assertJobNotNgProtected(targetJob.status, "rollback");
+                    if (isNgProtectedStatus(rollback.targetStatus)) {
+                        throw new ProtectedJobFieldError(
+                            `Cannot rollback into protected NG status "${rollback.targetStatus}".`,
+                        );
+                    }
+                } catch (err) {
+                    if (isNgWorkflowError(err)) {
+                        return res.status(err.status).json({ error: err.message, code: err.code });
+                    }
+                    throw err;
+                }
+            }
+            if (!isCanonicalJobStatus(rollback.targetStatus)) {
+                return res.status(400).json({ error: `Unknown rollback target status: ${rollback.targetStatus}`, code: 'INVALID_JOB_STATUS' });
+            }
+            const user = (req as any).user;
+            if (!user?.id || !user?.role) {
+                return res.status(401).json({ error: 'Authenticated actor required for rollback apply', code: 'AUTH_REQUIRED' });
+            }
+            if (rollback.targetStatus === 'Ready') {
+                if (user.role !== 'Super Admin' && user.role !== 'Manager') {
+                    return res.status(403).json({
+                        error: 'Only Manager or Super Admin may approve a rollback to Ready',
+                        code: 'READY_OVERRIDE_FORBIDDEN',
+                    });
+                }
+                if (!isExplicitTestingConfirmed(req.body?.testingConfirmed)) {
+                    return res.status(400).json({
+                        error: 'Explicit testingConfirmed: true is required to rollback to Ready',
+                        code: 'TESTING_CONFIRMATION_REQUIRED',
+                    });
+                }
+            }
+            await transitionJobStatus({
+                jobId: rollback.jobTicketId,
+                toStatus: rollback.targetStatus,
+                actor: {
+                    id: user.id,
+                    name: user.name || 'Staff',
+                    role: user.role,
+                },
+                reason: 'rollback',
+                testingConfirmed: rollback.targetStatus === 'Ready'
+                    ? isExplicitTestingConfirmed(req.body?.testingConfirmed)
+                    : undefined,
+                suppressReadyNotify: rollback.targetStatus !== 'Ready',
+            });
 
             await auditLogger.log({
                 userId: req.session?.adminUserId || 'system',
@@ -811,12 +1342,6 @@ router.post('/api/job-tickets/:id/verify-rollback', requireAdminAuth, requirePer
                     status: rollback.targetStatus,
                 },
             });
-
-            jobService.syncLinkedServiceRequestFromJob(rollback.jobTicketId, "System Projection")
-                .catch((err) => console.error('[Projection] Rollback SR sync failed:', (err as Error).message));
-
-            repairJourneyService.syncJobStatusToJourney(rollback.jobTicketId, rollback.targetStatus)
-                .catch((err) => console.error('[RepairJourney] Rollback journey sync failed:', (err as Error).message));
         } else {
             await auditLogger.log({
                 userId: req.session?.adminUserId || 'system',
@@ -871,6 +1396,19 @@ router.patch('/api/job-tickets/:id', requireAdminAuth, requireGranularPermission
 
         // Defensive: never allow updating the primary key even if sent in payload
         delete updateData.id;
+
+        // JOBS-NG-02G: block forged protected targets and locked current-state mutations
+        try {
+            if (existingForAccess) {
+                assertNgCurrentStateAllowsMutation(existingForAccess.status, updateData);
+            }
+            assertJobPatchNotProtected(updateData);
+        } catch (guardErr) {
+            if (isNgWorkflowError(guardErr)) {
+                return res.status(guardErr.status).json({ error: guardErr.message, code: guardErr.code });
+            }
+            throw guardErr;
+        }
 
         // --- PHASE 1.2: Enforce Strict Linear Progression ---
         // Strip out status updates from generic patch. State must be advanced via /advance-status
@@ -1024,6 +1562,18 @@ router.patch('/api/job-tickets/:id', requireAdminAuth, requireGranularPermission
 router.delete('/api/job-tickets/:id', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
     try {
         const jobId = req.params.id;
+        const existing = await jobRepo.getJobTicket(jobId);
+        if (!existing) {
+            return res.status(404).json({ error: 'Job ticket not found' });
+        }
+        try {
+            assertJobNotNgProtected(existing.status, "delete");
+        } catch (err) {
+            if (isNgWorkflowError(err)) {
+                return res.status(err.status).json({ error: err.message, code: err.code });
+            }
+            throw err;
+        }
         const success = await jobRepo.deleteJobTicket(jobId);
         if (!success) {
             return res.status(404).json({ error: 'Job ticket not found' });
@@ -1091,6 +1641,7 @@ router.get('/api/public/qr', async (req: Request, res: Response) => {
 
 /**
  * GET /api/job-tickets/track/:id - Public job tracking (for QR code scanning)
+ * Allowlist only — no serials, estimatedCost, phone, notes, or money fields.
  */
 router.get('/api/job-tickets/track/:id', async (req: Request, res: Response) => {
     try {
@@ -1099,7 +1650,15 @@ router.get('/api/job-tickets/track/:id', async (req: Request, res: Response) => 
             return res.status(404).json({ error: 'Job ticket not found' });
         }
 
-        // Return limited public info for security
+        // JOB-INTAKE-UNIFICATION-01A-B — external Technician jobs are not public-trackable.
+        // TECHNICIAN-QR-TRACKING-01 owns the scoped replacement; same not-found as missing id.
+        const { isExternalTechnicianJob } = await import(
+            '../services/external-technician-intake.service.js'
+        );
+        if (isExternalTechnicianJob(job as any)) {
+            return res.status(404).json({ error: 'Job ticket not found' });
+        }
+
         res.json({
             id: job.id,
             device: job.device,
@@ -1107,7 +1666,6 @@ router.get('/api/job-tickets/track/:id', async (req: Request, res: Response) => 
             status: job.status,
             createdAt: job.createdAt,
             completedAt: job.completedAt,
-            estimatedCost: job.estimatedCost,
             deadline: job.deadline,
         });
     } catch (error) {
@@ -1116,134 +1674,110 @@ router.get('/api/job-tickets/track/:id', async (req: Request, res: Response) => 
 });
 
 /**
- * GET /api/public/quote/:token - Public endpoint to retrieve Quote Details
+ * GET /api/public/quote/:token — RETIRED (SERVICE-INTAKE-RELIABILITY-01B)
+ * Legacy public quote view. Replaced by canonical retail quote contract (00C-A).
+ * Returns 410 Gone for any token. No job lookup, no existence oracle, no data leak.
  */
-router.get('/api/public/quote/:token', async (req: Request, res: Response) => {
-    try {
-        const job = await jobRepo.getJobTicket(req.params.token);
-        if (!job) {
-            return res.status(404).json({ error: 'Quote not found' });
-        }
-
-        // Expose only required information for public quotes
-        const jobData = job as any;
-        res.json({
-            id: job.id,
-            device: job.device,
-            status: job.status,
-            createdAt: job.createdAt,
-            estimatedCost: job.estimatedCost,
-            tasks: jobData.tasks || [],
-            parts: jobData.parts || []
-        });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch quote details' });
-    }
+router.get('/api/public/quote/:token', async (_req: Request, res: Response) => {
+    return res.status(410).json({
+        error: "This legacy quote link is no longer available.",
+        code: "LEGACY_PUBLIC_QUOTE_RETIRED",
+    });
 });
 
 /**
- * POST /api/public/quote/:token/approve - Process 1-Click Quote Approval & Payment Simulation
+ * POST /api/public/quote/:token/approve — RETIRED (SERVICE-INTAKE-RELIABILITY-01B)
+ * Legacy 1-click quote approval. Replaced by canonical retail quote accept/convert flow.
+ * Returns 410 Gone for any token. No job lookup, no mutation, no data leak.
  */
-router.post('/api/public/quote/:token/approve', async (req: Request, res: Response) => {
-    try {
-        const job = await jobRepo.getJobTicket(req.params.token);
-        if (!job) {
-            return res.status(404).json({ error: 'Quote not found' });
-        }
-
-        if (job.status === "Approved" || job.status === "In Progress" || job.status === "Completed") {
-            return res.status(400).json({ error: 'Quote has already been approved' });
-        }
-
-        const updatedJob = await jobRepo.updateJobTicket(job.id, {
-            status: "In Progress"
-        });
-        if (!updatedJob) {
-            return res.status(500).json({ error: 'Failed to update quote status' });
-        }
-
-        // Record Audit Log for the public approval
-        await auditLogger.log({
-            action: 'UPDATE_JOB_STATUS_PUBLIC',
-            entity: 'JOB_TICKET',
-            entityId: job.id,
-            details: `Customer approved quote and mock payment received for ৳${job.estimatedCost || '0'}. Status advanced to In Progress.`,
-            userId: 'PUBLIC_CUSTOMER',
-            req
-        });
-
-        publishJobTicketEvent({
-            action: 'status_changed',
-            entityId: updatedJob.id,
-            invalidate: [...JOB_REALTIME_TAGS],
-            permissions: ['jobs'],
-            payload: {
-                jobId: updatedJob.id,
-                ticketNumber: updatedJob.id,
-                status: updatedJob.status,
-            },
-        });
-
-        // Look up the linked service request (if any)
-        const linkedSR = await serviceRequestRepo.getServiceRequestByConvertedJobId(updatedJob.id);
-
-        res.json({
-            ...updatedJob,
-            serviceRequestId: linkedSR?.id || null,
-            jobId: updatedJob.id,
-            trackingType: linkedSR ? "service" : "job",
-        });
-    } catch (error) {
-        console.error('Failed to approve quote:', error);
-        res.status(500).json({ error: 'Failed to process quote approval' });
-    }
+router.post('/api/public/quote/:token/approve', async (_req: Request, res: Response) => {
+    return res.status(410).json({
+        error: "This legacy quote link is no longer available.",
+        code: "LEGACY_PUBLIC_QUOTE_RETIRED",
+    });
 });
 
 /**
- * POST /api/job-tickets/:id/record-payment - Verify and record payment (Called by POS)
+ * POST /api/job-tickets/:id/record-payment
+ * 00C-B: Compatibility adapter — never writes paidAmount without canonical POS settlement.
+ * Deprecated for new clients; use POST /api/pos-transactions.
  */
-router.post('/api/job-tickets/:id/record-payment', requireAdminAuth, requirePermission('process_payment'), async (req: Request, res: Response) => {
+router.post('/api/job-tickets/:id/record-payment', requireAdminAuth, requireGranularPermission('pos.processPayment'), async (req: Request, res: Response) => {
     try {
         const jobId = req.params.id;
-        const { paymentId, amount, method } = req.body;
+        const { paymentId, amount, method, clientRequestId } = req.body || {};
 
-        if (!paymentId || !amount || !method) {
-            return res.status(400).json({ error: "Missing payment details" });
+        if (!paymentId || amount == null || !method) {
+            return res.status(400).json({ error: "Missing payment details", code: "MISSING_PAYMENT_DETAILS" });
         }
 
-        const job = await jobRepo.getJobTicket(jobId);
-        if (!job) return res.status(404).json({ error: "Job not found" });
+        const actor = (req as any).user;
+        const actorUserId = actor?.id || req.session?.adminUserId;
+        if (!actorUserId) {
+            return res.status(401).json({ error: "Admin authentication required" });
+        }
 
-        // Update payment status via storage method
-        const updatedJob = await jobService.recordJobPayment(jobId, { paymentId, amount, method });
+        const { settleJobPaymentViaPos, RetailMoneyError, withPosLifecycle } = await import(
+            '../services/retail-money-settlement.service.js'
+        );
 
-        // Audit Log
+        const result = await settleJobPaymentViaPos({
+            jobId,
+            amount: Number(amount),
+            method: String(method),
+            paymentId: String(paymentId),
+            clientRequestId: clientRequestId ? String(clientRequestId) : String(paymentId),
+            actorUserId,
+            req,
+        });
+
         await auditLogger.log({
-            userId: req.session?.adminUserId || 'system',
-            action: 'RECORD_PAYMENT',
+            userId: actorUserId,
+            action: result.reused ? 'RECORD_PAYMENT_ADAPTER_REUSE' : 'RECORD_PAYMENT_ADAPTER_SETTLE',
             entity: 'JobTicket',
             entityId: jobId,
-            details: `Payment recorded: ${amount} via ${method}`,
-            oldValue: { paymentStatus: job.paymentStatus, paidAmount: job.paidAmount },
-            newValue: { paymentStatus: updatedJob.paymentStatus, paidAmount: updatedJob.paidAmount },
-            req: req
+            details: `Adapter settlement via POS ${result.posTransaction.id} amount=${amount} method=${method}`,
+            newValue: {
+                posTransactionId: result.posTransaction.id,
+                paidAmount: result.job.paidAmount,
+                paymentStatus: result.job.paymentStatus,
+                reused: result.reused,
+            },
+            req,
         });
 
         publishJobTicketEvent({
             action: 'updated',
-            entityId: updatedJob.id,
+            entityId: result.job.id,
             invalidate: [...JOB_REALTIME_TAGS],
             permissions: ['jobs'],
             payload: {
-                jobId: updatedJob.id,
-                ticketNumber: updatedJob.id,
-                status: updatedJob.status,
+                jobId: result.job.id,
+                ticketNumber: result.job.id,
+                status: result.job.status,
             },
         });
 
-        res.json(updatedJob);
-    } catch (error) {
-        console.error('Payment record error:', error);
+        res.json({
+            ...result.job,
+            posTransaction: withPosLifecycle(result.posTransaction),
+            settlement: {
+                reused: result.reused,
+                deprecated: true,
+                deprecation: "Use POST /api/pos-transactions for new integrations",
+                legacyHistoryIncomplete: result.legacyHistoryIncomplete,
+            },
+        });
+    } catch (error: any) {
+        const { RetailMoneyError } = await import('../services/retail-money-settlement.service.js');
+        if (error instanceof RetailMoneyError) {
+            return res.status(error.status).json({
+                error: error.message,
+                code: error.code,
+                ...(error.details || {}),
+            });
+        }
+        console.error('[Jobs] record-payment adapter failed:', (error as Error).message);
         res.status(500).json({ error: 'Failed to record payment' });
     }
 });
@@ -1261,6 +1795,15 @@ router.post('/api/job-tickets/:id/generate-invoice', requireAdminAuth, requirePe
 
         const job = await jobRepo.getJobTicket(jobId);
         if (!job) return res.status(404).json({ error: "Job not found" });
+
+        try {
+            assertJobNotNgProtected(job.status, "generate-invoice");
+        } catch (err) {
+            if (isNgWorkflowError(err)) {
+                return res.status(err.status).json({ error: err.message, code: err.code });
+            }
+            throw err;
+        }
 
         // 1. Payment Check
         if (job.paymentStatus !== 'paid' && job.paymentStatus !== 'partial') {
@@ -1331,13 +1874,36 @@ router.post('/api/job-tickets/:id/write-off', requireAdminAuth, requireGranularP
         const { reason } = req.body;
         if (!reason) return res.status(400).json({ error: "Reason is required for write-off" });
 
-        const updatedJob = await jobRepo.updateJobTicket(req.params.id, {
-            paymentStatus: 'written_off',
-            writeOffReason: reason,
-            writeOffBy: req.session?.adminUserId,
-            writeOffAt: new Date(),
-            status: 'Closed' // Close the job as well
+        const existing = await jobRepo.getJobTicket(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Job not found" });
+        try {
+            assertJobNotNgProtected(existing.status, "write-off");
+        } catch (err) {
+            if (err instanceof NgWorkflowLockedError) {
+                return res.status(409).json({ error: err.message, code: err.code });
+            }
+            throw err;
+        }
+
+        const user = (req as any).user;
+        const transition = await transitionJobStatus({
+            jobId: req.params.id,
+            toStatus: 'Closed',
+            actor: {
+                id: user?.id || req.session?.adminUserId || 'system',
+                name: user?.name || 'System',
+                role: user?.role || 'Manager',
+            },
+            reason: 'write_off',
+            extraPatch: {
+                paymentStatus: 'written_off',
+                writeOffReason: reason,
+                writeOffBy: req.session?.adminUserId,
+                writeOffAt: new Date(),
+            },
+            suppressReadyNotify: true,
         });
+        const updatedJob = transition.job;
 
         await auditLogger.log({
             userId: req.session?.adminUserId || 'unknown',
@@ -1363,7 +1929,10 @@ router.post('/api/job-tickets/:id/write-off', requireAdminAuth, requireGranularP
         }
 
         res.json(updatedJob);
-    } catch (error) {
+    } catch (error: any) {
+        if (isNgWorkflowError(error)) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
         res.status(500).json({ error: 'Failed to write off job' });
     }
 });
@@ -1375,6 +1944,16 @@ router.post('/api/job-tickets/:id/write-off', requireAdminAuth, requireGranularP
 router.post('/api/job-tickets/:id/mark-incomplete', requireAdminAuth, requirePermission('process_payment'), async (req: Request, res: Response) => {
     try {
         const { reason } = req.body;
+        const existing = await jobRepo.getJobTicket(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Job not found" });
+        try {
+            assertJobNotNgProtected(existing.status, "mark-incomplete");
+        } catch (err) {
+            if (isNgWorkflowError(err)) {
+                return res.status(err.status).json({ error: err.message, code: err.code });
+            }
+            throw err;
+        }
         const updatedJob = await jobRepo.updateJobTicket(req.params.id, {
             paymentStatus: 'incomplete',
             notes: reason ? `Payment incomplete: ${reason}` : undefined

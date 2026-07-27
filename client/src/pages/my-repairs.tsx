@@ -7,7 +7,11 @@ import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 import { PillButton, RefBadge, SectionEyebrow, SegmentedToggle, StatusChip, toneForStatus } from "@/components/customer/mobile-kit";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { labelJourneyFriendly, labelJourneyStage, labelJourneyStatus, labelNextAction, labelServiceMode } from "@/lib/customerRepairJourneyLabels";
+import {
+  labelServiceMode,
+  presentCustomerJourney,
+  safeCustomerTicketRef,
+} from "@/lib/customerRepairJourneyLabels";
 
 type Filter = "active" | "quotes" | "done" | "all";
 
@@ -21,14 +25,8 @@ function formatDate(value?: string | null) {
 function filterJourney(journey: CustomerRepairJourneyEnriched, filter: Filter) {
   if (filter === "all") return true;
   if (filter === "quotes") return journey.currentStage.includes("quote");
-  if (filter === "done") return ["delivered", "cancelled", "repair_completed"].includes(journey.currentStage);
+  if (filter === "done") return ["delivered", "cancelled"].includes(journey.currentStage);
   return !["delivered", "cancelled"].includes(journey.currentStage);
-}
-
-function safeRef(journey: CustomerRepairJourneyEnriched): string {
-  if (journey.srTicketNumber) return journey.srTicketNumber;
-  if (journey.jobTicketId) return journey.jobTicketId.length > 12 ? `JOB-${journey.jobTicketId.slice(-6).toUpperCase()}` : journey.jobTicketId;
-  return `Repair #${journey.id.slice(-6).toUpperCase()}`;
 }
 
 function deviceLabel(journey: CustomerRepairJourneyEnriched): string {
@@ -38,13 +36,11 @@ function deviceLabel(journey: CustomerRepairJourneyEnriched): string {
 }
 
 function JourneyCard({ journey, onOpen }: { journey: CustomerRepairJourneyEnriched; onOpen: () => void }) {
-  const { t, language } = useCustomerLanguage();
-  const stageLabel = labelJourneyStage(journey.currentStage, t);
-  const friendlyLabel = labelJourneyFriendly(journey.currentStage, journey.customerFriendlyStatus, t);
-  const nextActionLabel = labelNextAction(journey.nextAction, journey.nextActionLabel, t, language);
+  const { t } = useCustomerLanguage();
+  const presentation = presentCustomerJourney(journey, t);
   const serviceModeLabel = labelServiceMode(journey.serviceMode, t);
   const device = deviceLabel(journey);
-  const ref = safeRef(journey);
+  const ref = safeCustomerTicketRef(journey);
 
   return (
     <button
@@ -59,37 +55,41 @@ function JourneyCard({ journey, onOpen }: { journey: CustomerRepairJourneyEnrich
             <h3 className="truncate text-base font-black text-slate-950">{device}</h3>
           </div>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs font-bold text-slate-400">
-            <RefBadge>{ref}</RefBadge>
-            {journey.serialNumber && <span>S/N {journey.serialNumber}</span>}
-            {journey.screenSize && <span>{journey.screenSize}"</span>}
+            {ref ? <RefBadge>{ref}</RefBadge> : null}
+            {journey.screenSize && <span>{journey.screenSize}&quot;</span>}
           </div>
         </div>
-        <StatusChip tone={toneForStatus(journey.currentStage)}>{labelJourneyStatus(journey.currentStatus, stageLabel, t)}</StatusChip>
+        <StatusChip tone={toneForStatus(presentation.toneStage)}>{presentation.title}</StatusChip>
       </div>
-      <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-500">{friendlyLabel}</p>
+      <p className="mt-3 line-clamp-2 text-sm leading-6 text-slate-500">{presentation.explanation}</p>
+      {presentation.reassurance && (
+        <p className="mt-2 line-clamp-2 text-xs font-semibold leading-5 text-amber-700">{presentation.reassurance}</p>
+      )}
       <div className="mt-3 flex items-center justify-between gap-2 text-xs font-bold text-slate-500">
-        <span className="inline-flex items-center gap-1">
-          <Clock3 className="h-3.5 w-3.5 text-emerald-600" />
-          {journey.lastEventTitle ? `${journey.lastEventTitle} · ${formatDate(journey.lastEventAt)}` : formatDate(journey.updatedAt)}
+        <span className="inline-flex min-w-0 items-center gap-1">
+          <Clock3 className="h-3.5 w-3.5 shrink-0 text-emerald-600" />
+          <span className="truncate">
+            {journey.lastEventTitle && !/JOB-|serial|estimate/i.test(journey.lastEventTitle)
+              ? `${journey.lastEventTitle} · ${formatDate(journey.lastEventAt)}`
+              : formatDate(journey.updatedAt)}
+          </span>
         </span>
-        <span className="inline-flex items-center gap-1 text-slate-400">
+        <span className="inline-flex shrink-0 items-center gap-1 text-slate-400">
           <CalendarClock className="h-3.5 w-3.5" />
           {serviceModeLabel}
         </span>
       </div>
-      {(journey.nextAction || journey.nextActionLabel) && (
-        <div className="mt-3 flex items-center justify-between rounded-2xl bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-700">
-          <span>{nextActionLabel}</span>
-          <ChevronRight className="h-4 w-4" />
-        </div>
-      )}
+      <div className="mt-3 flex items-center justify-between rounded-2xl bg-emerald-50 px-3 py-2 text-sm font-black text-emerald-700">
+        <span className="line-clamp-1">{presentation.nextLine}</span>
+        <ChevronRight className="h-4 w-4 shrink-0" />
+      </div>
     </button>
   );
 }
 
 export default function MyRepairsPage() {
   const [, setLocation] = useLocation();
-  const { t, language } = useCustomerLanguage();
+  const { t } = useCustomerLanguage();
   const [filter, setFilter] = useState<Filter>("active");
   const { data = [], isLoading, isError, refetch } = useQuery({
     queryKey: ["customerRepairJourneys"],
@@ -180,18 +180,22 @@ export default function MyRepairsPage() {
                 </thead>
                 <tbody>
                   {data.map((journey) => {
-                    const stageLabel = labelJourneyStage(journey.currentStage, t);
+                    const presentation = presentCustomerJourney(journey, t);
+                    const ref = safeCustomerTicketRef(journey);
                     return (
                       <tr key={journey.id} className="border-t border-slate-100 hover:bg-emerald-50/30">
                         <td className="px-4 py-4">
                           <div className="font-bold text-slate-900">{deviceLabel(journey)}</div>
-                          <div className="mt-0.5 flex items-center gap-2 text-xs text-slate-400">
-                            <span>{safeRef(journey)}</span>
-                            {journey.serialNumber && <span>· S/N {journey.serialNumber}</span>}
-                          </div>
+                          {ref ? <div className="mt-0.5 text-xs text-slate-400">{ref}</div> : null}
                         </td>
-                        <td className="px-4 py-4"><StatusChip tone={toneForStatus(journey.currentStage)}>{labelJourneyStatus(journey.currentStatus, stageLabel, t)}</StatusChip></td>
-                        <td className="px-4 py-4 text-xs text-slate-500">{journey.lastEventTitle ? `${journey.lastEventTitle} · ${formatDate(journey.lastEventAt)}` : formatDate(journey.updatedAt)}</td>
+                        <td className="px-4 py-4">
+                          <StatusChip tone={toneForStatus(presentation.toneStage)}>{presentation.title}</StatusChip>
+                        </td>
+                        <td className="px-4 py-4 text-xs text-slate-500">
+                          {journey.lastEventTitle && !/JOB-|serial|estimate/i.test(journey.lastEventTitle)
+                            ? `${journey.lastEventTitle} · ${formatDate(journey.lastEventAt)}`
+                            : formatDate(journey.updatedAt)}
+                        </td>
                         <td className="px-4 py-4 text-right">
                           <Button variant="outline" className="rounded-full" onClick={() => setLocation("/my-repairs/" + journey.id)}>
                             {t("journey.open")}
@@ -210,8 +214,10 @@ export default function MyRepairsPage() {
               <div>
                 <Monitor className="h-8 w-8 text-emerald-600" />
                 <h2 className="mt-4 text-2xl font-black text-slate-950">{deviceLabel(selected)}</h2>
-                <p className="mt-1 text-xs font-bold text-slate-400">{safeRef(selected)}</p>
-                <p className="mt-3 text-sm leading-6 text-slate-500">{labelJourneyFriendly(selected.currentStage, selected.customerFriendlyStatus, t)}</p>
+                {safeCustomerTicketRef(selected) ? (
+                  <p className="mt-1 text-xs font-bold text-slate-400">{safeCustomerTicketRef(selected)}</p>
+                ) : null}
+                <p className="mt-3 text-sm leading-6 text-slate-500">{presentCustomerJourney(selected, t).explanation}</p>
                 <Button className="mt-6 w-full rounded-full bg-emerald-600 hover:bg-emerald-700" onClick={() => setLocation("/my-repairs/" + selected.id)}>
                   {t("journey.details")}
                 </Button>

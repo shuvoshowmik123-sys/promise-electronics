@@ -5,15 +5,19 @@ import { Clock, User, Wrench, GripVertical } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import type { JobTicket } from "@shared/schema";
+import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 
 // ─── Column Config ────────────────────────────────────────────────────────────
-const KANBAN_COLUMNS: { id: string; label: string; color: string; dot: string }[] = [
-    { id: "Pending", label: "Pending", color: "bg-slate-50  border-slate-200", dot: "bg-slate-400" },
-    { id: "In Progress", label: "In Progress", color: "bg-blue-50   border-blue-200", dot: "bg-blue-500" },
-    { id: "Waiting for Parts", label: "Waiting for Parts", color: "bg-amber-50  border-amber-200", dot: "bg-amber-500" },
-    { id: "Ready", label: "Ready to Deliver", color: "bg-green-50  border-green-200", dot: "bg-green-500" },
-    { id: "Delivered", label: "Delivered", color: "bg-slate-50  border-slate-200", dot: "bg-emerald-400" },
+const KANBAN_COLUMNS: { id: string; label: string; color: string; dot: string; statuses: string[]; targetStatus?: string }[] = [
+    { id: "pending", label: "Pending", color: "bg-slate-50 border-slate-200", dot: "bg-slate-400", statuses: ["Pending", "Diagnosing"], targetStatus: "Pending" },
+    { id: "repairing", label: "In Progress", color: "bg-blue-50 border-blue-200", dot: "bg-blue-500", statuses: ["In Progress", "On Workbench"], targetStatus: "In Progress" },
+    { id: "parts", label: "Waiting for Parts", color: "bg-amber-50 border-amber-200", dot: "bg-amber-500", statuses: ["Pending Parts", "Waiting on Parts", "Waiting for Parts"], targetStatus: "Waiting on Parts" },
+    { id: "decision", label: "Decision", color: "bg-amber-50 border-amber-200", dot: "bg-amber-600", statuses: ["NG Review Pending", "Awaiting Customer Decision"] },
+    { id: "ready", label: "Ready to Deliver", color: "bg-green-50 border-green-200", dot: "bg-green-500", statuses: ["Ready", "Completed"], targetStatus: "Ready" },
+    { id: "delivered", label: "Delivered", color: "bg-slate-50 border-slate-200", dot: "bg-emerald-400", statuses: ["Delivered"], targetStatus: "Delivered" },
 ];
+
+const PROTECTED_NG_STATUSES = ["NG Review Pending", "Awaiting Customer Decision"];
 
 const PRIORITY_STYLES: Record<string, string> = {
     Critical: "bg-red-100    text-red-700",
@@ -39,22 +43,23 @@ function KanbanCard({
     onDragStart: (e: React.DragEvent, jobId: string) => void;
     onClick: (job: JobTicket) => void;
 }) {
+    const protectedStatus = PROTECTED_NG_STATUSES.includes(job.status || "");
     return (
         <motion.div
             layout
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96 }}
-            draggable
-            onDragStart={(e) => onDragStart(e as any, job.id)}
+            draggable={!protectedStatus}
+            onDragStart={(e) => { if (!protectedStatus) onDragStart(e as any, job.id); }}
             onClick={() => onClick(job)}
-            className="bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md hover:border-blue-300 transition-all cursor-grab active:cursor-grabbing group select-none"
+            className={cn("bg-white rounded-2xl border border-slate-200 shadow-sm hover:shadow-md transition-all group select-none", protectedStatus ? "cursor-pointer hover:border-amber-300" : "cursor-grab active:cursor-grabbing hover:border-blue-300")}
         >
             <div className="p-3.5">
                 {/* Header row */}
                 <div className="flex items-start justify-between gap-2 mb-2.5">
                     <span className="font-mono text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100 tracking-wide truncate">
-                        #{job.id.slice(-6).toUpperCase()}
+                        #{getSafeJobDisplayRef(job)}
                     </span>
                     <div className="flex items-center gap-1 shrink-0">
                         {job.priority && job.priority !== "Medium" && (
@@ -63,7 +68,7 @@ function KanbanCard({
                                 {job.priority}
                             </Badge>
                         )}
-                        <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-400 transition-colors shrink-0" />
+                        {!protectedStatus && <GripVertical className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-400 transition-colors shrink-0" />}
                     </div>
                 </div>
 
@@ -125,9 +130,9 @@ function KanbanColumn({
                 column.color,
                 isDragOver ? "border-blue-400 shadow-lg shadow-blue-500/10 scale-[1.01]" : ""
             )}
-            onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+            onDragOver={(e) => { if (column.targetStatus) { e.preventDefault(); setIsDragOver(true); } }}
             onDragLeave={() => setIsDragOver(false)}
-            onDrop={(e) => { setIsDragOver(false); onDrop(e, column.id); }}
+            onDrop={(e) => { setIsDragOver(false); if (column.targetStatus) onDrop(e, column.targetStatus); }}
         >
             {/* Column header */}
             <div className="flex items-center justify-between px-4 py-3 border-b border-black/5">
@@ -183,6 +188,10 @@ export function KanbanBoard({ jobs, onStatusChange, onJobClick }: KanbanBoardPro
         const jobId = draggingJobId.current;
         if (!jobId) return;
         const job = jobs.find(j => j.id === jobId);
+        if (job && PROTECTED_NG_STATUSES.includes(job.status || "")) {
+            draggingJobId.current = null;
+            return;
+        }
         if (job && job.status !== newStatus) {
             onStatusChange(jobId, newStatus);
         }
@@ -190,7 +199,7 @@ export function KanbanBoard({ jobs, onStatusChange, onJobClick }: KanbanBoardPro
     };
 
     const jobsByColumn = KANBAN_COLUMNS.reduce<Record<string, JobTicket[]>>((acc, col) => {
-        acc[col.id] = jobs.filter(j => j.status === col.id);
+        acc[col.id] = jobs.filter(j => col.statuses.includes(j.status || ""));
         return acc;
     }, {});
 

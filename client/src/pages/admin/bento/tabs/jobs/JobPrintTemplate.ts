@@ -296,13 +296,21 @@ export function generatePrintHtml(
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px;">
               <div>
                 <div class="label">Model</div>
-                <div class="value">${escapeHtml(job.modelNumber || job.tvSerialNumber || "Not specified")}</div>
+                <div class="value">${escapeHtml((job.modelNumber && String(job.modelNumber).trim()) || "Not recorded")}</div>
               </div>
               <div>
-                <div class="label">Serial No.</div>
-                <div class="value">${escapeHtml(job.serialNumber || "Not recorded")}</div>
+                <div class="label">Serial number</div>
+                <div class="value">${escapeHtml((job.serialNumber && String(job.serialNumber).trim()) || "Not recorded")}</div>
               </div>
             </div>
+            ${
+              (job.corporateClientId || job.corporateChallanId) && job.tvSerialNumber
+                ? `<div style="margin-top: 8px;">
+              <div class="label">Unit serial</div>
+              <div class="value">${escapeHtml(String(job.tvSerialNumber).trim())}</div>
+            </div>`
+                : ""
+            }
           </div>
 
           <div class="section section-box">

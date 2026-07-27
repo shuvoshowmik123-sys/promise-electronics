@@ -3,14 +3,16 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    X, Printer, CreditCard, Clock, CheckCircle2,
+    X, Printer, Clock, CheckCircle2,
     FileText, CalendarDays, Loader2, DollarSign, Download
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { corporateApi } from "@/lib/api";
-import { cn } from "@/lib/utils";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { hasGranularPermission } from "@/lib/permissions";
+import { describeBillLineItem, getBillLineItems } from "@shared/corporate-bill-utils";
 
 interface BillDetailsSheetProps {
     billId: string | null;
@@ -18,6 +20,8 @@ interface BillDetailsSheetProps {
 }
 
 export function BillDetailsSheet({ billId, onClose }: BillDetailsSheetProps) {
+    const { user, permissions } = useAdminAuth();
+    const canPrint = hasGranularPermission(user?.role, permissions, "corporate.bills.print");
     const { data: bill, isLoading } = useQuery({
         queryKey: ["corporateBillDetails", billId],
         queryFn: () => billId ? corporateApi.getBill(billId) : Promise.resolve(null),
@@ -120,7 +124,7 @@ export function BillDetailsSheet({ billId, onClose }: BillDetailsSheetProps) {
                                     <div className="px-5 py-3 border-b border-slate-100 bg-slate-50/50">
                                         <h3 className="font-semibold text-slate-700">Line Items</h3>
                                     </div>
-                                    {bill.items && bill.items.length > 0 ? (
+                                    {getBillLineItems(bill).length > 0 ? (
                                         <table className="w-full text-sm">
                                             <thead className="bg-slate-50 text-slate-500 border-b border-slate-100">
                                                 <tr>
@@ -130,13 +134,16 @@ export function BillDetailsSheet({ billId, onClose }: BillDetailsSheetProps) {
                                                 </tr>
                                             </thead>
                                             <tbody className="divide-y divide-slate-100">
-                                                {bill.items.map((item: any, i: number) => (
+                                                {getBillLineItems(bill).map((item, i) => {
+                                                    const row = describeBillLineItem(item);
+                                                    return (
                                                     <tr key={i} className="hover:bg-slate-50/50">
-                                                        <td className="py-3 px-5 text-slate-800">{item.description || item.jobId}</td>
-                                                        <td className="py-3 px-5 text-right text-slate-600">{item.quantity || 1}</td>
+                                                        <td className="py-3 px-5 text-slate-800">{row.description}</td>
+                                                        <td className="py-3 px-5 text-right text-slate-600">1</td>
                                                         <td className="py-3 px-5 text-right font-medium text-slate-800 tabular-nums">৳ {item.amount?.toFixed(2)}</td>
                                                     </tr>
-                                                ))}
+                                                    );
+                                                })}
                                             </tbody>
                                         </table>
                                     ) : (
@@ -154,36 +161,16 @@ export function BillDetailsSheet({ billId, onClose }: BillDetailsSheetProps) {
                         )}
                     </ScrollArea>
 
-                    {/* Footer Actions */}
+                    {/* Only render authorized actions backed by a real route. */}
                     <div className="p-4 border-t border-slate-100 bg-white flex items-center gap-3 shrink-0">
-                        <Button
+                        {canPrint && <Button
                             variant="outline"
                             className="flex-1 rounded-xl h-11 border-slate-200 hover:bg-slate-50"
                             onClick={() => window.open(`/admin/corporate/bills/${billId}/print`, '_blank')}
                             disabled={!bill || isLoading}
                         >
                             <Printer className="w-4 h-4 mr-2" /> Print Invoice
-                        </Button>
-                        <Button
-                            variant="default"
-                            className={cn(
-                                "flex-1 rounded-xl h-11 text-white shadow-sm",
-                                bill?.paymentStatus === 'paid'
-                                    ? "bg-slate-200 hover:bg-slate-200 text-slate-500 cursor-not-allowed"
-                                    : "bg-indigo-600 hover:bg-indigo-700 shadow-indigo-500/20"
-                            )}
-                            disabled={!bill || isLoading || bill?.paymentStatus === 'paid'}
-                            onClick={() => {
-                                // Payment logic to be implemented
-                                alert("Payment integration placeholder");
-                            }}
-                        >
-                            {bill?.paymentStatus === 'paid' ? (
-                                <><CheckCircle2 className="w-4 h-4 mr-2" /> Already Paid</>
-                            ) : (
-                                <><CreditCard className="w-4 h-4 mr-2" /> Mark as Paid</>
-                            )}
-                        </Button>
+                        </Button>}
                     </div>
                 </motion.div>
             </div>

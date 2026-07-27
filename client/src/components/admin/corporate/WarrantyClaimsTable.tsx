@@ -21,6 +21,7 @@ import { format } from "date-fns";
 import { Loader2, MoreVertical, CheckCircle, XCircle, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { OpenDisputeButton } from "@/components/admin/disputes/OpenDisputeButton";
 
 function safeClaimRef(id: string): string {
     return 'CRR-' + id.slice(-6).toUpperCase();
@@ -147,6 +148,14 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
                         </div>
                         <p className="mt-1 text-xs text-slate-500 truncate">{claim.claimReason}</p>
                         <div className="mt-1 text-[10px] text-slate-400">{claim.claimedAt ? format(new Date(claim.claimedAt), "PP") : "N/A"}</div>
+                        <div className="mt-2">
+                            <OpenDisputeButton
+                                targetType="warranty"
+                                targetId={claim.id}
+                                customerName={claim.customerName || claim.customer}
+                                customerPhone={claim.customerPhone || claim.phone}
+                            />
+                        </div>
                     </div>
                 ))
             )}
@@ -191,6 +200,13 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
                                 </TableCell>
                                 <TableCell>{claim.claimedAt ? format(new Date(claim.claimedAt), "PP") : "N/A"}</TableCell>
                                 <TableCell className="text-right">
+                                    <div className="flex flex-wrap items-center justify-end gap-1">
+                                    <OpenDisputeButton
+                                        targetType="warranty"
+                                        targetId={claim.id}
+                                        customerName={claim.customerName || claim.customer}
+                                        customerPhone={claim.customerPhone || claim.phone}
+                                    />
                                     <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                             <Button variant="ghost" size="icon">
@@ -220,6 +236,7 @@ export function WarrantyClaimsTable({ jobIds }: { jobIds?: string[] }) {
                                             )}
                                         </DropdownMenuContent>
                                     </DropdownMenu>
+                                    </div>
                                 </TableCell>
                             </TableRow>
                         ))

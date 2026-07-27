@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import {
     Dialog, DialogContent, DialogTitle,
 } from "@/components/ui/dialog";
-import { jobTicketsApi, settingsApi, adminUsersApi } from "@/lib/api";
+import { jobTicketsApi, settingsApi, adminUsersApi, jobIntakeApi } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
@@ -31,13 +31,24 @@ const CreateJobDrawer = lazy(() => import("./jobs/CreateJobDrawer").then(m => ({
 const EditJobDrawer = lazy(() => import("./jobs/EditJobDrawer").then(m => ({ default: m.EditJobDrawer })));
 const JobDetailsSheet = lazy(() => import("./jobs/JobDetailsSheet").then(m => ({ default: m.JobDetailsSheet })));
 const AdvanceStatusDialog = lazy(() => import("@/components/admin/workflow/AdvanceStatusDialog").then(m => ({ default: m.AdvanceStatusDialog })));
+const FinalTestDialog = lazy(() => import("@/components/admin/workflow/FinalTestDialog").then(m => ({ default: m.FinalTestDialog })));
+const NgResolutionWizard = lazy(() => import("@/components/admin/workflow/NgResolutionWizard").then(m => ({ default: m.NgResolutionWizard })));
 const KanbanBoard = lazy(() => import("@/components/admin/workflow/KanbanBoard").then(m => ({ default: m.KanbanBoard })));
 const LocalPurchaseModal = lazy(() => import("@/components/inventory/LocalPurchaseModal").then(m => ({ default: m.LocalPurchaseModal })));
 import { getJobSkillRules, hasAnySkill, type TechUser } from "@/components/admin/TechnicianPicker";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 
-type JobGroupKey = "new" | "repairing" | "waiting-parts" | "ready" | "delivered" | "all";
+type JobGroupKey = "new" | "repairing" | "waiting-parts" | "decision" | "ready" | "delivered" | "all";
+
+function useJobDebouncedValue<T>(value: T, delayMs: number): T {
+    const [debounced, setDebounced] = useState(value);
+    useEffect(() => {
+        const t = window.setTimeout(() => setDebounced(value), delayMs);
+        return () => window.clearTimeout(t);
+    }, [value, delayMs]);
+    return debounced;
+}
 
 const JOB_GROUPS: Array<{
     key: JobGroupKey;
@@ -50,6 +61,7 @@ const JOB_GROUPS: Array<{
     { key: "new", label: "New", shortLabel: "New", helper: "Needs first action", statuses: ["Pending", "Diagnosing"], className: "border-blue-100 bg-blue-50/60 text-blue-700" },
     { key: "repairing", label: "Repairing", shortLabel: "Active", helper: "Work is running", statuses: ["In Progress", "On Workbench"], className: "border-indigo-100 bg-indigo-50/60 text-indigo-700" },
     { key: "waiting-parts", label: "Waiting Parts", shortLabel: "Parts", helper: "Needs parts update", statuses: ["Pending Parts", "Waiting on Parts"], className: "border-amber-100 bg-amber-50/70 text-amber-700" },
+    { key: "decision", label: "Decision", shortLabel: "Decision", helper: "NG review or customer decision", statuses: ["NG Review Pending", "Awaiting Customer Decision"], className: "border-amber-200 bg-amber-50/70 text-amber-800" },
     { key: "ready", label: "Ready", shortLabel: "Ready", helper: "Payment or handover", statuses: ["Ready", "Completed"], className: "border-emerald-100 bg-emerald-50/70 text-emerald-700" },
     { key: "delivered", label: "Delivered", shortLabel: "Done", helper: "Finished jobs", statuses: ["Delivered"], className: "border-slate-200 bg-slate-50 text-slate-700" },
 ];
@@ -88,6 +100,17 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         isSuperAdmin
         || (permissions as Record<string, boolean | undefined>)["jobs.viewAll"] === true
         || (user?.role !== "Technician" && permissions.jobs === true);
+    const canReportNg =
+        isSuperAdmin
+        || (permissions as Record<string, boolean | undefined>)["jobs.reportOutcome"] === true
+        || permissions.jobs === true;
+    const canReviewNg =
+        isSuperAdmin
+        || (permissions as Record<string, boolean | undefined>)["jobs.reviewOutcome"] === true
+        || (user?.role !== "Technician" && permissions.jobs === true);
+    const canManageWorkHolds =
+        isSuperAdmin
+        || (permissions as Record<string, boolean | undefined>)["jobs.manageWorkHolds"] === true;
 
     const [jobSearchQuery, setJobSearchQuery] = useState(initialSearchQuery || "");
     const [jobStatusFilter, setJobStatusFilter] = useState("all");
@@ -123,7 +146,9 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
     const [viewDialogOpen, setViewDialogOpen] = useState(false);
     const [qrDialogOpen, setQrDialogOpen] = useState(false);
     const [isAdvanceDialogOpen, setIsAdvanceDialogOpen] = useState(false);
+    const [isFinalTestDialogOpen, setIsFinalTestDialogOpen] = useState(false);
     const [isLocalPurchaseOpen, setIsLocalPurchaseOpen] = useState(false);
+    const [isNgWizardOpen, setIsNgWizardOpen] = useState(false);
 
     // Selection States
     const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -148,37 +173,95 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
     }, []);
 
     useEffect(() => {
-        const anySheetOpen = isMobileAssignSheetOpen || viewDialogOpen || isCreateDrawerOpen || isEditDrawerOpen || qrDialogOpen || isAdvanceDialogOpen || isLocalPurchaseOpen;
+        const anySheetOpen = isMobileAssignSheetOpen || viewDialogOpen || isCreateDrawerOpen || isEditDrawerOpen || qrDialogOpen || isAdvanceDialogOpen || isFinalTestDialogOpen || isLocalPurchaseOpen || isNgWizardOpen;
         if (isMobile && anySheetOpen) {
             window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
             return () => {
                 window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
             };
         }
-    }, [isMobileAssignSheetOpen, viewDialogOpen, isCreateDrawerOpen, isEditDrawerOpen, qrDialogOpen, isAdvanceDialogOpen, isLocalPurchaseOpen, isMobile]);
+    }, [isMobileAssignSheetOpen, viewDialogOpen, isCreateDrawerOpen, isEditDrawerOpen, qrDialogOpen, isAdvanceDialogOpen, isFinalTestDialogOpen, isLocalPurchaseOpen, isNgWizardOpen, isMobile]);
 
-    // Data Fetching
-    // Use `initialJobType` if provided (e.g., when deep-linking from System Health so all job types are searched)
+    // Same effective gate as Jobs tab visibility (hasPermission("jobs") / Super Admin).
+    const canAccessJobs =
+        isSuperAdmin ||
+        hasPermission("jobs" as any);
+
+    // Data Fetching — HOTFIX-1: server page/search/status/group; never client-slice one incomplete page.
     const jobFetchType = initialJobType || "walk-in";
+    const pageSize = 20;
+    const debouncedJobSearch = useJobDebouncedValue(jobSearchQuery, 300);
+    useEffect(() => {
+        setJobPage(1);
+    }, [debouncedJobSearch, jobGroupFilter, jobStatusFilter, jobPriorityFilter, jobTechnicianFilter]);
+
+    const selectedJobGroupForQuery = JOB_GROUPS.find((group) => group.key === jobGroupFilter);
     const { data: jobTicketsData, isLoading } = useQuery({
-        queryKey: ["jobTickets", jobFetchType],
-        queryFn: () => jobTicketsApi.getAll(jobFetchType),
+        queryKey: [
+            "jobTickets",
+            jobFetchType,
+            jobPage,
+            pageSize,
+            debouncedJobSearch,
+            jobGroupFilter,
+            jobStatusFilter,
+            jobPriorityFilter,
+            jobTechnicianFilter,
+        ],
+        queryFn: () =>
+            jobTicketsApi.getAll({
+                type: jobFetchType,
+                page: jobPage,
+                limit: pageSize,
+                search: debouncedJobSearch.trim() || undefined,
+                status: jobStatusFilter !== "all" ? jobStatusFilter : undefined,
+                statuses:
+                    jobStatusFilter === "all" && jobGroupFilter !== "all" && selectedJobGroupForQuery
+                        ? selectedJobGroupForQuery.statuses
+                        : undefined,
+                priority: jobPriorityFilter !== "all" ? jobPriorityFilter : undefined,
+                technician: jobTechnicianFilter !== "all" ? jobTechnicianFilter : undefined,
+            }),
+        enabled: canAccessJobs,
+        retry: false,
+        placeholderData: (prev) => prev,
     });
 
+    // Settings list is a separate privilege — do not 403 corp-ops / view-only Jobs users.
+    const canFetchSettings =
+        isSuperAdmin ||
+        hasPermission("settings" as any) ||
+        (permissions as Record<string, boolean | undefined>)["settings.manage"] === true;
     const { data: settings = [] } = useQuery({
         queryKey: ["settings"],
         queryFn: settingsApi.getAll,
+        enabled: canAccessJobs && canFetchSettings,
+        retry: false,
     });
+
+    useEffect(() => {
+        if (canAccessJobs) return;
+        queryClient.cancelQueries({ queryKey: ["jobTickets"] });
+        queryClient.removeQueries({ queryKey: ["jobTickets"] });
+        // Do not remove shared ["settings"] — other authorized modules may use it.
+        queryClient.cancelQueries({ queryKey: ["users", "lookup", "Technician"] });
+    }, [canAccessJobs, queryClient]);
 
     const { data: usersData, isError: usersLookupError } = useQuery({
         queryKey: ["users", "lookup", "Technician"],
         queryFn: () => adminUsersApi.lookupTechnicians(),
-        enabled: canAssignTechnician,
+        enabled: canAccessJobs && canAssignTechnician,
         retry: false,
         staleTime: 60_000,
     });
 
     const jobTickets = useMemo(() => Array.isArray(jobTicketsData) ? jobTicketsData : (jobTicketsData?.items || []), [jobTicketsData]);
+    const jobPagination = useMemo(() => {
+        if (jobTicketsData && !Array.isArray(jobTicketsData) && jobTicketsData.pagination) {
+            return jobTicketsData.pagination;
+        }
+        return { total: jobTickets.length, page: jobPage, limit: pageSize, pages: 1 };
+    }, [jobTicketsData, jobTickets.length, jobPage, pageSize]);
     const technicianUsers = useMemo(
         () => (usersData || []).filter((u) => u.role === "Technician"),
         [usersData],
@@ -307,42 +390,14 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         const assignedToMe = isAssignedToCurrentTech(job) ? 0 : 20;
         const skillMatch = matchesCurrentTechSkills(job) ? 0 : 8;
         const unassigned = isUnassignedJob(job) ? 2 : 10;
-        const statusRank = ["Pending", "Diagnosing", "In Progress", "On Workbench", "Pending Parts", "Waiting on Parts", "Ready", "Completed", "Delivered"].indexOf(job.status || "");
+        const statusRank = ["Pending", "Diagnosing", "In Progress", "On Workbench", "Pending Parts", "Waiting on Parts", "NG Review Pending", "Awaiting Customer Decision", "Ready", "Completed", "Delivered"].indexOf(job.status || "");
         const priorityRank = job.priority === "Critical" ? 0 : job.priority === "High" ? 1 : job.priority === "Medium" ? 2 : 3;
         return assignedToMe + skillMatch + unassigned + (statusRank >= 0 ? statusRank : 99) + priorityRank;
     };
 
-    const filteredJobs = jobTickets.filter((j) => {
-        const matchesSearch = smartMatch(jobSearchQuery,
-            j.ticketNumber || j.id,
-            j.customer,
-            j.customerPhone,
-            j.device,
-            j.issue,
-            j.technician,
-            (j as any).assistedByNames,
-            j.screenSize,
-            (j as any).tvSerialNumber,
-            (j as any).modelNumber,
-            (j as any).serialNumber,
-            (j as any).corporateJobNumber,
-            (j as any).ticketType,
-        );
-        const matchesGroup = jobGroupFilter === "all" || !selectedJobGroup || selectedJobGroup.statuses.includes(j.status || "");
-        const matchesStatus = jobStatusFilter === "all" || j.status === jobStatusFilter;
-        const matchesPriority = jobPriorityFilter === "all" || j.priority === jobPriorityFilter;
-        const matchesTechnician = jobTechnicianFilter === "all" ||
-            (jobTechnicianFilter === "Unassigned" && (!j.technician || j.technician === "Unassigned")) ||
-            j.technician === jobTechnicianFilter;
-
-        // Server already scopes technicians to assigned+created (or all if jobs.viewAll).
-        // Do not drop creator-only rows client-side.
-        if (user?.role === "Technician" && !canViewAllJobs) {
-            return matchesSearch && matchesGroup && matchesStatus && matchesPriority;
-        }
-
-        return matchesSearch && matchesGroup && matchesStatus && matchesPriority && matchesTechnician;
-    }).sort((a, b) => jobSortScore(a) - jobSortScore(b));
+    // HOTFIX-2: priority/technician applied server-side with correct totals.
+    // Stable SQL order (createdAt/id); do not re-sort page as if it were a global queue.
+    const filteredJobs = jobTickets;
 
     const searchSuggestions = useMemo(() => {
         const query = jobSearchQuery.trim();
@@ -365,22 +420,23 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
             .slice(0, 6);
     }, [jobSearchQuery, jobTickets, currentTech]);
 
+    // Group badges: active group uses server total; others are page-local only.
     const groupCounts = useMemo(() => {
         return JOB_GROUPS.reduce<Record<JobGroupKey, number>>((acc, group) => {
-            acc[group.key] = jobTickets.filter((job) => group.statuses.includes(job.status || "")).length;
+            if (group.key === jobGroupFilter) {
+                acc[group.key] = jobPagination.total;
+            } else {
+                acc[group.key] = jobTickets.filter((job) => group.statuses.includes(job.status || "")).length;
+            }
             return acc;
-        }, { new: 0, repairing: 0, "waiting-parts": 0, ready: 0, delivered: 0, all: jobTickets.length });
-    }, [jobTickets]);
+        }, { new: 0, repairing: 0, "waiting-parts": 0, decision: 0, ready: 0, delivered: 0, all: jobPagination.total });
+    }, [jobTickets, jobGroupFilter, jobPagination.total]);
 
-    const pageSize = 20;
-    const paginatedJobs = filteredJobs.slice((jobPage - 1) * pageSize, jobPage * pageSize);
+    const paginatedJobs = filteredJobs; // current server page
+    const totalJobPages = Math.max(1, jobPagination.pages || 1);
     // Kanban is drag-and-drop with horizontal columns — unusable on phones, fall back to grid.
     const effectiveViewMode = isMobile && viewMode === "kanban" ? "grid" : viewMode;
     const hasActiveFilters = jobGroupFilter !== "new" || jobStatusFilter !== "all" || jobPriorityFilter !== "all" || jobTechnicianFilter !== "all";
-
-    useEffect(() => {
-        setJobPage(1);
-    }, [jobSearchQuery, jobGroupFilter, jobStatusFilter, jobPriorityFilter, jobTechnicianFilter]);
 
     const clearFilters = () => {
         setJobSearchQuery("");
@@ -459,6 +515,11 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
     };
 
     const handleEditJob = (job: JobTicket) => {
+        if (["NG Review Pending", "Awaiting Customer Decision"].includes(job.status || "")) {
+            setSelectedJob(job);
+            setIsNgWizardOpen(true);
+            return;
+        }
         if (isJobReadOnlyForCurrentUser(job)) {
             toast.error("Read-only: this job is not assigned to you yet");
             handleViewDetails(job);
@@ -475,12 +536,80 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
     };
 
     const handleAdvanceJob = (job: JobTicket) => {
+        if (["NG Review Pending", "Awaiting Customer Decision"].includes(job.status || "")) {
+            setSelectedJob(job);
+            setIsNgWizardOpen(true);
+            return;
+        }
         if (isJobReadOnlyForCurrentUser(job)) {
             toast.error("Read-only: this job is not assigned to you yet");
             return;
         }
         setSelectedJob(job);
+        if (job.status === "Testing") {
+            setIsFinalTestDialogOpen(true);
+            return;
+        }
         setIsAdvanceDialogOpen(true);
+    };
+
+    const handleOpenNgWorkflow = (job: JobTicket) => {
+        if (!["NG Review Pending", "Awaiting Customer Decision"].includes(job.status || "") && (!canReportNg || isJobReadOnlyForCurrentUser(job))) {
+            toast.error("Read-only: this job cannot be reported NG by this account");
+            return;
+        }
+        setSelectedJob(job);
+        setViewDialogOpen(false);
+        setIsEditDrawerOpen(false);
+        setIsAdvanceDialogOpen(false);
+        setIsNgWizardOpen(true);
+    };
+
+    const handleWorkHold = async (job: JobTicket) => {
+        if (!canManageWorkHolds) {
+            toast.error("You do not have permission to manage work holds");
+            return;
+        }
+        try {
+            const { fetchApi } = await import("@/lib/api");
+            await fetchApi(`/technician/workbench/jobs/${encodeURIComponent(job.id)}/hold`, {
+                method: "POST",
+                body: "{}",
+            });
+            toast.success("Held for customer decision (no price stored)");
+            queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+            setViewDialogOpen(false);
+        } catch (e: any) {
+            toast.error(e?.message || "Could not place hold");
+        }
+    };
+
+    const handleWorkResume = async (job: JobTicket) => {
+        if (!canManageWorkHolds) {
+            toast.error("You do not have permission to manage work holds");
+            return;
+        }
+        try {
+            const { fetchApi } = await import("@/lib/api");
+            await fetchApi(`/technician/workbench/jobs/${encodeURIComponent(job.id)}/resume`, {
+                method: "POST",
+                body: JSON.stringify({ toStatus: "In Progress" }),
+            });
+            toast.success("Work resumed");
+            queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+            setViewDialogOpen(false);
+        } catch (e: any) {
+            toast.error(e?.message || "Could not resume work");
+        }
+    };
+
+    const toggleJobSelection = (id: string) => {
+        const job = jobTickets.find((item) => item.id === id);
+        if (job && ["NG Review Pending", "Awaiting Customer Decision"].includes(job.status || "")) {
+            toast.error("Decision workflow jobs cannot be changed through bulk actions");
+            return;
+        }
+        setSelectedJobIds((current) => current.includes(id) ? current.filter((jobId) => jobId !== id) : [...current, id]);
     };
 
     const selectedAssignRules = selectedJob ? getJobSkillRules((selectedJob as any).ticketType || "full_device", selectedJob.issue) : null;
@@ -601,20 +730,37 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         });
     };
 
-    const handlePrintTicket = (job: JobTicket) => {
+    const isExternalTechnicianJob = (job: JobTicket) =>
+        !!(job.externalPartyId || job.intakePartyKind === "external_technician" || job.source === "external_technician_intake");
+
+    const resolveTrackingUrl = async (job: JobTicket): Promise<string> => {
+        if (!isExternalTechnicianJob(job)) {
+            return `${window.location.origin}/track?id=${encodeURIComponent(job.id)}`;
+        }
+        const target = await jobIntakeApi.issueExternalQrPrintTarget({ jobId: job.id });
+        if (target.publicUrl?.startsWith("http")) return target.publicUrl;
+        return `${window.location.origin}${target.path}`;
+    };
+
+    const handlePrintTicket = async (job: JobTicket) => {
         const printWindow = window.open('', '_blank');
         if (!printWindow) { toast.error("Please allow pop-ups to print the ticket"); return; }
-        const trackingUrl = `${window.location.origin}/track?id=${job.id}`;
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(trackingUrl)}`;
+        try {
+            const trackingUrl = await resolveTrackingUrl(job);
+            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(trackingUrl)}`;
 
-        const printContent = generatePrintHtml(job, qrUrl, trackingUrl, getCurrencySymbol(), getLogoUrl());
-        printWindow.document.write(printContent);
-        printWindow.document.close();
-        waitForPrintAssets(printWindow).then(() => {
-            printWindow.focus();
-            printWindow.print();
-        });
-        toast.success("Print dialog opened");
+            const printContent = generatePrintHtml(job, qrUrl, trackingUrl, getCurrencySymbol(), getLogoUrl());
+            printWindow.document.write(printContent);
+            printWindow.document.close();
+            waitForPrintAssets(printWindow).then(() => {
+                printWindow.focus();
+                printWindow.print();
+            });
+            toast.success("Print dialog opened");
+        } catch {
+            printWindow.close();
+            toast.error("Could not prepare QR tracking link for print");
+        }
     };
 
     const readImageAsDataUrl = async (url: string) => {
@@ -648,7 +794,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
             const pageHeight = doc.internal.pageSize.getHeight();
             const margin = 42;
             const ticketNumber = getSafeJobDisplayRef(job as any);
-            const trackingUrl = `${window.location.origin}/track?id=${encodeURIComponent(job.id)}`;
+            const trackingUrl = await resolveTrackingUrl(job);
             const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(trackingUrl)}`;
             const [logoDataUrl, qrDataUrl] = await Promise.all([
                 readImageAsDataUrl(getLogoUrl() || "/logo.png"),
@@ -942,14 +1088,18 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 searchQuery={jobSearchQuery}
                                 isSelectionMode={isSelectionMode}
                                 selectedJobIds={selectedJobIds}
-                                onToggleSelection={(id) => setSelectedJobIds(prev => prev.includes(id) ? prev.filter(jId => jId !== id) : [...prev, id])}
+                                onToggleSelection={toggleJobSelection}
                                 onViewDetails={handleViewDetails}
                                 onEditJob={handleEditJob}
                                 onAdvanceStage={handleAdvanceJob}
+                                onOpenNgWorkflow={handleOpenNgWorkflow}
                                 onPrintTicket={handlePrintTicket}
                                 onGenerateQr={(job) => { setSelectedJob(job); setQrDialogOpen(true); }}
                                 userRole={user?.role}
                                 canEdit={hasPermission("canEdit")}
+                                canReviewNg={canReviewNg}
+                                canReportNg={canReportNg}
+                                canMutateJob={(job) => !isJobReadOnlyForCurrentUser(job)}
                                 currencySymbol={getCurrencySymbol()}
                             />
                         ) : effectiveViewMode === "list" ? (
@@ -958,13 +1108,17 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 searchQuery={jobSearchQuery}
                                 isSelectionMode={isSelectionMode}
                                 selectedJobIds={selectedJobIds}
-                                onToggleSelection={(id) => setSelectedJobIds(prev => prev.includes(id) ? prev.filter(jId => jId !== id) : [...prev, id])}
+                                onToggleSelection={toggleJobSelection}
                                 onViewDetails={handleViewDetails}
                                 onEditJob={handleEditJob}
                                 onAdvanceStage={handleAdvanceJob}
+                                onOpenNgWorkflow={handleOpenNgWorkflow}
                                 onPrintTicket={handlePrintTicket}
                                 userRole={user?.role}
                                 canEdit={hasPermission("canEdit")}
+                                canReviewNg={canReviewNg}
+                                canReportNg={canReportNg}
+                                canMutateJob={(job) => !isJobReadOnlyForCurrentUser(job)}
                             />
                         ) : effectiveViewMode === "kanban" ? (
                             <Suspense fallback={null}>
@@ -980,16 +1134,16 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                         {filteredJobs.length > 0 && (
                             <div className="mt-3 flex items-center justify-between rounded-xl border border-slate-200 bg-white px-3 py-2 md:hidden">
                                 <span className="text-[11px] font-semibold text-slate-500">
-                                    {Math.min((jobPage - 1) * pageSize + 1, filteredJobs.length)}-{Math.min(jobPage * pageSize, filteredJobs.length)} of {filteredJobs.length}
+                                    {Math.min((jobPage - 1) * pageSize + 1, jobPagination.total)}-{Math.min(jobPage * pageSize, jobPagination.total)} of {jobPagination.total}
                                 </span>
                                 <div className="flex items-center gap-1.5">
                                     <Button variant="ghost" size="sm" onClick={() => setJobPage(p => Math.max(1, p - 1))} disabled={jobPage === 1} className="h-8 w-8 p-0 rounded-lg">
                                         <ChevronRight className="w-4 h-4 rotate-180" />
                                     </Button>
                                     <span className="text-xs font-bold text-slate-700 min-w-[2.5rem] text-center font-mono">
-                                        {jobPage}/{Math.ceil(filteredJobs.length / pageSize)}
+                                        {jobPage}/{totalJobPages}
                                     </span>
-                                    <Button variant="ghost" size="sm" onClick={() => setJobPage(p => Math.min(Math.ceil(filteredJobs.length / pageSize), p + 1))} disabled={jobPage >= Math.ceil(filteredJobs.length / pageSize)} className="h-8 w-8 p-0 rounded-lg">
+                                    <Button variant="ghost" size="sm" onClick={() => setJobPage(p => Math.min(totalJobPages, p + 1))} disabled={jobPage >= totalJobPages} className="h-8 w-8 p-0 rounded-lg">
                                         <ChevronRight className="w-4 h-4" />
                                     </Button>
                                 </div>
@@ -1001,16 +1155,16 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                     {filteredJobs.length > 0 && (
                         <div className="hidden md:flex flex-none items-center justify-between p-4 px-6 border-t border-slate-100 bg-white/95 backdrop-blur-sm z-20">
                             <div className="text-xs font-medium text-slate-500">
-                                Showing {Math.min((jobPage - 1) * pageSize + 1, filteredJobs.length)} to {Math.min(jobPage * pageSize, filteredJobs.length)} of {filteredJobs.length} Jobs
+                                Showing {Math.min((jobPage - 1) * pageSize + 1, jobPagination.total)} to {Math.min(jobPage * pageSize, jobPagination.total)} of {jobPagination.total} Jobs
                             </div>
                             <div className="flex items-center gap-2 bg-slate-50 rounded-lg p-1 border border-slate-100">
                                 <Button variant="ghost" size="sm" onClick={() => setJobPage(p => Math.max(1, p - 1))} disabled={jobPage === 1} className="h-7 w-7 p-0 rounded-md">
                                     <ChevronRight className="w-4 h-4 rotate-180" />
                                 </Button>
                                 <span className="text-xs font-bold text-slate-700 min-w-[3rem] text-center font-mono">
-                                    {jobPage} / {Math.ceil(filteredJobs.length / pageSize)}
+                                    {jobPage} / {totalJobPages}
                                 </span>
-                                <Button variant="ghost" size="sm" onClick={() => setJobPage(p => Math.min(Math.ceil(filteredJobs.length / pageSize), p + 1))} disabled={jobPage >= Math.ceil(filteredJobs.length / pageSize)} className="h-7 w-7 p-0 rounded-md">
+                                <Button variant="ghost" size="sm" onClick={() => setJobPage(p => Math.min(totalJobPages, p + 1))} disabled={jobPage >= totalJobPages} className="h-7 w-7 p-0 rounded-md">
                                     <ChevronRight className="w-4 h-4" />
                                 </Button>
                             </div>
@@ -1190,6 +1344,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                     userRole={user?.role}
                     canEdit={hasPermission("canEdit")}
                     currencySymbol={getCurrencySymbol()}
+                    onOpenNgWorkflow={handleOpenNgWorkflow}
                 />
             </Suspense>
 
@@ -1221,6 +1376,16 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                             : () => setIsLocalPurchaseOpen(true)
                     }
                     onAdvanceStage={handleAdvanceJob}
+                    onOpenNgWorkflow={handleOpenNgWorkflow}
+                    canReviewNg={canReviewNg}
+                    canReportNg={
+                        canReportNg
+                        && !!selectedJob
+                        && !isJobReadOnlyForCurrentUser(selectedJob)
+                    }
+                    canManageWorkHolds={canManageWorkHolds}
+                    onWorkHold={canManageWorkHolds ? handleWorkHold : undefined}
+                    onWorkResume={canManageWorkHolds ? handleWorkResume : undefined}
                     accessBanner={
                         selectedJob && isJobReadOnlyForCurrentUser(selectedJob)
                             ? isCreatedByCurrentUser(selectedJob)
@@ -1277,7 +1442,30 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                     onSetOutcome={(outcome, reason) => {
                         if (selectedJob) outcomeMutation.mutate({ id: selectedJob.id, outcome, reason });
                     }}
+                    onReportNg={selectedJob && canReportNg && !isJobReadOnlyForCurrentUser(selectedJob) ? () => handleOpenNgWorkflow(selectedJob) : undefined}
                     isPending={advanceStatusMutation.isPending || outcomeMutation.isPending}
+                />
+            </Suspense>
+
+            <Suspense fallback={null}>
+                <FinalTestDialog
+                    job={selectedJob}
+                    open={isFinalTestDialogOpen}
+                    onOpenChange={setIsFinalTestDialogOpen}
+                    onComplete={({ status }) => {
+                        queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+                        setSelectedJob((current) => current ? { ...current, status } : current);
+                    }}
+                />
+            </Suspense>
+
+            <Suspense fallback={null}>
+                <NgResolutionWizard
+                    open={isNgWizardOpen}
+                    onOpenChange={setIsNgWizardOpen}
+                    job={selectedJob}
+                    canReview={canReviewNg}
+                    currentUserId={user?.id}
                 />
             </Suspense>
 

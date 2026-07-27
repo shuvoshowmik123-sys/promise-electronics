@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react";
+import { useLocation } from "wouter";
 import type { ServiceRequest } from "@shared/schema";
+import { buildNavigateAdminTabPath } from "@/lib/admin-workspace-routing";
 import {
     ADMIN_PIPELINE_FLOW, ADMIN_TERMINAL_STATES, ADMIN_STEP_CONFIG, ADMIN_OFFRAMP_CONFIG,
     ADMIN_ROLLBACK_RULES, PICKUP_STATUS_FLOW, SERVICE_CENTER_STATUS_FLOW,
@@ -44,6 +46,15 @@ import {
     TooltipProvider,
     TooltipTrigger,
 } from "@/components/ui/tooltip";
+
+function useDebouncedValue<T>(value: T, delayMs: number): T {
+    const [debounced, setDebounced] = useState(value);
+    useEffect(() => {
+        const t = window.setTimeout(() => setDebounced(value), delayMs);
+        return () => window.clearTimeout(t);
+    }, [value, delayMs]);
+    return debounced;
+}
 
 const INTERNAL_STEPS = [...ADMIN_PIPELINE_FLOW];
 
@@ -265,6 +276,7 @@ interface ServiceRequestsTabProps {
 export default function ServiceRequestsTab({ initialSearchQuery, initialRequestId, onSearchConsumed }: ServiceRequestsTabProps = {}) {
     const { user, permissions, hasPermission } = useAdminAuth();
     const isMobile = useIsMobile();
+    const [, setLocation] = useLocation();
     const [viewMode, setViewMode] = useState<"grid" | "list">("list");
     const [draggedRequestId, setDraggedRequestId] = useState<string | null>(null);
     const [dragOverColumn, setDragOverColumn] = useState<string | null>(null);
@@ -331,16 +343,35 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
 
     const queryClient = useQueryClient();
 
-    const { data: srData, isLoading } = useQuery<{ items: ServiceRequest[]; pagination: any }>({
-        queryKey: ["serviceRequests"],
-        queryFn: () => serviceRequestsApi.getAll(),
+    // HOTFIX-1/2: server-side page/search/status — never slice a single incomplete page client-side.
+    // Lane filter disabled until a correct bounded SQL lane query exists (no false global counts).
+    const srPageSize = 12;
+    const debouncedSrSearch = useDebouncedValue(srSearchQuery, 300);
+    useEffect(() => {
+        setSrPage(1);
+    }, [debouncedSrSearch, srStatusFilter]);
+
+    const { data: srData, isLoading } = useQuery({
+        queryKey: ["serviceRequests", srPage, srPageSize, debouncedSrSearch, srStatusFilter],
+        queryFn: () =>
+            serviceRequestsApi.getAll({
+                page: srPage,
+                limit: srPageSize,
+                search: debouncedSrSearch.trim() || undefined,
+                status: srStatusFilter !== "all" ? srStatusFilter : undefined,
+            }),
         staleTime: 15_000,
         refetchOnMount: false,
         placeholderData: (previousData) => previousData,
     });
+    const pageRequestIds = useMemo(
+        () => (srData?.items ?? []).map((r) => r.id).filter(Boolean),
+        [srData?.items],
+    );
     const { data: intakeSummary } = useQuery({
-        queryKey: ["intake-summary"],
-        queryFn: () => intakeSummaryApi.getAll(),
+        queryKey: ["intake-summary", pageRequestIds.join(",")],
+        queryFn: () => intakeSummaryApi.byIds(pageRequestIds),
+        enabled: pageRequestIds.length > 0,
         staleTime: 10_000,
         refetchOnMount: "always" as const,
     });
@@ -383,6 +414,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             queryClient.invalidateQueries({ queryKey: ["call-attempts", selectedRequest?.id] });
             queryClient.invalidateQueries({ queryKey: ["repair-case", selectedRequest?.id] });
             queryClient.invalidateQueries({ queryKey: ["intake-summary"] });
+            queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
             toast.success("Call logged");
             setShowCallLogDialog(false);
             resetCallForm();
@@ -709,6 +741,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
         setDraggedRequestId(null);
     };
 
+    // HOTFIX-2: lane chips show page-only distribution (never as global totals). Lane filter disabled.
     const laneCounts = useMemo(() => {
         const counts: Record<string, number> = { all: serviceRequests.length };
         for (const sr of serviceRequests) {
@@ -720,25 +753,10 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
 
     if (isLoading) return <DashboardSkeleton />;
 
-    const filtered = serviceRequests.filter((r: any) => {
-        const ms = smartMatch(srSearchQuery,
-            r.customerName,
-            r.ticketNumber,
-            r.phone,
-            r.brand,
-            r.reference,
-            r.modelNumber,
-            r.primaryIssue,
-            r.description,
-            ...getSymptoms(r.symptoms),
-            r.id
-        );
-        const statusMatch = srStatusFilter === 'all' || r.status === srStatusFilter;
-        const laneMatch = laneFilter === 'all' || getLane(r) === laneFilter;
-        return ms && statusMatch && laneMatch;
-    });
-    const paginated = filtered.slice((srPage - 1) * 12, srPage * 12);
-    const totalPages = Math.ceil(filtered.length / 12);
+    // Server applied search + status. Full page shown; lane filter not applied (would be wrong cross-page).
+    const paginated = serviceRequests;
+    const totalFromServer = Number(srData?.total ?? serviceRequests.length);
+    const totalPages = Math.max(1, Number(srData?.totalPages ?? (Math.ceil(totalFromServer / srPageSize) || 1)));
 
     const getSlideFrom = (index: number) => {
         const cols = window.innerWidth >= 1024 ? 3 : window.innerWidth >= 768 ? 2 : 1;
@@ -812,7 +830,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 label: "Start Return",
                 tone: "blue",
                 icon: <Truck className="h-4 w-4" />,
-                onClick: () => nextStage ? handleStageSelect(selectedRequest.id, nextStage) : (window.location.hash = "pickup"),
+                onClick: () => nextStage ? handleStageSelect(selectedRequest.id, nextStage) : setLocation(buildNavigateAdminTabPath("pickup")),
                 disabled: stageTransitionMutation.isPending,
             };
         }
@@ -823,7 +841,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 label: selectedPaymentPaid ? "Verify Release OTP" : "Open Bill",
                 tone: selectedPaymentPaid ? "emerald" : "amber",
                 icon: selectedPaymentPaid ? <CheckCircle className="h-4 w-4" /> : <DollarSign className="h-4 w-4" />,
-                onClick: () => selectedPaymentPaid ? handleStageSelect(selectedRequest.id, "completed") : (window.location.hash = `pos?search=${encodeURIComponent(selectedRequest.convertedJobId || "")}`),
+                onClick: () => selectedPaymentPaid ? handleStageSelect(selectedRequest.id, "completed") : setLocation(buildNavigateAdminTabPath("pos", { search: selectedRequest.convertedJobId || undefined })),
                 disabled: selectedPaymentPaid && (sendCustodyOtpMutation.isPending || stageTransitionMutation.isPending),
             };
         }
@@ -834,7 +852,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 label: "Open Job",
                 tone: "violet",
                 icon: <Tv className="h-4 w-4" />,
-                onClick: () => { window.location.hash = `jobs?search=${encodeURIComponent(selectedRequest.convertedJobId || "")}`; },
+                onClick: () => { setLocation(buildNavigateAdminTabPath("jobs", { search: selectedRequest.convertedJobId || undefined })); },
                 disabled: false,
             };
         }
@@ -857,7 +875,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 label: selectedStage === "pickup_scheduled" ? "Open Pickup" : "Transfer Pickup",
                 tone: "blue",
                 icon: <Truck className="h-4 w-4" />,
-                onClick: () => selectedStage === "pickup_scheduled" ? (window.location.hash = "pickup") : transferToPickupMutation.mutate(selectedRequest.id),
+                onClick: () => selectedStage === "pickup_scheduled" ? setLocation(buildNavigateAdminTabPath("pickup")) : transferToPickupMutation.mutate(selectedRequest.id),
                 disabled: transferToPickupMutation.isPending,
             };
         }
@@ -874,8 +892,13 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             disabled: !nextStage || stageTransitionMutation.isPending,
         };
     })() : null;
+    // Badge counts: "all" uses server total; per-status badges reflect current page only (not full inventory).
     const statusCounts = STATUS_FILTERS.reduce<Record<string, number>>((acc, status) => {
-        acc[status] = status === "all" ? serviceRequests.length : serviceRequests.filter((request: any) => request.status === status).length;
+        acc[status] = status === "all"
+            ? totalFromServer
+            : status === srStatusFilter
+                ? totalFromServer
+                : serviceRequests.filter((request: any) => request.status === status).length;
         return acc;
     }, {});
     const pendingQuoteCount = serviceRequests.filter((request: any) => request.isQuote && (!request.quoteStatus || request.quoteStatus === "Pending")).length;
@@ -911,7 +934,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                             <h2 className="truncate text-[17px] font-black text-slate-950">Service Requests</h2>
                             {unreadCount > 0 && <Badge className="h-5 rounded-full bg-rose-100 px-2 text-[10px] font-black text-rose-700 shadow-none">{unreadCount} new</Badge>}
                         </div>
-                        <p className="truncate text-[11px] font-medium text-slate-500">{filtered.length} showing · follow wizard action first</p>
+                        <p className="truncate text-[11px] font-medium text-slate-500">{totalFromServer} total · follow wizard action first</p>
                     </div>
                 </div>
 
@@ -928,26 +951,25 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 </div>
             </MobileTabHeader>
 
-            <MobileScrollContent className="md:hidden space-y-2 pb-[calc(5.5rem+env(safe-area-inset-bottom))]">
+            <MobileScrollContent className="md:hidden space-y-2 pb-[calc(7.5rem+env(safe-area-inset-bottom))]">
                 <div className="space-y-2">
                     <MobileKpiGrid
                         collapsible
-                        summaryLabel="Intake pulse"
+                        summaryLabel="Intake pulse (this page)"
                         items={[
-                            { label: "All", value: serviceRequests.length, meta: "total", tone: "slate", onClick: () => { setLaneFilter("all"); setSrStatusFilter("all"); } },
-                            { label: "New", value: laneCounts.new_intake || 0, meta: "unread", tone: "blue", onClick: () => { setLaneFilter("new_intake"); setSrStatusFilter("all"); } },
-                            { label: "Reply", value: laneCounts.needs_reply || 0, meta: "staff action", tone: "amber", onClick: () => { setLaneFilter("needs_reply"); setSrStatusFilter("all"); } },
-                            { label: "Job", value: laneCounts.converted_to_job || 0, meta: "converted", tone: "violet", onClick: () => { setLaneFilter("converted_to_job"); setSrStatusFilter("all"); } },
+                            { label: "All", value: totalFromServer, meta: "server total", tone: "slate", onClick: () => { setLaneFilter("all"); setSrStatusFilter("all"); } },
+                            { label: "New", value: laneCounts.new_intake || 0, meta: "on page", tone: "blue" },
+                            { label: "Reply", value: laneCounts.needs_reply || 0, meta: "on page", tone: "amber" },
+                            { label: "Job", value: laneCounts.converted_to_job || 0, meta: "on page", tone: "violet" },
                         ]}
                     />
                     <div className="flex gap-1.5 overflow-x-auto hide-scrollbar px-1">
                         {LANE_CONFIG.map(lane => (
-                            <button key={lane.value} type="button" onClick={() => { setLaneFilter(lane.value); setSrStatusFilter("all"); setSrPage(1); }}
-                                className={cn("shrink-0 whitespace-nowrap rounded-full border px-2.5 py-1 text-[11px] font-bold transition",
-                                    laneFilter === lane.value ? "border-blue-300 bg-blue-50 text-blue-800 ring-1 ring-blue-400" : "border-slate-200 bg-white text-slate-600"
-                                )}>
+                            <span key={lane.value}
+                                title="Lane counts are for this page only"
+                                className="shrink-0 whitespace-nowrap rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[11px] font-bold text-slate-600">
                                 {lane.shortLabel} {(laneCounts[lane.value] || 0) > 0 && <span className="ml-1 font-black">{laneCounts[lane.value]}</span>}
-                            </button>
+                            </span>
                         ))}
                     </div>
                 </div>
@@ -1014,7 +1036,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                         })}
                     </div>
                 )}
-                {filtered.length > 12 && (
+                {totalPages > 1 && (
                     <div className="flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2 shadow-sm">
                         <Button variant="outline" size="sm" disabled={srPage === 1} onClick={() => setSrPage(p => Math.max(1, p - 1))} className="h-8 rounded-xl text-xs">Prev</Button>
                         <span className="text-xs font-black text-slate-500">{srPage} / {totalPages}</span>
@@ -1022,35 +1044,35 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                     </div>
                 )}
             </MobileScrollContent>
-            {/* Compact KPI Strip */}
+            {/* Compact KPI Strip — page-scoped lane pulse only (not global filter) */}
             <div className="hidden md:flex gap-3 shrink-0">
                 {([
-                    { label: "New Intake", value: laneCounts.new_intake || 0, sub: "Unreviewed", icon: <MessageSquare size={16} />, color: "text-blue-600 bg-blue-50 border-blue-200", lane: "new_intake" as IntakeLane },
-                    { label: "Needs Reply", value: laneCounts.needs_reply || 0, sub: "Staff action", icon: <Clock size={16} />, color: "text-amber-600 bg-amber-50 border-amber-200", lane: "needs_reply" as IntakeLane },
-                    { label: "Quotes Sent", value: laneCounts.quote_sent || 0, sub: "Awaiting response", icon: <FileText size={16} />, color: "text-violet-600 bg-violet-50 border-violet-200", lane: "quote_sent" as IntakeLane },
-                    { label: "Schedule", value: laneCounts.schedule_needed || 0, sub: "Needs scheduling", icon: <Clock size={16} />, color: "text-fuchsia-600 bg-fuchsia-50 border-fuchsia-200", lane: "schedule_needed" as IntakeLane },
+                    { label: "New Intake", value: laneCounts.new_intake || 0, sub: "On this page", icon: <MessageSquare size={16} />, color: "text-blue-600 bg-blue-50 border-blue-200", lane: "new_intake" as IntakeLane },
+                    { label: "Needs Reply", value: laneCounts.needs_reply || 0, sub: "On this page", icon: <Clock size={16} />, color: "text-amber-600 bg-amber-50 border-amber-200", lane: "needs_reply" as IntakeLane },
+                    { label: "Quotes Sent", value: laneCounts.quote_sent || 0, sub: "On this page", icon: <FileText size={16} />, color: "text-violet-600 bg-violet-50 border-violet-200", lane: "quote_sent" as IntakeLane },
+                    { label: "Schedule", value: laneCounts.schedule_needed || 0, sub: "On this page", icon: <Clock size={16} />, color: "text-fuchsia-600 bg-fuchsia-50 border-fuchsia-200", lane: "schedule_needed" as IntakeLane },
                 ]).map(kpi => (
-                    <button key={kpi.lane} onClick={() => { setLaneFilter(kpi.lane); setSrStatusFilter("all"); }}
-                        className={`flex items-center gap-3 rounded-xl border ${kpi.color} px-3 py-2.5 text-left hover:shadow-sm transition-shadow flex-1`}>
+                    <div key={kpi.lane}
+                        title="Lane counts are for the current page only"
+                        className={`flex items-center gap-3 rounded-xl border ${kpi.color} px-3 py-2.5 text-left flex-1`}>
                         <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${kpi.color.split(" ").slice(1).join(" ")}`}>{kpi.icon}</div>
                         <div className="min-w-0">
                             <p className="text-lg font-black leading-tight">{kpi.value}</p>
                             <p className="text-[10px] font-semibold uppercase tracking-wider opacity-60">{kpi.label}</p>
+                            <p className="text-[9px] font-medium opacity-50">{kpi.sub}</p>
                         </div>
-                    </button>
+                    </div>
                 ))}
             </div>
 
-            {/* Filter Toolbar */}
+            {/* Filter Toolbar — lane chips informational (page only); status/search drive the list */}
             <motion.div variants={itemVariants} className="hidden md:flex flex-wrap items-center gap-3">
-                <div className="flex gap-1 overflow-x-auto hide-scrollbar bg-slate-100 p-1 rounded-xl">
+                <div className="flex gap-1 overflow-x-auto hide-scrollbar bg-slate-100 p-1 rounded-xl" title="Lane distribution on this page only">
                     {LANE_CONFIG.map(lane => (
-                        <button key={lane.value} onClick={() => { setLaneFilter(lane.value); setSrStatusFilter("all"); setSrPage(1); }}
-                            className={cn("shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all whitespace-nowrap",
-                                laneFilter === lane.value ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-slate-200"
-                            )}>
+                        <span key={lane.value}
+                            className="shrink-0 px-3 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap text-slate-600 bg-white/60">
                             {lane.label} {(laneCounts[lane.value] || 0) > 0 && <span className="ml-1 font-black tabular-nums">{laneCounts[lane.value]}</span>}
-                        </button>
+                        </span>
                     ))}
                 </div>
                 <div className="relative ml-auto w-full sm:w-64">
@@ -1061,7 +1083,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                     <Button variant={viewMode === "grid" ? "secondary" : "ghost"} size="sm" onClick={() => setViewMode("grid")} className="h-7 w-7 p-0"><LayoutGrid size={14} /></Button>
                     <Button variant={viewMode === "list" ? "secondary" : "ghost"} size="sm" onClick={() => setViewMode("list")} className="h-7 w-7 p-0"><LayoutList size={14} /></Button>
                 </div>
-                <span className="text-xs font-medium text-slate-400 tabular-nums shrink-0">{filtered.length} results</span>
+                <span className="text-xs font-medium text-slate-400 tabular-nums shrink-0">{totalFromServer} results</span>
             </motion.div>
 
             {/* View Area */}
@@ -1171,9 +1193,11 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             </div>
 
             {/* Pagination */}
-            {filtered.length > 12 && (
+            {totalPages > 1 && (
                 <div className="hidden md:flex items-center justify-between px-2 pt-2 pb-6">
-                    <div className="text-sm text-slate-500">Viewing {((srPage - 1) * 12) + 1}-{Math.min(srPage * 12, filtered.length)} of {filtered.length}</div>
+                    <div className="text-sm text-slate-500">
+                        Viewing {((srPage - 1) * srPageSize) + 1}-{Math.min(srPage * srPageSize, totalFromServer)} of {totalFromServer}
+                    </div>
                     <div className="flex items-center gap-2">
                         <Button variant="outline" size="sm" disabled={srPage === 1} onClick={() => setSrPage(p => Math.max(1, p - 1))}><ChevronLeft className="h-4 w-4 mr-1" /> Prev</Button>
                         <Button variant="outline" size="sm" disabled={srPage === totalPages} onClick={() => setSrPage(p => Math.min(totalPages, p + 1))}>Next <ChevronRight className="h-4 w-4 ml-1" /></Button>
@@ -1372,7 +1396,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         <Button variant="outline" size="sm" className="h-10 rounded-xl text-xs font-black" disabled={!normalizeTel(selectedRequest.phone)} onClick={() => { const tel = normalizeTel(selectedRequest.phone); if (tel) window.location.href = `tel:${tel}`; }}>
                                             Call
                                         </Button>
-                                        <Button variant="outline" size="sm" className="h-10 rounded-xl text-xs font-black" onClick={() => { window.location.hash = selectedRequest.convertedJobId ? `jobs?search=${encodeURIComponent(selectedRequest.convertedJobId)}` : "pickup"; }}>
+                                        <Button variant="outline" size="sm" className="h-10 rounded-xl text-xs font-black" onClick={() => { setLocation(selectedRequest.convertedJobId ? buildNavigateAdminTabPath("jobs", { search: selectedRequest.convertedJobId }) : buildNavigateAdminTabPath("pickup")); }}>
                                             Open
                                         </Button>
                                         <Button variant="outline" size="sm" className="h-10 rounded-xl text-xs font-black" onClick={() => setShowMobileMoreActions(true)}>
@@ -1484,7 +1508,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         <h3 className="font-semibold mb-2 flex items-center gap-2 text-sm"><AlertTriangle className="w-4 h-4" /> Issue</h3>
                                         <div className="space-y-2 bg-slate-50 p-3 rounded-xl text-sm">
                                             <div><Label className="text-muted-foreground text-xs">Primary Issue</Label><p className="font-medium">{selectedRequest.primaryIssue}</p></div>
-                                            {getSymptoms(selectedRequest.symptoms).length > 0 && <div><Label className="text-muted-foreground text-xs">Symptoms</Label><div className="flex flex-wrap gap-1.5 mt-1">{getSymptoms(selectedRequest.symptoms).map((s, i) => <Badge key={i} variant="secondary" className="text-xs">{s}</Badge>)}</div></div>}
+                                            {getSymptoms(selectedRequest.symptoms).length > 0 && <div><Label className="text-muted-foreground text-xs">Symptoms</Label><div className="flex flex-wrap gap-1.5 mt-1">{getSymptoms(selectedRequest.symptoms).map((s, i) => <Badge key={`symptom-${s}-${i}`} variant="secondary" className="text-xs">{s}</Badge>)}</div></div>}
                                             {selectedRequest.description && <div><Label className="text-muted-foreground text-xs">Description</Label><p className="text-xs text-slate-600">{selectedRequest.description}</p></div>}
                                         </div>
                                     </div>
@@ -1495,7 +1519,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                             <h3 className="font-semibold mb-2 flex items-center gap-2 text-sm"><Image className="w-4 h-4" /> Media</h3>
                                             <div className="grid grid-cols-3 gap-2">
                                                 {getMediaUrls(selectedRequest.mediaUrls).map((url, i) => (
-                                                    <div key={i} className="relative rounded-xl overflow-hidden border bg-slate-100 cursor-pointer hover:opacity-90" onClick={() => { setCurrentMediaUrls(getMediaUrls(selectedRequest.mediaUrls)); setMediaViewerIndex(i); setMediaViewerOpen(true); }}>
+                                                    <div key={`media-${url}-${i}`} className="relative rounded-xl overflow-hidden border bg-slate-100 cursor-pointer hover:opacity-90" onClick={() => { setCurrentMediaUrls(getMediaUrls(selectedRequest.mediaUrls)); setMediaViewerIndex(i); setMediaViewerOpen(true); }}>
                                                         {isImage(url) ? <img src={url} alt={`Upload ${i + 1}`} className="w-full h-28 object-cover" /> : isVideo(url) ? <div className="w-full h-28 relative"><video src={url} className="w-full h-28 object-cover pointer-events-none" /><div className="absolute inset-0 flex items-center justify-center bg-black/30"><Film className="h-8 w-8 text-white" /></div></div> : <div className="w-full h-28 flex items-center justify-center bg-slate-200"><Film className="h-8 w-8 text-slate-400" /></div>}
                                                     </div>
                                                 ))}
@@ -1618,7 +1642,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                                 {selectedRequest.convertedJobId && (
                                                     <div className="mt-3 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[10px] text-emerald-700 flex items-center gap-1.5">
                                                         <CheckCircle className="w-3 h-3 shrink-0" />
-                                                        Job: <a href={`/admin#jobs?search=${encodeURIComponent(selectedRequest.convertedJobId)}`} className="font-medium underline">{selectedRequest.convertedJobId}</a>
+                                                        Job: <a href={buildNavigateAdminTabPath("jobs", { search: selectedRequest.convertedJobId })} className="font-medium underline">{selectedRequest.convertedJobId}</a>
                                                     </div>
                                                 )}
                                             </div>
@@ -1647,7 +1671,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                                 <Label className="text-xs font-semibold text-slate-700 mb-1.5 block">Payment</Label>
                                                 <div className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border">
                                                     {(selectedRequest.paymentStatus || "Due") === "Paid" ? <Badge className="bg-green-100 text-green-700 border-green-200 text-xs"><CheckCircle className="w-3 h-3 mr-1" />Paid</Badge> : <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs"><Clock className="w-3 h-3 mr-1" />Due</Badge>}
-                                                    <p className="text-[10px] text-muted-foreground">{selectedRequest.convertedJobId ? <a href={`/admin#pos?search=${encodeURIComponent(selectedRequest.convertedJobId)}`} className="text-primary underline">View POS invoice</a> : "Auto-updates from Job invoice"}</p>
+                                                    <p className="text-[10px] text-muted-foreground">{selectedRequest.convertedJobId ? <a href={buildNavigateAdminTabPath("pos", { search: selectedRequest.convertedJobId })} className="text-primary underline">View POS invoice</a> : "Auto-updates from Job invoice"}</p>
                                                 </div>
                                             </div>
                                         </div>
@@ -1717,7 +1741,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         className="flex w-full items-center justify-between rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-left"
                                         onClick={() => {
                                             setShowMobileMoreActions(false);
-                                            window.location.hash = selectedRequest.convertedJobId ? `jobs?search=${encodeURIComponent(selectedRequest.convertedJobId)}` : "pickup";
+                                            setLocation(selectedRequest.convertedJobId ? buildNavigateAdminTabPath("jobs", { search: selectedRequest.convertedJobId }) : buildNavigateAdminTabPath("pickup"));
                                         }}
                                     >
                                         <span>
@@ -1985,7 +2009,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                     <div className="space-y-2">
                                         <p className="text-[11px] font-semibold text-slate-600 uppercase tracking-wide">What will happen:</p>
                                         {warning.effects.map((effect, i) => (
-                                            <div key={i} className="flex items-start gap-2 text-xs text-slate-600">
+                                            <div key={`effect-${effect}-${i}`} className="flex items-start gap-2 text-xs text-slate-600">
                                                 <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0 mt-0.5" />
                                                 {effect}
                                             </div>

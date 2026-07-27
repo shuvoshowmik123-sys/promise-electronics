@@ -16,16 +16,21 @@ interface AdminSSEContextType {
 const AdminSSEContext = createContext<AdminSSEContextType | undefined>(undefined);
 
 export function AdminSSEProvider({ children }: { children: ReactNode }) {
-    const { isAuthenticated, status, refreshUser, logout } = useAdminAuth();
+    const { isAuthenticated, status, refreshUser, logout, user, hasPermission } = useAdminAuth();
     const queryClient = useQueryClient();
     const [sseSupported, setSseSupported] = useState(false);
     const [lastEvent, setLastEvent] = useState<any | null>(null);
 
+    // settings list requires settings privilege — do not 403 restricted staff (default tone is fine).
+    const canFetchSettings =
+        user?.role === "Super Admin" ||
+        hasPermission("settings" as any);
     const { data: settings = [] } = useQuery({
         queryKey: ["settings"],
         queryFn: settingsApi.getAll,
         staleTime: 5 * 60 * 1000, // Cache for 5 minutes
-        enabled: isAuthenticated, // Defer fetching until authenticated
+        enabled: isAuthenticated && canFetchSettings,
+        retry: false,
     });
 
     const notificationTone = (settings.find(s => s.key === "notification_tone")?.value as NotificationTone) || "default";
@@ -137,6 +142,40 @@ export function AdminSSEProvider({ children }: { children: ReactNode }) {
 
                         if (data.type === "force_refresh_user") {
                             await refreshUser();
+                            try {
+                                // Targeted invalidation: auth/profile + permission-gated domains.
+                                // Avoid broad invalidateQueries() which refetches everything.
+                                const permRootKeys = new Set([
+                                    "challans",
+                                    "jobs",
+                                    "corporate",
+                                    "corporate-clients",
+                                    "corporateClient",
+                                    "corporateJobs",
+                                    "dashboardStats",
+                                    "jobOverview",
+                                    "settings",
+                                    "/api/challans",
+                                    "/api/jobs",
+                                    "/api/corporate",
+                                    "/api/dashboard",
+                                    "/api/modules",
+                                ]);
+                                await queryClient.invalidateQueries({
+                                    predicate: (q) => {
+                                        const root = Array.isArray(q.queryKey) ? q.queryKey[0] : q.queryKey;
+                                        if (typeof root !== "string") return false;
+                                        if (permRootKeys.has(root)) return true;
+                                        return (
+                                            root.startsWith("/api/challans") ||
+                                            root.startsWith("/api/jobs") ||
+                                            root.startsWith("/api/corporate") ||
+                                            root.startsWith("corporate")
+                                        );
+                                    },
+                                    refetchType: "active",
+                                });
+                            } catch { /* ignore */ }
                             toast.info("Your permissions have been updated.");
                         }
                         else if (data.type === "force_logout") {

@@ -10,6 +10,7 @@ import {
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { useLocation } from "wouter";
+import { buildNavigateAdminTabPath } from "@/lib/admin-workspace-routing";
 
 import { adminOrdersApi, jobTicketsApi, drawerApi } from "@/lib/api";
 import { type JobTicket, type DrawerSession } from "@shared/schema";
@@ -383,7 +384,7 @@ export default function CashierTab() {
                             {[
                                 { label: "New Sale", icon: ShoppingCart, onClick: () => navigate('/admin/pos'), cls: "bg-blue-600 hover:bg-blue-700 text-white shadow-blue-500/20 shadow-sm" },
                                 { label: "Return", icon: TrendingUp, onClick: () => { }, cls: "bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200" },
-                                { label: "Inventory", icon: Package, onClick: () => window.location.hash = "#inventory", cls: "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200" },
+                                { label: "Inventory", icon: Package, onClick: () => navigate(buildNavigateAdminTabPath("inventory")), cls: "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200" },
                                 { label: "Print Receipt", icon: Receipt, onClick: () => { }, cls: "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200" },
                             ].map(({ label, icon: Icon, onClick, cls }) => (
                                 <Button key={label} onClick={onClick} className={cn("h-11 rounded-2xl text-xs font-bold flex-col gap-1", cls)}>

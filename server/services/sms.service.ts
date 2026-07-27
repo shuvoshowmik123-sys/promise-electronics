@@ -64,12 +64,12 @@ async function sendSms(options: SendSmsOptions): Promise<SmsResponse> {
     const normalizedPhone = normalizePhoneNumber(options.to);
 
     if (!isValidBangladeshPhone(options.to)) {
-        console.error('[SMS] Invalid phone number format:', options.to);
+        console.error('[SMS] Invalid phone number format');
         return { success: false, error: 'Invalid phone number format' };
     }
 
     try {
-        console.log(`[SMS] Sending to ***${normalizedPhone.slice(-4)}`);
+        console.log('[SMS] Sending message');
 
         const response = await fetch(apiUrl, {
             method: 'POST',
@@ -85,7 +85,7 @@ async function sendSms(options: SendSmsOptions): Promise<SmsResponse> {
 
         const result = await response.json();
 
-        console.log(`[SMS] API Response: status=${result.error ?? result.status}, msgId=${result.msg_id || result.message_id || 'none'}`);
+        console.log('[SMS] Provider response received');
 
         // SMS.net.bd returns error code 0 for success
         if (result.error === 0 || result.error === '0' || result.status === 'success') {
@@ -99,11 +99,11 @@ async function sendSms(options: SendSmsOptions): Promise<SmsResponse> {
                 error: result.msg || result.message || 'Failed to send SMS',
             };
         }
-    } catch (error: any) {
-        console.error('[SMS] Error sending SMS:', error);
+    } catch {
+        console.error('[SMS] Error sending SMS');
         return {
             success: false,
-            error: error.message || 'Network error while sending SMS',
+            error: 'Network error while sending SMS',
         };
     }
 }

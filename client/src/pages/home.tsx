@@ -8,7 +8,7 @@ import { images } from "@/lib/app-config";
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { motion, AnimatePresence, useInView, useMotionValue, useTransform, animate } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
-import { publicSettingsApi, inventoryApi, reviewsApi, customerServiceRequestsApi, shopOrdersApi } from "@/lib/api";
+import { publicSettingsApi, inventoryApi, customerServiceRequestsApi, shopOrdersApi, publicServiceFeedbackApi, ServiceFeedbackQueryKeys } from "@/lib/api";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { formatDistanceToNow } from "date-fns";
@@ -16,7 +16,7 @@ import { toast } from "sonner";
 import { useCart } from "@/contexts/CartContext";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import type { InventoryItem, CustomerReview } from "@shared/schema";
+import type { InventoryItem } from "@shared/schema";
 import { ActiveRepairCard } from "@/components/mobile/ActiveRepairCard";
 import { QuickActionsGrid } from "@/components/mobile/QuickActionsGrid";
 import { ScrollableList } from "@/components/ui/ScrollableList";
@@ -187,22 +187,40 @@ export default function HomePage() {
     });
   };
 
-  const { data: settings = [], isLoading: isSettingsLoading } = useQuery({
+  const {
+    data: settings = [],
+    isLoading: isSettingsLoading,
+    isFetching: isSettingsFetching,
+    isError: isSettingsError,
+    isSuccess: isSettingsSuccess,
+  } = useQuery({
     queryKey: ["public-settings"],
     queryFn: publicSettingsApi.getAll,
     staleTime: 0,
     refetchOnMount: "always" as const,
+    // Transient failures must retry so a pending route can auto-continue.
+    retry: 3,
+    retryDelay: (attempt) => Math.min(1000 * (attempt + 1), 4000),
   });
+
+  /** loading | success | error — do not collapse error into "ready without center". */
+  const publicSettingsStatus: "loading" | "success" | "error" = isSettingsSuccess
+    ? "success"
+    : isSettingsError && !isSettingsFetching
+      ? "error"
+      : "loading";
 
   const { data: inventoryItems = [] } = useQuery({
     queryKey: ["home-inventory"],
     queryFn: inventoryApi.getWebsiteItems,
   });
 
-  const { data: approvedReviews = [] } = useQuery({
-    queryKey: ["approved-reviews"],
-    queryFn: reviewsApi.getApproved,
+  /** CUSTOMER-FEEDBACK-01B — featured service-feedback only; no legacy /api/reviews or fallbacks. */
+  const { data: featuredFeedback, isSuccess: featuredFeedbackReady } = useQuery({
+    queryKey: ServiceFeedbackQueryKeys.publicFeatured(),
+    queryFn: () => publicServiceFeedbackApi.getFeatured(),
   });
+  const featuredReviews = featuredFeedback?.items ?? [];
 
   const parseImages = (imagesJson: string | null): string[] => {
     if (!imagesJson) return [];
@@ -271,10 +289,21 @@ export default function HomePage() {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    const checkMobile = () => {
+      const viewport = window.visualViewport;
+      const width = viewport?.width ?? window.innerWidth;
+      const height = viewport?.height ?? window.innerHeight;
+      setIsMobile(width < 768 || (height < 700 && (navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches)));
+    };
     checkMobile();
     window.addEventListener("resize", checkMobile);
-    return () => window.removeEventListener("resize", checkMobile);
+    window.addEventListener("orientationchange", checkMobile);
+    window.visualViewport?.addEventListener("resize", checkMobile);
+    return () => {
+      window.removeEventListener("resize", checkMobile);
+      window.removeEventListener("orientationchange", checkMobile);
+      window.visualViewport?.removeEventListener("resize", checkMobile);
+    };
   }, []);
 
   const heroSlides = useMemo(() => {
@@ -698,12 +727,7 @@ export default function HomePage() {
             )}
           </div>
 
-          <div className="-mx-4 mb-8">
-            <Suspense fallback={<div className="h-[72dvh] min-h-[510px] animate-pulse bg-slate-100" />}>
-              <CustomerDistanceExplorer serviceCenter={serviceCenterLocation} />
-            </Suspense>
-          </div>
-
+          <div className="mx-auto max-w-[560px]">
           {/* Mobile Header */}
           <div className="mb-6 flex items-center justify-between">
             <div>
@@ -749,6 +773,18 @@ export default function HomePage() {
 
           {/* Quick Actions */}
           <QuickActionsGrid />
+          </div>
+
+          <div className="-mx-4 mb-8 mt-7">
+            <Suspense fallback={<div className="h-[64dvh] min-h-[440px] animate-pulse bg-slate-100" />}>
+              <CustomerDistanceExplorer
+                serviceCenter={serviceCenterLocation}
+                publicSettingsStatus={publicSettingsStatus}
+              />
+            </Suspense>
+          </div>
+
+          <div className="mx-auto max-w-[560px]">
 
           {/* Recent Activity / Promo */}
           <div className="mb-6">
@@ -932,6 +968,7 @@ export default function HomePage() {
                 </div>
               ))}
             </div>
+          </div>
           </div>
         </div>
       </>
@@ -1136,7 +1173,10 @@ export default function HomePage() {
       {/* Extra white band + matching map bg so the hero→map join has no hard edge */}
       <section className="mt-16 hidden overflow-hidden bg-[#f7fbf9] pt-8 md:block lg:mt-24 lg:pt-12">
         <Suspense fallback={<div className="h-[min(78vh,820px)] min-h-[620px] max-h-[860px] animate-pulse bg-[#f7fbf9]" />}>
-          <CustomerDistanceExplorer serviceCenter={serviceCenterLocation} />
+          <CustomerDistanceExplorer
+            serviceCenter={serviceCenterLocation}
+            publicSettingsStatus={publicSettingsStatus}
+          />
         </Suspense>
       </section>
 
@@ -1660,8 +1700,9 @@ export default function HomePage() {
         )
       }
 
-      {/* Customer Testimonials Section */}
-      <section className="py-20 bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100">
+      {/* Selected customer reviews — only when public featured feed has items */}
+      {featuredFeedbackReady && featuredReviews.length > 0 && (
+      <section className="py-20 bg-gradient-to-br from-slate-100 via-slate-50 to-slate-100" data-testid="selected-customer-reviews">
         <div className="container mx-auto px-4">
           <motion.div
             className="text-center max-w-2xl mx-auto mb-12"
@@ -1675,20 +1716,21 @@ export default function HomePage() {
           </motion.div>
 
           <div className="grid md:grid-cols-3 gap-6">
-            {(approvedReviews.length > 0 ? approvedReviews.slice(0, 6) : [
-              { id: "1", customerName: "Rahman Chowdhury", rating: 5, content: "Excellent service! My Samsung TV was repaired within 24 hours. Very professional team and transparent pricing. Highly recommended!", title: null, customerId: "", isApproved: true, createdAt: new Date() },
-              { id: "2", customerName: "Fatima Begum", rating: 5, content: "My LG TV had a screen issue and I thought it was gone. Promise Electronics fixed it at a fraction of the replacement cost. Amazing work!", title: null, customerId: "", isApproved: true, createdAt: new Date() },
-              { id: "3", customerName: "Kamal Ahmed", rating: 5, content: "Fast pickup and delivery service. The technician explained everything clearly before the repair. Great customer service throughout.", title: null, customerId: "", isApproved: true, createdAt: new Date() },
-            ] as CustomerReview[]).map((review, i) => {
-              const initials = review.customerName.split(' ').map(n => n[0]).join('').slice(0, 2).toUpperCase();
+            {featuredReviews.slice(0, 6).map((review, i) => {
+              const initials = review.displayName
+                .split(/\s+/)
+                .map((n) => n[0])
+                .join("")
+                .slice(0, 2)
+                .toUpperCase();
               return (
                 <motion.div
-                  key={review.id}
+                  key={`${review.displayName}-${review.rating}-${i}`}
                   initial={{ opacity: 0, y: 30 }}
                   whileInView={{ opacity: 1, y: 0 }}
                   viewport={{ once: true }}
                   transition={{ delay: i * 0.15, duration: 0.5 }}
-                  data-testid={`review-card-${review.id}`}
+                  data-testid={`featured-review-card-${i}`}
                 >
                   <Card className="border-none bg-slate-100 shadow-neumorph hover:shadow-neumorph-inset transition-all duration-300 h-full">
                     <CardContent className="pt-6 pb-6 px-6">
@@ -1700,15 +1742,17 @@ export default function HomePage() {
                           <Star key={`empty-${starIndex}`} className="h-5 w-5 text-gray-300" />
                         ))}
                       </div>
-                      {review.title && <p className="font-semibold text-sm mb-2">{review.title}</p>}
-                      <p className="text-sm text-muted-foreground leading-relaxed mb-6 italic">"{review.content}"</p>
+                      {review.comment ? (
+                        <p className="text-sm text-muted-foreground leading-relaxed mb-6 italic">"{review.comment}"</p>
+                      ) : (
+                        <p className="text-sm text-muted-foreground leading-relaxed mb-6">&nbsp;</p>
+                      )}
                       <div className="flex items-center gap-3">
                         <div className="w-12 h-12 bg-primary/10 rounded-full flex items-center justify-center text-primary font-bold">
                           {initials}
                         </div>
                         <div>
-                          <p className="font-bold text-sm">{review.customerName}</p>
-                          <p className="text-xs text-muted-foreground">{t("desktop.reviews.verified")}</p>
+                          <p className="font-bold text-sm">{review.displayName}</p>
                         </div>
                       </div>
                     </CardContent>
@@ -1719,6 +1763,7 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+      )}
 
       {/* Service Areas Section */}
       <section className="py-20 bg-gradient-to-br from-slate-50 via-slate-100 to-slate-50">

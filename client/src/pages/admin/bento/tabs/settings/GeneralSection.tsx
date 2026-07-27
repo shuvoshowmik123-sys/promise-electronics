@@ -277,7 +277,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                         </div>
 
                         {/* Details */}
-                        <div className="flex-1 space-y-4 w-full">
+                        <div className="min-w-0 flex-1 space-y-4 w-full">
                             <div>
                                 <h4 className="text-lg font-bold text-slate-800 group-hover:text-blue-600 transition-colors">
                                     {siteName || "Unnamed Business"}
@@ -301,7 +301,7 @@ export default function GeneralSection(props: GeneralSectionProps) {
                         </div>
 
                         {/* Edit Affordance */}
-                        <div className="hidden xl:flex items-center text-blue-600 font-semibold text-sm opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all absolute right-6 top-1/2 -translate-y-1/2">
+                        <div className="hidden xl:flex shrink-0 self-center items-center text-blue-600 font-semibold text-sm opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all">
                             Edit Profile &rarr;
                         </div>
                     </div>
