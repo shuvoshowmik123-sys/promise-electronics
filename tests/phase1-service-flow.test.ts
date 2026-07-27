@@ -30,7 +30,29 @@ describe("Phase 1 service request to job flow", () => {
         }));
 
         vi.doMock("../server/db.js", () => ({
-            db: { insert, update },
+            db: {
+                insert,
+                update,
+                // verifyAndConvertServiceRequest runs the whole flow inside one db.transaction,
+                // locking the row via tx.execute(sql`... FOR UPDATE`) before any select/insert.
+                transaction: vi.fn(async (callback: (tx: any) => Promise<unknown>) =>
+                    callback({
+                        execute: vi.fn(async () => ({
+                            rows: [{
+                                id: "srv-1",
+                                stage: "authorized",
+                                converted_job_id: null,
+                                request_intent: null,
+                                service_mode: "pickup",
+                                service_preference: "home_pickup",
+                                is_quote: false,
+                                quote_status: null,
+                                quote_amount: null,
+                            }],
+                        })),
+                    })
+                ),
+            },
         }));
         vi.doMock("../server/repositories/index.js", () => ({
             inventoryRepo: {},
@@ -46,7 +68,7 @@ describe("Phase 1 service request to job flow", () => {
 
         await expect(jobService.verifyAndConvertServiceRequest("srv-1", "Manager"))
             .rejects
-            .toThrow("Device custody must be confirmed before creating a job ticket");
+            .toThrow("Device custody must be confirmed first");
 
         expect(insert).not.toHaveBeenCalled();
         expect(update).not.toHaveBeenCalled();

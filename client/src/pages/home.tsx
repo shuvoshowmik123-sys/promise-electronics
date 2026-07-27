@@ -190,9 +190,6 @@ export default function HomePage() {
   const {
     data: settings = [],
     isLoading: isSettingsLoading,
-    isFetching: isSettingsFetching,
-    isError: isSettingsError,
-    isSuccess: isSettingsSuccess,
   } = useQuery({
     queryKey: ["public-settings"],
     queryFn: publicSettingsApi.getAll,
@@ -202,13 +199,6 @@ export default function HomePage() {
     retry: 3,
     retryDelay: (attempt) => Math.min(1000 * (attempt + 1), 4000),
   });
-
-  /** loading | success | error — do not collapse error into "ready without center". */
-  const publicSettingsStatus: "loading" | "success" | "error" = isSettingsSuccess
-    ? "success"
-    : isSettingsError && !isSettingsFetching
-      ? "error"
-      : "loading";
 
   const { data: inventoryItems = [] } = useQuery({
     queryKey: ["home-inventory"],
@@ -779,7 +769,6 @@ export default function HomePage() {
             <Suspense fallback={<div className="h-[64dvh] min-h-[440px] animate-pulse bg-slate-100" />}>
               <CustomerDistanceExplorer
                 serviceCenter={serviceCenterLocation}
-                publicSettingsStatus={publicSettingsStatus}
               />
             </Suspense>
           </div>
@@ -1175,7 +1164,6 @@ export default function HomePage() {
         <Suspense fallback={<div className="h-[min(78vh,820px)] min-h-[620px] max-h-[860px] animate-pulse bg-[#f7fbf9]" />}>
           <CustomerDistanceExplorer
             serviceCenter={serviceCenterLocation}
-            publicSettingsStatus={publicSettingsStatus}
           />
         </Suspense>
       </section>

@@ -40,8 +40,16 @@ describe("FINANCE-AFTERCARE-01.3 — schema + migration registration", () => {
     expect(ids).toContain("2026_07_23_corporate_ltd_itemized_billing");
   });
 
-  it("bumps REQUIRED_MAIN_SCHEMA_VERSION to the new migration", () => {
-    expect(REQUIRED_MAIN_SCHEMA_VERSION).toBe("2026_07_23_corporate_ltd_itemized_billing");
+  it("registers the corporate ltd itemized billing migration at or before the current MAIN schema head", () => {
+    // Durable: asserts this migration made it into the ledger no later than the current head,
+    // rather than hardcoding REQUIRED_MAIN_SCHEMA_VERSION to this migration's own id — which
+    // breaks the instant any later migration is appended to the same registry.
+    const ids = MAIN_SCHEMA_MIGRATIONS.map((m) => m.id);
+    const migrationIndex = ids.indexOf("2026_07_23_corporate_ltd_itemized_billing");
+    const headIndex = ids.indexOf(REQUIRED_MAIN_SCHEMA_VERSION);
+    expect(migrationIndex).toBeGreaterThanOrEqual(0);
+    expect(headIndex).toBeGreaterThanOrEqual(0);
+    expect(migrationIndex).toBeLessThanOrEqual(headIndex);
   });
 
   it("migration ids are unique with stable checksums (append-only)", () => {

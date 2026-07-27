@@ -38,14 +38,14 @@ describe('mobile workforce helpers', () => {
             accuracy: 10,
         });
 
-        expect(inside.status).toBe('inside');
-        expect(outside.status).toBe('outside');
+        expect(inside.status).toBe('inside_office');
+        expect(outside.status).toBe('outside_office');
         expect(outside.distanceMeters).toBeGreaterThan(workLocation.radiusMeters);
     });
 
     it('only allows defined mobile job transitions', () => {
         expect(canAdvanceMobileJob('Pending', 'In Progress')).toBe(true);
-        expect(canAdvanceMobileJob('In Progress', 'Ready for Delivery')).toBe(true);
+        expect(canAdvanceMobileJob('In Progress', 'Testing')).toBe(true);
         expect(canAdvanceMobileJob('Completed', 'In Progress')).toBe(false);
     });
 

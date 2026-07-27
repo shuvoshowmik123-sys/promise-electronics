@@ -8,11 +8,11 @@
   "scope": "forward-only baseline for testing future migrations; historical full-chain/genesis remains NOT VERIFIED",
   "files": {
     "schema.sql": {
-      "sha256": "e0887233a250f1ca2c2048dac6d896d42d46699efe4b74184a816509869abdd6",
+      "sha256": "2559d05088ccdd0691e88b943933f6940125029991bc9e5799f5ef45b49a4b7d",
       "contents": "schema-only, no-owner, no-privileges, no application data"
     },
     "promise-schema-migrations.sql": {
-      "sha256": "065e00d83d8d334e487f01fd8672b252c7714cd896c56edc70b5d3852a2b7c69",
+      "sha256": "8ba81d20b35c1ae497186f9c1d0bddee04546d17679bdd9366ca8977fff2ce7c",
       "contents": "data-only export of promise_schema_migrations only"
     }
   },

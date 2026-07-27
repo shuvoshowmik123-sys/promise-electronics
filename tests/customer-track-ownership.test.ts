@@ -129,6 +129,9 @@ function setupMocks(opts: {
                     limit: vi.fn(async () => []),
                 })),
             })),
+            // Customer-session freshness (customer-session.service.ts) reads password_changed_at via
+            // a raw db.execute(sql`...`) call, not the select/from/where chain above.
+            execute: vi.fn(async () => ({ rows: [{ password_changed_at: null }] })),
         },
     }));
     vi.doMock("../server/routes/middleware/sse-broker.js", () => ({
@@ -160,15 +163,21 @@ function setupMocks(opts: {
             linkServiceRequestsByPhone: vi.fn(async () => 0),
         },
     }));
-    vi.doMock("../shared/schema.js", () => ({
-        insertManualPaymentSchema: { pick: () => ({ extend: () => ({ parse: (v: unknown) => v }) }) },
-        manualPayments: {
-            serviceRequestId: "serviceRequestId",
-            jobTicketId: "jobTicketId",
-            createdAt: "createdAt",
-        },
-        User: {},
-    }));
+    vi.doMock("../shared/schema.js", async (importOriginal: any) => {
+        // Merge with the real schema so transitive imports (e.g. job.repository.ts referencing
+        // schema.jobTickets at module scope) still resolve — only override what this test needs.
+        const actual: any = await importOriginal();
+        return {
+            ...actual,
+            insertManualPaymentSchema: { pick: () => ({ extend: () => ({ parse: (v: unknown) => v }) }) },
+            manualPayments: {
+                serviceRequestId: "serviceRequestId",
+                jobTicketId: "jobTicketId",
+                createdAt: "createdAt",
+            },
+            User: {},
+        };
+    });
 }
 
 describe("FF-006 Customer tracking ownership", () => {
@@ -198,7 +207,7 @@ describe("FF-006 Customer tracking ownership", () => {
     it("Customer A accessing Customer A ticket returns full projection", async () => {
         setupMocks();
         const { default: router } = await import("../server/routes/customer.routes.js");
-        const app = createAppWithSession(router, { customerId: "cust-a" });
+        const app = createAppWithSession(router, { customerId: "cust-a", passwordChangedAtStamp: 0 });
 
         const res = await request(app).get(`/api/customer/track/${TICKET_A}`);
 
@@ -214,7 +223,7 @@ describe("FF-006 Customer tracking ownership", () => {
     it("Customer A accessing Customer B ticket gets 404 and no private data", async () => {
         setupMocks();
         const { default: router } = await import("../server/routes/customer.routes.js");
-        const app = createAppWithSession(router, { customerId: "cust-a" });
+        const app = createAppWithSession(router, { customerId: "cust-a", passwordChangedAtStamp: 0 });
 
         const res = await request(app).get(`/api/customer/track/${TICKET_B}`);
 
@@ -234,7 +243,7 @@ describe("FF-006 Customer tracking ownership", () => {
         setupMocks({ link: linkMock });
 
         const { default: router } = await import("../server/routes/customer.routes.js");
-        const app = createAppWithSession(router, { customerId: "cust-a" });
+        const app = createAppWithSession(router, { customerId: "cust-a", passwordChangedAtStamp: 0 });
 
         const res = await request(app).get(`/api/customer/track/${TICKET_LEGACY}`);
 
@@ -248,7 +257,7 @@ describe("FF-006 Customer tracking ownership", () => {
     it("unlinked legacy ticket with non-matching phone gets 404 and no private data", async () => {
         setupMocks();
         const { default: router } = await import("../server/routes/customer.routes.js");
-        const app = createAppWithSession(router, { customerId: "cust-a" });
+        const app = createAppWithSession(router, { customerId: "cust-a", passwordChangedAtStamp: 0 });
 
         const res = await request(app).get(`/api/customer/track/${TICKET_LEGACY_MISMATCH}`);
 

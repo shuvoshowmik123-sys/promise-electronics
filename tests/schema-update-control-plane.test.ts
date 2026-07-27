@@ -62,7 +62,13 @@ describe("Canonical MAIN registry authority", () => {
   it("control-plane migration is appended to MAIN_SCHEMA_MIGRATIONS (not a parallel ledger)", () => {
     const ids = MAIN_SCHEMA_MIGRATIONS.map((m) => m.id);
     expect(ids).toContain("2026_07_22_schema_update_control_plane");
-    expect(REQUIRED_MAIN_SCHEMA_VERSION).toBe("2026_07_22_schema_update_control_plane");
+    // Durable: asserts this migration made it into the ledger no later than the current head,
+    // rather than hardcoding REQUIRED_MAIN_SCHEMA_VERSION to this migration's own id — which
+    // breaks the instant any later migration is appended to the same registry.
+    const controlPlaneIndex = ids.indexOf("2026_07_22_schema_update_control_plane");
+    const headIndex = ids.indexOf(REQUIRED_MAIN_SCHEMA_VERSION);
+    expect(headIndex).toBeGreaterThanOrEqual(0);
+    expect(controlPlaneIndex).toBeLessThanOrEqual(headIndex);
     const control = MAIN_SCHEMA_MIGRATIONS.find(
       (m) => m.id === "2026_07_22_schema_update_control_plane"
     )!;

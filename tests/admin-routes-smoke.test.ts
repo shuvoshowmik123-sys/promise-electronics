@@ -16,7 +16,10 @@ function createAuthMock() {
         requireAdminAuth: allowAdminRequest(),
         requirePermission: () => allowAdminRequest(),
         requireAnyPermission: () => allowAdminRequest(),
+        requireGranularPermission: () => allowAdminRequest(),
         requireSuperAdmin: allowAdminRequest(),
+        requireCustomerAuth: (req: any, _res: any, next: () => void) => { req.session = req.session || {}; req.session.customerId = "cust-1"; next(); },
+        getCustomerId: (req: any) => req.session?.customerId,
         getEffectivePermissionsForUser: () => ({ dashboard: true, finance: true }),
         adminCreateUserSchema: { parse: (value: unknown) => value },
         adminUpdateUserSchema: { parse: (value: unknown) => value },
@@ -114,6 +117,7 @@ describe("admin route smoke tests", () => {
                     status: "In Progress",
                     technician: "Tech A",
                 })),
+                getJobTicketsByIds: vi.fn(async () => new Map()),
             },
             serviceRequestRepo: {
                 getAllServiceRequests: vi.fn(async () => ([
@@ -127,6 +131,25 @@ describe("admin route smoke tests", () => {
                         createdAt: new Date("2026-03-12T00:00:00.000Z"),
                     },
                 ])),
+                // 01E: GET /api/service-requests now paginates via listServiceRequestsPaginated,
+                // not getAllServiceRequests (kept above for other tests in this file).
+                listServiceRequestsPaginated: vi.fn(async () => ({
+                    items: [
+                        {
+                            id: "srv-1",
+                            brand: "Sony",
+                            modelNumber: "X90",
+                            status: "Pending",
+                            servicePreference: "service_center",
+                            serviceMode: "service_center",
+                            createdAt: new Date("2026-03-12T00:00:00.000Z"),
+                        },
+                    ],
+                    total: 1,
+                    page: 1,
+                    limit: 50,
+                    totalPages: 1,
+                })),
             },
             userRepo: {},
             systemRepo: {},

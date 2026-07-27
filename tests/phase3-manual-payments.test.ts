@@ -15,6 +15,7 @@ function createAuthMock() {
         requireAdminAuth: allowAdminRequest(),
         requirePermission: () => allowAdminRequest(),
         requireAnyPermission: () => allowAdminRequest(),
+        requireGranularPermission: () => allowAdminRequest(),
         requireSuperAdmin: allowAdminRequest(),
         getEffectivePermissionsForUser: () => ({ finance: true, process_payment: true }),
         adminCreateUserSchema: { parse: (value: unknown) => value },
@@ -126,7 +127,43 @@ describe("Phase 3 manual payment verification", () => {
     });
 
     it("verifies and applies job-linked manual payments to the invoice", async () => {
-        const recordJobPayment = vi.fn(async () => ({ id: "job-1", paidAmount: 750 }));
+        // Money now applies via settleJobPaymentViaPos (canonical POS settlement), not
+        // jobService.recordJobPayment directly — that method is no longer called anywhere
+        // in the real server code (confirmed: only its own definition exists). Mock the
+        // settlement service at the same dynamic-import boundary the route itself uses.
+        const settleJobPaymentViaPos = vi.fn(async () => ({
+            job: { id: "job-1", paidAmount: 750 },
+            posTransaction: { id: "postxn-1" },
+            reused: false,
+            deprecatedRoute: true,
+            legacyHistoryIncomplete: false,
+        }));
+        // Not importOriginal: the real module statically imports jobRepo from
+        // repositories/index.js, which this test's minimal repo mock doesn't provide.
+        // mapToPosPaymentMethod is re-implemented here (pure, copied from source) so the
+        // route's own pre-settlement mapping still exercises real mapping logic.
+        vi.doMock("../server/services/retail-money-settlement.service.js", () => ({
+            settleJobPaymentViaPos,
+            RetailMoneyError: class RetailMoneyError extends Error {
+                status: number; code: string;
+                constructor(status: number, code: string, message: string) {
+                    super(message);
+                    this.name = "RetailMoneyError";
+                    this.status = status;
+                    this.code = code;
+                }
+            },
+            mapToPosPaymentMethod: (raw: string) => {
+                const m = String(raw || "").trim();
+                const lower = m.toLowerCase().replace(/[\s-]+/g, "_");
+                if (lower === "cash") return "Cash";
+                if (lower === "bank") return "Bank";
+                if (lower === "bkash" || lower === "bkash_send_money") return "bKash";
+                if (lower === "nagad" || lower === "nagad_send_money") return "Nagad";
+                if (lower === "due" || lower === "credit") return "Due";
+                return null;
+            },
+        }));
         const updates: any[] = [];
         const payment = {
             id: "pay-1",
@@ -174,11 +211,6 @@ describe("Phase 3 manual payment verification", () => {
                 recordDuePayment: vi.fn(),
             },
         }));
-        vi.doMock("../server/services/job.service.js", () => ({
-            jobService: {
-                recordJobPayment,
-            },
-        }));
 
         const { default: router } = await import("../server/routes/finance.routes.js");
         const app = createApp(router);
@@ -186,11 +218,12 @@ describe("Phase 3 manual payment verification", () => {
         const res = await request(app).post("/api/manual-payments/pay-1/verify").send();
 
         expect(res.status).toBe(200);
-        expect(recordJobPayment).toHaveBeenCalledWith("job-1", {
-            paymentId: "TXN-123",
+        expect(settleJobPaymentViaPos).toHaveBeenCalledWith(expect.objectContaining({
+            jobId: "job-1",
             amount: 750,
-            method: "bkash_send_money",
-        });
+            method: "bKash",
+            paymentId: "TXN-123",
+        }));
         expect(updates[0]).toMatchObject({
             status: "applied_to_invoice",
             verifiedBy: "Manager",
@@ -199,7 +232,38 @@ describe("Phase 3 manual payment verification", () => {
     });
 
     it("notifies the customer when a submitted payment is verified", async () => {
-        const recordJobPayment = vi.fn(async () => ({ id: "job-1", paidAmount: 1000 }));
+        // See "verifies and applies job-linked manual payments to the invoice" above: money
+        // now applies via settleJobPaymentViaPos, not jobService.recordJobPayment (no longer
+        // called anywhere in the real server code).
+        const settleJobPaymentViaPos = vi.fn(async () => ({
+            job: { id: "job-1", paidAmount: 1000 },
+            posTransaction: { id: "postxn-1" },
+            reused: false,
+            deprecatedRoute: true,
+            legacyHistoryIncomplete: false,
+        }));
+        vi.doMock("../server/services/retail-money-settlement.service.js", () => ({
+            settleJobPaymentViaPos,
+            RetailMoneyError: class RetailMoneyError extends Error {
+                status: number; code: string;
+                constructor(status: number, code: string, message: string) {
+                    super(message);
+                    this.name = "RetailMoneyError";
+                    this.status = status;
+                    this.code = code;
+                }
+            },
+            mapToPosPaymentMethod: (raw: string) => {
+                const m = String(raw || "").trim();
+                const lower = m.toLowerCase().replace(/[\s-]+/g, "_");
+                if (lower === "cash") return "Cash";
+                if (lower === "bank") return "Bank";
+                if (lower === "bkash" || lower === "bkash_send_money") return "bKash";
+                if (lower === "nagad" || lower === "nagad_send_money") return "Nagad";
+                if (lower === "due" || lower === "credit") return "Due";
+                return null;
+            },
+        }));
         const createNotification = vi.fn(async (value: any) => ({ id: "notif-1", ...value }));
         const notifyCustomerUpdate = vi.fn();
         const payment = {
@@ -264,12 +328,6 @@ describe("Phase 3 manual payment verification", () => {
                 recordDuePayment: vi.fn(),
             },
         }));
-        vi.doMock("../server/services/job.service.js", () => ({
-            jobService: {
-                recordJobPayment,
-            },
-        }));
-
         const { default: router } = await import("../server/routes/finance.routes.js");
         const app = createApp(router);
 
@@ -459,6 +517,7 @@ describe("Phase 3 manual payment verification", () => {
             authLimiter: (_req: any, _res: any, next: () => void) => next(),
             registrationLimiter: (_req: any, _res: any, next: () => void) => next(),
             serviceRequestLimiter: (_req: any, _res: any, next: () => void) => next(),
+            accountRecoveryLimiter: (_req: any, _res: any, next: () => void) => next(),
         }));
         vi.doMock("../server/routes/middleware/sse-broker.js", () => ({
             addCustomerSSEClient: vi.fn(),
