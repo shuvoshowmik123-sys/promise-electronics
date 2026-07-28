@@ -356,3 +356,106 @@ describe("Audit source authority — no parallel migration engine", () => {
     expect(src).toMatch(/no DDL|read-only/i);
   });
 });
+
+describe("Search-path hardening — session-only fix, no persistent config", () => {
+  it("runMainSchemaMigrations sets session-only search_path immediately after connect, before any ledger/migration query", async () => {
+    const src = await readFile(
+      path.resolve(process.cwd(), "server/services/main-schema-migrate.service.ts"),
+      "utf8"
+    );
+    const runnerMatch = src.match(
+      /export async function runMainSchemaMigrations[\s\S]*?(?=\nexport async function|\n\/\/ ---|$)/
+    );
+    expect(runnerMatch).not.toBeNull();
+    const runnerBody = runnerMatch![0];
+
+    // SET search_path must appear after client.connect() and before the advisory
+    // lock / ledger table / migration loop work in the same function body.
+    const connectIndex = runnerBody.indexOf("await client.connect()");
+    const setSearchPathIndex = runnerBody.indexOf('SET search_path TO public');
+    const lockIndex = runnerBody.indexOf("ADVISORY_LOCK_KEY");
+    const ledgerCreateIndex = runnerBody.indexOf("CREATE TABLE IF NOT EXISTS promise_schema_migrations");
+    expect(connectIndex).toBeGreaterThan(-1);
+    expect(setSearchPathIndex).toBeGreaterThan(-1);
+    expect(lockIndex).toBeGreaterThan(-1);
+    expect(ledgerCreateIndex).toBeGreaterThan(-1);
+    expect(setSearchPathIndex).toBeGreaterThan(connectIndex);
+    expect(setSearchPathIndex).toBeLessThan(lockIndex);
+    expect(setSearchPathIndex).toBeLessThan(ledgerCreateIndex);
+
+    // Never a persistent database/role-level configuration.
+    expect(src).not.toMatch(/ALTER\s+DATABASE[\s\S]{0,80}SET\s+search_path/i);
+    expect(src).not.toMatch(/ALTER\s+ROLE[\s\S]{0,80}SET\s+search_path/i);
+  });
+
+  it("verifyMainSchemaLedger reads the live ledger via a schema-qualified table name", async () => {
+    const src = await readFile(
+      path.resolve(process.cwd(), "server/services/main-schema-migrate.service.ts"),
+      "utf8"
+    );
+    const fnMatch = src.match(/export async function verifyMainSchemaLedger[\s\S]*?\n}\n/);
+    expect(fnMatch).not.toBeNull();
+    const fnBody = fnMatch![0];
+    expect(fnBody).toMatch(/SELECT id, checksum FROM public\.promise_schema_migrations/);
+    expect(fnBody).not.toMatch(/SELECT id, checksum FROM promise_schema_migrations(?!\s*['`])/);
+  });
+
+  it("readLiveLedgerChecksumMap reads the live ledger via a schema-qualified table name", async () => {
+    const src = await readFile(
+      path.resolve(process.cwd(), "server/services/ledger-reconciliation-audit.service.ts"),
+      "utf8"
+    );
+    const fnMatch = src.match(/async function readLiveLedgerChecksumMap[\s\S]*?\n}\n/);
+    expect(fnMatch).not.toBeNull();
+    const fnBody = fnMatch![0];
+    expect(fnBody).toMatch(/SELECT id, checksum FROM public\.promise_schema_migrations/);
+    expect(fnBody).not.toMatch(/SELECT id, checksum FROM promise_schema_migrations(?!\s*['`])/);
+  });
+
+  it("existing healthy/pending/checksum classification behavior is unchanged", () => {
+    // Regression guard: the search-path hardening must not alter classification
+    // logic, which is pure and does not depend on connection state at all.
+    const registry = getCanonicalRegistryIdentity();
+    const registryMatchingBaseline: TrustedBaselineLedger = {
+      baselineVersion: "v-test",
+      registryHead: registry.headVersion,
+      migrations: registry.ids.map((id) => ({ id, checksum: registry.checksumById[id]! })),
+    };
+    const healthy = classifyLedgerReconciliation({
+      verification: verification({
+        ok: true,
+        appliedIds: registry.ids,
+        currentVersion: registry.headVersion,
+      }),
+      baseline: registryMatchingBaseline,
+      liveChecksumById: { ...registry.checksumById },
+      registry,
+    });
+    expect(healthy.classification).toBe("healthy");
+    expect(healthy.blocked).toBe(false);
+
+    const pending = classifyLedgerReconciliation({
+      verification: verification({
+        ok: false,
+        missing: ["2026_07_22_schema_update_control_plane"],
+        error: "Missing migrations: 2026_07_22_schema_update_control_plane",
+      }),
+      baseline: sampleBaseline(),
+      liveChecksumById: { "0000_promise_schema_migrations_ledger": "baseline0000aaaa" },
+    });
+    expect(pending.classification).toBe("pending_only");
+    expect(pending.blocked).toBe(true);
+
+    const mismatch = classifyLedgerReconciliation({
+      verification: verification({
+        ok: false,
+        mismatched: [{ id: "x", ledger: "a", code: "b" }],
+        error: "Checksum mismatch: x",
+      }),
+      baseline: sampleBaseline(),
+      liveChecksumById: { x: "a" },
+    });
+    expect(mismatch.classification).toBe("checksum_mismatch");
+    expect(mismatch.blocked).toBe(true);
+  });
+});

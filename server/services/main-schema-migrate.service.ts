@@ -2049,7 +2049,7 @@ export async function verifyMainSchemaLedger(): Promise<LedgerVerification> {
     if (!tableExists.rows[0].reg) {
       return { ok: false, missing: MAIN_SCHEMA_MIGRATIONS.map((m) => m.id), mismatched: [], extra: [], appliedIds: [], currentVersion: null, error: "Ledger table does not exist" };
     }
-    const ledgerRows = await client.query(`SELECT id, checksum FROM promise_schema_migrations`);
+    const ledgerRows = await client.query(`SELECT id, checksum FROM public.promise_schema_migrations`);
     const ledgerMap = new Map<string, string>();
     for (const row of ledgerRows.rows) {
       ledgerMap.set(row.id, row.checksum);
@@ -2150,6 +2150,14 @@ export async function runMainSchemaMigrations(): Promise<MainSchemaResult> {
 
   try {
     await client.connect();
+    // Session-only search_path fix: the inherited search_path for this connection
+    // is not guaranteed (e.g. immediately after a drop-and-recreate restore cycle
+    // against some managed Postgres providers). Every subsequent unqualified
+    // reference on this client — the ledger table CREATE/SELECT/INSERT below and
+    // every reviewed migration.up(client) body — depends on `public` being
+    // resolvable. This is a per-connection SET only — not a persistent
+    // configuration change, and not any form of ALTER on the database or role.
+    await client.query("SET search_path TO public");
     await client.query("SELECT 1");
 
     const lockKeyResult = await client.query(`SELECT hashtext($1)::int AS key`, [ADVISORY_LOCK_KEY]);

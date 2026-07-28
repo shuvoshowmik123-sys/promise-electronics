@@ -275,7 +275,7 @@ async function readLiveLedgerChecksumMap(): Promise<Record<string, string>> {
       `SELECT to_regclass('public.promise_schema_migrations') AS reg`
     );
     if (!tableExists.rows[0]?.reg) return {};
-    const ledgerRows = await client.query(`SELECT id, checksum FROM promise_schema_migrations`);
+    const ledgerRows = await client.query(`SELECT id, checksum FROM public.promise_schema_migrations`);
     const map: Record<string, string> = {};
     for (const row of ledgerRows.rows as Array<{ id: string; checksum: string }>) {
       map[row.id] = row.checksum;

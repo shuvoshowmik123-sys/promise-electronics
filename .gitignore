@@ -6,6 +6,10 @@ dist/
 .vercel/
 server/public/
 
+# Windows Schema Migration Utility packaging output (generated .exe artifacts)
+tools/packaging/build/
+tools/packaging/dist/
+
 # Environment files (sensitive - never commit)
 .env
 .env.local
