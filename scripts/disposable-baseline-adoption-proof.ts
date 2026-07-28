@@ -1,5 +1,5 @@
 /**
- * Fail-closed disposable baseline adoption + protected-flow proof harness.
+ * Fail-closed disposable baseline adoption proof harness.
  *
  * MUST run under project TSX (npm run schema:adoption:proof).
  * Loads TypeScript server services via ESM .js import paths resolved by tsx —
@@ -8,8 +8,8 @@
  * Local only. Database name MUST start with qa_schema_update_.
  * Requires MAIN_SCHEMA_TRUST_BASELINE_ADOPTION=true.
  * Restores Git-versioned baseline, bootstrap-migrates via canonical release CLI,
- * exercises Super Admin request + protected runner (when safe), repeat no-op,
- * drops only the validated disposable database (even on failure).
+ * repeats the migration to confirm it is idempotent (no-op), drops only the
+ * validated disposable database (even on failure).
  *
  * Never rewrites historic ledger rows/ids/bodies/checksums.
  * Never targets ordinary dev DB, Aiven, Neon, or production.
@@ -21,7 +21,6 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import pg from "pg";
-import bcrypt from "bcryptjs";
 import {
   activateDisposableBaselineAdoption,
   assertRestoredLedgerMatchesExpected,
@@ -33,12 +32,6 @@ import {
   MAIN_SCHEMA_MIGRATIONS,
   REQUIRED_MAIN_SCHEMA_VERSION,
 } from "../server/services/main-schema-migrate.service.js";
-import {
-  createSchemaUpdateRequest,
-  claimNextPendingRun,
-  processClaimedSchemaUpdateRun,
-  isControlPlaneTableReady,
-} from "../server/services/schema-update-run.service.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, "..");
@@ -322,67 +315,6 @@ async function main(): Promise<void> {
   }
   log.push({ step: "historic-ledger-unmutated", ok: true });
   await client2.end();
-
-  const ready = await isControlPlaneTableReady();
-  if (!ready) {
-    throw new Error("Control plane table missing after bootstrap");
-  }
-
-  const proofPassword = "AdoptionProof!LocalOnly1";
-  const passwordHash = await bcrypt.hash(proofPassword, 4);
-  const createResult = await createSchemaUpdateRequest({
-    userId: "qa-schema-adoption-sa",
-    password: proofPassword,
-    passwordHash,
-    confirm: true,
-  });
-  if (!createResult.ok) {
-    throw new Error(`createSchemaUpdateRequest failed: ${createResult.code || createResult.error}`);
-  }
-  log.push({
-    step: "schema-update-request",
-    ok: true,
-    runIdPresent: Boolean(createResult.run?.id),
-    duplicate: createResult.duplicate,
-    status: createResult.run?.status,
-  });
-
-  process.env.SCHEMA_PROTECTED_RUNNER_ENABLED = "true";
-  const claimed = await claimNextPendingRun("adoption-proof-runner");
-  if (!claimed) {
-    throw new Error("Expected to claim pending schema update run");
-  }
-  const outcome1 = await processClaimedSchemaUpdateRun(claimed);
-  log.push({
-    step: "protected-runner-1",
-    ok: true,
-    ddlInvoked: outcome1.ddlInvoked,
-    runStatus: outcome1.run?.status ?? null,
-    resultStatus: outcome1.result?.status ?? null,
-    applied: outcome1.result?.appliedIds?.length ?? null,
-  });
-  if (outcome1.run?.status === "blocked" || outcome1.run?.status === "failed") {
-    throw new Error(`Protected runner-1 ended unsuccessfully: ${outcome1.run?.status}`);
-  }
-
-  const claimed2 = await claimNextPendingRun("adoption-proof-runner-2");
-  if (claimed2) {
-    const outcome2 = await processClaimedSchemaUpdateRun(claimed2);
-    log.push({
-      step: "protected-runner-2",
-      ok: true,
-      note: "unexpected second claim processed",
-      ddlInvoked: outcome2.ddlInvoked,
-      runStatus: outcome2.run?.status ?? null,
-    });
-  } else {
-    log.push({
-      step: "protected-runner-2",
-      ok: true,
-      note: "no pending run — safe no-op",
-      ddlInvoked: false,
-    });
-  }
 
   const migrate2 = spawnSync(process.execPath, [TSX_CLI, "server/db-migrate-main.ts"], {
     encoding: "utf8",

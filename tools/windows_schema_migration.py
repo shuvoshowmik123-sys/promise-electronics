@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import hashlib
+import hmac
 import ipaddress
 import json
 import os
@@ -31,12 +32,14 @@ class TargetMode(str, Enum):
 
     LOCAL_DISPOSABLE = "local_disposable"
     DEVELOPMENT_REMOTE = "development_remote"
+    AIVEN_TEST_APPROVED = "aiven_test_approved"
     PRODUCTION_REMOTE = "production_remote"
 
 
 TARGET_MODE_LABELS: dict[TargetMode, str] = {
     TargetMode.LOCAL_DISPOSABLE: "Local disposable",
     TargetMode.DEVELOPMENT_REMOTE: "Development remote (approved Neon development only)",
+    TargetMode.AIVEN_TEST_APPROVED: "Aiven test (session approved)",
     TargetMode.PRODUCTION_REMOTE: "Production remote (disabled in this version)",
 }
 
@@ -46,12 +49,51 @@ TARGET_MODE_LABELS: dict[TargetMode, str] = {
 # private Neon endpoint.
 DEVELOPMENT_REMOTE_HOST_SUFFIX = ".neon.tech"
 
+# Aiven test mode additionally requires the exact session-approved target —
+# an Aiven-looking hostname is never sufficient by itself (Aiven also hosts
+# real production databases for this project). See
+# ``_matches_session_approved_aiven_test_target``.
+AIVEN_TEST_HOST_SUFFIX = ".aivencloud.com"
+AIVEN_TEST_APPROVED_URL_ENV_VAR = "AIVEN_TEST_DATABASE_URL"
+
 
 def _is_recognized_development_remote_host(host: str) -> bool:
     return host.endswith(DEVELOPMENT_REMOTE_HOST_SUFFIX)
 
 
-def resolve_target_mode(mode: TargetMode, target: DatabaseTarget) -> None:
+def _is_recognized_aiven_test_host(host: str) -> bool:
+    return host.endswith(AIVEN_TEST_HOST_SUFFIX)
+
+
+def _session_approved_aiven_test_fingerprint() -> bytes | None:
+    """In-memory only: reads the operator-approved Aiven test URL from this
+    process's own environment at call time and returns its SHA-256 digest.
+    Never written to disk, logs, evidence, or any UI text, and never returns
+    the raw value itself. Returns ``None`` if the session did not approve any
+    Aiven test target this run."""
+    raw_value = os.environ.get(AIVEN_TEST_APPROVED_URL_ENV_VAR)
+    if not raw_value:
+        return None
+    try:
+        normalized = normalize_database_url_input(raw_value)
+    except Exception:
+        return None
+    if not normalized:
+        return None
+    return hashlib.sha256(normalized.encode("utf-8")).digest()
+
+
+def _matches_session_approved_aiven_test_target(candidate_url: str) -> bool:
+    """Constant-time fingerprint comparison only — never compares or logs the
+    raw URL text itself."""
+    approved_fingerprint = _session_approved_aiven_test_fingerprint()
+    if approved_fingerprint is None:
+        return False
+    candidate_fingerprint = hashlib.sha256(candidate_url.encode("utf-8")).digest()
+    return hmac.compare_digest(approved_fingerprint, candidate_fingerprint)
+
+
+def resolve_target_mode(mode: TargetMode, target: DatabaseTarget, database_url: str | None = None) -> None:
     """Validate an explicit target mode against the classified host.
 
     Raises before any command is built or launched. Production remote is
@@ -59,7 +101,11 @@ def resolve_target_mode(mode: TargetMode, target: DatabaseTarget) -> None:
     accepts only recognized Neon endpoint hosts (hostname ends with
     ``.neon.tech``) — any other remote host (Aiven-pattern, arbitrary, or
     malformed) is rejected here, before any audit or migration subprocess
-    is ever started.
+    is ever started. Aiven test mode requires BOTH a recognized Aiven
+    hostname AND an exact in-memory fingerprint match against the
+    session-approved ``AIVEN_TEST_DATABASE_URL`` — the hostname pattern alone
+    never authorizes an Aiven target, since Aiven also hosts this project's
+    real production database.
     """
     if mode is TargetMode.PRODUCTION_REMOTE:
         raise PreflightError(
@@ -80,6 +126,24 @@ def resolve_target_mode(mode: TargetMode, target: DatabaseTarget) -> None:
             raise PreflightError(
                 "Development remote mode only accepts recognized Neon development hosts "
                 f'(the hostname must end with "{DEVELOPMENT_REMOTE_HOST_SUFFIX}"). '
+                "This target was rejected before any connection was attempted."
+            )
+    if mode is TargetMode.AIVEN_TEST_APPROVED:
+        if target.is_local:
+            raise PreflightError(
+                "Aiven test mode requires a non-local Database URL. "
+                "Use Local disposable mode for localhost/127.0.0.1 targets."
+            )
+        if not _is_recognized_aiven_test_host(target.host):
+            raise PreflightError(
+                "Aiven test mode only accepts recognized Aiven hosts "
+                f'(the hostname must end with "{AIVEN_TEST_HOST_SUFFIX}"). '
+                "This target was rejected before any connection was attempted."
+            )
+        if database_url is None or not _matches_session_approved_aiven_test_target(database_url):
+            raise PreflightError(
+                "Aiven test mode only runs against the session-approved Aiven test target. "
+                "This typed URL does not match the approved target. "
                 "This target was rejected before any connection was attempted."
             )
 
@@ -271,7 +335,7 @@ def _with_node_runtime_path(child_environment: dict[str, str]) -> dict[str, str]
 
 
 def build_preflight_environment(database_url: str, target: DatabaseTarget, mode: TargetMode) -> dict[str, str]:
-    resolve_target_mode(mode, target)
+    resolve_target_mode(mode, target, database_url)
     child_environment = os.environ.copy()
     child_environment["DATABASE_URL"] = database_url
     child_environment["NODE_ENV"] = "development"
@@ -421,7 +485,7 @@ def preflight_database_url(
 ) -> PreflightResult:
     normalized_value = normalize_database_url_input(raw_value)
     target = validate_database_url(normalized_value)
-    resolve_target_mode(mode, target)
+    resolve_target_mode(mode, target, normalized_value)
     commands = _canonical_commands(repo_root)
     classification = _run_read_only_audit(
         normalized_value,
@@ -449,7 +513,7 @@ def build_child_environment(database_url: str, target: DatabaseTarget, mode: Tar
     ``ALLOW_PROD_DB_MIGRATE_MAIN`` — only the controlled release procedure sets
     that flag for a real production run.
     """
-    resolve_target_mode(mode, target)
+    resolve_target_mode(mode, target, database_url)
     child_environment = os.environ.copy()
     child_environment["DATABASE_URL"] = database_url
     child_environment["MAIN_MIGRATION_RELEASE_MODE"] = "true"
@@ -595,6 +659,16 @@ BACKUP_METADATA_SUFFIX = ".json"
 MIGRATE_CONFIRMATION_TEXT = "MIGRATE"
 RESTORE_CONFIRMATION_TEXT = "RESTORE"
 
+# Aiven Test mode never offers in-place Restore Backup: this tool's restore
+# design requires a maintenance-database connection (for dropdb/createdb)
+# that is unavailable against the approved Aiven test target (confirmed via
+# a real, deterministic pg_hba.conf rejection during live proof). Aiven's
+# own provider-controlled Fork & Restore workflow is the reviewed recovery
+# path for that target instead — never this EXE's local/Neon restore design.
+AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE = (
+    "Aiven restore is provider-controlled. Use Aiven Console Fork & Restore."
+)
+
 
 @dataclass(frozen=True)
 class BackupResult:
@@ -644,6 +718,29 @@ def _find_pg_tool(tool_name: str) -> str:
     raise PreflightError(f"{tool_name} was not found. Install the PostgreSQL client tools and reopen this utility.")
 
 
+# node-postgres's connection-string parser (pg-connection-string) supports an
+# extra ``sslmode=no-verify`` value that real libpq (used by dropdb/createdb/
+# pg_dump/pg_restore/psql) does not recognize at all — libpq only knows
+# disable/allow/prefer/require/verify-ca/verify-full and errors out
+# ("invalid sslmode value") on anything else. Translating ``no-verify`` to
+# libpq's own ``require`` is the closest valid libpq equivalent: by default,
+# libpq's ``require`` encrypts the connection without checking the
+# certificate chain against a CA. This is NOT unconditionally identical to
+# ``no-verify`` in every environment — if a root certificate is separately
+# supplied to libpq (``sslrootcert``, or a discovered default location such
+# as ``~/.postgresql/root.crt``), libpq's own documented behavior upgrades
+# ``require`` to validate against that CA (the same way ``verify-ca`` would).
+# Neither this tool nor its callers ever set ``sslrootcert`` or rely on such
+# a default file being present, so this translation is safe for this tool's
+# own connections today, but it is a translation to the closest available
+# libpq mode — not a claim that the two values always behave identically in
+# every possible environment. This phase makes no broader TLS behavior
+# change beyond this one, already-existing, narrow value translation. The
+# Node subprocess's own ``DATABASE_URL`` always keeps the operator's exact
+# original string, ``no-verify`` included.
+_LIBPQ_SSLMODE_TRANSLATION = {"no-verify": "require"}
+
+
 def _pg_connection_env(database_url: str, base_environment: dict[str, str]) -> dict[str, str]:
     """Build libpq environment variables from the URL.
 
@@ -663,7 +760,8 @@ def _pg_connection_env(database_url: str, base_environment: dict[str, str]) -> d
         environment["PGPASSWORD"] = unquote(parsed.password)
     query = dict(parse_qsl(parsed.query, keep_blank_values=True))
     if "sslmode" in query:
-        environment["PGSSLMODE"] = query["sslmode"]
+        raw_sslmode = query["sslmode"]
+        environment["PGSSLMODE"] = _LIBPQ_SSLMODE_TRANSLATION.get(raw_sslmode, raw_sslmode)
     return environment
 
 
@@ -681,14 +779,29 @@ _UNSAFE_TOOL_OUTPUT_PATTERN = re.compile(
     r"|\bcreate\s+(?:table|role|database|schema|index)\b"
     r"|\bdrop\s+(?:table|role|database|schema|index)\b"
     r"|\binsert\s+into\b"
-    r"|\bselect\b.+\bfrom\b",
+    r"|\bselect\b.+\bfrom\b"
+    # A connection-failure error (e.g. dropdb/createdb rejected by the
+    # server's own access rules) can echo the literal target hostname, its
+    # resolved IP, the connecting client's IP, the username, and/or the
+    # database name in one FATAL line — discovered live against a real
+    # managed-Postgres target. None of these may ever reach the UI, logs, or
+    # evidence, so any line carrying this class of connection diagnostic is
+    # dropped entirely rather than partially redacted.
+    r"|connection\s+to\s+server\s+at"
+    r"|pg_hba\.conf"
+    r"|\bhost\s*=\s*\S"
+    r'|\bhost\s+"[^"]*"'
+    r'|\buser\s+"[^"]*"'
+    r'|\bdatabase\s+"[^"]*"'
+    r"|\b\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}\b",
     re.IGNORECASE,
 )
 
 
 def _sanitize_tool_output(text: str) -> str:
-    """Strip anything resembling a credential/connection string or a raw SQL
-    statement before this text is ever shown or returned to the caller.
+    """Strip anything resembling a credential/connection string, a raw SQL
+    statement, or a connection-diagnostic detail (hostname/IP/username/
+    database name) before this text is ever shown or returned to the caller.
     Matches the same discipline already used on the Node/TypeScript side
     (``sanitizeErrorMessage``) — a real database error from pg_dump/
     pg_restore/dropdb/createdb often echoes the literal failing SQL
@@ -903,11 +1016,20 @@ def run_restore(
     PostgreSQL 13+), which disconnects other sessions from the target before
     dropping it. This is a first-class, PostgreSQL-supported CLI option —
     never handwritten SQL, never a direct ``pg_terminate_backend`` call, and
-    never used for local disposable targets (local restore behavior is
-    unchanged from before this hotfix). The caller (the GUI) is responsible
-    for only reaching this function in development-remote mode after both of
-    the required explicit confirmations have been satisfied.
+    never used for local disposable targets. The caller (the GUI) is
+    responsible for only reaching this function in this remote mode after
+    both of the required explicit confirmations have been satisfied.
+
+    ``TargetMode.AIVEN_TEST_APPROVED`` is a hard exception to all of the
+    above: in-place restore is impossible against that target (confirmed via
+    a real, deterministic pg_hba.conf rejection of the maintenance-database
+    connection dropdb/createdb require). This is a core guard, not just a UI
+    guard — it returns a safe blocked outcome before any PostgreSQL tool
+    lookup, backup verification, file operation, subprocess, or database
+    connection of any kind, regardless of what caller reaches this function.
     """
+    if mode is TargetMode.AIVEN_TEST_APPROVED:
+        return MigrationOutcome(False, "restore_unavailable", "Restore unavailable", AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
     try:
         dropdb_path = _find_pg_tool("dropdb")
         createdb_path = _find_pg_tool("createdb")
@@ -926,6 +1048,7 @@ def run_restore(
     maintenance_environment = child_environment.copy()
     maintenance_environment.pop("PGDATABASE", None)
 
+    # AIVEN_TEST_APPROVED never reaches this point — returned above.
     use_forced_drop = mode is TargetMode.DEVELOPMENT_REMOTE
     dropdb_args = ["--if-exists", "--no-password"]
     if use_forced_drop:
@@ -1035,7 +1158,15 @@ def run_restore_and_recheck(
     exit non-zero even though every actual table and row was restored.
     Reporting the true ledger state either way, without changing the
     reported success/failure outcome, lets the operator see what actually
-    happened instead of only a bare pass/fail exit code."""
+    happened instead of only a bare pass/fail exit code.
+
+    ``TargetMode.AIVEN_TEST_APPROVED`` returns immediately with the same
+    blocked outcome ``run_restore`` itself returns — it never calls
+    ``run_restore`` and never runs the ledger recheck, since restore is
+    impossible against that target regardless of what the recheck would
+    report."""
+    if mode is TargetMode.AIVEN_TEST_APPROVED:
+        return MigrationOutcome(False, "restore_unavailable", "Restore unavailable", AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
     restore_outcome = run_restore(database_url, backup_path, mode, popen_factory)
     recheck = _recheck_ledger_classification(database_url, repo_root, mode, popen_factory)
     combined_detail = f"{restore_outcome.detail} Ledger recheck: {recheck}."
@@ -1060,7 +1191,13 @@ class RemoteRestoreConfirmDialog(tk.Toplevel):
     this specific warning could ever reveal.
     """
 
-    def __init__(self, parent: tk.Misc, target_fingerprint: str, verification_message: str):
+    def __init__(
+        self,
+        parent: tk.Misc,
+        target_fingerprint: str,
+        verification_message: str,
+        remote_kind: str = "Neon development",
+    ):
         super().__init__(parent)
         self.title("Type to confirm remote restore")
         self.result = False
@@ -1073,8 +1210,8 @@ class RemoteRestoreConfirmDialog(tk.Toplevel):
         ttk.Label(
             outer,
             text=(
-                "Restoring a remote development database requires ending its active "
-                "connections first. This is a development-only Neon test target — "
+                f"Restoring this remote {remote_kind} database requires ending its active "
+                f"connections first. This target is {remote_kind} only — "
                 f"[target {target_fingerprint}]."
             ),
             foreground="#a94442",
@@ -1134,6 +1271,7 @@ class SchemaMigrationApp:
         self.preflight_result: PreflightResult | None = None
         self.running = False
         self._build()
+        self._update_restore_availability()
         self.database_url.trace_add("write", self._on_url_changed)
         self.target_mode.trace_add("write", self._on_url_changed)
         self.root.protocol("WM_DELETE_WINDOW", self._close)
@@ -1142,6 +1280,11 @@ class SchemaMigrationApp:
         self.root.title("Promise Electronics - Schema Migration")
         self.root.geometry("700x760")
         self.root.minsize(660, 700)
+        # Aiven test mode gets its own distinct color so it can never be
+        # visually mistaken for Neon development or the disabled Production
+        # option (requirement: visually distinct target modes).
+        style = ttk.Style(self.root)
+        style.configure("AivenTest.TRadiobutton", foreground="#0a5f8a", font=("Segoe UI", 10, "bold"))
         outer = ttk.Frame(self.root, padding=24)
         outer.pack(fill="both", expand=True)
 
@@ -1172,6 +1315,23 @@ class SchemaMigrationApp:
             variable=self.target_mode,
             value=TargetMode.DEVELOPMENT_REMOTE.value,
         ).pack(anchor="w")
+        ttk.Radiobutton(
+            mode_frame,
+            text=TARGET_MODE_LABELS[TargetMode.AIVEN_TEST_APPROVED],
+            variable=self.target_mode,
+            value=TargetMode.AIVEN_TEST_APPROVED.value,
+            style="AivenTest.TRadiobutton",
+        ).pack(anchor="w")
+        ttk.Label(
+            mode_frame,
+            text=(
+                "Runs only against the one Aiven test target approved for this session "
+                "(AIVEN_TEST_DATABASE_URL). An Aiven-looking host is never enough by itself — "
+                "the exact approved target must match, or this mode refuses to connect."
+            ),
+            foreground="#0a5f8a",
+            wraplength=630,
+        ).pack(anchor="w", pady=(2, 6))
         ttk.Radiobutton(
             mode_frame,
             text=TARGET_MODE_LABELS[TargetMode.PRODUCTION_REMOTE],
@@ -1238,6 +1398,14 @@ class SchemaMigrationApp:
         self.restore_button = ttk.Button(backup_action_row, text="Restore Backup", command=self._restore_backup)
         self.restore_button.pack(side="left", padx=(10, 0))
 
+        self.aiven_restore_notice_var = tk.StringVar(value="")
+        ttk.Label(
+            outer,
+            textvariable=self.aiven_restore_notice_var,
+            foreground="#a94442",
+            wraplength=650,
+        ).pack(anchor="w", pady=(6, 0))
+
         self.url_entry.focus_set()
 
     def _selected_mode(self) -> TargetMode:
@@ -1251,6 +1419,20 @@ class SchemaMigrationApp:
             return
         self.preflight_result = None
         self.run_button.configure(state="disabled")
+        self._update_restore_availability()
+
+    def _update_restore_availability(self) -> None:
+        """Aiven Test mode never offers in-place Restore Backup — the button
+        is disabled and a clear, nearby message is shown, before any file
+        picker, backup verification, or restore subprocess could ever start.
+        Local disposable and Neon Development remote are unaffected."""
+        if self._selected_mode() is TargetMode.AIVEN_TEST_APPROVED:
+            self.restore_button.configure(state="disabled")
+            self.aiven_restore_notice_var.set(AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
+        else:
+            if not self.running:
+                self.restore_button.configure(state="normal")
+            self.aiven_restore_notice_var.set("")
 
     def _set_busy(self, busy: bool) -> None:
         self.running = busy
@@ -1259,11 +1441,12 @@ class SchemaMigrationApp:
         self.url_entry.configure(state=state)
         self.show_check.configure(state=state)
         self.backup_migrate_button.configure(state=state)
-        self.restore_button.configure(state=state)
         if busy:
+            self.restore_button.configure(state="disabled")
             self.run_button.configure(state="disabled")
             self.progress.start(12)
         else:
+            self._update_restore_availability()
             self.progress.stop()
 
     def _preflight(self) -> None:
@@ -1307,7 +1490,7 @@ class SchemaMigrationApp:
             return
         try:
             current_target = validate_database_url(database_url)
-            resolve_target_mode(mode, current_target)
+            resolve_target_mode(mode, current_target, database_url)
         except PreflightError as error:
             self.status_text.set(str(error))
             self.run_button.configure(state="disabled")
@@ -1318,11 +1501,12 @@ class SchemaMigrationApp:
             self.preflight_result = None
             self.run_button.configure(state="disabled")
             return
-        if mode is TargetMode.DEVELOPMENT_REMOTE:
+        if mode in (TargetMode.DEVELOPMENT_REMOTE, TargetMode.AIVEN_TEST_APPROVED):
+            mode_noun = "development" if mode is TargetMode.DEVELOPMENT_REMOTE else "Aiven test (session approved)"
             confirmed = messagebox.askyesno(
-                "Confirm development remote schema migration",
+                f"Confirm {mode_noun} schema migration",
                 (
-                    "Run the reviewed MAIN migrations against this redacted development target?\n\n"
+                    f"Run the reviewed MAIN migrations against this redacted {mode_noun} target?\n\n"
                     f"{current_target.redacted}\n\n"
                     "This runs with NODE_ENV=development. The production execution flag "
                     "(ALLOW_PROD_DB_MIGRATE_MAIN) is never set by this utility."
@@ -1330,7 +1514,7 @@ class SchemaMigrationApp:
                 icon="warning",
             )
             if not confirmed:
-                self.status_text.set("Development remote schema migration cancelled. No command was started.")
+                self.status_text.set(f"{mode_noun.capitalize()} schema migration cancelled. No command was started.")
                 return
         self._set_busy(True)
         self.status_text.set(f"Running canonical MAIN migrations. {current_target.redacted}")
@@ -1365,7 +1549,7 @@ class SchemaMigrationApp:
         mode = self._selected_mode()
         try:
             target = validate_database_url(database_url)
-            resolve_target_mode(mode, target)
+            resolve_target_mode(mode, target, database_url)
         except PreflightError as error:
             self.status_text.set(str(error))
             return
@@ -1391,11 +1575,16 @@ class SchemaMigrationApp:
         self.root.after(0, self._finish, outcome)
 
     def _restore_backup(self) -> None:
-        database_url = self.database_url.get().strip()
         mode = self._selected_mode()
+        if mode is TargetMode.AIVEN_TEST_APPROVED:
+            # Refuse before any file picker, backup verification, pg_restore,
+            # dropdb, createdb, or database connection can begin.
+            self.status_text.set(AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
+            return
+        database_url = self.database_url.get().strip()
         try:
             target = validate_database_url(database_url)
-            resolve_target_mode(mode, target)
+            resolve_target_mode(mode, target, database_url)
         except PreflightError as error:
             self.status_text.set(str(error))
             return
@@ -1416,7 +1605,9 @@ class SchemaMigrationApp:
             messagebox.showerror("Backup verification failed", verification.message)
             return
         if mode is TargetMode.DEVELOPMENT_REMOTE:
-            dialog = RemoteRestoreConfirmDialog(self.root, target.target_fingerprint, verification.message)
+            # Aiven Test mode never reaches this point — refused at the top
+            # of this method, before the file picker even opens.
+            dialog = RemoteRestoreConfirmDialog(self.root, target.target_fingerprint, verification.message, "Neon development")
             confirmed = dialog.result
         else:
             typed = simpledialog.askstring(

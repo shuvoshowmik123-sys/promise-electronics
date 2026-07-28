@@ -4,7 +4,6 @@ import { adminSystemStatusApi, type SchedulerQueueCounts } from "@/lib/api/admin
 import { Button } from "@/components/ui/button";
 import { BentoCard } from "../../shared/BentoCard";
 import SystemIncidentsPanel from "./SystemIncidentsPanel";
-import SchemaUpdateControl from "./SchemaUpdateControl";
 
 type Props = {
     variant: "mobile" | "desktop";
@@ -100,7 +99,6 @@ export default function SystemIntegritySummary({ variant }: Props) {
                 </div>
                 <StatusBadge tone={ledgerTone} label={ledgerLabel} />
             </div>
-            <SchemaUpdateControl variant="mobile" />
             <div className="flex items-center gap-3 px-4 py-3">
                 <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] ${lineageHealthy ? "bg-emerald-100" : "bg-amber-100"}`}>
                     {status.isLoading ? <Loader2 className="h-4 w-4 animate-spin text-slate-500" /> : lineageHealthy ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Database className="h-4 w-4 text-amber-600" />}
@@ -166,7 +164,6 @@ export default function SystemIntegritySummary({ variant }: Props) {
                     )}
                 </div>
             </div>
-            <SchemaUpdateControl variant="desktop" />
             {status.isError && <p className="mt-3 text-xs font-medium text-amber-700">System status could not be refreshed.</p>}
             <SystemIncidentsPanel variant="desktop" />
         </BentoCard>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 from pathlib import Path
 import re
 import sys
@@ -247,6 +248,83 @@ class WindowsSchemaMigrationTests(unittest.TestCase):
         bare_target = MODULE.validate_database_url("postgresql://operator:example-password@neon.tech:5432/promise")
         with self.assertRaises(MODULE.PreflightError):
             MODULE.resolve_target_mode(MODULE.TargetMode.DEVELOPMENT_REMOTE, bare_target)
+
+    def test_aiven_test_mode_rejects_local_url(self):
+        database_url = "postgresql://operator:example-password@localhost:5432/promise"
+        target = MODULE.validate_database_url(database_url)
+        with self.assertRaises(MODULE.PreflightError) as raised:
+            MODULE.resolve_target_mode(MODULE.TargetMode.AIVEN_TEST_APPROVED, target, database_url)
+        self.assertIn("Aiven test mode requires a non-local Database URL", str(raised.exception))
+
+    def test_aiven_test_mode_rejects_non_aiven_hosts_even_with_no_approved_target_set(self):
+        rejected_hosts = (
+            "ep-example-pooler.aws.neon.tech",
+            "db.example.com",
+            "pg-example.a.aivencloud.com.attacker.com",
+        )
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(MODULE.AIVEN_TEST_APPROVED_URL_ENV_VAR, None)
+            for host in rejected_hosts:
+                database_url = f"postgresql://operator:example-password@{host}:18395/defaultdb"
+                with self.subTest(host=host):
+                    target = MODULE.validate_database_url(database_url)
+                    with self.assertRaises(MODULE.PreflightError) as raised:
+                        MODULE.resolve_target_mode(MODULE.TargetMode.AIVEN_TEST_APPROVED, target, database_url)
+                    message = str(raised.exception)
+                    self.assertNotIn(host, message)
+
+    def test_aiven_test_mode_rejects_recognized_aiven_host_when_no_session_target_is_approved(self):
+        # Host pattern alone must never authorize an Aiven target (requirement 3):
+        # even a perfectly valid *.aivencloud.com host is rejected when the
+        # session has not approved any AIVEN_TEST_DATABASE_URL at all.
+        database_url = "postgresql://operator:example-password@pg-example-12345678-promise.a.aivencloud.com:18395/defaultdb"
+        target = MODULE.validate_database_url(database_url)
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(MODULE.AIVEN_TEST_APPROVED_URL_ENV_VAR, None)
+            with self.assertRaises(MODULE.PreflightError) as raised:
+                MODULE.resolve_target_mode(MODULE.TargetMode.AIVEN_TEST_APPROVED, target, database_url)
+        message = str(raised.exception)
+        self.assertIn("session-approved", message)
+        self.assertNotIn("pg-example-12345678-promise", message)
+
+    def test_aiven_test_mode_rejects_a_different_aiven_host_even_when_a_target_is_approved(self):
+        # A recognized Aiven host that is NOT the exact session-approved target
+        # must still be rejected -- proves the fingerprint check, not just the
+        # host-suffix check, is load-bearing.
+        approved_url = "postgresql://approved_user:approved_password@pg-approved-11111111-promise.a.aivencloud.com:18395/defaultdb"
+        other_url = "postgresql://other_user:other_password@pg-other-22222222-promise.b.aivencloud.com:18395/defaultdb"
+        with patch.dict(os.environ, {MODULE.AIVEN_TEST_APPROVED_URL_ENV_VAR: approved_url}):
+            target = MODULE.validate_database_url(other_url)
+            with self.assertRaises(MODULE.PreflightError) as raised:
+                MODULE.resolve_target_mode(MODULE.TargetMode.AIVEN_TEST_APPROVED, target, other_url)
+        message = str(raised.exception)
+        self.assertIn("session-approved", message)
+        self.assertNotIn("approved_user", message)
+        self.assertNotIn("other_user", message)
+
+    def test_aiven_test_mode_accepts_only_the_exact_session_approved_target(self):
+        approved_url = "postgresql://approved_user:approved_password@pg-approved-11111111-promise.a.aivencloud.com:18395/defaultdb"
+        with patch.dict(os.environ, {MODULE.AIVEN_TEST_APPROVED_URL_ENV_VAR: approved_url}):
+            target = MODULE.validate_database_url(approved_url)
+            # Must not raise.
+            MODULE.resolve_target_mode(MODULE.TargetMode.AIVEN_TEST_APPROVED, target, approved_url)
+
+    def test_aiven_test_mode_fingerprint_helpers_never_expose_the_raw_url(self):
+        approved_url = "postgresql://approved_user:approved_password@pg-approved-11111111-promise.a.aivencloud.com:18395/defaultdb"
+        with patch.dict(os.environ, {MODULE.AIVEN_TEST_APPROVED_URL_ENV_VAR: approved_url}):
+            fingerprint = MODULE._session_approved_aiven_test_fingerprint()
+        self.assertIsInstance(fingerprint, bytes)
+        self.assertEqual(len(fingerprint), 32)
+        self.assertNotIn(b"approved_user", fingerprint)
+        self.assertNotIn(b"approved_password", fingerprint)
+
+    def test_preflight_aiven_test_mode_uses_development_node_env(self):
+        approved_url = "postgresql://operator:example-password@pg-example.a.aivencloud.com:18395/defaultdb"
+        with patch.dict(os.environ, {MODULE.AIVEN_TEST_APPROVED_URL_ENV_VAR: approved_url}):
+            result, process = self._preflight(approved_url, "healthy", mode=MODULE.TargetMode.AIVEN_TEST_APPROVED)
+        self.assertEqual(process.environment["NODE_ENV"], "development")
+        self.assertNotIn("ALLOW_PROD_DB_MIGRATE_MAIN", process.environment)
+        self.assertEqual(result.mode, MODULE.TargetMode.AIVEN_TEST_APPROVED)
 
     def test_development_remote_rejected_targets_never_reach_a_subprocess(self):
         rejected_hosts = (
@@ -555,38 +633,19 @@ class WindowsSchemaMigrationTests(unittest.TestCase):
         self.assertIsNotNone(createdb_argv)
         self.assertNotIn("database_url", createdb_argv.group(1))
 
-    def test_system_settings_schema_surface_request_flow_is_client_safe(self):
-        """SCHEMA-UPDATE-CONTROL-UX-01A: the control legitimately gained a password-
-        confirmed "Request update" dialog that POSTs to the existing, reviewed
-        `/api/admin/schema-updates/requests` endpoint. This replaces the prior
-        purely-read-only guard (which predates that feature) with an updated
-        guard: the browser may request an update, but must still never receive
-        or reference raw SQL, checksums, a database URL, or child-process/
-        migration-execution primitives directly in this component or API block.
-        """
-        component = (ROOT / "client" / "src" / "pages" / "admin" / "bento" / "tabs" / "settings" / "SchemaUpdateControl.tsx").read_text(encoding="utf-8")
+    def test_no_web_admin_schema_update_control_remains(self):
+        """SCHEMA-UPDATE-CONTROL-RETIREMENT-01A: the web-admin schema-update
+        control (SchemaUpdateControl.tsx, its dedicated API client block, and
+        its dedicated backend route/service) was fully retired. Schema
+        maintenance is manual through PromiseSchemaMigration.exe only."""
+        self.assertFalse(
+            (ROOT / "client" / "src" / "pages" / "admin" / "bento" / "tabs" / "settings" / "SchemaUpdateControl.tsx").exists()
+        )
+        self.assertFalse((ROOT / "server" / "routes" / "schema-update.routes.ts").exists())
+        self.assertFalse((ROOT / "server" / "services" / "schema-update-run.service.ts").exists())
         api = (ROOT / "client" / "src" / "lib" / "api" / "adminApi.ts").read_text(encoding="utf-8")
-        self.assertIn("useMutation", component)
-        self.assertIn("Dialog", component)
-        self.assertIn("Request update", component)
-        lowered_component = component.lower()
-        self.assertNotIn("database_url", lowered_component)
-        self.assertNotIn("child_process", lowered_component)
-        self.assertNotIn("checksum", lowered_component)
-        self.assertNotIn("create table", lowered_component)
-        self.assertNotIn("drop table", lowered_component)
-        self.assertNotIn("alter table", lowered_component)
-        self.assertNotIn("backup", lowered_component)
-        self.assertNotIn("runmainschemamigrations", lowered_component)
-        self.assertNotIn("Ã‚", component)
-        self.assertNotIn("Â·", component)
-        schema_api = api.split("export const schemaUpdateApi =", 1)[1].split("};", 1)[0]
-        self.assertIn("POST", schema_api)
-        self.assertIn("confirm", schema_api)
-        lowered_api_block = schema_api.lower()
-        self.assertNotIn("database_url", lowered_api_block)
-        self.assertNotIn("child_process", lowered_api_block)
-        self.assertNotIn("checksum", lowered_api_block)
+        self.assertNotIn("schemaUpdateApi", api)
+        self.assertNotIn("/admin/schema-updates/", api)
 
 
 class FakeToolProcess:
@@ -655,6 +714,30 @@ class BackupRestoreTests(unittest.TestCase):
         self.assertEqual(env["PGPASSWORD"], "example-password")
         self.assertEqual(env["PGSSLMODE"], "require")
         self.assertNotIn("postgresql://", json_dump_safe(env))
+
+    def test_pg_connection_env_translates_no_verify_to_a_libpq_valid_sslmode(self):
+        # node-postgres accepts sslmode=no-verify (skips cert-chain validation
+        # for a self-signed CA, e.g. Aiven test targets); real libpq
+        # (dropdb/createdb/pg_dump/pg_restore) does not recognize that value
+        # at all and errors with "invalid sslmode value". Translating to
+        # libpq's own "require" is the closest valid equivalent (by default,
+        # libpq's "require" encrypts without checking the certificate chain)
+        # -- but this is not an unconditional claim that the two values are
+        # always identical: libpq's "require" upgrades to CA validation if a
+        # root certificate is separately supplied (sslrootcert or a
+        # discovered default file), which this tool never does.
+        env = MODULE._pg_connection_env(
+            "postgresql://operator:example-password@pg-example.a.aivencloud.com:18395/defaultdb?sslmode=no-verify", {}
+        )
+        self.assertEqual(env["PGSSLMODE"], "require")
+
+    def test_pg_connection_env_passes_through_standard_libpq_sslmode_values_unchanged(self):
+        for value in ("disable", "allow", "prefer", "require", "verify-ca", "verify-full"):
+            with self.subTest(sslmode=value):
+                env = MODULE._pg_connection_env(
+                    f"postgresql://operator:example-password@localhost:5432/promise?sslmode={value}", {}
+                )
+                self.assertEqual(env["PGSSLMODE"], value)
 
     def test_create_backup_writes_outside_repo_and_verifies_sha256_and_toc(self):
         with patch.object(MODULE, "_find_pg_tool", side_effect=lambda name: f"/fake/{name}"):
@@ -805,6 +888,49 @@ class BackupRestoreTests(unittest.TestCase):
         pg_restore_call = next(args for args in captured_argv if "/fake/pg_restore" in args)
         self.assertNotIn("--force", pg_restore_call)
 
+    def test_run_restore_aiven_test_approved_returns_core_guard_blocked_outcome(self):
+        """Replaces the obsolete expectation that Aiven restore calls dropdb
+        --force. Aiven Test mode's in-place restore is impossible against
+        that target (real pg_hba.conf rejection of the maintenance-database
+        connection) -- run_restore now returns a safe blocked outcome before
+        any PostgreSQL tool lookup, backup verification, file operation,
+        subprocess, or database connection."""
+        database_url = "postgresql://operator:example-password@pg-example-12345678-promise.a.aivencloud.com/defaultdb"
+
+        def factory(args, **kwargs):
+            raise AssertionError("No subprocess may ever be launched for Aiven Test mode restore.")
+
+        with patch.object(MODULE, "_find_pg_tool", side_effect=lambda name: (_ for _ in ()).throw(AssertionError("_find_pg_tool must never be called for Aiven Test mode restore."))):
+            outcome = MODULE.run_restore(database_url, self.tmp_path / "some.dump", MODULE.TargetMode.AIVEN_TEST_APPROVED, popen_factory=factory)
+        self.assertFalse(outcome.success)
+        self.assertEqual(outcome.category, "restore_unavailable")
+        self.assertEqual(outcome.detail, MODULE.AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
+
+    def test_run_restore_and_recheck_aiven_test_approved_returns_immediately_without_recheck(self):
+        """Core guard proof for run_restore_and_recheck: it must not call
+        run_restore, must not call the ledger recheck, must not call
+        _find_pg_tool or verify_backup_for_restore, must never launch a
+        subprocess, and must return the exact provider-controlled message."""
+        database_url = "postgresql://operator:example-password@pg-example-12345678-promise.a.aivencloud.com/defaultdb"
+
+        def factory(args, **kwargs):
+            raise AssertionError("No subprocess may ever be launched for Aiven Test mode restore.")
+
+        with patch.object(MODULE, "run_restore") as mock_run_restore, \
+             patch.object(MODULE, "_recheck_ledger_classification") as mock_recheck, \
+             patch.object(MODULE, "verify_backup_for_restore") as mock_verify, \
+             patch.object(MODULE, "_find_pg_tool") as mock_find_pg_tool:
+            outcome = MODULE.run_restore_and_recheck(
+                database_url, self.tmp_path / "some.dump", self.repo_root, MODULE.TargetMode.AIVEN_TEST_APPROVED, popen_factory=factory,
+            )
+        mock_run_restore.assert_not_called()
+        mock_recheck.assert_not_called()
+        mock_verify.assert_not_called()
+        mock_find_pg_tool.assert_not_called()
+        self.assertFalse(outcome.success)
+        self.assertEqual(outcome.category, "restore_unavailable")
+        self.assertEqual(outcome.detail, MODULE.AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
+
     def test_run_restore_development_remote_forced_drop_failure_stops_immediately(self):
         database_url = "postgresql://operator:example-password@ep-example-pooler.aws.neon.tech/neondb"
 
@@ -844,6 +970,46 @@ class BackupRestoreTests(unittest.TestCase):
         self.assertNotIn("GRANT ALL", outcome.detail)
         self.assertNotIn("cloud_admin", outcome.detail)
 
+    def test_run_restore_strips_connection_diagnostics_from_dropdb_pg_hba_rejection(self):
+        """A real managed-Postgres restore attempt (originally observed
+        against an Aiven test target, before Aiven restore was blocked
+        entirely by the core guard) surfaced a genuine dropdb connection
+        failure whose text echoed the literal target hostname, its resolved
+        IP, the connecting client's IP, the username, and the maintenance
+        database name in one FATAL line (a pg_hba.conf rejection for the
+        maintenance-database connection dropdb/createdb require). None of
+        these may ever reach the UI, logs, or evidence. Exercised here via
+        Development remote (Neon), the only mode that still reaches dropdb
+        with --force, to keep this sanitizer behavior under real test
+        coverage now that Aiven Test mode never reaches this code at all."""
+        database_url = "postgresql://operator:example-password@pg-example-12345678-promise.a.aivencloud.com:18395/defaultdb".replace(
+            "pg-example-12345678-promise.a.aivencloud.com", "ep-example-pooler.aws.neon.tech"
+        )
+        raw_dropdb_error = (
+            'dropdb: error: connection to server at "pg-example-12345678-promise.a.aivencloud.com" '
+            '(143.110.177.238), port 18395 failed: FATAL:  pg_hba.conf rejects connection for host '
+            '"103.35.156.218", user "operator", database "template1", SSL encryption\n'
+        )
+
+        def factory(args, **kwargs):
+            if "/fake/dropdb" in args:
+                return FakeToolProcess(args, raw_dropdb_error, 1, **kwargs)
+            raise AssertionError("createdb/pg_restore must never run when the forced dropdb step fails.")
+
+        with patch.object(MODULE, "_find_pg_tool", side_effect=lambda name: f"/fake/{name}"):
+            outcome = MODULE.run_restore(database_url, self.tmp_path / "some.dump", MODULE.TargetMode.DEVELOPMENT_REMOTE, popen_factory=factory)
+        self.assertFalse(outcome.success)
+        for leaked_fragment in (
+            "pg-example-12345678-promise.a.aivencloud.com",
+            "143.110.177.238",
+            "103.35.156.218",
+            '"operator"',
+            '"template1"',
+            "pg_hba.conf",
+            "connection to server at",
+        ):
+            self.assertNotIn(leaked_fragment, outcome.detail)
+
     def test_run_restore_and_recheck_reports_ledger_even_when_restore_reports_failure(self):
         """pg_restore can exit non-zero on non-fatal statement errors while the
         actual data was substantively restored. The recheck must still run and
@@ -875,6 +1041,27 @@ class BackupRestoreTests(unittest.TestCase):
         dialog_class = source.split("class RemoteRestoreConfirmDialog", 1)[1].split("\nclass ", 1)[0]
         self.assertNotIn("target.redacted", dialog_class)
         self.assertNotIn("target.database_name", dialog_class)
+
+    def test_remote_restore_dialog_is_parameterized_by_remote_kind_not_hardcoded_to_neon(self):
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        dialog_class = source.split("class RemoteRestoreConfirmDialog", 1)[1].split("\nclass ", 1)[0]
+        self.assertIn("remote_kind", dialog_class)
+        # The dialog's warning text must be built from the remote_kind
+        # parameter, not a hardcoded "Neon"/"development" literal, so Aiven
+        # test mode gets an accurate warning instead of a misleading one.
+        self.assertIn("{remote_kind}", dialog_class)
+
+    def test_aiven_test_mode_label_and_dialog_are_visually_distinct(self):
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertIn('TargetMode.AIVEN_TEST_APPROVED: "Aiven test (session approved)"', source)
+        # A dedicated ttk style with its own color distinguishes the Aiven
+        # test radio button from both Neon development (plain text) and the
+        # disabled, red-labeled Production remote option.
+        self.assertIn('style.configure("AivenTest.TRadiobutton"', source)
+        self.assertIn('style="AivenTest.TRadiobutton"', source)
+        # The restore-confirmation call site passes a distinct remote_kind
+        # string for Aiven vs Neon, so the dialog text itself differs too.
+        self.assertIn('"Aiven test (session approved)"', source)
 
     def test_run_backup_and_migrate_blocks_before_backup_when_ledger_unsafe(self):
         database_url = "postgresql://operator:example-password@localhost:5432/promise_disposable"
@@ -928,6 +1115,109 @@ class BackupRestoreTests(unittest.TestCase):
         self.assertFalse(outcome.success)
         self.assertEqual(outcome.category, "backup_failed")
         self.assertFalse(migrate_was_called["value"])
+
+
+class AivenRestoreBoundaryTests(unittest.TestCase):
+    """Real Tkinter behavioral tests: Aiven Test mode must never reach the
+    file picker, backup verification, or any restore subprocess. Local and
+    Neon Development remote restore must remain fully enabled."""
+
+    def setUp(self):
+        try:
+            self.root = MODULE.tk.Tk()
+        except MODULE.tk.TclError as error:
+            self.skipTest(f"No display available for Tkinter in this environment: {error}")
+        self.root.withdraw()
+        self.app = MODULE.SchemaMigrationApp(self.root, ROOT)
+
+    def tearDown(self):
+        self.root.destroy()
+
+    def test_aiven_test_mode_disables_restore_before_any_file_picker(self):
+        self.app.target_mode.set(MODULE.TargetMode.AIVEN_TEST_APPROVED.value)
+        self.app.database_url.set(
+            "postgresql://operator:example-password@pg-example-12345678-promise.a.aivencloud.com:18395/defaultdb"
+        )
+        with patch.object(MODULE.filedialog, "askopenfilename") as mock_picker, \
+             patch.object(MODULE, "verify_backup_for_restore") as mock_verify, \
+             patch.object(MODULE, "RemoteRestoreConfirmDialog") as mock_dialog:
+            self.app._restore_backup()
+        mock_picker.assert_not_called()
+        mock_verify.assert_not_called()
+        mock_dialog.assert_not_called()
+        self.assertEqual(self.app.status_text.get(), MODULE.AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
+
+    def test_aiven_test_mode_restore_button_disabled_and_notice_shown(self):
+        self.app.target_mode.set(MODULE.TargetMode.AIVEN_TEST_APPROVED.value)
+        self.assertEqual(str(self.app.restore_button["state"]), "disabled")
+        self.assertEqual(self.app.aiven_restore_notice_var.get(), MODULE.AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
+
+    def test_local_disposable_restore_button_remains_enabled(self):
+        self.app.target_mode.set(MODULE.TargetMode.LOCAL_DISPOSABLE.value)
+        self.assertEqual(str(self.app.restore_button["state"]), "normal")
+        self.assertEqual(self.app.aiven_restore_notice_var.get(), "")
+
+    def test_development_remote_restore_button_remains_enabled(self):
+        self.app.target_mode.set(MODULE.TargetMode.DEVELOPMENT_REMOTE.value)
+        self.assertEqual(str(self.app.restore_button["state"]), "normal")
+        self.assertEqual(self.app.aiven_restore_notice_var.get(), "")
+
+    def test_switching_away_from_aiven_mode_re_enables_restore_and_clears_notice(self):
+        self.app.target_mode.set(MODULE.TargetMode.AIVEN_TEST_APPROVED.value)
+        self.assertEqual(str(self.app.restore_button["state"]), "disabled")
+        self.app.target_mode.set(MODULE.TargetMode.LOCAL_DISPOSABLE.value)
+        self.assertEqual(str(self.app.restore_button["state"]), "normal")
+        self.assertEqual(self.app.aiven_restore_notice_var.get(), "")
+
+    def test_development_remote_restore_still_reaches_the_file_picker(self):
+        # Regression guard: only Aiven Test mode is blocked; Neon Development
+        # remote restore behavior must be completely unchanged.
+        self.app.target_mode.set(MODULE.TargetMode.DEVELOPMENT_REMOTE.value)
+        self.app.database_url.set("postgresql://operator:example-password@ep-example-pooler.aws.neon.tech/neondb")
+        with patch.object(MODULE.filedialog, "askopenfilename", return_value="") as mock_picker:
+            self.app._restore_backup()
+        mock_picker.assert_called_once()
+
+    def test_local_disposable_restore_still_reaches_the_file_picker(self):
+        self.app.target_mode.set(MODULE.TargetMode.LOCAL_DISPOSABLE.value)
+        self.app.database_url.set("postgresql://operator:example-password@localhost:5432/promise_disposable")
+        with patch.object(MODULE.filedialog, "askopenfilename", return_value="") as mock_picker:
+            self.app._restore_backup()
+        mock_picker.assert_called_once()
+
+
+class AivenFingerprintGuardStillIntactTests(unittest.TestCase):
+    """Confirms this hotfix did not weaken the exact session-approved
+    fingerprint gate added in the prior phase."""
+
+    def test_aiven_test_mode_still_requires_exact_session_approved_fingerprint(self):
+        approved_url = "postgresql://approved_user:approved_password@pg-approved-11111111-promise.a.aivencloud.com:18395/defaultdb"
+        other_url = "postgresql://other_user:other_password@pg-other-22222222-promise.b.aivencloud.com:18395/defaultdb"
+        with patch.dict(os.environ, {MODULE.AIVEN_TEST_APPROVED_URL_ENV_VAR: approved_url}):
+            approved_target = MODULE.validate_database_url(approved_url)
+            MODULE.resolve_target_mode(MODULE.TargetMode.AIVEN_TEST_APPROVED, approved_target, approved_url)  # must not raise
+            other_target = MODULE.validate_database_url(other_url)
+            with self.assertRaises(MODULE.PreflightError):
+                MODULE.resolve_target_mode(MODULE.TargetMode.AIVEN_TEST_APPROVED, other_target, other_url)
+
+    def test_aiven_test_mode_still_rejects_when_no_target_approved(self):
+        database_url = "postgresql://operator:example-password@pg-example-12345678-promise.a.aivencloud.com:18395/defaultdb"
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop(MODULE.AIVEN_TEST_APPROVED_URL_ENV_VAR, None)
+            target = MODULE.validate_database_url(database_url)
+            with self.assertRaises(MODULE.PreflightError):
+                MODULE.resolve_target_mode(MODULE.TargetMode.AIVEN_TEST_APPROVED, target, database_url)
+
+
+class SslModeWordingTests(unittest.TestCase):
+    def test_sslmode_translation_comment_does_not_claim_unconditional_identical_behavior(self):
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        comment_block = source.split("_LIBPQ_SSLMODE_TRANSLATION = ", 1)[0][-2000:]
+        self.assertNotIn("exact same practical behavior", comment_block)
+        # Must acknowledge the real libpq nuance: require can upgrade to CA
+        # verification when a root certificate is supplied.
+        self.assertIn("sslrootcert", comment_block)
+        self.assertIn("not", comment_block.lower())
 
 
 def json_dump_safe(value):

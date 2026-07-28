@@ -3300,31 +3300,6 @@ export const insertPosTransactionAreaAllocationSchema = createInsertSchema(posTr
 export type InsertPosTransactionAreaAllocation = z.infer<typeof insertPosTransactionAreaAllocationSchema>;
 export type PosTransactionAreaAllocation = typeof posTransactionAreaAllocations.$inferSelect;
 
-// Protected schema-update control plane (durable Super Admin request records only).
-// Ledger authority remains promise_schema_migrations via main-schema-migrate.service.
-// Bootstrap: applied only by trusted MAIN release command (see MAIN migration id).
-export const schemaUpdateRuns = pgTable("schema_update_runs", {
-  id: text("id").primaryKey(),
-  status: text("status").notNull(), // pending|running|succeeded|failed|blocked|timed_out|cancelled
-  requestedBy: text("requested_by").notNull(),
-  requestedAt: timestamp("requested_at").notNull().defaultNow(),
-  confirmedAt: timestamp("confirmed_at"),
-  startedAt: timestamp("started_at"),
-  finishedAt: timestamp("finished_at"),
-  requestSource: text("request_source").notNull().default("super_admin_settings"),
-  releaseVersion: text("release_version"),
-  targetPendingCount: integer("target_pending_count"),
-  appliedCount: integer("applied_count"),
-  errorCategory: text("error_category"),
-  errorMessage: text("error_message"),
-  resultSummary: jsonb("result_summary"),
-  auditRef: text("audit_ref"),
-}, (table) => ({
-  statusRequestedIdx: index("idx_schema_update_runs_status_requested").on(table.status, table.requestedAt),
-}));
-
-export type SchemaUpdateRunRow = typeof schemaUpdateRuns.$inferSelect;
-
 // ----------------------------------------------------------------------------
 // Corporate Account Receipts (FINANCE-AFTERCARE-01.2)
 // Normal Corporate payments settle the COMPANY ACCOUNT, not an invoice/bill.

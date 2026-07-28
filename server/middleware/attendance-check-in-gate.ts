@@ -6,7 +6,7 @@
  *
  * Attendance DB is consulted only for eligible staff. Super Admin / ungated roles /
  * users without checkIn pass through without attendance repository I/O so a DB
- * failure cannot 503 exempt principals (e.g. Settings schema-updates status).
+ * failure cannot 503 exempt principals.
  */
 
 import type { Request, Response, NextFunction } from "express";

@@ -81,7 +81,6 @@ import externalTechnicianIntakeRoutes from './external-technician-intake.routes.
 import disputesRoutes from './disputes.routes.js';
 import externalQrTrackingRoutes from './external-qr-tracking.routes.js';
 import b2bAccountIntakeRoutes from './b2b-account-intake.routes.js';
-import schemaUpdateRoutes from './schema-update.routes.js';
 
 /**
  * Register all routes with the Express application.
@@ -258,10 +257,6 @@ export async function registerRoutes(
     // Admin Backup Routes
     app.use("/api/admin", adminBackupRoutes);
     routeLog('[Routes] ✓ Admin backup routes registered');
-
-    // Protected schema-update control plane (Super Admin; no DDL on request path)
-    app.use(schemaUpdateRoutes);
-    routeLog('[Routes] ✓ Schema update control-plane routes registered');
 
     app.use(systemIncidentsRoutes);
     app.use(serviceFeedbackRoutes);

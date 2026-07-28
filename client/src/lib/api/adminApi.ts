@@ -120,47 +120,6 @@ export const adminSystemStatusApi = {
     get: () => fetchApi<AdminSystemStatus>("/admin/readiness"),
 };
 
-/** Browser-safe schema-release state. This intentionally excludes SQL, checksums, URLs, and credentials. */
-export type SchemaUpdateRunStatus = "pending" | "running" | "succeeded" | "failed" | "blocked" | "timed_out" | "cancelled";
-
-export type SchemaUpdateRun = {
-    id: string;
-    status: SchemaUpdateRunStatus;
-    requestedAt: string;
-    confirmedAt: string | null;
-    startedAt: string | null;
-    finishedAt: string | null;
-    releaseVersion: string | null;
-    targetPendingCount: number | null;
-    appliedCount: number | null;
-    errorCategory: string | null;
-    errorMessage: string | null;
-    isActive: boolean;
-};
-
-export type SchemaUpdateStatus = {
-    controlPlane: "available" | "bootstrap_required" | "unavailable";
-    runnerEligible: boolean;
-    runnerMode: "disabled" | "development" | "production_explicit";
-    productionExecutionEnabled: boolean;
-    releaseVersion: string;
-    ledger: {
-        state: "ok" | "pending" | "blocked" | "empty" | "unknown";
-        appliedCount: number;
-        pendingCount: number;
-        mainSchemaVersion: string | null;
-        registryHeadVersion: string | null;
-        requiredVersion: string;
-    };
-    activeRun: SchemaUpdateRun | null;
-    lastRun: SchemaUpdateRun | null;
-    safeMessage: string | null;
-};
-
-export const schemaUpdateApi = {
-    getStatus: () => fetchApi<SchemaUpdateStatus>("/admin/schema-updates/status"),
-};
-
 export type SystemIncidentDto = {
     id: string;
     component: string;

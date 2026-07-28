@@ -16,12 +16,6 @@ import {
   REQUIRED_MAIN_SCHEMA_VERSION,
   type LedgerVerification,
 } from "../server/services/main-schema-migrate.service.js";
-import {
-  isVerificationSafeToMigrate,
-  mustBlockRunWithoutDdl,
-  processClaimedSchemaUpdateRun,
-  type SchemaUpdateRun,
-} from "../server/services/schema-update-run.service.js";
 
 function verification(overrides: Partial<LedgerVerification> = {}): LedgerVerification {
   return {
@@ -32,26 +26,6 @@ function verification(overrides: Partial<LedgerVerification> = {}): LedgerVerifi
     appliedIds: ["0000_promise_schema_migrations_ledger"],
     currentVersion: "0000_promise_schema_migrations_ledger",
     error: null,
-    ...overrides,
-  };
-}
-
-function baseRun(overrides: Partial<SchemaUpdateRun> = {}): SchemaUpdateRun {
-  return {
-    id: "run-audit-1",
-    status: "running",
-    requestedBy: "sa-1",
-    requestedAt: new Date("2026-07-22T10:00:00.000Z"),
-    confirmedAt: new Date("2026-07-22T10:00:00.000Z"),
-    startedAt: new Date("2026-07-22T10:00:01.000Z"),
-    finishedAt: null,
-    requestSource: "super_admin_settings",
-    releaseVersion: "1.0.0",
-    targetPendingCount: 1,
-    appliedCount: null,
-    errorCategory: null,
-    errorMessage: null,
-    resultSummary: null,
     ...overrides,
   };
 }
@@ -101,20 +75,6 @@ describe("Startup ownership — no MAIN DDL from normal server boot", () => {
     const src = await readFile(path.resolve(process.cwd(), "server/db-migrate-main.ts"), "utf8");
     expect(src).toMatch(/runMainSchemaMigrations/);
     expect(src).toMatch(/MAIN_MIGRATION_RELEASE_MODE/);
-  });
-
-  it("protected runner remains the runtime executor after control-plane claim", async () => {
-    const runnerSrc = await readFile(
-      path.resolve(process.cwd(), "scripts/protected-schema-runner.ts"),
-      "utf8"
-    );
-    expect(runnerSrc).toMatch(/processClaimedSchemaUpdateRun/);
-    const svcSrc = await readFile(
-      path.resolve(process.cwd(), "server/services/schema-update-run.service.ts"),
-      "utf8"
-    );
-    expect(svcSrc).toMatch(/runMainSchemaMigrations/);
-    expect(svcSrc).toMatch(/mustBlockRunWithoutDdl/);
   });
 });
 
@@ -281,54 +241,6 @@ describe("Ledger reconciliation audit — classification and redaction", () => {
     expect(audit.versions.requiredVersion).toBe(REQUIRED_MAIN_SCHEMA_VERSION);
     expect(audit.counts.registryCount).toBe(registry.ids.length);
     assertAuditRedacted(audit);
-  });
-});
-
-describe("Protected runner retains zero-DDL blocks on mismatch/unavailable", () => {
-  it("mismatch is not safe to migrate and processClaimed blocks DDL", async () => {
-    const v = verification({
-      ok: false,
-      mismatched: [{ id: "x", ledger: "a", code: "b" }],
-      error: "Checksum mismatch: x",
-    });
-    expect(isVerificationSafeToMigrate(v)).toBe(false);
-    expect(mustBlockRunWithoutDdl(v)).toBe(true);
-
-    const migrate = vi.fn(async () => {
-      throw new Error("DDL must not run on mismatch");
-    });
-    const outcome = await processClaimedSchemaUpdateRun(baseRun(), {
-      verify: async () => v,
-      migrate,
-      onIntegrityBlock: async (runId) => baseRun({ id: runId, status: "blocked", appliedCount: 0 }),
-    });
-    expect(outcome.ddlInvoked).toBe(false);
-    expect(migrate).not.toHaveBeenCalled();
-  });
-
-  it("verification unavailable is not safe to migrate and processClaimed blocks DDL", async () => {
-    const v = verification({
-      ok: false,
-      appliedIds: [],
-      currentVersion: null,
-      missing: [],
-      mismatched: [],
-      extra: [],
-      error: "Ledger table does not exist",
-    });
-    expect(isVerificationSafeToMigrate(v)).toBe(false);
-    expect(mustBlockRunWithoutDdl(v)).toBe(true);
-
-    const migrate = vi.fn(async () => {
-      throw new Error("DDL must not run when unavailable");
-    });
-    const outcome = await processClaimedSchemaUpdateRun(baseRun(), {
-      verify: async () => v,
-      migrate,
-      onIntegrityBlock: async (runId) => baseRun({ id: runId, status: "blocked", appliedCount: 0 }),
-    });
-    expect(outcome.ddlInvoked).toBe(false);
-    expect(migrate).not.toHaveBeenCalled();
   });
 });
 

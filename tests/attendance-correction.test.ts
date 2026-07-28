@@ -409,7 +409,7 @@ describe("attendance gate middleware — enforcement", () => {
 
     const req = mockReq({
       adminUserId: "sa-1",
-      path: "/api/admin/schema-updates/status",
+      path: "/api/admin/jobs",
     });
     const res = mockRes();
     const next = vi.fn();
