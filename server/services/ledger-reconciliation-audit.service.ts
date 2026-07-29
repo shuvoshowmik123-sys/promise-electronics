@@ -23,10 +23,19 @@ export type LedgerAuditClassification =
   | "incomplete_or_unavailable"
   | "baseline_live_checksum_drift";
 
+export type LedgerAuditAvailability =
+  | "ledger_readable"
+  | "ledger_missing"
+  | "authentication_rejected"
+  | "tls_unavailable"
+  | "connection_unavailable"
+  | "audit_unavailable";
+
 /** Redacted, browser-safe-enough for server logs / operator CLI only. Never includes SQL/URLs/checksums. */
 export type RedactedLedgerReconciliationAudit = {
-  auditVersion: "1";
+  auditVersion: "2";
   classification: LedgerAuditClassification;
+  availability: LedgerAuditAvailability;
   blocked: boolean;
   counts: {
     registryCount: number;
@@ -51,6 +60,22 @@ export type RedactedLedgerReconciliationAudit = {
   adoptionDecision: "not_performed";
   historicalLedgerMutation: "none";
 };
+
+function classifyLedgerAvailability(verification: LedgerVerification): LedgerAuditAvailability {
+  const error = (verification.error || "").toLowerCase();
+  if (!error || error.startsWith("missing migrations:") || error.startsWith("checksum mismatch:") || error.startsWith("unexpected ledger entries:")) {
+    return "ledger_readable";
+  }
+  if (error.includes("ledger table does not exist")) return "ledger_missing";
+  if (/password authentication|authentication failed|no pg_hba|role .* does not exist|scram/.test(error)) {
+    return "authentication_rejected";
+  }
+  if (/certificate|tls|ssl/.test(error)) return "tls_unavailable";
+  if (/connect|econnrefused|enotfound|timeout|econnreset|connection terminated|unavailable/.test(error)) {
+    return "connection_unavailable";
+  }
+  return "audit_unavailable";
+}
 
 export type TrustedBaselineLedger = {
   baselineVersion: string;
@@ -120,6 +145,7 @@ export function classifyLedgerReconciliation(input: {
   const mismatchCount = verification.mismatched.length;
   const extraCount = verification.extra.length;
   const missingCount = verification.missing.length;
+  const availability = classifyLedgerAvailability(verification);
 
   const errLower = (verification.error || "").toLowerCase();
   const infraUnavailable =
@@ -164,8 +190,9 @@ export function classifyLedgerReconciliation(input: {
   const blocked = classification !== "healthy";
 
   const audit: Omit<RedactedLedgerReconciliationAudit, "evidenceFingerprint"> = {
-    auditVersion: "1",
+    auditVersion: "2",
     classification,
+    availability,
     blocked,
     counts: {
       registryCount: registry.ids.length,
@@ -199,6 +226,7 @@ export function computeEvidenceFingerprint(
   const canonical = JSON.stringify({
     auditVersion: audit.auditVersion,
     classification: audit.classification,
+    availability: audit.availability,
     blocked: audit.blocked,
     counts: audit.counts,
     versions: audit.versions,

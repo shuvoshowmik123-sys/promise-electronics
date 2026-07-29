@@ -23,11 +23,7 @@ from urllib.parse import parse_qsl, unquote, urlsplit
 class TargetMode(str, Enum):
     """Explicit migration target modes.
 
-    Replaces the previous "every remote target is production" assumption.
-    Only ``LOCAL_DISPOSABLE`` and ``DEVELOPMENT_REMOTE`` may ever launch a
-    command in version 1; ``PRODUCTION_REMOTE`` is always blocked before any
-    command is built, with a message pointing to the controlled release
-    procedure.
+    Each remote mode has an explicit host and session-approval boundary.
     """
 
     LOCAL_DISPOSABLE = "local_disposable"
@@ -40,7 +36,7 @@ TARGET_MODE_LABELS: dict[TargetMode, str] = {
     TargetMode.LOCAL_DISPOSABLE: "Local disposable",
     TargetMode.DEVELOPMENT_REMOTE: "Development remote (approved Neon development only)",
     TargetMode.AIVEN_TEST_APPROVED: "Aiven test (session approved)",
-    TargetMode.PRODUCTION_REMOTE: "Production remote (disabled in this version)",
+    TargetMode.PRODUCTION_REMOTE: "Production Aiven",
 }
 
 # Development remote is scoped to recognized Neon endpoint hosts only. This is
@@ -96,9 +92,9 @@ def _matches_session_approved_aiven_test_target(candidate_url: str) -> bool:
 def resolve_target_mode(mode: TargetMode, target: DatabaseTarget, database_url: str | None = None) -> None:
     """Validate an explicit target mode against the classified host.
 
-    Raises before any command is built or launched. Production remote is
-    always rejected in version 1, regardless of host. Development remote
-    accepts only recognized Neon endpoint hosts (hostname ends with
+    Raises before any command is built or launched. Production remote requires
+    a recognized Aiven host. Development remote accepts only recognized Neon
+    endpoint hosts (hostname ends with
     ``.neon.tech``) — any other remote host (Aiven-pattern, arbitrary, or
     malformed) is rejected here, before any audit or migration subprocess
     is ever started. Aiven test mode requires BOTH a recognized Aiven
@@ -108,10 +104,11 @@ def resolve_target_mode(mode: TargetMode, target: DatabaseTarget, database_url: 
     real production database.
     """
     if mode is TargetMode.PRODUCTION_REMOTE:
-        raise PreflightError(
-            "Production remote migrations are disabled in this version. "
-            "Use the controlled production release procedure instead."
-        )
+        if target.is_local or not _is_recognized_aiven_test_host(target.host):
+            raise PreflightError(
+                "Production Aiven mode requires a non-local Aiven Database URL. "
+                "This target was rejected before any connection was attempted."
+            )
     if mode is TargetMode.LOCAL_DISPOSABLE and not target.is_local:
         raise PreflightError(
             "Local disposable mode requires a local Database URL (localhost or 127.0.0.1)."
@@ -338,7 +335,7 @@ def build_preflight_environment(database_url: str, target: DatabaseTarget, mode:
     resolve_target_mode(mode, target, database_url)
     child_environment = os.environ.copy()
     child_environment["DATABASE_URL"] = database_url
-    child_environment["NODE_ENV"] = "development"
+    child_environment["NODE_ENV"] = "production" if mode is TargetMode.PRODUCTION_REMOTE else "development"
     child_environment.pop("MAIN_MIGRATION_RELEASE_MODE", None)
     child_environment.pop("ALLOW_PROD_DB_MIGRATE_MAIN", None)
     child_environment.pop("MAIN_SCHEMA_TRUST_BASELINE_ADOPTION", None)
@@ -346,11 +343,12 @@ def build_preflight_environment(database_url: str, target: DatabaseTarget, mode:
     return _with_node_runtime_path(child_environment)
 
 
-def _extract_redacted_audit_classification(raw_output: str) -> str | None:
+def _extract_redacted_audit_result(raw_output: str) -> tuple[str, str] | None:
     decoder = json.JSONDecoder()
     expected_keys = {
         "auditVersion",
         "classification",
+        "availability",
         "blocked",
         "counts",
         "versions",
@@ -388,9 +386,19 @@ def _extract_redacted_audit_classification(raw_output: str) -> str | None:
         if set(payload) != expected_keys:
             continue
         classification = payload.get("classification")
+        availability = payload.get("availability")
         if classification not in AUDIT_CLASSIFICATIONS:
             continue
-        if payload.get("auditVersion") != "1":
+        if availability not in {
+            "ledger_readable",
+            "ledger_missing",
+            "authentication_rejected",
+            "tls_unavailable",
+            "connection_unavailable",
+            "audit_unavailable",
+        }:
+            continue
+        if payload.get("auditVersion") != "2":
             continue
         if payload.get("adoptionDecision") != "not_performed":
             continue
@@ -417,17 +425,25 @@ def _extract_redacted_audit_classification(raw_output: str) -> str | None:
             continue
         if re.search(r'"checksum"\s*:', serialized, re.IGNORECASE):
             continue
-        return classification
+        return classification, availability
     return None
 
 
-def _blocked_preflight_message(classification: str) -> str:
+def _blocked_preflight_message(classification: str, availability: str) -> str:
     if classification == "checksum_mismatch":
         return "Preflight blocked: the canonical migration ledger has a checksum mismatch. Reconciliation is required."
     if classification == "unexpected_extra":
         return "Preflight blocked: the database ledger contains an unexpected migration entry. Reconciliation is required."
     if classification == "baseline_live_checksum_drift":
         return "Preflight blocked: the live ledger differs from the trusted baseline evidence. Reconciliation is required."
+    if availability == "authentication_rejected":
+        return "Preflight blocked: Aiven rejected database authentication. Generate a fresh Aiven service URI, paste it without quotes or spaces, then retry."
+    if availability == "tls_unavailable":
+        return "Preflight blocked: a secure TLS connection to Aiven could not be established. Verify the Aiven service URI includes sslmode=require."
+    if availability == "connection_unavailable":
+        return "Preflight blocked: Aiven could not be reached before the canonical ledger audit completed. Check internet access, the service state, port, and URL."
+    if availability == "ledger_missing":
+        return "Preflight blocked: the canonical migration ledger table is missing. Do not run ad-hoc SQL; reconcile this database through the reviewed baseline path."
     return "Preflight blocked: database authentication, connectivity, or canonical ledger availability could not be verified."
 
 
@@ -462,12 +478,13 @@ def _run_read_only_audit(
             process.kill()
             process.communicate()
             raise PreflightError("Preflight blocked: the canonical read-only ledger audit timed out.") from error
-        classification = _extract_redacted_audit_classification(raw_output)
-        if classification is None or process.returncode not in {0, 2}:
+        audit_result = _extract_redacted_audit_result(raw_output)
+        if audit_result is None or process.returncode not in {0, 2}:
             raise PreflightError("Preflight blocked: the canonical read-only ledger audit was unavailable or returned an invalid result.")
+        classification, availability = audit_result
         if classification in {"healthy", "pending_only"}:
             return classification
-        raise PreflightError(_blocked_preflight_message(classification))
+        raise PreflightError(_blocked_preflight_message(classification, availability))
     except PreflightError:
         raise
     except (OSError, subprocess.SubprocessError) as error:
@@ -507,18 +524,20 @@ def preflight_database_url(
 def build_child_environment(database_url: str, target: DatabaseTarget, mode: TargetMode) -> dict[str, str]:
     """Build the migration child environment for an explicit, pre-validated target mode.
 
-    Production remote is always rejected by ``resolve_target_mode`` before this
-    point is reached. Both remaining modes (local disposable, development
-    remote) run with ``NODE_ENV=development`` and never set
-    ``ALLOW_PROD_DB_MIGRATE_MAIN`` — only the controlled release procedure sets
-    that flag for a real production run.
+    Production uses the canonical production execution flags only after the
+    Production Aiven target gate has passed. Every other mode stays in
+    development and cannot inherit the production execution flag.
     """
     resolve_target_mode(mode, target, database_url)
     child_environment = os.environ.copy()
     child_environment["DATABASE_URL"] = database_url
     child_environment["MAIN_MIGRATION_RELEASE_MODE"] = "true"
-    child_environment["NODE_ENV"] = "development"
-    child_environment.pop("ALLOW_PROD_DB_MIGRATE_MAIN", None)
+    if mode is TargetMode.PRODUCTION_REMOTE:
+        child_environment["NODE_ENV"] = "production"
+        child_environment["ALLOW_PROD_DB_MIGRATE_MAIN"] = "true"
+    else:
+        child_environment["NODE_ENV"] = "development"
+        child_environment.pop("ALLOW_PROD_DB_MIGRATE_MAIN", None)
     child_environment.pop("MAIN_SCHEMA_TRUST_BASELINE_ADOPTION", None)
     child_environment.pop("MAIN_MIGRATION_TEST_INJECT_FAILURE", None)
     return _with_node_runtime_path(child_environment)
@@ -574,6 +593,8 @@ def run_canonical_migration(
     repo_root: Path,
     mode: TargetMode,
     popen_factory: Callable[..., subprocess.Popen[str]] = subprocess.Popen,
+    *,
+    backup_verified: bool = False,
 ) -> MigrationOutcome:
     try:
         normalized_url = normalize_database_url_input(database_url)
@@ -598,6 +619,13 @@ def run_canonical_migration(
             "invalid_target",
             "Target mode changed",
             "The target mode changed after preflight. Run Test / Preflight again before starting a migration.",
+        )
+    if mode is TargetMode.PRODUCTION_REMOTE and not backup_verified:
+        return MigrationOutcome(
+            False,
+            "backup_required",
+            "Backup required",
+            "Production migrations must use Backup and Migrate so a verified backup exists before the migration starts.",
         )
     try:
         child_environment = build_child_environment(normalized_url, preflight.target, mode)
@@ -1028,7 +1056,7 @@ def run_restore(
     lookup, backup verification, file operation, subprocess, or database
     connection of any kind, regardless of what caller reaches this function.
     """
-    if mode is TargetMode.AIVEN_TEST_APPROVED:
+    if mode in {TargetMode.AIVEN_TEST_APPROVED, TargetMode.PRODUCTION_REMOTE}:
         return MigrationOutcome(False, "restore_unavailable", "Restore unavailable", AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
     try:
         dropdb_path = _find_pg_tool("dropdb")
@@ -1130,7 +1158,14 @@ def run_backup_and_migrate(
     if not backup_result.success:
         return MigrationOutcome(False, "backup_failed", "Backup and migrate failed", f"{backup_result.message} No migration was attempted.")
 
-    migration_outcome = run_canonical_migration(database_url, preflight, repo_root, mode, popen_factory)
+    migration_outcome = run_canonical_migration(
+        database_url,
+        preflight,
+        repo_root,
+        mode,
+        popen_factory,
+        backup_verified=True,
+    )
     recheck = _recheck_ledger_classification(database_url, repo_root, mode, popen_factory)
 
     backup_detail = (
@@ -1165,7 +1200,7 @@ def run_restore_and_recheck(
     ``run_restore`` and never runs the ledger recheck, since restore is
     impossible against that target regardless of what the recheck would
     report."""
-    if mode is TargetMode.AIVEN_TEST_APPROVED:
+    if mode in {TargetMode.AIVEN_TEST_APPROVED, TargetMode.PRODUCTION_REMOTE}:
         return MigrationOutcome(False, "restore_unavailable", "Restore unavailable", AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
     restore_outcome = run_restore(database_url, backup_path, mode, popen_factory)
     recheck = _recheck_ledger_classification(database_url, repo_root, mode, popen_factory)
@@ -1260,6 +1295,62 @@ class RemoteRestoreConfirmDialog(tk.Toplevel):
         self.destroy()
 
 
+class ProductionMigrationConfirmDialog(tk.Toplevel):
+    def __init__(self, parent: tk.Misc, target_fingerprint: str):
+        super().__init__(parent)
+        self.title("Confirm production backup and migration")
+        self.result = False
+        self.resizable(False, False)
+        self.transient(parent)
+
+        outer = ttk.Frame(self, padding=20)
+        outer.pack(fill="both", expand=True)
+        ttk.Label(
+            outer,
+            text=(
+                "This creates and verifies a backup, then runs the reviewed MAIN migration "
+                f"against this production target [target {target_fingerprint}]."
+            ),
+            foreground="#a94442",
+            wraplength=480,
+            justify="left",
+        ).pack(anchor="w")
+        self.consent_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(
+            outer,
+            text="I understand this changes the production database after backup verification.",
+            variable=self.consent_var,
+        ).pack(anchor="w", pady=(12, 0))
+        ttk.Label(outer, text='Type "PRODUCTION MIGRATE" exactly to continue.').pack(anchor="w", pady=(12, 4))
+        self.typed_var = tk.StringVar()
+        entry = ttk.Entry(outer, textvariable=self.typed_var, width=50)
+        entry.pack(anchor="w", fill="x")
+        self.hint_var = tk.StringVar(value="")
+        ttk.Label(outer, textvariable=self.hint_var, foreground="#a94442").pack(anchor="w", pady=(4, 0))
+        button_row = ttk.Frame(outer)
+        button_row.pack(fill="x", pady=(16, 0))
+        ttk.Button(button_row, text="Continue", command=self._on_ok).pack(side="left")
+        ttk.Button(button_row, text="Cancel", command=self._on_cancel).pack(side="left", padx=(10, 0))
+        self.protocol("WM_DELETE_WINDOW", self._on_cancel)
+        entry.focus_set()
+        self.grab_set()
+        self.wait_window(self)
+
+    def _on_ok(self) -> None:
+        if not self.consent_var.get():
+            self.hint_var.set("Check the box to confirm the production change.")
+            return
+        if self.typed_var.get() != "PRODUCTION MIGRATE":
+            self.hint_var.set('Type "PRODUCTION MIGRATE" exactly (case-sensitive) to continue.')
+            return
+        self.result = True
+        self.destroy()
+
+    def _on_cancel(self) -> None:
+        self.result = False
+        self.destroy()
+
+
 class SchemaMigrationApp:
     def __init__(self, root: tk.Tk, repo_root: Path):
         self.root = root
@@ -1280,11 +1371,9 @@ class SchemaMigrationApp:
         self.root.title("Promise Electronics - Schema Migration")
         self.root.geometry("700x760")
         self.root.minsize(660, 700)
-        # Aiven test mode gets its own distinct color so it can never be
-        # visually mistaken for Neon development or the disabled Production
-        # option (requirement: visually distinct target modes).
         style = ttk.Style(self.root)
         style.configure("AivenTest.TRadiobutton", foreground="#0a5f8a", font=("Segoe UI", 10, "bold"))
+        style.configure("Production.TRadiobutton", foreground="#a94442", font=("Segoe UI", 10, "bold"))
         outer = ttk.Frame(self.root, padding=24)
         outer.pack(fill="both", expand=True)
 
@@ -1337,11 +1426,14 @@ class SchemaMigrationApp:
             text=TARGET_MODE_LABELS[TargetMode.PRODUCTION_REMOTE],
             variable=self.target_mode,
             value=TargetMode.PRODUCTION_REMOTE.value,
-            state="disabled",
+            style="Production.TRadiobutton",
         ).pack(anchor="w")
         ttk.Label(
             mode_frame,
-            text="Production uses the controlled release procedure and is not available from this utility.",
+            text=(
+                "Accepts one Aiven production URL. Requires preflight, verified backup, a checkbox, and typed confirmation. "
+                "Aiven restore stays provider-controlled."
+            ),
             foreground="#a94442",
             wraplength=630,
         ).pack(anchor="w", pady=(2, 0))
@@ -1356,7 +1448,7 @@ class SchemaMigrationApp:
 
         ttk.Label(
             outer,
-            text="Preflight connects read-only through the canonical ledger audit. Development remote runs require a separate redacted confirmation.",
+            text="Preflight connects read-only through the canonical ledger audit. Remote migrations require explicit confirmation.",
             foreground="#5f6368",
             wraplength=650,
         ).pack(anchor="w")
@@ -1426,7 +1518,7 @@ class SchemaMigrationApp:
         is disabled and a clear, nearby message is shown, before any file
         picker, backup verification, or restore subprocess could ever start.
         Local disposable and Neon Development remote are unaffected."""
-        if self._selected_mode() is TargetMode.AIVEN_TEST_APPROVED:
+        if self._selected_mode() in {TargetMode.AIVEN_TEST_APPROVED, TargetMode.PRODUCTION_REMOTE}:
             self.restore_button.configure(state="disabled")
             self.aiven_restore_notice_var.set(AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
         else:
@@ -1473,6 +1565,13 @@ class SchemaMigrationApp:
             return
         self.preflight_result = result
         state_label = "ledger healthy" if result.classification == "healthy" else "reviewed migrations pending"
+        if result.mode is TargetMode.PRODUCTION_REMOTE:
+            self.status_text.set(
+                f"Preflight passed ({state_label}). Production migrations require Backup and Migrate. "
+                f"[target {result.target.target_fingerprint}]"
+            )
+            self.run_button.configure(state="disabled")
+            return
         self.status_text.set(f"Preflight passed ({state_label}). {result.target.redacted}")
         self.run_button.configure(state="normal")
 
@@ -1486,6 +1585,10 @@ class SchemaMigrationApp:
         if mode is not preflight.mode:
             self.status_text.set("The target mode changed after preflight. Run Test / Preflight again.")
             self.preflight_result = None
+            self.run_button.configure(state="disabled")
+            return
+        if mode is TargetMode.PRODUCTION_REMOTE:
+            self.status_text.set("Production migrations must use Backup and Migrate.")
             self.run_button.configure(state="disabled")
             return
         try:
@@ -1553,7 +1656,12 @@ class SchemaMigrationApp:
         except PreflightError as error:
             self.status_text.set(str(error))
             return
-        if mode is not TargetMode.LOCAL_DISPOSABLE:
+        if mode is TargetMode.PRODUCTION_REMOTE:
+            dialog = ProductionMigrationConfirmDialog(self.root, target.target_fingerprint)
+            if not dialog.result:
+                self.status_text.set("Backup and migrate cancelled. No command was started.")
+                return
+        elif mode is not TargetMode.LOCAL_DISPOSABLE:
             typed = simpledialog.askstring(
                 "Type to confirm migration",
                 "This will back up, verify, and then run the reviewed migration against this "
@@ -1576,7 +1684,7 @@ class SchemaMigrationApp:
 
     def _restore_backup(self) -> None:
         mode = self._selected_mode()
-        if mode is TargetMode.AIVEN_TEST_APPROVED:
+        if mode in {TargetMode.AIVEN_TEST_APPROVED, TargetMode.PRODUCTION_REMOTE}:
             # Refuse before any file picker, backup verification, pg_restore,
             # dropdb, createdb, or database connection can begin.
             self.status_text.set(AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)

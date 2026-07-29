@@ -107,6 +107,7 @@ describe("Ledger reconciliation audit — classification and redaction", () => {
     });
 
     expect(audit.classification).toBe("checksum_mismatch");
+    expect(audit.availability).toBe("ledger_readable");
     expect(audit.blocked).toBe(true);
     expect(audit.counts.mismatchCount).toBe(1);
     expect(audit.versions.registryHeadVersion).toBe(REQUIRED_MAIN_SCHEMA_VERSION);
@@ -145,6 +146,25 @@ describe("Ledger reconciliation audit — classification and redaction", () => {
     expect(audit.blocked).toBe(true);
     expect(audit.counts.missingCount).toBe(1);
     expect(audit.counts.mismatchCount).toBe(0);
+    expect(audit.availability).toBe("ledger_readable");
+  });
+
+  it("redacts authentication rejection to a safe availability category", () => {
+    const audit = classifyLedgerReconciliation({
+      verification: verification({
+        ok: false,
+        appliedIds: [],
+        currentVersion: null,
+        error: "password authentication failed for user operator",
+      }),
+      baseline: sampleBaseline(),
+      liveChecksumById: {},
+    });
+
+    expect(audit.classification).toBe("incomplete_or_unavailable");
+    expect(audit.availability).toBe("authentication_rejected");
+    expect(JSON.stringify(audit)).not.toMatch(/operator|password/i);
+    assertAuditRedacted(audit);
   });
 
   it("classifies unexpected extras as blocked", () => {
@@ -188,6 +208,7 @@ describe("Ledger reconciliation audit — classification and redaction", () => {
       registry,
     });
     expect(audit.classification).toBe("healthy");
+    expect(audit.availability).toBe("ledger_readable");
     expect(audit.blocked).toBe(false);
     expect(audit.counts.registryCount).toBe(MAIN_SCHEMA_MIGRATIONS.length);
     expect(audit.counts.missingCount).toBe(0);
@@ -209,6 +230,7 @@ describe("Ledger reconciliation audit — classification and redaction", () => {
     const recomputed = computeEvidenceFingerprint({
       auditVersion: a.auditVersion,
       classification: a.classification,
+      availability: a.availability,
       blocked: a.blocked,
       counts: a.counts,
       versions: a.versions,

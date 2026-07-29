@@ -18,11 +18,12 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
-def audit_payload(classification: str) -> str:
+def audit_payload(classification: str, availability: str = "ledger_readable") -> str:
     blocked = classification != "healthy"
     return MODULE.json.dumps({
-        "auditVersion": "1",
+        "auditVersion": "2",
         "classification": classification,
+        "availability": availability,
         "blocked": blocked,
         "counts": {
             "registryCount": 10,
@@ -162,6 +163,15 @@ class WindowsSchemaMigrationTests(unittest.TestCase):
         self.assertNotIn(database_url, message)
         self.assertNotIn("example-password", message)
 
+    def test_authentication_availability_maps_to_a_safe_operator_message(self):
+        result = MODULE._extract_redacted_audit_result(
+            audit_payload("incomplete_or_unavailable", "authentication_rejected")
+        )
+        self.assertEqual(result, ("incomplete_or_unavailable", "authentication_rejected"))
+        message = MODULE._blocked_preflight_message(*result)
+        self.assertIn("Aiven rejected database authentication", message)
+        self.assertNotIn("password", message.lower())
+
     def test_read_only_preflight_blocks_checksum_mismatch(self):
         with self.assertRaises(MODULE.PreflightError) as raised:
             self._preflight(
@@ -187,11 +197,11 @@ class WindowsSchemaMigrationTests(unittest.TestCase):
         self.assertNotIn("ALLOW_PROD_DB_MIGRATE_MAIN", process.environment)
         self.assertEqual(result.mode, MODULE.TargetMode.DEVELOPMENT_REMOTE)
 
-    def test_production_remote_is_blocked_before_any_command_launch(self):
+    def test_production_remote_rejects_non_aiven_target_before_any_command_launch(self):
         database_url = "postgresql://operator:example-password@ep-example-pooler.aws.neon.tech/neondb"
 
         def factory(args, **kwargs):
-            raise AssertionError("No command may be launched for production remote mode.")
+            raise AssertionError("No command may be launched for a rejected production target.")
 
         commands = MODULE.CanonicalCommands(
             audit=("npm.cmd", "run", "schema:audit:ledger"),
@@ -200,7 +210,7 @@ class WindowsSchemaMigrationTests(unittest.TestCase):
         with patch.object(MODULE, "_canonical_commands", return_value=commands):
             with self.assertRaises(MODULE.PreflightError) as raised:
                 MODULE.preflight_database_url(database_url, ROOT, MODULE.TargetMode.PRODUCTION_REMOTE, popen_factory=factory)
-        self.assertIn("controlled production release procedure", str(raised.exception))
+        self.assertIn("requires a non-local Aiven Database URL", str(raised.exception))
 
     def test_local_disposable_mode_rejects_non_local_url(self):
         database_url = "postgresql://operator:example-password@ep-example-pooler.aws.neon.tech/neondb"
@@ -379,7 +389,7 @@ class WindowsSchemaMigrationTests(unittest.TestCase):
     def test_audit_json_with_unapproved_diagnostic_field_is_rejected(self):
         payload = MODULE.json.loads(audit_payload("healthy"))
         payload["diagnostic"] = "postgresql://operator:example-password@localhost/promise"
-        self.assertIsNone(MODULE._extract_redacted_audit_classification(MODULE.json.dumps(payload)))
+        self.assertIsNone(MODULE._extract_redacted_audit_result(MODULE.json.dumps(payload)))
 
     def test_local_and_remote_run_guards_are_explicit(self):
         with patch.dict(MODULE.os.environ, {"MAIN_SCHEMA_TRUST_BASELINE_ADOPTION": "true", "MAIN_MIGRATION_TEST_INJECT_FAILURE": "true"}, clear=False):
@@ -402,16 +412,31 @@ class WindowsSchemaMigrationTests(unittest.TestCase):
         self.assertNotIn("MAIN_SCHEMA_TRUST_BASELINE_ADOPTION", remote)
         self.assertNotIn("MAIN_MIGRATION_TEST_INJECT_FAILURE", remote)
 
-    def test_production_remote_child_environment_is_blocked(self):
-        target = MODULE.validate_database_url("postgresql://u:p@db.example.com/db")
-        with self.assertRaises(MODULE.PreflightError):
-            MODULE.build_child_environment("postgresql://u:p@db.example.com/db", target, MODULE.TargetMode.PRODUCTION_REMOTE)
-
-    def test_production_remote_run_is_blocked_before_command_launch(self):
-        database_url = "postgresql://u:p@db.example.com/db"
+    def test_production_remote_requires_an_aiven_target(self):
+        database_url = "postgresql://u:p@pg-production-123.a.aivencloud.com:18395/defaultdb"
         target = MODULE.validate_database_url(database_url)
+        MODULE.resolve_target_mode(MODULE.TargetMode.PRODUCTION_REMOTE, target, database_url)
+        with self.assertRaises(MODULE.PreflightError):
+            MODULE.resolve_target_mode(
+                MODULE.TargetMode.PRODUCTION_REMOTE,
+                MODULE.validate_database_url("postgresql://u:p@ep-example-pooler.aws.neon.tech/neondb"),
+                "postgresql://u:p@ep-example-pooler.aws.neon.tech/neondb",
+            )
+
+    def test_production_remote_child_environment_has_real_production_flags(self):
+        database_url = "postgresql://u:p@pg-production-123.a.aivencloud.com:18395/defaultdb"
+        target = MODULE.validate_database_url(database_url)
+        environment = MODULE.build_child_environment(database_url, target, MODULE.TargetMode.PRODUCTION_REMOTE)
+        preflight_environment = MODULE.build_preflight_environment(database_url, target, MODULE.TargetMode.PRODUCTION_REMOTE)
+        self.assertEqual(environment["NODE_ENV"], "production")
+        self.assertEqual(environment["ALLOW_PROD_DB_MIGRATE_MAIN"], "true")
+        self.assertEqual(preflight_environment["NODE_ENV"], "production")
+        self.assertNotIn("ALLOW_PROD_DB_MIGRATE_MAIN", preflight_environment)
+
+    def test_production_remote_direct_run_requires_verified_backup_before_command_launch(self):
+        database_url = "postgresql://u:p@pg-production-123.a.aivencloud.com:18395/defaultdb"
         preflight = MODULE.PreflightResult(
-            target,
+            MODULE.validate_database_url(database_url),
             MODULE.TargetMode.PRODUCTION_REMOTE,
             ("npm.cmd", "run", "db:migrate:main"),
             MODULE.hashlib.sha256(database_url.encode("utf-8")).digest(),
@@ -423,7 +448,7 @@ class WindowsSchemaMigrationTests(unittest.TestCase):
 
         outcome = MODULE.run_canonical_migration(database_url, preflight, ROOT, MODULE.TargetMode.PRODUCTION_REMOTE, popen_factory=factory)
         self.assertFalse(outcome.success)
-        self.assertEqual(outcome.category, "invalid_target")
+        self.assertEqual(outcome.category, "backup_required")
 
     def test_mode_change_after_preflight_is_rejected(self):
         database_url = "postgresql://u:p@localhost/db"
@@ -906,6 +931,18 @@ class BackupRestoreTests(unittest.TestCase):
         self.assertEqual(outcome.category, "restore_unavailable")
         self.assertEqual(outcome.detail, MODULE.AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
 
+    def test_run_restore_production_remote_returns_core_guard_before_tool_lookup(self):
+        database_url = "postgresql://operator:example-password@pg-production-123.a.aivencloud.com:18395/defaultdb"
+
+        def factory(args, **kwargs):
+            raise AssertionError("No subprocess may ever be launched for Production Aiven restore.")
+
+        with patch.object(MODULE, "_find_pg_tool", side_effect=lambda name: (_ for _ in ()).throw(AssertionError("_find_pg_tool must never be called for Production Aiven restore."))):
+            outcome = MODULE.run_restore(database_url, self.tmp_path / "some.dump", MODULE.TargetMode.PRODUCTION_REMOTE, popen_factory=factory)
+        self.assertFalse(outcome.success)
+        self.assertEqual(outcome.category, "restore_unavailable")
+        self.assertEqual(outcome.detail, MODULE.AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
+
     def test_run_restore_and_recheck_aiven_test_approved_returns_immediately_without_recheck(self):
         """Core guard proof for run_restore_and_recheck: it must not call
         run_restore, must not call the ledger recheck, must not call
@@ -1063,12 +1100,19 @@ class BackupRestoreTests(unittest.TestCase):
         # string for Aiven vs Neon, so the dialog text itself differs too.
         self.assertIn('"Aiven test (session approved)"', source)
 
+    def test_production_mode_requires_the_dedicated_two_factor_dialog(self):
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertIn('TargetMode.PRODUCTION_REMOTE: "Production Aiven"', source)
+        self.assertIn("class ProductionMigrationConfirmDialog", source)
+        self.assertIn('Type "PRODUCTION MIGRATE" exactly to continue.', source)
+        self.assertIn("I understand this changes the production database after backup verification.", source)
+
     def test_run_backup_and_migrate_blocks_before_backup_when_ledger_unsafe(self):
         database_url = "postgresql://operator:example-password@localhost:5432/promise_disposable"
 
         def blocked_audit_payload():
             return MODULE.json.dumps({
-                "auditVersion": "1", "classification": "checksum_mismatch", "blocked": True,
+                "auditVersion": "2", "classification": "checksum_mismatch", "availability": "ledger_readable", "blocked": True,
                 "counts": {"registryCount": 1, "liveAppliedCount": 1, "missingCount": 0, "mismatchCount": 1, "extraCount": 0, "baselineEntryCount": 1, "baselineMissingFromLiveCount": 0, "baselineChecksumDisagreeCount": 0, "registryBeyondBaselineCount": 0},
                 "versions": {"currentLiveVersion": "v1", "registryHeadVersion": "v1", "requiredVersion": "v1", "baselineVersion": "b1", "baselineRegistryHead": "v1"},
                 "evidenceFingerprint": "a" * 32, "adoptionDecision": "not_performed", "historicalLedgerMutation": "none",
@@ -1091,7 +1135,7 @@ class BackupRestoreTests(unittest.TestCase):
 
         def audit_payload():
             return MODULE.json.dumps({
-                "auditVersion": "1", "classification": "healthy", "blocked": False,
+                "auditVersion": "2", "classification": "healthy", "availability": "ledger_readable", "blocked": False,
                 "counts": {"registryCount": 1, "liveAppliedCount": 1, "missingCount": 0, "mismatchCount": 0, "extraCount": 0, "baselineEntryCount": 1, "baselineMissingFromLiveCount": 0, "baselineChecksumDisagreeCount": 0, "registryBeyondBaselineCount": 0},
                 "versions": {"currentLiveVersion": "v1", "registryHeadVersion": "v1", "requiredVersion": "v1", "baselineVersion": "b1", "baselineRegistryHead": "v1"},
                 "evidenceFingerprint": "a" * 32, "adoptionDecision": "not_performed", "historicalLedgerMutation": "none",
@@ -1115,6 +1159,37 @@ class BackupRestoreTests(unittest.TestCase):
         self.assertFalse(outcome.success)
         self.assertEqual(outcome.category, "backup_failed")
         self.assertFalse(migrate_was_called["value"])
+
+    def test_production_backup_path_marks_the_canonical_run_as_backup_verified(self):
+        database_url = "postgresql://operator:example-password@pg-production-123.a.aivencloud.com:18395/defaultdb"
+        target = MODULE.validate_database_url(database_url)
+        preflight = MODULE.PreflightResult(
+            target,
+            MODULE.TargetMode.PRODUCTION_REMOTE,
+            ("npm.cmd", "run", "db:migrate:main"),
+            MODULE.hashlib.sha256(database_url.encode("utf-8")).digest(),
+            "pending_only",
+        )
+        backup = MODULE.BackupResult(True, self.backup_dir / "safe.dump", "a" * 64, 7, "Backup verified.")
+        observed = {}
+
+        def fake_run(*args, **kwargs):
+            observed["backup_verified"] = kwargs["backup_verified"]
+            return MODULE.MigrationOutcome(True, "complete", "Schema migration complete", "Completed.")
+
+        with patch.object(MODULE, "preflight_database_url", return_value=preflight), \
+             patch.object(MODULE, "create_backup", return_value=backup), \
+             patch.object(MODULE, "run_canonical_migration", side_effect=fake_run), \
+             patch.object(MODULE, "_recheck_ledger_classification", return_value="healthy"):
+            outcome = MODULE.run_backup_and_migrate(
+                database_url,
+                target,
+                MODULE.TargetMode.PRODUCTION_REMOTE,
+                self.repo_root,
+                backup_directory=self.backup_dir,
+            )
+        self.assertTrue(outcome.success)
+        self.assertTrue(observed["backup_verified"])
 
 
 class AivenRestoreBoundaryTests(unittest.TestCase):
@@ -1151,6 +1226,18 @@ class AivenRestoreBoundaryTests(unittest.TestCase):
         self.app.target_mode.set(MODULE.TargetMode.AIVEN_TEST_APPROVED.value)
         self.assertEqual(str(self.app.restore_button["state"]), "disabled")
         self.assertEqual(self.app.aiven_restore_notice_var.get(), MODULE.AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
+
+    def test_production_mode_restore_button_disabled_and_notice_shown(self):
+        self.app.target_mode.set(MODULE.TargetMode.PRODUCTION_REMOTE.value)
+        self.assertEqual(str(self.app.restore_button["state"]), "disabled")
+        self.assertEqual(self.app.aiven_restore_notice_var.get(), MODULE.AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
+
+    def test_production_mode_restore_stops_before_file_picker(self):
+        self.app.target_mode.set(MODULE.TargetMode.PRODUCTION_REMOTE.value)
+        with patch.object(MODULE.filedialog, "askopenfilename") as mock_picker:
+            self.app._restore_backup()
+        mock_picker.assert_not_called()
+        self.assertEqual(self.app.status_text.get(), MODULE.AIVEN_RESTORE_PROVIDER_CONTROLLED_MESSAGE)
 
     def test_local_disposable_restore_button_remains_enabled(self):
         self.app.target_mode.set(MODULE.TargetMode.LOCAL_DISPOSABLE.value)
