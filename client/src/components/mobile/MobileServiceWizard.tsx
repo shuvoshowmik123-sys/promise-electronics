@@ -12,6 +12,7 @@ import {
   Loader2,
   MapPin,
   Phone,
+  Search,
   Truck,
   Tv,
   Upload,
@@ -22,6 +23,8 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PickupLocationPicker } from "@/components/maps/PickupLocationPicker";
+import { CarouselSelector, ScreenSizeGlyph } from "@/components/mobile/CarouselSelector";
+import { SearchPickerOverlay } from "@/components/mobile/SearchPickerOverlay";
 import { mergePinAddress } from "@/lib/pickup-address";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -153,6 +156,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [pickupLongitude, setPickupLongitude] = useState<number | null>(null);
   const [pickupLocationSource, setPickupLocationSource] = useState<"map_pin" | "gps" | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [brandSearchOpen, setBrandSearchOpen] = useState(false);
   /** Address line contributed by the last pin, so re-pinning replaces it instead of stacking. */
   const lastPinAddressRef = useRef<string | null>(null);
   const [customerName, setCustomerName] = useState(customer?.name || "");
@@ -596,34 +600,55 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                 ))}
               </div>
             </div>
-            <div className="space-y-4 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
-              <div className="space-y-2">
-                <Label>{t("wizard.brand")}</Label>
-                <Select value={brand} onValueChange={setBrand}>
-                  <SelectTrigger className="h-12 rounded-2xl border-emerald-100">
-                    <SelectValue placeholder={t("wizard.selectBrand")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tvBrands.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-                  </SelectContent>
-                </Select>
+            <div className="space-y-5 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
+              <div className="space-y-2.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>{t("wizard.brand")}</Label>
+                  {brand && <span className="truncate text-xs font-bold text-emerald-700">{brand}</span>}
+                </div>
+                <CarouselSelector
+                  ariaLabel={t("wizard.brand")}
+                  options={tvBrands}
+                  value={brand}
+                  onSelect={setBrand}
+                  cardClassName="h-[54px] w-[88px]"
+                  // Search lives as the last card in the row rather than its own
+                  // full-width bar, so it costs zero extra vertical space and the
+                  // card never feels congested.
+                  trailing={
+                    <button
+                      type="button"
+                      onClick={() => setBrandSearchOpen(true)}
+                      className="flex h-[54px] w-[88px] shrink-0 snap-start flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-emerald-300 bg-emerald-50/40 px-2 text-emerald-700"
+                    >
+                      <Search className="h-4 w-4" aria-hidden />
+                      <span className="text-[12px] font-bold leading-tight">{t("wizard.searchAll")}</span>
+                    </button>
+                  }
+                />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
-                  <Label>{t("wizard.size")}</Label>
-                  <Select value={screenSize} onValueChange={setScreenSize}>
-                    <SelectTrigger className="h-12 rounded-2xl border-emerald-100">
-                      <SelectValue placeholder={t("wizard.size")} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {screenSizes.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+
+              <div className="space-y-2.5">
+                <div className="flex items-baseline justify-between gap-2">
+                  <Label>{t("wizard.screenSizeQuestion")}</Label>
+                  {screenSize && <span className="truncate text-xs font-bold text-emerald-700">{screenSize}</span>}
                 </div>
-                <div className="space-y-2">
-                  <Label>{t("wizard.model")}</Label>
-                  <Input value={modelNumber} onChange={(event) => setModelNumber(event.target.value)} className="h-12 rounded-2xl border-emerald-100" placeholder={t("wizard.optional")} />
-                </div>
+                <CarouselSelector
+                  ariaLabel={t("wizard.screenSizeQuestion")}
+                  options={screenSizes}
+                  value={screenSize}
+                  onSelect={setScreenSize}
+                  cardClassName="h-[84px] w-[70px]"
+                  // Card shows 43" so it never truncates in a 70px card; the
+                  // stored value stays "43 inch" and the heading echoes it in full.
+                  formatLabel={(option) => option.replace(/\s*inch$/i, '"')}
+                  renderVisual={(option, selected) => <ScreenSizeGlyph option={option} selected={selected} />}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label>{t("wizard.model")}</Label>
+                <Input value={modelNumber} onChange={(event) => setModelNumber(event.target.value)} className="h-12 rounded-2xl border-emerald-100" placeholder={t("wizard.optional")} />
               </div>
             </div>
           </motion.div>
@@ -814,6 +839,16 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
           </div>
         </div>
       )}
+      <SearchPickerOverlay
+        open={brandSearchOpen}
+        title={t("wizard.selectBrand")}
+        placeholder={t("wizard.searchBrandPlaceholder")}
+        emptyLabel={t("wizard.noBrandMatch")}
+        options={tvBrands}
+        value={brand}
+        onSelect={setBrand}
+        onClose={() => setBrandSearchOpen(false)}
+      />
       <PickupLocationPicker
         open={pickerOpen}
         onClose={() => setPickerOpen(false)}

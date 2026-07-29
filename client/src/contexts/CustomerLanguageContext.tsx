@@ -278,6 +278,11 @@ const translations = {
   "wizard.brand":          { en: "Brand *",                   bn: "ব্র্যান্ড *" },
   "wizard.selectBrand":    { en: "Select brand",              bn: "ব্র্যান্ড বাছুন" },
   "wizard.size":           { en: "Size",                      bn: "সাইজ" },
+  // Carousel selector (step 2)
+  "wizard.searchAll":      { en: "Search all",                bn: "সব দেখুন" },
+  "wizard.searchBrandPlaceholder": { en: "Search brands",     bn: "ব্র্যান্ড খুঁজুন" },
+  "wizard.noBrandMatch":   { en: "No matching brand. Choose \"Other\" and tell us in the notes.", bn: "মিল পাওয়া যায়নি। \"Other\" বেছে নিয়ে নোটে লিখুন।" },
+  "wizard.screenSizeQuestion": { en: "How big is your screen?", bn: "স্ক্রিনের সাইজ কত?" },
   "wizard.model":          { en: "Model",                     bn: "মডেল" },
   "wizard.optional":       { en: "Optional",                  bn: "ঐচ্ছিক" },
   "wizard.photoTitle":     { en: "Photos help us diagnose faster", bn: "ছবি দিলে দ্রুত বুঝব" },
