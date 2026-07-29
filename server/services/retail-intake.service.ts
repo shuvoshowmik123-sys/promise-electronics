@@ -286,9 +286,23 @@ export function validateCanonicalIntakePayload(input: CanonicalIntakeInput): voi
         if (!Array.isArray(parsed)) rejectPayload("Invalid request data.");
         if (parsed.length > L.mediaUrlCount) rejectPayload("Request data exceeds allowed size.");
         for (const item of parsed) {
-            if (typeof item !== "string") rejectPayload("Invalid request data.");
-            if (item.length > L.mediaUrlLength) rejectPayload("Request data exceeds allowed size.");
-            if (!SAFE_URL_RE.test(item)) rejectPayload("Invalid request data.");
+            // Two accepted shapes:
+            //   1. "https://..."                   (legacy plain URL)
+            //   2. { url, fileId?, resourceType? } (current clients)
+            // Shape 2 is canonical - fileId is required to clean up orphaned R2
+            // objects. Both customer intake surfaces (repair-request.tsx and
+            // MobileServiceWizard.tsx) send it, and getMediaUrls() already reads
+            // both. Rejecting objects here made every request WITH an attached
+            // photo fail "Invalid request data." while photo-less ones succeeded.
+            const url =
+                typeof item === "string"
+                    ? item
+                    : item && typeof item === "object" && typeof (item as any).url === "string"
+                        ? (item as any).url
+                        : null;
+            if (url === null) rejectPayload("Invalid request data.");
+            if (url.length > L.mediaUrlLength) rejectPayload("Request data exceeds allowed size.");
+            if (!SAFE_URL_RE.test(url)) rejectPayload("Invalid request data.");
         }
     }
 }
