@@ -296,6 +296,7 @@ async function readLiveLedgerChecksumMap(): Promise<Record<string, string>> {
   const client = new pg.Client({
     connectionString: dbUrl,
     connectionTimeoutMillis: 10000,
+    ssl: dbUrl.includes("sslmode=require") ? { rejectUnauthorized: false } : undefined,
   });
   try {
     await client.connect();

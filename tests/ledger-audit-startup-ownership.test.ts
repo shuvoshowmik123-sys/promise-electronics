@@ -332,6 +332,7 @@ describe("Search-path hardening — session-only fix, no persistent config", () 
     const fnBody = fnMatch![0];
     expect(fnBody).toMatch(/SELECT id, checksum FROM public\.promise_schema_migrations/);
     expect(fnBody).not.toMatch(/SELECT id, checksum FROM promise_schema_migrations(?!\s*['`])/);
+    expect(fnBody).toMatch(/ssl: dbUrl\.includes\("sslmode=require"\) \? \{ rejectUnauthorized: false \} : undefined/);
   });
 
   it("readLiveLedgerChecksumMap reads the live ledger via a schema-qualified table name", async () => {
@@ -344,6 +345,7 @@ describe("Search-path hardening — session-only fix, no persistent config", () 
     const fnBody = fnMatch![0];
     expect(fnBody).toMatch(/SELECT id, checksum FROM public\.promise_schema_migrations/);
     expect(fnBody).not.toMatch(/SELECT id, checksum FROM promise_schema_migrations(?!\s*['`])/);
+    expect(fnBody).toMatch(/ssl: dbUrl\.includes\("sslmode=require"\) \? \{ rejectUnauthorized: false \} : undefined/);
   });
 
   it("existing healthy/pending/checksum classification behavior is unchanged", () => {
