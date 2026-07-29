@@ -5,7 +5,7 @@ import { auditLogger } from '../utils/auditLogger.js';
 import { logRouteError } from '../utils/route-error.js';
 import * as serviceAreaRepo from '../repositories/service-area.repository.js';
 import { estimateRoute } from '../services/route-estimate.service.js';
-import { routeEstimateLimiter, mapPlaceSearchLimiter } from './middleware/rate-limit.js';
+import { routeEstimateLimiter, mapPlaceSearchLimiter, publicMapSearchLimiter } from './middleware/rate-limit.js';
 import { settingsRepo } from '../repositories/index.js';
 import { isWithinBangladesh, normalizePlaceQuery, reverseGeocodePin, searchMapBoundaries, searchMapPlaces } from '../services/map-place-search.service.js';
 import {
@@ -871,7 +871,7 @@ const PLACE_QUERY_MAX = 120;
 
 router.get(
     '/api/public/map-place-search',
-    mapPlaceSearchLimiter,
+    publicMapSearchLimiter,
     async (req: Request, res: Response) => {
         try {
             const raw = typeof req.query.q === 'string' ? req.query.q : '';
@@ -900,7 +900,7 @@ router.get(
 // provider has no match — the client must then keep whatever the customer typed.
 router.get(
     '/api/public/reverse-geocode',
-    mapPlaceSearchLimiter,
+    publicMapSearchLimiter,
     async (req: Request, res: Response) => {
         try {
             const lat = Number(req.query.lat);

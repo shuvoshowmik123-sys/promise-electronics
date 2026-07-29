@@ -159,6 +159,35 @@ export const routeEstimateLimiter = rateLimit({
 });
 
 /**
+ * Public customer map search (Photon fair-use).
+ *
+ * Separate from mapPlaceSearchLimiter because the two have very different
+ * shapes. An admin searches occasionally; a customer types into a
+ * search-as-you-type box, where one lookup legitimately costs several requests
+ * as the query is refined. Sharing the admin budget of 30 per 10 minutes meant
+ * a handful of searches returned 429 and the UI showed "Address search is
+ * temporarily unavailable" — the request never reached Photon at all.
+ *
+ * Still bounded well below Photon's fair-use expectations, and the client now
+ * caches results so repeated or corrected queries cost nothing.
+ */
+export const publicMapSearchLimiter = rateLimit({
+    windowMs: 10 * 60 * 1000,
+    max: 120,
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req: Request, _res: Response) => `public-map-search:ip:${req.ip || 'unknown'}`,
+    validate: {
+        keyGeneratorIpFallback: false,
+    },
+    message: {
+        error: 'Too many searches',
+        message: 'Please wait a moment before searching again.',
+        retryAfter: 600,
+    },
+});
+
+/**
  * Admin map place search (Photon fair-use).
  * Prefer authenticated admin user id; fall back to default IP keying.
  * Does NOT skip admin sessions (unlike apiLimiter).

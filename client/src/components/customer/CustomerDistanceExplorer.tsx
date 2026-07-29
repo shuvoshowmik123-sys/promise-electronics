@@ -241,7 +241,10 @@ export default function CustomerDistanceExplorer({
     enabled: isNearViewport,
   });
   useEffect(() => {
-    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 350);
+    // 550ms rather than 350ms: long enough that a normal typing rhythm produces
+    // one lookup per word instead of one per few characters, short enough to
+    // still feel immediate.
+    const timer = window.setTimeout(() => setDebouncedSearch(search.trim()), 550);
     return () => window.clearTimeout(timer);
   }, [search]);
   useEffect(() => {
@@ -252,8 +255,16 @@ export default function CustomerDistanceExplorer({
     queryKey: ["public-map-place-search", debouncedSearch],
     queryFn: () => publicAreaMapApi.searchPlaces(debouncedSearch),
     enabled: debouncedSearch.length >= 3,
-    staleTime: 0,
-    gcTime: 0,
+    // Place names do not change while someone is typing, so cache within the
+    // session. With staleTime/gcTime at 0 every keystroke pause hit the network
+    // and correcting a typo re-fetched a query already answered a second
+    // earlier — which is what exhausted the shared rate limit and surfaced as
+    // "Address search is temporarily unavailable".
+    // In-memory only: the server still sends Cache-Control: private, no-store
+    // and does not cache anonymous queries, so this changes nothing about what
+    // is retained server-side.
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
     retry: false,
   });
   const areas = areaQuery.data?.areas ?? [];
