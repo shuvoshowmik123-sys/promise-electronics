@@ -26,7 +26,6 @@ const CustomerRouter = lazy(() => import("@/components/layout/CustomerRouter").t
 
 import { PWAInstallPrompt } from "@/components/PWAInstallPrompt";
 
-import { DaktarVaiChat } from "@/components/DaktarVaiChat";
 import { PageSkeleton } from "@/components/PageSkeleton";
 import { useAndroidBack } from "@/hooks/useAndroidBack";
 
@@ -104,7 +103,6 @@ function Router() {
                   <CustomerRouter />
                 </Suspense>
               </div>
-              <DaktarVaiChat />
             </AppOpeningProvider>
           </PushNotificationProvider>
         </CartProvider>

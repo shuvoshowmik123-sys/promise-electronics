@@ -201,7 +201,7 @@ const translations = {
   "support.faq3Q":        { en: "Do you provide warranty?", bn: "আপনারা কি ওয়ারেন্টি দেন?" },
   "support.faq3A":        { en: "Yes. Eligible repairs include service warranty. Warranty details are shown on your invoice or warranty page.", bn: "হ্যাঁ। প্রযোজ্য মেরামতে সার্ভিস ওয়ারেন্টি থাকে। বিস্তারিত ইনভয়েস বা ওয়ারেন্টি পেজে দেখা যাবে।" },
   "support.faq4Q":        { en: "Can I request home pickup?", bn: "আমি কি বাসা থেকে পিকআপ চাইতে পারি?" },
-  "support.faq4A":        { en: "Yes. You can choose home visit or pickup while booking a repair request.", bn: "হ্যাঁ। রিপেয়ার বুক করার সময় হোম ভিজিট বা পিকআপ বেছে নিতে পারবেন।" },
+  "support.faq4A":        { en: "Yes. You can choose pickup & drop service or drop the TV off at our service center while booking a repair request.", bn: "হ্যাঁ। রিপেয়ার বুক করার সময় পিকআপ ও ডেলিভারি সার্ভিস অথবা নিজে শপে দিয়ে যাওয়ার অপশন বেছে নিতে পারবেন।" },
 
   // ── Login ──
   "login.brand":          { en: "Promise Electronics", bn: "প্রমিজ ইলেকট্রনিক্স" },
@@ -289,7 +289,22 @@ const translations = {
   "wizard.extraDetails":   { en: "Extra details",             bn: "অতিরিক্ত বিবরণ" },
   "wizard.serviceTitle":   { en: "How do you want service?",  bn: "আপনি কীভাবে সার্ভিস চান?" },
   "wizard.serviceDesc":    { en: "Choose the easiest option for you.", bn: "আপনার জন্য সহজ অপশন বেছে নিন।" },
-  "wizard.homeVisit":      { en: "Home visit",                bn: "বাসা থেকে সার্ভিস" },
+  // We do NOT offer on-site/home repair. This option is pickup-and-drop only:
+  // we collect the TV from the customer and return it after repair.
+  "wizard.pickupDrop":     { en: "Pickup & drop service",     bn: "পিকআপ ও ডেলিভারি সার্ভিস" },
+  // PICKUP-MAP-PIN-01 — map pin picker
+  "pickupPin.open":            { en: "Pin on map",              bn: "ম্যাপে পিন করুন" },
+  "pickupPin.title":           { en: "Select pickup location",  bn: "পিকআপের অবস্থান নির্বাচন করুন" },
+  "pickupPin.close":           { en: "Close",                   bn: "বন্ধ করুন" },
+  "pickupPin.useMyLocation":   { en: "My location",             bn: "আমার অবস্থান" },
+  "pickupPin.selectedLocation":{ en: "Selected location",       bn: "নির্বাচিত অবস্থান" },
+  "pickupPin.findingAddress":  { en: "Finding address…",        bn: "ঠিকানা খোঁজা হচ্ছে…" },
+  "pickupPin.noAddressFound":  { en: "No address found — you can type it below", bn: "ঠিকানা পাওয়া যায়নি — নিচে লিখে দিন" },
+  "pickupPin.editHint":        { en: "Move the map to place the pin. You can edit the address after confirming.", bn: "পিন বসাতে ম্যাপ সরান। নিশ্চিত করার পর ঠিকানা সম্পাদনা করতে পারবেন।" },
+  "pickupPin.confirm":         { en: "Confirm location",        bn: "অবস্থান নিশ্চিত করুন" },
+  "pickupPin.gpsUnavailable":  { en: "Location is not supported on this device", bn: "এই ডিভাইসে লোকেশন সাপোর্ট করে না" },
+  "pickupPin.gpsDenied":       { en: "Could not get your location. Please allow location access.", bn: "আপনার অবস্থান পাওয়া যায়নি। লোকেশন অনুমতি দিন।" },
+  "pickupPin.pinned":          { en: "Location pinned",         bn: "অবস্থান পিন করা হয়েছে" },
   "wizard.dropOff":        { en: "Drop-off",                  bn: "শপে নিয়ে আসব" },
   "wizard.callFirst":      { en: "Call me first",             bn: "আগে আমাকে কল করুন" },
   "wizard.pickupAddress":  { en: "Pickup address",            bn: "পিকআপ ঠিকানা" },
@@ -717,6 +732,9 @@ const translations = {
   "distance.centerMarker":       { en: "Promise Electronics",                        bn: "প্রমিস ইলেকট্রনিক্স" },
   "distance.yourLocation":       { en: "Your private location",                      bn: "আপনার ব্যক্তিগত অবস্থান" },
   "distance.mapLabel":           { en: "Interactive distance map",                   bn: "ইন্টার‍্যাক্টিভ দূরত্ব মানচিত্র" },
+  "distance.expandMap":          { en: "Expand map",                                 bn: "ম্যাপ বড় করুন" },
+  "distance.exploreMapTitle":    { en: "Explore the map",                            bn: "ম্যাপ দেখুন" },
+  "distance.closeMap":           { en: "Close map",                                  bn: "ম্যাপ বন্ধ করুন" },
   "distance.eyebrow":            { en: "Private distance check",                     bn: "ব্যক্তিগত দূরত্ব যাচাই" },
   "distance.backToMap":          { en: "Back to map",                                bn: "ম্যাপে ফিরে যান" },
   "distance.title":              { en: "How close are we?",                          bn: "আমরা আপনার কতটা কাছে?" },

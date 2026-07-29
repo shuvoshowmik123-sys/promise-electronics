@@ -2,9 +2,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { createPortal } from "react-dom";
 import booleanPointInPolygon from "@turf/boolean-point-in-polygon";
 import type { Feature, MultiPolygon, Point, Polygon } from "geojson";
 import {
+  ArrowLeft,
   ArrowRight,
   CarFront,
   ChevronUp,
@@ -13,6 +15,7 @@ import {
   Loader2,
   LockKeyhole,
   MapPin,
+  Maximize2,
   Minus,
   Navigation,
   RotateCcw,
@@ -23,9 +26,10 @@ import {
 } from "lucide-react";
 import type { Map as MapLibreMap } from "maplibre-gl";
 import { AreaMapCanvas, type CustomerImmersiveCameraApi } from "@/components/maps/AreaMapCanvas";
-import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
+import { MobileBottomSheetDragHandle, MobileBottomSheetFrame } from "@/components/ui/mobile-bottom-sheet";
 import { Button } from "@/components/ui/button";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
+import { useCustomerMobileChrome } from "@/contexts/CustomerMobileChromeContext";
 import { publicAreaMapApi, type MapPlaceSuggestion, type RouteEstimateResponse, type ServiceAreaMapItem } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -36,8 +40,17 @@ interface ServiceCenterLocation {
   address?: string;
 }
 
+export type PublicSettingsStatus = "loading" | "success" | "error";
+
 interface CustomerDistanceExplorerProps {
   serviceCenter: ServiceCenterLocation | null;
+  /**
+   * Public settings lifecycle (distinct from missing coordinates).
+   * - loading: settings still fetching / retrying
+   * - success: settings resolved (center may still be null if unconfigured)
+   * - error: settings fetch failed — keep pending route until retry succeeds
+   */
+  publicSettingsStatus?: PublicSettingsStatus;
   compact?: boolean;
 }
 
@@ -46,7 +59,27 @@ interface BrowserLocation {
   longitude: number;
 }
 
-type LocationState = "idle" | "locating" | "routing" | "ready" | "route_unavailable" | "denied" | "error";
+type LocationState =
+  | "idle"
+  | "locating"
+  | "preparing_route"
+  | "settings_error"
+  | "routing"
+  | "ready"
+  | "route_fallback"
+  | "route_unavailable"
+  | "service_center_missing"
+  | "denied"
+  | "error";
+
+/** Intent for a single user-triggered route attempt (not re-fired by Strict Mode alone). */
+type RouteIntent = "none" | "pending";
+
+function isAbortError(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const name = (error as { name?: string }).name;
+  return name === "AbortError" || name === "CanceledError";
+}
 
 function useCustomerMapMobileMode() {
   const [isMobile, setIsMobile] = useState(() => {
@@ -150,16 +183,27 @@ const demandPriority: Record<ServiceAreaMapItem["demandLevel"], number> = {
   new: 1,
 };
 
-export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDistanceExplorerProps) {
+export default function CustomerDistanceExplorer({
+  serviceCenter,
+  publicSettingsStatus = "success",
+}: CustomerDistanceExplorerProps) {
   const { t } = useCustomerLanguage();
   const [, setLocation] = useLocation();
   const sectionRef = useRef<HTMLElement>(null);
   const hasSetInitialCamera = useRef(false);
+  /** Monotonic id assigned on user click (before geolocation). */
+  const routeRunIdRef = useRef(0);
+  /** Prevents React Strict Mode / effect re-entry from starting a second fetch for the same run. */
+  const routeFetchStartedForRunRef = useRef(0);
+  /** Active estimate AbortController — aborted on supersede or unmount. */
+  const routeAbortRef = useRef<AbortController | null>(null);
   const isMobile = useCustomerMapMobileMode();
   const [isNearViewport, setIsNearViewport] = useState(false);
   const [locationState, setLocationState] = useState<LocationState>("idle");
   const [browserLocation, setBrowserLocation] = useState<BrowserLocation | null>(null);
   const [route, setRoute] = useState<RouteEstimateResponse | null>(null);
+  /** When set to pending, effect runs estimate once both location + service center are ready. */
+  const [routeIntent, setRouteIntent] = useState<RouteIntent>("none");
   const [selectedArea, setSelectedArea] = useState<ServiceAreaMapItem | null>(null);
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
@@ -169,7 +213,23 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
   const [mapInstance, setMapInstance] = useState<MapLibreMap | null>(null);
   const [customerCamera, setCustomerCamera] = useState<CustomerImmersiveCameraApi | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
+  /**
+   * The embedded mobile map is intentionally non-interactive (cooperativeGestures
+   * disables drag/pinch) so a one-finger touch starting on the map scrolls the
+   * page instead of fighting it — that part already worked. But it left the map
+   * unable to pan at all, which is its own real problem. Rather than choosing
+   * one bug over the other, tapping "expand" opens the SAME map full-screen with
+   * gestures fully enabled: there's no competing page scroll once it's the only
+   * thing on screen, so full pan/zoom is safe there.
+   */
+  const [fullMapOpen, setFullMapOpen] = useState(false);
+  const { setBottomNavSuppressed } = useCustomerMobileChrome();
   const [showInteractionHint, setShowInteractionHint] = useState(false);
+
+  useEffect(() => {
+    setBottomNavSuppressed(sheetOpen || fullMapOpen);
+    return () => setBottomNavSuppressed(false);
+  }, [setBottomNavSuppressed, sheetOpen, fullMapOpen]);
 
   const areaQuery = useQuery({
     queryKey: ["public-area-map"],
@@ -236,7 +296,11 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
     }
     return { kind: "km" as const, value: kmText };
   })();
-  const isCheckingLocation = locationState === "locating" || locationState === "routing";
+  // settings_error stays clickable so the user can re-trigger; pending auto-continues on settings retry.
+  const isCheckingLocation =
+    locationState === "locating"
+    || locationState === "preparing_route"
+    || locationState === "routing";
 
   useEffect(() => {
     const node = sectionRef.current;
@@ -253,6 +317,14 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
     }, { rootMargin: "420px" });
     observer.observe(node);
     return () => observer.disconnect();
+  }, []);
+
+  // Abort any in-flight estimate when this component unmounts.
+  useEffect(() => {
+    return () => {
+      routeAbortRef.current?.abort();
+      routeAbortRef.current = null;
+    };
   }, []);
 
   useEffect(() => {
@@ -287,27 +359,101 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
     return () => window.clearTimeout(timeout);
   }, [hasRealPolygons, isMobile, mapInstance]);
 
-  const routeFromLocation = async (temporaryLocation: BrowserLocation) => {
+  /**
+   * Continue a click-scoped attempt after geolocation/place selection.
+   * Does NOT allocate a new run id (that happens on the user click).
+   */
+  const beginRouteFromLocation = (temporaryLocation: BrowserLocation, runId: number) => {
+    if (runId !== routeRunIdRef.current) return;
     setBrowserLocation(temporaryLocation);
     setCustomerFocusRequest((value) => value + 1);
     setSelectedArea(matchingArea(temporaryLocation, areas));
     setRoute(null);
-    setLocationState("routing");
-    try {
-      const estimate = await publicAreaMapApi.estimateRoute(temporaryLocation);
-      setRoute(estimate);
-      setLocationState("ready");
-    } catch {
-      if (serviceCenter?.latitude != null && serviceCenter?.longitude != null) {
-        setRoute(clientStraightLineFallback(temporaryLocation, {
-          latitude: serviceCenter.latitude,
-          longitude: serviceCenter.longitude,
-        }));
-      } else {
-        setRoute(null);
-      }
-      setLocationState("route_unavailable");
+    if (publicSettingsStatus === "loading") {
+      setLocationState("preparing_route");
+    } else if (publicSettingsStatus === "error") {
+      // Keep pending — retry success must auto-continue the same attempt.
+      setLocationState("settings_error");
+    } else if (!serviceCenter) {
+      setLocationState("service_center_missing");
+      setRouteIntent("none");
+      return;
+    } else {
+      setLocationState("routing");
     }
+    setRouteIntent("pending");
+  };
+
+  // Continue / run estimate when customer location is held and settings resolve.
+  // Gate with routeFetchStartedForRunRef so Strict Mode remounts do not double-call the API.
+  useEffect(() => {
+    if (routeIntent !== "pending" || !browserLocation) return;
+
+    if (publicSettingsStatus === "loading") {
+      setLocationState("preparing_route");
+      return;
+    }
+
+    if (publicSettingsStatus === "error") {
+      // Transient — do not clear routeIntent; keep pin and wait for retry success.
+      setLocationState("settings_error");
+      return;
+    }
+
+    // success
+    if (!serviceCenter) {
+      setLocationState("service_center_missing");
+      setRouteIntent("none");
+      return;
+    }
+
+    const runId = routeRunIdRef.current;
+    if (routeFetchStartedForRunRef.current === runId) return;
+    routeFetchStartedForRunRef.current = runId;
+
+    const origin = browserLocation;
+    const destination = serviceCenter;
+    const controller = new AbortController();
+    routeAbortRef.current = controller;
+
+    setLocationState("routing");
+
+    void (async () => {
+      try {
+        const estimate = await publicAreaMapApi.estimateRoute(origin, { signal: controller.signal });
+        if (runId !== routeRunIdRef.current || controller.signal.aborted) return;
+        setRoute(estimate);
+        setLocationState(estimate.method === "straight_line_fallback" ? "route_fallback" : "ready");
+      } catch (error) {
+        if (controller.signal.aborted || isAbortError(error) || runId !== routeRunIdRef.current) {
+          // Superseded or aborted — never show fallback/error for this attempt.
+          return;
+        }
+        setRoute(clientStraightLineFallback(origin, {
+          latitude: destination.latitude,
+          longitude: destination.longitude,
+        }));
+        setLocationState("route_fallback");
+      } finally {
+        if (runId === routeRunIdRef.current && !controller.signal.aborted) {
+          setRouteIntent("none");
+        }
+        if (routeAbortRef.current === controller) {
+          routeAbortRef.current = null;
+        }
+      }
+    })();
+  }, [routeIntent, browserLocation, serviceCenter, publicSettingsStatus]);
+
+  const startNewRouteAttempt = () => {
+    const runId = routeRunIdRef.current + 1;
+    routeRunIdRef.current = runId;
+    routeFetchStartedForRunRef.current = 0;
+    routeAbortRef.current?.abort();
+    routeAbortRef.current = null;
+    setRouteIntent("none");
+    setRoute(null);
+    return runId;
   };
 
   const requestLocation = () => {
@@ -315,11 +461,14 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
       setLocationState("error");
       return;
     }
+    const runId = startNewRouteAttempt();
     setLocationState("locating");
-    navigator.geolocation.getCurrentPosition(async ({ coords }) => {
-      const temporaryLocation = { latitude: coords.latitude, longitude: coords.longitude };
-      await routeFromLocation(temporaryLocation);
+    navigator.geolocation.getCurrentPosition(({ coords }) => {
+      if (runId !== routeRunIdRef.current) return;
+      beginRouteFromLocation({ latitude: coords.latitude, longitude: coords.longitude }, runId);
     }, (error) => {
+      if (runId !== routeRunIdRef.current) return;
+      setRouteIntent("none");
       setLocationState(error.code === error.PERMISSION_DENIED ? "denied" : "error");
     }, { enableHighAccuracy: false, timeout: 10_000, maximumAge: 60_000 });
   };
@@ -335,7 +484,8 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
     setSearchCommittedEmpty(false);
     setSelectedArea(null);
     setSearch("");
-    void routeFromLocation({ latitude: place.latitude, longitude: place.longitude });
+    const runId = startNewRouteAttempt();
+    beginRouteFromLocation({ latitude: place.latitude, longitude: place.longitude }, runId);
   };
 
   /**
@@ -394,6 +544,14 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
     });
   };
 
+  const useCurrentLocationOnMap = () => {
+    if (browserLocation) {
+      setCustomerFocusRequest((value) => value + 1);
+      return;
+    }
+    requestLocation();
+  };
+
   const goToRepair = (serviceMode: "service_center" | "pickup") => {
     const params = new URLSearchParams({ serviceMode });
     if (selectedArea) params.set("serviceAreaId", selectedArea.id);
@@ -418,14 +576,20 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
         : distanceLabel
     : locationState === "routing"
       ? t("distance.findingRoute")
-      : locationState === "locating"
-        ? t("distance.locating")
-        : locationState === "route_unavailable"
-          ? t("distance.locationFound")
-          : t("distance.permissionTitle");
+      : locationState === "preparing_route"
+        ? t("distance.preparingRoute")
+        : locationState === "settings_error"
+          ? t("distance.settingsErrorTitle")
+          : locationState === "locating"
+            ? t("distance.locating")
+            : locationState === "service_center_missing"
+              ? t("distance.serviceCenterMissingTitle")
+              : locationState === "route_unavailable" || locationState === "route_fallback"
+                ? t("distance.locationFound")
+                : t("distance.permissionTitle");
   const statusBody = route && distanceLabel
     ? (() => {
-      const routeNote = route.method === "straight_line_fallback"
+      const routeNote = route.method === "straight_line_fallback" || locationState === "route_fallback"
         ? t("distance.fallbackRoute")
         : t("distance.resultLabel");
       if (proximityHeadline) {
@@ -438,13 +602,31 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
     })()
     : locationState === "routing"
       ? t("distance.findingRoute")
-      : locationState === "denied"
-        ? t("distance.denied")
-        : locationState === "error"
-          ? t("distance.error")
-          : locationState === "route_unavailable"
-            ? t("distance.routeUnavailable")
-            : t("distance.permissionBody");
+      : locationState === "preparing_route"
+        ? t("distance.preparingRouteBody")
+        : locationState === "settings_error"
+          ? t("distance.settingsErrorBody")
+          : locationState === "denied"
+            ? t("distance.denied")
+            : locationState === "error"
+              ? t("distance.error")
+              : locationState === "service_center_missing"
+                ? t("distance.serviceCenterMissingBody")
+                : locationState === "route_unavailable"
+                  ? t("distance.routeUnavailable")
+                  : t("distance.permissionBody");
+
+  const canOpenDirections = Boolean(serviceCenter && browserLocation);
+  const mobileMapCtaTitle = route && distanceLabel
+    ? statusTitle
+    : locationState === "idle"
+      ? t("distance.mapCheckDistance")
+      : statusTitle;
+  const mobileMapCtaBody = route && distanceLabel
+    ? t("distance.mapRouteReady")
+    : locationState === "idle"
+      ? t("distance.mapCheckDistanceHint")
+      : statusBody;
 
   const map = (
     <AreaMapCanvas
@@ -454,10 +636,28 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
       serviceCenter={serviceCenter}
       customerLocation={browserLocation}
       customerFocusRequest={customerFocusRequest}
-      routeGeometry={locationState === "routing" ? null : (route?.geometry ?? null)}
-      routeMethod={locationState === "routing" ? null : (route?.method ?? null)}
+      routeGeometry={
+        locationState === "routing"
+        || locationState === "preparing_route"
+        || locationState === "settings_error"
+        || locationState === "locating"
+          ? null
+          : (route?.geometry ?? null)
+      }
+      routeMethod={
+        locationState === "routing"
+        || locationState === "preparing_route"
+        || locationState === "settings_error"
+        || locationState === "locating"
+          ? null
+          : (route?.method ?? null)
+      }
       threeDimensional={!isMobile}
       presentation="customerImmersive"
+      // Non-interactive (page owns one-finger scroll) in the embedded preview;
+      // fully interactive once expanded full-screen, where nothing competes
+      // for the gesture.
+      cooperativeGestures={isMobile && !fullMapOpen}
       showNavigation={false}
       onMapReady={setMapInstance}
       onCustomerCameraReady={setCustomerCamera}
@@ -553,8 +753,67 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
     </div>
   );
 
-  const actionButtons = (mobile = false) => (
-    <div className={cn("grid gap-2", mobile ? "grid-cols-2" : "grid-cols-1")}>
+  const mobileLocationControls = isMobile ? (
+    <div className="absolute bottom-[5.5rem] right-4 z-30 flex flex-col items-end gap-2">
+      {canOpenDirections && serviceCenter && browserLocation && (
+        <button
+          type="button"
+          onClick={() => window.open(createDirectionsUrl(serviceCenter, browserLocation), "_blank", "noopener,noreferrer")}
+          className="flex h-11 items-center gap-2 rounded-full border border-white/80 bg-white/95 px-3.5 text-xs font-bold text-slate-800 shadow-[0_10px_26px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-colors hover:bg-emerald-50 hover:text-emerald-800"
+        >
+          <Navigation className="h-4 w-4 text-emerald-700" aria-hidden />
+          {t("distance.mapDirections")}
+        </button>
+      )}
+      <button
+        type="button"
+        onClick={useCurrentLocationOnMap}
+        disabled={isCheckingLocation}
+        aria-label={browserLocation ? t("distance.recenter") : t("distance.useLocation")}
+        title={browserLocation ? t("distance.recenter") : t("distance.useLocation")}
+        className="flex h-12 w-12 items-center justify-center rounded-full border border-white/80 bg-white/95 text-emerald-700 shadow-[0_10px_26px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-colors hover:bg-emerald-50 disabled:cursor-wait disabled:text-slate-400"
+      >
+        {isCheckingLocation ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden /> : <Crosshair className="h-5 w-5" aria-hidden />}
+      </button>
+    </div>
+  ) : null;
+
+  // Permission status already carries the location-use assurance — do not repeat full privacy at equal weight.
+  const showQuietPrivacyFooter =
+    locationState !== "idle"
+    && locationState !== "locating"
+    && locationState !== "denied"
+    && locationState !== "error";
+
+  const actionButtons = (mobile = false) => mobile ? (
+    <div className="space-y-2.5" role="group" aria-label={t("distance.serviceChoiceLabel")}>
+      <button
+        type="button"
+        onClick={() => goToRepair("pickup")}
+        className="flex min-h-12 w-full items-center gap-3 rounded-2xl bg-emerald-700 px-4 py-3 text-left text-white shadow-[0_10px_22px_rgba(4,120,87,0.22)] transition-colors hover:bg-emerald-800 active:bg-emerald-900"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/15"><Truck className="h-5 w-5" aria-hidden /></span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold leading-snug">{t("distance.pickupDrop")}</span>
+          <span className="mt-0.5 block text-xs leading-snug text-emerald-100">{t("distance.startPickup")}</span>
+        </span>
+        <ArrowRight className="h-4 w-4 shrink-0 text-emerald-100" aria-hidden />
+      </button>
+      <button
+        type="button"
+        onClick={() => goToRepair("service_center")}
+        className="flex min-h-12 w-full items-center gap-3 rounded-2xl border border-emerald-200/90 bg-white px-4 py-3 text-left shadow-sm transition-colors hover:bg-emerald-50 active:bg-emerald-100/80"
+      >
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700"><CarFront className="h-5 w-5" aria-hidden /></span>
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm font-bold leading-snug text-slate-900">{t("distance.visitCenter")}</span>
+          <span className="mt-0.5 block text-xs leading-snug text-slate-500">{t("distance.planVisit")}</span>
+        </span>
+        <ArrowRight className="h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
+      </button>
+    </div>
+  ) : (
+    <div className="grid grid-cols-1 gap-2">
       <button type="button" onClick={() => goToRepair("service_center")} className="flex min-h-12 items-center justify-center gap-2 rounded-xl border border-white/70 bg-white/72 px-3 text-sm font-bold text-slate-800 shadow-sm backdrop-blur transition-colors hover:bg-white">
         <CarFront className="h-4 w-4 text-emerald-700" /> {t("distance.visitCenter")}
       </button>
@@ -567,44 +826,174 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
   return (
     <section ref={sectionRef} className="relative isolate overflow-hidden bg-[#f7fbf9]" aria-label={t("distance.mapLabel")}>
       {isMobile ? (
-        <div className="relative h-[72dvh] min-h-[510px] max-h-[720px] overflow-hidden">
-          {isNearViewport ? map : <div className="absolute inset-0 flex items-center justify-center bg-slate-100"><Loader2 className="h-6 w-6 animate-spin text-emerald-700" /></div>}
+        <div className="relative h-[64dvh] min-h-[440px] max-h-[640px] overflow-hidden">
+          {/* Full map is expanded elsewhere (portal below) — avoid mounting a second
+              live MapLibre instance for the same preview area while it's open. */}
+          {fullMapOpen ? (
+            <div className="absolute inset-0 bg-slate-100" />
+          ) : isNearViewport ? (
+            map
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-100"><Loader2 className="h-6 w-6 animate-spin text-emerald-700" /></div>
+          )}
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-24 bg-gradient-to-b from-[#f7fbf9]/86 via-[#f7fbf9]/22 to-transparent" />
           <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-40 bg-gradient-to-t from-[#f7fbf9] via-[#f7fbf9]/34 to-transparent" />
-          {searchControl}
-          {mapControls}
+          {!fullMapOpen && searchControl}
+          {!fullMapOpen && mapControls}
+          {!fullMapOpen && mobileLocationControls}
+          {!fullMapOpen && (
+            <button
+              type="button"
+              onClick={() => setFullMapOpen(true)}
+              aria-label={t("distance.expandMap")}
+              title={t("distance.expandMap")}
+              className="absolute left-4 top-20 z-30 flex h-11 items-center gap-2 rounded-full border border-white/70 bg-white/88 px-3.5 text-xs font-bold text-slate-800 shadow-[0_12px_34px_rgba(15,23,42,0.16)] backdrop-blur-xl transition-colors hover:bg-emerald-50 hover:text-emerald-800"
+            >
+              <Maximize2 className="h-4 w-4 text-emerald-700" aria-hidden />
+              {t("distance.expandMap")}
+            </button>
+          )}
           <div className="absolute inset-x-4 bottom-4 z-30">
             <button type="button" onClick={() => setSheetOpen(true)} className="flex min-h-14 w-full items-center justify-between rounded-2xl border border-white/70 bg-slate-950/86 px-4 text-left text-white shadow-[0_18px_40px_rgba(15,23,42,0.26)] backdrop-blur-xl">
-              <span className="min-w-0"><span className="block truncate text-sm font-bold">{selectedArea ? fullAreaName(selectedArea) : t("distance.chooseArea")}</span><span className="mt-0.5 block text-xs text-emerald-200">{selectedArea ? t(demandRangeKey(selectedArea.demandRange)) : t("distance.eyebrow")}</span></span>
+              <span className="min-w-0"><span className="block truncate text-sm font-bold">{mobileMapCtaTitle}</span><span className="mt-0.5 block truncate text-xs text-emerald-200">{mobileMapCtaBody}</span></span>
               <ChevronUp className="ml-3 h-5 w-5 shrink-0 text-emerald-300" />
             </button>
           </div>
-          <AnimatePresence>
-            {sheetOpen && (
-              <>
-                <motion.button type="button" aria-label="Close area details" className="absolute inset-0 z-40 bg-slate-950/20" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSheetOpen(false)} />
-                <MobileBottomSheetFrame onClose={() => setSheetOpen(false)} className="absolute inset-x-0 bottom-0 z-50 max-h-[78%] rounded-t-[28px] bg-white shadow-[0_-18px_50px_rgba(15,23,42,0.22)]">
-                  <MobileBottomSheetHandle />
-                  <div className="max-h-[calc(78dvh-3rem)] overflow-y-auto px-5 pb-[calc(6.5rem+env(safe-area-inset-bottom))]">
-                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">{t("distance.eyebrow")}</p>
-                    <h2 className="mt-2 text-2xl font-black tracking-normal text-slate-950">{selectedArea ? fullAreaName(selectedArea) : t("distance.title")}</h2>
-                    <p className="mt-2 text-sm leading-relaxed text-slate-500">{selectedArea ? t(demandRangeKey(selectedArea.demandRange)) : t("distance.subtitle")}</p>
-                    <div aria-live="polite" className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4">
-                      <div className="flex gap-3"><Navigation className="mt-0.5 h-5 w-5 shrink-0 text-emerald-700" /><div className="min-w-0"><p className="text-sm font-bold leading-snug text-emerald-950 break-words">{statusTitle}</p><p className="mt-1 text-xs leading-relaxed text-emerald-800 break-words">{statusBody}</p></div></div>
+          {createPortal(
+            <AnimatePresence>
+              {sheetOpen && (
+                <>
+                {/* The modal layer owns the dock and chat while the sheet is open. */}
+                <motion.button type="button" aria-label="Close area details" className="fixed inset-0 z-[55] bg-slate-950/20" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={() => setSheetOpen(false)} />
+                <MobileBottomSheetFrame
+                  onClose={() => setSheetOpen(false)}
+                  dragHandleOnly
+                  className="fixed inset-x-0 bottom-0 z-[60] flex max-h-[min(86dvh,calc(100dvh-1rem),600px)] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-[0_-16px_44px_rgba(15,23,42,0.20)]"
+                >
+                  <MobileBottomSheetDragHandle onClose={() => setSheetOpen(false)} />
+                  <div className="flex shrink-0 items-center gap-2 px-5 pb-1">
+                    <button
+                      type="button"
+                      onClick={() => setSheetOpen(false)}
+                      aria-label={t("distance.backToMap")}
+                      title={t("distance.backToMap")}
+                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-emerald-100 bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100"
+                    >
+                      <ArrowLeft className="h-4 w-4" aria-hidden />
+                    </button>
+                    <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-emerald-700">{t("distance.eyebrow")}</p>
+                  </div>
+                  <div className="min-h-0 flex-1 touch-pan-y overflow-y-auto overscroll-contain px-5 pb-[max(1rem,env(safe-area-inset-bottom,0px))] pt-0.5">
+                    {/* Stage 1 — context + distance / location state */}
+                    <h2 className="text-[1.35rem] font-black leading-tight tracking-normal text-slate-950">
+                      {selectedArea ? fullAreaName(selectedArea) : t("distance.title")}
+                    </h2>
+                    <p className="mt-1.5 text-sm leading-snug text-slate-500">
+                      {selectedArea ? t(demandRangeKey(selectedArea.demandRange)) : t("distance.subtitle")}
+                    </p>
+
+                    <div aria-live="polite" className="mt-4 rounded-2xl border border-emerald-100/90 bg-emerald-50/60 px-3.5 py-3">
+                      <div className="flex gap-2.5">
+                        <Navigation className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden />
+                        <div className="min-w-0">
+                          <p className="text-sm font-bold leading-snug text-emerald-950 break-words">{statusTitle}</p>
+                          <p className="mt-1 text-xs leading-relaxed text-emerald-800/95 break-words">{statusBody}</p>
+                        </div>
+                      </div>
                     </div>
-                    <Button type="button" onClick={requestLocation} disabled={isCheckingLocation} className="mt-4 h-12 w-full rounded-xl bg-emerald-700 font-bold text-white hover:bg-emerald-800">
-                      {isCheckingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Crosshair className="mr-2 h-4 w-4" />}
-                      {locationState === "ready" || locationState === "route_unavailable" ? t("distance.checkAgain") : t("distance.useLocation")}
-                    </Button>
-                    {browserLocation && <Button type="button" variant="outline" onClick={() => setCustomerFocusRequest((value) => value + 1)} className="mt-2 h-11 w-full rounded-xl"><Crosshair className="mr-2 h-4 w-4 text-emerald-700" />{t("distance.recenter")}</Button>}
-                    <div className="mt-4">{actionButtons(true)}</div>
-                    {serviceCenter && browserLocation && <button type="button" onClick={() => window.open(createDirectionsUrl(serviceCenter, browserLocation), "_blank", "noopener,noreferrer")} className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-700"><ExternalLink className="h-4 w-4 text-emerald-700" />{t("distance.liveDirections")}</button>}
-                    <p className="mt-4 flex gap-2 text-[11px] leading-relaxed text-slate-400"><LockKeyhole className="mt-0.5 h-3.5 w-3.5 shrink-0" />{t("distance.privacy")}</p>
+
+                    {/* Stage 2 — primary location step, then balanced service choices */}
+                    <div className="mt-4 space-y-2">
+                      <Button
+                        type="button"
+                        onClick={requestLocation}
+                        disabled={isCheckingLocation}
+                        className="h-12 min-h-12 w-full rounded-xl bg-emerald-700 font-bold text-white hover:bg-emerald-800"
+                      >
+                        {isCheckingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden /> : <Crosshair className="mr-2 h-4 w-4" aria-hidden />}
+                        {locationState === "ready" || locationState === "route_fallback" || locationState === "route_unavailable" || locationState === "service_center_missing"
+                          ? t("distance.checkAgain")
+                          : t("distance.useLocation")}
+                      </Button>
+                      {browserLocation && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => setCustomerFocusRequest((value) => value + 1)}
+                          className="h-11 min-h-11 w-full rounded-xl border-slate-200"
+                        >
+                          <Crosshair className="mr-2 h-4 w-4 text-emerald-700" aria-hidden />
+                          {t("distance.recenter")}
+                        </Button>
+                      )}
+                    </div>
+
+                    <div className="mt-5 border-t border-slate-100 pt-4">
+                      <p className="mb-2.5 text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                        {t("distance.serviceChoiceLabel")}
+                      </p>
+                      {actionButtons(true)}
+                    </div>
+
+                    {serviceCenter && browserLocation && (
+                      <button
+                        type="button"
+                        onClick={() => window.open(createDirectionsUrl(serviceCenter, browserLocation), "_blank", "noopener,noreferrer")}
+                        className="mt-3 flex h-11 min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-slate-200 text-sm font-bold text-slate-700"
+                      >
+                        <ExternalLink className="h-4 w-4 text-emerald-700" aria-hidden />
+                        {t("distance.liveDirections")}
+                      </button>
+                    )}
+
+                    {showQuietPrivacyFooter && (
+                      <p className="mt-3 flex items-start gap-1.5 pb-1 text-[10px] leading-snug text-slate-400">
+                        <LockKeyhole className="mt-0.5 h-3 w-3 shrink-0 opacity-80" aria-hidden />
+                        <span>{t("distance.privacy")}</span>
+                      </p>
+                    )}
                   </div>
                 </MobileBottomSheetFrame>
-              </>
-            )}
-          </AnimatePresence>
+                </>
+              )}
+            </AnimatePresence>,
+            document.body,
+          )}
+          {createPortal(
+            <AnimatePresence>
+              {fullMapOpen && (
+                <motion.div
+                  className="fixed inset-0 z-[70] flex flex-col bg-white"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                >
+                  <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-4 py-3">
+                    <p className="text-sm font-bold text-slate-900">{t("distance.exploreMapTitle")}</p>
+                    <button
+                      type="button"
+                      onClick={() => setFullMapOpen(false)}
+                      aria-label={t("distance.closeMap")}
+                      className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
+                  </div>
+                  <div className="relative min-h-0 flex-1">
+                    {/* Same map element the preview uses, mounted fresh here with
+                        cooperativeGestures disabled (set via the `map` memo above)
+                        so drag/pinch/zoom work — nothing else on screen competes
+                        for the gesture in this full-screen view. */}
+                    {map}
+                    {searchControl}
+                    {mapControls}
+                    {mobileLocationControls}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>,
+            document.body,
+          )}
         </div>
       ) : (
         <div
@@ -645,7 +1034,9 @@ export default function CustomerDistanceExplorer({ serviceCenter }: CustomerDist
             <div className="mt-7 flex flex-wrap gap-3">
               <Button type="button" onClick={requestLocation} disabled={isCheckingLocation} className="h-12 rounded-full bg-emerald-700 px-5 font-bold text-white shadow-[0_12px_28px_rgba(4,120,87,0.25)] hover:bg-emerald-800">
                 {isCheckingLocation ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Crosshair className="mr-2 h-4 w-4" />}
-                {locationState === "ready" || locationState === "route_unavailable" ? t("distance.checkAgain") : t("distance.useLocation")}
+                {locationState === "ready" || locationState === "route_fallback" || locationState === "route_unavailable" || locationState === "service_center_missing"
+                  ? t("distance.checkAgain")
+                  : t("distance.useLocation")}
               </Button>
             </div>
           </motion.div>
