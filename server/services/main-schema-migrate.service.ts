@@ -1897,8 +1897,24 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   },
 ];
 
+/**
+ * Toolchain-independent migration identity.
+ *
+ * Deliberately hashes only `id` and `description` — both string literals, which
+ * survive bundling and minification byte-identically.
+ *
+ * `up.toString()` MUST NOT be included: the release CLI runs unminified via tsx
+ * (`db:migrate:main`) while the server runs the esbuild `minify: true` bundle
+ * (`dist/index.cjs`). Hashing function source made those two disagree on every
+ * migration, so a correctly-migrated production database still failed startup
+ * verification with "Mismatched: 48" and served 503 fail-closed.
+ *
+ * Trade-off: edits to an existing migration body are no longer detected by
+ * checksum. Migrations are append-only by policy — change behaviour by adding a
+ * new migration, never by editing an applied one.
+ */
 export function computeMigrationChecksum(migration: MainSchemaMigration): string {
-  const body = `${migration.id}\n${migration.description}\n${migration.up.toString()}`;
+  const body = `${migration.id}\n${migration.description}`;
   return createHash("sha256").update(body, "utf8").digest("hex").slice(0, 16);
 }
 
@@ -2042,7 +2058,11 @@ export async function verifyMainSchemaLedger(): Promise<LedgerVerification> {
   if (!dbUrl) {
     return { ok: false, missing: [], mismatched: [], extra: [], appliedIds: [], currentVersion: null, error: "DATABASE_URL is not set" };
   }
-  const client = new pg.Client({ connectionString: dbUrl, connectionTimeoutMillis: 10000 });
+  const client = new pg.Client({
+    connectionString: dbUrl,
+    connectionTimeoutMillis: 10000,
+    ssl: dbUrl.includes("sslmode=require") ? { rejectUnauthorized: false } : undefined,
+  });
   try {
     await client.connect();
     const tableExists = await client.query(`SELECT to_regclass('public.promise_schema_migrations') AS reg`);
@@ -2145,7 +2165,11 @@ export async function runMainSchemaMigrations(): Promise<MainSchemaResult> {
     return { status: "failed", appliedIds: [], failedId: null, error, durationMs: migrationState.durationMs, requiredVersion: REQUIRED_MAIN_SCHEMA_VERSION, currentVersion: null };
   }
 
-  const client = new pg.Client({ connectionString: dbUrl, connectionTimeoutMillis: 10000 });
+  const client = new pg.Client({
+    connectionString: dbUrl,
+    connectionTimeoutMillis: 10000,
+    ssl: dbUrl.includes("sslmode=require") ? { rejectUnauthorized: false } : undefined,
+  });
   let lockAcquired = false;
 
   try {
