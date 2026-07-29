@@ -5,7 +5,7 @@ import { storeAuthSession, clearAuthSession, getStoredAuthSession } from "@/lib/
 import { clearPersistedClientState } from "@/lib/queryClient";
 import { Capacitor } from "@capacitor/core";
 import { GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut } from "firebase/auth";
-import { auth } from "@/lib/firebase";
+import { getFirebaseAuth } from "@/lib/firebase";
 
 interface CustomerAuthContextType {
   customer: CustomerSession | null;
@@ -86,6 +86,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
   };
 
   const loginWithGoogle = async () => {
+    const auth = getFirebaseAuth();
+    if (!auth) {
+      // Surfaced to the user as a normal sign-in failure rather than a crash.
+      throw new Error("Google Sign-In is unavailable. Please sign in with your phone number and password.");
+    }
     const provider = new GoogleAuthProvider();
     const cred = await signInWithPopup(auth, provider);
     const idToken = await cred.user.getIdToken();
@@ -118,8 +123,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     } catch {
       // Ignore logout errors
     }
-    // Firebase sign-out (no-op if not signed in via Firebase)
-    try { await firebaseSignOut(auth); } catch { /* ignore */ }
+    // Firebase sign-out (no-op if not signed in via Firebase, or not configured)
+    try {
+      const auth = getFirebaseAuth();
+      if (auth) await firebaseSignOut(auth);
+    } catch { /* ignore */ }
 
     try {
       await fetchApi("/auth/firebase/logout", { method: "POST" });

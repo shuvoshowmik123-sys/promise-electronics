@@ -630,6 +630,16 @@ export default function CustomerDistanceExplorer({
 
   const map = (
     <AreaMapCanvas
+      /**
+       * Forces a fresh MapLibre instance when switching between the embedded
+       * preview and the expanded sheet. AreaMapCanvas builds its map inside a
+       * useEffect with an EMPTY dependency array, so gesture options (dragPan,
+       * touchZoomRotate, and the pointer-events:none applied for the page-scroll
+       * profile) are fixed at construction and never revisited. Without a
+       * changing key, React could reuse the instance and the expanded map would
+       * stay frozen exactly as it is in the preview.
+       */
+      key={fullMapOpen ? "map-expanded" : "map-preview"}
       areas={areas}
       selectedAreaId={selectedArea?.id}
       onSelectArea={chooseArea}
@@ -962,34 +972,48 @@ export default function CustomerDistanceExplorer({
           {createPortal(
             <AnimatePresence>
               {fullMapOpen && (
-                <motion.div
-                  className="fixed inset-0 z-[70] flex flex-col bg-white"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                >
-                  <div className="flex shrink-0 items-center justify-between border-b border-slate-100 px-4 py-3">
-                    <p className="text-sm font-bold text-slate-900">{t("distance.exploreMapTitle")}</p>
-                    <button
-                      type="button"
-                      onClick={() => setFullMapOpen(false)}
-                      aria-label={t("distance.closeMap")}
-                      className="flex h-10 w-10 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
-                    >
-                      <X className="h-5 w-5" />
-                    </button>
-                  </div>
-                  <div className="relative min-h-0 flex-1">
-                    {/* Same map element the preview uses, mounted fresh here with
-                        cooperativeGestures disabled (set via the `map` memo above)
-                        so drag/pinch/zoom work — nothing else on screen competes
-                        for the gesture in this full-screen view. */}
-                    {map}
-                    {searchControl}
-                    {mapControls}
-                    {mobileLocationControls}
-                  </div>
-                </motion.div>
+                <>
+                  <motion.button
+                    type="button"
+                    aria-label={t("distance.closeMap")}
+                    className="fixed inset-0 z-[65] bg-slate-950/30"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setFullMapOpen(false)}
+                  />
+                  {/* Slides up as a bottom sheet, matching the area-details sheet
+                      pattern used elsewhere in this component. Tall enough that
+                      the map is genuinely usable, but still a sheet over the page
+                      rather than a full-screen takeover. */}
+                  <MobileBottomSheetFrame
+                    onClose={() => setFullMapOpen(false)}
+                    dragHandleOnly
+                    className="fixed inset-x-0 bottom-0 z-[70] flex h-[88dvh] max-h-[88dvh] flex-col overflow-hidden rounded-t-[28px] bg-white shadow-[0_-16px_44px_rgba(15,23,42,0.20)]"
+                  >
+                    <MobileBottomSheetDragHandle onClose={() => setFullMapOpen(false)} />
+                    <div className="flex shrink-0 items-center justify-between px-5 pb-2">
+                      <p className="text-sm font-bold text-slate-900">{t("distance.exploreMapTitle")}</p>
+                      <button
+                        type="button"
+                        onClick={() => setFullMapOpen(false)}
+                        aria-label={t("distance.closeMap")}
+                        className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 hover:bg-slate-100"
+                      >
+                        <X className="h-5 w-5" />
+                      </button>
+                    </div>
+                    <div className="relative min-h-0 flex-1 overflow-hidden">
+                      {/* Same map element as the preview, but mounted here with
+                          cooperativeGestures disabled so drag/pinch/zoom work —
+                          inside the sheet nothing competes for the gesture. */}
+                      {map}
+                      {searchControl}
+                      {mapControls}
+                      {mobileLocationControls}
+                    </div>
+                  </MobileBottomSheetFrame>
+                </>
               )}
             </AnimatePresence>,
             document.body,
