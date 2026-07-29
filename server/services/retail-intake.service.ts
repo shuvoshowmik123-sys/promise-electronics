@@ -67,6 +67,10 @@ export interface CanonicalIntakeInput {
     requestIntent?: string | null;
     serviceId?: string | null;
     serviceAreaId?: string | null;
+    /** PICKUP-MAP-PIN-01 — customer-dropped pin. Both or neither; never one alone. */
+    pickupLatitude?: number | null;
+    pickupLongitude?: number | null;
+    pickupLocationSource?: string | null;
     isQuote?: boolean;
     customerId?: string | null;
     source?: string | null;
@@ -272,6 +276,22 @@ export function validateCanonicalIntakePayload(input: CanonicalIntakeInput): voi
         if (!ok) rejectPayload("Invalid request data.");
     }
 
+    // PICKUP-MAP-PIN-01 — mirrors chk_service_requests_pickup_latlng so a bad pin
+    // is refused with a clean 400 instead of surfacing as a DB constraint error.
+    const hasLat = input.pickupLatitude != null;
+    const hasLon = input.pickupLongitude != null;
+    if (hasLat !== hasLon) rejectPayload("Invalid request data.");
+    if (hasLat && hasLon) {
+        const lat = Number(input.pickupLatitude);
+        const lon = Number(input.pickupLongitude);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) rejectPayload("Invalid request data.");
+        if (lat < -90 || lat > 90 || lon < -180 || lon > 180) rejectPayload("Invalid request data.");
+    }
+    if (input.pickupLocationSource != null && input.pickupLocationSource !== "") {
+        const ok = ["map_pin", "gps", "manual_address"].includes(String(input.pickupLocationSource));
+        if (!ok) rejectPayload("Invalid request data.");
+    }
+
     if (input.mediaUrls != null && input.mediaUrls !== "") {
         if (typeof input.mediaUrls !== "string") rejectPayload("Invalid request data.");
         if (input.mediaUrls.length > L.mediaPayloadTotalChars) {
@@ -287,9 +307,9 @@ export function validateCanonicalIntakePayload(input: CanonicalIntakeInput): voi
         if (parsed.length > L.mediaUrlCount) rejectPayload("Request data exceeds allowed size.");
         for (const item of parsed) {
             // Two accepted shapes:
-            //   1. "https://..."                   (legacy plain URL)
-            //   2. { url, fileId?, resourceType? } (current clients)
-            // Shape 2 is canonical - fileId is required to clean up orphaned R2
+            //   1. "https://..."                                  (legacy plain URL)
+            //   2. { url, fileId?, resourceType? }                (current clients)
+            // Shape 2 is canonical — fileId is required to clean up orphaned R2
             // objects. Both customer intake surfaces (repair-request.tsx and
             // MobileServiceWizard.tsx) send it, and getMediaUrls() already reads
             // both. Rejecting objects here made every request WITH an attached
@@ -580,6 +600,13 @@ export async function createRetailServiceRequest(
                         requestIntent: input.requestIntent || null,
                         serviceId: input.serviceId || null,
                         serviceAreaId: input.serviceAreaId || null,
+                        // PICKUP-MAP-PIN-01 — `?? null` not `|| null`: latitude 0 is a
+                        // legitimate coordinate and must not be coerced away.
+                        pickupLatitude: input.pickupLatitude ?? null,
+                        pickupLongitude: input.pickupLongitude ?? null,
+                        pickupLocationSource: input.pickupLocationSource || null,
+                        pickupLocationCapturedAt:
+                            input.pickupLatitude != null && input.pickupLongitude != null ? now : null,
                         status: "Pending",
                         trackingStatus: trackingStatus,
                         isQuote: input.isQuote || false,

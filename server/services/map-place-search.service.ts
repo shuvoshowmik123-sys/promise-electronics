@@ -760,8 +760,102 @@ export async function searchMapBoundaries(normalizedQuery: string): Promise<MapB
     }
 }
 
+/* ── Reverse geocoding (PICKUP-MAP-PIN-01) ───────────────────────────────
+ * Turns a customer-dropped pin into a readable address.
+ *
+ * Shares waitForBoundaryProviderSlot() with boundary search so ALL Nominatim
+ * traffic from this process stays serialized behind one 1.1s gate — Nominatim's
+ * usage policy caps us at ~1 req/sec across the whole application, not per
+ * endpoint. Callers must only invoke this on pin *release*, never during drag.
+ *
+ * Coordinates are never logged, cached to disk, or persisted here.
+ */
+const REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse';
+const REVERSE_CACHE_TTL_MS = 60 * 60_000;
+const REVERSE_CACHE_MAX_ENTRIES = 200;
+/** ~4 decimal places ≈ 11m — coarse enough to get cache hits, fine enough to stay useful. */
+const REVERSE_CACHE_PRECISION = 4;
+
+const reverseCache = new Map<string, { expiresAt: number; address: string | null }>();
+
+function pruneReverseCache(): void {
+    const now = Date.now();
+    for (const [key, entry] of Array.from(reverseCache.entries())) {
+        if (entry.expiresAt <= now) reverseCache.delete(key);
+    }
+    while (reverseCache.size > REVERSE_CACHE_MAX_ENTRIES) {
+        const oldest = reverseCache.keys().next().value as string | undefined;
+        if (oldest === undefined) break;
+        reverseCache.delete(oldest);
+    }
+}
+
+export function isWithinBangladesh(lat: number, lon: number): boolean {
+    return (
+        Number.isFinite(lat) &&
+        Number.isFinite(lon) &&
+        lat >= BD_LAT_MIN &&
+        lat <= BD_LAT_MAX &&
+        lon >= BD_LON_MIN &&
+        lon <= BD_LON_MAX
+    );
+}
+
+/**
+ * Reverse-geocode a pin to a display address.
+ * Returns null when the provider has no result — callers must keep the
+ * customer's typed address in that case rather than blanking the field.
+ * Throws on provider/network failure so the route can map it to 503.
+ */
+export async function reverseGeocodePin(lat: number, lon: number): Promise<string | null> {
+    if (!isWithinBangladesh(lat, lon)) return null;
+
+    pruneReverseCache();
+    const cacheKey = `${lat.toFixed(REVERSE_CACHE_PRECISION)},${lon.toFixed(REVERSE_CACHE_PRECISION)}`;
+    const cached = reverseCache.get(cacheKey);
+    if (cached && cached.expiresAt > Date.now()) return cached.address;
+
+    await waitForBoundaryProviderSlot();
+    const params = new URLSearchParams({
+        lat: String(lat),
+        lon: String(lon),
+        format: 'jsonv2',
+        addressdetails: '1',
+        zoom: '18', // building/house level
+    });
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), PROVIDER_TIMEOUT_MS);
+    try {
+        const response = await fetch(`${REVERSE_URL}?${params.toString()}`, {
+            method: 'GET',
+            headers: {
+                Accept: 'application/json',
+                'Accept-Language': 'en',
+                'User-Agent': 'PromiseElectronics-PickupPinReverse/1.0',
+            },
+            signal: controller.signal,
+        });
+        if (!response.ok) throw new Error('provider_http_error');
+        const responseText = await response.text();
+        if (Buffer.byteLength(responseText, 'utf8') > BOUNDARY_PROVIDER_MAX_BYTES) {
+            throw new Error('provider_response_too_large');
+        }
+        const payload = JSON.parse(responseText) as { display_name?: unknown };
+        const raw = typeof payload.display_name === 'string' ? payload.display_name.trim() : '';
+        const address = raw.length > 0 && raw.length <= 500 ? raw : null;
+
+        reverseCache.set(cacheKey, { expiresAt: Date.now() + REVERSE_CACHE_TTL_MS, address });
+        pruneReverseCache();
+        return address;
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
 /** Test helper — clears cache (local QA only; not exported via routes). */
 export function __clearMapPlaceSearchCacheForTests(): void {
     cache.clear();
     boundaryCache.clear();
+    reverseCache.clear();
 }

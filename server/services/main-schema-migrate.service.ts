@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_07_25_work_locations_table";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_07_29_service_request_pickup_pin";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -1893,6 +1893,39 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       await client.query(
         `CREATE INDEX IF NOT EXISTS idx_work_locations_store ON work_locations (store_id)`,
       );
+    },
+  },
+  // ── Pickup map pin (PICKUP-MAP-PIN-01) ─────────────────────────────────
+  {
+    id: "2026_07_29_service_request_pickup_pin",
+    description:
+      "Add pickup pin coordinates to service_requests for customer map-based pickup location. Idempotent ADD COLUMN IF NOT EXISTS plus a both-or-neither range CHECK. No backfill, no data movement; the existing address text column is untouched.",
+    up: async (client) => {
+      await client.query(`
+        ALTER TABLE service_requests
+          ADD COLUMN IF NOT EXISTS pickup_latitude DOUBLE PRECISION,
+          ADD COLUMN IF NOT EXISTS pickup_longitude DOUBLE PRECISION,
+          ADD COLUMN IF NOT EXISTS pickup_location_source TEXT,
+          ADD COLUMN IF NOT EXISTS pickup_location_captured_at TIMESTAMP
+      `);
+      // Drop-then-add so the constraint definition stays idempotent and editable.
+      await client.query(`
+        ALTER TABLE service_requests
+          DROP CONSTRAINT IF EXISTS chk_service_requests_pickup_latlng
+      `);
+      // The IS NOT NULL guards are load-bearing. Without them a half-pin
+      // (latitude set, longitude NULL) evaluates to NULL rather than FALSE, and
+      // a CHECK constraint only rejects on explicit FALSE — so the bad row would
+      // be accepted. Verified against a disposable database both ways.
+      await client.query(`
+        ALTER TABLE service_requests
+          ADD CONSTRAINT chk_service_requests_pickup_latlng CHECK (
+            (pickup_latitude IS NULL AND pickup_longitude IS NULL)
+            OR (pickup_latitude IS NOT NULL AND pickup_longitude IS NOT NULL
+                AND pickup_latitude BETWEEN -90 AND 90
+                AND pickup_longitude BETWEEN -180 AND 180)
+          )
+      `);
     },
   },
 ];

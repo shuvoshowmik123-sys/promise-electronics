@@ -1364,6 +1364,16 @@ export const serviceRequests = pgTable("service_requests", {
   // Verification flags
   agreedToPickup: boolean("agreed_to_pickup").default(false),
   pickupAgreedAt: timestamp("pickup_agreed_at"),
+  // PICKUP-MAP-PIN-01 — customer-dropped pickup pin.
+  // Deliberately alongside `address` (never replacing it): the rider still needs
+  // readable text, and OSM reverse-geocoding is imprecise for Dhaka house numbers.
+  // DOUBLE PRECISION, not real() — real() gives ~7 significant digits, roughly 1m
+  // of error at Dhaka's latitude. Matches work_locations / service_areas.
+  pickupLatitude: doublePrecision("pickup_latitude"),
+  pickupLongitude: doublePrecision("pickup_longitude"),
+  /** 'map_pin' | 'gps' | 'manual_address' — tells the rider how much to trust the coords. */
+  pickupLocationSource: text("pickup_location_source"),
+  pickupLocationCapturedAt: timestamp("pickup_location_captured_at"),
   adminInteracted: boolean("admin_interacted").default(false),
   adminInteractedAt: timestamp("admin_interacted_at"),
   adminInteractedBy: text("admin_interacted_by"),
@@ -1397,6 +1407,8 @@ export const serviceRequests = pgTable("service_requests", {
 // SERVICE-INTAKE-RELIABILITY-01D — aligned with server INTAKE_PAYLOAD_LIMITS
 export const insertServiceRequestSchema = createInsertSchema(serviceRequests).omit({
   id: true,
+  // Server-stamped when a pin is present — never client-supplied.
+  pickupLocationCapturedAt: true,
   ticketNumber: true,
   customerId: true,
   createdAt: true,

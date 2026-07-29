@@ -7,7 +7,11 @@ import * as serviceAreaRepo from '../repositories/service-area.repository.js';
 import { estimateRoute } from '../services/route-estimate.service.js';
 import { routeEstimateLimiter, mapPlaceSearchLimiter } from './middleware/rate-limit.js';
 import { settingsRepo } from '../repositories/index.js';
-import { normalizePlaceQuery, searchMapBoundaries, searchMapPlaces } from '../services/map-place-search.service.js';
+import { isWithinBangladesh, normalizePlaceQuery, reverseGeocodePin, searchMapBoundaries, searchMapPlaces } from '../services/map-place-search.service.js';
+import {
+    readCanonicalServiceCenterLocation,
+    updateServiceCenterLocationAtomic,
+} from '../services/attendance-location.service.js';
 
 const router = Router();
 
@@ -208,24 +212,20 @@ const serviceCenterSchema = z.object({
     latitude: z.number().finite().min(BD_LAT_MIN).max(BD_LAT_MAX).nullable(),
     longitude: z.number().finite().min(BD_LON_MIN).max(BD_LON_MAX).nullable(),
     googlePlaceId: z.string().trim().max(300),
+    attendanceRadiusMeters: z.number().int().min(25).max(1000).optional(),
 }).refine((value) => (value.latitude == null) === (value.longitude == null), {
     message: 'Latitude and longitude must both be provided or both be null',
 });
 
 async function readServiceCenterLocation() {
-    const [address, latitude, longitude, googlePlaceId] = await Promise.all([
-        settingsRepo.getSetting('service_center_contact'),
-        settingsRepo.getSetting('service_center_latitude'),
-        settingsRepo.getSetting('service_center_longitude'),
-        settingsRepo.getSetting('service_center_google_place_id'),
-    ]);
-    const parsedLatitude = latitude?.value ? Number(latitude.value) : null;
-    const parsedLongitude = longitude?.value ? Number(longitude.value) : null;
+    const view = await readCanonicalServiceCenterLocation();
     return {
-        address: address?.value ?? '',
-        latitude: Number.isFinite(parsedLatitude) ? parsedLatitude : null,
-        longitude: Number.isFinite(parsedLongitude) ? parsedLongitude : null,
-        googlePlaceId: googlePlaceId?.value ?? '',
+        address: view.address,
+        latitude: view.latitude,
+        longitude: view.longitude,
+        googlePlaceId: view.googlePlaceId,
+        attendanceRadiusMeters: view.attendanceRadiusMeters,
+        canonicalAttendanceConfigured: view.canonicalAttendanceConfigured,
     };
 }
 
@@ -308,24 +308,48 @@ router.patch(
         try {
             const previous = await readServiceCenterLocation();
             const value = parsed.data;
-            await Promise.all([
-                settingsRepo.upsertSetting({ key: 'service_center_contact', value: value.address }),
-                settingsRepo.upsertSetting({ key: 'service_center_latitude', value: value.latitude?.toString() ?? '' }),
-                settingsRepo.upsertSetting({ key: 'service_center_longitude', value: value.longitude?.toString() ?? '' }),
-                settingsRepo.upsertSetting({ key: 'service_center_google_place_id', value: value.googlePlaceId }),
-            ]);
-            await auditLogger.log({
+            const updated = await updateServiceCenterLocationAtomic({
+                address: value.address,
+                latitude: value.latitude,
+                longitude: value.longitude,
+                googlePlaceId: value.googlePlaceId,
+                attendanceRadiusMeters: value.attendanceRadiusMeters,
+            });
+            // Audit failure must not fail the mutation
+            auditLogger.log({
                 userId: req.session.adminUserId!,
                 action: 'UPDATE_SERVICE_CENTER_LOCATION',
                 entity: 'Setting',
                 entityId: 'service-center-location',
-                details: 'Updated canonical service-center location for map routing',
-                oldValue: previous,
-                newValue: value,
+                details: 'Updated canonical service-center location and linked attendance work location',
+                oldValue: {
+                    address: previous.address,
+                    latitude: previous.latitude,
+                    longitude: previous.longitude,
+                    googlePlaceId: previous.googlePlaceId,
+                    attendanceRadiusMeters: previous.attendanceRadiusMeters,
+                },
+                newValue: {
+                    address: updated.address,
+                    latitude: updated.latitude,
+                    longitude: updated.longitude,
+                    googlePlaceId: updated.googlePlaceId,
+                    attendanceRadiusMeters: updated.attendanceRadiusMeters,
+                },
                 req,
+            }).catch(() => {});
+            res.json({
+                address: updated.address,
+                latitude: updated.latitude,
+                longitude: updated.longitude,
+                googlePlaceId: updated.googlePlaceId,
+                attendanceRadiusMeters: updated.attendanceRadiusMeters,
+                canonicalAttendanceConfigured: updated.canonicalAttendanceConfigured,
             });
-            res.json(value);
-        } catch (error) {
+        } catch (error: any) {
+            if (error?.status === 400) {
+                return res.status(400).json({ error: error.message });
+            }
             logRouteError('ServiceAreas.ServiceCenterUpdate', req, error);
             res.status(500).json({ error: 'Failed to update service-center location' });
         }
@@ -865,6 +889,34 @@ router.get(
             res.json({ results });
         } catch {
             res.status(503).json({ error: 'Place search is temporarily unavailable' });
+        }
+    },
+);
+
+// ── Pickup pin reverse geocode (PICKUP-MAP-PIN-01) ─────────────────────────
+// Customer-facing. Turns a dropped pin into a readable address for the pickup
+// field. Rate-limited and serialized behind the shared Nominatim gate.
+// Never persists or logs coordinates. Returns { address: null } when the
+// provider has no match — the client must then keep whatever the customer typed.
+router.get(
+    '/api/public/reverse-geocode',
+    mapPlaceSearchLimiter,
+    async (req: Request, res: Response) => {
+        try {
+            const lat = Number(req.query.lat);
+            const lon = Number(req.query.lon);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+                return res.status(400).json({ error: 'lat and lon must be numbers' });
+            }
+            if (!isWithinBangladesh(lat, lon)) {
+                // Out-of-country pins are refused before any provider call.
+                return res.status(400).json({ error: 'Location must be inside Bangladesh' });
+            }
+            const address = await reverseGeocodePin(lat, lon);
+            res.setHeader('Cache-Control', 'private, no-store');
+            res.json({ address });
+        } catch {
+            res.status(503).json({ error: 'Address lookup is temporarily unavailable' });
         }
     },
 );

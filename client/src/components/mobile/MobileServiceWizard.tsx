@@ -9,10 +9,10 @@ import {
   CheckCircle2,
   ChevronLeft,
   FileImage,
-  Home,
   Loader2,
   MapPin,
   Phone,
+  Truck,
   Tv,
   Upload,
   VolumeX,
@@ -21,6 +21,8 @@ import {
   Zap,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PickupLocationPicker } from "@/components/maps/PickupLocationPicker";
+import { mergePinAddress } from "@/lib/pickup-address";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -146,6 +148,13 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [servicePreference, setServicePreference] = useState<ServicePreference>("home_pickup");
   const [serviceAreaId, setServiceAreaId] = useState("");
+  // PICKUP-MAP-PIN-01 — pin is optional; a typed address alone stays valid.
+  const [pickupLatitude, setPickupLatitude] = useState<number | null>(null);
+  const [pickupLongitude, setPickupLongitude] = useState<number | null>(null);
+  const [pickupLocationSource, setPickupLocationSource] = useState<"map_pin" | "gps" | null>(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  /** Address line contributed by the last pin, so re-pinning replaces it instead of stacking. */
+  const lastPinAddressRef = useRef<string | null>(null);
   const [customerName, setCustomerName] = useState(customer?.name || "");
   const [phone, setPhone] = useState(normalizePhone(customer?.phone || ""));
   const [address, setAddress] = useState(customer?.address || "");
@@ -421,6 +430,11 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
         requestIntent: "repair",
         serviceMode: servicePreference === "home_pickup" ? "pickup" : "service_center",
         serviceAreaId: serviceAreaId || undefined,
+        // Pin only travels with a pickup request — a drop-off has no pickup location.
+        pickupLatitude: servicePreference === "home_pickup" ? pickupLatitude ?? undefined : undefined,
+        pickupLongitude: servicePreference === "home_pickup" ? pickupLongitude ?? undefined : undefined,
+        pickupLocationSource:
+          servicePreference === "home_pickup" ? pickupLocationSource ?? undefined : undefined,
       });
       return;
     }
@@ -669,8 +683,10 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
             </div>
             <div className="space-y-3">
               {[
-                { id: "home_pickup", title: t("wizard.homeVisit"), icon: Home },
-                { id: "service_center", title: "Drop-off", bn: "শপে নিয়ে আসব", icon: MapPin },
+                { id: "home_pickup", title: t("wizard.pickupDrop"), icon: Truck },
+                // Was a hardcoded English title with an unused `bn` field, so this
+                // option never translated for Bangla users. Use the t() key.
+                { id: "service_center", title: t("wizard.dropOff"), icon: MapPin },
                 { id: "both", title: t("wizard.callFirst"), icon: Phone },
               ].map((option) => {
                 const Icon = option.icon;
@@ -694,8 +710,26 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
             </div>
             {servicePreference === "home_pickup" && (
               <div className="space-y-2 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
-                <Label>{t("wizard.pickupAddress")}</Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label>{t("wizard.pickupAddress")}</Label>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPickerOpen(true)}
+                    className="h-9 gap-1.5 rounded-full border-emerald-200 text-emerald-700"
+                  >
+                    <MapPin className="h-4 w-4" />
+                    {t("pickupPin.open")}
+                  </Button>
+                </div>
                 <Textarea value={address} onChange={(event) => setAddress(event.target.value)} className="min-h-24 rounded-2xl border-emerald-100" placeholder="Area, road, house..." />
+                {pickupLatitude != null && pickupLongitude != null && (
+                  <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+                    <MapPin className="h-3.5 w-3.5" />
+                    {t("pickupPin.pinned")} ({pickupLatitude.toFixed(5)}, {pickupLongitude.toFixed(5)})
+                  </p>
+                )}
               </div>
             )}
             <div className="space-y-2 rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
@@ -735,7 +769,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
             <div className="rounded-3xl bg-emerald-50 p-4 text-sm text-slate-700">
               <p className="font-bold text-slate-950">{t("wizard.summary")}</p>
               <p className="mt-2">{brand || "TV"} {screenSize} - {selectedProblem?.en || primaryIssue}</p>
-              <p>{servicePreference === "home_pickup" ? t("wizard.homeVisit") : servicePreference === "service_center" ? t("wizard.dropOff") : t("wizard.callFirst")}</p>
+              <p>{servicePreference === "home_pickup" ? t("wizard.pickupDrop") : servicePreference === "service_center" ? t("wizard.dropOff") : t("wizard.callFirst")}</p>
             </div>
           </motion.div>
         )}
@@ -780,6 +814,26 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
           </div>
         </div>
       )}
+      <PickupLocationPicker
+        open={pickerOpen}
+        onClose={() => setPickerOpen(false)}
+        initialLatitude={pickupLatitude}
+        initialLongitude={pickupLongitude}
+        onConfirm={(location) => {
+          setPickupLatitude(location.latitude);
+          setPickupLongitude(location.longitude);
+          setPickupLocationSource(location.source);
+          // Append rather than overwrite. OSM rarely knows Dhaka house/flat
+          // numbers, so a customer's "House 42, Flat 3B" is better data than the
+          // reverse-geocoded line — the rider gets both, typed detail first.
+          if (location.address) {
+            const resolved = location.address;
+            setAddress((current) => mergePinAddress(current, resolved, lastPinAddressRef.current));
+            lastPinAddressRef.current = resolved;
+          }
+          setPickerOpen(false);
+        }}
+      />
     </main>
   );
 }

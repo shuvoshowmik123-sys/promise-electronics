@@ -1489,6 +1489,28 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                             <div><Label className="text-muted-foreground text-xs">Name</Label><p className="font-medium">{selectedRequest.customerName}</p></div>
                                             <div><Label className="text-muted-foreground text-xs">Phone</Label><p className="font-medium">{selectedRequest.phone}</p></div>
                                             {selectedRequest.address && <div className="col-span-2"><Label className="text-muted-foreground text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Address</Label><p>{selectedRequest.address}</p></div>}
+                                            {/* PICKUP-MAP-PIN-01 — deep link opens the exact pin in the rider's map app. */}
+                                            {selectedRequest.pickupLatitude != null && selectedRequest.pickupLongitude != null && (
+                                                <div className="col-span-2">
+                                                    <Label className="text-muted-foreground text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Pickup pin</Label>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <p className="font-mono text-xs">{selectedRequest.pickupLatitude.toFixed(6)}, {selectedRequest.pickupLongitude.toFixed(6)}</p>
+                                                        {selectedRequest.pickupLocationSource && (
+                                                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-600">
+                                                                {selectedRequest.pickupLocationSource === "gps" ? "GPS" : selectedRequest.pickupLocationSource === "map_pin" ? "Map pin" : "Typed"}
+                                                            </span>
+                                                        )}
+                                                        <a
+                                                            href={`https://www.google.com/maps/search/?api=1&query=${selectedRequest.pickupLatitude},${selectedRequest.pickupLongitude}`}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="rounded-full bg-emerald-600 px-3 py-1 text-[11px] font-bold text-white hover:bg-emerald-700"
+                                                        >
+                                                            Open in Maps
+                                                        </a>
+                                                    </div>
+                                                </div>
+                                            )}
                                             <div><Label className="text-muted-foreground text-xs">Preference</Label><p className="font-medium capitalize">{selectedRequest.servicePreference === "pickup" || selectedRequest.servicePreference === "home_pickup" ? "Pickup & Drop" : "Service Center Visit"}</p></div>
                                         </div>
                                     </div>

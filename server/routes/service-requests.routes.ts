@@ -310,6 +310,10 @@ router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ?
             requestIntent: validated.requestIntent || null,
             serviceId: (validated as any).serviceId || null,
             serviceAreaId: (validated as any).serviceAreaId || null,
+            // PICKUP-MAP-PIN-01 — `?? null` keeps a legitimate 0 coordinate intact.
+            pickupLatitude: (validated as any).pickupLatitude ?? null,
+            pickupLongitude: (validated as any).pickupLongitude ?? null,
+            pickupLocationSource: (validated as any).pickupLocationSource || null,
             customerId,
             intakeSource: customerId ? "customer_portal" : "public_web",
             idempotencyKey,
