@@ -763,6 +763,65 @@ export default function CustomerDistanceExplorer({
     </div>
   );
 
+  /**
+   * Floating action bar for the expanded map sheet.
+   *
+   * One control at a time, so it never covers the map:
+   *  - no location yet  → a single labelled "Check distance" button, so the
+   *    purpose of the map is obvious instead of hidden behind a bare crosshair.
+   *  - distance known    → the distance itself plus the booking CTA, because
+   *    that is the moment the customer is ready to act.
+   *
+   * Deliberately compact (pointer-events only on the pill, transparent
+   * elsewhere) and pinned to the bottom inset so it clears the map attribution.
+   */
+  const expandedMapActionBar = (
+    // bottom-9 clears the OpenFreeMap/OpenStreetMap attribution, which is a
+    // licence requirement and must stay legible.
+    <div className="pointer-events-none absolute inset-x-3 bottom-9 z-30 flex flex-col items-stretch gap-2">
+      {distanceLabel && (
+        <div className="pointer-events-auto mx-auto flex items-center gap-2 rounded-full border border-white/80 bg-white/95 px-3.5 py-1.5 shadow-[0_10px_26px_rgba(15,23,42,0.18)] backdrop-blur-xl">
+          <Navigation className="h-3.5 w-3.5 shrink-0 text-emerald-700" aria-hidden />
+          <span className="text-xs font-bold text-slate-900">{distanceLabel}</span>
+          {canOpenDirections && serviceCenter && browserLocation && (
+            <button
+              type="button"
+              onClick={() => window.open(createDirectionsUrl(serviceCenter, browserLocation), "_blank", "noopener,noreferrer")}
+              aria-label={t("distance.liveDirections")}
+              title={t("distance.liveDirections")}
+              className="-mr-1 flex h-7 w-7 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-emerald-50 hover:text-emerald-700"
+            >
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+            </button>
+          )}
+        </div>
+      )}
+      {distanceLabel ? (
+        <button
+          type="button"
+          onClick={() => goToRepair("pickup")}
+          className="pointer-events-auto flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-4 text-sm font-bold text-white shadow-[0_12px_30px_rgba(4,120,87,0.32)] transition-colors hover:bg-emerald-800 active:bg-emerald-900"
+        >
+          <Truck className="h-4 w-4 shrink-0" aria-hidden />
+          {t("distance.requestPickupCta")}
+          <ArrowRight className="h-4 w-4 shrink-0" aria-hidden />
+        </button>
+      ) : (
+        <button
+          type="button"
+          onClick={requestLocation}
+          disabled={isCheckingLocation}
+          className="pointer-events-auto flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-emerald-700 px-4 text-sm font-bold text-white shadow-[0_12px_30px_rgba(4,120,87,0.32)] transition-colors hover:bg-emerald-800 active:bg-emerald-900 disabled:cursor-wait disabled:bg-emerald-700/70"
+        >
+          {isCheckingLocation
+            ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" aria-hidden />
+            : <Crosshair className="h-4 w-4 shrink-0" aria-hidden />}
+          {isCheckingLocation ? t("distance.checking") : t("distance.checkDistanceCta")}
+        </button>
+      )}
+    </div>
+  );
+
   const mobileLocationControls = isMobile ? (
     <div className="absolute bottom-[5.5rem] right-4 z-30 flex flex-col items-end gap-2">
       {canOpenDirections && serviceCenter && browserLocation && (
@@ -1010,7 +1069,22 @@ export default function CustomerDistanceExplorer({
                       {map}
                       {searchControl}
                       {mapControls}
-                      {mobileLocationControls}
+                      {/* Recenter-on-me pin. Small circular control on the right so
+                          it never overlaps the action bar below. Uses the preview's
+                          own handler: locates first time, recenters after. */}
+                      <button
+                        type="button"
+                        onClick={useCurrentLocationOnMap}
+                        disabled={isCheckingLocation}
+                        aria-label={browserLocation ? t("distance.recenter") : t("distance.useLocation")}
+                        title={browserLocation ? t("distance.recenter") : t("distance.useLocation")}
+                        className="absolute bottom-[7.5rem] right-4 z-30 flex h-12 w-12 items-center justify-center rounded-full border border-white/80 bg-white/95 text-emerald-700 shadow-[0_10px_26px_rgba(15,23,42,0.18)] backdrop-blur-xl transition-colors hover:bg-emerald-50 disabled:cursor-wait disabled:text-slate-400"
+                      >
+                        {isCheckingLocation
+                          ? <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+                          : <Crosshair className="h-5 w-5" aria-hidden />}
+                      </button>
+                      {expandedMapActionBar}
                     </div>
                   </MobileBottomSheetFrame>
                 </>

@@ -763,6 +763,10 @@ const translations = {
   "distance.routeUnavailable":   { en: "We found your location, but a route estimate is temporarily unavailable. You can still choose a service option.", bn: "আপনার অবস্থান পাওয়া গেছে, তবে রুটের হিসাব সাময়িকভাবে পাওয়া যাচ্ছে না। আপনি এখনও সার্ভিসের ধরন বেছে নিতে পারবেন।" },
   "distance.useLocation":        { en: "Check my distance",                          bn: "আমার দূরত্ব দেখুন" },
   "distance.checkAgain":         { en: "Check again",                                bn: "আবার দেখুন" },
+  // Expanded-map floating action bar
+  "distance.checkDistanceCta":   { en: "Check distance from me",                     bn: "আমার থেকে দূরত্ব দেখুন" },
+  "distance.checking":           { en: "Checking…",                                  bn: "দেখা হচ্ছে…" },
+  "distance.requestPickupCta":   { en: "Request pickup & drop",                      bn: "পিকআপ ও ডেলিভারি নিন" },
   "distance.recenter":           { en: "Recenter on me",                             bn: "আমার অবস্থানে ফিরুন" },
   "distance.mapCheckDistance":   { en: "Check distance from your location",          bn: "আপনার অবস্থান থেকে দূরত্ব দেখুন" },
   "distance.mapCheckDistanceHint": { en: "Tap the location button to begin",         bn: "শুরু করতে লোকেশন বাটনে চাপুন" },
