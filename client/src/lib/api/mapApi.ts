@@ -151,7 +151,10 @@ export const publicAreaMapApi = {
             `/public/area-summary/${encodeURIComponent(id)}`,
             publicAreaFetchInit,
         ),
-    estimateRoute: (location: { latitude: number; longitude: number }) =>
+    estimateRoute: (
+        location: { latitude: number; longitude: number },
+        options?: { signal?: AbortSignal },
+    ) =>
         fetchApi<RouteEstimateResponse>('/public/route-estimate', {
             method: 'POST',
             body: JSON.stringify(location),
@@ -161,6 +164,7 @@ export const publicAreaMapApi = {
                 Pragma: 'no-cache',
             },
             cache: 'no-store' as RequestCache,
+            signal: options?.signal,
         }),
     searchPlaces: (query: string) =>
         fetchApi<{ results: MapPlaceSuggestion[] }>(

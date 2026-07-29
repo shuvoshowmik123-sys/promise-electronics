@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { AnimatePresence, motion } from 'framer-motion';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { MaplibreTerradrawControl } from '@watergis/maplibre-gl-terradraw';
 import '@watergis/maplibre-gl-terradraw/dist/maplibre-gl-terradraw.css';
@@ -26,11 +27,13 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { AreaMapCanvas, type AreaMapMetric } from '@/components/maps/AreaMapCanvas';
+import { MobileBottomSheetDragHandle, MobileBottomSheetFrame } from '@/components/ui/mobile-bottom-sheet';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { useAdminAuth } from '@/contexts/AdminAuthContext';
 import { useAdminMobileMode } from '@/hooks/useAdminMobileMode';
 import {
@@ -618,7 +621,18 @@ export default function AreaIntelligenceTab() {
     const [editorOpen, setEditorOpen] = useState(false);
     const [editingArea, setEditingArea] = useState<ServiceAreaRecord | null>(null);
     const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
+    const [mobileMapExploreOpen, setMobileMapExploreOpen] = useState(false);
     const [serviceCenterOpen, setServiceCenterOpen] = useState(false);
+
+    useEffect(() => {
+        if (!isMobile) return;
+        const anySheet = mobileMapExploreOpen || mobileDetailsOpen;
+        if (!anySheet) return;
+        window.dispatchEvent(new CustomEvent('admin:mobile-chrome', { detail: { hidden: true } }));
+        return () => {
+            window.dispatchEvent(new CustomEvent('admin:mobile-chrome', { detail: { hidden: false } }));
+        };
+    }, [isMobile, mobileMapExploreOpen, mobileDetailsOpen]);
 
     const { data, isLoading, isError, refetch } = useQuery({
         queryKey: ['area-map-admin', startDate, endDate],
@@ -759,36 +773,355 @@ export default function AreaIntelligenceTab() {
     if (isMobile) {
         return (
             <MobileTabLayout className="bg-[#f8fafc]">
-                <MobileTabHeader className="space-y-2 border-b border-blue-100 bg-[#f8fafc] px-3 pb-2 pt-2">
+                <MobileTabHeader className="relative z-20 shrink-0 space-y-2 border-b border-blue-100 bg-[#f8fafc] px-3 pb-2 pt-2">
                     <div className="flex items-center justify-between gap-2">
-                        <div><p className="text-[10px] font-bold uppercase text-blue-600">Operations</p><h1 className="text-xl font-black text-slate-950">Area Intelligence</h1></div>
-                        <div className="flex gap-2"><Button size="icon" variant="outline" className="h-10 w-10 rounded-xl" onClick={() => setServiceCenterOpen(true)} title="Service-center pin"><MapPin className="h-5 w-5" /></Button>{canManage && <Button size="icon" className="h-10 w-10 rounded-xl" onClick={() => openEditor()} title="Create area"><Plus className="h-5 w-5" /></Button>}</div>
+                        <div className="min-w-0">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-blue-600">Operations</p>
+                            <h1 className="truncate text-xl font-black text-slate-950">Area Intelligence</h1>
+                        </div>
+                        <div className="flex shrink-0 gap-2">
+                            <Button size="icon" variant="outline" className="h-10 w-10 rounded-xl" onClick={() => setServiceCenterOpen(true)} title="Service-center pin">
+                                <MapPin className="h-5 w-5" />
+                            </Button>
+                            {canManage && (
+                                <Button size="icon" className="h-10 w-10 rounded-xl" onClick={() => openEditor()} title="Create area">
+                                    <Plus className="h-5 w-5" />
+                                </Button>
+                            )}
+                        </div>
                     </div>
-                    <MapSearchInput value={search} onChange={setSearch} localAreas={filteredAreas} remoteResults={placeSearch.data?.results ?? []} isSearching={placeSearch.isFetching} isUnavailable={placeSearch.isError} onSelectArea={selectArea} onSelectPlace={selectPlace} onClear={clearSearch} />
-                    <div className="flex gap-2 overflow-x-auto pb-1">
-                        {METRICS.map((item) => <button key={item.id} type="button" onClick={() => setMetric(item.id)} className={cn('h-9 shrink-0 rounded-lg px-3 text-xs font-bold', metric === item.id ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600')}>{item.label}</button>)}
+                    <MapSearchInput
+                        value={search}
+                        onChange={setSearch}
+                        localAreas={filteredAreas}
+                        remoteResults={placeSearch.data?.results ?? []}
+                        isSearching={placeSearch.isFetching}
+                        isUnavailable={placeSearch.isError}
+                        onSelectArea={selectArea}
+                        onSelectPlace={selectPlace}
+                        onClear={clearSearch}
+                    />
+                    <div className="flex gap-2 overflow-x-auto pb-0.5 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                        {METRICS.map((item) => (
+                            <button
+                                key={item.id}
+                                type="button"
+                                onClick={() => setMetric(item.id)}
+                                className={cn(
+                                    'h-9 shrink-0 rounded-lg px-3 text-xs font-bold',
+                                    metric === item.id ? 'bg-blue-600 text-white' : 'border border-slate-200 bg-white text-slate-600',
+                                )}
+                            >
+                                {item.label}
+                            </button>
+                        ))}
                     </div>
                 </MobileTabHeader>
-                <MobileScrollContent className="space-y-2 px-3 pt-2">
-                    {healthWarnings.length > 0 && <div className="rounded-lg border border-amber-200 bg-amber-50 p-3"><p className="text-xs font-black text-amber-900">Area data needs attention</p>{healthWarnings.slice(0, 3).map((warning) => <p key={warning} className="mt-1 text-[11px] text-amber-800">{warning}</p>)}</div>}
+
+                <MobileScrollContent className="relative z-0 space-y-2 !pt-3">
+                    {/* Fully inside scroller under header — never clipped by metric tabs / fixed chrome */}
+                    {healthWarnings.length > 0 && (
+                        <div
+                            data-ai-health-alert="true"
+                            className="rounded-2xl border border-amber-200 bg-amber-50 p-3 shadow-sm"
+                        >
+                            <p className="text-xs font-black text-amber-900">Area data needs attention</p>
+                            <ul className="mt-1.5 list-disc space-y-1 pl-4">
+                                {healthWarnings.slice(0, 4).map((warning) => (
+                                    <li key={warning} className="text-[11px] leading-snug text-amber-800">
+                                        {warning}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+
                     <div className="grid grid-cols-3 gap-2">
-                        <div className="rounded-lg border border-slate-200 bg-white p-2"><p className="text-[10px] text-slate-500">Requests</p><p className="font-black">{totals.requests}</p></div>
-                        <div className="rounded-lg border border-slate-200 bg-white p-2"><p className="text-[10px] text-slate-500">Completed</p><p className="font-black">{totals.completed}</p></div>
-                        <div className="rounded-lg border border-slate-200 bg-white p-2"><p className="text-[10px] text-slate-500">Areas</p><p className="font-black">{filteredAreas.length}</p></div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Requests</p>
+                            <p className="mt-0.5 text-lg font-black text-slate-950">{totals.requests}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Completed</p>
+                            <p className="mt-0.5 text-lg font-black text-slate-950">{totals.completed}</p>
+                        </div>
+                        <div className="rounded-2xl border border-slate-200 bg-white p-2.5 shadow-sm">
+                            <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Areas</p>
+                            <p className="mt-0.5 text-lg font-black text-slate-950">{filteredAreas.length}</p>
+                        </div>
                     </div>
-                    <div className="h-[clamp(220px,calc(52dvh-var(--admin-mobile-bottom-clearance)),420px)] overflow-hidden rounded-xl border border-slate-200 bg-white">{map}</div>
-                    <div className="space-y-1.5 rounded-lg border border-slate-200 bg-white p-2">
-                        {filteredAreas.map((area) => <button key={area.id} type="button" onClick={() => selectArea(area)} className="flex w-full items-center justify-between rounded-lg px-2 py-2.5 text-left active:bg-slate-50"><span className="min-w-0"><span className="block truncate text-sm font-bold text-slate-900">{areaLabel(area)}</span><span className="text-xs capitalize text-slate-500">{area.demandLevel}</span></span><span className="text-sm font-black text-blue-700">{area.serviceRequestCount ?? 0}</span></button>)}
+
+                    {/* Non-interactive preview: interactive=false + pointer-events-none + pan-y; no manual scrollTop. */}
+                    <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                        <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
+                            <div className="min-w-0">
+                                <p className="text-xs font-black uppercase tracking-wide text-slate-800">Map preview</p>
+                                <p className="truncate text-[11px] font-medium text-slate-500">Non-interactive · open explore to pan</p>
+                            </div>
+                            <TooltipProvider delayDuration={200}>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            type="button"
+                                            size="icon"
+                                            variant="outline"
+                                            className="h-9 w-9 shrink-0 rounded-xl"
+                                            aria-label="Explore map"
+                                            title="Explore map"
+                                            onClick={() => setMobileMapExploreOpen(true)}
+                                        >
+                                            <Expand className="h-4 w-4" aria-hidden />
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="bottom" className="text-xs font-semibold">
+                                        Explore map
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </div>
+                        <div
+                            className="relative h-[180px] w-full overflow-hidden bg-slate-100"
+                            style={{ touchAction: 'pan-y' }}
+                            data-ai-map-preview-surface="true"
+                        >
+                            {/*
+                              Do not wrap the whole canvas in pointer-events-none alone — MapLibre
+                              re-enables pointer-events on the canvas. AreaMapCanvas cooperative
+                              mode forces canvas pointer-events:none; this surface keeps pan-y.
+                            */}
+                            <AreaMapCanvas
+                                key={`ai-mobile-preview-${metric}`}
+                                areas={data?.areas ?? []}
+                                selectedAreaId={selectedId}
+                                metric={metric}
+                                threeDimensional={false}
+                                interactive={false}
+                                cooperativeGestures
+                                serviceCenter={serviceCenterMapLocation}
+                                searchLocation={searchLocation}
+                                showNavigation={false}
+                                className="h-full w-full"
+                                ariaLabel="Area intelligence map preview (non-interactive)"
+                            />
+                        </div>
+                    </div>
+
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between px-0.5">
+                            <h2 className="text-xs font-black uppercase tracking-wide text-slate-800">Service areas</h2>
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                                {filteredAreas.length}
+                            </span>
+                        </div>
+                        {isLoading && (
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
+                                Loading areas…
+                            </div>
+                        )}
+                        {isError && (
+                            <div className="rounded-2xl border border-rose-200 bg-rose-50 p-3">
+                                <p className="text-sm font-bold text-rose-800">Could not load area map data</p>
+                                <Button type="button" size="sm" variant="outline" className="mt-2" onClick={() => void refetch()}>
+                                    Retry
+                                </Button>
+                            </div>
+                        )}
+                        {!isLoading && !isError && filteredAreas.length === 0 && (
+                            <div className="rounded-2xl border border-dashed border-slate-200 bg-white p-4 text-center text-sm text-slate-500">
+                                No service areas match this search.
+                            </div>
+                        )}
+                        {filteredAreas.map((area) => (
+                            <button
+                                key={area.id}
+                                type="button"
+                                onClick={() => selectArea(area)}
+                                className={cn(
+                                    'flex w-full items-center justify-between gap-3 rounded-2xl border border-l-4 bg-white p-3 text-left shadow-sm transition active:scale-[0.99]',
+                                    selectedId === area.id
+                                        ? 'border-blue-300 border-l-blue-600 ring-1 ring-blue-200'
+                                        : 'border-slate-200 border-l-slate-300',
+                                )}
+                            >
+                                <span className="min-w-0">
+                                    <span className="block truncate text-sm font-black leading-tight text-slate-950">{areaLabel(area)}</span>
+                                    <span className="mt-1 block text-[11px] font-bold capitalize text-slate-500">{area.demandLevel}</span>
+                                </span>
+                                <span className="shrink-0 text-right">
+                                    <span className="block text-sm font-black text-blue-700">{area.serviceRequestCount ?? 0}</span>
+                                    <span className="text-[10px] font-black uppercase text-slate-400">req</span>
+                                </span>
+                            </button>
+                        ))}
                     </div>
                 </MobileScrollContent>
-                <Sheet open={mobileDetailsOpen} onOpenChange={setMobileDetailsOpen}>
-                    <SheetContent side="bottom" className="rounded-t-[2rem] px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
-                        <SheetHeader className="text-left"><SheetTitle>Area details</SheetTitle><SheetDescription>Aggregate operational performance only.</SheetDescription></SheetHeader>
-                        {selectedArea && <div className="mt-4"><AreaDetails area={{ ...selectedArea, isPublic: selectedIsPublic, isActive: selectedRecord?.isActive ?? selectedArea.isActive }} />{canManage && <div className="mt-4 space-y-2"><Button className="w-full" onClick={() => openEditor(selectedArea)}><Pencil className="h-4 w-4" /> Edit area</Button>{selectedIsPublic ? <Button variant="outline" className="w-full" disabled={unpublish.isPending} onClick={() => { if (window.confirm(`Unpublish ${areaLabel(selectedArea)} from the customer map?`)) unpublish.mutate(selectedArea.id); }}>Unpublish</Button> : <Button variant="outline" className="w-full" disabled={!selectedPublishable || publish.isPending} onClick={() => { if (!selectedPublishable) { toast.error('Name, centroid and boundary required to publish'); return; } if (window.confirm(`Publish ${areaLabel(selectedArea)} to the public customer map?`)) publish.mutate(selectedArea.id); }}>Publish to customers</Button>}<Button variant="outline" className="w-full text-rose-600" onClick={() => { if (window.confirm(`Deactivate ${areaLabel(selectedArea)}? It will also be unpublished.`)) deactivate.mutate(selectedArea.id); }}><Trash2 className="h-4 w-4" /> Deactivate</Button></div>}</div>}
-                    </SheetContent>
-                </Sheet>
+
+                {typeof document !== 'undefined' &&
+                    createPortal(
+                        <AnimatePresence>
+                            {mobileDetailsOpen && selectedArea && (
+                                <div className="fixed inset-0 z-[215] md:hidden" role="dialog" aria-modal="true" aria-label="Area details">
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        className="absolute inset-0 bg-slate-950/35 backdrop-blur-sm"
+                                        onClick={() => setMobileDetailsOpen(false)}
+                                    />
+                                    <MobileBottomSheetFrame
+                                        dragHandleOnly
+                                        onClose={() => setMobileDetailsOpen(false)}
+                                        className="absolute inset-x-0 bottom-0 flex h-[min(640px,85%)] max-h-[85%] flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl"
+                                    >
+                                        <div className="flex-none border-b border-slate-100 px-2 pb-2">
+                                            <MobileBottomSheetDragHandle onClose={() => setMobileDetailsOpen(false)} />
+                                            <div className="px-2 pb-1">
+                                                <p className="text-sm font-black text-slate-900">Area details</p>
+                                                <p className="text-[11px] font-medium text-slate-500">Aggregate operational performance only</p>
+                                            </div>
+                                        </div>
+                                        <div
+                                            data-ai-details-body="true"
+                                            className="min-h-0 flex-1 overflow-y-scroll overscroll-contain px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
+                                            style={{ WebkitOverflowScrolling: "touch", maxHeight: "100%" }}
+                                        >
+                                            <AreaDetails
+                                                area={{
+                                                    ...selectedArea,
+                                                    isPublic: selectedIsPublic,
+                                                    isActive: selectedRecord?.isActive ?? selectedArea.isActive,
+                                                }}
+                                            />
+                                            {canManage && (
+                                                <div className="mt-4 space-y-2">
+                                                    <Button className="w-full" onClick={() => openEditor(selectedArea)}>
+                                                        <Pencil className="h-4 w-4" /> Edit area
+                                                    </Button>
+                                                    {selectedIsPublic ? (
+                                                        <Button
+                                                            variant="outline"
+                                                            className="w-full"
+                                                            disabled={unpublish.isPending}
+                                                            onClick={() => {
+                                                                if (window.confirm(`Unpublish ${areaLabel(selectedArea)} from the customer map?`)) {
+                                                                    unpublish.mutate(selectedArea.id);
+                                                                }
+                                                            }}
+                                                        >
+                                                            Unpublish
+                                                        </Button>
+                                                    ) : (
+                                                        <Button
+                                                            variant="outline"
+                                                            className="w-full"
+                                                            disabled={!selectedPublishable || publish.isPending}
+                                                            onClick={() => {
+                                                                if (!selectedPublishable) {
+                                                                    toast.error('Name, centroid and boundary required to publish');
+                                                                    return;
+                                                                }
+                                                                if (window.confirm(`Publish ${areaLabel(selectedArea)} to the public customer map?`)) {
+                                                                    publish.mutate(selectedArea.id);
+                                                                }
+                                                            }}
+                                                        >
+                                                            Publish to customers
+                                                        </Button>
+                                                    )}
+                                                    <Button
+                                                        variant="outline"
+                                                        className="w-full text-rose-600"
+                                                        onClick={() => {
+                                                            if (window.confirm(`Deactivate ${areaLabel(selectedArea)}? It will also be unpublished.`)) {
+                                                                deactivate.mutate(selectedArea.id);
+                                                            }
+                                                        }}
+                                                    >
+                                                        <Trash2 className="h-4 w-4" /> Deactivate
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </MobileBottomSheetFrame>
+                                </div>
+                            )}
+                        </AnimatePresence>,
+                        document.body,
+                    )}
+
+                {typeof document !== 'undefined' &&
+                    createPortal(
+                        <AnimatePresence>
+                            {mobileMapExploreOpen && (
+                                <div className="fixed inset-0 z-[220] md:hidden" role="dialog" aria-modal="true" aria-label="Explore area map">
+                                    <motion.div
+                                        initial={{ opacity: 0 }}
+                                        animate={{ opacity: 1 }}
+                                        exit={{ opacity: 0 }}
+                                        className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+                                        onClick={() => setMobileMapExploreOpen(false)}
+                                    />
+                                    {/* dragHandleOnly + real drag handle: map pan not stolen by whole-sheet drag. */}
+                                    <MobileBottomSheetFrame
+                                        dragHandleOnly
+                                        onClose={() => setMobileMapExploreOpen(false)}
+                                        className="absolute inset-x-0 bottom-0 flex h-[760px] max-h-[90%] flex-col overflow-hidden rounded-t-[2rem] bg-white shadow-2xl"
+                                    >
+                                        <div className="flex-none border-b border-slate-100 px-2 pb-2">
+                                            <MobileBottomSheetDragHandle onClose={() => setMobileMapExploreOpen(false)} />
+                                            <div className="flex items-center justify-between gap-2 px-2">
+                                                <div className="min-w-0">
+                                                    <p className="text-sm font-black text-slate-900">Explore map</p>
+                                                    <p className="text-[11px] font-medium text-slate-500">Drag, pinch, and zoom enabled here</p>
+                                                </div>
+                                                <Button
+                                                    type="button"
+                                                    size="sm"
+                                                    variant="outline"
+                                                    className="h-9 shrink-0 rounded-xl px-3 text-xs font-bold"
+                                                    onClick={() => setMobileMapExploreOpen(false)}
+                                                >
+                                                    Done
+                                                </Button>
+                                            </div>
+                                        </div>
+                                        <div className="min-h-0 flex-1 bg-slate-100 pb-[env(safe-area-inset-bottom)]">
+                                            <AreaMapCanvas
+                                                key={`ai-mobile-explore-${metric}-${selectedId ?? 'none'}`}
+                                                areas={data?.areas ?? []}
+                                                selectedAreaId={selectedId}
+                                                onSelectArea={(area) => {
+                                                    selectArea(area);
+                                                    setMobileMapExploreOpen(false);
+                                                }}
+                                                metric={metric}
+                                                threeDimensional={false}
+                                                interactive
+                                                cooperativeGestures={false}
+                                                serviceCenter={serviceCenterMapLocation}
+                                                searchLocation={searchLocation}
+                                                showNavigation
+                                                className="h-full w-full"
+                                                ariaLabel="Area intelligence explore map"
+                                            />
+                                        </div>
+                                    </MobileBottomSheetFrame>
+                                </div>
+                            )}
+                        </AnimatePresence>,
+                        document.body,
+                    )}
+
                 {editorOpen && <AreaEditor key={editingArea?.id ?? 'new'} open={editorOpen} area={editingArea} onOpenChange={setEditorOpen} />}
-                {serviceCenterOpen && <ServiceCenterEditor open={serviceCenterOpen} canManage={canManage} areas={data?.areas ?? []} initial={serviceCenter} onOpenChange={setServiceCenterOpen} />}
+                {serviceCenterOpen && (
+                    <ServiceCenterEditor
+                        open={serviceCenterOpen}
+                        canManage={canManage}
+                        areas={data?.areas ?? []}
+                        initial={serviceCenter}
+                        onOpenChange={setServiceCenterOpen}
+                    />
+                )}
             </MobileTabLayout>
         );
     }

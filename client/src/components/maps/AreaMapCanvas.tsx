@@ -61,6 +61,12 @@ interface AreaMapCanvasProps {
     threeDimensional?: boolean;
     presentation?: 'default' | 'customerImmersive';
     interactive?: boolean;
+    /**
+     * When true, the map never takes one-finger pan/zoom — parent page owns vertical scroll.
+     * Disables dragPan/touchZoom/scrollZoom and forces touch-action: pan-y on the canvas.
+     * Use only for maps embedded in admin MobileScrollContent. Desktop / editor sheets leave false.
+     */
+    cooperativeGestures?: boolean;
     showNavigation?: boolean;
     className?: string;
     onMapReady?: (map: MapLibreMap) => void;
@@ -228,6 +234,7 @@ export function AreaMapCanvas({
     threeDimensional = false,
     presentation = 'default',
     interactive = true,
+    cooperativeGestures = false,
     showNavigation = true,
     className,
     onMapReady,
@@ -509,12 +516,15 @@ export function AreaMapCanvas({
                     mountRafId = requestAnimationFrame(mountMap);
                     return;
                 }
-            // Two interaction profiles — do not mix:
+            // Interaction profiles — do not mix carelessly:
             // - customerImmersive (homepage): never steal page scroll; Ctrl/Cmd+wheel zooms on desktop only.
-            // - default (admin Area Intelligence / editors): full map tools — scroll zoom, drag-pan, dbl-click, keyboard, pins.
+            // - cooperativeGestures / page-scroll embed: NO map pan or touch-zoom — parent MobileScrollContent owns one-finger vertical swipe.
+            // - default (admin desktop / editor sheets): full map tools — scroll zoom, drag-pan, dbl-click, keyboard, pins.
             const immersive = presentation === 'customerImmersive';
             const immersiveDesktop = immersive && currentContainer.clientWidth >= 768;
             const adminInteractive = !immersive && interactive;
+            const pageOwnsScroll = cooperativeGestures === true;
+            const mapCanPan = interactive && !pageOwnsScroll;
             const map = new maplibregl.Map({
                 container: currentContainer,
                 style: MAP_STYLE_URL,
@@ -522,18 +532,50 @@ export function AreaMapCanvas({
                 zoom: 10.5,
                 pitch: threeDimensional ? (immersive ? 42 : 46) : 0,
                 bearing: threeDimensional ? (immersive ? -10 : -12) : 0,
+                // Not relying on MapLibre cooperative banner — hard-disable pan so one-finger never moves the map.
                 cooperativeGestures: false,
-                scrollZoom: adminInteractive,
+                scrollZoom: adminInteractive && mapCanPan,
                 attributionControl: false,
-                dragPan: interactive,
-                keyboard: interactive,
-                doubleClickZoom: interactive,
-                dragRotate: immersiveDesktop ? false : interactive,
-                touchPitch: immersiveDesktop ? false : interactive,
-                touchZoomRotate: interactive,
+                dragPan: mapCanPan,
+                keyboard: interactive && mapCanPan,
+                doubleClickZoom: interactive && mapCanPan,
+                dragRotate: immersiveDesktop || pageOwnsScroll ? false : interactive,
+                touchPitch: immersiveDesktop || pageOwnsScroll ? false : interactive,
+                touchZoomRotate: mapCanPan,
             });
             ownedMap = map;
-            if (immersiveDesktop) map.touchZoomRotate.disableRotation();
+            // QA/debug: allow reading getCenter() without a global registry
+            (currentContainer as unknown as { __promiseMap?: MapLibreMap }).__promiseMap = map;
+            if (immersiveDesktop || pageOwnsScroll) map.touchZoomRotate.disableRotation();
+            if (pageOwnsScroll) {
+                map.dragPan.disable();
+                map.scrollZoom.disable();
+                map.boxZoom.disable();
+                map.dragRotate.disable();
+                map.keyboard.disable();
+                map.doubleClickZoom.disable();
+                map.touchPitch.disable();
+                map.touchZoomRotate.disable();
+                // MapLibre sets canvas touch-action:none and may re-enable pointer-events on the canvas.
+                // Force the canvas out of the hit path so one-finger pan-y reaches the scroll parent.
+                const unlockPageTouch = () => {
+                    try {
+                        const canvas = map.getCanvas();
+                        const canvasContainer = map.getCanvasContainer();
+                        canvas.style.pointerEvents = 'none';
+                        canvas.style.touchAction = 'pan-y';
+                        canvasContainer.style.pointerEvents = 'none';
+                        canvasContainer.style.touchAction = 'pan-y';
+                        currentContainer.style.pointerEvents = 'auto';
+                        currentContainer.style.touchAction = 'pan-y';
+                    } catch {
+                        /* map may be removing */
+                    }
+                };
+                unlockPageTouch();
+                map.on('load', unlockPageTouch);
+                map.once('idle', unlockPageTouch);
+            }
             // Customer homepage only: Ctrl/Cmd + wheel zooms without trapping normal page scroll.
             if (immersiveDesktop) {
                 const canvasContainer = map.getCanvasContainer();
@@ -555,7 +597,20 @@ export function AreaMapCanvas({
                     showZoom: true,
                 }), 'top-right');
             }
-            map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+            // Preview: one compact legal credit only (no MapLibre control + style dual lines, no OpenFreeMap brand).
+            // Explore/desktop: standard compact AttributionControl (style credits).
+            if (pageOwnsScroll) {
+                currentContainer.classList.add('promise-map-preview-compact-attrib');
+                const credit = document.createElement('div');
+                credit.className = 'promise-map-preview-legal-credit';
+                credit.setAttribute('data-map-legal-credit', 'true');
+                credit.innerHTML =
+                    '© <a href="https://www.openmaptiles.org/" target="_blank" rel="noopener noreferrer">OpenMapTiles</a>' +
+                    ' · © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener noreferrer">OpenStreetMap</a>';
+                currentContainer.appendChild(credit);
+            } else {
+                map.addControl(new maplibregl.AttributionControl({ compact: true }), 'bottom-right');
+            }
             map.on('error', () => {
                 if (!map.isStyleLoaded()) setMapFailed(true);
             });
@@ -717,19 +772,21 @@ export function AreaMapCanvas({
                     },
                 });
 
-                const selectArea = (event: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
-                    const id = event.features?.[0]?.properties?.id;
-                    const area = areasRef.current.find((item) => item.id === id);
-                    if (area) onSelectRef.current?.(area);
-                };
-                map.on('click', AREA_FILL, selectArea);
-                map.on('click', AREA_EXTRUSION, selectArea);
-                map.on('mouseenter', AREA_FILL, () => { map.getCanvas().style.cursor = 'pointer'; });
-                map.on('mouseleave', AREA_FILL, () => { map.getCanvas().style.cursor = ''; });
+                if (interactive) {
+                    const selectArea = (event: maplibregl.MapMouseEvent & { features?: maplibregl.MapGeoJSONFeature[] }) => {
+                        const id = event.features?.[0]?.properties?.id;
+                        const area = areasRef.current.find((item) => item.id === id);
+                        if (area) onSelectRef.current?.(area);
+                    };
+                    map.on('click', AREA_FILL, selectArea);
+                    map.on('click', AREA_EXTRUSION, selectArea);
+                    map.on('mouseenter', AREA_FILL, () => { map.getCanvas().style.cursor = 'pointer'; });
+                    map.on('mouseleave', AREA_FILL, () => { map.getCanvas().style.cursor = ''; });
                     map.on('click', (event) => {
-                    const areaHit = map.queryRenderedFeatures(event.point, { layers: [AREA_FILL, AREA_EXTRUSION] }).length > 0;
-                    if (!areaHit) onMapClickRef.current?.({ latitude: event.lngLat.lat, longitude: event.lngLat.lng });
+                        const areaHit = map.queryRenderedFeatures(event.point, { layers: [AREA_FILL, AREA_EXTRUSION] }).length > 0;
+                        if (!areaHit) onMapClickRef.current?.({ latitude: event.lngLat.lat, longitude: event.lngLat.lng });
                     });
+                }
                     if (immersive) {
                         const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
                         cameraEaseTo('initial', { zoom: 10.9, duration: reducedMotion ? 0 : 650 });
@@ -837,6 +894,9 @@ export function AreaMapCanvas({
             searchMarkerRef.current?.remove();
             ownedMap?.stop();
             ownedMap?.remove();
+            if (containerRef.current) {
+                delete (containerRef.current as unknown as { __promiseMap?: MapLibreMap }).__promiseMap;
+            }
             if (mapRef.current === ownedMap) mapRef.current = null;
         };
     }, []);
@@ -1007,5 +1067,43 @@ export function AreaMapCanvas({
         );
     }
 
-    return <div ref={containerRef} className={cn('h-full w-full bg-slate-100', className)} role="application" aria-label={ariaLabel} />;
+    return (
+        <>
+            {/* Compact legal attribution only for non-interactive page previews (pageOwnsScroll). */}
+            <style>{`
+                /* Keep preview out of the touch hit path so parent scroller keeps native pan-y momentum */
+                .promise-map-preview-compact-attrib canvas.maplibregl-canvas,
+                .promise-map-preview-compact-attrib .maplibregl-canvas-container {
+                    pointer-events: none !important;
+                    touch-action: pan-y !important;
+                }
+                /* Hide any residual MapLibre attrib chrome on preview (we use a single custom credit). */
+                .promise-map-preview-compact-attrib .maplibregl-ctrl-attrib,
+                .promise-map-preview-compact-attrib .maplibregl-ctrl-bottom-right {
+                    display: none !important;
+                }
+                .promise-map-preview-legal-credit {
+                    position: absolute;
+                    right: 4px;
+                    bottom: 3px;
+                    z-index: 2;
+                    max-width: min(72%, 210px);
+                    padding: 1px 5px;
+                    border-radius: 4px;
+                    background: rgba(255, 255, 255, 0.78);
+                    font-size: 9px;
+                    line-height: 1.2;
+                    color: #334155;
+                    pointer-events: none;
+                    user-select: none;
+                }
+                .promise-map-preview-legal-credit a {
+                    color: #1e293b;
+                    text-decoration: none;
+                    pointer-events: auto;
+                }
+            `}</style>
+            <div ref={containerRef} className={cn('h-full w-full bg-slate-100', className)} role="application" aria-label={ariaLabel} />
+        </>
+    );
 }

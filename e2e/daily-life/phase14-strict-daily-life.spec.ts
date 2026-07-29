@@ -224,7 +224,7 @@ test.describe('Phase 14E: Strict Daily-Life QA', () => {
       expect(updated.status, 'Should be Waiting on Parts').toBe('Waiting on Parts');
     });
 
-    test('not_repairable requires reason and does NOT set Ready', async () => {
+    test('not_repairable is rejected — NG report contract required', async () => {
       const admin = await getAdminSession();
       const jobRes = await fetch(`${BASE}/api/job-tickets`, {
         method: 'POST',
@@ -234,24 +234,23 @@ test.describe('Phase 14E: Strict Daily-Life QA', () => {
       const job = await jobRes.json();
       await fetch(`${BASE}/api/job-tickets/${job.id}/advance-status`, { method: 'POST', headers: { 'Cookie': admin.cookies, 'X-CSRF-TOKEN': admin.csrf } });
 
-      // Without reason should fail
       const failRes = await fetch(`${BASE}/api/job-tickets/${job.id}/set-outcome`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Cookie': admin.cookies, 'X-CSRF-TOKEN': admin.csrf },
-        body: JSON.stringify({ outcome: 'not_repairable' }),
-      });
-      expect(failRes.status, 'Should require reason').toBe(400);
-
-      // With reason should succeed
-      const outcomeRes = await fetch(`${BASE}/api/job-tickets/${job.id}/set-outcome`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Cookie': admin.cookies, 'X-CSRF-TOKEN': admin.csrf },
         body: JSON.stringify({ outcome: 'not_repairable', reason: 'Panel shattered beyond repair' }),
       });
-      const updated = await outcomeRes.json();
-      expect(updated.status, 'Should be Cancelled, NOT Ready').toBe('Cancelled');
-      expect(updated.repairOutcome).toBe('not_repairable');
-      expect(updated.closureReason).toBe('Panel shattered beyond repair');
+      expect(failRes.status, 'set-outcome must reject not_repairable').toBe(400);
+      const failBody = await failRes.json();
+      expect(failBody.code).toBe('USE_NG_REPORT');
+
+      const cancelRes = await fetch(`${BASE}/api/job-tickets/${job.id}/set-outcome`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Cookie': admin.cookies, 'X-CSRF-TOKEN': admin.csrf },
+        body: JSON.stringify({ outcome: 'cancelled', reason: 'should fail' }),
+      });
+      expect(cancelRes.status, 'set-outcome must reject cancelled').toBe(400);
+      const cancelBody = await cancelRes.json();
+      expect(cancelBody.code).toBe('CANCEL_REQUIRES_MANAGER_WORKFLOW');
     });
 
     test('advance-status blocked for In Progress jobs', async () => {
