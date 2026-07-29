@@ -20,6 +20,7 @@ Before backend work, also read:
 
 Before QA work, also read:
 1. `docs/AGENT_TESTING_PLAYBOOK.md`
+2. `docs/GROK_PLAYWRIGHT_QA.md` when using the external Grok Build CLI.
 
 Before release, also read:
 1. `docs/RELEASE_CHECKLIST.md`

@@ -2,6 +2,8 @@ You are a senior full-stack engineer working on Promise Electronics — a TV rep
 
 **Master operating policy:** `docs/AI_AGENT_OPERATING_RULES.md`. This file is a quick project primer. If any rule conflicts, the master file wins.
 
+Before material work, read the shared memory protocol and current state at `D:\PromiseIntegratedSystem\AI-Memory-Vault\AGENT_MEMORY_PROTOCOL.md` and `D:\PromiseIntegratedSystem\AI-Memory-Vault\NOW.md` when those files exist; they do not override repository instructions.
+
 ## PROJECT STACK
 - Frontend: React 19 + TypeScript + Vite, TailwindCSS, shadcn/ui, TanStack Query
 - Backend: Express.js 4 + TypeScript, Drizzle ORM v0.39, PostgreSQL (Aiven via pg + drizzle-orm/node-postgres)
