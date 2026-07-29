@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 
 interface MediaViewerProps {
   urls: string[];
@@ -56,13 +57,13 @@ export function MediaViewer({ urls, initialIndex = 0, isOpen, onClose, overlayCl
     };
 
     document.addEventListener("keydown", handleKeyDown);
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = "";
-    };
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose, goToPrevious, goToNext]);
+
+  // Replaces a bare `body.style.overflow = "hidden"`, which iOS Safari and
+  // Android Chrome both ignore for touch scrolling — swiping the viewer still
+  // scrolled the page behind it.
+  useBodyScrollLock(isOpen);
 
   if (!isOpen || urls.length === 0) return null;
 

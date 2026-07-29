@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { motion, type PanInfo } from "framer-motion";
+import { useBodyScrollLock } from "@/hooks/useBodyScrollLock";
 import { cn } from "@/lib/utils";
 
 interface MobileBottomSheetFrameProps {
@@ -19,6 +20,11 @@ export function MobileBottomSheetFrame({
     closeVelocity = 700,
     dragHandleOnly = false,
 }: MobileBottomSheetFrameProps) {
+    // The frame only ever renders while the sheet is open (callers mount it
+    // inside AnimatePresence), so locking unconditionally here is correct and
+    // covers every consumer — customer, admin and corporate — in one place.
+    useBodyScrollLock(true);
+
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
         window.addEventListener("keydown", onKey);

@@ -1032,9 +1032,12 @@ export default function CustomerDistanceExplorer({
             <AnimatePresence>
               {fullMapOpen && (
                 <>
-                  <motion.button
-                    type="button"
-                    aria-label={t("distance.closeMap")}
+                  {/* Backdrop is decorative for assistive tech: the sheet already
+                      exposes a labelled close button and Escape closes it, so a
+                      second element with the same accessible name would only add
+                      an ambiguous duplicate in the AT tree. */}
+                  <motion.div
+                    aria-hidden="true"
                     className="fixed inset-0 z-[65] bg-slate-950/30"
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
