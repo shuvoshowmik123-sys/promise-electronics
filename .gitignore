@@ -83,10 +83,30 @@ opencode.json
 
 # Local AI/workbench artifacts
 .claude/
+.grok/
 skills
 mockups/
 Frontend Upgrade Plan.md
 docs/PORTAL_QA_LEDGER.md
+
+# Root-only local QA captures and one-off diagnostics
+/acc-*.png
+/acc2-*.png
+/acc2-*.md
+/check_state.bmp
+/confirm_*.bmp
+/desktop-*.png
+/desktop-*.md
+/final-*.png
+/final-*.md
+/initial_*.bmp
+/main_*.bmp
+/migrate_confirm_*.bmp
+/mobile-*.png
+/qa-tmp-*/
+/qa-tmp-*.mjs
+/remote_restore_*.bmp
+/tsc-err.txt
 
 # Tool artifacts (Playwright MCP, codex video frames, mobile QA screenshots)
 .playwright-mcp/
