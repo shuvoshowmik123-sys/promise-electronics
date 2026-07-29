@@ -404,3 +404,451 @@ explicit manifest must be followed rather than a bulk add.
 
 Every ledger PASS above still awaits the **clean-clone production build**, which the independent review
 names as the decisive gate.
+
+**Clean-clone production build ran — 2026-07-27, FAIL (record only, nothing further executed).**
+`RELEASE-CLEAN-CLONE-CANDIDATE-PROOF-01A` built and tested the actual committed candidate (`8bd25f3`)
+from a fresh, isolated local clone: `tsc` failed (2 errors, `home.tsx` ↔ held D1 `CustomerDistanceExplorer.tsx`
+mismatch — exactly the D1 risk this ledger flagged as unadjudicated) and `npx vitest run` returned
+`26 failed | 327 passed | 3 skipped (356 total)`, superseding the inherited, never-verified 24/332/356
+figure this ledger and prior packages had been carrying. Full findings:
+`mobile-qa/release-clean-clone-candidate-proof-01a/20260727-1734/REPORT.md`.
+
+**`TEST-SUITE-RESTORATION-00A` audit closed — 2026-07-27 (read-only, nothing executed).** Every
+clean-clone finding traced to a named owner and repair contract: the D1 mismatch's smallest
+compile-safe fix (Option A: drop the two `publicSettingsStatus` prop passes in `home.tsx`, D1-neutral)
+or a new explicit D1 decision to land the richer behavior instead; 2 proof `.mjs` scripts confirmed
+safe to add (a manifest completeness gap, not a deliberate exclusion); the baseline `manifest.json`
+hash mismatch confirmed as a manifest-only data defect with actual values computed; all 22 remaining
+vitest failures individually classified as candidate-induced test staleness (stale mocks/assertions,
+zero source changes needed); the 3 `auth-boundaries` skips confirmed environmental (the app's own
+fail-closed env validation working correctly). Evidence:
+`mobile-qa/test-suite-restoration-00a/20260727-1816/REPORT.md`.
+
+**`TEST-SUITE-RESTORATION-01A` (CANDIDATE-INTEGRITY-REPAIR) applied — 2026-07-27, PASS 5 / FAIL 0 / NOT
+VERIFIED 0 (working-tree only, not committed).** Repaired the 4 non-test defects from the audit using
+D1-neutral Option A: `home.tsx` had its two `publicSettingsStatus` prop passes and the now-unused
+query destructures/derived value removed — zero held Area Intelligence files edited, staged, or used to
+satisfy TypeScript; the 2 omitted `.mjs` scripts confirmed present and unmodified (left unstaged, not
+`git add`ed); `manifest.json`'s two `sha256` fields corrected to freshly-computed actual values, no
+other field or SQL file touched. Proven in an isolated clone of exactly `8bd25f3` (only the 4 scoped
+files copied in): `tsc --noEmit` now **zero errors**, `vite build`/`build:server`/`git diff --check` all
+PASS, and the 3 targeted vitest failures (baseline hash + both omitted-script `ENOENT`s) now **PASS,
+25/25 tests**. Held D1 paths and primary `HEAD` (`8bd25f3`, unpushed) proven byte-identical before and
+after. **Not claimed:** the full suite is not yet green — 22 test-staleness fixes and the
+`auth-boundaries` environment gap remain, reserved for `TEST-SUITE-RESTORATION-01B`. Evidence:
+`mobile-qa/test-suite-restoration-01a/20260727-1834/REPORT.md`. No commit, push, migration, or
+deployment occurred.
+
+**`TEST-SUITE-RESTORATION-01B` (TEST-CONTRACT-REPAIR) applied — 2026-07-27, PASS 6 / FAIL 0 / NOT
+VERIFIED 0 (working-tree only, not committed).** Repaired all 22 test-staleness failures from the `00A`
+audit plus the 3 `auth-boundaries` environment skips, across the 11 allowed test files — no product
+source, baseline SQL, manifest, script, or config file touched. Fixes span 7 root-cause groups: missing
+`requireGranularPermission`/`accountRecoveryLimiter` mock exports; a missing `db.execute` stub for the
+new customer-session freshness check; a missing `db.transaction` stub for `job.service.ts`'s new atomic
+custody-conversion flow (found at a *second* call site too — `transitionJobStatus` — once the first fix
+let execution reach it); a geofence status rename (`inside`/`outside` → `inside_office`/`outside_office`,
+both halves); a retired legacy job-status name (`"Ready for Delivery"`); and a self-referential
+`REQUIRED_MAIN_SCHEMA_VERSION` stale-assertion anti-pattern repeated across 3 migration test files,
+replaced with a durable ordering check. Also discovered and fixed, beyond the original audit: a
+transitive `shared/schema.js` mock gap (fixed via `importOriginal` merge instead of a hand-rolled stub)
+and 2 tests asserting a call to `jobService.recordJobPayment` — confirmed via `grep -rn` across
+`server/` that this method is **never called anywhere in the real server code** (the real flow migrated
+to canonical POS settlement via `settleJobPaymentViaPos`) — rewritten to assert the actual current call
+path. Auth-boundaries: set harmless, loopback-only dummy env values plus a mocked `isDbReady()` (the real
+readiness gate otherwise 503s every route before auth ever runs) — all 3 tests now execute and pass.
+Dirty-worktree `npx vitest run`: **356 passed / 0 failed / 0 skipped**. Proven in an isolated clone of
+exactly `8bd25f3` (4 `01A` candidate files + 11 `01B` test files copied in): all four build gates PASS,
+and the **full, unfiltered `npx vitest run`: PASS — 356 passed / 0 failed / 0 skipped (356 total)** — the
+first fully green, fresh-clone-verified result for this candidate, superseding every prior figure. Held
+D1 paths and primary `HEAD` (`8bd25f3`, unpushed) proven byte-identical before and after. Evidence:
+`mobile-qa/test-suite-restoration-01b/20260727-1953/REPORT.md`. No commit, push, migration, or
+deployment occurred. Next: a single corrective commit covering all 15 `01A`+`01B` working-tree changes,
+then a final `RELEASE-CLEAN-CLONE-CANDIDATE-PROOF-01A` re-run against that commit before R5.
+
+**`RELEASE-CORRECTIVE-COMMIT-01A` attempted — 2026-07-27, FAIL at the whitespace gate (record only,
+nothing committed).** Base verified (`HEAD=8bd25f3`, `main`, `ahead 1`); preflight confirmed all 15
+approved `01A`+`01B` paths in expected state, all 5 held Area Intelligence paths excluded and untouched,
+and the 2 `.mjs` scripts' identity re-verified by size+mtime only (no hash/content printed). Staged
+exactly the 15 approved paths via 15 individually named `git add` commands — `git diff --cached
+--name-only` confirmed exactly those 15, nothing else. **`git diff --cached --check` failed:**
+`scripts/reminders-prerequisite-reconciliation-proof.mjs:331: new blank line at EOF` — a genuine,
+pre-existing extra trailing blank line in the file exactly as it has existed on disk since authorship,
+never touched by this session, only now surfacing because this file has never before been staged and run
+through a whitespace gate. Per this repo's own established precedent for this exact class of finding
+(see the earlier `RELEASE-WHITESPACE-GATE-HOTFIX-01A` entry above), stopped before the secret scan and
+commit steps rather than fixing inline. **No `git reset`/`restore` was run** — the 15-path stage remains
+preserved. `HEAD` unchanged at `8bd25f3`; no push, amend, migration, or deployment. Evidence:
+`mobile-qa/release-corrective-commit-01a/20260727-2045/REPORT.md`. Next: a narrowly-scoped, explicitly
+authorized whitespace hotfix for that one file (content-only, remove the one extra trailing blank line),
+then re-attempt `RELEASE-CORRECTIVE-COMMIT-01A`.
+
+**`RELEASE-REMINDERS-PROOF-WHITESPACE-HOTFIX-01A` applied — 2026-07-27, PASS (working-tree only, no
+commit).** Repaired exactly the one pre-existing whitespace defect that blocked the corrective-commit
+attempt: `truncate -s 14720 scripts/reminders-prerequisite-reconciliation-proof.mjs` removed exactly the
+final trailing LF byte (14,721→14,720 bytes, 331→330 lines, `});\n\n`→`});\n`), confirmed by direct `xxd`
+byte inspection before and after. `git diff --check` on the file now passes. **The corrective commit's
+15-path staged index was left completely intact** — confirmed because `git diff --cached --check` still
+reports the *original* failure after this repair, proving the staged blob still holds the old,
+pre-repair content (no `git add` was run at any point). No other byte, line, or file was touched; the
+script was never executed. `HEAD` unchanged at `8bd25f3`; no commit, push, or deployment. Evidence:
+`mobile-qa/release-reminders-proof-whitespace-hotfix-01a/20260727-2053/REPORT.md`. Next: a
+corrective-commit recovery package that re-stages only this one repaired script, then re-runs the full
+staged gate, secret scan, and commit.
+
+**`RELEASE-CORRECTIVE-COMMIT-RECOVERY-01A` succeeded — 2026-07-28, PASS, commit created.** Re-staged
+only the repaired `scripts/reminders-prerequisite-reconciliation-proof.mjs` (`git add -- <path>`, no
+other path touched); re-verified the staged set was still exactly the same 15 approved paths;
+`git diff --cached --check` now **PASS, 0 findings**; a manual structural secret scan over the full
+1,005-line staged diff found **0 real secrets**, classifying the 3 known loopback test dummy values in
+`tests/auth-boundaries.test.ts` as harmless test fixtures. Committed once:
+`test: restore release candidate integrity` → **`98a0775`**
+(`98a07757956597162a3a6f1e8aa46b2668ba8104`), parent **`8bd25f3`** exactly, **15 files changed, 642
+insertions(+), 56 deletions(-)**. Post-commit verification: file list matches the approved 15 exactly,
+all 5 held Area Intelligence paths and all docs/screenshots/`.grok`/`.env` content confirmed absent from
+the commit, `main` now `ahead 2` of `origin/main`, not pushed. Evidence:
+`mobile-qa/release-corrective-commit-recovery-01a/20260728-0103/REPORT.md`. Next: a fresh
+`RELEASE-CLEAN-CLONE-CANDIDATE-PROOF` re-run against `98a0775` to confirm the green test suite result
+holds at the actual committed tree, before R5.
+
+**`RELEASE-CLEAN-CLONE-CANDIDATE-PROOF-01A-R2` (final proof) — 2026-07-28, PASS 8 / FAIL 0 / NOT
+VERIFIED 0 (record only, nothing pushed/deployed).** Built and tested the actual committed candidate
+`98a0775` from a genuinely isolated local clone (no remote URL; no `.env`/`node_modules`/screenshots/
+scripts copied from the primary workspace — everything came from the committed tree itself, no manual
+file-copying needed this time since all 15 corrective paths are now real committed files). All 15
+paths confirmed tracked via `git ls-files --error-unmatch` before install. Gate results:
+`git diff 6c950a0f9d570b95b052719741297bfc67579229..HEAD --check` **PASS** (0 findings) · `tsc --noEmit`
+**PASS** (0 errors) · `vite build` **PASS** · `build:server` **PASS** · **full, unfiltered
+`npx vitest run`: PASS — 356 passed / 0 failed / 0 skipped (356 total), exit 0** — the first time the
+full suite has been proven green against the release candidate's actual committed tree, superseding
+every prior (working-tree-approximated) green result in this lineage. Clone removed; primary `HEAD`
+(`98a0775`, unpushed) and the 5 held Area Intelligence files' diff-stat against `HEAD` both confirmed
+byte-identical before and after, and never used from the primary workspace during the clone build.
+Evidence: `mobile-qa/release-clean-clone-candidate-proof-01a-r2/20260728-0110/REPORT.md`.
+**Determination: `98a0775` is confirmed release-ready. `R5 — Protected production release` is now the
+only eligible next step.** This proof does not itself authorize push, migration, deployment, or
+production access.
+
+**`PRODUCTION-RELEASE-AND-VERIFICATION-01A` (release preflight) — 2026-07-28, RELEASE PREFLIGHT PASS
+(record only, production untouched).** Re-confirmed candidate identity (`98a0775`, parent `8bd25f3`,
+`main` ahead 2 of `origin/main`, unpushed, 0 staged changes) and re-verified the final clean-clone proof
+(all 5 gates PASS, `356 passed | 0 failed | 0 skipped`). Identified — without running or accessing —
+the trusted production MAIN migration command
+(`MAIN_MIGRATION_RELEASE_MODE=true ALLOW_PROD_DB_MIGRATE_MAIN=true npm run db:migrate:main`) and the
+Render/Vercel deployed-commit-hash verification route plus health endpoint (`GET /api/health`).
+Confirmed exactly 2 commits (`8bd25f3`, `98a0775`) would be pushed and that the 68 dirty/untracked
+working-tree entries in the primary workspace are never transmitted by `git push` regardless of state.
+Produced a full release-control checklist: production-backup owner and < 1 hour requirement (owned by
+the production operator — this agent has no production access of any kind), exact commit/ref to push,
+the trusted migration command, Render/Vercel verification, and the complete production smoke matrix
+(login/roles, core job flow, finance authority, security, reload, health) per
+`AI_AGENT_OPERATING_RULES.md` §17.3–§17.7. Evidence:
+`mobile-qa/production-release-and-verification-01a/20260728-0136/REPORT.md`. **Stopped at the required
+point: all 4 approvals — production backup < 1 hour old, push approval, trusted MAIN migration approval,
+production deployment verification/smoke approval — are PENDING; none granted.** Zero production
+database/backup/migration/SQL access, zero cloud dashboard access, zero deploy, zero browser production
+test, zero environment-secret reads, zero credentials/customer data printed. **Deployment: NOT
+DEPLOYED — production remains completely untouched.**
+
+**`APPLICATION-DATABASE-TOPOLOGY-AND-READINESS-00A` — 2026-07-28, AUDIT COMPLETE (source/config only,
+0 database access, record only).** Confirmed the documented ownership contract from `AGENTS.md` and
+`docs/AGENT_BACKEND_PLAYBOOK.md`: `DATABASE_URL` = MAIN = Aiven PostgreSQL; `BRAIN_DATABASE_URL` = Brain
+(AI knowledge graph) = Neon, and verified in source that every `BRAIN_DATABASE_URL` consumer is genuinely
+confined to `server/brain/*` — no leakage into the main app. **Found a genuine, unresolved contradiction:**
+structural host-class classification (no values printed) shows the active `.env` and an older
+`.env.production.local` snapshot both classify `DATABASE_URL` as a **Neon-pattern host**, not Aiven — no
+Aiven-pattern host was found configured as a real value anywhere in the repository, including the two
+git-tracked templates (`.env.example`, `.env.render.example`, both empty). Every other `.env*` file is
+gitignored and local-only — none of them prove what Render's live dashboard actually runs. This audit
+could not and did not resolve the contradiction; it requires an explicit statement from the production
+operator or an authorized read-only check, neither performed here. Also confirmed from source: MAIN
+schema head is `2026_07_25_work_locations_table` (48 migrations); normal server startup never performs
+DDL in any environment, only read-only ledger verification, failing closed (503) rather than self-healing
+when behind; DDL only via the trusted release CLI or the protected schema runner. Defined a safe test
+matrix (remote read-only checks gated on explicit ownership confirmation; all create/write tests
+local-disposable-only) and confirmed zero Windows `.exe` desktop-packaging infrastructure exists in the
+repository (needs its own separate, explicitly scoped phase). Evidence:
+`mobile-qa/application-database-topology-and-readiness-00a/20260728-0217/REPORT.md`. Zero database
+connections, queries, writes, migrations, fixtures, server starts, browser/cloud access, or secret values
+printed. **This finding bears directly on the still-pending R5 production-backup/migration approvals —
+flagged for Inspector/production-operator resolution before those approvals are acted on.**
+
+**`DEVELOPMENT-NEON-MAIN-READONLY-HEALTH-01A` — 2026-07-28, AUDIT COMPLETE, verdict `SCHEMA_BEHIND`
+(read-only, 0 production access, record only).** Operator explicitly confirmed Render production uses
+Aiven and the `.env` Neon target is development/testing only, authorizing a read-only inspection of that
+confirmed dev database. `DATABASE_URL` was read from `.env` entirely inside a Node script's process
+memory — never printed, logged, or copied anywhere (confirmed via a direct grep of this run's evidence
+directory). Connection confirmed real (PostgreSQL 17.10, Neon-pattern host matching the confirmed dev
+target). Read-only session enforced immediately after connect (`SET default_transaction_read_only = on`
++ an 8-second statement timeout), re-verified active via `SHOW`; every subsequent query was a `SELECT`/
+`information_schema`/`pg_catalog`/`pg_indexes` existence or count check only — zero writes, zero DDL,
+zero transactions opened, zero row-level business/customer/staff/payment data read. **MAIN ledger:
+45/48 applied — missing exactly the 3 newest migration IDs** (`commission_engine_tables`,
+`attendance_records_gps_columns`, `work_locations_table`), 0 unexpected/extra entries. **Key finding:**
+independently checked all 21 tables/4 indexes/7 columns those 3 migrations create — **every one
+physically exists** (`work_locations`, `commission_rules`/`commission_assignments`/`commission_payouts`,
+all 5 new `attendance_records` GPS/work-location columns). This is a **ledger bookkeeping gap, not a
+missing-schema gap** — the app's own readiness check trusts only the ledger and would still report
+503 on this database despite the schema being structurally complete for everything checked. Since all 3
+migrations are idempotent (`IF NOT EXISTS` only), re-running the trusted migration CLI would be expected
+to safely backfill just the 3 missing ledger rows with no schema change — **not attempted in this
+read-only audit.** Verdict: `SCHEMA_BEHIND` (not `READY` — ledger mismatch; not `SCHEMA_MISMATCH` — no
+unexpected entries or genuinely-missing schema; not `CONNECTION_BLOCKED` — connection and every query
+succeeded cleanly). Evidence:
+`mobile-qa/development-neon-main-readonly-health-01a/20260728-1227/REPORT.md`. Zero production Aiven/
+Render/Vercel/Brain access. **Neon development read-only access only. Aiven production untouched.
+Deployment: NOT DEPLOYED.**
+
+**`DEVELOPMENT-NEON-MAIN-LEDGER-RECONCILIATION-01A` — 2026-07-28, FAIL — migration failed, stopped
+immediately, no retry (record only, 0 production access).** Attempted the authorized backfill of the 3
+ledger rows found missing by the prior read-only audit. New, distinct lock acquired (explicitly separate
+from the retained `DEVELOPMENT-NEON-MAIN-READONLY-HEALTH-01A` lock). Preflight passed: `NODE_ENV`
+confirmed not `production`, target re-confirmed as the Neon-pattern dev host, before-state captured
+(45/48, same 3 IDs missing). Ran `NODE_ENV=development MAIN_MIGRATION_RELEASE_MODE=true npm run
+db:migrate:main` exactly once (never setting `ALLOW_PROD_DB_MIGRATE_MAIN`) — **failed on its first
+statement:** `cannot execute CREATE TABLE in a read-only transaction`. **Root cause confirmed, not
+assumed:** an independent diagnostic connection's `SHOW default_transaction_read_only` returned `on`
+**ambiently**, before this package's own explicit `SET` ran — this database's role/connection starts
+every session read-only by default, at the database/role level itself, regardless of caller intent. Not
+introduced by this or any prior session package. Two possible causes, neither resolvable from source:
+`.env`'s `DATABASE_URL` may point at a Neon read-only replica/branch endpoint instead of the primary
+read-write one, or the role has an intentional read-only default — **resolving this needs Neon
+dashboard/role-configuration access, explicitly outside this agent's scope.** A read-only reconnect
+afterward confirmed the ledger is completely unchanged (still 45/48, same 3 IDs missing, 0 duplicate or
+extra rows, advisory lock cleanly released) and the schema for all 3 target migrations remains fully
+present exactly as before — the failed attempt changed nothing and left no partial or corrupted state.
+Zero production Aiven/Render/Vercel/Brain access, zero retries, zero raw SQL or manual ledger writes,
+zero secret values printed anywhere (confirmed via grep of the evidence directory). Evidence:
+`mobile-qa/development-neon-main-ledger-reconciliation-01a/20260728-1314/REPORT.md`. **Neon development
+access only. Aiven production untouched. Deployment: NOT DEPLOYED.**
+
+**`DEVELOPMENT-NEON-MAIN-LEDGER-RECONCILIATION-01B` — 2026-07-28, PASS (record only, 0 production
+access).** The Inspector supplied a corrected `DATABASE_URL` for the same confirmed dev Neon target
+directly in chat. Handled as an inline environment variable for every command only — **never written to
+`.env`, never written to any script, never printed or logged anywhere** — and this run's entire evidence
+directory was scanned for the connection scheme, the specific username, the specific password value, and
+the specific host fragment: **zero matches confirmed.** New, distinct lock acquired (no prior lock
+reused). Preflight confirmed `NODE_ENV` not production, `MAIN_SCHEMA_TRUST_BASELINE_ADOPTION` not set,
+`ALLOW_PROD_DB_MIGRATE_MAIN` never set, target re-confirmed Neon-pattern, **`default_transaction_read_only`
+ambient state = `off`** (genuinely write-capable, unlike the `01A` credential), database-level create
+capability confirmed via a rolled-back `CREATE TEMP TABLE` probe, and the same 45/48 ledger before-state.
+Ran `NODE_ENV=development MAIN_MIGRATION_RELEASE_MODE=true npm run db:migrate:main` exactly once —
+**SUCCESS**: all 3 target migrations (`commission_engine_tables`, `attendance_records_gps_columns`,
+`work_locations_table`) applied cleanly, advisory lock acquired and cleanly released. A read-only
+after-proof confirmed: **ledger 48/48**, head `2026_07_25_work_locations_table`, each of the 3 target IDs
+present **exactly once** (0 duplicates, 0 extras across all 48 rows), and all previously-audited 21
+tables/4 indexes/7 columns still present. **Verdict: READY.** No application UI or business-write
+testing claimed — only the migration CLI outcome and read-only ledger/schema state were proven. Zero
+production Aiven/Render/Vercel/Brain access, zero business-data writes, zero source edits/commit/push/
+deploy. Evidence: `mobile-qa/development-neon-main-ledger-reconciliation-01b/20260728-1340/REPORT.md`.
+**Outstanding: the exposed dev Neon credential still requires rotation via Neon dashboard — not
+performed by this package, outside this agent's scope.** **Neon development access only. Aiven
+production untouched. Deployment: NOT DEPLOYED.**
+
+**`DEVELOPMENT-NEON-MAIN-LEDGER-RECONCILIATION-01B-EVIDENCE-CORRECTION-1` — 2026-07-28, evidence-only
+correction (record only, 0 database/migration/SQL/server/browser/test/build/commit/push/deploy).**
+Corrected the `01B` evidence's wording: the preflight was originally described as "fully read-only" and
+"zero raw SQL/DDL." In fact it issued **one session-scoped, explicitly-rolled-back `CREATE TEMP TABLE ...
+ON COMMIT DROP` DDL statement** as its database-level write-capability check — temporary DDL, not a
+read-only query, though it created no persistent table, business data, fixture, or schema change of any
+kind, and left no trace once its transaction rolled back. `REPORT.md` and `results.json` updated to state
+this precisely; `EVIDENCE-CORRECTION-1.md` added, reproducing no credential, username, host, or database
+name. **The trusted migration CLI (`npm run db:migrate:main`) remains the only source of any persistent
+database change made in that package. The migration result, all ledger counts, and the final verdict are
+unchanged: PASS, 48/48, head `2026_07_25_work_locations_table`.** No queue scope change. Credential
+rotation for the previously-exposed connection string remains pending — this correction does not claim it
+was performed. Evidence:
+`mobile-qa/development-neon-main-ledger-reconciliation-01b/20260728-1340/EVIDENCE-CORRECTION-1.md`.
+
+**`DEVELOPMENT-NEON-SANDBOX-CONNECTION-VALIDATION-01A` — 2026-07-28, verdict `CONNECTABLE_WRITE_CAPABLE`
+(record only, 0 production access, 0 DDL of any kind).** A newly supplied, distinct `NEON_TEST_DATABASE_URL`
+was validated — a separate target from `.env`'s `DATABASE_URL` and from the previously-reconciled dev
+Neon database, both of which were left completely untouched. Used only as an inline environment variable
+for a single script invocation — **never written to any file, never printed or logged anywhere** — and
+this run's evidence directory was scanned and confirmed secret-free. Connected exactly once, ran only
+`SELECT`/`SHOW`/`information_schema`/`pg_catalog` checks — **explicitly no `CREATE TEMP TABLE` or any DDL
+this time**, a stricter boundary than the prior `01B` reconciliation package — and disconnected
+immediately. Confirmed: real PostgreSQL 18.4 connection; `default_transaction_read_only` = `off`;
+database-level `CREATE` privilege = true, checked via the read-only `has_database_privilege()` function
+(no actual `CREATE` statement was ever issued); 0 public tables (a fresh, empty sandbox database with no
+schema deployed yet — expected for a new target, not a defect). **Verdict: `CONNECTABLE_WRITE_CAPABLE`**
+— reachable and configured to support future write/migration work, but no write of any kind was
+performed in this package. Zero production Aiven/Render/Vercel/Brain access; zero business-row reads;
+zero source edits/commit/push/deploy. Evidence:
+`mobile-qa/development-neon-sandbox-connection-validation-01a/20260728-1422/REPORT.md`. **This validation
+does not authorize creating application test records on this sandbox database — creation-flow testing
+remains local-disposable-only, per standing policy. Deployment: NOT DEPLOYED.**
+
+**`LOCAL-DISPOSABLE-APPLICATION-SCHEMA-AND-CREATION-SMOKE-01A` — 2026-07-28, verdict `PASS` (record only,
+0 production access, 0 remote database access of any kind).** The actual application write test, not a
+connection-only check. Provisioned a fresh, disposable, local-only PostgreSQL 18 cluster (loopback-only,
+unused port, `trust` auth confined to the temporary cluster), created a single `qa_app_write_smoke_*`
+database, restored the trusted local baseline (`v2026_07_20_corporate_declaration`, schema-only + ledger-
+only), and ran the real trusted release migration CLI (`MAIN_MIGRATION_RELEASE_MODE=true npm run
+db:migrate:main`) — **SUCCESS**, ledger 48/48, head `2026_07_25_work_locations_table`. Started the real
+application server against this local database with `BRAIN_DATABASE_URL` overridden to an unreachable
+placeholder host (confirmed via DNS-failure log lines that no real Brain database was ever contacted — a
+non-blocking, expected failure by the app's own architecture). Confirmed readiness (`GET /api/ready` →
+HTTP 200), authenticated using the existing, documented local QA pattern (`server/seed.ts`'s automatic
+`seedSuperAdmin()` — no bypass), obtained a CSRF token the normal way (`GET /api/admin/csrf-token`), and
+ran a full create → read → delete → verify-gone cycle on a tagged inventory item entirely through normal
+application HTTP APIs (`POST /api/inventory` 201, `GET` 200, `DELETE` 204, `GET` 404) — **zero raw SQL
+used for record creation, zero manual ledger edits.** All 4 build/whitespace gates passed
+(`tsc --noEmit`, `vite build`, `build:server`, `git diff --check`). Full cleanup confirmed: app server
+stopped, disposable database dropped, cluster stopped, data directory removed, both ports confirmed
+closed. Zero Neon/Aiven/Render/Vercel/Brain/system-PostgreSQL-`:5432` access at any point; no product
+source edits, commit, push, or deployment. Evidence:
+`mobile-qa/local-disposable-application-schema-and-creation-smoke-01a/20260728-1433/REPORT.md`. **Local
+disposable database only. No remote access of any kind. Deployment: NOT DEPLOYED.**
+
+**`WINDOWS-SCHEMA-MIGRATION-LAUNCHER-01A` — 2026-07-28, PASS.** Turned `tools/windows_schema_migration.py`
+into a tested one-click Windows `.exe` for LOCAL and explicitly-labelled DEVELOPMENT migrations only.
+Replaced the old "every remote target is production" rule with explicit `TargetMode` (`LOCAL_DISPOSABLE`,
+`DEVELOPMENT_REMOTE`, `PRODUCTION_REMOTE`) validated via `resolve_target_mode()` **before any command is
+built** — production remote is always rejected in v1 with a message pointing to the controlled release
+procedure, and its GUI radio button is rendered permanently disabled. Both allowed modes now run with
+`NODE_ENV=development` and never set `ALLOW_PROD_DB_MIGRATE_MAIN`; development remote requires an explicit
+confirmation showing only the redacted target fingerprint. Still only ever launches the reviewed
+`npm run schema:audit:ledger` / `npm run db:migrate:main` commands — zero independent migration SQL in
+Python, zero credential persistence anywhere. Packaged via PyInstaller
+(`tools/packaging/windows_schema_migration.spec` + `build_windows_schema_migration_exe.py`) into
+`PromiseSchemaMigration.exe` with an embedded blue/slate database-migration logo (ignored build/dist
+folders, not committed). 27/27 Python unit tests pass, including new coverage for local/dev-remote/
+production-blocked classification and frozen-exe repo-root resolution. **Found and fixed two real defects
+during verification**: (1) the window was too short and clipped the entire action row off-screen; (2)
+under the frozen `.exe`, `Path(__file__)` resolved inside PyInstaller's temp bundle instead of the real
+checkout, so the canonical Node sources were never found — fixed with a `sys.frozen`-aware
+`_resolve_repo_root()` that searches upward from the real `.exe` location. Proved the real built `.exe`,
+driven through its **normal UI path** (real mouse clicks + direct `WM_CHAR` keystroke posts, since an
+active Avro Bangla IME was found corrupting simulated hardware keystrokes), against a fresh disposable
+local-only PostgreSQL 18 cluster: baseline restore → migration → **ledger 31→48**, native result dialog
+"Schema migration complete" with a fully sanitized body, URL field confirmed cleared immediately after the
+Run click, and zero credential/URL fragments found in any evidence file (grep-verified). All 4 build gates
++ `git diff --check` PASS. Full cleanup confirmed (exe stopped, disposable DB dropped, cluster stopped,
+port closed). Zero Neon/Aiven/Render/Vercel/Brain/production access. Evidence:
+`mobile-qa/windows-schema-migration-launcher-01a/20260728-1505/REPORT.md`. **Local/development only. The
+generated `.exe` was not committed. Deployment: NOT DEPLOYED.**
+
+**`WINDOWS-SCHEMA-MIGRATION-LAUNCHER-01A-HOTFIX-1` — 2026-07-28, PASS.** Fixed a real defect: Development
+remote mode accepted **every** non-local PostgreSQL host, so an Aiven production URL could have been
+misclassified as development and bypassed the intended production block. Added
+`DEVELOPMENT_REMOTE_HOST_SUFFIX = ".neon.tech"` and `_is_recognized_development_remote_host()`;
+`resolve_target_mode()` now rejects any development-remote target whose host doesn't end with
+`.neon.tech` — **before** any command is built, confirmed by tests that assert the subprocess factory is
+never invoked for rejected hosts (Aiven-pattern, arbitrary, suffix-spoofing, near-miss strings, raw IPs,
+bare `neon.tech`). `DatabaseTarget` gained a `host` field (hostname only, never a credential) to support
+the check. Local disposable's localhost-only restriction and production remote's permanent block are
+unaffected; trusted Node commands and credential-clearing behavior unchanged. 31/31 Python unit tests
+pass (4 new + 2 updated to use a `.neon.tech` example host instead of the now-correctly-rejected
+`db.example.com`). Rebuilt `PromiseSchemaMigration.exe` and proved through its real UI: Local mode still
+reaches a successful preflight against a disposable local baseline; a **fabricated, non-resolvable**
+Aiven-pattern URL selected under Development remote is rejected instantly with a clear message and Run
+Schema stays disabled — no real Neon/Aiven/Render/Vercel/Brain endpoint was ever contacted. All 4 build
+gates + `git diff --check` PASS. Full cleanup confirmed; zero credential/URL fragments found in evidence
+(grep-verified). Evidence:
+`mobile-qa/windows-schema-migration-launcher-01a-hotfix-1/20260728-1543/REPORT.md`. **No real remote
+target used. Generated `.exe` not committed. Deployment: NOT DEPLOYED.**
+
+**`SCHEMA-UPDATE-CONTROL-UX-01A` — 2026-07-28, PASS.** Completed the Admin Schema Update control
+(`SchemaUpdateControl.tsx`) so a Super Admin can request a reviewed schema update from Settings — the
+browser only ever records a durable request; it never runs DDL, shell commands, migrations, or child
+processes. Added `schemaUpdateApi.requestUpdate` to `adminApi.ts` (calls the existing, reviewed
+`POST /admin/schema-updates/requests` with `{confirm: true, password}` only). "Request update" shows only
+when no active run, ledger not blocked, pending migrations exist, and `user?.role === "Super Admin"`
+(matching the existing UI gating pattern). Clicking it opens a compact dialog requiring password
+re-authentication and an explicit confirmation checkbox; password state is cleared on submit, success,
+error, cancel, and unmount (verified live via DOM inspection, not just source). Only
+`["schema-update-status"]` is invalidated on success; the API's own safe message is shown. No backup
+button, file export, database URL input, provider token, or direct migration button was added anywhere.
+Backend/runner/migration/schema files were not touched — source inspection found no narrowly-required
+gap. Added 5 new client-contract tests to `tests/schema-update-control-plane.test.ts` (37/37 pass,
+including proof the subprocess/DDL path is never touched) and updated one stale guard test in
+`tests/test_windows_schema_migration.py` that had asserted the component must never gain exactly this
+feature (31/31 pass). Proved the full flow on a real disposable local PostgreSQL stack at desktop
+1440x900 and mobile 390x844 + 430x932: pending state, request dialog, password confirmed cleared via
+`browser_evaluate` after cancel, request recorded (`schema_update_runs` gains a row), ledger count
+unchanged before/after (47->47, zero DDL), no horizontal overflow or modal overlap. All 4 build gates +
+focused vitest + python guard + `git diff --check` PASS. Full cleanup confirmed. Evidence:
+`mobile-qa/schema-update-control-ux-01a/20260728-1619/REPORT.md`. **No Neon/Aiven/Render/Vercel/Brain/
+production access. Deployment: NOT DEPLOYED.**
+
+**`PROMISE-SCHEMA-MIGRATION-TOOL-BACKUP-RESTORE-01A` — 2026-07-28, PASS.** Extended the existing
+`PromiseSchemaMigration.exe` (no new application) with two actions: **Backup and Migrate** (schema check
+-> verified `pg_dump` custom-format backup outside the repo -> `pg_restore --list` + SHA-256 verification
+-> the existing trusted migration command -> ledger recheck; typed `MIGRATE` confirmation required for any
+non-local target) and **Restore Backup** (operator picks a prior backup via the native file dialog -> SHA-
+256 + saved target-fingerprint verification against the entered database -> typed `RESTORE` confirmation,
+unconditional -> restore -> ledger recheck). No migration SQL was authored in Python; only the reviewed
+Node migration command ever changes the MAIN schema; credentials (`PGPASSWORD`/`PGUSER`/`PGHOST`) are
+passed to `pg_dump`/`pg_restore`/`dropdb`/`createdb` exclusively via child-process environment variables,
+never on any command line, and zeroed immediately after each call; the only on-disk write anywhere is a
+credential-free backup-metadata sidecar (sha256/fingerprint/timestamp/entry-count/masked db name). 47/47
+Python unit tests pass (16 new + 2 updated guards). Rebuilt the `.exe` and found/fixed **two real
+`pg_restore` defects** through actual end-to-end testing on a disposable local database: (1) `pg_restore`
+needs an explicit `--dbname` (unlike `pg_dump`/`psql`, it never infers the target from `PGDATABASE`
+alone); (2) an in-place `--clean --if-exists` restore is not dependency-order-safe and left a real target
+database in a **partially restored, inconsistent state** on a genuine cross-table FK/constraint ordering
+error — fixed by switching to `dropdb --if-exists` + `createdb` + a plain `pg_restore` into the now-empty
+database, the standard safe pattern. Proved the full required sequence against the real rebuilt `.exe`:
+baseline (31) -> Backup and Migrate (31->48, backup verified) -> Restore Backup (->31, typed RESTORE,
+clean full restore confirmed via table count and an intact empty table, not partial) -> plain migrate
+again (->48). All 4 build gates + `git diff --check` PASS. Full cleanup confirmed (exe stopped, disposable
+DB dropped, cluster stopped, backup files removed, port closed); zero credential/URL leakage in evidence
+(grep-verified). Evidence:
+`mobile-qa/promise-schema-migration-tool-backup-restore-01a/20260728-1704/REPORT.md`. **No new
+application. No Neon/Aiven/Render/Vercel/production access. Generated `.exe` not committed. Deployment:
+NOT DEPLOYED.**
+
+**`PROMISE-SCHEMA-MIGRATION-TOOL-NEON-REMOTE-PROOF-01A` — 2026-07-28, schema check + Backup and Migrate
+PASS, Restore Backup honestly BLOCKED, final ledger 48/48 (required end state met).** Test-only phase
+(zero code changes) proving the existing `.exe`'s real remote workflow against an operator-supplied
+disposable Neon TEST database, driven through the real `.exe` UI's Development remote mode (not Python
+functions directly). Host confirmed to end in `.neon.tech` via read-only check before any write. The
+target database was found empty and initialized only with the approved schema-only baseline + baseline
+ledger (0 business-data INSERTs, 31 ledger-only INSERTs) — no customer/staff/payment data. **Schema check
+PASS** (real `npm run schema:audit:ledger` against Neon). **Backup and Migrate PASS**: typed `MIGRATE`
+confirmation, real `pg_dump` backup created and verified (SHA-256 + `pg_restore --list`, 559 archive
+entries) outside the repository, then the real `npm run db:migrate:main` — **ledger 31→48**, confirmed
+independently via read-only `psql`. **Restore Backup BLOCKED**: SHA-256 and target-fingerprint verification
+passed, typed `RESTORE` confirmed, but the real `dropdb` step failed because Neon reported the target
+database still in use by another session — a genuine platform-side constraint, not a tool defect. Per
+instructions, **stopped immediately with no raw SQL or alternative restore method attempted**; the failed
+attempt left the database **completely unaffected** (confirmed still 48/48), which already satisfies the
+brief's required final state, so no further action was needed. Every backup file was confirmed outside the
+repo with a credential-free filename and metadata sidecar, then deleted at cleanup per instructions (Neon
+test database itself was left untouched at 48/48, not deleted). A read-only-discovered environmental quirk
+(this Neon endpoint's empty default `search_path`) was recorded but not acted on — it did not block the
+real reviewed Node commands during this proof. All 4 build gates + `git diff --check` PASS. Full grep of
+every evidence file for the real Neon username/password/host: zero matches. Evidence:
+`mobile-qa/promise-schema-migration-tool-neon-remote-proof-01a/20260728-1740/REPORT.md`. **Neon TEST
+database only (operator-confirmed disposable, no important data). No Aiven/Render/Vercel/local-system-
+Postgres/production access. Test-only — zero code changes. Deployment: NOT DEPLOYED.**
+
+**`PROMISE-SCHEMA-MIGRATION-TOOL-NEON-REMOTE-RESTORE-HOTFIX-01A` — 2026-07-28, Restore Backup PASS
+(48→31, twice independently verified), final "migrate again to 48" step honestly BLOCKED, Neon test
+database left at ledger 31 (not the requested 48/48).** Extended the existing `.exe`
+(`tools/windows_schema_migration.py` only, no new application) so Restore Backup can use PostgreSQL's own
+`dropdb --force` for Development remote, gated behind a new from-scratch two-factor confirmation dialog —
+an unchecked-by-default consent checkbox plus a typed `RESTORE` confirmation, showing only the target
+fingerprint, never the database name or host. Also hardened `_sanitize_tool_output` (strips
+ALTER/GRANT/CREATE/DROP/INSERT/SELECT-FROM SQL patterns) after a raw `pg_restore` statement briefly leaked
+into a failure dialog during live testing with the pre-hotfix build, and changed `run_restore_and_recheck`
+to always report its read-only ledger recheck even on a reported failure, without changing the
+success/failure outcome. 54/54 Python tests pass. **Live proof against the real Neon test database with
+the rebuilt `.exe`:** `dropdb --force` succeeded exactly where the immediately prior phase's plain `dropdb`
+had failed on the same "active connection" blocker; the two-factor dialog behaved correctly (checkbox
+unchecked by default, fingerprint-only, typed confirmation required); Restore Backup reported success and
+was independently confirmed via schema-qualified `psql`: **ledger 48→31**. **The required final proof step
+(migrate again to reach 48) is honestly reported as BLOCKED** by a newly discovered, distinct finding: after
+the forced-drop-and-recreate cycle, the recreated database's session-level `search_path` resolves empty
+(confirmed deterministic across two retries with waits up to 95s), breaking the project's own
+already-reviewed, out-of-scope, unqualified `SELECT ... FROM promise_schema_migrations` queries in
+`server/services/main-schema-migrate.service.ts` and `server/services/ledger-reconciliation-audit.service.ts`
+— even though the restored data itself is present and correct (independently verified via schema-qualified
+SQL, twice). No handwritten SQL workaround was attempted and no out-of-scope Node service code was
+modified; the tool's own Preflight gate correctly, safely refused to proceed rather than guess. All 4 build
+gates + `git diff --check` PASS. Full grep of every evidence file, plus a visual screenshot review, for the
+real Neon username/password/host: zero matches. **Final Neon test database state is ledger 31, not the
+requested 48/48 — this deviation is disclosed honestly rather than forced through an unauthorized route.**
+Evidence: `mobile-qa/promise-schema-migration-tool-neon-remote-restore-hotfix-01a/20260728-1823/REPORT.md`.
+**Neon TEST database only (operator-confirmed disposable, no important data). No
+Aiven/Render/Vercel/local-system-Postgres/production access. Deployment: NOT DEPLOYED.**
