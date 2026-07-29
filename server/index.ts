@@ -24,7 +24,7 @@ import {
 } from "./services/system-incidents.service.js";
 import { brainService } from "./brain/brain.service.js";
 import { verifyMainSchemaLedger, recordMainSchemaVerified, REQUIRED_MAIN_SCHEMA_VERSION } from "./services/main-schema-migrate.service.js";
-import { markMainSchemaComplete, markMainSchemaFailed, markOptionalJobsComplete, recordOptionalJob, startReadinessChecks, stopReadinessChecks, isMainSchemaVerifiedComplete } from "./services/db-readiness.js";
+import { markMainSchemaComplete, markMainSchemaFailed, markOptionalJobsComplete, recordOptionalJob, setMainSchemaRevalidator, startReadinessChecks, stopReadinessChecks, isMainSchemaVerifiedComplete } from "./services/db-readiness.js";
 import { logRedactedLedgerReconciliationAudit } from "./services/ledger-reconciliation-audit.service.js";
 
 // ── Crash guards ────────────────────────────────────────────────────────────
@@ -118,6 +118,22 @@ async function verifyMainSchemaReadOnly(contextLabel: string): Promise<void> {
   );
   // Server-only redacted reconciliation audit — never mutates ledger; never prints secrets/SQL/checksums.
   await logRedactedLedgerReconciliationAudit(verification);
+
+  // Let the readiness watchdog retry this same read-only check. If the database
+  // is migrated after boot — a deploy landing before its migration is applied —
+  // the instance recovers on its own instead of serving 503 until someone
+  // restarts it manually.
+  setMainSchemaRevalidator(async () => {
+    const recheck = await verifyMainSchemaLedger();
+    if (!recheck.ok) return false;
+    recordMainSchemaVerified(recheck.currentVersion, recheck.appliedIds);
+    markMainSchemaComplete(recheck.currentVersion);
+    console.log(
+      `[Startup] MAIN schema ledger verified on retry (${contextLabel}). Version: ${recheck.currentVersion}. Required: ${REQUIRED_MAIN_SCHEMA_VERSION}.`
+    );
+    setMainSchemaRevalidator(null);
+    return true;
+  });
 }
 
 // Optional jobs: seeds, backfills, reconciliations, Brain work.

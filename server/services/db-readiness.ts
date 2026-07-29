@@ -89,6 +89,62 @@ export function markMainSchemaComplete(version: string | null): void {
   }
 }
 
+/**
+ * Re-runs the read-only MAIN schema ledger verification. Supplied by the
+ * startup module so this file needs no extra imports and the verification
+ * logic stays in one place. Must be read-only — it never applies DDL.
+ */
+type MainSchemaRevalidator = () => Promise<boolean>;
+
+let mainSchemaRevalidator: MainSchemaRevalidator | null = null;
+let lastRevalidateAt = 0;
+let revalidateInProgress = false;
+const MAIN_SCHEMA_REVALIDATE_INTERVAL_MS = 60_000;
+
+export function setMainSchemaRevalidator(fn: MainSchemaRevalidator | null): void {
+  mainSchemaRevalidator = fn;
+}
+
+/**
+ * The MAIN schema was previously verified only once, at startup. If the
+ * database was migrated after the process booted — the normal case when a
+ * deploy lands before its migration is applied — the instance stayed
+ * fail-closed on 503 for every route until someone manually restarted it. That
+ * cost two production outages.
+ *
+ * The watchdog now re-checks while (and only while) the schema is marked
+ * failed, so a late migration recovers the service on its own. Strictly
+ * read-only, rate limited to once a minute, and never runs when the schema is
+ * already healthy — a healthy instance does no extra work.
+ */
+async function maybeRevalidateMainSchema(): Promise<void> {
+  if (!mainSchemaRevalidator) return;
+  if (!readinessState.mainSchemaFailed) return;
+  if (revalidateInProgress) return;
+
+  const now = Date.now();
+  if (now - lastRevalidateAt < MAIN_SCHEMA_REVALIDATE_INTERVAL_MS) return;
+  lastRevalidateAt = now;
+
+  revalidateInProgress = true;
+  try {
+    const recovered = await mainSchemaRevalidator();
+    if (!recovered) return;
+    // The revalidator already marked the migrate-service state complete; clear
+    // this layer's flag so getReadinessState() stops reporting degraded.
+    readinessState.mainSchemaFailed = false;
+    readinessState.mainSchemaError = null;
+    updateReadinessState();
+    console.log(
+      "[DBReadiness] MAIN schema re-verified after an earlier failure — service is ready again without a restart.",
+    );
+  } catch {
+    // Stay degraded and try again on the next watchdog tick.
+  } finally {
+    revalidateInProgress = false;
+  }
+}
+
 export function markMainSchemaFailed(error: string): void {
   readinessState.mainSchemaFailed = true;
   readinessState.mainSchemaComplete = false;
@@ -194,6 +250,8 @@ async function watchdogTick(): Promise<void> {
       }
       readinessState.consecutiveFailures = 0;
       readinessState.degradedSince = null;
+      // Only meaningful with a live connection, and only acts while failed.
+      await maybeRevalidateMainSchema();
     } else {
       const prev = readinessState.state;
       readinessState.state = 'degraded';
