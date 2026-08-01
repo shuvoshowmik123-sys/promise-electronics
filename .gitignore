@@ -151,3 +151,14 @@ scripts/test-groq-vision.ts
 scripts/test-groq-text-deep.ts
 scripts/smoke-test-final.ts
 scripts/test-audio-only.ts
+
+# RELEASE-UNTRACKED-SOURCE-ADJUDICATION-01A: retained local-only artifacts
+/Production-Ready Implementation Plan.md
+/assets/service-banners/
+/e2e/map-visibility-fix.spec.ts
+/tests/proof-issueBill-fixes.ts
+/server/services/attendance-location-migration.service.ts
+/server/services/challan-migration.service.ts
+/server/services/job-ng-customer-decision-migration.service.ts
+/server/services/job-ng-report-migration.service.ts
+/server/services/pos-integrity-migration.service.ts

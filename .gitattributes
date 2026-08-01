@@ -1,0 +1,5 @@
+* text=auto eol=lf
+
+# Baseline SQL is text and follows the LF byte contract above.
+db-baselines/main-schema/v2026_07_20_corporate_declaration/schema.sql text eol=lf
+db-baselines/main-schema/v2026_07_20_corporate_declaration/promise-schema-migrations.sql text eol=lf
