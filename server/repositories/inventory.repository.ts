@@ -35,7 +35,8 @@ export async function getServicesFromInventory(): Promise<InventoryItem[]> {
 }
 
 /**
- * Get active services visible on website
+ * Get active services visible on website.
+ * SQL mirror of isSelectableCustomerService (server/utils/service-visibility.ts) — keep in sync.
  */
 export async function getActiveServicesFromInventory(): Promise<InventoryItem[]> {
     return db.select().from(schema.inventoryItems)

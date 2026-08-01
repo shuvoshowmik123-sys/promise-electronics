@@ -5,6 +5,8 @@ import * as schema from "../../shared/schema.js";
 import { nanoid } from "../repositories/base.js";
 import { normalizePhone } from "../utils/phone.js";
 import bcrypt from "bcryptjs";
+import { getInventoryItem } from "../repositories/inventory.repository.js";
+import { isSelectableCustomerService } from "../utils/service-visibility.js";
 import type { ServiceRequest } from "../../shared/schema.js";
 
 const DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
@@ -445,6 +447,7 @@ async function resolveCustomerUnderPhoneLock(
                 phoneNormalized: phoneNormalized,
                 role: "Customer",
                 status: "Active",
+                customerAccountState: "unclaimed",
                 password: await bcrypt.hash(nanoid(), 12),
                 permissions: "{}",
             } as any)
@@ -481,11 +484,39 @@ async function resolveCustomerUnderPhoneLock(
     }
 }
 
+/**
+ * CUSTOMER-SERVICE-INTENT-01A — verifies a customer-supplied serviceId.
+ *
+ * null / "" means "Not sure — Check my TV": a legitimate UI state, stored as
+ * null so the technician's diagnosis determines the actual work. Never
+ * substituted with a placeholder or with services[0].
+ *
+ * A non-null id must reference a service that exists AND is active. Unknown or
+ * deactivated ids are rejected with 400 rather than silently coerced, so a stale
+ * bookmark or a tampered payload can never attach a customer request to the
+ * wrong service.
+ */
+async function resolveRequestedServiceId(rawServiceId: string | null | undefined): Promise<string | null> {
+    const serviceId = rawServiceId == null ? "" : String(rawServiceId).trim();
+    if (serviceId === "") return null;
+
+    const item = await getInventoryItem(serviceId);
+    if (!isSelectableCustomerService(item)) {
+        throw new IntakeError(400, "UNKNOWN_SERVICE", "Selected service is not available. Please choose again.");
+    }
+    return item.id;
+}
+
 export async function createRetailServiceRequest(
     input: CanonicalIntakeInput,
 ): Promise<CanonicalIntakeResult> {
     // Payload bounds first — before phone/fingerprint/DB (all ingress share this path).
     validateCanonicalIntakePayload(input);
+
+    // Resolve before the fingerprint is computed so the stored request and its
+    // idempotency material agree on exactly one canonical value.
+    const requestedServiceId = await resolveRequestedServiceId(input.serviceId);
+    input = { ...input, serviceId: requestedServiceId };
 
     const clientKey = input.idempotencyKey || input.clientRequestId || null;
     if (clientKey) {

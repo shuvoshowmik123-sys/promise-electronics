@@ -17,6 +17,7 @@ import { requireAdminAuth, requirePermission, requireSuperAdmin } from './middle
 import { auditLogger } from '../utils/auditLogger.js';
 import { AUDIT_ACTIONS } from '../../shared/constants.js';
 import { detectConflicts, applyResolutions } from '../services/settings-conflict.service.js';
+import { isSelectableCustomerService } from '../utils/service-visibility.js';
 
 const router = Router();
 
@@ -419,7 +420,7 @@ router.get('/api/services', async (req: Request, res: Response) => {
 router.get('/api/services/:id', async (req: Request, res: Response) => {
     try {
         const item = await storage.getInventoryItem(req.params.id);
-        if (!item || item.itemType !== 'service') {
+        if (!isSelectableCustomerService(item)) {
             return res.status(404).json({ error: 'Service not found' });
         }
         const service = {

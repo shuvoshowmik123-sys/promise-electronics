@@ -9,6 +9,7 @@ import {
   CheckCircle2,
   ChevronLeft,
   FileImage,
+  HelpCircle,
   Loader2,
   MapPin,
   Phone,
@@ -26,6 +27,8 @@ import { PickupLocationPicker } from "@/components/maps/PickupLocationPicker";
 import { CarouselSelector, ScreenSizeGlyph } from "@/components/mobile/CarouselSelector";
 import { SearchPickerOverlay } from "@/components/mobile/SearchPickerOverlay";
 import { mergePinAddress } from "@/lib/pickup-address";
+import { resolveServiceIcon } from "@/lib/service-icons";
+import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
@@ -38,6 +41,7 @@ import { getIKFolder } from "@/lib/imagekit-config";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 import { toast } from "sonner";
+import { NOT_SURE_SERVICE } from "@/lib/service-constants";
 
 type WizardMode = "repair" | "quote";
 type ServicePreference = "home_pickup" | "service_center" | "both";
@@ -112,6 +116,8 @@ const DEFAULT_PROBLEM_OPTIONS = [
   },
 ];
 
+// NOT_SURE_SERVICE imported from @/lib/service-constants — shared with desktop Get Quote
+
 const tvTypes = ["LED", "Smart TV", "Android TV", "OLED/QLED", "Not sure"];
 const screenSizes = ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch"];
 
@@ -157,6 +163,16 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [pickupLocationSource, setPickupLocationSource] = useState<"map_pin" | "gps" | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [brandSearchOpen, setBrandSearchOpen] = useState(false);
+  /**
+   * CUSTOMER-SERVICE-INTENT-01A — quote mode only.
+   *
+   * NOT_SURE_SERVICE is a UI-only sentinel; it is translated to serviceId: null
+   * on submit and is never sent to the API. This replaces the previous
+   * `services[0]?.id || "general_repair"` fallback, which recorded a service the
+   * customer never chose (and an id that does not exist in the catalogue).
+   */
+  const [serviceId, setServiceId] = useState<string>(NOT_SURE_SERVICE);
+  const [serviceSearchOpen, setServiceSearchOpen] = useState(false);
   /** Address line contributed by the last pin, so re-pinning replaces it instead of stacking. */
   const lastPinAddressRef = useRef<string | null>(null);
   const [customerName, setCustomerName] = useState(customer?.name || "");
@@ -198,6 +214,43 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
     staleTime: 5 * 60 * 1000,
     enabled: mode === "quote",
   });
+
+  /** Active catalogue services only — a deactivated service must not be offerable. */
+  const activeServices = useMemo(
+    () => services.filter((service) => service.isActive !== false),
+    [services],
+  );
+
+  /**
+   * CUSTOMER-SERVICE-INTENT-01A — resolve ?service=<id or exact name>.
+   *
+   * Runs in its own effect (not the param-hydration effect above) because the
+   * catalogue arrives asynchronously and cannot be matched on first mount.
+   * Matches by exact id first, then by exact case-insensitive name. Anything
+   * unmatched — including an inactive service — deliberately leaves the
+   * selection on "Not sure" rather than guessing a nearest match.
+   */
+  const serviceParamResolved = useRef(false);
+  useEffect(() => {
+    if (mode !== "quote") return;
+    if (serviceParamResolved.current) return;
+    if (activeServices.length === 0) return;
+
+    const raw = new URLSearchParams(window.location.search).get("service");
+    serviceParamResolved.current = true;
+    if (!raw) return;
+
+    const wanted = decodeURIComponent(raw).trim();
+    if (!wanted) return;
+
+    const byId = activeServices.find((service) => service.id === wanted);
+    const match =
+      byId ??
+      activeServices.find(
+        (service) => (service.name || "").trim().toLocaleLowerCase() === wanted.toLocaleLowerCase(),
+      );
+    if (match) setServiceId(match.id);
+  }, [mode, activeServices]);
 
   const { data: serviceAreas = [] } = useQuery({
     queryKey: ["public-service-area-list"],
@@ -443,9 +496,11 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
       return;
     }
 
-    const selectedService = services[0];
     quoteMutation.mutate({
-      serviceId: selectedService?.id || "general_repair",
+      // CUSTOMER-SERVICE-INTENT-01A — "Not sure" submits null. Previously this
+      // was `services[0]?.id || "general_repair"`, which recorded a service the
+      // customer never picked (and a non-existent id) as their request.
+      serviceId: serviceId === NOT_SURE_SERVICE ? null : serviceId,
       brand,
       screenSize: screenSize || undefined,
       modelNumber: modelNumber || undefined,
@@ -601,6 +656,68 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
               </div>
             </div>
             <div className="space-y-5 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
+              {/* CUSTOMER-SERVICE-INTENT-01A — quote mode only. The customer's
+                  pick is advisory; the technician's diagnosis decides the work. */}
+              {mode === "quote" && (
+                <div className="space-y-2.5">
+                  <div className="flex items-baseline justify-between gap-2">
+                    <Label>{t("wizard.serviceType")}</Label>
+                    <span className="truncate text-xs font-bold text-emerald-700">
+                      {serviceId === NOT_SURE_SERVICE
+                        ? t("wizard.notSureShort")
+                        : activeServices.find((s) => s.id === serviceId)?.name ?? t("wizard.notSureShort")}
+                    </span>
+                  </div>
+                  <CarouselSelector
+                    ariaLabel={t("wizard.serviceType")}
+                    // "Not sure" is first and is the default selection.
+                    options={[NOT_SURE_SERVICE, ...activeServices.map((s) => s.id)]}
+                    value={serviceId}
+                    onSelect={setServiceId}
+                    cardClassName="h-[84px] w-[104px]"
+                    formatLabel={(option) =>
+                      option === NOT_SURE_SERVICE
+                        ? t("wizard.notSureService")
+                        : activeServices.find((s) => s.id === option)?.name ?? option
+                    }
+                    renderVisual={(option, selected) => {
+                      // Closed registry only — never a dynamic component lookup
+                      // from admin-editable text.
+                      const Icon =
+                        option === NOT_SURE_SERVICE
+                          ? HelpCircle
+                          : resolveServiceIcon(activeServices.find((s) => s.id === option)?.icon);
+                      return (
+                        <Icon
+                          className={cn("h-5 w-5", selected ? "text-emerald-700" : "text-slate-500")}
+                          aria-hidden
+                        />
+                      );
+                    }}
+                    trailing={
+                      <button
+                        type="button"
+                        onClick={() => setServiceSearchOpen(true)}
+                        className="flex h-[84px] w-[104px] shrink-0 snap-start flex-col items-center justify-center gap-1 rounded-2xl border border-dashed border-emerald-300 bg-emerald-50/40 px-2 text-emerald-700"
+                      >
+                        <Search className="h-4 w-4" aria-hidden />
+                        <span className="text-[12px] font-bold leading-tight">{t("wizard.searchAll")}</span>
+                      </button>
+                    }
+                  />
+                  <p className="text-xs leading-snug text-slate-500">{t("wizard.serviceAdvisoryNote")}</p>
+                  {serviceId !== NOT_SURE_SERVICE && (() => {
+                    const picked = activeServices.find((s) => s.id === serviceId);
+                    if (!picked || picked.minPrice == null || picked.maxPrice == null) return null;
+                    return (
+                      <p className="text-xs font-semibold text-slate-600">
+                        {t("wizard.estimatedRange")}: ৳{picked.minPrice} – ৳{picked.maxPrice}
+                      </p>
+                    );
+                  })()}
+                </div>
+              )}
+
               <div className="space-y-2.5">
                 <div className="flex items-baseline justify-between gap-2">
                   <Label>{t("wizard.brand")}</Label>
@@ -839,6 +956,23 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
           </div>
         </div>
       )}
+      {/* CUSTOMER-SERVICE-INTENT-01A — reuses the keyboard-safe overlay: input
+          pinned top, results scroll beneath, so the field and several matches
+          stay visible above the software keyboard. Searches by service NAME and
+          maps the chosen name back to its id. */}
+      <SearchPickerOverlay
+        open={serviceSearchOpen}
+        title={t("wizard.serviceType")}
+        placeholder={t("wizard.searchServicePlaceholder")}
+        emptyLabel={t("wizard.noServiceMatch")}
+        options={activeServices.map((s) => s.name)}
+        value={activeServices.find((s) => s.id === serviceId)?.name ?? ""}
+        onSelect={(name) => {
+          const match = activeServices.find((s) => s.name === name);
+          if (match) setServiceId(match.id);
+        }}
+        onClose={() => setServiceSearchOpen(false)}
+      />
       <SearchPickerOverlay
         open={brandSearchOpen}
         title={t("wizard.selectBrand")}

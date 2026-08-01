@@ -20,6 +20,7 @@ import { Tv, ArrowLeft, ArrowRight, CheckCircle2, Clock, FileText, Loader2, Phon
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileServiceWizard } from "@/components/mobile/MobileServiceWizard";
+import { NOT_SURE_SERVICE, resolveDesktopServiceId } from "@/lib/service-constants";
 
 export default function GetQuotePage() {
   usePageTitle("Get a Free Quote - TV Repair");
@@ -167,15 +168,7 @@ export default function GetQuotePage() {
 
     setIsSubmitting(true);
 
-    // Find the selected service to get its ID
-    const selectedService = services.find(s => s.name === serviceType);
-    const serviceId = selectedService?.id || (services.length > 0 ? services[0].id : "general_repair");
-
-    if (!serviceId) {
-      toast.error("Please select a service type");
-      setIsSubmitting(false);
-      return;
-    }
+    const serviceId = resolveDesktopServiceId(services, serviceType);
 
     // Map servicePreference to new serviceMode field
     const serviceMode = servicePreference === "home_pickup" ? "pickup" :
@@ -197,7 +190,9 @@ export default function GetQuotePage() {
     });
   };
 
-  const selectedService = services.find(s => s.name === serviceType);
+  const selectedService = serviceType && serviceType !== NOT_SURE_SERVICE
+    ? services.find(s => s.id === serviceType)
+    : undefined;
 
   // Validation function for Step 1
   const validateStep1 = (): boolean => {
@@ -365,14 +360,14 @@ export default function GetQuotePage() {
                         <SelectValue placeholder="Select a service" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={NOT_SURE_SERVICE} data-testid="option-service-not-sure">
+                          Not sure — Check my TV
+                        </SelectItem>
                         {services.map((service) => (
-                          <SelectItem key={service.id} value={service.name} data-testid={`option-service-${service.id}`}>
+                          <SelectItem key={service.id} value={service.id} data-testid={`option-service-${service.id}`}>
                             {service.name}
                           </SelectItem>
                         ))}
-                        <SelectItem value="General TV Repair" data-testid="option-service-general">
-                          General TV Repair
-                        </SelectItem>
                       </SelectContent>
                     </Select>
 
@@ -608,7 +603,7 @@ export default function GetQuotePage() {
                   <div className="bg-white shadow-neumorph-inset p-4 rounded-xl">
                     <h4 className="font-medium mb-2">Quote Summary</h4>
                     <div className="text-sm space-y-1">
-                      <p><span className="text-muted-foreground">Service:</span> {serviceType || "General Repair"}</p>
+                      <p><span className="text-muted-foreground">Service:</span> {selectedService?.name || "Not sure — Check my TV"}</p>
                       <p><span className="text-muted-foreground">Brand:</span> {brand}</p>
                       {screenSize && <p><span className="text-muted-foreground">Screen Size:</span> {screenSize}</p>}
                       {modelNumber && <p><span className="text-muted-foreground">Model:</span> {modelNumber}</p>}

@@ -278,6 +278,14 @@ const translations = {
   "wizard.brand":          { en: "Brand *",                   bn: "ব্র্যান্ড *" },
   "wizard.selectBrand":    { en: "Select brand",              bn: "ব্র্যান্ড বাছুন" },
   "wizard.size":           { en: "Size",                      bn: "সাইজ" },
+  // CUSTOMER-SERVICE-INTENT-01A — advisory service selection (quote mode)
+  "wizard.serviceType":    { en: "Service type",              bn: "সার্ভিসের ধরন" },
+  "wizard.notSureService": { en: "Not sure — Check my TV",    bn: "নিশ্চিত নই — TV দেখে বলুন" },
+  "wizard.notSureShort":   { en: "Not sure",                  bn: "নিশ্চিত নই" },
+  "wizard.serviceAdvisoryNote": { en: "This helps us prepare. Final service and price are confirmed after inspection.", bn: "এটি আমাদের প্রস্তুতিতে সাহায্য করে। চূড়ান্ত সার্ভিস ও মূল্য পরীক্ষার পর নিশ্চিত হবে।" },
+  "wizard.estimatedRange": { en: "Estimated range",           bn: "আনুমানিক পরিসর" },
+  "wizard.searchServicePlaceholder": { en: "Search services", bn: "সার্ভিস খুঁজুন" },
+  "wizard.noServiceMatch": { en: "No matching service. Choose \"Not sure\" and we will check your TV.", bn: "মিল পাওয়া যায়নি। \"নিশ্চিত নই\" বেছে নিন, আমরা আপনার TV দেখে জানাবো।" },
   // Carousel selector (step 2)
   "wizard.searchAll":      { en: "Search all",                bn: "সব দেখুন" },
   "wizard.searchBrandPlaceholder": { en: "Search brands",     bn: "ব্র্যান্ড খুঁজুন" },
