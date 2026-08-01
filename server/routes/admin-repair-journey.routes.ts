@@ -7,6 +7,55 @@ import { sql } from "drizzle-orm";
 const router = Router();
 
 /**
+ * GET /api/admin/customer-repair-journeys/account-by-phone
+ * Returns safe account state info for a customer phone — no passwords or secrets.
+ */
+router.get(
+  "/api/admin/customer-repair-journeys/account-by-phone",
+  requireAdminAuth,
+  requirePermission("serviceRequests"),
+  async (req: Request, res: Response) => {
+    try {
+      const { phone } = req.query;
+      if (!phone || typeof phone !== "string") {
+        return res.status(400).json({ error: "phone query parameter required" });
+      }
+      const digits = phone.replace(/\D/g, "");
+      const norm = digits.startsWith("880") ? digits.slice(3).slice(-10) : digits.slice(-10);
+      if (!norm || norm.length < 7) {
+        return res.status(400).json({ error: "invalid phone" });
+      }
+
+      const rows = await db.execute(sql`
+        SELECT u.id, u.name, u.phone, u.customer_account_state, u.last_login,
+               (SELECT COUNT(*)::int FROM service_requests WHERE customer_id = u.id) AS linked_count
+        FROM users u
+        WHERE u.phone_normalized = ${norm}
+          AND u.role = 'Customer'
+        ORDER BY u.joined_at ASC NULLS LAST
+        LIMIT 1
+      `);
+      const user = ((rows as any).rows ?? rows)[0];
+      if (!user) {
+        return res.json({ found: false });
+      }
+      res.json({
+        found: true,
+        userId: user.id,
+        name: user.name,
+        customerAccountState: user.customer_account_state ?? "active",
+        lastLogin: user.last_login,
+        linkedRepairCount: Number(user.linked_count ?? 0),
+        phoneTail: (user.phone || "").replace(/\D/g, "").slice(-4),
+      });
+    } catch (error: any) {
+      console.error("[RepairJourney] Account by phone error:", (error as Error).message);
+      res.status(500).json({ error: "Failed to fetch account info" });
+    }
+  }
+);
+
+/**
  * GET /api/admin/customer-repair-journeys — list journeys with optional filters
  */
 router.get(

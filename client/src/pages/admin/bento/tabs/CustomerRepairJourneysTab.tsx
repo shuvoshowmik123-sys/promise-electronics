@@ -9,7 +9,10 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock3,
+  Copy,
+  ExternalLink,
   FileText,
+  Loader2,
   MessageSquare,
   Monitor,
   Phone,
@@ -21,6 +24,8 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { adminRepairJourneysApi, type AdminJourneyListItem } from "@/lib/api/adminApi";
+import { useAdminAuth } from "@/contexts/AdminAuthContext";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { CustomerRepairJourneyDetail } from "@/lib/api/customerApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -362,14 +367,136 @@ function JourneyIndexRow({
   );
 }
 
+function ProfileAccountSection({ phone, isSuperAdmin }: { phone: string; isSuperAdmin: boolean }) {
+  const [resetLinkTarget, setResetLinkTarget] = useState<{ id: string; name: string } | null>(null);
+  const [resetLinkResult, setResetLinkResult] = useState<{ url: string; expiresAt: string; expiresInHours: number; customerName: string; customerPhoneTail: string } | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ["journey-account-by-phone", phone],
+    queryFn: () => adminRepairJourneysApi.getAccountByPhone(phone),
+    enabled: !!phone && phone !== "No phone",
+    staleTime: 60_000,
+  });
+
+  const resetLinkMutation = useMutation({
+    mutationFn: (userId: string) => adminRepairJourneysApi.generateResetLink(userId),
+    onSuccess: (result) => {
+      setResetLinkResult(result);
+      setResetLinkTarget(null);
+    },
+    onError: () => toast.error("Failed to generate reset link"),
+  });
+
+  if (isLoading) return <div className="rounded-2xl border border-slate-100 bg-white p-4"><p className="text-xs text-slate-400">Loading account info…</p></div>;
+  if (!data || !data.found) return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-4">
+      <p className="text-xs font-black uppercase tracking-wide text-slate-400">Account</p>
+      <p className="mt-2 text-sm text-slate-500">No linked account found for this phone.</p>
+    </div>
+  );
+
+  const stateLabel = data.customerAccountState === "unclaimed" ? "Setup needed" : "Active";
+  const stateTone = data.customerAccountState === "unclaimed"
+    ? "bg-amber-50 text-amber-700 border-amber-100"
+    : "bg-emerald-50 text-emerald-700 border-emerald-100";
+
+  return (
+    <div className="rounded-2xl border border-slate-100 bg-white p-4 space-y-3">
+      <p className="text-xs font-black uppercase tracking-wide text-slate-400">Account</p>
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="text-sm font-black text-slate-900">{data.name}</p>
+          <p className="text-xs text-slate-500">···{data.phoneTail}</p>
+        </div>
+        <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-black ${stateTone}`}>{stateLabel}</span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-xs">
+        <div className="rounded-xl bg-slate-50 p-2">
+          <p className="font-black uppercase text-slate-400">Linked repairs</p>
+          <p className="mt-0.5 font-black text-slate-900">{data.linkedRepairCount ?? 0}</p>
+        </div>
+        <div className="rounded-xl bg-slate-50 p-2">
+          <p className="font-black uppercase text-slate-400">Last login</p>
+          <p className="mt-0.5 font-black text-slate-900">{data.lastLogin ? new Date(data.lastLogin).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Never"}</p>
+        </div>
+      </div>
+      {isSuperAdmin && data.userId && (
+        <button
+          type="button"
+          onClick={() => setResetLinkTarget({ id: data.userId!, name: data.name! })}
+          className="flex w-full items-center justify-center gap-2 rounded-xl border border-blue-100 bg-blue-50 py-2 text-xs font-black text-blue-700 hover:border-blue-200"
+          data-testid="button-journey-generate-reset-link"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Generate setup link
+        </button>
+      )}
+
+      {/* Confirm: generate reset link */}
+      <Dialog open={!!resetLinkTarget} onOpenChange={(open) => !open && setResetLinkTarget(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Generate Account Setup Link</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600">
+            A one-time link will be generated for <span className="font-black">{resetLinkTarget?.name}</span>.
+            Share it via WhatsApp or Messenger. Valid for 24 hours, single use.
+          </p>
+          <p className="text-xs text-slate-400">You will not be able to retrieve this link after closing the dialog.</p>
+          <div className="flex gap-2 pt-2">
+            <button type="button" onClick={() => setResetLinkTarget(null)} className="flex-1 rounded-xl border border-slate-200 py-2 text-sm font-bold text-slate-600">Cancel</button>
+            <button
+              type="button"
+              disabled={resetLinkMutation.isPending}
+              onClick={() => resetLinkTarget && resetLinkMutation.mutate(resetLinkTarget.id)}
+              className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 py-2 text-sm font-black text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              {resetLinkMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ExternalLink className="h-4 w-4" />}
+              Generate
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Show: reset link result — shown ONCE */}
+      <Dialog open={!!resetLinkResult} onOpenChange={(open) => !open && setResetLinkResult(null)}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Account Setup Link</DialogTitle>
+          </DialogHeader>
+          <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 break-all">
+            <p className="font-mono text-xs text-blue-900">{resetLinkResult?.url}</p>
+          </div>
+          <p className="text-xs text-blue-800 font-black">This is the only time this link is shown. Copy it now.</p>
+          <p className="text-xs text-slate-500">Expires in {resetLinkResult?.expiresInHours ?? 24} hours. Single use. Share via WhatsApp or Messenger.</p>
+          <button
+            type="button"
+            onClick={async () => {
+              if (resetLinkResult?.url) {
+                await navigator.clipboard.writeText(resetLinkResult.url);
+                toast.success("Link copied");
+              }
+            }}
+            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 py-2 text-sm font-bold text-slate-700"
+          >
+            <Copy className="h-4 w-4" /> Copy link
+          </button>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 function ProfileOverview({
   profile,
   selectedJourneyId,
   onSelectJourney,
+  isSuperAdmin,
 }: {
   profile: CustomerProfile;
   selectedJourneyId: string | null;
   onSelectJourney: (journeyId: string) => void;
+  isSuperAdmin: boolean;
 }) {
   const active = profile.journeys.filter((journey) => !isTerminal(journey));
   const history = profile.journeys.filter((journey) => isTerminal(journey));
@@ -444,6 +571,8 @@ function ProfileOverview({
           </div>
         </div>
       </div>
+
+      <ProfileAccountSection phone={profile.customerPhone} isSuperAdmin={isSuperAdmin} />
     </div>
   );
 }
@@ -688,6 +817,8 @@ function ProfileSheetContent({
 
 export default function CustomerRepairJourneysTab() {
   const queryClient = useQueryClient();
+  const { user: currentUser } = useAdminAuth();
+  const isSuperAdmin = currentUser?.role === "Super Admin";
   const isMobile = useIsMobile();
   const [filter, setFilter] = useState<Filter>("active");
   const [sourceFilter, setSourceFilter] = useState<SourceFilter>("all");
@@ -893,7 +1024,7 @@ export default function CustomerRepairJourneysTab() {
         <section className="min-w-0 overflow-y-auto rounded-3xl border border-slate-200 bg-slate-50/60 p-5">
           {selectedProfile ? (
             <div className="grid gap-5 2xl:grid-cols-[minmax(0,1fr)_430px]">
-              <ProfileOverview profile={selectedProfile} selectedJourneyId={selectedJourneyId} onSelectJourney={setSelectedJourneyId} />
+              <ProfileOverview profile={selectedProfile} selectedJourneyId={selectedJourneyId} onSelectJourney={setSelectedJourneyId} isSuperAdmin={isSuperAdmin} />
               <aside className="min-w-0">
                 {selectedJourneyId && detailQuery.data ? (
                   <div className="space-y-3">
