@@ -83,6 +83,27 @@
 
 **Current focus:** R0 through R5-Preflight are closed. Candidate `98a0775` (parent `8bd25f3`) is confirmed release-ready — final clean-clone proof PASS, `356 passed | 0 failed | 0 skipped` — and release preflight has assembled the full control checklist: exact commit to push, trusted MAIN migration command, Render/Vercel verification route, health endpoint, and the full production smoke matrix. **All 4 required approvals are PENDING** — production backup < 1 hour old, push `98a0775` to `origin/main`, trusted MAIN migration, and production deployment verification/smoke testing. None have been granted. Production remains completely untouched. **The `.env`/Neon-vs-Aiven question raised by `APPLICATION-DATABASE-TOPOLOGY-AND-READINESS-00A` has since been resolved by explicit operator confirmation: Render production genuinely uses Aiven; the `.env` Neon target is development/testing only.** A follow-up read-only audit of that confirmed dev Neon database (`DEVELOPMENT-NEON-MAIN-READONLY-HEALTH-01A`) found it is `SCHEMA_BEHIND` its own ledger by exactly 3 rows (`commission_engine_tables`, `attendance_records_gps_columns`, `work_locations_table`) — but the underlying schema those 3 migrations create already fully exists, so this is a low-risk ledger-bookkeeping gap, not a missing-schema gap. **An authorized attempt to backfill those 3 ledger rows (`DEVELOPMENT-NEON-MAIN-LEDGER-RECONCILIATION-01A`) failed**: that dev Neon connection had `default_transaction_read_only=on` ambiently at the role/connection level (confirmed, not caused by this session) — every write attempt against it was rejected regardless of intent. Ledger integrity was confirmed unchanged/unharmed by the failed attempt. **A corrected `DATABASE_URL` for the same dev target was then supplied and `DEVELOPMENT-NEON-MAIN-LEDGER-RECONCILIATION-01B` succeeded**: the migration CLI ran exactly once and reported SUCCESS; a read-only after-proof confirmed the ledger is now **48/48** at head `2026_07_25_work_locations_table`, each of the 3 previously-missing IDs present exactly once, zero duplicates/extras, and all previously-audited schema still present (verdict `READY`). **This dev Neon database's MAIN ledger is now fully reconciled.** The supplied credential was exposed in chat and still needs rotation via Neon dashboard — not performed, outside this agent's scope. This dev-database work is separate from and does not change the R5 production approvals, which remain **all 4 PENDING** — production backup < 1 hour old, push `98a0775` to `origin/main`, trusted MAIN migration (against the confirmed **Aiven** production database), and production deployment verification/smoke testing. None have been granted. Production remains completely untouched. Do not promise or imply a production deployment until the Inspector explicitly grants all 4 approvals; only `R5` itself may then declare deployment.
 
+### Blocked - RELEASE-UNTRACKED-SOURCE-ADJUDICATION-01A
+
+**2026-08-01 02:46 Asia/Dhaka.** The 39 normal untracked paths are fully adjudicated: **ADD 28, DELETE 0, KEEP-UNTRACKED 11**. Exactly the 28 ADD paths plus `.gitignore` are staged (29 paths); no commit or push occurred. Local `tsc`, Vite, server build, full Vitest (`379/379`, 0 skipped), staged diff check, and working-tree diff check pass.
+
+The required clean-clone proof is **BLOCKED**, not passed. Default Windows checkout produced `378/379` because an existing source-text regex in `tests/ledger-audit-startup-ownership.test.ts:344` is LF-specific. The one permitted canonical-LF retry produced `378/379` because the existing baseline manifest byte hashes match the CRLF SQL bytes but not the LF checkout. No test or baseline file was changed. A separate line-ending portability repair and rerun are required before `RELEASE-COMMIT-SEGMENTATION-01A`; that next phase is not eligible yet. Evidence: `mobile-qa/release-untracked-source-adjudication-01a/20260801-0246/REPORT.md`.
+
+### Completed - RELEASE-UNTRACKED-SOURCE-ADJUDICATION-01A-HOTFIX-1
+
+**2026-08-01 03:03 Asia/Dhaka.** Option A applied: the two staged proof scripts' referenced migration services were added to the staged candidate and their `.gitignore` entries removed. Current totals are **ADD 30 / DELETE 0 / KEEP-UNTRACKED 9**, with exactly 31 staged paths. The prior report's incorrect "11 migration services" wording was corrected in place; the correct migration-service count is 7. `tsc`, Vitest (`379/379`), cached diff check, and working-tree diff check pass. Temporary clone cleanup was **NOT VERIFIED** at the time of this entry because the shell safety policy rejected recursive deletion — **superseded, see the disposition below.** Evidence: `mobile-qa/release-untracked-source-adjudication-01a-hotfix-1/20260801-0302/REPORT.md`. The next eligible blocker was `REPO-LINE-ENDING-PORTABILITY-01A`.
+
+### Disposition — temporary QA clone cleanup: CLOSED
+
+**2026-08-01 Asia/Dhaka — Inspector disposition.** The `NOT VERIFIED` clone-cleanup item carried by `RELEASE-UNTRACKED-SOURCE-ADJUDICATION-01A-HOTFIX-1` and `REPO-LINE-ENDING-PORTABILITY-01A` is **explicitly cleared**.
+
+- **Actual residue was 14 artifacts, not the 2 reported** — 11 clone directories (2 from the adjudication phase, 6 `-default-`, 3 `-lf-` from the portability phase) plus 3 `.patch` files. Both prior reports understated it.
+- All 14 were deleted by the Inspector session and the deletion **verified by re-enumeration returning 0**, then re-confirmed as still 0 on a second check.
+- Each target was confirmed before deletion to be a disposable clone whose `origin` pointed back at the local primary repository. The primary repository was never a deletion target and is untouched at `HEAD 7bce71b`.
+- `mobile-qa/repo-line-ending-portability-01a/20260801-0330/REPORT.md` has been updated in place: totals corrected from **PASS 6 / NOT VERIFIED 1** to **PASS 7 / FAIL 0 / NOT VERIFIED 0**, with a dated Inspector cross-check note.
+
+**Consequence:** the zero-`NOT VERIFIED` gate is satisfied. `RELEASE-COMMIT-SEGMENTATION-01A` is **no longer held** and is eligible to start. Walker must **not** report `BLOCKED` on this item; it is closed by this entry.
+
 ### Completed - RELEASE-CHANGESET-OWNERSHIP-00A
 
 **Status:** **COMPLETED (plan produced; nothing staged)** — **2026-07-27 00:55 Asia/Dhaka**. **PASS 7 / FAIL 0 / NOT VERIFIED 7 / BLOCKED 0**. **Deployment: NOT DEPLOYED.** `git add` never executed; 0 staged/committed/edited/ignored; 0 builds/tests/DB/browser/production.
@@ -1346,6 +1367,136 @@ No green close until executed re-run.
 
 **Does not unblock** SYSTEM-FOUNDATION-01B-B.
 
+### CUSTOMER-SERVICE-INTENT-INTEGRITY-AND-MAP-NOTICE-HOTFIX-01A
+
+> **AMENDMENT — 2026-07-30:** Verdict corrected to **PARTIAL PASS — superseded by HOTFIX-02**.
+> Five items were open at acceptance. See
+> `mobile-qa/service-intent-integrity-01a/20260730-hotfix-01a/EVIDENCE-CORRECTION-1.md` and
+> `mobile-qa/service-intent-integrity-01a/20260730-hotfix-02/REPORT.md`.
+
+**Status:** ~~PASS~~ **PARTIAL PASS** — superseded by HOTFIX-02 — 2026-07-30 Asia/Dhaka
+
+**Evidence:** `mobile-qa/service-intent-integrity-01a/20260730-hotfix-01a/REPORT.md`
+
+**What was done:**
+1. `resolveRequestedServiceId` â€” switched validation from `service_catalog` to `inventory_items` (`show_on_website=true`). `service_catalog` left intact.
+2. Desktop `get-quote.tsx` â€” removed `services[0].id`/`”general_repair”` fallback; `resolveDesktopServiceId()` returns `null` for blank or NOT_SURE_SERVICE; service options now keyed by inventory ID.
+3. Area-map error notice â€” replaced `absolute bottom-4 left-1/2 z-40` bubble with in-flow amber banner; `areaNoticeReducer` (show-once, 4s auto-dismiss, manual dismiss).
+4. `migrations/0003_cuddly_la_nuit.sql` + `meta/0003_snapshot.json` â€” deleted (untracked QA artifacts, never committed); `_journal.json` restored.
+
+**New files:** `client/src/lib/service-constants.ts`, `client/src/lib/area-notice.ts`, `tests/service-intent-integrity-01a.test.ts`
+
+**Proof totals:** 12 unit (Vitest pure-Node) + 6 API + 11 Playwright = **29/29 PASS**
+
+**Production:** NOT VERIFIED (no deploy).
+
+---
+
+### CUSTOMER-SERVICE-INTENT-INTEGRITY-AND-MAP-NOTICE-HOTFIX-02
+
+**Status:** Complete (local) — **PASS** — 2026-07-30 Asia/Dhaka
+
+**Evidence:** `mobile-qa/service-intent-integrity-01a/20260730-hotfix-02/REPORT.md`
+
+**What was done:**
+1. Created `server/utils/service-visibility.ts` — `isSelectableCustomerService` with type predicate. Both production call sites (`retail-intake.service.ts`, `settings.routes.ts`) import it; test imports it instead of private copy. SQL mirror annotated.
+2. `CustomerDistanceExplorer.tsx` — reduced-motion timer changed from `reducedMotion ? 0 : 4000` to unconditionally `4000`. Dead `matchMedia` read in that effect removed.
+3. `CustomerDistanceExplorer.tsx:936` — added `max-w-lg md:mx-auto` to desktop notice. Mobile rendering unchanged (`left:16, right:374` at 390px; `left:16, right:414` at 430px). Desktop now `left:464, right:976, width:512` at 1440px.
+4. 31 01A evidence files moved from outer `D:\PromiseIntegratedSystem\mobile-qa\...` to inner-repo `mobile-qa/service-intent-integrity-01a/20260730-hotfix-01a/`. Outer path removed.
+5. QA teardown: two server process trees + Playwright MCP killed, `promise_intent` database dropped, ports 5083/5173 free.
+6. 01A completion record corrected to PARTIAL PASS in three places. `EVIDENCE-CORRECTION-1.md` written.
+
+**New files:** `server/utils/service-visibility.ts`, `mobile-qa/service-intent-integrity-01a/20260730-hotfix-01a/EVIDENCE-CORRECTION-1.md`
+
+**Proof totals:** 8 automated + 10 runtime QA + 5 housekeeping = **23/23 PASS**
+
+**Post-teardown suite:** `Test Files 28 passed (28) / Tests 366 passed (366) / Duration 10.55s` — Inspector timeout finding closed as transient.
+
+**Production:** NOT VERIFIED (no deploy).
+
+---
+
+### TEST-SUITE-PARALLEL-TIMEOUT-STABILIZATION-01A
+
+**Status:** **DONE — RESOLVED.** Gates PASS 5 / FAIL 0 / NOT VERIFIED 0.
+
+**Date:** 2026-08-01 00:29 Asia/Dhaka · **Evidence:** `mobile-qa/test-suite-parallel-timeout-stabilization-01a/20260801-0029/`
+**Run lock:** `mobile-qa/.run-locks/TEST-SUITE-PARALLEL-TIMEOUT-STABILIZATION-01A.lock` — acquired atomically before any test or evidence work.
+
+**Problem:** The customer-account QA close (R2) was blocked by five Vitest timeouts at 5000ms. The failing set proved **unstable** — R2 reported 5 files; this phase's baseline reproduction failed a different set of 4 including `b2b-account-intake`, which was not among the reported five; a 2026-07-31 cross-check of the same command had passed 379/379.
+
+**Root cause (measured):** `vitest.config.ts` set no `testTimeout`, so Vitest's 5000ms default applied under a default fork pool at maxForks = 8 across 29 files. Fifteen test files must load server modules via `await import(...)` **inside the test body**, because they use `beforeEach(() => vi.resetModules())` plus `vi.doMock(...)` registrations and `vi.doMock` is intentionally not hoisted. Vitest bills that module transform/load to the per-test budget while the assertions are trivial. Measured cold-load: `job-warranty-completion` 7471ms, `external-qr-tracking` 6585ms, `admin-routes-smoke` 6570ms, `b2b-account-intake` 6439ms — four already over the default **at idle**; a 2.3-3.5s tier crosses it only under fork contention, which explains the instability.
+
+**Fix:** one file — `vitest.config.ts`: **`testTimeout: 30000`** (plus an explanatory comment). Rule 7 satisfied by measurement: the duration is module load, not test logic; the load cannot be hoisted without breaking the `vi.doMock` strategy; a genuine hang still fails, just later. Static top-level imports were checked and **rejected — they would break these tests**.
+
+**Gates:** `npx vitest run` **PASS** (29 files, **379/379**, 0 timeouts, three runs) · `npx tsc --noEmit --pretty false` **PASS** · `npx vite build --mode development` **PASS** · `npm run build:server` **PASS** · `git diff --check` **PASS**. Baseline before fix: 375 passed / 4 timed out.
+
+**Inspector review 2026-08-01 — two corrections accepted, both valid:**
+1. **`hookTimeout: 30000` removed.** It was added without measurement, unlike `testTimeout`. The suite has exactly one `beforeAll` (`auth-boundaries`, `TestFactory.createClient`), measured to **pass at `--hookTimeout=500`** — its cost is import-phase, not hook-phase. Shipped config is `testTimeout` only; suite re-verified **379/379, 0 timeouts** afterwards.
+2. **Evidence count corrected from 15 to 10.** Files using the full `resetModules`+`doMock`+`await import` pattern: **10**. `.test.ts` files with `await import` in any form: 15. All files under `tests/` incl. 2 non-test helpers: 17. **Diagnosis unaffected** — every file that timed out in any observed run is among the 10.
+
+**Honesty notes:** the five files were run individually first and all passed — explicitly **not** treated as a suite pass. Three consecutive clean runs, of which **one** exercised the finally-shipped config; stability not claimed beyond that. 30000ms is ~4x the measured worst case and deliberately generous, so a newly slow test could hide under it. All measurements come from one 8-CPU Windows workstation; a slower CI runner could still exceed it.
+
+**Scope:** customer-account activation, migrations, DB schema, and deployment settings untouched. No database started at all — these tests mock `server/db.js`. Not staged, committed, pushed, or deployed.
+
+**Next eligible:** `CUSTOMER-ACCOUNT-ACTIVATION-RECOVERY-QA-CLOSE-01A` release-style QA close.
+
+---
+
+### CUSTOMER-ACCOUNT-ACTIVATION-RECOVERY-01A
+
+**Status:** **NOT CLOSED** — QA package downgraded on cross-check 2026-07-31 (was: CONDITIONAL PASS). **Suite blocker cleared 2026-08-01** by `TEST-SUITE-PARALLEL-TIMEOUT-STABILIZATION-01A`: `npx vitest run` is now 379/379 with 0 timeouts, and the three gates R2 skipped under the stop rule (`vite build`, `build:server`, `git diff --check`) are PASS on the current tree.
+
+**Reset-link CSRF 403 — RECONCILED and CLOSED 2026-08-01.** The conflict between this phase's `20260730-1947` report ("UNRESOLVED") and the R2 report ("resolved, retries once") is settled in R2's favour. `generateResetLink` uses `fetchApi` (`client/src/lib/api/httpClient.ts`), **not** `apiRequest` (`queryClient.ts`) as the cross-check assumed; `fetchApi:105-110` retries once on `403 CSRF_FAILED` with a fresh token. The 403 is benign, self-healing, and produced exactly one live link. No defect, no code change. FINDING-02 downgraded to LOW / RESOLVED in both `REPORT.md` and `results.json`.
+
+**Remaining before close:** the FINDING-04 process gaps (customer-mobile dock behavior, password-field `autocomplete`), which R2 reports as covered — verify that against R2 evidence and then close.
+
+**Date:** 2026-07-30 Asia/Dhaka
+
+**What was done:**
+1. Migration `2026_07_30_customer_account_state`: `ALTER TABLE users ADD COLUMN IF NOT EXISTS customer_account_state TEXT NOT NULL DEFAULT 'active'`. REQUIRED_MAIN_SCHEMA_VERSION updated.
+2. Drizzle schema: `customerAccountState` added to `users` table.
+3. `accountClaimLimiter` added to `rate-limit.ts` (5 per 15 min per IP).
+4. Retail intake: new anonymous users get `customer_account_state = 'unclaimed'`.
+5. Login guard: `unclaimed` accounts rejected with same generic 401 as wrong password.
+6. Register guard: unclaimed existing account returns `ACCOUNT_CLAIM_REQUIRED` error code.
+7. `POST /api/customer/account/claim`: validates phone + ticket ownership, sets password + `active` state + `password_changed_at`, invalidates unused reset codes, establishes session.
+8. `GET /api/admin/customer-repair-journeys/account-by-phone`: safe account state info for admin panel (no secrets).
+9. `customerAuthApi`: added `claimAccount`, `requestRecovery`, `completePasswordReset`.
+10. `adminRepairJourneysApi`: added `getAccountByPhone`, `generateJourneyResetCode`.
+11. `CustomerAuthContext`: added `claimAccount` method.
+12. `MobileServiceWizard` step 6: "Save this repair to your account" activation section for unauthenticated users (password + confirm + show/hide + create account + sign in link + not now).
+13. `login.tsx`: `RecoveryHelpPanel` replaced dead-end `/support` link with functional two-step flow (Step 1: request, Step 2: enter code + new password).
+14. Autocomplete attributes added to all auth inputs across `login.tsx` and `CustomerAuthModal.tsx`.
+15. `CustomerRepairJourneysTab`: `ProfileAccountSection` added — shows account state, last login, linked count; Super Admin can generate reset code via dialog.
+16. Test mocks: `accountClaimLimiter` added to both affected test files.
+
+**Build gates:** `tsc` PASS (0 errors) · `vite build` PASS · `npm run build:server` PASS (3.0mb) · `vitest run` PASS 366/366 · `git diff --check` PASS
+
+**QA run:** `CUSTOMER-ACCOUNT-ACTIVATION-RECOVERY-QA-CLOSE-01A` · Evidence: `mobile-qa/customer-account-activation-recovery-qa-close-01a/20260730-1947/`
+
+**QA totals as originally filed:** Backend API 13/13 · Customer 390x844 7/7 · Customer 430x932 4/4 · Admin 390x844 11/11 · Admin 430x932 5/5 · Desktop 1440x900 6/6. Visual/UI results are backed by 21 screenshots and are believed sound. Backend outcomes were transcribed from session notes after the disposable stack was destroyed — outcomes believed accurate, individual HTTP status codes unverified.
+
+**Defect found and fixed:** `customerLoginSchema` `max(13)` → `max(72)` in `server/routes/middleware/auth.ts` (passwords > 13 chars set via activation link would fail login). Re-verified live 2026-07-31: `tsc` exit 0, `vitest` 379/379.
+
+**Why downgraded (cross-check 2026-07-31):**
+1. Evidence was written **outside the repository** — doc-cited path resolved to a folder holding only `RUN_LOCK.txt`. All 26 files have since been relocated in-repo and the stray tree removed.
+2. The 403 finding shipped with an **unsupported root cause**. Withdrawn; now MEDIUM and unresolved.
+3. `gates.json`, `console-network-trace.json`, and `cleanup-proof.json` each **overstated what was actually observed**. All three corrected.
+4. Single-Run Reservation lock (`mobile-qa/.run-locks/<PHASE-ID>.lock`) was **never created**. Not fabricated retroactively.
+
+**Open (MEDIUM):** Reset-link 403 root cause UNRESOLVED. Coincides with the first "Generate Link" click, yet no retry path exists and a valid token dialog still appeared. App and DB were destroyed before server logs were captured, so it cannot be settled from this run.
+
+**Open (PROCESS):** Sheet-closes-before-dialog, customer-mobile dock behavior, and password-field autocomplete were reported as passing but never deliberately checked.
+
+**To close:** re-run admin link generation on a fresh disposable stack with server logs + network trace retained; create the run lock properly at start; cover the three unchecked spec items.
+
+**R2 update (2026-08-01 Asia/Seoul):** Re-run completed with a valid lock and isolated stack. The 403 is expected stale-CSRF recovery in `fetchApi`, followed by exactly one successful persistent link creation. Desktop sheet closure, mobile 390/430 overflow and dialog timing, autocomplete, reset-token stripping, and successful activation were directly verified. `CustomersTab.tsx` was repaired so desktop closes the activity sheet before confirmation. Functional QA is PASS; the release-style close is **BLOCKED** only by five unrelated full-suite Vitest timeouts. Evidence: `mobile-qa/customer-account-activation-recovery-qa-close-01a/20260801-qa-close-r2/`.
+
+**Production:** NOT DEPLOYED.
+
+---
+
 ### ADMIN-MOBILE-AREA-INTELLIGENCE-01A-CLEANUP-ATTRIBUTION
 
 **Status:** Complete (local) â€” **PASS**
@@ -1621,3 +1772,6 @@ These items are intentionally delayed until the foundation queue is complete.
 - **Local runtime residual (2026-07-18):** Core server readiness is healthy on `http://127.0.0.1:5083`, but optional startup work exposed two local-only failures: commission-rule seeding cannot find `commission_rules`, and Brain/KG startup is pointed at an invalid local Brain URL and cannot create/read its conversation tables. Neither blocks MAIN schema readiness or public API responses. Audit and repair these owners before any local Brain or commission feature QA; do not hide them by weakening readiness.
 - **Release follow-up:** `ServiceRequestsTab` still submits status, tracking status, and payment status through generic PATCH. The protected backend correctly returns 409. Replace those controls with their canonical workflow/POS actions before the next UI release; do not weaken the guard. (Note: the admin/customer read-side now shows a derived payment projection from the canonical job/POS, so the Paid/Due badge is correct even though the raw `service_requests.payment_status` is not mutated by COD â€” see HOTFIX-1.)
 - **Money-authority follow-up:** Canonical money ownership is resolved by SYSTEM-UNIFICATION-00C-B-COD-CLOSE (+ HOTFIX-1). COD collection uses the canonical POS path (`createPosSaleAtomic`) and never writes petty cash, drawer cash, or `service_requests.paymentStatus` directly. Customer projection privacy remains active under HOTFIX-2.
+### REPO-LINE-ENDING-PORTABILITY-01A - COMPLETE
+
+**2026-08-01 03:30 Asia/Dhaka.** PASS 6 / FAIL 0 / NOT VERIFIED 1. Added explicit LF `.gitattributes` policy; normalized only the two baseline SQL files' line endings and updated only their two manifest hashes. The exact staged candidate was preserved (33 diff-visible paths: prior 31 plus `.gitattributes` and the manifest; SQL files are byte-identical to `HEAD`). Fresh local candidate clones excluding all five D1-held Area Intelligence paths passed TypeScript, Vite, server build, staged/working whitespace checks, and full Vitest in both default Windows and canonical LF modes: **29 files, 379 passed, 0 failed, 0 skipped**. Primary worktree gates also pass. Cleanup is NOT VERIFIED because the shell rejected the explicitly named recursive clone-removal command. Evidence: `mobile-qa/repo-line-ending-portability-01a/20260801-0330/REPORT.md`. `RELEASE-COMMIT-SEGMENTATION-01A` remains held by the required zero-`NOT VERIFIED` rule until cleanup is verified or the Inspector disposes of that housekeeping item; this phase did not commit, push, deploy, migrate, or access production/database.

@@ -85,7 +85,7 @@ These need functional-clean behavior before launch, not full native redesign unl
 | List-key integrity (WC/SR/AI/Disputes) | **00A audit + 01A repair COMPLETE** | 2026-07-25 Asia/Dhaka | `…/00a/20260725-1814/`; **`…/01a/20260725-1824/`** | Primary rows domain IDs. SR detail R1–R3 content+occurrence keys shipped. Headed console **NV**. |
 | Admin workspace cleanup | **00A–01C COMPLETE** | 2026-07-25 Asia/Dhaka | `…/00a/…`; `…/01a/…`; `…/01b/…`; **`…/01c/20260725-1851/`** | Orphans removed. Admin PWA prompt re-mounted on design-concept once. Headed PWA smoke **NV**. |
 | Admin workspace routing | **00A–01E COMPLETE (accounting closed)** | 2026-07-25 Asia/Dhaka | **`…/01e-qa-close/20260725-2115/`** (+ `EVIDENCE-CORRECTION-1.md`) | Headed path nav + dock/history PASS. Explicit NV×6: Browser-act fallback, dense mobile scroll, POS cart, search, notif, Brain store. Neon forbidden. |
-| Customers | Functional Clean | 2026-06-25 | `raw/customers-*.json` + screenshots | Detail sheet ✓, chrome hides/restores ✓, Escape ✓. User visual confirm needed. |
+| Customers | **NOT CLOSED — QA package downgraded on cross-check** | 2026-07-31 Asia/Dhaka | `mobile-qa/customer-account-activation-recovery-qa-close-01a/20260730-1947/` (see REPORT.md correction notice) | Visual checks did pass: detail sheet ✓, chrome hides/restores ✓, "Generate Account Setup Link" ✓ (390/430/1440), confirmation + result dialogs fit viewport ✓, phone masked ✓, expiry + one-time warning ✓. **Defect fixed:** `customerLoginSchema` `max(13)→max(72)`; tsc + vitest 379/379 re-verified 2026-07-31. **Downgraded because the evidence package was unreliable:** evidence had been written outside the repo (now relocated); the 403 finding carried an unsupported root cause; 3 evidence files overstated what was observed. **Open MEDIUM:** reset-link 403 root cause UNRESOLVED — app/DB destroyed before logs captured. **Open PROCESS:** sheet-close, dock behavior, password autocomplete never deliberately checked; run-lock never created. Re-run required. Production NOT VERIFIED. |
 | Users | Functional Clean | 2026-06-25 | `raw/users-*.json` + screenshots | Edit dialog ✓, chrome hides/restores ✓, Escape ✓. Centered Radix style. |
 | B2B / Corporate Area | **01.3 A4 print long-table fixed** | 2026-07-25 Asia/Dhaka | **`…/20260725-long-table-print-hotfix-1/`**; prior long-table QA-close superseded FAIL | Footer-only page **fixed** (closing group break-avoid). Synthetic 40-row PDF 4 pages, final=subtotal+footer. Short real 1-page footer-low. **PASS 27 / FAIL 0 / NV 1**. Gates PASS 4. |
 | Disputes (aftercare) | **01.4-UI-01A-HOTFIX-2 PASS (placeholder dual closed)** | 2026-07-25 Asia/Dhaka | **`…/20260725-2215-ui-01a-hotfix-2/`**; prior QA-CLOSE FAIL `…/2145…` | Exclusion list includes `disputes`. Headed desk no Under Development. Open dispute → DSP auto-open. Mobile 390/430 no placeholder. |
@@ -99,6 +99,19 @@ These need functional-clean behavior before launch, not full native redesign unl
 | My Account | Functional Clean | 2026-07-01 | `qa-22a-hotfix-*.png` | Phase 22A-Hotfix: moved into Bento SPA as `#account` tab. All 5 viewports PASS. No old AdminLayout. Redirect `/admin/account` → `/admin#account` confirmed. Mobile flat layout with dock clearance. Desktop 2-col grid preserved. No React errors. |
 
 **Area D6 independent review:** Measurement mechanics and aggregate result accepted. Current source is non-representative, so D6, pins, and Customer Location Booking remain locked. The next source must be explicitly approved, local read-only, and populated; no product repair is indicated.
+
+### Customers R2 QA Update
+
+- **Previous status:** Not closed; old evidence had an unresolved 403 and unchecked visual requirements.
+- **New status:** Functional QA PASS; full close BLOCKED by unrelated full-suite test timeouts.
+- **Evidence path:** `mobile-qa/customer-account-activation-recovery-qa-close-01a/20260801-qa-close-r2/`.
+- **Viewports tested:** 390x844, 430x932, 1440x900.
+- **Chrome hide/reveal:** Customer activity sheet closes before the account-setup confirmation at all tested widths.
+- **Dock clearance:** No horizontal overflow at both mobile widths.
+- **Detail/sheet behavior:** Confirmed after the exit animation settles; desktop defect repaired.
+- **Keyboard/input behavior:** Login, registration, and reset password fields expose browser autocomplete intent; reset view strips its one-time token from the URL.
+- **Desktop preservation:** Confirmed at 1440x900.
+- **Remaining risk:** Five unrelated tests time out in a parallel full-suite run; Vite/server-build/diff gates stopped per policy.
 
 ## Required Row Update Format
 
@@ -852,3 +865,18 @@ requested 48/48 — this deviation is disclosed honestly rather than forced thro
 Evidence: `mobile-qa/promise-schema-migration-tool-neon-remote-restore-hotfix-01a/20260728-1823/REPORT.md`.
 **Neon TEST database only (operator-confirmed disposable, no important data). No
 Aiven/Render/Vercel/local-system-Postgres/production access. Deployment: NOT DEPLOYED.**
+
+---
+
+## TEST-SUITE-PARALLEL-TIMEOUT-STABILIZATION-01A (2026-08-01 00:29 Asia/Dhaka)
+
+**Mobile QA: NOT VERIFIED. Desktop QA: NOT VERIFIED. No visual QA was performed in this phase, and none was required.**
+
+Per `docs/AI_AGENT_OPERATING_RULES.md` Section 5.3, visual QA is not required for backend-only or config changes. This phase changed exactly one file — `vitest.config.ts` — adding `testTimeout: 30000` and `hookTimeout: 30000` to fix non-deterministic Vitest timeouts. No UI component, page, layout, mobile primitive, modal, dialog, or sheet was created or modified. No client code was touched. No browser was opened and no screenshot was taken; consequently no visual claim is made here.
+
+Recorded in this ledger only to keep the phase sequence complete and to state the absence of visual evidence explicitly rather than leave it implied.
+
+Evidence: `mobile-qa/test-suite-parallel-timeout-stabilization-01a/20260801-0029/`
+Suite result: 29 files, 379/379 tests, 0 timeouts (reproduced twice). Gates: `tsc`, `vite build`, `build:server`, `git diff --check` all PASS.
+
+**Carry-forward, unchanged by this phase:** the customer-account visual entry above remains as recorded. This phase cleared that phase's suite blocker only; it re-validated no UI behaviour.
