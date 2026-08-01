@@ -146,6 +146,7 @@ function setupMocks(opts: {
         registrationLimiter: (req: any, _res: any, next: () => void) => next(),
         serviceRequestLimiter: (req: any, _res: any, next: () => void) => next(),
         accountRecoveryLimiter: (req: any, _res: any, next: () => void) => next(),
+        resetLinkLimiter: (req: any, _res: any, next: () => void) => next(),
     }));
     vi.doMock("../server/routes/blacklist.routes.js", () => ({ isPhoneBlacklisted: vi.fn(async () => false) }));
     vi.doMock("../server/utils/phone.js", () => ({

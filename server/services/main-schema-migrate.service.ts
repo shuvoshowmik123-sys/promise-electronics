@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_07_29_service_request_pickup_pin";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_07_30_customer_reset_links";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -1926,6 +1926,34 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
                 AND pickup_longitude BETWEEN -180 AND 180)
           )
       `);
+    },
+  },
+  {
+    id: "2026_07_30_customer_account_state",
+    description: "Add customer_account_state to users: unclaimed = intake-created identity with no usable login, active = customer has chosen a password. DEFAULT 'active' preserves all existing accounts.",
+    up: async (client) => {
+      await client.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS customer_account_state TEXT NOT NULL DEFAULT 'active'`);
+    },
+  },
+  {
+    id: "2026_07_30_customer_reset_links",
+    description:
+      "One-time staff-issued password reset links. token_hash is SHA-256 of a 256-bit random token (fast hash is correct: the token is high-entropy and cannot be brute-forced, unlike a 6-digit code which requires bcrypt). Separate from staff_reset_codes so the two hash algorithms never share a column. Consumed and invalidated are timestamps rather than booleans so the row doubles as an audit record.",
+    up: async (client) => {
+      await client.query(`CREATE TABLE IF NOT EXISTS customer_reset_links (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        phone_attempts INTEGER NOT NULL DEFAULT 0,
+        consumed_at TIMESTAMPTZ,
+        invalidated_at TIMESTAMPTZ,
+        invalidated_reason TEXT,
+        created_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_customer_reset_links_user_id ON customer_reset_links (user_id)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_customer_reset_links_expires ON customer_reset_links (expires_at)`);
     },
   },
 ];

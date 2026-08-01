@@ -6,7 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHash } from 'crypto';
 import { and, desc, eq, or, ne, sql } from 'drizzle-orm';
 // sql used for session auth time stamp
 import { storage } from '../storage.js';
@@ -26,12 +26,17 @@ import {
     notifyCustomerUpdate
 } from './middleware/sse-broker.js';
 import { firebaseAdmin } from '../services/firebase.js';
-import { authLimiter, registrationLimiter, serviceRequestLimiter, accountRecoveryLimiter } from './middleware/rate-limit.js';
+import { authLimiter, registrationLimiter, serviceRequestLimiter, accountRecoveryLimiter, resetLinkLimiter } from './middleware/rate-limit.js';
 import { isPhoneBlacklisted } from './blacklist.routes.js';
 import { normalizePhone } from '../utils/phone.js';
 import { z } from 'zod';
 import { customerService } from '../services/customer.service.js';
-import { establishCustomerSession, assertCustomerSessionFresh } from '../services/customer-session.service.js';
+import {
+    establishCustomerSession,
+    assertCustomerSessionFresh,
+    enforceCustomerLoginPolicy,
+    CustomerAccountNotActivatedError,
+} from '../services/customer-session.service.js';
 import { deriveServiceRequestPaymentState, applyCustomerSafePaymentState } from '../services/service-request-payment-projection.service.js';
 
 const router = Router();
@@ -97,6 +102,12 @@ router.post('/api/customer/register', registrationLimiter, async (req: Request, 
 
         const existingUser = await userRepo.getUserByPhoneNormalized(validated.phone);
         if (existingUser) {
+            if (existingUser.customerAccountState === 'unclaimed') {
+                return res.status(400).json({
+                    error: 'This phone is already linked to a repair record. Please contact support to activate online access.',
+                    code: 'ACCOUNT_SETUP_REQUIRED',
+                });
+            }
             return res.status(400).json({ error: 'Phone number already registered. Please login instead.' });
         }
 
@@ -161,6 +172,22 @@ router.post('/api/customer/login', authLimiter, async (req: Request, res: Respon
             return res.status(401).json({ error: 'Invalid phone number or password' });
         }
 
+        // Shared gate: rejects unclaimed accounts and kills live reset links.
+        // Phone login deliberately reports the unclaimed case with the same body
+        // as a wrong password so it cannot be used to probe account state.
+        try {
+            await enforceCustomerLoginPolicy({
+                userId: user.id,
+                accountState: user.customerAccountState,
+                authMethod: 'phone',
+            });
+        } catch (policyErr) {
+            if (policyErr instanceof CustomerAccountNotActivatedError) {
+                return res.status(401).json({ error: 'Invalid phone number or password' });
+            }
+            throw policyErr;
+        }
+
         await userRepo.updateUserLastLogin(user.id);
 
         await regenerateSession(req);
@@ -210,6 +237,26 @@ router.post('/api/customer/google-auth', authLimiter, async (req: Request, res: 
             name: name || 'Google User',
             profileImageUrl: picture || null,
         });
+
+        // Google sign-in must not become a side door around staff activation.
+        // upsertUserFromGoogle links by email, so proving control of an address
+        // attached to an unclaimed account would otherwise hand over a session
+        // without the phone check the reset link enforces.
+        try {
+            await enforceCustomerLoginPolicy({
+                userId: user.id,
+                accountState: (user as any).customerAccountState,
+                authMethod: 'google',
+            });
+        } catch (policyErr) {
+            if (policyErr instanceof CustomerAccountNotActivatedError) {
+                return res.status(403).json({
+                    error: 'This account has not been set up yet. Please contact us for a setup link.',
+                    code: policyErr.code,
+                });
+            }
+            throw policyErr;
+        }
 
         await userRepo.updateUserLastLogin(user.id);
 
@@ -338,11 +385,6 @@ const recoveryRequestSchema = z.object({
     name: z.string().optional(),
     message: z.string().optional(),
 });
-const staffResetCompleteSchema = z.object({
-    phone: z.string().min(6),
-    code: z.string().min(4).max(8),
-    newPassword: z.string().min(6),
-});
 const changePasswordSchema = z.object({
     currentPassword: z.string().min(1),
     newPassword: z.string().min(6),
@@ -388,61 +430,176 @@ router.post('/api/customer/account-recovery/request', accountRecoveryLimiter, as
     }
 });
 
+
+// ============================================
+// One-Time Reset Links (staff-issued)
+// ============================================
+
+const resetLinkVerifySchema = z.object({
+    token: z.string().min(20).max(200),
+});
+const resetLinkCompleteSchema = z.object({
+    token: z.string().min(20).max(200),
+    phone: z.string().min(6),
+    password: z.string().min(6).max(72),
+    confirmPassword: z.string().min(6).max(72),
+});
+
+/** SHA-256 hex of a high-entropy token. Fast hash is correct here — see migration note. */
+function hashResetToken(token: string): string {
+    return createHash('sha256').update(token).digest('hex');
+}
+
+/** Max wrong-phone guesses before the link burns. */
+const RESET_LINK_MAX_PHONE_ATTEMPTS = 5;
+
 /**
- * POST /api/customer/password-reset/complete
- * Validates a staff-created reset code (stored in DB, not memory).
+ * POST /api/customer/reset-link/verify
+ * Reports only whether the link is still usable. Never consumes it and never
+ * reveals whose account it belongs to — a leaked link must not become an
+ * identity oracle.
  */
-router.post('/api/customer/password-reset/complete', accountRecoveryLimiter, async (req: Request, res: Response) => {
+router.post('/api/customer/reset-link/verify', resetLinkLimiter, async (req: Request, res: Response) => {
     try {
-        const { phone, code, newPassword } = staffResetCompleteSchema.parse(req.body);
-        const genericFail = { error: 'Invalid or expired reset code' };
+        const { token } = resetLinkVerifySchema.parse(req.body);
+        const tokenHash = hashResetToken(token);
 
-        const user = await userRepo.getUserByPhoneNormalized(phone);
-        if (!user) {
+        const rows = await db.execute(sql`
+            SELECT id FROM customer_reset_links
+            WHERE token_hash = ${tokenHash}
+              AND consumed_at IS NULL
+              AND invalidated_at IS NULL
+              AND expires_at > NOW()
+              AND phone_attempts < ${RESET_LINK_MAX_PHONE_ATTEMPTS}
+            LIMIT 1
+        `);
+        const found = ((rows as any).rows ?? rows) as Array<{ id: string }>;
+        res.json({ valid: Array.isArray(found) && found.length > 0 });
+    } catch (error: any) {
+        if (error instanceof z.ZodError) {
+            return res.json({ valid: false });
+        }
+        console.error('[ResetLink] Verify failed:', (error as Error).message);
+        res.status(500).json({ error: 'Something went wrong. Please try again.' });
+    }
+});
+
+/**
+ * POST /api/customer/reset-link/complete
+ * Consumes a one-time link and sets the customer's password.
+ *
+ * The whole check-and-consume runs in one transaction with SELECT ... FOR UPDATE
+ * so two concurrent submissions cannot both succeed. The session is only
+ * established after the transaction commits.
+ */
+router.post('/api/customer/reset-link/complete', resetLinkLimiter, async (req: Request, res: Response) => {
+    const genericFail = { error: 'This reset link is no longer valid, or the phone number did not match.' };
+    try {
+        const { token, phone, password, confirmPassword } = resetLinkCompleteSchema.parse(req.body);
+
+        if (password !== confirmPassword) {
+            return res.status(400).json({ error: 'Passwords do not match' });
+        }
+
+        const tokenHash = hashResetToken(token);
+        const suppliedNorm = normalizePhone(phone);
+        if (!suppliedNorm) {
             return res.status(400).json(genericFail);
         }
 
-        const rows = await db.execute(
-            sql`SELECT id, code_hash, expires_at, attempts, used
-                FROM staff_reset_codes
-                WHERE user_id = ${user.id} AND used = FALSE
-                ORDER BY created_at DESC LIMIT 1`
-        );
-        const entry = rows.rows[0] as { id: string; code_hash: string; expires_at: string; attempts: number; used: boolean } | undefined;
-        if (!entry) {
+        const outcome = await db.transaction(async (tx) => {
+            const linkRows = await tx.execute(sql`
+                SELECT id, user_id, phone_attempts
+                FROM customer_reset_links
+                WHERE token_hash = ${tokenHash}
+                  AND consumed_at IS NULL
+                  AND invalidated_at IS NULL
+                  AND expires_at > NOW()
+                FOR UPDATE
+            `);
+            const link = (((linkRows as any).rows ?? linkRows) as Array<{
+                id: string; user_id: string; phone_attempts: number;
+            }>)[0];
+
+            if (!link) return { ok: false as const };
+
+            if (link.phone_attempts >= RESET_LINK_MAX_PHONE_ATTEMPTS) {
+                await tx.execute(sql`
+                    UPDATE customer_reset_links
+                    SET invalidated_at = NOW(), invalidated_reason = 'max_phone_attempts'
+                    WHERE id = ${link.id}
+                `);
+                return { ok: false as const };
+            }
+
+            const userRows = await tx.execute(sql`
+                SELECT id, phone, phone_normalized FROM users WHERE id = ${link.user_id} LIMIT 1
+            `);
+            const user = (((userRows as any).rows ?? userRows) as Array<{
+                id: string; phone: string | null; phone_normalized: string | null;
+            }>)[0];
+
+            // Fall back to normalizing the raw phone for legacy rows with a blank
+            // phone_normalized, the same way retail intake does.
+            const ownerNorm = user?.phone_normalized?.trim() || normalizePhone(user?.phone ?? null);
+            if (!user || !ownerNorm || ownerNorm !== suppliedNorm) {
+                await tx.execute(sql`
+                    UPDATE customer_reset_links
+                    SET phone_attempts = phone_attempts + 1
+                    WHERE id = ${link.id}
+                `);
+                return { ok: false as const };
+            }
+
+            const hashedPassword = await bcrypt.hash(password, 12);
+            await tx.execute(sql`
+                UPDATE users
+                SET password = ${hashedPassword},
+                    customer_account_state = 'active',
+                    password_changed_at = NOW()
+                WHERE id = ${user.id}
+            `);
+            await tx.execute(sql`
+                UPDATE customer_reset_links
+                SET consumed_at = NOW()
+                WHERE id = ${link.id}
+            `);
+            // Any other live link for this customer dies with the one just used.
+            await tx.execute(sql`
+                UPDATE customer_reset_links
+                SET invalidated_at = NOW(), invalidated_reason = 'superseded_by_use'
+                WHERE user_id = ${user.id}
+                  AND id <> ${link.id}
+                  AND consumed_at IS NULL
+                  AND invalidated_at IS NULL
+            `);
+            return { ok: true as const, userId: user.id, phone: user.phone };
+        });
+
+        if (!outcome.ok) {
             return res.status(400).json(genericFail);
         }
 
-        if (new Date(entry.expires_at) < new Date()) {
-            await db.execute(sql`UPDATE staff_reset_codes SET used = TRUE WHERE id = ${entry.id}`);
-            return res.status(400).json(genericFail);
+        await regenerateSession(req);
+        const { csrfToken } = await establishCustomerSession(req, res, {
+            customerId: outcome.userId,
+            authMethod: 'phone',
+        });
+
+        if (outcome.phone) {
+            await customerService.linkServiceRequestsByPhone(outcome.phone, outcome.userId);
         }
 
-        if (entry.attempts >= 5) {
-            await db.execute(sql`UPDATE staff_reset_codes SET used = TRUE WHERE id = ${entry.id}`);
-            return res.status(429).json({ error: 'Too many failed attempts. Please contact support again.' });
-        }
+        const fresh = await userRepo.getUser(outcome.userId);
+        const { password: _pw, ...safeUser } = (fresh ?? {}) as any;
 
-        const valid = await bcrypt.compare(code, entry.code_hash);
-        if (!valid) {
-            await db.execute(sql`UPDATE staff_reset_codes SET attempts = attempts + 1 WHERE id = ${entry.id}`);
-            return res.status(400).json(genericFail);
-        }
-
-        await db.execute(sql`UPDATE staff_reset_codes SET used = TRUE WHERE id = ${entry.id}`);
-
-        const hashedPassword = await bcrypt.hash(newPassword, 12);
-        await userRepo.updateUser(user.id, { password: hashedPassword } as any);
-        await db.execute(sql`UPDATE users SET password_changed_at = NOW() WHERE id = ${user.id}`);
-
-        console.log(`[AccountRecovery] Staff-assisted password reset completed for user ${user.id}`);
-
-        res.json({ message: 'Password has been reset. Please sign in with your new password.' });
+        console.log(`[ResetLink] Password set via one-time link for user ${outcome.userId}`);
+        res.json({ ...safeUser, csrfToken });
     } catch (error: any) {
         if (error instanceof z.ZodError) {
             return res.status(400).json({ error: 'Invalid request' });
         }
-        console.error('[AccountRecovery] Reset complete failed:', (error as Error).message);
+        console.error('[ResetLink] Complete failed:', (error as Error).message);
         res.status(500).json({ error: 'Something went wrong. Please try again.' });
     }
 });

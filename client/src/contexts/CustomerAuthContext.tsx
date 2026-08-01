@@ -15,6 +15,7 @@ interface CustomerAuthContextType {
   login: (phone: string, password: string) => Promise<void>;
   loginWithGoogle: () => Promise<void>;
   register: (data: { name: string; phone: string; email?: string; address?: string; password: string }) => Promise<void>;
+  completeResetLink: (data: { token: string; phone: string; password: string; confirmPassword: string }) => Promise<void>;
   logout: () => Promise<void>;
   checkAuth: () => Promise<void>;
   restoreSession: () => Promise<boolean>;
@@ -117,6 +118,15 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const completeResetLink = async (data: { token: string; phone: string; password: string; confirmPassword: string }) => {
+    const session = await customerAuthApi.completeResetLink(data);
+    await clearPersistedClientState();
+    setCustomer(session);
+    if (Capacitor.isNativePlatform() && session.id && session.phone) {
+      await storeAuthSession(session.id, session.phone);
+    }
+  };
+
   const logout = async () => {
     try {
       await customerAuthApi.logout();
@@ -165,6 +175,7 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
         login,
         loginWithGoogle,
         register,
+        completeResetLink,
         logout,
         checkAuth,
         restoreSession,

@@ -209,6 +209,7 @@ export function CustomerAuthModal({
                     onChange={(e) => setLoginPhone(e.target.value.replace(/\D/g, '').replace(/^0+/, ''))}
                     maxLength={10}
                     className="pl-[5rem] h-11 text-base md:text-base py-2"
+                    autoComplete="username"
                     data-testid="input-login-phone"
                   />
                 </div>
@@ -225,6 +226,7 @@ export function CustomerAuthModal({
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
                     className="pl-10 h-11 text-base md:text-base py-2"
+                    autoComplete="current-password"
                     data-testid="input-login-password"
                   />
                 </div>
@@ -256,6 +258,7 @@ export function CustomerAuthModal({
                     value={registerName}
                     onChange={(e) => setRegisterName(e.target.value)}
                     className="pl-10 h-11 text-base md:text-base py-2"
+                    autoComplete="name"
                     data-testid="input-register-name"
                   />
                 </div>
@@ -278,6 +281,7 @@ export function CustomerAuthModal({
                     onChange={(e) => setRegisterPhone(e.target.value.replace(/\D/g, '').replace(/^0+/, ''))}
                     maxLength={10}
                     className="pl-[5rem] h-11 text-base md:text-base py-2"
+                    autoComplete="username"
                     data-testid="input-register-phone"
                   />
                 </div>
@@ -294,6 +298,7 @@ export function CustomerAuthModal({
                     value={registerEmail}
                     onChange={(e) => setRegisterEmail(e.target.value)}
                     className="pl-10 h-11 text-base md:text-base py-2"
+                    autoComplete="email"
                     data-testid="input-register-email"
                   />
                 </div>
@@ -326,6 +331,7 @@ export function CustomerAuthModal({
                     value={registerPassword}
                     onChange={(e) => setRegisterPassword(e.target.value)}
                     className="pl-10 h-11 text-base md:text-base py-2"
+                    autoComplete="new-password"
                     data-testid="input-register-password"
                   />
                 </div>
@@ -342,6 +348,7 @@ export function CustomerAuthModal({
                     value={registerConfirmPassword}
                     onChange={(e) => setRegisterConfirmPassword(e.target.value)}
                     className="pl-10 h-11 text-base md:text-base py-2"
+                    autoComplete="new-password"
                     data-testid="input-register-confirm-password"
                   />
                 </div>

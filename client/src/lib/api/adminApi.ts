@@ -1016,6 +1016,14 @@ export const adminRepairJourneysApi = {
             method: "POST",
             body: JSON.stringify(data),
         }),
+    getAccountByPhone: (phone: string) =>
+        fetchApi<{ found: boolean; userId?: string; name?: string; customerAccountState?: string; lastLogin?: string | null; linkedRepairCount?: number; phoneTail?: string }>(
+            `/admin/customer-repair-journeys/account-by-phone?phone=${encodeURIComponent(phone)}`
+        ),
+    generateResetLink: (userId: string) =>
+        fetchApi<{ url: string; expiresAt: string; expiresInHours: number; customerName: string; customerPhoneTail: string; message: string }>(`/admin/customers/${userId}/reset-link`, {
+            method: "POST",
+        }),
 };
 
 export interface AdminDashboardRevenuePoint {
@@ -1274,8 +1282,8 @@ export const adminCustomersApi = {
         fetchApi<void>(`/admin/customers/${id}`, {
             method: "DELETE",
         }),
-    generateResetCode: (id: string) =>
-        fetchApi<{ code: string; expiresInMinutes: number; customerPhone: string; message: string }>(`/admin/customers/${id}/reset-code`, {
+    generateResetLink: (id: string) =>
+        fetchApi<{ url: string; expiresAt: string; expiresInHours: number; customerName: string; customerPhoneTail: string; message: string }>(`/admin/customers/${id}/reset-link`, {
             method: "POST",
         }),
 };

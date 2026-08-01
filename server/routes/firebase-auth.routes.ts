@@ -4,6 +4,10 @@ import { db } from "../db.js";
 import { users } from "../../shared/schema.js";
 import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
+import {
+    enforceCustomerLoginPolicy,
+    CustomerAccountNotActivatedError,
+} from "../services/customer-session.service.js";
 
 const router = Router();
 
@@ -36,6 +40,15 @@ router.post("/api/auth/firebase", async (req: Request, res: Response) => {
                 }).catch(() => null);
 
                 if (user) {
+                    // Gate BEFORE linking: attaching the Firebase UID to an
+                    // unclaimed account would hand that account a permanent
+                    // second key, even though the login itself is refused.
+                    await enforceCustomerLoginPolicy({
+                        userId: user.id,
+                        accountState: (user as any).customerAccountState,
+                        authMethod: "firebase",
+                    });
+
                     await db.update(users)
                         .set({ firebaseUid: firebaseUser.uid } as any)
                         .where(eq(users.id, user.id))
@@ -57,6 +70,15 @@ router.post("/api/auth/firebase", async (req: Request, res: Response) => {
                 isVerified: true,
             } as any).returning();
         }
+
+        // Covers the firebaseUid-match branch (existing linked account) and, for
+        // the freshly-created branch, is a cheap no-op that also clears any link
+        // issued against a pre-existing row.
+        await enforceCustomerLoginPolicy({
+            userId: user!.id,
+            accountState: (user as any)?.customerAccountState,
+            authMethod: "firebase",
+        });
 
         await regenerateSession(req);
         (req.session as any).customerId = user!.id;
@@ -82,6 +104,12 @@ router.post("/api/auth/firebase", async (req: Request, res: Response) => {
             });
         });
     } catch (e: any) {
+        if (e instanceof CustomerAccountNotActivatedError) {
+            return res.status(403).json({
+                error: "This account has not been set up yet. Please contact us for a setup link.",
+                code: e.code,
+            });
+        }
         console.error("[FirebaseAuth] Token verify failed:", (e as Error).message?.slice(0, 120));
         res.status(401).json({ error: "Invalid or expired Firebase token" });
     }

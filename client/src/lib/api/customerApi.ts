@@ -138,6 +138,21 @@ export const customerAuthApi = {
             method: "POST",
             body: JSON.stringify(data),
         }),
+    verifyResetLink: (token: string) =>
+        fetchApi<{ valid: boolean }>("/customer/reset-link/verify", {
+            method: "POST",
+            body: JSON.stringify({ token }),
+        }),
+    completeResetLink: (data: { token: string; phone: string; password: string; confirmPassword: string }) =>
+        fetchApi<CustomerSession>("/customer/reset-link/complete", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
+    requestRecovery: (data: { phone?: string; ticketNumber?: string; name?: string; message?: string }) =>
+        fetchApi<{ message: string }>("/customer/account-recovery/request", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
 };
 
 // Customer Service Requests (Repair Orders) Tracking API
@@ -249,7 +264,12 @@ export const shopOrdersApi = {
 // Quote Requests API (customer)
 export const quoteRequestsApi = {
     submit: (data: {
-        serviceId: string;
+        /**
+         * CUSTOMER-SERVICE-INTENT-01A — null means "Not sure — Check my TV".
+         * Send null rather than a placeholder id; the server stores null and the
+         * technician's diagnosis determines the actual work.
+         */
+        serviceId: string | null;
         brand: string;
         primaryIssue: string;
         description?: string;

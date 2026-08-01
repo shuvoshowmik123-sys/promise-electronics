@@ -26,7 +26,7 @@ declare module 'express-session' {
         customerId?: string;
         adminUserId?: string;
         corporateUserId?: string;
-        authMethod?: 'phone' | 'google';
+        authMethod?: 'phone' | 'google' | 'firebase';
         /** Epoch ms when this session was established. */
         authenticatedAt?: number;
         /**
@@ -83,7 +83,7 @@ export const adminUpdateUserSchema = z.object({
 // Customer authentication schemas
 export const customerLoginSchema = z.object({
     phone: z.string().min(10, 'Phone number is required'),
-    password: z.string().min(6, 'Password must be at least 6 characters').max(13, 'Password is too long'),
+    password: z.string().min(6, 'Password must be at least 6 characters').max(72, 'Password is too long'),
 });
 
 export const customerRegisterSchema = z.object({
@@ -91,7 +91,7 @@ export const customerRegisterSchema = z.object({
     phone: z.string().min(10, 'Phone number is required'),
     email: z.string().email().optional().or(z.literal('')),
     address: z.string().optional(),
-    password: z.string().min(6, 'Password must be at least 6 characters').max(13, 'Password is too long'),
+    password: z.string().min(6, 'Password must be at least 6 characters').max(72, 'Password is too long'),
 });
 
 // ============================================

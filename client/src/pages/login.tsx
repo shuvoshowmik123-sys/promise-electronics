@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { variants } from "@/lib/motion";
 import { Link, useLocation } from "wouter";
@@ -9,15 +9,57 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Mail, Lock, User, Phone, ArrowLeft, Loader2, MapPin, ShieldCheck, Sparkles, Wrench, HelpCircle, MessageCircle } from "lucide-react";
+import { Mail, Lock, User, Phone, ArrowLeft, Loader2, MapPin, ShieldCheck, Sparkles, Wrench, HelpCircle, CheckCircle2 } from "lucide-react";
 import { images } from "@/lib/app-config";
 
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
+import { useCustomerMobileChrome } from "@/contexts/CustomerMobileChromeContext";
+import { customerAuthApi } from "@/lib/api";
 
 function RecoveryHelpPanel({ compact = false }: { compact?: boolean }) {
   const { t } = useCustomerLanguage();
-  const steps = [t("login.recoveryStep1"), t("login.recoveryStep2"), t("login.recoveryStep3")];
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+
+  const [rPhone, setRPhone] = useState("");
+  const [rTicket, setRTicket] = useState("");
+  const [rMessage, setRMessage] = useState("");
+
+  const { toast } = useToast();
+
+  // Activation and password reset both happen through a staff-issued one-time
+  // link, so this panel only opens a support request — it never sets a password.
+  const submitRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await customerAuthApi.requestRecovery({
+        phone: rPhone ? `+880${rPhone.replace(/\D/g, "")}` : undefined,
+        ticketNumber: rTicket || undefined,
+        message: rMessage || undefined,
+      });
+      setDone(true);
+    } catch {
+      toast({ title: "Failed", description: "Please try again.", variant: "destructive" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (done) {
+    return (
+      <div className={compact ? "rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3" : "rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4"}>
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+          <p className="text-sm font-black text-slate-950">Request sent</p>
+        </div>
+        <p className="mt-1 text-xs leading-5 text-slate-600">
+          If your details match an account, our team will send you a one-time setup link on WhatsApp or Messenger.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className={compact ? "rounded-2xl border border-emerald-100 bg-emerald-50/70 p-3" : "rounded-2xl border border-emerald-100 bg-emerald-50/70 p-4"}>
@@ -27,25 +69,46 @@ function RecoveryHelpPanel({ compact = false }: { compact?: boolean }) {
         </span>
         <div className="min-w-0">
           <h3 className="text-sm font-black text-slate-950">{t("login.recoveryTitle")}</h3>
-          <p className="mt-1 text-xs leading-5 text-slate-600">{t("login.recoveryDesc")}</p>
+          <p className="mt-1 text-xs leading-5 text-slate-600">
+            Tell us how to find you. Our team will send a one-time setup link you can use to choose your own password.
+          </p>
         </div>
       </div>
-      <div className="mt-3 space-y-1.5">
-        {steps.map((step, index) => (
-          <div key={step} className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-[10px] font-black text-emerald-700">{index + 1}</span>
-            <span>{step}</span>
-          </div>
-        ))}
-      </div>
-      <div className="mt-3">
-        <Link href="/support">
-          <Button type="button" className="h-10 w-full rounded-2xl bg-emerald-600 text-sm font-black hover:bg-emerald-700" data-testid="button-open-recovery-support">
-            <MessageCircle className="mr-2 h-4 w-4" />
-            {t("login.openSupport")}
-          </Button>
-        </Link>
-      </div>
+
+      <form onSubmit={submitRequest} className="mt-3 space-y-2" data-testid="form-recovery-request">
+        <div className="relative">
+          <Phone className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
+          <Input
+            type="tel"
+            inputMode="numeric"
+            placeholder="Phone (1XXXXXXXXX)"
+            value={rPhone}
+            onChange={(e) => setRPhone(e.target.value.replace(/\D/g, "").replace(/^0+/, ""))}
+            maxLength={10}
+            className={compact ? "h-9 rounded-xl pl-9 text-sm" : "h-10 rounded-2xl pl-9 text-sm"}
+            autoComplete="username"
+            data-testid="input-recovery-phone"
+          />
+        </div>
+        <Input
+          placeholder="Ticket number (optional)"
+          value={rTicket}
+          onChange={(e) => setRTicket(e.target.value)}
+          className={compact ? "h-9 rounded-xl text-sm" : "h-10 rounded-2xl text-sm"}
+          data-testid="input-recovery-ticket"
+        />
+        <Input
+          placeholder="Message to support (optional)"
+          value={rMessage}
+          onChange={(e) => setRMessage(e.target.value)}
+          className={compact ? "h-9 rounded-xl text-sm" : "h-10 rounded-2xl text-sm"}
+          data-testid="input-recovery-message"
+        />
+        <Button type="submit" disabled={busy} className="h-9 w-full rounded-2xl bg-emerald-600 text-sm font-black hover:bg-emerald-700" data-testid="button-recovery-submit">
+          {busy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : null}
+          Request setup link
+        </Button>
+      </form>
       <p className="mt-2 text-[11px] leading-4 text-slate-500">{t("login.recoveryNote")}</p>
     </div>
   );
@@ -56,8 +119,14 @@ export default function LoginPage() {
   const { toast } = useToast();
   const { login, register, loginWithGoogle } = useCustomerAuth();
   const { t } = useCustomerLanguage();
+  const { setBottomNavSuppressed } = useCustomerMobileChrome();
   const [isLoading, setIsLoading] = useState(false);
   const [showRecoveryHelp, setShowRecoveryHelp] = useState(false);
+
+  useEffect(() => {
+    setBottomNavSuppressed(showRecoveryHelp);
+    return () => setBottomNavSuppressed(false);
+  }, [setBottomNavSuppressed, showRecoveryHelp]);
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -226,6 +295,7 @@ export default function LoginPage() {
                       name="phone"
                       placeholder="1XXXXXXXXX"
                       className="h-11 rounded-2xl border-emerald-100 bg-emerald-50/50"
+                      autoComplete="username"
                       data-testid="input-mobile-login-phone"
                       required
                     />
@@ -240,6 +310,7 @@ export default function LoginPage() {
                         type="password"
                         placeholder={t("login.passwordPlaceholder")}
                         className="h-11 rounded-2xl border-emerald-100 bg-emerald-50/50 pl-11"
+                        autoComplete="current-password"
                         data-testid="input-mobile-login-password"
                         required
                       />
@@ -248,7 +319,6 @@ export default function LoginPage() {
                   <button type="button" onClick={() => setShowRecoveryHelp((value) => !value)} className="text-left text-xs font-black text-emerald-700" data-testid="button-mobile-recovery-help">
                     {t("login.recoveryHelp")}
                   </button>
-                  {showRecoveryHelp && <RecoveryHelpPanel compact />}
                   <label className="flex min-h-10 items-center gap-3 rounded-2xl bg-slate-50 px-3 text-sm font-medium text-slate-600">
                     <input type="checkbox" className="h-4 w-4 rounded border-slate-300" data-testid="checkbox-mobile-remember" />
                     {t("login.rememberMe")}
@@ -267,6 +337,7 @@ export default function LoginPage() {
                     {t("login.google")}
                   </Button>
                 </form>
+                {showRecoveryHelp && <RecoveryHelpPanel compact />}
               </TabsContent>
 
               <TabsContent value="register" className="mt-4">
@@ -279,17 +350,17 @@ export default function LoginPage() {
                     <Label htmlFor="mobile-register-name" className="text-xs font-bold uppercase tracking-wide text-slate-500">{t("login.fullName")}</Label>
                     <div className="relative">
                       <User className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <Input id="mobile-register-name" name="name" className="h-12 rounded-2xl border-emerald-100 bg-emerald-50/50 pl-11" placeholder={t("login.namePlaceholder")} data-testid="input-mobile-register-name" required />
+                      <Input id="mobile-register-name" name="name" autoComplete="name" className="h-12 rounded-2xl border-emerald-100 bg-emerald-50/50 pl-11" placeholder={t("login.namePlaceholder")} data-testid="input-mobile-register-name" required />
                     </div>
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="mobile-register-phone" className="text-xs font-bold uppercase tracking-wide text-slate-500">{t("login.phone")}</Label>
-                    <PhoneInput id="mobile-register-phone" name="phone" placeholder="1XXXXXXXXX" className="h-12 rounded-2xl border-emerald-100 bg-emerald-50/50" data-testid="input-mobile-register-phone" required />
+                    <PhoneInput id="mobile-register-phone" name="phone" placeholder="1XXXXXXXXX" className="h-12 rounded-2xl border-emerald-100 bg-emerald-50/50" autoComplete="username" data-testid="input-mobile-register-phone" required />
                   </div>
                   <div className="grid grid-cols-1 gap-3">
                     <div className="relative">
                       <Mail className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <Input id="mobile-register-email" name="email" type="email" className="h-12 rounded-2xl border-slate-200 pl-11" placeholder={t("login.emailPlaceholder")} data-testid="input-mobile-register-email" />
+                      <Input id="mobile-register-email" name="email" type="email" autoComplete="email" className="h-12 rounded-2xl border-slate-200 pl-11" placeholder={t("login.emailPlaceholder")} data-testid="input-mobile-register-email" />
                     </div>
                     <div className="relative">
                       <MapPin className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -299,11 +370,11 @@ export default function LoginPage() {
                   <div className="space-y-3">
                     <div className="relative">
                       <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <Input id="mobile-register-password" name="password" type="password" className="h-12 rounded-2xl border-emerald-100 bg-emerald-50/50 pl-11" placeholder={t("login.passwordPlaceholder")} data-testid="input-mobile-register-password" required />
+                      <Input id="mobile-register-password" name="password" type="password" autoComplete="new-password" className="h-12 rounded-2xl border-emerald-100 bg-emerald-50/50 pl-11" placeholder={t("login.passwordPlaceholder")} data-testid="input-mobile-register-password" required />
                     </div>
                     <div className="relative">
                       <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                      <Input id="mobile-register-confirm-password" name="confirmPassword" type="password" className="h-12 rounded-2xl border-emerald-100 bg-emerald-50/50 pl-11" placeholder={t("login.confirmPasswordPlaceholder")} data-testid="input-mobile-register-confirm-password" required />
+                      <Input id="mobile-register-confirm-password" name="confirmPassword" type="password" autoComplete="new-password" className="h-12 rounded-2xl border-emerald-100 bg-emerald-50/50 pl-11" placeholder={t("login.confirmPasswordPlaceholder")} data-testid="input-mobile-register-confirm-password" required />
                     </div>
                   </div>
                   <Button type="submit" className="h-12 w-full rounded-2xl bg-emerald-600 text-base font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700" disabled={isLoading} data-testid="button-mobile-register-submit">
@@ -353,6 +424,7 @@ export default function LoginPage() {
                         id="login-phone"
                         name="phone"
                         placeholder="1XXXXXXXXX"
+                        autoComplete="username"
                         data-testid="input-login-phone"
                         required
                       />
@@ -368,6 +440,7 @@ export default function LoginPage() {
                         type="password"
                         placeholder="••••••••"
                         className="pl-10"
+                        autoComplete="current-password"
                         data-testid="input-login-password"
                         required
                       />
@@ -382,7 +455,6 @@ export default function LoginPage() {
                       {t("login.recoveryHelp")}
                     </button>
                   </div>
-                  {showRecoveryHelp && <RecoveryHelpPanel />}
                 </CardContent>
                 <CardFooter className="flex flex-col gap-4">
                   <Button type="submit" className="w-full" disabled={isLoading} data-testid="button-login-submit">
@@ -420,6 +492,7 @@ export default function LoginPage() {
                   </Button>
                 </CardFooter>
               </form>
+              {showRecoveryHelp && <RecoveryHelpPanel />}
             </TabsContent>
 
             <TabsContent value="register">
@@ -439,6 +512,7 @@ export default function LoginPage() {
                         type="text"
                         placeholder="Your full name"
                         className="pl-10"
+                        autoComplete="name"
                         data-testid="input-register-name"
                         required
                       />
@@ -451,6 +525,7 @@ export default function LoginPage() {
                         id="register-phone"
                         name="phone"
                         placeholder="1XXXXXXXXX"
+                        autoComplete="username"
                         data-testid="input-register-phone"
                         required
                       />
@@ -466,6 +541,7 @@ export default function LoginPage() {
                         type="email"
                         placeholder="your@email.com"
                         className="pl-10"
+                        autoComplete="email"
                         data-testid="input-register-email"
                       />
                     </div>
@@ -494,6 +570,7 @@ export default function LoginPage() {
                         type="password"
                         placeholder="••••••••"
                         className="pl-10"
+                        autoComplete="new-password"
                         data-testid="input-register-password"
                         required
                       />
@@ -509,6 +586,7 @@ export default function LoginPage() {
                         type="password"
                         placeholder="••••••••"
                         className="pl-10"
+                        autoComplete="new-password"
                         data-testid="input-register-confirm-password"
                         required
                       />

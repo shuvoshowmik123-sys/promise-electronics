@@ -31,6 +31,7 @@ const MyWarrantiesPage = lazy(() => import("@/pages/my-warranties"));
 const MyRepairsPage = lazy(() => import("@/pages/my-repairs"));
 const MyRepairDetailPage = lazy(() => import("@/pages/my-repair-detail"));
 const LoginPage = lazy(() => import("@/pages/login"));
+const ResetPage = lazy(() => import("@/pages/reset"));
 const AboutPage = lazy(() => import("@/pages/about"));
 const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy"));
 const WarrantyPolicyPage = lazy(() => import("@/pages/warranty-policy"));
@@ -186,6 +187,9 @@ export function CustomerRouter() {
                                 <Route path="/warranty-policy" component={WarrantyPolicyPage} />
                                 <Route path="/terms-and-conditions" component={TermsAndConditionsPage} />
                                 <Route path="/login" component={LoginPage} />
+                <Route path="/reset">
+                    <CustomerErrorBoundary fallbackTitle="Account Setup Error"><ResetPage /></CustomerErrorBoundary>
+                </Route>
                                 <Route component={NotFound} />
                             </Switch>
                         </ErrorBoundary>

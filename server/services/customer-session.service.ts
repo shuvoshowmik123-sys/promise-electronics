@@ -9,7 +9,57 @@ import { randomBytes } from "crypto";
 import { sql } from "drizzle-orm";
 import { db } from "../db.js";
 
-export type CustomerAuthMethod = "phone" | "google";
+export type CustomerAuthMethod = "phone" | "google" | "firebase";
+
+/**
+ * Thrown when a customer authenticates successfully but their account has not
+ * been activated by staff yet. Callers must translate this into a generic
+ * response — never into anything that confirms the account exists.
+ */
+export class CustomerAccountNotActivatedError extends Error {
+  readonly code = "ACCOUNT_SETUP_REQUIRED";
+  constructor() {
+    super("This account has not been set up yet.");
+    this.name = "CustomerAccountNotActivatedError";
+  }
+}
+
+/**
+ * The single gate every customer login must pass through, whatever the method
+ * (phone, Firebase, Passport Google, native Google).
+ *
+ * Two invariants, both of which have to hold before a session exists:
+ *   1. An `unclaimed` account cannot be logged into. Activation happens only via
+ *      a staff-issued one-time link, so any other route into the account would
+ *      be a side door around the phone verification that link enforces.
+ *   2. Logging in kills every live reset link for that user. A customer who got
+ *      in on their own does not need one, and leaving it usable would keep an
+ *      unnecessary credential-reset capability alive.
+ *
+ * Deliberately fail-closed: if the invalidation write fails, the whole login
+ * fails. Swallowing it would produce exactly the state invariant 2 prevents.
+ *
+ * Call this BEFORE mutating identity fields (linking a Firebase UID, attaching a
+ * googleSub) and BEFORE establishing the session.
+ */
+export async function enforceCustomerLoginPolicy(opts: {
+  userId: string;
+  accountState?: string | null;
+  authMethod: CustomerAuthMethod;
+}): Promise<void> {
+  if (opts.accountState === "unclaimed") {
+    console.warn(`[CustomerAuth] Login blocked for unclaimed account via ${opts.authMethod}`);
+    throw new CustomerAccountNotActivatedError();
+  }
+
+  await db.execute(sql`
+    UPDATE customer_reset_links
+    SET invalidated_at = NOW(), invalidated_reason = 'login'
+    WHERE user_id = ${opts.userId}
+      AND consumed_at IS NULL
+      AND invalidated_at IS NULL
+  `);
+}
 
 export type CustomerSessionEstablishOptions = {
   customerId: string;

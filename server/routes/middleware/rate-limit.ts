@@ -130,6 +130,19 @@ export const accountRecoveryLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for one-time reset-link verification and completion.
+ * 10 attempts per 15 minutes per IP — the per-link attempt cap in
+ * customer_reset_links is the real brute-force guard; this bounds IP-level abuse.
+ */
+export const resetLinkLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    message: { error: 'Too many attempts. Please wait and try again.' },
+    standardHeaders: false,
+    legacyHeaders: false,
+});
+
+/**
  * Rate limiter for ImageKit auth endpoint
  * Allows guest uploads but prevents token farming
  * Allows 5 auth requests per 10 minutes per IP

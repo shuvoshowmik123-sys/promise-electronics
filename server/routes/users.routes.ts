@@ -1135,53 +1135,91 @@ router.delete('/api/admin/customers/:id', requireAdminAuth, requirePermission('u
     }
 });
 
+
 /**
- * POST /api/admin/customers/:id/reset-code - Generate a staff-assisted reset code
- * Super Admin only. Verifies customer identity manually, then creates a one-time code
- * the customer can use at POST /api/customer/password-reset/complete.
+ * POST /api/admin/customers/:id/reset-link - Generate a one-time password reset link
+ *
+ * Super Admin only. Staff verify the customer's identity out of band, hand over
+ * the link, and the customer sets their own password. Staff never see or choose
+ * the password. The token is returned exactly once and is never retrievable
+ * again — only its SHA-256 is stored.
  */
-router.post('/api/admin/customers/:id/reset-code', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+router.post('/api/admin/customers/:id/reset-link', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
     try {
         const customer = await userRepo.getUser(req.params.id);
         if (!customer || customer.role !== 'Customer') {
             return res.status(404).json({ error: 'Customer not found' });
         }
 
+        // The link must be built from a configured canonical origin. Deriving it
+        // from the Host header would let a spoofed header mint a link pointing at
+        // an attacker's domain, which staff would then hand to a customer. Reuses
+        // the same hardened helper (and APP_BASE_URL) as corporate setup links.
+        const origin = getCorporateAppBaseUrl();
+        if (!origin) {
+            console.error('[ResetLink] APP_BASE_URL is not configured — refusing to generate a link');
+            return res.status(500).json({
+                error: 'Reset links are not configured on this server. Set APP_BASE_URL and try again.',
+            });
+        }
+
         const adminId = req.session.adminUserId || 'unknown';
-        const code = String(100000 + Math.floor(Math.random() * 900000));
-        const codeHash = await bcrypt.hash(code, 10);
-        const id = crypto.randomUUID();
-
         const { sql } = await import('drizzle-orm');
+        const { randomBytes, createHash } = await import('crypto');
 
-        await db.execute(sql`UPDATE staff_reset_codes SET used = TRUE WHERE user_id = ${customer.id} AND used = FALSE`);
+        // 256 bits of entropy. Stored as SHA-256: a fast hash is correct because
+        // a token this large cannot be brute-forced at any hash speed.
+        const token = randomBytes(32).toString('base64url');
+        const tokenHash = createHash('sha256').update(token).digest('hex');
+        const id = crypto.randomUUID();
+        const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-        await db.execute(sql`
-            INSERT INTO staff_reset_codes (id, user_id, code_hash, expires_at, created_by, created_at)
-            VALUES (${id}, ${customer.id}, ${codeHash}, ${new Date(Date.now() + 10 * 60 * 1000).toISOString()}::timestamp, ${adminId}, NOW())
-        `);
+        // "One live link per customer" is only true if supersede-then-insert is
+        // atomic. Locking the customer row first serialises two admins clicking
+        // at the same moment — otherwise both invalidate (each a no-op against
+        // the other) and both insert, leaving two usable links.
+        await db.transaction(async (tx) => {
+            await tx.execute(sql`SELECT id FROM users WHERE id = ${customer.id} FOR UPDATE`);
+
+            await tx.execute(sql`
+                UPDATE customer_reset_links
+                SET invalidated_at = NOW(), invalidated_reason = 'superseded_by_new_link'
+                WHERE user_id = ${customer.id}
+                  AND consumed_at IS NULL
+                  AND invalidated_at IS NULL
+            `);
+
+            await tx.execute(sql`
+                INSERT INTO customer_reset_links (id, user_id, token_hash, expires_at, created_by, created_at)
+                VALUES (${id}, ${customer.id}, ${tokenHash}, ${expiresAt.toISOString()}, ${adminId}, NOW())
+            `);
+        });
 
         auditLogger.log({
             userId: adminId,
             action: 'CREATE',
-            entity: 'StaffResetCode',
+            entity: 'CustomerResetLink',
             entityId: customer.id,
-            details: `Staff-assisted password reset code generated for customer ${customer.id}`,
+            details: `One-time password reset link generated for customer ${customer.id}`,
             req,
             severity: 'warning',
         }).catch(() => {});
 
-        console.log(`[StaffReset] Reset code created for customer ${customer.id} by admin ${adminId}`);
+        console.log(`[ResetLink] Link created for customer ${customer.id} by admin ${adminId}`);
 
+        // Token travels in the URL fragment so it is never sent to a server in a
+        // request line and cannot land in access logs, Referer headers, or proxies.
         res.json({
-            code,
-            expiresInMinutes: 10,
-            customerPhone: customer.phone?.slice(-4) ? `****${customer.phone.slice(-4)}` : 'no phone',
-            message: 'Give this code to the customer. It expires in 10 minutes and can only be used once.',
+            url: `${origin}/reset#t=${token}`,
+            expiresAt: expiresAt.toISOString(),
+            expiresInHours: 24,
+            customerName: customer.name,
+            customerPhoneTail: (customer.phone || '').replace(/\D/g, '').slice(-4),
+            message: 'Give this link to the verified customer. It works once and expires in 24 hours. It will not be shown again.',
         });
     } catch (error: any) {
-        console.error('[StaffReset] Failed to create reset code:', (error as Error).message);
-        res.status(500).json({ error: 'Failed to create reset code' });
+        console.error('[ResetLink] Failed to create reset link:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to create reset link' });
     }
 });
 

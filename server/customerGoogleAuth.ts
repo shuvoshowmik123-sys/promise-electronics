@@ -3,6 +3,10 @@ import { Strategy as GoogleStrategy, Profile } from "passport-google-oauth20";
 import type { Express, RequestHandler } from "express";
 import { storage } from "./storage.js";
 import { OAuth2Client } from 'google-auth-library';
+import {
+  enforceCustomerLoginPolicy,
+  CustomerAccountNotActivatedError,
+} from "./services/customer-session.service.js";
 
 declare global {
   namespace Express {
@@ -16,7 +20,7 @@ declare global {
 declare module 'express-session' {
   interface SessionData {
     customerId?: string;
-    authMethod?: 'google' | 'phone';
+    authMethod?: 'google' | 'phone' | 'firebase';
     authenticatedAt?: number;
     passwordChangedAtStamp?: number;
   }
@@ -36,6 +40,16 @@ async function upsertCustomerFromGoogle(profile: Profile) {
     email: email || null,
     profileImageUrl: profileImageUrl || null,
   });
+
+  // Same activation policy as every other login route: unclaimed accounts are
+  // refused and live reset links die. Throws CustomerAccountNotActivatedError,
+  // which the strategy surfaces as an auth failure.
+  await enforceCustomerLoginPolicy({
+    userId: user.id,
+    accountState: (user as any).customerAccountState,
+    authMethod: "google",
+  });
+
   return user;
 }
 
@@ -261,6 +275,22 @@ export async function setupCustomerAuth(app: Express) {
         email,
         profileImageUrl
       });
+
+      try {
+        await enforceCustomerLoginPolicy({
+          userId: user.id,
+          accountState: (user as any).customerAccountState,
+          authMethod: "google",
+        });
+      } catch (policyErr) {
+        if (policyErr instanceof CustomerAccountNotActivatedError) {
+          return res.status(403).json({
+            message: "This account has not been set up yet. Please contact us for a setup link.",
+            code: policyErr.code,
+          });
+        }
+        throw policyErr;
+      }
 
       req.session.regenerate(async (regenErr) => {
         if (regenErr) {

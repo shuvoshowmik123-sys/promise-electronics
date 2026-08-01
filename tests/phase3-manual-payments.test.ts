@@ -518,6 +518,7 @@ describe("Phase 3 manual payment verification", () => {
             registrationLimiter: (_req: any, _res: any, next: () => void) => next(),
             serviceRequestLimiter: (_req: any, _res: any, next: () => void) => next(),
             accountRecoveryLimiter: (_req: any, _res: any, next: () => void) => next(),
+            resetLinkLimiter: (_req: any, _res: any, next: () => void) => next(),
         }));
         vi.doMock("../server/routes/middleware/sse-broker.js", () => ({
             addCustomerSSEClient: vi.fn(),

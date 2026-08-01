@@ -7,7 +7,7 @@ import {
     Users, Search, Plus, Phone, Mail,
     Loader2, Trash2, Activity, ShoppingBag,
     Wrench, CheckCircle, Clock, ExternalLink, RefreshCw,
-    LayoutGrid, List, FileText, SlidersHorizontal, KeyRound, Copy, ShieldAlert
+    LayoutGrid, List, FileText, SlidersHorizontal, Copy, ShieldAlert
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -52,13 +52,13 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
     const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
     const [isMobileAddSheetOpen, setIsMobileAddSheetOpen] = useState(false);
     const [formData, setFormData] = useState({ name: "", phone: "", email: "", address: "" });
-    const [resetCodeTarget, setResetCodeTarget] = useState<any | null>(null);
-    const [resetCodeResult, setResetCodeResult] = useState<{
-        code: string;
-        expiresInMinutes: number;
-        customerPhone: string;
-        message: string;
-        customerName?: string;
+    const [resetLinkTarget, setResetLinkTarget] = useState<any | null>(null);
+    const [resetLinkResult, setResetLinkResult] = useState<{
+        url: string;
+        expiresAt: string;
+        expiresInHours: number;
+        customerName: string;
+        customerPhoneTail: string;
     } | null>(null);
     const isSuperAdmin = currentUser?.role === "Super Admin";
 
@@ -93,18 +93,15 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
         },
     });
 
-    const resetCodeMutation = useMutation({
-        mutationFn: (customerId: string) => adminCustomersApi.generateResetCode(customerId),
+    const resetLinkMutation = useMutation({
+        mutationFn: (customerId: string) => adminCustomersApi.generateResetLink(customerId),
         onSuccess: (result) => {
-            setResetCodeResult({
-                ...result,
-                customerName: resetCodeTarget?.name,
-            });
-            setResetCodeTarget(null);
-            toast.success("Reset code generated");
+            setResetLinkResult(result);
+            setResetLinkTarget(null);
+            toast.success("Reset link generated");
         },
         onError: (error: any) => {
-            toast.error(error.message || "Failed to generate reset code");
+            toast.error(error.message || "Failed to generate reset link");
         },
     });
 
@@ -234,10 +231,9 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
         }, 100);
     };
 
-    const copyResetCode = async () => {
-        if (!resetCodeResult?.code) return;
-        await navigator.clipboard.writeText(resetCodeResult.code);
-        toast.success("Reset code copied");
+    const openResetLinkDialog = (customer: any) => {
+        setActivitySheet({ open: false, customer: null });
+        setTimeout(() => setResetLinkTarget(customer), 100);
     };
 
     return (
@@ -772,11 +768,11 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                             {isSuperAdmin && (
                                                 <Button
                                                     variant="outline"
-                                                    className="border-amber-200 bg-amber-50 font-semibold text-amber-700 hover:bg-amber-100"
-                                                    onClick={() => setResetCodeTarget(activitySheet.customer)}
+                                                    className="border-blue-200 bg-blue-50 font-semibold text-blue-700 hover:bg-blue-100"
+                                                    onClick={() => openResetLinkDialog(activitySheet.customer)}
                                                 >
-                                                    <KeyRound className="mr-2 h-4 w-4" />
-                                                    Generate Reset Code
+                                                    <ExternalLink className="mr-2 h-4 w-4" />
+                                                    Generate Reset Link
                                                 </Button>
                                             )}
                                         </div>
@@ -858,69 +854,78 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
             </AnimatePresence>
             </motion.div>
 
-            <Dialog open={!!resetCodeTarget} onOpenChange={(open) => !open && setResetCodeTarget(null)}>
-                <DialogContent className="rounded-2xl border-amber-100 sm:max-w-md">
+            {/* Confirm: generate one-time account setup link */}
+            <Dialog open={!!resetLinkTarget} onOpenChange={(open) => !open && setResetLinkTarget(null)}>
+                <DialogContent className="rounded-2xl border-blue-100 sm:max-w-md">
                     <DialogHeader>
-                        <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-700">
-                            <ShieldAlert className="h-6 w-6" />
+                        <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+                            <ExternalLink className="h-6 w-6" />
                         </div>
-                        <DialogTitle>Generate reset code?</DialogTitle>
+                        <DialogTitle>Generate account setup link?</DialogTitle>
                         <DialogDescription>
-                            Generate a one-time password reset code only after verifying this customer by phone, ticket, or repair details.
+                            Only do this after verifying the customer's identity. You will never see their password —
+                            they set it themselves.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
-                        <div className="text-sm font-black text-slate-900">{resetCodeTarget?.name}</div>
-                        <div className="mt-1 text-xs font-semibold text-slate-500">{formatBdPhone(resetCodeTarget?.phone)}</div>
+                        <div className="text-sm font-black text-slate-900">{resetLinkTarget?.name}</div>
+                        <div className="mt-1 text-xs font-semibold text-slate-500">{formatBdPhone(resetLinkTarget?.phone)}</div>
+                    </div>
+                    <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3 text-xs font-semibold leading-5 text-blue-900">
+                        The link works once and expires in 24 hours. It replaces any link already issued to this customer.
                     </div>
                     <DialogFooter className="gap-2 sm:gap-2">
-                        <Button variant="outline" onClick={() => setResetCodeTarget(null)}>
+                        <Button variant="outline" onClick={() => setResetLinkTarget(null)}>
                             Cancel
                         </Button>
                         <Button
-                            className="bg-amber-600 text-white hover:bg-amber-700"
-                            disabled={!resetCodeTarget || resetCodeMutation.isPending}
-                            onClick={() => resetCodeTarget && resetCodeMutation.mutate(resetCodeTarget.id)}
+                            className="bg-blue-600 text-white hover:bg-blue-700"
+                            disabled={!resetLinkTarget || resetLinkMutation.isPending}
+                            onClick={() => resetLinkTarget && resetLinkMutation.mutate(resetLinkTarget.id)}
                         >
-                            {resetCodeMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
-                            Generate Code
+                            {resetLinkMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ExternalLink className="mr-2 h-4 w-4" />}
+                            Generate Link
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
 
-            <Dialog open={!!resetCodeResult} onOpenChange={(open) => !open && setResetCodeResult(null)}>
-                <DialogContent className="rounded-2xl border-emerald-100 sm:max-w-md">
+            {/* Result: link shown exactly once */}
+            <Dialog open={!!resetLinkResult} onOpenChange={(open) => !open && setResetLinkResult(null)}>
+                <DialogContent className="rounded-2xl border-blue-100 sm:max-w-md">
                     <DialogHeader>
-                        <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
-                            <KeyRound className="h-6 w-6" />
+                        <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-700">
+                            <ExternalLink className="h-6 w-6" />
                         </div>
-                        <DialogTitle>Reset code generated</DialogTitle>
+                        <DialogTitle>Account setup link</DialogTitle>
                         <DialogDescription>
-                            Show this code only to the verified customer. It will not be visible again after this dialog closes.
+                            This is the only time this link is shown. Copy it before closing this dialog.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="space-y-3">
-                        <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4 text-center">
-                            <div className="text-[11px] font-black uppercase tracking-[0.2em] text-emerald-700">
-                                One-time code
-                            </div>
-                            <div className="mt-2 font-mono text-4xl font-black tracking-[0.25em] text-slate-950">
-                                {resetCodeResult?.code}
-                            </div>
+                        <div className="break-all rounded-2xl border border-blue-100 bg-blue-50 p-3 font-mono text-xs text-blue-900">
+                            {resetLinkResult?.url}
                         </div>
                         <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
-                            Give this code to {resetCodeResult?.customerName || "the verified customer"} only. It expires in {resetCodeResult?.expiresInMinutes || 10} minutes and works once.
-                            <div className="mt-1 text-amber-800">Phone check: {resetCodeResult?.customerPhone}</div>
+                            Send to {resetLinkResult?.customerName || "the verified customer"} via WhatsApp or Messenger.
+                            Works once, expires in {resetLinkResult?.expiresInHours ?? 24} hours.
+                            <div className="mt-1 text-amber-800">Phone check: ···{resetLinkResult?.customerPhoneTail}</div>
                         </div>
                     </div>
                     <DialogFooter className="gap-2 sm:gap-2">
-                        <Button variant="outline" onClick={() => setResetCodeResult(null)}>
+                        <Button variant="outline" onClick={() => setResetLinkResult(null)}>
                             Close
                         </Button>
-                        <Button className="bg-emerald-600 text-white hover:bg-emerald-700" onClick={copyResetCode}>
+                        <Button
+                            className="bg-blue-600 text-white hover:bg-blue-700"
+                            onClick={async () => {
+                                if (!resetLinkResult?.url) return;
+                                await navigator.clipboard.writeText(resetLinkResult.url);
+                                toast.success("Link copied");
+                            }}
+                        >
                             <Copy className="mr-2 h-4 w-4" />
-                            Copy Code
+                            Copy Link
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -1123,6 +1128,17 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                                 Requests
                                             </button>
                                         </div>
+                                        {isSuperAdmin && (
+                                            <button
+                                                type="button"
+                                                onClick={() => openResetLinkDialog(activitySheet.customer)}
+                                                className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-blue-300/30 bg-blue-400/15 px-3 text-xs font-black text-blue-100"
+                                                data-testid="button-mobile-generate-reset-link"
+                                            >
+                                                <ExternalLink className="h-3.5 w-3.5" />
+                                                Generate Account Setup Link
+                                            </button>
+                                        )}
                                     </div>
 
                                     <div className="min-h-0 flex-1 space-y-2 overflow-y-auto bg-[#f8fafc] px-3 py-2.5 pb-[calc(1.5rem+env(safe-area-inset-bottom))]">

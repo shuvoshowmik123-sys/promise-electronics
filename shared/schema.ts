@@ -68,6 +68,7 @@ export const users = pgTable("users", {
   preferences: text("preferences").default("{}"), // Stores JSON string of user preferences
   corporateClientId: text("corporate_client_id"), // FK to corporate_clients.id logic handled in app
   defaultWorkLocationId: text("default_work_location_id"),
+  customerAccountState: text("customer_account_state").notNull().default("active"),
 }, (table) => {
   return {
     roleIdx: index("idx_users_role").on(table.role),
@@ -76,6 +77,29 @@ export const users = pgTable("users", {
     phoneNormalizedIdx: index("idx_users_phone_normalized").on(table.phoneNormalized),
     googleSubIdx: index("idx_users_google_sub").on(table.googleSub),
     firebaseUidIdx: index("idx_users_firebase_uid").on(table.firebaseUid),
+  };
+});
+
+/**
+ * One-time staff-issued password reset links.
+ * token_hash is SHA-256 of a 256-bit random token — never the token itself.
+ * consumed_at / invalidated_at are timestamps so the row is also an audit record.
+ */
+export const customerResetLinks = pgTable("customer_reset_links", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  phoneAttempts: integer("phone_attempts").notNull().default(0),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+  invalidatedReason: text("invalidated_reason"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => {
+  return {
+    userIdIdx: index("idx_customer_reset_links_user_id").on(table.userId),
+    expiresIdx: index("idx_customer_reset_links_expires").on(table.expiresAt),
   };
 });
 
@@ -1461,7 +1485,23 @@ export type InsertServiceRequest = z.infer<typeof insertServiceRequestSchema>;
 export type ServiceRequest = typeof serviceRequests.$inferSelect;
 
 export const insertQuoteRequestSchema = z.object({
-  serviceId: z.string().min(1, "Service selection is required").max(128),
+  /**
+   * CUSTOMER-SERVICE-INTENT-01A — "Not sure — Check my TV" is a real UI state,
+   * represented by null (or an omitted field), never by a placeholder id.
+   *
+   * This was previously `.min(1)` / required, which forced the mobile wizard to
+   * fabricate a value: it sent `services[0]?.id || "general_repair"`, so a
+   * customer who had chosen nothing was recorded as having requested whichever
+   * service happened to sort first — or a service id that does not exist in the
+   * catalogue at all.
+   *
+   * Null means "customer did not choose; technician will determine". A non-null
+   * value is verified against the active service catalogue in
+   * retail-intake.service (unknown/inactive ids are rejected, never substituted).
+   * The stored value is the CUSTOMER-REQUESTED service and is never overwritten
+   * by diagnosis, quotation, or job conversion.
+   */
+  serviceId: z.string().min(1).max(128).nullable().optional(),
   brand: z.string().min(1, "Brand is required").max(80),
   screenSize: z.string().max(40).optional(),
   modelNumber: z.string().max(80).optional(),
