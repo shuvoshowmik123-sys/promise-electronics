@@ -1,9 +1,17 @@
 
-const OPENROUTER_API_KEY = "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";
+// Never hard-code credentials here. Supply the key at run time instead:
+//   OPENROUTER_API_KEY=... node scripts/test_openrouter.js
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const SITE_URL = "http://localhost:5000";
 const SITE_NAME = "Promise Electronics";
 
 async function testOpenRouter() {
+    if (!OPENROUTER_API_KEY) {
+        console.error("Missing OPENROUTER_API_KEY. Run: OPENROUTER_API_KEY=... node scripts/test_openrouter.js");
+        process.exitCode = 1;
+        return;
+    }
+
     console.log("Testing OpenRouter: tngtech/deepseek-r1t2-chimera:free");
     const start = Date.now();
 
