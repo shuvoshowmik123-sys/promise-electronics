@@ -13,10 +13,13 @@ Last stopped: OAuth tokens generated, but refresh token has 7-day expiry.
 
 ## .env lines to add when done
 
+> Never paste real credential values into this file. It is tracked in git.
+> Copy them straight into `.env` (gitignored) or the Render dashboard instead.
+
 ```
-GOOGLE_CLIENT_SECRET=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
+GOOGLE_CLIENT_SECRET=<from Google Cloud Console — do not commit>
 GOOGLE_REFRESH_TOKEN=<new permanent token from above>
-BACKUP_ENCRYPTION_PASSWORD=PromiseElectronics@Backup#2026!SecureKey
+BACKUP_ENCRYPTION_PASSWORD=<strong passphrase — do not commit>
 GOOGLE_DRIVE_BACKUP_FOLDER_ID=<folder ID from drive.google.com/drive/folders/XXXXX>
 ```
 
