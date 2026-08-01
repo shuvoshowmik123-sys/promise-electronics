@@ -23,6 +23,7 @@ import { ProfileCompletionModal } from "@/components/auth/ProfileCompletionModal
 import { MobileBottomNav } from "./MobileBottomNav";
 import { NetworkOfflineBanner } from "@/components/customer/NetworkOfflineBanner";
 import { ScrollProgressBar } from "@/components/customer/ScrollProgressBar";
+import { useScrollRestoration } from "@/hooks/useScrollRestoration";
 
 /** Matches homepage section motion: soft y + opacity, easeOut ~0.55–0.65s */
 const HEADER_EASE = [0.22, 1, 0.36, 1] as const;
@@ -42,17 +43,10 @@ function DesktopLangToggle() {
   );
 }
 
-function ScrollToTop() {
-  const [location] = useLocation();
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [location]);
-  return null;
-}
-
 export function PublicLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const [showAuthModal, setShowAuthModal] = useState(false);
+  useScrollRestoration();
   const [searchQuery, setSearchQuery] = useState("");
   const [isHeaderCompact, setIsHeaderCompact] = useState(false);
   const isHeaderCompactRef = useRef(false);
@@ -136,7 +130,6 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
     <CustomerLanguageProvider>
       <CustomerMobileChromeProvider>
     <div className="customer-portal-shell min-h-screen flex flex-col bg-slate-50">
-      <ScrollToTop />
       <ScrollProgressBar />
       <NetworkOfflineBanner />
       <header className="pointer-events-none sticky top-0 z-50 hidden h-24 md:block" aria-label="Customer site header">
