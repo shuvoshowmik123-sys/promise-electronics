@@ -33,6 +33,11 @@ services:
         sync: false
       - key: VITE_FIREBASE_APP_ID
         sync: false
+      # Web Push certificate public key (Firebase Console > Project settings >
+      # Cloud Messaging > Web configuration). Vite inlines this at BUILD time, so
+      # it must be set before the deploy or the bundle ships with push disabled.
+      - key: VITE_FIREBASE_VAPID_KEY
+        sync: false
       - key: SESSION_SECRET
         sync: false
       - key: DATABASE_URL
