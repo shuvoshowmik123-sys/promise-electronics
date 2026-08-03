@@ -1,20 +1,23 @@
 /**
- * FCM Push Notification Service
- * 
- * Handles sending push notifications to admin devices via Firebase Cloud Messaging.
+ * FCM Push Notification Service (admin portal).
+ *
+ * Tokens are persisted in device_tokens via pushService (same path as customers).
+ * Staff-only selection joins users on role (see pushService.listActiveStaffDeviceTokens).
  */
 
 import admin from 'firebase-admin';
 import { join, resolve } from 'path';
 import { readFileSync, existsSync } from 'fs';
+import {
+    registerDeviceToken as persistDeviceToken,
+    deactivateToken,
+    deactivateUserOwnedToken,
+    listActiveStaffDeviceTokens,
+} from '../pushService.js';
 
 // Resolve server directory in a way that works for both ESM and CJS bundles.
 // process.cwd() on Render is /app, and the service account sits at /app/server/
 const SERVER_DIR = resolve(process.cwd(), 'server');
-
-// In-memory storage for device tokens
-// In production, you might want to use Redis or persist to database
-const adminDeviceTokens: Map<string, { token: string; platform: string; userId: string }> = new Map();
 
 // Check if Firebase Admin is already initialized
 if (!admin.apps.length) {
@@ -42,28 +45,40 @@ interface PushPayload {
 }
 
 /**
- * Register a device token for push notifications
+ * Persist an admin device token (DB). Replaces the old in-memory Map.
  */
-export function registerDeviceToken(userId: string, token: string, platform: string): void {
-    adminDeviceTokens.set(token, { token, platform, userId });
-    console.log(`[FCM] Registered device token, total tokens: ${adminDeviceTokens.size}`);
-}
-
-/**
- * Unregister device tokens
- */
-export function unregisterDeviceTokens(tokens: string[]): void {
-    for (const token of tokens) {
-        adminDeviceTokens.delete(token);
+export async function registerAdminDeviceToken(
+    userId: string,
+    token: string,
+    platform: string,
+): Promise<void> {
+    if (!userId) {
+        throw new Error('adminUserId is required to register a push token');
     }
-    console.log(`[FCM] Unregistered ${tokens.length} tokens, remaining: ${adminDeviceTokens.size}`);
+    await persistDeviceToken(userId, token, platform);
+    console.log(`[FCM] Registered admin device token for user ${userId}`);
 }
 
 /**
- * Get all registered device tokens
+ * Deactivate a token only if it belongs to this admin.
+ * @returns whether a row was updated
  */
-export function getAllDeviceTokens(): string[] {
-    return Array.from(adminDeviceTokens.values()).map(t => t.token);
+export async function unregisterAdminDeviceToken(userId: string, token: string): Promise<boolean> {
+    return deactivateUserOwnedToken(userId, token);
+}
+
+/**
+ * Active staff-portal device tokens from the database (not customer tokens).
+ */
+export async function getAllDeviceTokens(): Promise<string[]> {
+    return listActiveStaffDeviceTokens();
+}
+
+/** @deprecated use unregisterAdminDeviceToken for ownership-safe unregister */
+export async function unregisterDeviceTokens(tokens: string[]): Promise<void> {
+    for (const token of tokens) {
+        await deactivateToken(token);
+    }
 }
 
 /**
@@ -103,7 +118,7 @@ export async function sendPushToDevice(token: string, payload: PushPayload): Pro
 }
 
 /**
- * Send push notification to all registered admin devices
+ * Send push notification to all registered admin/staff devices
  */
 export async function sendPushToAllAdmins(payload: PushPayload): Promise<number> {
     if (!admin.apps.length) {
@@ -111,7 +126,7 @@ export async function sendPushToAllAdmins(payload: PushPayload): Promise<number>
         return 0;
     }
 
-    const tokens = getAllDeviceTokens();
+    const tokens = await getAllDeviceTokens();
 
     if (tokens.length === 0) {
         console.log('[FCM] No admin device tokens registered');
@@ -139,7 +154,7 @@ export async function sendPushToAllAdmins(payload: PushPayload): Promise<number>
         const response = await admin.messaging().sendEachForMulticast(message);
         console.log(`[FCM] Push sent to ${response.successCount}/${tokens.length} devices`);
 
-        // Clean up invalid tokens
+        // Clean up invalid tokens in the database
         if (response.failureCount > 0) {
             const invalidTokens: string[] = [];
             response.responses.forEach((resp, idx) => {
@@ -148,8 +163,10 @@ export async function sendPushToAllAdmins(payload: PushPayload): Promise<number>
                 }
             });
             if (invalidTokens.length > 0) {
-                unregisterDeviceTokens(invalidTokens);
-                console.log(`[FCM] Removed ${invalidTokens.length} invalid tokens`);
+                for (const t of invalidTokens) {
+                    await deactivateToken(t);
+                }
+                console.log(`[FCM] Deactivated ${invalidTokens.length} invalid tokens`);
             }
         }
 

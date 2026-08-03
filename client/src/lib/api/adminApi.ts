@@ -1020,9 +1020,21 @@ export const adminRepairJourneysApi = {
         fetchApi<{ found: boolean; userId?: string; name?: string; customerAccountState?: string; lastLogin?: string | null; linkedRepairCount?: number; phoneTail?: string }>(
             `/admin/customer-repair-journeys/account-by-phone?phone=${encodeURIComponent(phone)}`
         ),
-    generateResetLink: (userId: string) =>
-        fetchApi<{ url: string; expiresAt: string; expiresInHours: number; customerName: string; customerPhoneTail: string; message: string }>(`/admin/customers/${userId}/reset-link`, {
+    generateResetLink: (
+        userId: string,
+        opts?: { deliver?: "sms"; inquiryId?: string },
+    ) =>
+        fetchApi<{
+            url: string;
+            expiresAt: string;
+            expiresInHours: number;
+            customerName: string;
+            customerPhoneTail: string;
+            message: string;
+            delivery?: { channel: "sms"; status: "sent" | "failed" | "skipped"; error?: string } | null;
+        }>(`/admin/customers/${userId}/reset-link`, {
             method: "POST",
+            body: JSON.stringify(opts ?? {}),
         }),
 };
 
@@ -1282,9 +1294,21 @@ export const adminCustomersApi = {
         fetchApi<void>(`/admin/customers/${id}`, {
             method: "DELETE",
         }),
-    generateResetLink: (id: string) =>
-        fetchApi<{ url: string; expiresAt: string; expiresInHours: number; customerName: string; customerPhoneTail: string; message: string }>(`/admin/customers/${id}/reset-link`, {
+    generateResetLink: (
+        id: string,
+        opts?: { deliver?: "sms"; inquiryId?: string },
+    ) =>
+        fetchApi<{
+            url: string;
+            expiresAt: string;
+            expiresInHours: number;
+            customerName: string;
+            customerPhoneTail: string;
+            message: string;
+            delivery?: { channel: "sms"; status: "sent" | "failed" | "skipped"; error?: string } | null;
+        }>(`/admin/customers/${id}/reset-link`, {
             method: "POST",
+            body: JSON.stringify(opts ?? {}),
         }),
 };
 

@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AREA_NOTICE_INITIAL, areaNoticeReducer } from "@/lib/area-notice";
 import { AnimatePresence, motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -225,6 +226,9 @@ export default function CustomerDistanceExplorer({
   const [fullMapOpen, setFullMapOpen] = useState(false);
   const { setBottomNavSuppressed } = useCustomerMobileChrome();
   const [showInteractionHint, setShowInteractionHint] = useState(false);
+  const [areaNotice, setAreaNotice] = useState(AREA_NOTICE_INITIAL);
+  const areaNoticeDismiss = useCallback(() => setAreaNotice(s => areaNoticeReducer(s, "dismiss")), []);
+  const areaNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setBottomNavSuppressed(sheetOpen || fullMapOpen);
@@ -240,6 +244,22 @@ export default function CustomerDistanceExplorer({
     refetchOnMount: "always",
     enabled: isNearViewport,
   });
+
+  useEffect(() => {
+    if (!areaQuery.isError) return;
+    setAreaNotice(s => areaNoticeReducer(s, "area-error"));
+  }, [areaQuery.isError]);
+
+  useEffect(() => {
+    if (!areaNotice.visible) return;
+    areaNoticeTimerRef.current = setTimeout(areaNoticeDismiss, 4000);
+    return () => {
+      if (areaNoticeTimerRef.current !== null) {
+        clearTimeout(areaNoticeTimerRef.current);
+        areaNoticeTimerRef.current = null;
+      }
+    };
+  }, [areaNotice.visible, areaNoticeDismiss]);
   useEffect(() => {
     // 550ms rather than 350ms: long enough that a normal typing rhythm produces
     // one lookup per word instead of one per few characters, short enough to
@@ -905,6 +925,23 @@ export default function CustomerDistanceExplorer({
 
   return (
     <section ref={sectionRef} className="relative isolate overflow-hidden bg-[#f7fbf9]" aria-label={t("distance.mapLabel")}>
+      {areaNotice.visible && (
+        <div
+          role="status"
+          aria-live="polite"
+          className="flex items-center justify-between gap-3 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 mx-4 mt-3 text-xs font-medium text-amber-800 max-w-lg md:mx-auto"
+        >
+          <span>{t("distance.areaListUnavailable")}</span>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={areaNoticeDismiss}
+            className="shrink-0 flex items-center justify-center h-6 w-6 rounded-full hover:bg-amber-100 transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
       {isMobile ? (
         <div className="relative h-[64dvh] min-h-[440px] max-h-[640px] overflow-hidden">
           {/* Full map is expanded elsewhere (portal below) — avoid mounting a second
@@ -1230,7 +1267,6 @@ export default function CustomerDistanceExplorer({
           </AnimatePresence>
         </div>
       )}
-      {areaQuery.isError && <p className="absolute bottom-4 left-1/2 z-40 -translate-x-1/2 rounded-full bg-amber-50 px-4 py-2 text-xs font-medium text-amber-800 shadow-sm"><MapPin className="mr-1.5 inline h-3.5 w-3.5" />{t("distance.areaListUnavailable")}</p>}
     </section>
   );
 }

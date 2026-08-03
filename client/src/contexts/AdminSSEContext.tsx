@@ -7,6 +7,10 @@ import { settingsApi } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { invalidateActiveRealtimeQueries, isAdminRealtimeEvent } from "@/lib/admin-realtime";
 import type { AdminRealtimeQueryTag } from "@shared/types/admin-realtime";
+import {
+  isInquiryVisibilitySseEvent,
+  toastForInquiryVisibilityEvent,
+} from "@/lib/admin-sse-inquiry-events";
 
 interface AdminSSEContextType {
     sseSupported: boolean;
@@ -216,6 +220,12 @@ export function AdminSSEProvider({ children }: { children: ReactNode }) {
                                     }
                                 }
                             });
+                        }
+                        else if (isInquiryVisibilitySseEvent(data)) {
+                            // account_recovery_request / customer_created — row is already in inquiries
+                            void queryClient.invalidateQueries({ queryKey: ["inquiries"] });
+                            const t = toastForInquiryVisibilityEvent(data);
+                            toast.info(t.title, t.description ? { description: t.description } : undefined);
                         }
                         else if (isAdminRealtimeEvent(data)) {
                             if (!rememberEventId(data.id)) {

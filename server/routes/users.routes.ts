@@ -1194,6 +1194,29 @@ router.post('/api/admin/customers/:id/reset-link', requireAdminAuth, requireSupe
             });
         }
 
+        const body = (req.body && typeof req.body === 'object') ? req.body as Record<string, unknown> : {};
+        const deliver = body.deliver === 'sms' ? 'sms' as const : undefined;
+        const inquiryId = typeof body.inquiryId === 'string' && body.inquiryId.trim()
+            ? body.inquiryId.trim()
+            : undefined;
+
+        // ITEM 3: optional inquiry close-loop — validate before minting so we never
+        // attach a link action to a non-recovery inquiry.
+        if (inquiryId) {
+            const { getInquiry } = await import('../repositories/customer.repository.js');
+            const { isAccountRecoveryInquiryMessage } = await import('../../shared/account-recovery.js');
+            const inquiry = await getInquiry(inquiryId);
+            if (!inquiry) {
+                return res.status(404).json({ error: 'Inquiry not found' });
+            }
+            if (!isAccountRecoveryInquiryMessage(inquiry.message)) {
+                return res.status(400).json({
+                    error: 'inquiryId must reference an account recovery request',
+                    code: 'NOT_RECOVERY_INQUIRY',
+                });
+            }
+        }
+
         const adminId = req.session.adminUserId || 'unknown';
         const { sql } = await import('drizzle-orm');
         const { randomBytes, createHash } = await import('crypto');
@@ -1236,17 +1259,75 @@ router.post('/api/admin/customers/:id/reset-link', requireAdminAuth, requireSupe
             severity: 'warning',
         }).catch(() => {});
 
+        // Never log token or full URL
         console.log(`[ResetLink] Link created for customer ${customer.id} by admin ${adminId}`);
 
         // Token travels in the URL fragment so it is never sent to a server in a
         // request line and cannot land in access logs, Referer headers, or proxies.
+        const url = `${origin}/reset#t=${token}`;
+
+        // ITEM 2 — opt-in SMS only; always use phone on the customer record (never body).
+        let delivery: {
+            channel: 'sms';
+            status: 'sent' | 'failed' | 'skipped';
+            error?: string;
+        } | undefined;
+
+        if (deliver === 'sms') {
+            const recordPhone = customer.phone;
+            if (!recordPhone) {
+                delivery = {
+                    channel: 'sms',
+                    status: 'failed',
+                    error: 'Customer has no phone number on file',
+                };
+            } else {
+                const { smsService } = await import('../services/sms.service.js');
+                const smsResult = await smsService.sendSms({
+                    to: recordPhone,
+                    message:
+                        `Promise Electronics: Use this one-time link to set your password (expires in 24h): ${url}`,
+                });
+                // Do not log message/url/token
+                if (smsResult.success) {
+                    delivery = { channel: 'sms', status: 'sent' };
+                    console.log(`[ResetLink] SMS delivery reported success for customer ${customer.id}`);
+                } else {
+                    delivery = {
+                        channel: 'sms',
+                        status: 'failed',
+                        error: smsResult.error || 'SMS delivery failed',
+                    };
+                    console.log(`[ResetLink] SMS delivery failed for customer ${customer.id}`);
+                }
+            }
+        }
+
+        // ITEM 3 — mark recovery inquiry Replied with internal note (no token/URL).
+        if (inquiryId) {
+            const noteParts = [
+                '[RESET_LINK_ISSUED]',
+                `by:${adminId}`,
+                `at:${new Date().toISOString()}`,
+                `delivery:${delivery?.status ?? 'none'}`,
+            ];
+            if (delivery?.error) {
+                noteParts.push(`deliveryError:${delivery.error.slice(0, 80)}`);
+            }
+            await storage.updateInquiry(inquiryId, {
+                status: 'Replied',
+                reply: noteParts.join(' '),
+            });
+        }
+
         res.json({
-            url: `${origin}/reset#t=${token}`,
+            url,
             expiresAt: expiresAt.toISOString(),
             expiresInHours: 24,
             customerName: customer.name,
             customerPhoneTail: (customer.phone || '').replace(/\D/g, '').slice(-4),
             message: 'Give this link to the verified customer. It works once and expires in 24 hours. It will not be shown again.',
+            delivery: delivery ?? null,
         });
     } catch (error: any) {
         console.error('[ResetLink] Failed to create reset link:', (error as Error).message);

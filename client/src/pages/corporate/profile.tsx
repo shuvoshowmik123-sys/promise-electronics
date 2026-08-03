@@ -23,6 +23,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { SoundSelector } from "@/components/corporate/SoundSelector";
 import { EditProfileDialog } from "@/components/corporate/EditProfileDialog";
+import { PushNotificationConsent } from "@/components/notifications/PushNotificationConsent";
 
 
 export default function CorporateProfile() {
@@ -245,13 +246,20 @@ export default function CorporateProfile() {
                                             <Bell className="h-5 w-5" />
                                         </div>
                                         <div>
-                                            <p className="font-bold text-slate-800">Notifications</p>
-                                            <p className="text-xs text-slate-400">Customize portal alerts</p>
+                                            <p className="font-bold text-slate-800">Alert sounds</p>
+                                            <p className="text-xs text-slate-400">Customize portal alert tones</p>
                                         </div>
                                     </div>
                                     <Button onClick={() => setIsSoundSelectorOpen(true)} variant="ghost" className="text-[var(--corp-blue)] font-black text-xs hover:bg-blue-50 opacity-0 group-hover:opacity-100 transition-all">
                                         Configure
                                     </Button>
+                                </div>
+
+                                <div className="pt-4">
+                                    <PushNotificationConsent
+                                        portal="corporate"
+                                        benefit="Get notified about your job and billing activity"
+                                    />
                                 </div>
                             </CardContent>
                         </Card>
@@ -312,6 +320,12 @@ function CorporateProfileMobile({ user, onEdit, onSound, onLogout, isLogoutConfi
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 {rows.map(({ icon: Icon, label, value }, index) => <div key={label} className={`flex min-h-16 items-center gap-3 px-4 ${index ? "border-t border-slate-100" : ""}`}><Icon className="h-5 w-5 shrink-0 text-[var(--corp-blue)]" /><div className="min-w-0"><p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{label}</p><p className="truncate text-sm font-semibold text-slate-800">{value}</p></div></div>)}
             </section>
+
+            <PushNotificationConsent
+                portal="corporate"
+                benefit="Get notified about your job and billing activity"
+                density="compact"
+            />
 
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
                 <button type="button" onClick={onSound} className="flex min-h-14 w-full items-center justify-between px-4 text-left"><span className="flex items-center gap-3 text-sm font-semibold text-slate-800"><Bell className="h-5 w-5 text-[var(--corp-blue)]" />Notification sound</span><ChevronRight className="h-4 w-4 text-slate-400" /></button>

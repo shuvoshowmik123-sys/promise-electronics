@@ -9722,3 +9722,590 @@ mobile-qa/customer-auth-modal-visual-alignment-01a/<YYYYMMDD-HHMM>/
 ```
 
 Lock: `mobile-qa/.run-locks/CUSTOMER-AUTH-MODAL-VISUAL-ALIGNMENT-01A.lock` — acquire before work and retain after completion.
+
+---
+
+## FIX-ADMIN-PUSH-SESSION-AND-PERSISTENCE-01A
+
+**Status: READY.** Authored 2026-08-03 Asia/Dhaka. Server-only phase. Push notifications work for customers and are silently broken for admins. Client-side push is already correct and is out of scope.
+
+### Copyable prompt
+
+```text
+GREEN SIGNAL: FIX-ADMIN-PUSH-SESSION-AND-PERSISTENCE-01A
+
+Read docs/AI_AGENT_OPERATING_RULES.md (v2026-07-04-v3) and follow it in full.
+Create a new atomic run lock before any edit:
+mobile-qa/.run-locks/FIX-ADMIN-PUSH-SESSION-AND-PERSISTENCE-01A.lock
+
+Read the full brief in docs/BOT.md under the heading
+"FIX-ADMIN-PUSH-SESSION-AND-PERSISTENCE-01A" and implement it exactly.
+
+Summary of the work:
+1. Replace (req.session as any).adminId with req.session.adminUserId at
+   server/routes/admin-notifications.routes.ts lines 75, 136, 195. Nothing in
+   the codebase ever sets adminId. Lines 43 and 57 in the same file are the
+   correct reference. Use the typed property, not an `as any` cast.
+2. POST /api/admin/push/register must return 401 when adminUserId is missing.
+   It currently returns { success: true } after storing a token under
+   `undefined`. Never return success on a path where the token was not stored.
+3. Determine whether admin user ids and customer ids are disjoint id-spaces.
+   Report the finding. Then either join device_tokens.userId against the admin
+   users table (preferred, no migration), or add a `portal` column with a
+   migration. If not disjoint, the join is unsafe - say so and use the column.
+4. Persist admin tokens through the same database path customers use
+   (pushService.registerDeviceToken). Update getAllDeviceTokens and
+   sendPushToAllAdmins in server/services/fcm.service.ts to read from the
+   database using the chosen discriminator. Preserve invalid-token cleanup.
+   Delete the in-memory Map once nothing reads it - no dead fallback.
+5. Fix POST /api/admin/push/unregister: deactivate the database row, and only
+   for tokens belonging to the calling admin.
+
+Constraints:
+- Local testing only. No Aiven, Neon, production, or remote DB.
+- No commit, no push, no deploy.
+- Do not modify any client file.
+- Do not weaken requireAdminAuth or any permission gate.
+- Do not invent a corporate push endpoint. Corporate is a separate phase.
+- Full suite baseline is 34 files / 460 tests. Report exact final counts.
+- If step 3 cannot be answered from the code with certainty, report BLOCKED.
+  Do not guess.
+
+Report file:line for every change, the step 3 finding and your choice, exact
+test counts before and after, and anything found but not fixed.
+```
+
+### Problem confirmed
+
+Three defects, all in `server/`, all verified by direct read.
+
+**Defect A - wrong session field, silent success.**
+`server/routes/admin-notifications.routes.ts` reads `(req.session as any).adminId` at lines **75, 136, and 195**. Login sets `req.session.adminUserId` (`server/routes/auth.routes.ts:179`, `server/sessionManager.ts:14`). Nothing anywhere sets `adminId`. The same file already uses `req.session.adminUserId` correctly at lines 43 and 57.
+
+Consequences differ per line:
+
+- **line 195** - `registerDeviceToken(undefined, token, ...)` followed by `res.json({ success: true })`. A 200 on a store that did not happen. The admin UI reports notifications enabled and the admin receives nothing, permanently. A 401 would at least be visible.
+- **line 136** - `getUser(undefined)` then `user?.role !== 'Super Admin'` at line 140, so always 403. **Override approval is currently impossible for every user including Super Admins.**
+- **line 75** - `getUser(undefined)` then 401 at line 79. Override creation always fails, but loudly. Least severe of the three.
+
+**Defect B - admin tokens are not persisted.**
+`server/services/fcm.service.ts:17` stores admin tokens in a module-level `Map`. Every process restart discards them; Render free tier restarts frequently. Customers do not have this problem - `server/routes/notifications.routes.ts:37` writes to `device_tokens` via `server/pushService.ts`.
+
+**Defect C - no discriminator for admin tokens.**
+`shared/schema.ts:1894` - `deviceTokens.userId` is `text("user_id").notNull()` with **no foreign key**. Customer and admin ids would coexist with nothing distinguishing them, and `sendPushToAllAdmins` must not blast customer devices with admin notifications.
+
+### Required work
+
+1. **Fix the session field** at lines 75, 136, 195. Typed property, not `as any`. If the session type does not declare `adminUserId`, fix the type declaration rather than casting.
+2. **Stop returning 200 on a failed registration.** Missing `adminUserId` produces `401 { error: 'Unauthorized' }`. The register call must be awaited and its failure must produce a 5xx, not a swallowed success.
+3. **Resolve Defect C before touching persistence.** Verify whether admin ids (in `users`) and customer ids (in `customers`) are disjoint. Report the finding, then choose:
+   - **(a) preferred if disjoint** - join `device_tokens.userId` against the admin `users` table. No migration, no schema change.
+   - **(b)** - add a `portal` column to `device_tokens` with a migration whose default preserves existing rows as customer tokens.
+
+   State the choice and why. If the id-spaces are **not** disjoint, (a) is unsafe - say so and use (b).
+4. **Persist admin tokens** through `pushService.registerDeviceToken`. Update `getAllDeviceTokens` and `sendPushToAllAdmins` to read from the database using the chosen discriminator, preserving the existing invalid-token cleanup. The only caller is `server/services/backup-scheduler.service.ts:307` - verify it still works. Delete the in-memory `Map` once nothing reads it.
+5. **Fix unregister.** `/api/admin/push/unregister` (line 215) currently mutates the in-memory map and performs no ownership check, so any admin can unsubscribe another admin by passing their token. After migration it must deactivate the database row, and only for the calling admin's own tokens.
+
+### Required tests
+
+- register with no `adminUserId` in session produces **401**, and assert nothing was written
+- register with a valid admin session produces a row in `device_tokens` with the correct `userId`
+- token survives a simulated restart - re-read from the store, not from module state
+- `sendPushToAllAdmins` returns admin tokens only - assert a customer token in the same table is excluded
+- unregister deactivates only the calling admin's own token
+- override approve (line 133) succeeds for a Super Admin session and 403s for a non-Super-Admin, proving Defect A line 136 is fixed
+
+### Out of scope
+
+- Any client file, including `client/src/lib/web-push.ts`, `push-register-url.ts`, and the consent UI
+- A corporate push register endpoint - separate phase, pending a product decision
+- The unrelated SSE defect where `service-requests.routes.ts` imports `notifyAdminUpdate` and never calls it
+- Commit, push, deployment, remote database access
+
+### Stop rule
+
+If the id-space question in step 3 cannot be answered from the code with certainty, stop and report **BLOCKED** with what was found. Do not guess. If persistence cannot be migrated without weakening an auth gate, stop and report the conflict.
+
+### Evidence
+
+```
+mobile-qa/fix-admin-push-session-and-persistence-01a/<YYYYMMDD-HHMM>/
+  REPORT.md - results.json - gates.json
+```
+
+Lock: `mobile-qa/.run-locks/FIX-ADMIN-PUSH-SESSION-AND-PERSISTENCE-01A.lock` - acquire before work and retain after completion.
+
+### Operator notes (not for the worker)
+
+- Aiven `avnadmin` password is still un-rotated after credentials were pasted in chat.
+- `VITE_FIREBASE_VAPID_KEY` must be set in Render then Environment before any of this is visible in production; Vite inlines it at build time.
+
+---
+
+## CUSTOMER-AUTH-RESILIENCE-AND-RECOVERY-VISIBILITY-01A
+
+**Status: READY.** Authored 2026-08-03 Asia/Dhaka. Three small, independent defects sharing one theme: the system loses state or loses signal without telling anyone. Ordered by user impact. Phone-identity unification is deliberately NOT in this phase â€” it needs an owner decision first.
+
+All four findings below were cross-checked against source twice; two earlier citations were wrong and have been corrected here. Trust the file:line in this brief, not any earlier draft.
+
+### Copyable prompt
+
+```text
+GREEN SIGNAL: CUSTOMER-AUTH-RESILIENCE-AND-RECOVERY-VISIBILITY-01A
+
+Read docs/AI_AGENT_OPERATING_RULES.md (v2026-07-04-v3) and follow it in full.
+Create a new atomic run lock before any edit:
+mobile-qa/.run-locks/CUSTOMER-AUTH-RESILIENCE-AND-RECOVERY-VISIBILITY-01A.lock
+
+Read the full brief in docs/BOT.md under the heading
+"CUSTOMER-AUTH-RESILIENCE-AND-RECOVERY-VISIBILITY-01A" and implement it exactly.
+
+Three parts, in this order:
+
+PART 1 - Stop signing customers out on transient failures.
+  1a. server/routes/customer.routes.ts:648 - GET /api/customer/me is the only
+      route in that file with no try/catch. Express is 4.21.2, which does NOT
+      catch rejected promises from async handlers, so a throw from
+      storage.getCustomer sends no response at all and the request hangs.
+      Wrap it. Return 503 with code AUTH_CHECK_UNAVAILABLE on infrastructure
+      failure. Never return 401 for a failure that is not a real auth failure.
+  1b. client/src/contexts/CustomerAuthContext.tsx:31-41 - checkAuth has one
+      bare catch that treats every failure as a logout AND wipes the persisted
+      query cache. Clear customer state ONLY on a confirmed auth failure:
+      ApiError with statusCode 401, or code NOT_AUTHENTICATED /
+      INVALID_SESSION / SESSION_REVOKED / SESSION_REAUTH_REQUIRED.
+      For anything else (5xx, 408 REQUEST_TIMEOUT, network error with no
+      statusCode) keep the previous customer state and do not clear the cache.
+      ApiError already carries statusCode - see client/src/lib/api/httpClient.ts:6.
+
+PART 2 - Make account-recovery requests visible to admins.
+  server/routes/customer.routes.ts:415 emits SSE type account_recovery_request.
+  The ACTIVE admin provider is client/src/contexts/AdminSSEContext.tsx (NOT
+  hooks/useSSE.ts, which is dead code for admin - nothing imports its
+  useAdminSSE). It handles only connected, force_refresh_user, force_logout,
+  and smart_sync_needed. Add handling for account_recovery_request and
+  customer_created: invalidate queryKey ["inquiries"] and show a toast.
+  Note AdminSSEContext already calls setLastEvent(data) for every event and
+  exposes lastEvent on the context, but NO component reads it - verify this
+  before assuming lastEvent is a usable escape hatch.
+  Do NOT change the anti-enumeration behaviour of
+  POST /api/customer/account-recovery/request. It must keep returning the same
+  generic response whether or not the phone exists.
+
+PART 3 - Fix the broken inquiry search predicate.
+  client/src/pages/admin/bento/tabs/InquiriesTab.tsx:55-62 filters on
+  inq.email. The inquiries table (shared/schema.ts:1829-1837) has no email
+  column - only name, phone, message, status, reply. Searching by email
+  silently matches nothing. Search the fields that exist.
+
+Constraints:
+- Local testing only. No Aiven, Neon, production, or remote DB.
+- No commit, no push, no deploy.
+- Do not change the phone-identity matching in registration, retail intake, or
+  the admin customer list. That is a separate phase pending an owner decision.
+- Do not weaken any auth gate or CSRF check.
+- Do not "fix" hooks/useSSE.ts by adding cases to it. Confirm whether it is
+  dead code and report; deleting it is out of scope for this phase.
+- Full suite baseline is 34 files / 460 tests. Report exact final counts.
+
+Report file:line for every change, exact test counts before and after, and
+anything found but not fixed.
+```
+
+### Problem confirmed
+
+**Part 1 - a refresh can falsely sign a customer out.**
+
+[customer.routes.ts:648-667] `GET /api/customer/me`:
+
+```ts
+router.get('/api/customer/me', async (req: Request, res: Response) => {
+    if (!req.session?.customerId) { ...401... }
+    const customer = await storage.getCustomer(req.session.customerId);
+```
+
+No `try/catch`. Every neighbouring route in the same file has one â€” `/register` (99), `/login` (157), `/change-password` (640), `/profile` (672). `/me` is the exception, and it is the one route that decides "are you logged in".
+
+Express is **4.21.2** (`package.json`), which does not catch rejections from async handlers. A throw from `storage.getCustomer` â€” DB timeout, pool exhaustion, an Aiven blip â€” sends **no response at all**. The request hangs until the client's 30s AbortController fires ([httpClient.ts:72](../client/src/lib/api/httpClient.ts)).
+
+Client side, [CustomerAuthContext.tsx:31-41](../client/src/contexts/CustomerAuthContext.tsx):
+
+```ts
+try {
+  const session = await customerAuthApi.me();
+  setCustomer(session);
+} catch {                       // catches EVERYTHING
+  setCustomer(null);
+  await clearPersistedClientState();
+}
+```
+
+One bare catch. It cannot distinguish "your session is invalid" from "the network blipped", so a transient infrastructure failure logs the customer out of a session that is still perfectly valid on the server, and wipes the persisted query cache on the way out.
+
+`ApiError` already carries `statusCode` and `code` ([httpClient.ts:6-17]), so the distinction is available â€” it is simply not used. Note that a raw network failure rethrows the original error ([httpClient.ts:88]) and is therefore NOT an `ApiError` and has no `statusCode`; a timeout becomes `ApiError(..., "REQUEST_TIMEOUT", 408)`. Both must be treated as retryable, not as logout.
+
+Correction to an earlier draft: the `503 AUTH_CHECK_UNAVAILABLE` path in `customer-session.service.ts:204` is real but `/me` never calls it. The missing `try/catch` is the actual mechanism.
+
+**Part 2 - recovery requests reach no one.**
+
+[customer.routes.ts:397-431] saves the request as an inquiry tagged `[ACCOUNT_RECOVERY]` and then fires:
+
+```ts
+notifyAdminUpdate({ type: 'account_recovery_request', ... });
+```
+
+The active admin provider is `client/src/contexts/AdminSSEContext.tsx`. Its `onmessage` handler (line 135) branches on exactly four types: `connected` (139), `force_refresh_user` (143), `force_logout` (181), `smart_sync_needed` (185). There is no branch for `account_recovery_request`, and none for `customer_created` (fired on every registration at customer.routes.ts:138).
+
+It looks like there is an escape hatch â€” line 141 calls `setLastEvent(data)` for every event and line 302 exposes `lastEvent` on the context. There is not: `lastEvent` is read by **no component**. Only `sseSupported` is ever destructured (`JobTicketsTab.tsx:78`). The event arrives, lands in React state, and nothing observes it.
+
+The row itself is saved correctly and `GET /api/inquiries` returns it, so nothing is lost â€” it is filed in the Inquiries list with nothing anywhere pointing staff at it. The customer is told "support will contact you." Nothing tells support.
+
+Correction to an earlier draft: `hooks/useSSE.ts` was cited as the admin handler. It is not â€” nothing imports `useAdminSSE` from it. The conclusion was unchanged because the active provider ignores these events too.
+
+**Part 3 - inquiry email search matches nothing.**
+
+[InquiriesTab.tsx:55-62] filters on `inq.email`. `shared/schema.ts:1829-1837` defines `inquiries` with `id, name, phone, message, status, reply, createdAt` â€” no email column. The predicate is always `undefined?.toLowerCase()` â†’ falsy, so email search silently returns nothing rather than erroring.
+
+### Required tests
+
+- `/api/customer/me` returns **503**, not 401, when the customer lookup throws â€” and does return a response rather than hanging
+- `/api/customer/me` still returns 401 for no session and for a session whose customer no longer exists
+- `checkAuth` clears customer state on a 401 / NOT_AUTHENTICATED / INVALID_SESSION / SESSION_REVOKED / SESSION_REAUTH_REQUIRED
+- `checkAuth` **preserves** customer state and does not clear the cache on a 503, on a 408 REQUEST_TIMEOUT, and on a raw network error with no `statusCode`
+- an `account_recovery_request` SSE event invalidates `["inquiries"]` and raises a toast
+- a `customer_created` SSE event does the same
+- an unknown SSE type is still handled without throwing
+- inquiry search matches on name, phone, and message; assert an email-shaped term no longer silently returns zero rows for a matching record
+
+### Out of scope
+
+- Phone-identity unification across registration / retail intake / admin customer list / reset-link â€” separate phase, pending an owner decision on whether one phone can be both staff and customer
+- Any change to the anti-enumeration contract of the account-recovery endpoint
+- Deleting `hooks/useSSE.ts`
+- The `VITE_API_URL` cross-origin cookie question â€” unverified from source, depends on the live Render dashboard, and is an operator check not a code change
+- Commit, push, deployment, remote database access
+
+### Stop rule
+
+If Part 1b cannot distinguish a real auth failure from a transient one with the error shapes `httpClient.ts` actually produces, stop and report what is missing rather than guessing at status codes. If adding SSE cases to `AdminSSEContext` requires changing the event contract in `notifyAdminUpdate`, stop and report the conflict.
+
+### Evidence
+
+```
+mobile-qa/customer-auth-resilience-and-recovery-visibility-01a/<YYYYMMDD-HHMM>/
+  REPORT.md - results.json - gates.json - manual-test-guide.md
+```
+
+Lock: `mobile-qa/.run-locks/CUSTOMER-AUTH-RESILIENCE-AND-RECOVERY-VISIBILITY-01A.lock` â€” acquire before work and retain after completion.
+
+### Operator note (not for the worker)
+
+The exact production sign-out still deserves one browser reproduction to confirm whether it presents as a hang, a 5xx, or a cookie-origin failure. The missing `try/catch` is a defect worth fixing either way, but the reproduction is what proves it was the cause.
+
+---
+
+## PUSH-AND-SSE-RESIDUAL-HARDENING-01A
+
+**Status: READY.** Authored 2026-08-03 Asia/Dhaka. Combined follow-up to the two shipped phases â€” `FIX-ADMIN-PUSH-SESSION-AND-PERSISTENCE-01A` and `CUSTOMER-AUTH-RESILIENCE-AND-RECOVERY-VISIBILITY-01A`. Both were accepted on cross-check (verified 36 files / 480 tests, tsc exit 0). These are the four residuals their inspections raised, none of which were in either brief's scope.
+
+Nothing here is a regression from those phases. Items 1 and 2 are pre-existing; items 3 and 4 are small gaps in the new code.
+
+### Copyable prompt
+
+```text
+GREEN SIGNAL: PUSH-AND-SSE-RESIDUAL-HARDENING-01A
+
+Read docs/AI_AGENT_OPERATING_RULES.md (v2026-07-04-v3) and follow it in full.
+Create a new atomic run lock before any edit:
+mobile-qa/.run-locks/PUSH-AND-SSE-RESIDUAL-HARDENING-01A.lock
+
+Read the full brief in docs/BOT.md under the heading
+"PUSH-AND-SSE-RESIDUAL-HARDENING-01A" and implement it exactly.
+
+Four items:
+
+ITEM 1 - The staff-role allowlist fails silently.
+  server/pushService.ts:9 defines
+    STAFF_PORTAL_ROLES = ["Super Admin","Manager","Cashier","Technician","Driver"]
+  This matches the canonical roles in shared/admin-permissions.ts exactly
+  (that file's cases are: Super Admin, Manager, Cashier, Technician, Driver,
+  Corporate). But other server code references role strings NOT in that list:
+    server/services/auth.service.ts:119   ['Manager','Super Admin','Admin']
+    server/routes/drawer.routes.ts:228    'super_admin' | 'admin' | 'Super Admin' | 'Admin'
+    server/routes/reminders.routes.ts:53  ["Admin","Manager","SuperAdmin"]
+  If any live user row carries 'Admin', 'admin', 'super_admin', or 'SuperAdmin',
+  listActiveStaffDeviceTokens silently excludes them from every push, with no
+  error and no log.
+  Required: first enumerate every distinct role string assigned anywhere in
+  server/ and shared/ (grep, not guesswork) and report the list. Then make the
+  exclusion observable: when a device token's owner has a role that is neither
+  in STAFF_PORTAL_ROLES nor 'Customer'/'Corporate', log a warning naming the
+  role (no user PII). Do NOT silently widen the allowlist. If the enumeration
+  shows non-canonical staff roles are genuinely in use, report that and STOP -
+  choosing allowlist vs denylist is an owner decision, not yours.
+
+ITEM 2 - Dead code left by the push phase.
+  server/services/fcm.service.ts still exports unregisterDeviceTokens marked
+  @deprecated. Its only remaining reference is a mock at
+  tests/admin-routes-smoke.test.ts:225. Remove the export and the now-unused
+  mock. Confirm nothing else imports it before deleting.
+
+ITEM 3 - New SSE events bypass duplicate suppression.
+  client/src/contexts/AdminSSEContext.tsx - the isInquiryVisibilitySseEvent
+  branch (~line 224) does not call rememberEventId, unlike the
+  isAdminRealtimeEvent branch at line 231. On SSE reconnect a replayed event
+  double-invalidates and double-toasts.
+  These events carry no `id` field (server sends {type, data, createdAt} from
+  server/routes/customer.routes.ts:415), so rememberEventId cannot be used as
+  is. Either give the server events a stable id, or suppress on a
+  type+createdAt key. Pick one, state why, keep it testable as a pure function
+  alongside client/src/lib/admin-sse-inquiry-events.ts.
+
+ITEM 4 - The SSE sender that was never wired up.
+  server/routes/service-requests.routes.ts:14 imports notifyAdminUpdate and
+  never calls it. This is why admins get no realtime signal when a customer
+  submits a service request. Wire it into the service-request creation path,
+  matching the event shape the ACTIVE admin provider already handles - see
+  isAdminRealtimeEvent in client/src/lib/admin-realtime.ts:4, which requires
+  channel:"admin" plus id, topic, action, and invalidate[]. Use topic
+  "service_request" and the "serviceRequests" query tag. Do not invent a new
+  event shape.
+
+Constraints:
+- Local testing only. No Aiven, Neon, production, or remote DB.
+- No commit, no push, no deploy.
+- Do not change the phone-identity matching anywhere. Separate phase, pending
+  an owner decision.
+- Do not add a corporate push endpoint. Separate phase, pending a product decision.
+- Do not weaken any auth gate, permission gate, or CSRF check.
+- Do not change the anti-enumeration behaviour of the account-recovery route.
+- Full suite baseline is 36 files / 480 tests. Report exact final counts.
+- Item 1 has a hard STOP condition. Respect it.
+
+Report file:line for every change, the Item 1 role enumeration in full, the
+Item 3 decision and why, exact test counts before and after, and anything
+found but not fixed.
+```
+
+### Why each item
+
+**Item 1 â€” allowlist vs denylist.** `STAFF_PORTAL_ROLES` is correct against the canonical role set, and the push phase was right to scope it. The risk is data, not code: an allowlist excludes silently, so a staff member on a legacy role string gets no notifications and nothing anywhere says so. For a "notify all staff" path, missing a person is worse than including one â€” but widening the filter is a judgement call about real data, which is why this item stops rather than guesses. The definitive answer is one query the owner can run:
+
+```sql
+SELECT role, count(*) FROM users GROUP BY role ORDER BY count DESC;
+```
+
+**Item 2 â€” dead code.** The push brief said "no dead fallback". The in-memory `Map` (the thing that mattered) is gone; this is the cosmetic remainder.
+
+**Item 3 â€” dedupe gap.** Pre-existing branches suppress replays; the two new ones don't. Low impact â€” a duplicate toast â€” but the asymmetry will confuse the next reader more than it costs users.
+
+**Item 4 â€” the missing sender.** The mirror of the bug the last phase fixed. There, the receiver was missing; here the sender is. `notifyAdminUpdate` has sat imported and uncalled in `service-requests.routes.ts` the whole time, which is why new service requests produce no admin signal. Now that the receiving side is understood and the event contract is documented, this is a small, well-defined wire-up.
+
+### Required tests
+
+- a device token whose owner holds a non-staff, non-customer role produces a warning log and is excluded (Item 1)
+- `listActiveStaffDeviceTokens` still excludes Customer and Corporate tokens (Item 1 regression guard)
+- nothing imports `unregisterDeviceTokens` after removal â€” suite still green (Item 2)
+- a replayed `account_recovery_request` with identical identity invalidates and toasts exactly once (Item 3)
+- a genuinely new event of the same type is NOT suppressed (Item 3 â€” guards against over-suppression)
+- creating a service request emits an admin SSE event matching `isAdminRealtimeEvent` (Item 4)
+- that event carries the `serviceRequests` tag and invalidates the admin list (Item 4)
+
+### Out of scope
+
+- Phone-identity unification across registration / retail intake / admin customer list / reset-link
+- Corporate push register endpoint
+- Deleting `client/src/hooks/useSSE.ts` (confirmed dead for admin, but removal is its own change)
+- The `VITE_API_URL` cross-origin cookie question â€” operator check against the Render dashboard, not a code change
+- Commit, push, deployment, remote database access
+
+### Stop rule
+
+Item 1 stops if non-canonical staff roles are in use. Item 4 stops if the service-request creation path cannot emit an event matching the existing `AdminRealtimeEvent` contract without changing that contract. In both cases report the conflict rather than widening scope.
+
+### Evidence
+
+```
+mobile-qa/push-and-sse-residual-hardening-01a/<YYYYMMDD-HHMM>/
+  REPORT.md - results.json - gates.json
+```
+
+Lock: `mobile-qa/.run-locks/PUSH-AND-SSE-RESIDUAL-HARDENING-01A.lock` â€” acquire before work and retain after completion.
+
+### Operator notes (not for the worker)
+
+- Run the role census query above; it decides Item 1.
+- Aiven `avnadmin` password still un-rotated after credentials were pasted in chat.
+- `VITE_FIREBASE_VAPID_KEY` must be set in Render â†’ Environment before deploy, or the client bundle ships with push disabled regardless of the server fixes.
+- Admin push is now correct end to end in code but only takes effect on the next deploy.
+
+---
+
+## RECOVERY-FLOW-COMPLETION-01A
+
+**Status: READY.** Authored 2026-08-03 Asia/Dhaka. Closes the operational half of customer account recovery. The token mechanism is already correct and MUST NOT be redesigned â€” this phase only completes the workflow around it.
+
+### Copyable prompt
+
+```text
+GREEN SIGNAL: RECOVERY-FLOW-COMPLETION-01A
+
+Read docs/AI_AGENT_OPERATING_RULES.md (v2026-07-04-v3) and follow it in full.
+Create a new atomic run lock before any edit:
+mobile-qa/.run-locks/RECOVERY-FLOW-COMPLETION-01A.lock
+
+Read the full brief in docs/BOT.md under the heading
+"RECOVERY-FLOW-COMPLETION-01A" and implement it exactly.
+
+Context: customer account recovery works cryptographically but stops halfway.
+The request arrives as a generic inquiry, the resolving action lives on a
+different screen, and link delivery is a human copying a URL into WhatsApp.
+Three items close that gap. Do not redesign the token mechanism.
+
+ITEM 1 - Recovery inquiries must not render as message threads.
+  Recovery requests are stored as ordinary inquiries whose message begins with
+  "[ACCOUNT_RECOVERY]" (server/routes/customer.routes.ts:404).
+  client/src/pages/admin/bento/tabs/InquiriesTab.tsx offers exactly one action:
+  Reply. For a recovery request that action is a trap - see ITEM 1a.
+  Required: detect recovery inquiries via a pure, unit-tested helper (prefix
+  match on the message). For those rows, replace the Reply action with an
+  "Issue reset link" action and visually mark the row as a recovery request.
+  Keep ordinary inquiries exactly as they are.
+
+ITEM 1a - The Reply button silently goes nowhere. Fix or remove it.
+  PATCH /api/inquiries/:id/status (server/routes/notifications.routes.ts:80)
+  writes `reply` to a column and sends nothing - no SMS, no WhatsApp, no
+  email. The only way a customer reads it is GET /api/customer/inquiries,
+  which is behind requireCustomerAuth. A customer requesting account recovery
+  cannot log in by definition, so the reply is unreachable to its only reader.
+  Required: for recovery inquiries, remove Reply entirely (ITEM 1 replaces it).
+  For ordinary inquiries, do NOT silently keep pretending - either wire real
+  delivery or label the field as an internal note in the UI. Pick one, state
+  why. Do not leave a control that looks like it messages the customer and does
+  not.
+
+ITEM 2 - The system should deliver the link, not a human.
+  server/routes/users.routes.ts:1178 (POST /api/admin/customers/:id/reset-link)
+  returns { url, expiresAt, ... } and stops. Staff then hand-deliver it.
+  Required: add opt-in delivery over SMS using the existing
+  smsService.sendSms({ to, message }) (server/services/sms.service.ts:179).
+  HARD SECURITY CONSTRAINTS - all four are non-negotiable:
+    a. Delivery happens ONLY on explicit staff action (a request flag such as
+       deliver: "sms"). Never automatic. The human verification step is the
+       entire point of staff-mediated recovery.
+    b. Send ONLY to the phone number stored on the customer record. NEVER to a
+       number supplied in the request body or copied from the inquiry text.
+       Otherwise an attacker submits a recovery request with their own number
+       and receives a working link.
+    c. If SMS fails, the link was still created. Still return the url so staff
+       can deliver manually, and report delivery status separately from
+       creation status. Never lose the token because delivery failed.
+    d. Never log the token, the full URL, or the fragment. Existing code logs
+       only ids - match that.
+  The token travels in the URL fragment (/reset#t=...) deliberately so it never
+  reaches a server access log. SMS preserves fragments. Do not move the token
+  into a query string.
+
+ITEM 3 - Close the loop on the request.
+  Nothing connects a recovery request to the link that resolved it.
+  Required: accept an optional inquiryId on the reset-link request. When
+  present and the inquiry is a recovery request, mark it Replied and record an
+  internal note that a link was issued (who, when, delivery outcome). No PII
+  beyond what the inquiry already holds, and never the token.
+  Do NOT add a database migration for this. Use the existing inquiries columns.
+
+Constraints:
+- Local testing only. No Aiven, Neon, production, or remote DB.
+- No commit, no push, no deploy.
+- Do NOT change the token mechanism: entropy, SHA-256 storage, 24h expiry,
+  5-attempt phone lockout, FOR UPDATE supersede transaction, or invalidation
+  on login. All are correct.
+- Do NOT change the anti-enumeration behaviour of
+  POST /api/customer/account-recovery/request.
+- Do NOT widen the requireSuperAdmin gate on the reset-link route. Loosening it
+  to Manager is an owner decision that has not been made - see Deferred below.
+- Do NOT change phone-identity matching anywhere.
+- Full suite baseline is 36 files / 480 tests. Report exact final counts.
+- If SMS credentials are absent locally, prove delivery with a mocked
+  smsService. Do not send real SMS from a test run.
+
+Report file:line for every change, the ITEM 1a decision and why, exact test
+counts before and after, and anything found but not fixed.
+```
+
+### Why this phase exists
+
+The security half of recovery is genuinely well built â€” 256-bit token, stored only as SHA-256, returned once, 24-hour expiry, dies after 5 wrong phone guesses, consumed in a `FOR UPDATE` transaction so two admins cannot race it, invalidated on login. None of that needs touching.
+
+The operational half stops after producing the token:
+
+| Step | Before |
+|---|---|
+| Customer asks | works |
+| Staff get told | fixed in CUSTOMER-AUTH-RESILIENCE-AND-RECOVERY-VISIBILITY-01A |
+| Staff identify who it is | manual â€” read the phone out of message text |
+| Staff act | works, but a different screen, Super Admin only |
+| Link reaches customer | **entirely manual** â€” a human copies a URL into WhatsApp |
+| Customer sets password | works |
+| Any record of what happened | **none** â€” request and link are unconnected |
+
+Delivery is the step that matters to the customer and it is the one the system declined to own. Nothing records that a link was sent, when, or to which number.
+
+### The trap being removed (ITEM 1a)
+
+```ts
+if (reply) updates.reply = reply;
+const updated = await storage.updateInquiry(req.params.id, updates);
+```
+
+That is the whole implementation. The text lands in a column. `GET /api/customer/inquiries` is the only reader and it requires `requireCustomerAuth` â€” so the reply is visible only to a logged-in customer, and the person who filed a recovery request cannot log in. Staff type an answer, see it save, and nobody is answered.
+
+This affects ordinary inquiries too: a logged-out person who used the contact form also never sees a reply. Wider blast radius, same defect. ITEM 1a forces an explicit decision rather than leaving a control that lies.
+
+### Deferred, with reasons
+
+- **Show the matched customer inline on the recovery request.** Depends on phone-identity unification â€” today the lookup that would resolve the phone can report "not found" for an account that exists. Sequence this after that phase.
+- **Widening reset-link issuance beyond Super Admin.** Recommended (single point of failure for every locked-out customer; the link mechanism is already safe), but loosening an auth gate is an owner decision and has not been made.
+- **OTP self-service reset.** Not yet. Staff-mediated human verification beats OTP against SIM swap and costs nothing at current volume. Build it when reset volume exceeds a few per week or customers complain about the wait.
+
+### Required tests
+
+- the recovery-inquiry detector matches `[ACCOUNT_RECOVERY]` messages and not ordinary inquiries (pure function)
+- a recovery inquiry renders "Issue reset link" and does NOT render Reply
+- an ordinary inquiry is unchanged
+- reset-link with `deliver: "sms"` sends to the phone on the **customer record**
+- reset-link with a phone in the request body sends to the **record**, not the body â€” assert the body value is never used
+- SMS failure still returns the url and reports delivery failure separately
+- no test log, response, or audit entry contains the token or the full url
+- `inquiryId` present â†’ inquiry marked Replied with an internal note
+- `inquiryId` absent â†’ behaviour unchanged
+- an inquiryId pointing at a non-recovery inquiry is rejected, not silently accepted
+
+### Out of scope
+
+- Any change to token generation, hashing, expiry, lockout, supersede, or login invalidation
+- Anti-enumeration behaviour of the recovery request endpoint
+- Phone-identity unification
+- Widening `requireSuperAdmin`
+- WhatsApp or Messenger delivery â€” SMS only this phase
+- Database migrations
+- Commit, push, deployment, remote database access
+
+### Stop rule
+
+If SMS delivery cannot be added without either sending automatically or trusting a request-supplied phone number, stop and report â€” both break the security model this flow depends on. If ITEM 3 cannot record the linkâ†”request association within existing columns, stop and report rather than adding a migration.
+
+### Evidence
+
+```
+mobile-qa/recovery-flow-completion-01a/<YYYYMMDD-HHMM>/
+  REPORT.md - results.json - gates.json - manual-test-guide.md
+```
+
+Lock: `mobile-qa/.run-locks/RECOVERY-FLOW-COMPLETION-01A.lock` â€” acquire before work and retain after completion.
+
+### Operator notes (not for the worker)
+
+- `SMS_API_URL` and `SMS_API_KEY` must be set in Render for delivery to work in production. They are already declared in `render.yaml`.
+- The customer-facing copy currently promises "our team will send you a one-time setup link on WhatsApp or Messenger". Once SMS delivery ships, that sentence should be updated to match what actually happens.
+- Four completed phases are still uncommitted and undeployed. Recovery notifications will not appear in production until they ship.

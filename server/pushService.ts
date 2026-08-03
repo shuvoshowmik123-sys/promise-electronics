@@ -1,9 +1,12 @@
 import { nanoid } from "nanoid";
 import { db } from "./db.js";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import * as schema from "../shared/schema.js";
 
 import { firebaseAdmin as admin } from './services/firebase.js';
+
+/** Staff portal roles that may receive admin push (not Customer / Corporate). */
+const STAFF_PORTAL_ROLES = ["Super Admin", "Manager", "Cashier", "Technician", "Driver"] as const;
 
 export interface PushNotificationPayload {
     title: string;
@@ -117,6 +120,42 @@ export async function deactivateToken(token: string): Promise<void> {
     console.log(`[Push] Deactivated invalid token`);
 }
 
+/**
+ * Deactivate a token only if it belongs to userId.
+ * Returns true when a matching active/inactive row was updated.
+ */
+export async function deactivateUserOwnedToken(userId: string, token: string): Promise<boolean> {
+    const updated = await db
+        .update(schema.deviceTokens)
+        .set({ isActive: false })
+        .where(and(
+            eq(schema.deviceTokens.userId, userId),
+            eq(schema.deviceTokens.token, token),
+        ))
+        .returning({ id: schema.deviceTokens.id });
+    return updated.length > 0;
+}
+
+/**
+ * Active device tokens for staff portal users only.
+ *
+ * Step-3 finding: customer session customerId and admin session adminUserId both
+ * point at `users.id` (same table, unique PK). Roles partition the space, so
+ * joining device_tokens.user_id → users and filtering staff roles excludes
+ * customer tokens without a portal column.
+ */
+export async function listActiveStaffDeviceTokens(): Promise<string[]> {
+    const rows = await db
+        .select({ token: schema.deviceTokens.token })
+        .from(schema.deviceTokens)
+        .innerJoin(schema.users, eq(schema.deviceTokens.userId, schema.users.id))
+        .where(and(
+            eq(schema.deviceTokens.isActive, true),
+            inArray(schema.users.role, [...STAFF_PORTAL_ROLES]),
+        ));
+    return rows.map((r) => r.token);
+}
+
 // Remove all tokens for a user (on logout)
 export async function removeUserTokens(userId: string, token?: string): Promise<void> {
     if (token) {
@@ -196,6 +235,8 @@ export const pushService = {
     sendToDevice,
     registerDeviceToken,
     deactivateToken,
+    deactivateUserOwnedToken,
+    listActiveStaffDeviceTokens,
     removeUserTokens,
     notifyOrderStatusChange,
     notifyQuoteReady,

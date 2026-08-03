@@ -13,6 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "@/components/ui/sheet";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
+import { PushNotificationConsent } from "@/components/notifications/PushNotificationConsent";
 import { customerServiceRequestsApi, shopOrdersApi, customerWarrantiesApi, reviewsApi, type WarrantyInfo } from "@/lib/api";
 import type { ServiceRequest, Order, CustomerReview } from "@shared/schema";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -509,6 +510,12 @@ export default function MyProfilePage() {
                         <Pencil className="w-4 h-4" />
                       </Button>
                     </div>
+                    <PushNotificationConsent
+                      portal="customer"
+                      benefit={t("push.benefitCustomer")}
+                      t={t}
+                      className="shadow-neumorph-inset"
+                    />
                     <div className="flex items-center gap-2 md:gap-3 p-2 md:p-3 bg-white shadow-neumorph-inset rounded-lg md:rounded-xl">
                       <Calendar className="w-4 h-4 md:w-5 md:h-5 text-primary" />
                       <div>
@@ -1109,6 +1116,13 @@ export default function MyProfilePage() {
               </button>
             );
           })()}
+
+          <PushNotificationConsent
+            portal="customer"
+            benefit={t("push.benefitCustomer")}
+            t={t}
+            density="compact"
+          />
 
           <div className="rounded-[1.5rem] bg-white shadow-sm ring-1 ring-slate-100">
             <button

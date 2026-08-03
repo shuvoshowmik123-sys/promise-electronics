@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PickupLocationPicker } from "@/components/maps/PickupLocationPicker";
+import { PushMomentOfValue } from "@/components/notifications/PushMomentOfValue";
 import { CarouselSelector, ScreenSizeGlyph } from "@/components/mobile/CarouselSelector";
 import { SearchPickerOverlay } from "@/components/mobile/SearchPickerOverlay";
 import { mergePinAddress } from "@/lib/pickup-address";
@@ -539,6 +540,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
               <p className="text-xs font-medium text-emerald-700">{t("wizard.ticketNumber")}</p>
               <p className="mt-1 font-mono text-xl font-bold text-slate-950">#{ticketNumber}</p>
             </div>
+            <PushMomentOfValue portal="customer" t={t} className="mt-5" />
             <div className="mt-6 grid grid-cols-2 gap-3">
               <Button variant="outline" className="h-12 rounded-2xl border-emerald-200" asChild>
                 <Link href="/home">{t("dock.home")}</Link>

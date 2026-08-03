@@ -1,6 +1,9 @@
 import { initializeApp, getApps, type FirebaseApp } from "firebase/app";
 import { getMessaging, getToken, isSupported, type Messaging } from "firebase/messaging";
 import { isFirebaseConfigured } from "./firebase";
+import { pushRegisterUrlForPortal, type PushPortal } from "./push-register-url";
+
+export { pushRegisterUrlForPortal, type PushPortal } from "./push-register-url";
 
 /**
  * Browser push notifications — the path that works while the app is CLOSED.
@@ -35,6 +38,37 @@ const firebaseConfig = {
 export type PushSubscribeResult =
     | { ok: true; token: string }
     | { ok: false; reason: "unsupported" | "unconfigured" | "denied" | "dismissed" | "error"; detail?: string };
+
+function readCsrfCookie(): string | undefined {
+    if (typeof document === "undefined") return undefined;
+    const match = document.cookie.match(/(?:^|; )XSRF-TOKEN=([^;]*)/);
+    return match ? decodeURIComponent(match[1]) : undefined;
+}
+
+/** Admin (and other CSRF-gated) POSTs need X-XSRF-TOKEN; customer route does not enforce CSRF. */
+async function postDeviceToken(registerUrl: string, token: string): Promise<Response> {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    let csrf = readCsrfCookie();
+    if (!csrf && registerUrl.includes("/admin/")) {
+        try {
+            await fetch("/api/admin/csrf-token", {
+                credentials: "include",
+                headers: { Accept: "application/json" },
+            });
+            csrf = readCsrfCookie();
+        } catch {
+            /* optional — register may still fail CSRF if missing */
+        }
+    }
+    if (csrf) headers["X-XSRF-TOKEN"] = csrf;
+
+    return fetch(registerUrl, {
+        method: "POST",
+        headers,
+        credentials: "include",
+        body: JSON.stringify({ token, platform: "web" }),
+    });
+}
 
 /** True only when web push could plausibly work here. Cheap, synchronous. */
 export function isWebPushConfigured(): boolean {
@@ -97,10 +131,23 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
  * notifications the prompt cannot be shown again programmatically — they have
  * to change it in browser settings. So only call this when the user has
  * asked for notifications.
+ *
+ * @param portal Explicit portal — selects the register URL. Defaults to
+ *   customer so existing call sites stay correct.
  */
-export async function subscribeToPush(): Promise<PushSubscribeResult> {
+export async function subscribeToPush(portal: PushPortal = "customer"): Promise<PushSubscribeResult> {
     if (!isWebPushConfigured()) {
         return { ok: false, reason: "unconfigured", detail: "Missing VITE_FIREBASE_VAPID_KEY or Firebase config" };
+    }
+
+    const registerUrl = pushRegisterUrlForPortal(portal);
+    // Fail before the browser prompt when this portal has no server register route.
+    if (!registerUrl) {
+        return {
+            ok: false,
+            reason: "unconfigured",
+            detail: `No push register endpoint for portal "${portal}"`,
+        };
     }
 
     const permission = Notification.permission === "granted"
@@ -123,14 +170,7 @@ export async function subscribeToPush(): Promise<PushSubscribeResult> {
         });
         if (!token) return { ok: false, reason: "error", detail: "Empty token returned" };
 
-        // The server already has this endpoint and token store; it was only ever
-        // called from the Capacitor path.
-        const response = await fetch("/api/push/register", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ token, platform: "web" }),
-        });
+        const response = await postDeviceToken(registerUrl, token);
 
         if (!response.ok) {
             return { ok: false, reason: "error", detail: `Register failed: ${response.status}` };

@@ -6,6 +6,7 @@ import { clearPersistedClientState } from "@/lib/queryClient";
 import { Capacitor } from "@capacitor/core";
 import { GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase";
+import { dispositionForAuthCheckError } from "@/lib/customer-auth-check";
 
 interface CustomerAuthContextType {
   customer: CustomerSession | null;
@@ -32,9 +33,13 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
     try {
       const session = await customerAuthApi.me();
       setCustomer(session);
-    } catch {
-      setCustomer(null);
-      await clearPersistedClientState();
+    } catch (error) {
+      // Only confirmed auth failures log the user out. Transient 5xx/timeout/network
+      // keep the previous customer snapshot so a blip does not wipe the session UI.
+      if (dispositionForAuthCheckError(error) === "logout") {
+        setCustomer(null);
+        await clearPersistedClientState();
+      }
     } finally {
       setIsLoading(false);
     }
@@ -63,10 +68,13 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       await clearAuthSession();
       await clearPersistedClientState();
       return false;
-    } catch {
-      // Session invalid, clear stored auth
-      await clearAuthSession();
-      await clearPersistedClientState();
+    } catch (error) {
+      if (dispositionForAuthCheckError(error) === "logout") {
+        await clearAuthSession();
+        await clearPersistedClientState();
+        return false;
+      }
+      // Transient failure: keep stored auth for a later retry
       return false;
     }
   };

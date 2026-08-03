@@ -35,6 +35,7 @@ const ServiceConfigEditor = lazy(() => import("./settings/ServiceConfigEditor").
 import { TagListCard } from "./settings/TagListCard";
 import SystemIntegritySummary from "./settings/SystemIntegritySummary";
 import { canOpenServiceFeedbackWorkspace } from "@/lib/service-feedback-capabilities";
+import { PushNotificationConsent } from "@/components/notifications/PushNotificationConsent";
 const ServiceFeedbackSection = lazy(() => import("./settings/ServiceFeedbackSection"));
 
 function BodyPortal({ children }: { children: React.ReactNode }) {
@@ -684,6 +685,16 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
             <MobileScrollContent className="px-0 space-y-0 pt-1">
 
+                {/* Staff push consent — gesture-only; never auto-prompt */}
+                <MobileSectionTitle>My notifications</MobileSectionTitle>
+                <div className="mx-4 mb-1">
+                    <PushNotificationConsent
+                        portal="admin"
+                        benefit="Get notified about new service requests and job updates"
+                        density="compact"
+                    />
+                </div>
+
                 {/* System Status */}
                 <MobileSectionTitle>System Status</MobileSectionTitle>
                 <MobilePanel>
@@ -929,6 +940,13 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
             {/* Main Bento Layout */}
             <div className="flex flex-col gap-6">
+
+                <motion.div variants={itemVariants} className="w-full max-w-xl">
+                    <PushNotificationConsent
+                        portal="admin"
+                        benefit="Get notified about new service requests and job updates"
+                    />
+                </motion.div>
 
                 {/* Row 1 & 2: General Section (visual cards — dialogs rendered separately below) */}
                 <GeneralSection

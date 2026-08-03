@@ -28,6 +28,7 @@ import {
   canUseSavedContactSummary,
   validateRepairContactFields,
 } from "@/lib/repair-request-contact";
+import { PushMomentOfValue } from "@/components/notifications/PushMomentOfValue";
 const MobileServiceWizard = lazy(() => import("@/components/mobile/MobileServiceWizard").then(m => ({ default: m.MobileServiceWizard })));
 
 interface ImageKitMedia {
@@ -1112,6 +1113,10 @@ export default function RepairRequestPage() {
                       </p>
                     </div>
                   )}
+
+                  <div className="mx-auto max-w-md">
+                    <PushMomentOfValue portal="customer" t={t} />
+                  </div>
 
                   <div className="flex justify-center gap-4 pt-4">
                     <Link href="/">

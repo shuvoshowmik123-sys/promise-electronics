@@ -72,7 +72,8 @@ router.get('/api/admin/notifications/unread-count', requireAdminAuth, async (req
 router.post('/api/admin/notifications/override', requireAdminAuth, requirePermission('canAssignTechnician'), async (req: Request, res: Response) => {
     try {
         const { jobId, originalTechId, originalTechName, proposedTechId, proposedTechName, reason } = req.body;
-        const currentUserId = (req.session as any).adminId;
+        const currentUserId = req.session.adminUserId;
+        if (!currentUserId) return res.status(401).json({ error: 'Unauthorized' });
 
         // Fetch user info for the requester
         const requestor = await userRepo.getUser(currentUserId);
@@ -133,11 +134,12 @@ router.get('/api/admin/notifications/overrides', requireAdminAuth, requirePermis
 router.post('/api/admin/notifications/override/:id/approve', requireAdminAuth, requirePermission('canAssignTechnician'), async (req: Request, res: Response) => {
     try {
         const { id } = req.params;
-        const currentUserId = (req.session as any).adminId;
+        const currentUserId = req.session.adminUserId;
+        if (!currentUserId) return res.status(401).json({ error: 'Unauthorized' });
 
         // Ensure only Super Admin can approve
         const user = await userRepo.getUser(currentUserId);
-        if (user?.role !== 'Super Admin') {
+        if (!user || user.role !== 'Super Admin') {
             return res.status(403).json({ error: 'Only Super Admins can approve overrides.' });
         }
 
@@ -184,7 +186,7 @@ router.post('/api/admin/notifications/override/:id/approve', requireAdminAuth, r
 // Admin Push Token Registration (FCM)
 // ============================================
 
-import { registerDeviceToken, unregisterDeviceTokens } from '../services/fcm.service.js';
+import { registerAdminDeviceToken, unregisterAdminDeviceToken } from '../services/fcm.service.js';
 
 /**
  * POST /api/admin/push/register - Register device token for push notifications
@@ -192,16 +194,19 @@ import { registerDeviceToken, unregisterDeviceTokens } from '../services/fcm.ser
 router.post('/api/admin/push/register', requireAdminAuth, async (req: Request, res: Response) => {
     try {
         const { token, platform } = req.body;
-        const adminId = (req.session as any).adminId;
+        const adminUserId = req.session.adminUserId;
 
-        if (!token) {
+        if (!adminUserId) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+
+        if (!token || typeof token !== 'string') {
             return res.status(400).json({ error: 'Token is required' });
         }
 
-        // Store the token using FCM service
-        registerDeviceToken(adminId, token, platform || 'android');
+        await registerAdminDeviceToken(adminUserId, token, platform || 'web');
 
-        console.log(`[FCM] Admin ${adminId} registered push token`);
+        console.log(`[FCM] Admin ${adminUserId} registered push token`);
         res.json({ success: true });
     } catch (error) {
         logRouteError('AdminNotifications.PushRegister', req, error);
@@ -210,14 +215,23 @@ router.post('/api/admin/push/register', requireAdminAuth, async (req: Request, r
 });
 
 /**
- * POST /api/admin/push/unregister - Unregister device token
+ * POST /api/admin/push/unregister - Unregister device token owned by the calling admin
  */
 router.post('/api/admin/push/unregister', requireAdminAuth, async (req: Request, res: Response) => {
     try {
-        const { token } = req.body;
+        const adminUserId = req.session.adminUserId;
+        if (!adminUserId) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
 
-        if (token) {
-            unregisterDeviceTokens([token]);
+        const { token } = req.body;
+        if (!token || typeof token !== 'string') {
+            return res.status(400).json({ error: 'Token is required' });
+        }
+
+        const deactivated = await unregisterAdminDeviceToken(adminUserId, token);
+        if (!deactivated) {
+            return res.status(404).json({ error: 'Token not found for this admin' });
         }
 
         res.json({ success: true });

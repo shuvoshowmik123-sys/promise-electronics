@@ -646,24 +646,33 @@ router.post('/api/customer/change-password', requireCustomerAuth, async (req: Re
  * GET /api/customer/me - Get current customer
  */
 router.get('/api/customer/me', async (req: Request, res: Response) => {
-    if (!req.session?.customerId) {
-        return res.status(401).json({
-            error: 'Not logged in',
-            code: 'NOT_AUTHENTICATED'
+    try {
+        if (!req.session?.customerId) {
+            return res.status(401).json({
+                error: 'Not logged in',
+                code: 'NOT_AUTHENTICATED'
+            });
+        }
+
+        const customer = await storage.getCustomer(req.session.customerId);
+        if (!customer) {
+            req.session.destroy(() => { });
+            return res.status(401).json({
+                error: 'Customer not found',
+                code: 'INVALID_SESSION'
+            });
+        }
+
+        const { password: _, ...safeCustomer } = customer;
+        res.json(safeCustomer);
+    } catch (error) {
+        // Infrastructure failure — not an auth failure. Client must not treat this as logout.
+        console.error('[CustomerAuth] /me lookup failed:', (error as Error)?.message);
+        res.status(503).json({
+            error: 'Unable to verify session right now. Please try again.',
+            code: 'AUTH_CHECK_UNAVAILABLE',
         });
     }
-
-    const customer = await storage.getCustomer(req.session.customerId);
-    if (!customer) {
-        req.session.destroy(() => { });
-        return res.status(401).json({
-            error: 'Customer not found',
-            code: 'INVALID_SESSION'
-        });
-    }
-
-    const { password: _, ...safeCustomer } = customer;
-    res.json(safeCustomer);
 });
 
 /**
