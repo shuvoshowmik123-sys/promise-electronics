@@ -576,11 +576,21 @@ export const inventoryItems = pgTable("inventory_items", {
   };
 });
 
+/**
+ * `createInsertSchema()` maps a NOT NULL text column to a bare `z.string()`, which
+ * accepts "". The database constraint is satisfied — "" is not null — so an empty
+ * name passed every layer and silently wiped the record on update (DR-02 / DR-03).
+ * Required user-supplied text needs an explicit minimum length here; the column
+ * type cannot express it.
+ */
 export const insertInventoryItemSchema = createInsertSchema(inventoryItems).omit({
   createdAt: true,
   updatedAt: true,
 }).partial({
   id: true,
+}).extend({
+  name: z.string().trim().min(1, "Name is required"),
+  category: z.string().trim().min(1, "Category is required"),
 });
 export type InsertInventoryItem = z.infer<typeof insertInventoryItemSchema>;
 export type InventoryItem = typeof inventoryItems.$inferSelect;
@@ -1460,10 +1470,11 @@ export const insertServiceRequestSchema = createInsertSchema(serviceRequests).om
   idempotencyFingerprint: true,
   source: true,
 }).extend({
-  brand: z.string().min(1).max(80),
-  primaryIssue: z.string().min(1).max(300),
-  customerName: z.string().min(2).max(120),
-  phone: z.string().min(10).max(30),
+  // .trim() before min — same empty-string gap as DR-02/DR-03 (NOT NULL text accepts "").
+  brand: z.string().trim().min(1).max(80),
+  primaryIssue: z.string().trim().min(1).max(300),
+  customerName: z.string().trim().min(2).max(120),
+  phone: z.string().trim().min(10, "Phone is required").max(30),
   screenSize: z.string().max(40).optional().nullable(),
   modelNumber: z.string().max(80).optional().nullable(),
   symptoms: z.string().max(1000).optional().nullable(),

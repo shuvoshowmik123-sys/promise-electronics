@@ -34,6 +34,7 @@ import { AuditLogger } from '../services/audit.service.js';
 import { handleAdminEventStream } from './admin-stream.js';
 import { getCachedDashboard } from '../lib/dashboardCache.js';
 import { logRouteError } from '../utils/route-error.js';
+import { normalizePhone } from '../utils/phone.js';
 import { upsertPresence, sweepOfflineStaff } from '../services/assignment.service.js';
 import { auditLogger } from '../utils/auditLogger.js';
 import { AUDIT_ACTIONS } from '../../shared/constants.js';
@@ -602,6 +603,23 @@ router.delete('/api/admin/users/:id', requireAdminAuth, requireSuperAdmin, async
 });
 
 /**
+ * Validation for PATCH /api/admin/customers/:id.
+ *
+ * PATCH semantics: every field is optional, but a field that IS supplied must be
+ * valid. `.min(1)` on name is the specific guard for DR-01 — an empty string
+ * satisfies the NOT NULL column and previously wiped the record with a 200.
+ * `.strict()` rejects unknown keys so a caller cannot smuggle in columns the
+ * route never intended to expose (role, permissions, passwordHash).
+ */
+const adminCustomerUpdateSchema = z.object({
+    name: z.string().trim().min(1, "Name cannot be empty").max(120, "Name is too long").optional(),
+    email: z.union([z.string().trim().email("Invalid email address"), z.literal("")]).optional(),
+    phone: z.string().trim().min(10, "Phone number is too short").max(20, "Phone number is too long").optional(),
+    address: z.string().trim().max(500, "Address is too long").optional(),
+    isVerified: z.boolean().optional(),
+}).strict();
+
+/**
  * POST /api/admin/corporate-users - Create corporate user (Admin only)
  * Generates password and emails it to the user.
  */
@@ -1076,12 +1094,24 @@ router.get('/api/admin/customers/:id/lifecycle', requireAdminAuth, requirePermis
  */
 router.patch('/api/admin/customers/:id', requireAdminAuth, requireGranularPermission('customers.edit'), async (req: Request, res: Response) => {
     try {
-        const { name, email, phone, address, isVerified } = req.body;
+        // This route previously wrote req.body straight through with no schema, so
+        // { name: "" } returned 200 and silently wiped the customer's name (DR-01).
+        // Every field is optional (PATCH), but any field that IS present must be valid.
+        const parsed = adminCustomerUpdateSchema.safeParse(req.body);
+        if (!parsed.success) {
+            return res.status(400).json({
+                error: parsed.error.issues[0]?.message ?? 'Invalid customer data',
+            });
+        }
+        const { name, email, phone, address, isVerified } = parsed.data;
         const updates: any = {};
 
         if (name !== undefined) updates.name = name;
         if (email !== undefined) updates.email = email;
-        if (phone !== undefined) updates.phone = phone;
+        if (phone !== undefined) {
+            updates.phone = phone;
+            updates.phoneNormalized = normalizePhone(phone);
+        }
         if (address !== undefined) updates.address = address;
         if (isVerified !== undefined) updates.isVerified = isVerified;
 
