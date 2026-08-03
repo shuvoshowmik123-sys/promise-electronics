@@ -456,6 +456,7 @@ describe("Phase 3 manual payment verification", () => {
             customerRegisterSchema: { parse: (value: unknown) => value },
             requireAdminAuth: allowAdminRequest(),
             requirePermission: () => allowAdminRequest(),
+            requireGranularPermission: () => allowAdminRequest(),
         }));
         vi.doMock("../server/storage.js", () => ({
             storage: {

@@ -8866,3 +8866,705 @@ If you find any *new* `NOT VERIFIED` item that is genuinely open, that still blo
 ### 12. Execution result - 2026-08-01 12:25 Asia/Dhaka
 
 PASS 10 / FAIL 0 / NOT VERIFIED 0. The 68-path inventory was segmented into ten content commits; 66 paths were committed and two paths were intentionally held with the D1 Area Intelligence decision (`CustomerDistanceExplorer.tsx` and its `area-notice.ts` companion). Every content commit passed `npx tsc --noEmit --pretty false`. This completion record is the separate 11th documentation-only commit. Final gates passed: TypeScript, Vite, server build, `git diff --check`, and full Vitest with 29 files, 379 passed, 0 failed, 0 skipped. No D1-held path entered any commit; `main` is 11 commits ahead of `origin/main`, with nothing pushed or deployed. Evidence: `mobile-qa/release-commit-segmentation-01a/20260801-1225/REPORT.md` and `results.json`. The next step is the separately authorized owner decision on secret-purge force-push, repository visibility, push, and deployment verification.
+
+---
+
+## UI-SURFACE-DISCOVERY-AND-BUG-AUDIT-01A
+
+**Status: READY.** Authored 2026-08-02 Asia/Dhaka. This is an **audit and discovery** phase, not a repair phase.
+
+### 1. Why this phase exists — the measured gap
+
+A scan on 2026-08-02 found the test suite proves almost nothing about the UI:
+
+| Measure | Count |
+| --- | --- |
+| Admin tab components | **42** |
+| Customer-facing pages | **28** |
+| Test files | 29 |
+| Tests that render or click **any** UI | **0** |
+| Tests hitting Express routes (supertest) | 9 |
+| Pure logic/unit tests | 20 |
+| Playwright e2e specs that exist | **1** (`e2e/map-visibility-fix.spec.ts`) |
+
+`npx vitest run` is 379/379 green. That result covers backend logic and API routes only. **"Tests pass" and "the UI works" are currently unrelated statements.**
+
+Of the 9 UI files shipped in the last release, **6 have zero test reference of any kind**:
+
+- `client/src/components/auth/CustomerAuthModal.tsx`
+- `client/src/components/layout/CustomerRouter.tsx`
+- `client/src/components/layout/PublicLayout.tsx`
+- `client/src/components/mobile/MobileServiceWizard.tsx`
+- `client/src/pages/admin/bento/tabs/CustomerRepairJourneysTab.tsx`
+- `client/src/pages/admin/bento/tabs/CustomersTab.tsx`
+
+The operator reports "minor bugs I know exist but cannot find." This phase exists to **find and document them**, with evidence. Not to guess at them.
+
+### 2. Objective
+
+Produce a ranked, evidence-backed defect list for the customer and admin UI at desktop and mobile viewports, plus a reusable Playwright spec suite committed under `e2e/`.
+
+**Deliverables:**
+1. A surface map — every route/tab reached, and its state (OK / DEFECT / UNREACHABLE / NOT TESTED)
+2. A ranked defect list with reproduction steps, viewport, and screenshot path per defect
+3. For each defect, **manual reproduction steps precise enough for a human to follow** — URL, viewport, exact clicks in order, expected vs actual
+4. An explicit list of what was **NOT** covered
+
+Note: this phase does **not** author `e2e/*.spec.ts` files. The Playwright CLI cannot run here, so any spec written would be unverifiable, and an unrun spec committed as if it were proof is exactly the kind of false evidence operating-rules section 3.1 forbids. Reproduction steps are the deliverable instead.
+
+### 3. Tooling — use Playwright **MCP**, not the Playwright CLI
+
+**The Playwright CLI (`npx playwright test`) is NOT available in this environment and must not be attempted.** It fails to start. Ignore `playwright.config.ts` and its project names — they are for a runner you cannot use.
+
+Drive a real browser through the **Playwright MCP tools** instead:
+
+| Purpose | MCP tool |
+| --- | --- |
+| Go to a URL | `browser_navigate` |
+| **Set the viewport** | `browser_resize` (width, height) |
+| Read the live DOM / find elements | `browser_snapshot` |
+| Click, type, fill | `browser_click`, `browser_type`, `browser_fill_form` |
+| Keyboard | `browser_press_key` |
+| Capture evidence | `browser_take_screenshot` (pass an explicit `filename`) |
+| **Console errors** | `browser_console_messages` (use `level: "error"`) |
+| Network activity | `browser_network_requests` |
+| Dropdowns / dialogs | `browser_select_option`, `browser_handle_dialog` |
+| Waiting | `browser_wait_for` |
+
+**Viewports are set with `browser_resize`, not projects.** Use exactly these three:
+
+| Name in the report | `browser_resize` |
+| --- | --- |
+| Desktop | **1440 × 900** |
+| Mobile (ledger) | **390 × 844** |
+| Mobile large (ledger) | **584 × 918** |
+
+Practical notes for MCP work:
+- `browser_snapshot` before clicking. It gives real element refs; guessing selectors wastes turns.
+- If a click reports a **strict-mode violation** (selector matched 2+ elements), that is usually mobile + desktop markup both mounted in the DOM. **Record it as a finding**, then disambiguate with `.first()`, a `data-testid`, or a `:visible` filter.
+- Screenshot filenames must be explicit and land in the evidence `screens/` directory.
+- After each journey, call `browser_console_messages` with `level: "error"` and record the count and exact text.
+
+**Credentials:** Super Admin `admin` / `admin123` (per `docs/AGENT_TESTING_PLAYBOOK.md`). Customer accounts: create via the UI during the run; use obvious names like `qa_customer`.
+
+### 4. Part A — Discovery first, before writing any assertion
+
+Do not start by writing tests. **Map the surface first**, and write down what you find.
+
+1. Enumerate every customer route from `client/src/App.tsx` / `CustomerRouter.tsx` and every admin tab under `client/src/pages/admin/bento/tabs/`.
+2. For each, record: route path, what it is for, whether it needs auth, and which role.
+3. Visit each one. Record: does it load, does it render content, are there console errors, is there horizontal overflow.
+4. Produce the surface map table **before** moving to Part B.
+
+This map is a deliverable in its own right. If the phase runs out of time, a complete map plus partial testing is far more useful than untracked poking around.
+
+### 5. Part B — Journey testing (the priority order)
+
+Test these in order. Each must be run at **1440×900** and **390×844** at minimum, switching with `browser_resize`. Use 584×918 as well wherever the layout looks marginal at 390.
+
+**Journey 1 — Customer acquisition (highest value; covers 4 of the 6 untested files)**
+home → services/get-quote → `MobileServiceWizard` (every step, forward and backward) → submit → confirmation.
+Watch for: wizard step state lost on back-navigation, dock covering the final button, fields unreachable behind the keyboard, double-submit, silent validation failures.
+
+**Journey 2 — Customer account (covers `CustomerAuthModal`, `CustomerRouter`, `login`, `reset`)**
+register → logout → login → "Need help signing in?" recovery → submit → verify the generic "Request sent." message → `/reset` route reachable.
+Watch for: the recovery panel pushing content off-screen, autocomplete attributes, any account-existence oracle in messages.
+
+**Journey 3 — Admin customer management (covers `CustomersTab`)**
+login as admin → Customers → open a customer sheet → **Generate Account Setup Link** → confirmation dialog → result dialog.
+Watch for: sheet not closing before the dialog opens, dialog overflowing the viewport, phone not masked, token visible where it should not be.
+
+**Journey 4 — Admin repair journeys (covers `CustomerRepairJourneysTab`)**
+open the tab → load a journey → step through its states.
+
+**Journey 5 — Cross-cutting sweep (all routes)**
+For every route in the surface map: no horizontal scroll at 390×844, no console errors, bottom dock never covers the last interactive element, Bangla and English both fit.
+
+### 6. What counts as a defect, and severity
+
+| Severity | Definition |
+| --- | --- |
+| **BLOCKER** | Flow cannot be completed at all; data loss; wrong customer's data shown |
+| **HIGH** | Flow completes but produces a wrong result; security/privacy leak; crash on a common path |
+| **MEDIUM** | Workaround exists; layout broken but usable; confusing error text |
+| **LOW** | Cosmetic; spacing; wording |
+
+A console **warning** is not a defect on its own. A console **error** is at least MEDIUM. Record the exact message.
+
+### 7. Anti-fabrication rules — read carefully
+
+This is the part previous phases have got wrong.
+
+- **Never report a check you did not run.** Use `NOT VERIFIED`, per operating-rules section 15. A short honest report beats a long padded one.
+- **A screenshot is not proof a flow works.** It proves one frame rendered. If you did not click through, say so.
+- **Do not infer.** "The dialog probably closes the sheet" is not a finding. Either you watched it or you did not.
+- **Report the count you actually observed.** Two prior phases under-reported leftover artifacts (14 reported as 2). Enumerate, then count.
+- **If a selector is ambiguous** (Playwright strict-mode violation from mobile + desktop DOM both being present), that is itself worth recording — it usually means duplicated markup.
+- Screenshot paths must be real files that exist when the report is written. Verify before citing.
+
+### 8. Preflight — stop if any of this fails
+
+There is **no `webServer` auto-start** when using MCP. You must start the app yourself.
+
+**0. Working directory — this is the #1 cause of failure.** You must be running in
+`D:\PromiseIntegratedSystem\PromiseIntegratedSystem`, **not** its parent `D:\PromiseIntegratedSystem`.
+The parent is a different directory with no `.mcp.json`, so the Playwright MCP servers silently do not exist there.
+Verify before anything else — the tool list must contain both `playwright` and `playwright-mobile`.
+If it does not, stop as `BLOCKED`: you were started from the wrong folder and no amount of retrying will attach the tools.
+(Run `20260802-0206` failed for exactly this reason; see `mobile-qa/ui-surface-discovery-and-bug-audit-01a/20260802-0206/REPORT.md`.)
+
+1. Start the app in the background: `npm run dev` (binds `PORT=5083`).
+2. Confirm `http://localhost:5083/api/ready` responds before opening a browser. Do not navigate to a port that is not listening — a connection-refused page is not evidence of anything.
+3. **Database — operator override, 2026-08-02.** Do **NOT** create, provision, or migrate a disposable PostgreSQL stack for this phase. Simply run `npm run dev`; it reads the existing `DATABASE_URL` from `.env`, which the operator has designated as the **development** database. Starting a fresh cluster is explicitly out of scope and wastes the run.
+
+   Note for the record: that `DATABASE_URL` resolves to a **Neon** host, which the standing QA rule would normally forbid. The operator has explicitly authorised its use for this audit and confirmed it is the development database, separate from production. This override applies to **this phase only** and does not relax the rule elsewhere. Do not touch `BRAIN_DATABASE_URL`, do not run migrations, and do not point the app at any other database.
+
+   Be aware this audit **writes** data (test customers, service requests, setup links) into that development database. Use obviously-named test records (`qa_customer`, `qa_...`) so they are easy to identify later.
+4. Confirm the Playwright **MCP** tools are actually attached: call `browser_navigate` to `http://localhost:5083/` and then `browser_snapshot`. If either fails, **stop and report `BLOCKED`.**
+
+**Do not substitute source-code reading for browser testing.** If the browser tools are unavailable, every UI claim in your report must be labelled `NOT VERIFIED`. A code-reading audit is a legitimate deliverable — but it must be labelled as one, never as UI QA.
+
+### 9. Scope boundaries
+
+**In scope:** reading UI source to understand behaviour; driving the running app through Playwright MCP; screenshots; the report.
+
+**Out of scope — do not touch:**
+- Any product source fix. **This is an audit — find bugs, do not repair them.** Repairs come as separately authorized phases.
+- `client/src/components/customer/CustomerDistanceExplorer.tsx` and `client/src/lib/area-notice.ts` — D1-held, uncommitted, deliberately excluded.
+- `vitest.config.ts`, migrations, DB schema, deployment config.
+- Any commit, push, deploy, remote DB, or production access.
+
+### 10. Evidence, lock, and cleanup
+
+```
+mobile-qa/ui-surface-discovery-and-bug-audit-01a/<YYYYMMDD-HHMM>/REPORT.md
+mobile-qa/ui-surface-discovery-and-bug-audit-01a/<YYYYMMDD-HHMM>/results.json
+mobile-qa/ui-surface-discovery-and-bug-audit-01a/<YYYYMMDD-HHMM>/screens/
+```
+
+Acquire the lock **first**:
+```powershell
+New-Item -ItemType Directory -Path "mobile-qa/.run-locks/UI-SURFACE-DISCOVERY-AND-BUG-AUDIT-01A.lock" -ErrorAction Stop
+```
+Stop as `DUPLICATE-RUN-AVOIDED` if it exists. Never delete a lock.
+
+Delete `cookies*.txt` / `*_cookies.txt` after the run. Keep only the latest screenshots. **Verify deletions by re-enumerating** and report the real count.
+
+### 11. Report format
+
+- Surface map table (route → status)
+- Defect list, ranked by severity, each with: ID, severity, route, viewport, exact reproduction steps, expected vs actual, console errors, screenshot path
+- Coverage statement: what was tested, at which viewports, and **explicitly what was not**
+- Totals: PASS / FAIL / NOT VERIFIED
+- Gates run, if any (this phase changes no product code, so `tsc`/`vitest` should be unchanged — confirm with `npx vitest run` = 29 files, 379/379)
+- Section 16 FEEDBACK BLOCK
+
+### 12. Stop rule
+
+One retry per genuinely flaky step. If a flow cannot be completed twice, record it as a defect with reproduction detail and **move on** — do not spend the phase fighting one screen. Breadth of coverage beats depth on a single bug.
+
+---
+
+## APPENDIX A — MANDATORY TEST CASE CONTRACT (applies to UI-SURFACE-DISCOVERY-AND-BUG-AUDIT-01A)
+
+**Added 2026-08-02.** This appendix overrides any looser reading of the parent brief. Its purpose is to stop "navigate → screenshot → navigate → screenshot" being reported as testing. That is *inspection*. This appendix defines what counts as a **test**.
+
+### A1. The rule
+
+> **A screenshot is evidence. It is never an assertion.**
+> **A test case with zero assertions is not a test case and must not be counted in any total.**
+
+Every test case must state, before execution, what it expects. Then it must record what was actually observed. A case where "expected" was written after seeing the result is fabrication.
+
+### A2. Four-layer verification — at least TWO layers per test case
+
+| Layer | Tool | What it proves |
+| --- | --- | --- |
+| **L1 — UI state** | `browser_snapshot` | The element/text/state actually exists in the DOM |
+| **L2 — Network** | `browser_network_requests` | The API was called and what it really returned (status + body) |
+| **L3 — Persistence** | reload the page, or re-fetch the resource, then re-assert | The change was actually saved, not just optimistically rendered |
+| **L4 — Console** | `browser_console_messages` (`level: "error"`) | No silent JS errors |
+
+**L4 is mandatory on every case.** Any case that creates or modifies data **must** include L3 — this is the layer that catches "it said Saved but nothing persisted", which screenshots never catch.
+
+### A3. Required test case format
+
+Every case in the report must use exactly this structure:
+
+```
+TC-<area>-<nn>  <title>
+Priority:      BLOCKER | HIGH | MEDIUM | LOW
+Viewport:      1440x900 | 390x844 | 584x918
+Precondition:  <exact starting state — logged in as who, what data exists>
+
+Steps:
+  1. browser_navigate → <url>
+  2. browser_snapshot → locate <element>
+  3. browser_click → <element ref>
+  ...
+
+Assertions:
+  A1 [L1] Expected: <specific value>     Observed: <specific value>     PASS/FAIL
+  A2 [L2] Expected: POST /api/x → 200    Observed: <status + body>      PASS/FAIL
+  A3 [L3] Expected: after reload, <x>    Observed: <x>                  PASS/FAIL
+  A4 [L4] Expected: 0 console errors     Observed: <n> + exact text     PASS/FAIL
+
+Result:    PASS | FAIL | BLOCKED
+Evidence:  screens/<file>.png, network excerpt, console excerpt
+Teardown:  <what test data was left behind, and its identifiers>
+```
+
+A case is **PASS only if every assertion passes.** One failed assertion = FAIL for the whole case.
+
+### A4. Negative and boundary cases are mandatory
+
+Happy-path-only testing is why bugs survive. For every flow, include at least:
+
+- **Invalid input** — wrong format, empty required field, over-length string
+- **Permission** — the same action as the wrong role, or logged out. Expect 401/403, not a crash
+- **Duplicate/repeat** — submit twice, use a one-time link twice, double-click the submit button
+- **Boundary** — empty list state, very long customer name, 0-item cart
+
+Real defects live here far more often than on the happy path.
+
+### A5. Test data discipline
+
+- Every record you create must be prefixed `qa_` (e.g. `qa_customer_01`, `qa_job_01`) so it is identifiable later.
+- Record every created identifier in the `Teardown` line of its case.
+- Never reuse a record between cases unless the case's `Precondition` says so explicitly — hidden coupling makes failures unreproducible.
+
+### A6. Priority order — depth beats breadth
+
+Do **not** attempt all 70 surfaces. A shallow pass over everything is what produced the inspection problem. Instead go deep on these, in order:
+
+1. **Customer service request** — get-quote → wizard (every step, forward *and* back) → submit → confirm the request actually exists afterwards
+2. **Customer auth** — register → logout → login → recovery request → reset link
+3. **Admin customer management** — login → Customers → sheet → Generate Setup Link → confirm + result dialogs
+4. **Admin job/repair flow** — open a journey → advance a status → confirm it persisted
+5. **Cross-cutting sweep** — only after 1-4 are done properly
+
+**Ten well-asserted test cases are worth more than sixty screenshots.** If time runs out, report fewer cases done properly rather than many done shallowly.
+
+### A7. Root-cause expectation
+
+For every FAIL, do not stop at the symptom. Record:
+
+- **Symptom** — what the user sees
+- **Layer that failed** — L1/L2/L3/L4
+- **Suspected cause** — the failing network call, console error, or component. Cite `file:line` if you read the source
+- **Reproducibility** — did it fail twice? Intermittent failures must be labelled as such
+
+A defect report without the failing network response or console text attached is incomplete.
+
+### A8. What must be reported honestly
+
+- Cases **attempted** vs **completed** — if you started 12 and finished 7, say 7
+- Any flow you could not complete, and why
+- Any assertion you could not evaluate — label `NOT VERIFIED`, never guess
+- If browser tools drop mid-run, everything after that point is `NOT VERIFIED`
+
+Totals must reconcile: `cases_passed + cases_failed + cases_blocked = cases_attempted`.
+
+---
+
+## APPENDIX B — CRUD COVERAGE + SERVER-LOG VERIFICATION
+
+**Added 2026-08-02.** Extends Appendix A. Applies to every audit phase from `CRUD-AUDIT-01A` onward.
+
+### B1. The fifth verification layer — server logs
+
+Appendix A defines L1 (UI), L2 (network), L3 (persistence), L4 (browser console). **L5 is now mandatory.**
+
+| Layer | Source | Catches |
+| --- | --- | --- |
+| **L5 — Server log** | the `npm run dev` output | 5xx responses, unhandled rejections, DB errors, failed migrations, silent catch blocks, `[Service] ... failed` lines |
+
+**Operator starts the app so its output is captured to a file:**
+
+```bash
+npm run dev 2>&1 | tee mobile-qa/<phase>/<run-id>/server.log
+```
+
+**Every test case must:**
+1. Note the server log line count **before** the case (`wc -l server.log`).
+2. After the case, read only the new lines and record any line matching:
+   `ERROR | error: | Error: | FAILED | failed | unhandled | rejection | 5[0-9][0-9] in [0-9]+ms | ECONNREFUSED | timeout`
+3. Assert `A5 [L5] Expected: 0 new server errors — Observed: <n> + exact lines`.
+
+A case that passes in the browser but writes a server error is a **FAIL**, not a pass. That is the entire point of this layer.
+
+Ignore known-benign startup noise (`MESSENGER_VERIFY_TOKEN not set`, `REDIS_URL not set`, `R2 environment variables`, `Background schedulers disabled`) — list them once in the report as excluded, then never again.
+
+### B2. CRUD is mandatory, not optional
+
+For **every** entity in scope, all four operations must be attempted. A phase that only tests "create" is incomplete.
+
+| Op | Must verify |
+| --- | --- |
+| **CREATE** | Record appears in list (L1) · POST returns 2xx (L2) · **survives reload** (L3) · no console error (L4) · no server error (L5) |
+| **READ** | Detail view shows the same values that were saved · list filter/search finds it · pagination works if list is long |
+| **UPDATE** | Edit persists after reload · **only the intended field changed** · concurrent-edit behaviour if two tabs are open |
+| **DELETE** | Record disappears · **confirmation is required before destruction** · re-fetch returns 404/absent · no orphaned child records |
+
+**Negative cases per entity (all mandatory):**
+
+- Create with **required field empty** → expect a clear inline error, not a crash or silent no-op
+- Create with **duplicate** unique value (same phone, same SKU) → expect a handled error
+- Create with **over-length** input (300+ chars in a name field)
+- Create with **injection-ish** input: `<script>alert(1)</script>` and `'; DROP TABLE users;--` → expect it stored/escaped safely and **rendered as text, never executed**
+- Update to an **invalid** value → rejected
+- Delete something **referenced by another record** → expect a guard, not a foreign-key crash
+- Perform each op **while logged out** → expect 401, never a stack trace
+
+### B3. Visual defect checklist — per screen, per viewport
+
+Record each explicitly, do not just eyeball a screenshot:
+
+- Horizontal scroll present? (`document.documentElement.scrollWidth > clientWidth` via `browser_evaluate`)
+- Any text truncated or overlapping?
+- Bottom dock covering the last button or field?
+- Modal/sheet taller than the viewport with unreachable actions?
+- Loading state shown, or a blank flash?
+- Empty-list state present, or a bare screen?
+- Bangla text overflowing its container?
+
+### B4. Report additions
+
+Beyond Appendix A's format, each case adds:
+
+```
+  A5 [L5] Expected: 0 new server errors   Observed: <n>   PASS/FAIL
+          <exact new server.log lines, or "none">
+```
+
+And the report gains a **CRUD coverage matrix**:
+
+| Entity | CREATE | READ | UPDATE | DELETE | Negative cases |
+| --- | --- | --- | --- | --- | --- |
+| ... | PASS/FAIL/NOT TESTED | ... | ... | ... | n/n |
+
+Any cell that is `NOT TESTED` must say why.
+
+---
+
+## CRUD-AUDIT-01A — CUSTOMERS + INVENTORY
+
+**Status: READY.** Phase 1 of the CRUD audit series. Authored 2026-08-02 Asia/Dhaka.
+
+### Scope — two entities only
+
+| Entity | Admin surface |
+| --- | --- |
+| **Customer** | `client/src/pages/admin/bento/tabs/CustomersTab.tsx` |
+| **Inventory item** | `client/src/pages/admin/bento/tabs/InventoryTab.tsx` |
+
+Full CREATE / READ / UPDATE / DELETE on each, plus every negative case in Appendix B2. Do **not** widen to other tabs — later phases cover them.
+
+### Contract
+
+Appendix A (assertion-based test cases, expected-written-first, 4 layers) **and** Appendix B (CRUD matrix, L5 server-log verification, visual checklist) both apply in full. Read both before starting.
+
+Minimum per entity: 4 CRUD cases + 7 negative cases = **11 cases per entity, 22 total**. Fewer is acceptable only if a surface genuinely does not exist — say which and why.
+
+### Known context
+
+- Defects `D1`–`D4` from `ui-surface-discovery-and-bug-audit-01a/20260802-0244` are **already reported**. Do not re-report them. If you encounter them, note "known — D3" and move on.
+- `D3` (desktop Generate Reset Link control) is disputed: an earlier session clicked it successfully at 1440×900. If you touch the customer sheet on desktop, record what you actually observe — that settles it.
+
+### Out of scope
+
+No repairs. No product source edits. No migrations. No commit/push/deploy. Do not test POS, finance, jobs, attendance, or roles — later phases.
+
+### Evidence
+
+```
+mobile-qa/crud-audit-01a/<YYYYMMDD-HHMM>/REPORT.md
+mobile-qa/crud-audit-01a/<YYYYMMDD-HHMM>/results.json
+mobile-qa/crud-audit-01a/<YYYYMMDD-HHMM>/case-plan-expected-first.md
+mobile-qa/crud-audit-01a/<YYYYMMDD-HHMM>/server.log
+mobile-qa/crud-audit-01a/<YYYYMMDD-HHMM>/screens/
+```
+
+Lock: `mobile-qa/.run-locks/CRUD-AUDIT-01A.lock` — acquire first, never delete.
+
+### Next phase gate
+
+`CRUD-AUDIT-02A` (jobs + service requests lifecycle) becomes eligible when this reports with a complete CRUD coverage matrix and reconciling totals.
+
+---
+
+## ROLE-MATRIX-PERMISSION-AUDIT-01A
+
+**Status: READY.** Authored 2026-08-02 Asia/Dhaka. Next QA phase after `CRUD-AUDIT-01A`.
+
+### Why this phase
+
+Zero role-based testing has ever been performed. Permission defects are **silent** — nothing renders incorrectly when a role reaches data it should not. Operating-rules §17.3 requires all six roles verified before release.
+
+### Contract
+
+Appendix A (assertion-based cases, expected-written-first, layered verification) and Appendix B (L5 server-log, negative cases) both apply **in full**.
+
+**L5 is mandatory this time.** Start the app as:
+```
+npm run dev 2>&1 | tee mobile-qa/role-matrix-permission-audit-01a/<run-id>/server.log
+```
+`CRUD-AUDIT-01A` could not assert L5 because this was skipped. Do not repeat that.
+
+### The matrix under test (operating-rules §7.6)
+
+| Role | Should land on | Must NOT see | Key positive check |
+| --- | --- | --- | --- |
+| Super Admin | Dashboard | nothing hidden | every tab loads, every action allowed |
+| Manager | Dashboard | System Settings, Users | can assign technician, process POS |
+| Technician | `/admin#technician` | all other admin tabs | sees **own jobs only** |
+| Driver | `/admin#pickup` | Jobs, POS, Finance, Users | sees pickup/shift only |
+| Cashier | `/admin#pos` | Users, System Settings | can process POS, view inventory |
+| Customer | `/home` | all admin UI and data | no admin sidebar |
+| Corporate | `/corporate` | all admin UI and endpoints | no admin endpoints reachable |
+
+### Required per role — both halves
+
+**Half 1 — UI (what they can see).** Log in, confirm the landing route, enumerate visible tabs, and assert the hidden ones are genuinely absent from the DOM — **not merely hidden with CSS**. A tab that is `display:none` but present is a finding.
+
+**Half 2 — API (what they can actually call).** UI hiding is not access control. For each role, call the endpoints that role should NOT have, directly:
+
+- `GET /api/settings` — expect 403 for Driver, Technician, Cashier
+- `GET /api/admin/users` — expect 403 for everyone except Super Admin
+- `PATCH /api/admin/customers/:id` — expect 403 without the `users` permission
+- `POST /api/admin/customers/:id/reset-link` — expect 403 for every non-Super-Admin
+- `POST /api/inventory` — expect 403 without `inventory.addItem`
+- Any job mutation as Technician against **another technician's** job — expect 403
+
+Expect **401/403 with a clean JSON error**. A 500, a stack trace, or a 200 is a defect.
+
+### Specific traps to probe
+
+1. **Legacy bridge.** `hasLegacyOrMappedPermission()` lets a granular permission satisfy a legacy `requirePermission()` check. Verify this does not over-grant — a role holding one narrow granular key must not thereby pass a broad legacy gate it should fail.
+2. **Blocked invite permissions.** `settings.manage`, `users.inviteStaff`, `users.editPermissions`, `users.deactivate` must never be grantable via invite.
+3. **Malicious payload.** Attempt to create a user with elevated permissions in the request body; confirm dangerous keys are stripped (§12.2 item 4).
+4. **Portal isolation (§7.4).** With an admin session cookie present in the same browser, confirm customer and corporate APIs do **not** honour it for authorisation or display.
+5. **Ownership scoping (§7.5).** Customer A must not read Customer B's data by changing an id in the URL.
+
+### Test accounts
+
+Super Admin is `admin` / `admin123`. Create the other roles through the admin invite flow using obvious names (`qa_manager`, `qa_tech`, `qa_driver`, `qa_cashier`). Record every account created in the report teardown.
+
+### Out of scope
+
+No repairs. No product source edits. Do not fix any defect found — log it. Known defects DR-01 … DR-11 in `docs/DEFECT_REGISTER.md` are already recorded; do not re-report them.
+
+### Evidence
+
+```
+mobile-qa/role-matrix-permission-audit-01a/<YYYYMMDD-HHMM>/
+  REPORT.md · results.json · case-plan-expected-first.md · server.log · screens/
+```
+
+Lock: `mobile-qa/.run-locks/ROLE-MATRIX-PERMISSION-AUDIT-01A.lock` — acquire first, never delete.
+
+### Report must include
+
+A role × endpoint matrix showing expected vs observed status for every combination, plus totals reconciling per Appendix A8.
+
+---
+
+## FIX-DR-12-PERMISSION-BRIDGE-01A
+
+**Status: BLOCKED.** 2026-08-03 Asia/Dhaka. The confirmed security defect remains open because a route-to-granular-write authority matrix is required before a restrictive fix can be applied without guessing or widening access. Evidence: `mobile-qa/fix-dr-12-permission-bridge-01a/20260803-1025/REPORT.md`.
+
+### 1. The defect
+
+`hasLegacyOrMappedPermission()` in `server/routes/middleware/auth.ts` passes if the caller holds **any** granular key mapped from a legacy key:
+
+```ts
+const mappedKeys = LEGACY_TO_GRANULAR[legacyKey];
+if (mappedKeys) {
+    return mappedKeys.some(k => effectivePermissions[k] === true);
+}
+```
+
+Several mappings in `shared/permission-catalog.ts` include a **read-only** granular key. When a mutation route is gated by such a legacy key, holding only the read permission grants write access.
+
+### 2. Confirmed exposure — Inspector cross-reference, 2026-08-03
+
+Do not re-derive this; verify it, then act on it.
+
+| Legacy key | Mutation routes gated | Read-only key that wrongly satisfies it |
+| --- | ---: | --- |
+| `finance` | 8 | `finance.view` |
+| `users` | 5 | `users.viewStaff` (the originally reported case) |
+| `jobs` | 4 | `jobs.view` |
+| `inventory` | 2 | `inventory.view` |
+| `inquiries` | 1 | `serviceRequests.view` |
+
+**20 mutation routes total.** The role audit found only the `users` instance.
+
+Confirmed reachable in a live run: a Manager holding only `users.viewStaff` received **200** from `PATCH /api/admin/customers/:id`.
+
+### 3. Secondary finding — do NOT fix in this phase, report only
+
+`canCreate`, `canEdit`, and `canDelete` map to **empty arrays**. Because `[].some()` is `false`, these fail **closed**: an invite-created account holding only granular permissions can never satisfy `requirePermission('canCreate')`. That is over-restriction, not a security hole, and it affects at least 4 mutation routes including corporate user creation. Log it as a new defect; changing it here would mix a permissive change into a security fix.
+
+### 4. Required fix
+
+**The principle: a read permission must never satisfy a write gate.**
+
+Preferred approach — split the mapping by intent. `LEGACY_TO_GRANULAR` currently answers "which granular keys relate to this legacy key". It must instead answer "which granular keys **grant the access this route needs**".
+
+Acceptable implementations, in order of preference:
+
+1. **Split each unsafe legacy key into read and write mappings**, and have mutation routes consult the write set. Keeps existing route signatures.
+2. **Replace `requirePermission('<legacy>')` on the 20 mutation routes** with `requireGranularPermission('<specific write key>')`. More precise, but touches 20 routes and each needs the correct key chosen deliberately — not guessed.
+
+Whichever you choose, apply it consistently to all five legacy keys. **Do not fix only `users`.**
+
+### 5. Hard constraints
+
+- **Do not widen access anywhere.** Every change must be equal or more restrictive. If a change could grant someone access they lack today, stop and report.
+- Super Admin wildcard `*` must keep bypassing all checks.
+- A direct legacy permission (`{ users: true }`) must keep working — that is the backward-compatibility contract in operating-rules §7.1.
+- Do not touch `settings`, `process_payment`, or `canAssignTechnician` — their mappings are already write-only and correct.
+- Do not modify the attendance gate (DR-13), validation defects (DR-01/02/03), or any UI file.
+- No migrations, no schema changes, no commit, no push, no deploy.
+
+### 6. Proof matrix — all mandatory
+
+| # | Proof | Evidence |
+| --- | --- | --- |
+| 1 | For each of the 5 unsafe keys: holding ONLY the read granular key is **denied 403** on a mutation route | test output per key |
+| 2 | Holding the correct **write** granular key still **succeeds** on that route | test output per key |
+| 3 | Direct legacy permission (`{ finance: true }` etc.) still succeeds — no regression | test output |
+| 4 | Super Admin `*` still succeeds everywhere | test output |
+| 5 | The live repro is closed: `users.viewStaff` only → `PATCH /api/admin/customers/:id` returns **403**, not 200 | test output |
+| 6 | Full suite unchanged | `npx vitest run` = 29 files, 379/379 |
+
+**Write automated tests** in `tests/` covering proofs 1-4 for all five keys. This defect must be regression-proof — a permission hole that returns silently is exactly the class that reappears.
+
+### 7. Gates
+
+```bash
+npx tsc --noEmit --pretty false
+npx vitest run
+npx vite build --mode development
+npm run build:server
+git diff --check
+```
+
+Baseline to match or beat: **29 files, 379/379, 0 timeouts.** New tests may raise the count — state the new total explicitly.
+
+### 8. Stop rule
+
+One repair attempt per failed proof. If proof 1 or 2 cannot be satisfied without widening access, **stop and report BLOCKED** with the specific key and route. Do not guess which granular key a route should require — if the correct key is ambiguous, list the candidates and stop.
+
+### 9. Evidence
+
+```
+mobile-qa/fix-dr-12-permission-bridge-01a/<YYYYMMDD-HHMM>/REPORT.md
+mobile-qa/fix-dr-12-permission-bridge-01a/<YYYYMMDD-HHMM>/results.json
+```
+
+Lock: `mobile-qa/.run-locks/FIX-DR-12-PERMISSION-BRIDGE-01A.lock` — acquire first, never delete.
+
+### 10. Report must include
+
+Before/after mapping table for all five keys · the exact route list changed · per-proof results · new test file names and case counts · exact suite totals before and after · confirmation that no access was widened · the `canCreate`/`canEdit`/`canDelete` fail-closed finding logged as a new defect · section 16 FEEDBACK BLOCK.
+
+### 11. Register update
+
+On success, set DR-12 to `FIXED` in `docs/DEFECT_REGISTER.md` with the commit-free summary of what changed, and add the new fail-closed defect as DR-14.
+
+---
+
+## DR-12 ROUTE-TO-PERMISSION AUTHORITY MATRIX (Inspector, 2026-08-03)
+
+Produced after `FIX-DR-12-PERMISSION-BRIDGE-01A` correctly stopped BLOCKED rather than guessing permission keys. This matrix is the missing input that phase asked for.
+
+**Rule applied:** each mutation route must require a granular key that *authorises that specific mutation*. A `.view` key must never appear here.
+
+### Group A — clean mapping, no new keys needed (13 routes)
+
+| Route | Current gate | Correct granular key |
+| --- | --- | --- |
+| `POST /api/admin/payment-blacklist` | `finance` | `finance.createRecord` |
+| `DELETE /api/admin/payment-blacklist/:id` | `finance` | `finance.deleteRecord` |
+| `POST /api/petty-cash` | `finance` | `finance.createRecord` |
+| `DELETE /api/petty-cash/:id` | `finance` | `finance.deleteRecord` |
+| `POST /api/due-records` | `finance` | `finance.createRecord` |
+| `POST /api/admin/finance/legacy-dues` | `finance` | `finance.createRecord` |
+| `POST /api/admin/finance/legacy-dues/bulk` | `finance` | `finance.createRecord` |
+| `POST /api/users` | `users` | `users.inviteStaff` |
+| `PATCH /api/admin/customers/:id` | `users` | `customers.edit` |
+| `DELETE /api/job-tickets/:id` | `jobs` | `jobs.delete` |
+| `DELETE /api/inventory/:id` | `inventory` | `inventory.deleteItem` |
+| `PATCH /api/inquiries/:id/status` | `inquiries` | `serviceRequests.transitionStage` |
+| `POST /api/admin/finance/legacy-dues/preview` | `finance` | `finance.view` — **read-only endpoint, correctly served by a view key** |
+
+Note the last row: `/preview` computes without persisting, so a view key is appropriate. Confirm it truly does not write before applying.
+
+### Group B — no suitable key exists; requires a DECISION (7 routes)
+
+| # | Route | Problem | Inspector recommendation |
+| --- | --- | --- | --- |
+| B1 | `PATCH /api/users/:id` | No `users.editStaff` key. `users.editPermissions` is narrower (permissions only); `users.deactivate` narrower still. | **Add `users.editStaff`** |
+| B2 | `POST /api/admin/customers` | `customers.edit` exists; no `customers.create`. | **Add `customers.create`** |
+| B3 | `DELETE /api/admin/customers/:id` | No `customers.delete`. Deleting a customer is materially more dangerous than editing one. | **Add `customers.delete`** |
+| B4 | `POST /api/job-tickets/:id/request-rollback` | No `jobs.rollback`. Candidates: `jobs.advanceStatus` (it moves state) or `jobs.edit`. | **Add `jobs.rollback`** — a rollback reverses completed work and deserves its own authority |
+| B5 | `DELETE /api/products/:id` | No `products.*` keys exist at all. Are products the same authority domain as inventory? | **Reuse `inventory.deleteItem`** if products are inventory rows; otherwise add `products.delete` |
+| B6 | Drawer / POS-finance mutation bridge | Flagged by the fix phase. `pos` and `finance` both gate drawer mutations; unclear which is authoritative. | **Needs owner decision** — see below |
+| B7 | `canCreate` / `canEdit` / `canDelete` empty mappings (DR-14) | Fail closed; granular-only staff can never pass. | **Out of scope here.** Fix separately so a permissive change is never mixed into a security fix. |
+
+### Adding new keys — required discipline
+
+Any new key added for B1-B5 must be:
+
+1. Added to `shared/permission-catalog.ts` with a clear description
+2. **Granted by default to no one** except via explicit role defaults
+3. Added to Super Admin's wildcard coverage automatically (it already is, via `*`)
+4. Verified not to appear in the blocked-invite list unless intended
+5. Reflected in `getDefaultPermissionsForRole()` for roles that legitimately need it — **this is where over-granting is most likely; review each role deliberately**
+
+**Migration risk.** Adding a new key means existing staff who relied on the legacy bridge lose that access until the key is granted. That is the *intended* security outcome, but it is a live behaviour change: a Manager who can edit customers today may not be able to tomorrow. Enumerate affected accounts before shipping and decide whether to backfill grants.
+
+### Not approved for change
+
+`settings`, `process_payment`, `canAssignTechnician` — already write-only and correct. Do not touch.
+
+### OWNER DECISIONS — approved 2026-08-03
+
+| # | Decision | Ruling |
+| --- | --- | --- |
+| D1 | Gap routes B1-B4 | **Add precise new keys.** Create `users.editStaff`, `customers.create`, `customers.delete`, `jobs.rollback`. Each dangerous action gets its own authority. |
+| D2 | Existing accounts | **Secure by default — NO backfill.** No account is auto-granted a new key. Staff who relied on the legacy bridge will receive 403 until an owner grants the key explicitly. This disruption is intended: it is the security hole closing. |
+| D3 | `DELETE /api/products/:id` (B5) | **Reuse `inventory.deleteItem`.** Products are the same authority domain as inventory. |
+| D4 | Drawer POS/finance bridge (B6) | Still open — resolve during implementation; report if ambiguous rather than guessing. |
+| D5 | `canCreate`/`canEdit`/`canDelete` (B7 / DR-14) | Out of scope. Separate phase. |
+
+**Consequence of D2 to communicate before deploy:** any Manager currently editing customers via `users.viewStaff` will immediately lose that ability. Enumerate affected staff accounts and grant the correct keys deliberately, role by role.
+
+### OWNER DECISIONS — addendum, approved 2026-08-03 (attempt 2)
+
+The original matrix covered 18 of 20 routes. Two routes in `server/routes/corporate.routes.ts` were missed because they use relative paths (`/jobs/...`) rather than `/api/...`, and the Inspector's enumeration was anchored on `/api/`. **The fix phase was correct to stop.**
+
+| # | Route | Ruling |
+| --- | --- | --- |
+| D6 | `PATCH /jobs/:id/status` (`corporate.routes.ts:1407`) | **`jobs.advanceStatus`** — the route changes job state; this is exactly that authority. |
+| D7 | `PATCH /jobs/bulk-priority` (`corporate.routes.ts:1460`) | **`jobs.edit`** — priority is an editable job field. Corroborated by the existing legacy mapping `canSetPriority -> jobs.edit`. |
+
+**Why not `corporate.jobsOperate`:** the catalog defines it as *"See and work corporate jobs inside the ordinary Jobs tab… Does not open the B2B Area"* — a visibility permission, not mutation authority. These two routes mutate job state, so job-domain write keys are correct.
+
+**Matrix is now complete: 20 of 20 routes have approved authority.** Group A (13) + B1-B5 (5, per D1/D3) + D6/D7 (2) = 20.
+
+The finance preview endpoint was independently confirmed by the fix phase to perform no writes, so `finance.view` stands.
+
+---
+
+## FIX-DR-12-PERMISSION-BRIDGE-01A — Attempt 3 completion
+
+**Status: PASS.** Completed 2026-08-03 Asia/Dhaka after the owner-approved matrix and addendum supplied the two missing corporate decisions. Evidence: `mobile-qa/fix-dr-12-permission-bridge-01a/20260803-1122/REPORT.md` and `results.json`.
+
+All **20/20** approved routes now use their specific granular authority. Added `users.editStaff`, `customers.create`, `customers.delete`, and `jobs.rollback` to the catalog. Per D2, none is present in role presets, legacy mappings, or legacy role defaults; existing staff are not backfilled. Existing direct legacy grants remain compatible for the pre-existing mapped write capabilities. `users.viewStaff` alone now receives **403** on `PATCH /api/admin/customers/:id`.
+
+Proof: focused DR-12 tests **27/27**; full Vitest **30 files, 406/406 passed, 0 failed, 0 skipped**. TypeScript, Vite, server build, and `git diff --check` all PASS. The finance legacy-dues preview was inspected and contains no write call, so it remains on `finance.view`.
+
+D4 Drawer POS/finance bridge, DR-14 empty legacy mappings, and DR-15 ungated mutation routes remain explicitly out of scope. No database, migration, commit, push, or deployment occurred.

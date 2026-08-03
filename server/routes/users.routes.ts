@@ -15,6 +15,7 @@ import {
     requireAdminAuth,
     requireSuperAdmin,
     requirePermission,
+    requireGranularPermission,
     requireAnyPermission,
     getEffectivePermissionsForUser,
     adminCreateUserSchema,
@@ -248,7 +249,7 @@ router.get('/api/users/:id', requireAdminAuth, requirePermission('users'), async
 /**
  * POST /api/users - Create user
  */
-router.post('/api/users', requireAdminAuth, requirePermission('users'), async (req: Request, res: Response) => {
+router.post('/api/users', requireAdminAuth, requireGranularPermission('users.inviteStaff'), async (req: Request, res: Response) => {
     try {
         const currentUser = await userRepo.getUser(req.session.adminUserId!);
         const validated = insertUserSchema.parse(req.body);
@@ -293,7 +294,7 @@ router.post('/api/users', requireAdminAuth, requirePermission('users'), async (r
 /**
  * PATCH /api/users/:id - Update user
  */
-router.patch('/api/users/:id', requireAdminAuth, requirePermission('users'), async (req: Request, res: Response) => {
+router.patch('/api/users/:id', requireAdminAuth, requireGranularPermission('users.editStaff'), async (req: Request, res: Response) => {
     try {
         const currentUser = await userRepo.getUser(req.session.adminUserId!);
         if (!currentUser) return res.status(401).json({ error: 'User not found' });
@@ -952,7 +953,7 @@ router.get('/api/admin/customers', requireAdminAuth, requirePermission('users'),
 /**
  * POST /api/admin/customers - Create a customer
  */
-router.post('/api/admin/customers', requireAdminAuth, requirePermission('users'), async (req: Request, res: Response) => {
+router.post('/api/admin/customers', requireAdminAuth, requireGranularPermission('customers.create'), async (req: Request, res: Response) => {
     try {
         const { name, email, phone, address } = req.body;
 
@@ -1073,7 +1074,7 @@ router.get('/api/admin/customers/:id/lifecycle', requireAdminAuth, requirePermis
 /**
  * PATCH /api/admin/customers/:id - Update customer
  */
-router.patch('/api/admin/customers/:id', requireAdminAuth, requirePermission('users'), async (req: Request, res: Response) => {
+router.patch('/api/admin/customers/:id', requireAdminAuth, requireGranularPermission('customers.edit'), async (req: Request, res: Response) => {
     try {
         const { name, email, phone, address, isVerified } = req.body;
         const updates: any = {};
@@ -1103,7 +1104,7 @@ router.patch('/api/admin/customers/:id', requireAdminAuth, requirePermission('us
 /**
  * DELETE /api/admin/customers/:id - Delete customer
  */
-router.delete('/api/admin/customers/:id', requireAdminAuth, requirePermission('users'), async (req: Request, res: Response) => {
+router.delete('/api/admin/customers/:id', requireAdminAuth, requireGranularPermission('customers.delete'), async (req: Request, res: Response) => {
     try {
         const customer = await userRepo.getUser(req.params.id);
         if (!customer || customer.role !== 'Customer') {

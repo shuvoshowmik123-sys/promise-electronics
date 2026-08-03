@@ -1404,7 +1404,7 @@ router.post("/clients/challans/parse-pptx", requireAdminAuth, corpChallansOperat
         res.status(400).json({ error: 'Failed to parse PPTX file. Please check the file format.' });
     }
 });
-router.patch("/jobs/:id/status", requireAdminAuth, requirePermission('jobs'), async (req, res) => {
+router.patch("/jobs/:id/status", requireAdminAuth, requireGranularPermission('jobs.advanceStatus'), async (req, res) => {
     try {
         const { status } = req.body;
         if (!status) return res.status(400).json({ message: "Status required", code: "CORPORATE_DECLARATION_ONLY" });
@@ -1457,7 +1457,7 @@ const bulkPrioritySchema = z.object({
     priority: z.enum(["Low", "Medium", "High", "Critical"]).nullable(),
 });
 
-router.patch("/jobs/bulk-priority", requireAdminAuth, requirePermission('jobs'), async (req, res) => {
+router.patch("/jobs/bulk-priority", requireAdminAuth, requireGranularPermission('jobs.edit'), async (req, res) => {
     try {
         const data = bulkPrioritySchema.parse(req.body);
 

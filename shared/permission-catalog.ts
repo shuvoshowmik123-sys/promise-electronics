@@ -38,6 +38,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "jobs.writeOff", label: "Write off job", module: "jobs", action: "writeOff", risk: "critical", description: "Write off a job as irrecoverable loss.", consequence: "Financial impact; removes job from active workflow.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
   { key: "jobs.recordPayment", label: "Record job payment", module: "jobs", action: "recordPayment", risk: "high", description: "Record a payment against a job ticket.", consequence: "Financial transaction; updates billing history.", suggestedRoles: ["Cashier", "Manager", "Super Admin"], coverageCritical: false },
   { key: "jobs.delete", label: "Delete job ticket", module: "jobs", action: "delete", risk: "critical", description: "Permanently delete a job ticket.", consequence: "Data loss; repair history removed.", suggestedRoles: ["Super Admin"], coverageCritical: false },
+  { key: "jobs.rollback", label: "Request job rollback", module: "jobs", action: "rollback", risk: "critical", description: "Request a job status rollback for approval.", consequence: "Reverses workflow progress and can affect customer-visible state.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: true },
 
   // ── Repair Journey ──
   { key: "repairJourney.view", label: "View repair journeys", module: "repairJourney", action: "view", risk: "low", description: "See customer repair journey timelines.", consequence: "Read-only access to journey history.", suggestedRoles: ["Manager", "Technician", "Super Admin"], coverageCritical: false },
@@ -96,6 +97,8 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   // ── Customers ──
   { key: "customers.view", label: "View customers", module: "customers", action: "view", risk: "low", description: "See customer directory and profiles.", consequence: "Access to customer PII.", suggestedRoles: ["Manager", "Cashier", "Super Admin"], coverageCritical: false },
   { key: "customers.edit", label: "Edit customer records", module: "customers", action: "edit", risk: "medium", description: "Update customer contact info and notes.", consequence: "Modifies customer data.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
+  { key: "customers.create", label: "Create customer records", module: "customers", action: "create", risk: "high", description: "Create a customer account or record.", consequence: "Adds customer data and PII to the system.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
+  { key: "customers.delete", label: "Delete customer records", module: "customers", action: "delete", risk: "critical", description: "Delete a customer account or record.", consequence: "Can remove customer data and interrupt linked history.", suggestedRoles: ["Super Admin"], coverageCritical: true },
 
   // ── Inventory ──
   { key: "inventory.view", label: "View inventory", module: "inventory", action: "view", risk: "low", description: "See stock levels, products, and categories.", consequence: "Read-only warehouse data.", suggestedRoles: ["Cashier", "Manager", "Super Admin"], coverageCritical: false },
@@ -128,6 +131,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
 
   // ── Users ──
   { key: "users.viewStaff", label: "View staff directory", module: "users", action: "viewStaff", risk: "low", description: "See the staff list with names and roles.", consequence: "Organizational visibility.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
+  { key: "users.editStaff", label: "Edit staff accounts", module: "users", action: "editStaff", risk: "critical", description: "Edit staff account details and administration fields.", consequence: "Can change staff access and account state.", suggestedRoles: ["Super Admin"], coverageCritical: true },
   { key: "users.inviteStaff", label: "Create setup links", module: "users", action: "inviteStaff", risk: "critical", description: "Generate one-time setup links for new staff.", consequence: "Creates new accounts with permissions.", suggestedRoles: ["Super Admin"], coverageCritical: true },
   { key: "users.editPermissions", label: "Edit staff permissions", module: "users", action: "editPermissions", risk: "critical", description: "Change another user's role or permission set.", consequence: "Privilege escalation vector.", suggestedRoles: ["Super Admin"], coverageCritical: false },
   { key: "users.deactivate", label: "Deactivate staff account", module: "users", action: "deactivate", risk: "critical", description: "Disable a staff member's account.", consequence: "Locks user out; may block coverage.", suggestedRoles: ["Super Admin"], coverageCritical: false },
@@ -164,10 +168,10 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
 export const LEGACY_TO_GRANULAR: Record<string, string[]> = {
   dashboard: ["dashboard.view"],
   serviceRequests: ["serviceRequests.view", "serviceRequests.reply", "serviceRequests.logCall", "serviceRequests.quote", "serviceRequests.transitionStage", "serviceRequests.convertToJob", "serviceRequests.edit"],
-  jobs: ["jobs.view", "jobs.viewAll", "jobs.create", "jobs.assignTechnician", "jobs.reportOutcome", "jobs.reviewOutcome", "jobs.advanceStatus", "jobs.edit", "jobs.manageWorkHolds"],
+  jobs: ["jobs.view", "jobs.viewAll", "jobs.create", "jobs.assignTechnician", "jobs.reportOutcome", "jobs.reviewOutcome", "jobs.advanceStatus", "jobs.edit", "jobs.manageWorkHolds", "jobs.delete"],
   pickup: ["pickup.viewAssigned"],
   pos: ["pos.view", "pos.processPayment", "pos.openRegister"],
-  finance: ["finance.view", "finance.createRecord", "finance.editRecord"],
+  finance: ["finance.view", "finance.createRecord", "finance.editRecord", "finance.deleteRecord"],
   // Legacy corporate:true = full B2B + ops keys (backward compatible). One granular key must NOT satisfy every corporate route — routes use narrow guards.
   corporate: [
     "corporate.workspace",
@@ -189,8 +193,8 @@ export const LEGACY_TO_GRANULAR: Record<string, string[]> = {
     "challans.edit",
     "challans.assignDriver",
   ],
-  inventory: ["inventory.view", "inventory.addItem", "inventory.editItem", "inventory.adjustStock"],
-  users: ["users.viewStaff"],
+  inventory: ["inventory.view", "inventory.addItem", "inventory.editItem", "inventory.adjustStock", "inventory.deleteItem"],
+  users: ["users.viewStaff", "users.inviteStaff", "customers.edit"],
   settings: ["settings.manage"],
   attendance: ["attendance.view", "attendance.checkIn", "attendance.manageCorrections"],
   reports: ["reports.view", "reports.export"],
@@ -198,7 +202,7 @@ export const LEGACY_TO_GRANULAR: Record<string, string[]> = {
   warrantyClaims: ["warranty.view", "warranty.create"],
   disputes: ["disputes.view", "disputes.create", "disputes.resolve"],
   refunds: ["pos.refund"],
-  inquiries: ["serviceRequests.view"],
+  inquiries: ["serviceRequests.view", "serviceRequests.transitionStage"],
   notifications: ["notifications.view"],
   systemHealth: ["settings.manage"],
   auditLogs: ["settings.manage"],

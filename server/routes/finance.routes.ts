@@ -108,7 +108,7 @@ router.get('/api/petty-cash/summary', requireAdminAuth, requirePermission('finan
  * POST /api/petty-cash - Create petty cash record
  * Requires: Admin auth + finance permission
  */
-router.post('/api/petty-cash', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+router.post('/api/petty-cash', requireAdminAuth, requireGranularPermission('finance.createRecord'), async (req: Request, res: Response) => {
     try {
         const validated = insertPettyCashRecordSchema.parse(req.body);
         const record = await financeRepo.createPettyCashRecord(validated);
@@ -131,7 +131,7 @@ router.post('/api/petty-cash', requireAdminAuth, requirePermission('finance'), a
  * DELETE /api/petty-cash/:id - Delete petty cash record
  * Requires: Admin auth + finance permission
  */
-router.delete('/api/petty-cash/:id', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+router.delete('/api/petty-cash/:id', requireAdminAuth, requireGranularPermission('finance.deleteRecord'), async (req: Request, res: Response) => {
     try {
         const success = await financeRepo.deletePettyCashRecord(req.params.id);
         if (!success) {
@@ -187,7 +187,7 @@ router.get('/api/due-records/summary', requirePermission('finance'), async (req:
  * POST /api/due-records - Create a due record (manual entry)
  * Requires: Admin auth + finance permission
  */
-router.post('/api/due-records', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+router.post('/api/due-records', requireAdminAuth, requireGranularPermission('finance.createRecord'), async (req: Request, res: Response) => {
     try {
         const { customer, amount, invoice, dueDate, status } = req.body;
         if (!customer || !invoice || amount == null || !dueDate) {
@@ -456,7 +456,7 @@ const LEGACY_SOURCES = ['opening_balance', 'legacy_import'] as const;
 /**
  * POST /api/admin/finance/legacy-dues - Create a single legacy due entry
  */
-router.post('/api/admin/finance/legacy-dues', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+router.post('/api/admin/finance/legacy-dues', requireAdminAuth, requireGranularPermission('finance.createRecord'), async (req: Request, res: Response) => {
     try {
         const { customerName, customerPhone, amount, deviceName, dueDate, note, oldReference, source } = req.body;
 
@@ -500,7 +500,7 @@ router.post('/api/admin/finance/legacy-dues', requireAdminAuth, requirePermissio
 /**
  * POST /api/admin/finance/legacy-dues/preview - Preview bulk rows before import
  */
-router.post('/api/admin/finance/legacy-dues/preview', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+router.post('/api/admin/finance/legacy-dues/preview', requireAdminAuth, requireGranularPermission('finance.view'), async (req: Request, res: Response) => {
     try {
         const { rows } = req.body;
         if (!Array.isArray(rows) || rows.length === 0) {
@@ -538,7 +538,7 @@ router.post('/api/admin/finance/legacy-dues/preview', requireAdminAuth, requireP
 /**
  * POST /api/admin/finance/legacy-dues/bulk - Bulk import legacy dues
  */
-router.post('/api/admin/finance/legacy-dues/bulk', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+router.post('/api/admin/finance/legacy-dues/bulk', requireAdminAuth, requireGranularPermission('finance.createRecord'), async (req: Request, res: Response) => {
     try {
         const { rows } = req.body;
         if (!Array.isArray(rows) || rows.length === 0) {

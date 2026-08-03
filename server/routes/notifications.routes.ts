@@ -8,7 +8,7 @@ import { Router, Request, Response } from 'express';
 import { storage } from '../storage.js';
 import { settingsRepo, notificationRepo, systemRepo, userRepo, jobRepo, serviceRequestRepo, warrantyRepo, hrRepo } from '../repositories/index.js';
 import { insertInquirySchema } from '../../shared/schema.js';
-import { requireCustomerAuth, requireAdminAuth, requirePermission } from './middleware/auth.js';
+import { requireCustomerAuth, requireAdminAuth, requirePermission, requireGranularPermission } from './middleware/auth.js';
 import { serviceRequestLimiter } from './middleware/rate-limit.js';
 
 const router = Router();
@@ -77,7 +77,7 @@ router.get('/api/inquiries', requireAdminAuth, requirePermission('inquiries'), a
 /**
  * PATCH /api/inquiries/:id/status - Update inquiry status
  */
-router.patch('/api/inquiries/:id/status', requireAdminAuth, requirePermission('inquiries'), async (req: Request, res: Response) => {
+router.patch('/api/inquiries/:id/status', requireAdminAuth, requireGranularPermission('serviceRequests.transitionStage'), async (req: Request, res: Response) => {
     try {
         const { status, reply } = req.body;
         if (status && !['Pending', 'Read', 'Replied'].includes(status)) {

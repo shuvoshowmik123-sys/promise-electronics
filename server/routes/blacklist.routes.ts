@@ -10,7 +10,7 @@ import { Router, Request, Response } from 'express';
 import { db } from '../db.js';
 import { paymentBlacklist, manualPayments } from '../../shared/schema.js';
 import { and, eq, gte, desc, sql, count } from 'drizzle-orm';
-import { requireAdminAuth, requirePermission } from './middleware/auth.js';
+import { requireAdminAuth, requirePermission, requireGranularPermission } from './middleware/auth.js';
 import { smsService } from '../services/sms.service.js';
 import { userRepo } from '../repositories/index.js';
 import { nanoid } from 'nanoid';
@@ -83,7 +83,7 @@ router.get('/api/admin/payment-blacklist/review', requireAdminAuth, requirePermi
 });
 
 // POST /api/admin/payment-blacklist — manually block a number
-router.post('/api/admin/payment-blacklist', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+router.post('/api/admin/payment-blacklist', requireAdminAuth, requireGranularPermission('finance.createRecord'), async (req: Request, res: Response) => {
     try {
         const { phone, reason, serviceRequestId } = req.body || {};
         if (!phone || !smsService.isValidBangladeshPhone(phone)) {
@@ -110,7 +110,7 @@ router.post('/api/admin/payment-blacklist', requireAdminAuth, requirePermission(
 });
 
 // DELETE /api/admin/payment-blacklist/:id — whitelist (remove), "as if nothing happened"
-router.delete('/api/admin/payment-blacklist/:id', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+router.delete('/api/admin/payment-blacklist/:id', requireAdminAuth, requireGranularPermission('finance.deleteRecord'), async (req: Request, res: Response) => {
     try {
         await db.delete(paymentBlacklist).where(eq(paymentBlacklist.id, req.params.id));
         res.json({ success: true });

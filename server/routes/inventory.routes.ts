@@ -299,7 +299,7 @@ router.patch('/api/inventory/:id/stock', requireAdminAuth, requireGranularPermis
 /**
  * DELETE /api/inventory/:id - Delete inventory item
  */
-router.delete('/api/inventory/:id', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+router.delete('/api/inventory/:id', requireAdminAuth, requireGranularPermission('inventory.deleteItem'), async (req: Request, res: Response) => {
     try {
         const existingItem = await inventoryRepo.getInventoryItem(req.params.id);
         if (!existingItem) {
@@ -609,7 +609,7 @@ router.patch('/api/products/:id', requireAdminAuth, requireGranularPermission('i
 /**
  * DELETE /api/products/:id - Delete product
  */
-router.delete('/api/products/:id', requireAdminAuth, requirePermission('inventory'), async (req: Request, res: Response) => {
+router.delete('/api/products/:id', requireAdminAuth, requireGranularPermission('inventory.deleteItem'), async (req: Request, res: Response) => {
     try {
         const success = await storage.deleteProduct(req.params.id);
         if (!success) {

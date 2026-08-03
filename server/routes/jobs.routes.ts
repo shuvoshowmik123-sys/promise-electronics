@@ -1203,7 +1203,7 @@ router.post('/api/job-tickets/bulk-update', requireAdminAuth, requireGranularPer
 /**
  * POST /api/job-tickets/:id/request-rollback
  */
-router.post('/api/job-tickets/:id/request-rollback', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.post('/api/job-tickets/:id/request-rollback', requireAdminAuth, requireGranularPermission('jobs.rollback'), async (req: Request, res: Response) => {
     try {
         const jobId = req.params.id;
         const job = await jobRepo.getJobTicket(jobId);
@@ -1559,7 +1559,7 @@ router.patch('/api/job-tickets/:id', requireAdminAuth, requireGranularPermission
 /**
  * DELETE /api/job-tickets/:id - Delete job ticket
  */
-router.delete('/api/job-tickets/:id', requireAdminAuth, requirePermission('jobs'), async (req: Request, res: Response) => {
+router.delete('/api/job-tickets/:id', requireAdminAuth, requireGranularPermission('jobs.delete'), async (req: Request, res: Response) => {
     try {
         const jobId = req.params.id;
         const existing = await jobRepo.getJobTicket(jobId);
