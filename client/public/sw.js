@@ -1,4 +1,4 @@
-const CACHE_NAME = 'promise-electronics-v5';
+const CACHE_NAME = 'promise-electronics-v6';
 const OFFLINE_URL = '/offline.html';
 
 const urlsToCache = [
@@ -81,6 +81,72 @@ self.addEventListener('activate', (event) => {
     })
   );
   self.clients.claim();
+});
+
+/* ─── Push notifications ──────────────────────────────────────────────────
+ *
+ * These two listeners are what make notifications work while the app is
+ * CLOSED. Without them the browser receives the push and discards it, which is
+ * why notifications previously only appeared while a tab was open (that path
+ * is SSE, and SSE dies with the page).
+ *
+ * The server sends via FCM (server/pushService.ts). Between events nothing runs
+ * here: the browser's push service does the waiting, not our server, so this
+ * costs nothing at idle.
+ *
+ * FCM delivers either `notification` (display payload) or `data` (custom
+ * payload) — handle both, since the shape depends on how the message was sent.
+ */
+
+function readPushPayload(event) {
+  if (!event.data) return {};
+  try {
+    const json = event.data.json();
+    return { ...(json.notification ?? {}), ...(json.data ?? {}), ...json };
+  } catch {
+    // Non-JSON payload — treat the raw text as the body.
+    try { return { body: event.data.text() }; } catch { return {}; }
+  }
+}
+
+self.addEventListener('push', (event) => {
+  const p = readPushPayload(event);
+
+  const title = p.title || 'Promise Electronics';
+  const options = {
+    body: p.body || '',
+    icon: p.icon || '/logo.png',
+    badge: '/favicon.png',
+    // Same tag replaces an existing notification instead of stacking duplicates.
+    tag: p.tag || p.collapseKey || undefined,
+    renotify: Boolean(p.tag),
+    requireInteraction: p.requireInteraction === true || p.requireInteraction === 'true',
+    data: { url: p.route || p.url || p.click_action || '/' },
+  };
+
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+
+  const target = event.notification.data?.url || '/';
+  const targetUrl = new URL(target, self.location.origin).href;
+
+  // Prefer focusing an already-open tab over opening a duplicate window.
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url === targetUrl && 'focus' in client) return client.focus();
+      }
+      for (const client of clientList) {
+        if ('navigate' in client && 'focus' in client) {
+          return client.navigate(targetUrl).then((c) => c && c.focus());
+        }
+      }
+      return self.clients.openWindow ? self.clients.openWindow(targetUrl) : undefined;
+    })
+  );
 });
 
 self.addEventListener('fetch', (event) => {
