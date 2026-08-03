@@ -76,6 +76,11 @@ export function PickupLocationPicker({
   const [isLocating, setIsLocating] = useState(false);
   const [mapReady, setMapReady] = useState(false);
   const [source, setSource] = useState<"map_pin" | "gps">("map_pin");
+  const [gpsError, setGpsError] = useState<"denied" | "error" | null>(null);
+
+  useEffect(() => {
+    if (!open) setGpsError(null);
+  }, [open]);
 
   const runReverseGeocode = useCallback(async (lng: number, lat: number) => {
     const seq = ++reverseSeqRef.current;
@@ -162,26 +167,56 @@ export function PickupLocationPicker({
 
   const useMyLocation = useCallback(() => {
     if (!navigator.geolocation) {
+      setGpsError("denied");
       toast.error(t("pickupPin.gpsUnavailable"));
       return;
     }
     setIsLocating(true);
+    setGpsError(null);
     navigator.geolocation.getCurrentPosition(
       (position) => {
         setIsLocating(false);
+        setGpsError(null);
         const { latitude, longitude } = position.coords;
         setSource("gps");
         mapRef.current?.flyTo({ center: [longitude, latitude], zoom: 17 });
         // flyTo triggers moveend, which resets source to map_pin; set it after.
         setTimeout(() => setSource("gps"), 0);
       },
-      () => {
+      (err) => {
         setIsLocating(false);
+        setGpsError(err.code === 1 ? "denied" : "error");
         toast.error(t("pickupPin.gpsDenied"));
       },
       { enableHighAccuracy: true, timeout: 10_000 },
     );
   }, [t]);
+
+  // Auto-retry when the browser reports geolocation permission was re-granted.
+  useEffect(() => {
+    if (!open) return;
+    if (typeof navigator === "undefined" || !navigator.permissions?.query) return;
+    let cancelled = false;
+    let status: PermissionStatus | null = null;
+    const onChange = () => {
+      if (cancelled) return;
+      if (status?.state === "granted") useMyLocation();
+    };
+    navigator.permissions
+      .query({ name: "geolocation" as PermissionName })
+      .then((result) => {
+        if (cancelled) return;
+        status = result;
+        status.addEventListener("change", onChange);
+      })
+      .catch(() => {
+        /* permissions.query unsupported */
+      });
+    return () => {
+      cancelled = true;
+      status?.removeEventListener("change", onChange);
+    };
+  }, [open, useMyLocation]);
 
   if (!open) return null;
 
@@ -218,16 +253,39 @@ export function PickupLocationPicker({
           </div>
         )}
 
-        <Button
-          type="button"
-          variant="secondary"
-          onClick={useMyLocation}
-          disabled={isLocating}
-          className="absolute left-3 top-3 gap-2 rounded-full bg-white shadow-md"
-        >
-          {isLocating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
-          {t("pickupPin.useMyLocation")}
-        </Button>
+        <div className="absolute left-3 top-3 z-10 flex max-w-[min(100%-1.5rem,16rem)] flex-col gap-2">
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={useMyLocation}
+            disabled={isLocating}
+            className="gap-2 rounded-full bg-white shadow-md"
+            data-testid="button-pickup-use-my-location"
+          >
+            {isLocating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+            {t("pickupPin.useMyLocation")}
+          </Button>
+          {gpsError && (
+            <div className="rounded-2xl border border-rose-100 bg-white/95 px-3 py-2 text-xs text-rose-800 shadow-md">
+              <p className="font-semibold">
+                {gpsError === "denied"
+                  ? t("pickupPin.gpsDenied")
+                  : "GPS signal weak. Move outdoors or near a window."}
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="mt-2 h-8 rounded-lg"
+                onClick={useMyLocation}
+                disabled={isLocating}
+                data-testid="button-pickup-gps-try-again"
+              >
+                Try again
+              </Button>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="space-y-3 border-t border-slate-200 p-4">

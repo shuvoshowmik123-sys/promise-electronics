@@ -13,8 +13,8 @@
 | Severity | Open | IDs |
 | --- | --- | --- |
 | **HIGH** | 6 | DR-15, DR-01, DR-02, DR-03, DR-04, DR-05 |
-| **MEDIUM** | 5 | DR-13, DR-14, DR-06, DR-07, DR-08 |
-| **LOW** | 2 | DR-09, DR-10 |
+| **MEDIUM** | 6 | DR-17, DR-13, DR-14, DR-06, DR-07, DR-08 |
+| **LOW** | 3 | DR-18, DR-09, DR-10 |
 | **RESOLVED** | 1 | DR-11 |
 
 Total open: **12**
@@ -24,6 +24,63 @@ Total open: **12**
 ---
 
 ## HIGH
+
+### DR-16 — Google sign-up creates a half-account the user can get trapped in
+**Status:** CONFIRMED (Inspector, 2026-08-03) · **Severity:** HIGH
+**Component:** `client/src/components/auth/ProfileCompletionModal.tsx:74` · `client/src/contexts/CustomerAuthContext.tsx:166` · `server/customerGoogleAuth.ts`
+
+**Symptom (operator-reported, reproduced in source).** A new customer clicks *Continue with Google*, the account is created, then a form asks for phone and address. If they close it, lose connection, or the submit fails, the flow breaks and retrying keeps failing.
+
+**Root cause — three things combine:**
+
+1. `upsertUserFromGoogle()` creates the account **before** the phone is collected. The user now exists with `phone = null`.
+2. `needsProfileCompletion = !!customer && !customer.phone` — so the modal reappears on every visit until a phone is saved.
+3. `<Dialog open={open} onOpenChange={() => {}}>` — **the modal cannot be dismissed.** `onOpenChange` is a no-op, so Escape, the overlay, and the close button all do nothing.
+
+The user is authenticated, cannot use the site, and cannot close the blocker. If the submit fails — offline, duplicate phone, server error — there is no exit. `PublicLayout.tsx:88` has a `profileSkipped` escape hatch, but nothing in the modal appears to set it.
+
+**Why it is HIGH.** It is the first experience a new customer has, and the failure state is a locked account with no self-service recovery.
+
+**Fix direction (not applied).** Allow dismissal and set `profileSkipped`; make the account usable in a limited state until the phone is supplied; or collect the phone *before* creating the account. Any of the three breaks the trap.
+
+---
+
+### DR-17 — Location permission is checked once and never re-checked
+**Status:** CONFIRMED (Inspector, 2026-08-03) · **Severity:** MEDIUM
+**Component:** `client/src/pages/admin/bento/tabs/ShiftTab.tsx:354-366`, message at `:66`
+
+**Symptom (operator-reported, reproduced in source).** Staff open attendance with location off. The check-in button greys out. They enable location — **the button stays grey**. Only a full page reload recovers.
+
+**Root cause.**
+
+```ts
+useEffect(() => {
+    ...
+    navigator.geolocation.getCurrentPosition(..., (err) =>
+        setGpsState(err.code === 1 ? "denied" : "error"), ...);
+}, [isSuperAdmin, isLoading, isCheckedIn]);
+```
+
+The GPS read runs **once on mount**. Its dependency array contains no permission signal, so re-granting permission never re-runs it. `gpsState` stays `"denied"` for the lifetime of the component.
+
+The UI even instructs the user to work around it: *"Enable it in your browser settings **and reload the page**."*
+
+**Why it matters.** Staff cannot check in until they discover the reload trick, and attendance drives payroll. `navigator.permissions.query({name:'geolocation'})` exposes an `onchange` event that would make this automatic.
+
+**Fix direction (not applied).** Re-attempt the GPS read when the disabled button is clicked, add an explicit *Try again* control, and subscribe to permission `onchange`. `PickupLocationPicker.tsx` has the same one-shot pattern with **zero** retry affordance — check it too.
+
+---
+
+### DR-18 — Google consent screen shows an internal project name to customers
+**Status:** CONFIRMED · **Severity:** LOW (cosmetic, but customer-facing)
+
+**Symptom.** The Google sign-in popup reads *"Continue to Promise Electronics admin app"*. Customers are shown an internal, admin-oriented name. The underlying Firebase project is also misspelled: **`promsie-electronics-admin`**.
+
+**Root cause.** The OAuth consent screen inherits the Firebase project's public-facing name. It was never set for a customer audience.
+
+**Fix direction (not applied).** Change the public-facing name to *Promise Electronics* in Firebase project settings. The project **ID** cannot be renamed, but customers never see the ID — only the display name. No re-verification is required: the app requests only `profile` and `email`, which are non-sensitive scopes.
+
+---
 
 ### DR-15 — Mutation routes with no permission gate at all
 **Status:** OPEN — NEEDS TRIAGE

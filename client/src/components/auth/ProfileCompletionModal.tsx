@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { createProfileDismissHandler } from "@/lib/profile-completion-dismiss";
 import { toast } from "sonner";
 import { Loader2, Phone, MapPin, User, Sparkles, CheckCircle2 } from "lucide-react";
 
@@ -70,8 +71,10 @@ export function ProfileCompletionModal({
     }
   };
 
+  const handleOpenChange = createProfileDismissHandler(onSkip);
+
   return (
-    <Dialog open={open} onOpenChange={() => {}}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-[450px]" data-testid="modal-profile-completion">
         <DialogHeader>
           <div className="flex items-center gap-2 mb-1">
@@ -156,18 +159,19 @@ export function ProfileCompletionModal({
               "Save & Continue"
             )}
           </Button>
-          {onSkip && (
-            <Button 
-              type="button" 
-              variant="ghost" 
-              className="w-full text-muted-foreground" 
-              onClick={onSkip}
-              disabled={isLoading}
-              data-testid="button-skip-profile"
-            >
-              Skip for now
-            </Button>
-          )}
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full text-muted-foreground"
+            onClick={() => onSkip?.()}
+            disabled={isLoading}
+            data-testid="button-skip-profile"
+          >
+            Skip for now — browse first
+          </Button>
+          <p className="text-center text-[11px] text-muted-foreground">
+            You can finish this later. A phone number is still required to place an order or service request.
+          </p>
         </form>
       </DialogContent>
     </Dialog>

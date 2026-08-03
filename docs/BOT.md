@@ -9568,3 +9568,157 @@ All **20/20** approved routes now use their specific granular authority. Added `
 Proof: focused DR-12 tests **27/27**; full Vitest **30 files, 406/406 passed, 0 failed, 0 skipped**. TypeScript, Vite, server build, and `git diff --check` all PASS. The finance legacy-dues preview was inspected and contains no write call, so it remains on `finance.view`.
 
 D4 Drawer POS/finance bridge, DR-14 empty legacy mappings, and DR-15 ungated mutation routes remain explicitly out of scope. No database, migration, commit, push, or deployment occurred.
+
+---
+
+## QA-ATTENDANCE-LOCATION-BLANK-01A
+
+**Status: READY.** Authored 2026-08-03 Asia/Dhaka. Reported symptom: the admin attendance panel shows a **blank location** instead of the staff member's location.
+
+### Inspector groundwork — do not re-derive, verify
+
+**The rendering path:**
+`AttendanceTab.tsx` → `ViewLocationButton` → `AttendanceLocationViewer` → `adminApi` `GET /admin/attendance/location-context/:recordId` → `buildAttendanceLocationContext()` in `server/services/attendance-location.service.ts:555`.
+
+**Live data in the development database (read-only query, 2026-08-03):**
+
+| Measure | Count |
+| --- | ---: |
+| attendance records total | 15 |
+| with `check_in_lat` populated | **11** |
+| with `work_location_id` | 4 |
+| with reference snapshot (`check_in_reference_lat`) | 5 |
+| `work_locations` configured | **1** |
+
+**Leading hypothesis.** Coordinates exist on 11 records, but only 5 carry a reference snapshot and only 4 a `work_location_id`. `buildAttendanceLocationContext()` derives its reference block from those snapshots (`hasInSnapshot` / `hasOutSnapshot`). A record with real coordinates but no snapshot and no work location may therefore produce a context the viewer renders as blank — **the coordinates are present but nothing displays them.**
+
+This is a hypothesis. **Prove or disprove it with evidence; do not assume it.**
+
+### The one question this phase must answer
+
+For a record that **has `check_in_lat` in the database**:
+
+1. Does the API return those coordinates? (L2)
+2. Does the UI render them? (L1)
+
+That distinction is the whole phase. If the API returns data and the UI is blank, it is a **rendering** defect. If the API returns empty, it is a **data or service** defect. Report which, with evidence.
+
+### Required cases
+
+Use the Appendix A format. Appendix B applies (L5 server log mandatory).
+
+| # | Case | Expected |
+| --- | --- | --- |
+| 1 | Open location viewer for a record **with** `check_in_lat` | Location displayed, not blank |
+| 2 | Same record — inspect the API response body | Coordinates present in JSON |
+| 3 | Open viewer for a record **without** any coordinates | A clear empty-state message, **not** a silent blank |
+| 4 | Record with coords but **no** `work_location_id` | Determine whether this is the blank case |
+| 5 | Record with coords but **no** reference snapshot | Determine whether this is the blank case |
+| 6 | Check-out location where present | Rendered alongside check-in |
+| 7 | Viewer at 390×844 | Not clipped, not off-screen |
+
+**Permission dimension** — the endpoint allows three access paths (`attendance.view`, `reports.view`, or `attendance.checkIn` for one's own record only):
+
+| # | Case | Expected |
+| --- | --- | --- |
+| 8 | Super Admin opens any record | 200 + data |
+| 9 | Staff with `attendance.checkIn` opens **own** record | 200 + data |
+| 10 | Same staff opens **another** user's record | **403** |
+| 11 | Staff with none of the three permissions | 403 |
+
+Case 10 matters: if it returns 200, that is a privacy leak — one employee reading another's GPS.
+
+### Diagnosis requirements
+
+For every blank observed, record **all** of:
+- The `recordId`
+- Which columns that row actually has (`check_in_lat`, `work_location_id`, `check_in_reference_lat`) — query read-only
+- The full API response body
+- Any browser console error (L4) and server log line (L5)
+
+A report saying "it was blank" without those five items is incomplete.
+
+### Privacy constraint
+
+Operating-rules §8.1 forbids **raw GPS coordinates in normal UI** and §6 forbids logging them. Consider that the blank may be a **deliberate suppression** rather than a bug. If so, the correct fix is to display a resolved place name or geofence status — not to start printing raw latitude/longitude.
+
+**Do not paste real coordinates into the report.** Round to 2 decimal places or state "present/absent". Do not put coordinates in screenshots.
+
+### Out of scope
+
+No repairs — audit only. Do not modify product source, the permission system (DR-12 just shipped), or any database row. Known defects DR-01..DR-15 are logged; do not re-report them.
+
+### Evidence
+
+```
+mobile-qa/qa-attendance-location-blank-01a/<YYYYMMDD-HHMM>/
+  REPORT.md · results.json · case-plan-expected-first.md · server.log · screens/
+```
+
+Lock: `mobile-qa/.run-locks/QA-ATTENDANCE-LOCATION-BLANK-01A.lock` — acquire first, never delete.
+
+### Report must state
+
+A single clear verdict: **rendering defect**, **data defect**, **service defect**, or **working as designed under the GPS privacy rule** — with the evidence that decides it.
+
+---
+
+## CUSTOMER-AUTH-MODAL-VISUAL-ALIGNMENT-01A
+
+**Status: READY.** Authored 2026-08-03 Asia/Dhaka. This is a narrowly scoped customer-portal visual alignment phase for the selected sign-in modal, not a global dialog redesign.
+
+### Problem confirmed
+
+The selected DOM belongs to `client/src/components/auth/CustomerAuthModal.tsx` and is rendered through the shared `DialogContent` primitive. The modal shell already uses the current soft customer shape (`sm:rounded-[2rem]`), but its interactive controls inherit the old sharp `rounded-md` styling from the shared Button, Input, and Tabs primitives. The mismatch is visible on:
+
+- `Continue with Google`
+- `Login` and `Create Account`
+- `Login` and `Sign Up` tab triggers
+- phone, password, and registration input fields
+- the close icon hit target
+
+### Goal
+
+Make this one customer-auth modal feel consistent with the current customer portal: light, spacious, warm, emerald-led, and touch-friendly. Preserve all authentication behavior exactly.
+
+### Approved visual specification
+
+1. **Scope only the customer auth modal.** Apply its classes in `CustomerAuthModal.tsx`; do **not** change `client/src/components/ui/button.tsx`, `input.tsx`, `tabs.tsx`, or `dialog.tsx` globally.
+2. Keep the existing white modal surface, 2rem shell radius, title, description, Google icon, form order, divider, labels, and tab behavior.
+3. Make the Google action and the active form submit action full-width 48px touch targets with `rounded-full`.
+   - Google: white surface, restrained border, normal Google logo, no emerald recoloring of the logo.
+   - Login/Create Account: existing primary emerald color and contrast, no gradient.
+4. Make each customer-auth input `rounded-2xl`, keep its current icon and autocomplete/input-mode behavior, and retain a clear focus ring.
+5. Make the tab list a softly rounded segmented rail; make its active item pill-shaped. Preserve Radix tab semantics, keyboard navigation, and existing `data-testid` values.
+6. Make the close control a circular 44px touch target with a familiar X icon. It must not overlap the title or form at narrow widths.
+7. Preserve loading, disabled, error-toast, Google sign-in, login, registration, password-manager autocomplete, submitted payloads, and all public API behavior exactly. No copy or translation changes unless necessary for an accessibility label.
+8. Do not introduce a new palette, gradients, decorative graphics, backend changes, migrations, environment changes, or shared primitive changes.
+
+### Required implementation checks
+
+- Inspect the changed modal at `390x844`, `430x932`, and `1440x900`.
+- Confirm no horizontal overflow, no control clipping, and no overlap with the close control.
+- At mobile widths, open the Login and Sign Up tabs; focus the phone and password fields with the keyboard open; ensure the focused field remains reachable.
+- Confirm all existing `data-testid` values remain unchanged and that Login, Sign Up, Google, loading/disabled, and close interactions still work.
+- Run `npx tsc --noEmit --pretty false`, `npx vite build --mode development`, `npm run build:server`, and `git diff --check`.
+- This is an implementation phase, not an automatic browser-QA phase. Provide a manual test guide and mark mobile/desktop QA `NOT VERIFIED` unless the Inspector explicitly orders an automated QA close.
+
+### Out of scope
+
+- Global shadcn primitive redesign
+- The standalone `/login` page
+- Admin, corporate, or repair-wizard dialogs
+- Authentication, Firebase, API, schema, database, migration, staging, commit, push, or deployment work
+
+### Stop rule
+
+If a required visual change can only be achieved by changing a shared primitive or changes authentication behavior, stop and report the exact consumer/behavior conflict. Do not broaden scope.
+
+### Evidence
+
+```
+mobile-qa/customer-auth-modal-visual-alignment-01a/<YYYYMMDD-HHMM>/
+  REPORT.md · results.json · gates.json · manual-test-guide.md
+```
+
+Lock: `mobile-qa/.run-locks/CUSTOMER-AUTH-MODAL-VISUAL-ALIGNMENT-01A.lock` — acquire before work and retain after completion.

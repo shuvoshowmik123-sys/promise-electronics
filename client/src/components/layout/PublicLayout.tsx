@@ -24,6 +24,10 @@ import { MobileBottomNav } from "./MobileBottomNav";
 import { NetworkOfflineBanner } from "@/components/customer/NetworkOfflineBanner";
 import { ScrollProgressBar } from "@/components/customer/ScrollProgressBar";
 import { useScrollRestoration } from "@/hooks/useScrollRestoration";
+import {
+  clearLegacyProfileSkip,
+  shouldShowProfileCompletion,
+} from "@/lib/profile-completion-dismiss";
 
 /** Matches homepage section motion: soft y + opacity, easeOut ~0.55–0.65s */
 const HEADER_EASE = [0.22, 1, 0.36, 1] as const;
@@ -50,12 +54,16 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
   const [searchQuery, setSearchQuery] = useState("");
   const [isHeaderCompact, setIsHeaderCompact] = useState(false);
   const isHeaderCompactRef = useRef(false);
-  const [profileSkipped, setProfileSkipped] = useState(() => {
-    return sessionStorage.getItem('profileCompletionSkipped') === 'true';
-  });
+  // Session-only dismiss: memory flag so a full page reload re-prompts (R2/P5).
+  // Never persist a forever-skip in localStorage.
+  const [profileSkipped, setProfileSkipped] = useState(false);
   const { customer, isAuthenticated, logout, needsProfileCompletion, checkAuth } = useCustomerAuth();
   const { itemCount } = useCart();
   const prefersReducedMotion = useReducedMotion();
+
+  useEffect(() => {
+    clearLegacyProfileSkip();
+  }, []);
 
   useEffect(() => {
     let animationFrame = 0;
@@ -81,11 +89,14 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
 
 
   const handleSkipProfile = () => {
-    sessionStorage.setItem('profileCompletionSkipped', 'true');
     setProfileSkipped(true);
   };
 
-  const showProfileModal = isAuthenticated && needsProfileCompletion && !profileSkipped;
+  const showProfileModal = shouldShowProfileCompletion({
+    isAuthenticated,
+    needsProfileCompletion,
+    profileSkippedInMemory: profileSkipped,
+  });
 
   const handleSearch = () => {
     if (searchQuery.trim()) {

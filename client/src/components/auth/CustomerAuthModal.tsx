@@ -22,6 +22,19 @@ interface CustomerAuthModalProps {
   description?: string;
 }
 
+/** Local field chrome only — does not change shared Input primitive. */
+const fieldClass =
+  "h-12 rounded-2xl border-slate-200 bg-white pl-10 text-base md:text-base shadow-none focus-visible:ring-2 focus-visible:ring-emerald-500/30 focus-visible:border-emerald-400";
+
+const phoneFieldClass =
+  "h-12 rounded-2xl border-slate-200 bg-white pl-[5rem] text-base md:text-base shadow-none focus-visible:ring-2 focus-visible:ring-emerald-500/30 focus-visible:border-emerald-400";
+
+const primaryActionClass =
+  "h-12 w-full rounded-full text-base font-semibold shadow-sm";
+
+const googleActionClass =
+  "h-12 w-full rounded-full border border-slate-200 bg-white text-base font-semibold text-slate-800 shadow-sm hover:bg-slate-50 [&_svg]:!size-5";
+
 export function CustomerAuthModal({
   open,
   onOpenChange,
@@ -134,8 +147,15 @@ export function CustomerAuthModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[425px]" data-testid="modal-customer-auth">
-        <DialogHeader>
+      {/*
+        Close control lives in shared DialogContent. Style it only for this modal
+        via direct-child selectors — no global dialog.tsx change (BOT scope).
+      */}
+      <DialogContent
+        className="sm:max-w-[425px] gap-5 p-5 sm:p-6 [&>button]:right-3 [&>button]:top-3 [&>button]:flex [&>button]:h-11 [&>button]:w-11 [&>button]:items-center [&>button]:justify-center [&>button]:rounded-full [&>button]:border [&>button]:border-slate-200 [&>button]:bg-white [&>button]:opacity-100 [&>button]:shadow-sm [&>button]:ring-offset-background [&>button]:transition-colors [&>button]:hover:bg-slate-50 [&>button]:hover:opacity-100 [&>button]:focus:outline-none [&>button]:focus-visible:ring-2 [&>button]:focus-visible:ring-emerald-500/30 [&>button]:focus-visible:ring-offset-2 [&>button_svg]:h-4 [&>button_svg]:w-4"
+        data-testid="modal-customer-auth"
+      >
+        <DialogHeader className="space-y-1.5 pr-12 text-left">
           <DialogTitle className="text-xl font-heading">{title}</DialogTitle>
           <DialogDescription>
             {description}
@@ -146,12 +166,12 @@ export function CustomerAuthModal({
           <Button
             type="button"
             variant="outline"
-            className="w-full flex items-center justify-center gap-2"
+            className={googleActionClass}
             onClick={handleGoogleSignIn}
             disabled={isLoading}
             data-testid="button-google-signin"
           >
-            <svg className="h-5 w-5" viewBox="0 0 24 24">
+            <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
               <path
                 fill="#4285F4"
                 d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -174,7 +194,7 @@ export function CustomerAuthModal({
 
           <div className="relative">
             <div className="absolute inset-0 flex items-center">
-              <span className="w-full border-t" />
+              <span className="w-full border-t border-slate-200" />
             </div>
             <div className="relative flex justify-center text-xs uppercase">
               <span className="bg-background px-2 text-muted-foreground">
@@ -185,12 +205,24 @@ export function CustomerAuthModal({
         </div>
 
         <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "login" | "register")} className="w-full">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="login" data-testid="tab-login">Login</TabsTrigger>
-            <TabsTrigger value="register" data-testid="tab-register">Sign Up</TabsTrigger>
+          <TabsList className="grid h-11 w-full grid-cols-2 rounded-full bg-slate-100 p-1">
+            <TabsTrigger
+              value="login"
+              className="rounded-full text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow-sm"
+              data-testid="tab-login"
+            >
+              Login
+            </TabsTrigger>
+            <TabsTrigger
+              value="register"
+              className="rounded-full text-sm font-semibold data-[state=active]:bg-white data-[state=active]:text-emerald-700 data-[state=active]:shadow-sm"
+              data-testid="tab-register"
+            >
+              Sign Up
+            </TabsTrigger>
           </TabsList>
 
-          <TabsContent value="login" className="space-y-4 pt-4">
+          <TabsContent value="login" className="mt-0 space-y-4 pt-4">
             <form onSubmit={handleLogin} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="login-phone">Phone Number</Label>
@@ -208,7 +240,7 @@ export function CustomerAuthModal({
                     value={loginPhone}
                     onChange={(e) => setLoginPhone(e.target.value.replace(/\D/g, '').replace(/^0+/, ''))}
                     maxLength={10}
-                    className="pl-[5rem] h-11 text-base md:text-base py-2"
+                    className={phoneFieldClass}
                     autoComplete="username"
                     data-testid="input-login-phone"
                   />
@@ -225,14 +257,14 @@ export function CustomerAuthModal({
                     placeholder="Enter your password"
                     value={loginPassword}
                     onChange={(e) => setLoginPassword(e.target.value)}
-                    className="pl-10 h-11 text-base md:text-base py-2"
+                    className={fieldClass}
                     autoComplete="current-password"
                     data-testid="input-login-password"
                   />
                 </div>
               </div>
 
-              <Button type="submit" className="w-full h-11 text-base" disabled={isLoading} data-testid="button-login-submit">
+              <Button type="submit" className={primaryActionClass} disabled={isLoading} data-testid="button-login-submit">
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -245,7 +277,7 @@ export function CustomerAuthModal({
             </form>
           </TabsContent>
 
-          <TabsContent value="register" className="space-y-4 pt-4">
+          <TabsContent value="register" className="mt-0 space-y-4 pt-4">
             <form onSubmit={handleRegister} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="register-name">Full Name *</Label>
@@ -257,7 +289,7 @@ export function CustomerAuthModal({
                     placeholder="Your full name"
                     value={registerName}
                     onChange={(e) => setRegisterName(e.target.value)}
-                    className="pl-10 h-11 text-base md:text-base py-2"
+                    className={fieldClass}
                     autoComplete="name"
                     data-testid="input-register-name"
                   />
@@ -280,7 +312,7 @@ export function CustomerAuthModal({
                     value={registerPhone}
                     onChange={(e) => setRegisterPhone(e.target.value.replace(/\D/g, '').replace(/^0+/, ''))}
                     maxLength={10}
-                    className="pl-[5rem] h-11 text-base md:text-base py-2"
+                    className={phoneFieldClass}
                     autoComplete="username"
                     data-testid="input-register-phone"
                   />
@@ -297,7 +329,7 @@ export function CustomerAuthModal({
                     placeholder="your@email.com"
                     value={registerEmail}
                     onChange={(e) => setRegisterEmail(e.target.value)}
-                    className="pl-10 h-11 text-base md:text-base py-2"
+                    className={fieldClass}
                     autoComplete="email"
                     data-testid="input-register-email"
                   />
@@ -314,7 +346,7 @@ export function CustomerAuthModal({
                     placeholder="House, Road, Area, District"
                     value={registerAddress}
                     onChange={(e) => setRegisterAddress(e.target.value)}
-                    className="pl-10 h-11 text-base md:text-base py-2"
+                    className={fieldClass}
                     data-testid="input-register-address"
                   />
                 </div>
@@ -330,7 +362,7 @@ export function CustomerAuthModal({
                     placeholder="Min. 6 characters"
                     value={registerPassword}
                     onChange={(e) => setRegisterPassword(e.target.value)}
-                    className="pl-10 h-11 text-base md:text-base py-2"
+                    className={fieldClass}
                     autoComplete="new-password"
                     data-testid="input-register-password"
                   />
@@ -347,14 +379,14 @@ export function CustomerAuthModal({
                     placeholder="Confirm your password"
                     value={registerConfirmPassword}
                     onChange={(e) => setRegisterConfirmPassword(e.target.value)}
-                    className="pl-10 h-11 text-base md:text-base py-2"
+                    className={fieldClass}
                     autoComplete="new-password"
                     data-testid="input-register-confirm-password"
                   />
                 </div>
               </div>
 
-              <Button type="submit" className="w-full h-11 text-base" disabled={isLoading} data-testid="button-register-submit">
+              <Button type="submit" className={primaryActionClass} disabled={isLoading} data-testid="button-register-submit">
                 {isLoading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

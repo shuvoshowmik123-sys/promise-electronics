@@ -1,4 +1,4 @@
-import { useMemo, useEffect, useState } from "react";
+import { useMemo, useEffect, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { buildNavigateAdminTabPath } from "@/lib/admin-workspace-routing";
@@ -17,6 +17,7 @@ import {
     ViewLocationButton,
 } from "@/components/admin/attendance/AttendanceLocationViewer";
 import { presentGeofenceStatus } from "@/lib/attendance-location";
+import { gpsStateAfterRead } from "@/lib/gps-retry-state";
 
 type GpsState = "idle" | "locating" | "ready" | "denied" | "error";
 interface GpsLocation { lat: number; lng: number; accuracy: number }
@@ -50,7 +51,15 @@ function durationText(checkIn: string | Date | null | undefined, checkOut?: stri
     return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
-function GpsBar({ state, location }: { state: GpsState; location: GpsLocation | null }) {
+function GpsBar({
+    state,
+    location,
+    onRetry,
+}: {
+    state: GpsState;
+    location: GpsLocation | null;
+    onRetry?: () => void;
+}) {
     if (state === "idle" || state === "locating") {
         return (
             <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs text-slate-500">
@@ -61,17 +70,45 @@ function GpsBar({ state, location }: { state: GpsState; location: GpsLocation | 
     }
     if (state === "denied") {
         return (
-            <div className="flex items-start gap-2 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2.5 text-xs text-rose-700">
-                <ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                <span>Location permission is required to check in. Enable it in your browser settings and reload the page.</span>
+            <div className="flex flex-col gap-2 rounded-xl border border-rose-100 bg-rose-50 px-3 py-2.5 text-xs text-rose-700">
+                <div className="flex items-start gap-2">
+                    <ShieldAlert className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span>Location permission is required to check in. Enable it in your browser settings, then try again.</span>
+                </div>
+                {onRetry && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 self-start rounded-lg border-rose-200 bg-white text-rose-800"
+                        onClick={onRetry}
+                        data-testid="button-gps-try-again"
+                    >
+                        Try again
+                    </Button>
+                )}
             </div>
         );
     }
     if (state === "error") {
         return (
-            <div className="flex items-start gap-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-xs text-amber-700">
-                <WifiOff className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                GPS signal weak. Move outdoors or near a window and try again.
+            <div className="flex flex-col gap-2 rounded-xl border border-amber-100 bg-amber-50 px-3 py-2.5 text-xs text-amber-700">
+                <div className="flex items-start gap-2">
+                    <WifiOff className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                    <span>GPS signal weak. Move outdoors or near a window and try again.</span>
+                </div>
+                {onRetry && (
+                    <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 self-start rounded-lg border-amber-200 bg-white text-amber-900"
+                        onClick={onRetry}
+                        data-testid="button-gps-try-again"
+                    >
+                        Try again
+                    </Button>
+                )}
             </div>
         );
     }
@@ -351,19 +388,51 @@ export default function ShiftTab() {
         return () => window.clearInterval(timer);
     }, []);
 
-    useEffect(() => {
-        if (isSuperAdmin || isLoading || isCheckedIn) return;
+    const requestGps = useCallback(() => {
+        if (isSuperAdmin || isCheckedIn) return;
         setGpsState("locating");
-        if (!navigator.geolocation) { setGpsState("denied"); return; }
+        if (!navigator.geolocation) {
+            setGpsState("denied");
+            return;
+        }
         navigator.geolocation.getCurrentPosition(
             ({ coords }) => {
                 setLocation({ lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy });
-                setGpsState("ready");
+                setGpsState(gpsStateAfterRead({ ok: true }));
             },
-            (err) => setGpsState(err.code === 1 ? "denied" : "error"),
+            (err) => setGpsState(gpsStateAfterRead({ ok: false, code: err.code })),
             { timeout: 12000, maximumAge: 60000, enableHighAccuracy: true },
         );
-    }, [isSuperAdmin, isLoading, isCheckedIn]);
+    }, [isSuperAdmin, isCheckedIn]);
+
+    useEffect(() => {
+        if (isSuperAdmin || isLoading || isCheckedIn) return;
+        requestGps();
+    }, [isSuperAdmin, isLoading, isCheckedIn, requestGps]);
+
+    useEffect(() => {
+        if (isSuperAdmin || isCheckedIn) return;
+        if (typeof navigator === "undefined" || !navigator.permissions?.query) return;
+        let cancelled = false;
+        let status: PermissionStatus | null = null;
+        const onChange = () => {
+            if (!cancelled) requestGps();
+        };
+        navigator.permissions
+            .query({ name: "geolocation" as PermissionName })
+            .then((result) => {
+                if (cancelled) return;
+                status = result;
+                status.addEventListener("change", onChange);
+            })
+            .catch(() => {
+                /* permissions.query unsupported — ignore */
+            });
+        return () => {
+            cancelled = true;
+            status?.removeEventListener("change", onChange);
+        };
+    }, [isSuperAdmin, isCheckedIn, requestGps]);
 
     const checkIn = useMutation({
         mutationFn: async () => {
@@ -374,8 +443,8 @@ export default function ShiftTab() {
                 setGpsState("ready");
             } catch (err: any) {
                 const code = err?.code ?? 0;
-                if (code === 1) { setGpsState("denied"); throw new Error("Location permission is required to check in."); }
-                setGpsState("error");
+                setGpsState(gpsStateAfterRead({ ok: false, code }));
+                if (code === 1) throw new Error("Location permission is required to check in.");
                 throw new Error("Could not get GPS location. Move to a clearer area and try again.");
             }
             return attendanceApi.checkIn(undefined, loc.lat, loc.lng, loc.accuracy);
@@ -424,12 +493,20 @@ export default function ShiftTab() {
 
     const today = format(now, "EEEE, d MMM yyyy");
     const mutationError = (checkIn.error as any)?.message || (checkOut.error as any)?.message || null;
+    const gpsNeedsRetry = gpsState === "denied" || gpsState === "error";
     const checkInDisabled =
         !canCheckIn ||
         checkIn.isPending ||
-        gpsState === "denied" ||
         gpsState === "locating" ||
         gpsState === "idle";
+
+    const handleCheckInClick = () => {
+        if (gpsNeedsRetry) {
+            requestGps();
+            return;
+        }
+        checkIn.mutate();
+    };
 
     return (
         <div
@@ -493,20 +570,29 @@ export default function ShiftTab() {
                 )}
             </div>
 
-            {!isCheckedIn && !isLoading && <GpsBar state={gpsState} location={location} />}
+            {!isCheckedIn && !isLoading && (
+                <GpsBar state={gpsState} location={location} onRetry={requestGps} />
+            )}
 
             {!isLoading && (
                 <>
                     {!isCheckedIn && (
                         <Button
-                            className="w-full h-12 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white font-black text-sm"
-                            onClick={() => checkIn.mutate()}
+                            className={`w-full h-12 rounded-2xl text-white font-black text-sm ${
+                                gpsNeedsRetry
+                                    ? "bg-slate-500 hover:bg-slate-600"
+                                    : "bg-emerald-600 hover:bg-emerald-700"
+                            }`}
+                            onClick={handleCheckInClick}
                             disabled={checkInDisabled}
+                            data-testid="button-shift-check-in"
                         >
                             {checkIn.isPending ? (
                                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Checking In...</>
                             ) : gpsState === "locating" || gpsState === "idle" ? (
                                 <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Acquiring GPS...</>
+                            ) : gpsNeedsRetry ? (
+                                <><MapPin className="h-5 w-5 mr-2" />Retry location & check in</>
                             ) : (
                                 <><UserCheck className="h-5 w-5 mr-2" />Check In</>
                             )}

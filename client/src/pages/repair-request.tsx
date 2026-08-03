@@ -24,6 +24,10 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { getApiUrl } from "@/lib/config";
 import { getIKFolder } from "@/lib/imagekit-config";
 import { useIsMobile } from "@/hooks/use-mobile";
+import {
+  canUseSavedContactSummary,
+  validateRepairContactFields,
+} from "@/lib/repair-request-contact";
 const MobileServiceWizard = lazy(() => import("@/components/mobile/MobileServiceWizard").then(m => ({ default: m.MobileServiceWizard })));
 
 interface ImageKitMedia {
@@ -212,21 +216,17 @@ export default function RepairRequestPage() {
       const errors: Record<string, boolean> = {};
       const missingFields: string[] = [];
 
-      if (!isAuthenticated) {
-        if (!customerName.trim()) {
-          errors.customerName = true;
-          missingFields.push("Full Name");
-        }
-        if (!phone.trim()) {
-          errors.phone = true;
-          missingFields.push("Phone Number");
-        }
+      // Auth does not imply phone/name — validate usable contact always (R5 / H1).
+      const contact = validateRepairContactFields({ customerName, phone });
+      if (!contact.ok) {
+        Object.assign(errors, contact.errors);
+        missingFields.push(...contact.missing);
       }
 
       // Address required when pickup service is selected
       if (servicePreference === "home_pickup") {
-        const effectiveAddress = isAuthenticated && customer?.address ? customer.address : address;
-        if (!effectiveAddress?.trim()) {
+        const effectiveAddress = address.trim() || customer?.address?.trim() || "";
+        if (!effectiveAddress) {
           errors.address = true;
           missingFields.push("Pickup Address");
         }
@@ -411,6 +411,13 @@ export default function RepairRequestPage() {
   };
 
   const handleSubmit = async () => {
+    const contact = validateRepairContactFields({ customerName, phone });
+    if (!contact.ok) {
+      setValidationErrors((prev) => ({ ...prev, ...contact.errors }));
+      toast.error(`Please fill required fields: ${contact.missing.join(", ")}`);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -766,8 +773,8 @@ export default function RepairRequestPage() {
                     <p className="text-muted-foreground">Where should we provide service?</p>
                   </div>
 
-                  {isAuthenticated && customer ? (
-                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3">
+                  {isAuthenticated && customer && canUseSavedContactSummary(customer) ? (
+                    <div className="bg-green-50 border border-green-200 rounded-lg p-4 space-y-3" data-testid="contact-summary-saved">
                       <div className="flex items-center gap-2 text-green-700">
                         <CheckCircle className="w-5 h-5" />
                         <span className="font-medium">Using your account details</span>
@@ -790,26 +797,33 @@ export default function RepairRequestPage() {
                       )}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label>Full Name *</Label>
-                        <Input
-                          placeholder="Your Name"
-                          value={customerName}
-                          onChange={(e) => { setCustomerName(e.target.value); clearError('customerName'); }}
-                          className={validationErrors.customerName ? 'border-red-500' : ''}
-                          data-testid="input-name"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Phone Number *</Label>
-                        <PhoneInput
-                          placeholder="1XXXXXXXXX"
-                          value={phone}
-                          onChange={(e) => { setPhone(e.target.value); clearError('phone'); }}
-                          className={validationErrors.phone ? 'border-red-500' : ''}
-                          data-testid="input-phone"
-                        />
+                    <div className="space-y-4" data-testid="contact-fields-editable">
+                      {isAuthenticated && (
+                        <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                          Your account is missing a phone number. Enter it below so we can contact you about this request.
+                        </div>
+                      )}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                          <Label>Full Name *</Label>
+                          <Input
+                            placeholder="Your Name"
+                            value={customerName}
+                            onChange={(e) => { setCustomerName(e.target.value); clearError('customerName'); }}
+                            className={validationErrors.customerName ? 'border-red-500' : ''}
+                            data-testid="input-name"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Phone Number *</Label>
+                          <PhoneInput
+                            placeholder="1XXXXXXXXX"
+                            value={phone}
+                            onChange={(e) => { setPhone(e.target.value); clearError('phone'); }}
+                            className={validationErrors.phone ? 'border-red-500' : ''}
+                            data-testid="input-phone"
+                          />
+                        </div>
                       </div>
                     </div>
                   )}
