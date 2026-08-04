@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react";
 import { useLocation } from "wouter";
 import type { ServiceRequest } from "@shared/schema";
 import { buildNavigateAdminTabPath } from "@/lib/admin-workspace-routing";
+import { shouldAdoptRefreshedRequest } from "@/lib/service-request-drawer-sync";
 import {
     ADMIN_PIPELINE_FLOW, ADMIN_TERMINAL_STATES, ADMIN_STEP_CONFIG, ADMIN_OFFRAMP_CONFIG,
     ADMIN_ROLLBACK_RULES, PICKUP_STATUS_FLOW, SERVICE_CENTER_STATUS_FLOW,
@@ -384,18 +385,19 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
      * than object identity, which changes on every refetch and would loop.
      */
     useEffect(() => {
-        if (!selectedRequest?.id) return;
-        const fresh = (srData?.items ?? []).find((r) => r.id === selectedRequest.id);
-        if (!fresh) return;
-        if (
-            fresh.stage !== selectedRequest.stage ||
-            fresh.status !== selectedRequest.status ||
-            fresh.trackingStatus !== selectedRequest.trackingStatus ||
-            fresh.convertedJobId !== selectedRequest.convertedJobId
-        ) {
-            setSelectedRequest(fresh);
-        }
-    }, [srData?.items, selectedRequest]);
+        const items = srData?.items ?? [];
+        setSelectedRequest((current) => {
+            if (!current?.id) return current;
+            const fresh = items.find((r) => r.id === current.id);
+            if (!fresh) return current;
+
+            // Returning `current` unchanged lets React bail out rather than
+            // re-render. See service-request-drawer-sync for why the comparison
+            // treats null and undefined as equal — getting that wrong is what
+            // crashed every drawer with React #185.
+            return shouldAdoptRefreshedRequest(current, fresh) ? fresh : current;
+        });
+    }, [srData?.items]);
     const { data: intakeSummary } = useQuery({
         queryKey: ["intake-summary", pageRequestIds.join(",")],
         queryFn: () => intakeSummaryApi.byIds(pageRequestIds),
