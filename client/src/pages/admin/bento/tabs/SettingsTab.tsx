@@ -36,6 +36,7 @@ import { TagListCard } from "./settings/TagListCard";
 import SystemIntegritySummary from "./settings/SystemIntegritySummary";
 import { canOpenServiceFeedbackWorkspace } from "@/lib/service-feedback-capabilities";
 import { PushNotificationConsent } from "@/components/notifications/PushNotificationConsent";
+import { isWebPushConfigured } from "@/lib/web-push";
 const ServiceFeedbackSection = lazy(() => import("./settings/ServiceFeedbackSection"));
 const QaCleanupSection = lazy(() => import("./settings/QaCleanupSection"));
 
@@ -631,6 +632,10 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
      * titles step aside while a search is active so the results are not broken
      * up by headings whose contents have all gone.
      */
+    // Push is optional: without VITE_FIREBASE_VAPID_KEY in the build there is
+    // nothing to switch on, and the consent control hides itself.
+    const pushConfigured = isWebPushConfigured();
+
     const settingsQuery = searchQuery.trim().toLowerCase();
     const matchesSettingsSearch = (...text: (string | undefined)[]) =>
         !settingsQuery || text.some((t) => (t ?? "").toLowerCase().includes(settingsQuery));
@@ -696,15 +701,24 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
             <MobileScrollContent className="px-0 space-y-0 pt-1">
 
-                {/* Staff push consent — gesture-only; never auto-prompt */}
-                <MobileSectionTitle>My notifications</MobileSectionTitle>
-                <div className="mx-4 mb-1">
-                    <PushNotificationConsent
-                        portal="admin"
-                        benefit="Get notified about new service requests and job updates"
-                        density="compact"
-                    />
-                </div>
+                {/* Staff push consent — gesture-only; never auto-prompt.
+                  * The heading is gated on the same condition as the control.
+                  * It used to render unconditionally, so when push was
+                  * unconfigured the section title appeared above nothing — which
+                  * reads as broken rather than absent, and sent us looking for a
+                  * missing toggle that was correctly hiding itself. */}
+                {pushConfigured && (
+                    <>
+                        <MobileSectionTitle>My notifications</MobileSectionTitle>
+                        <div className="mx-4 mb-1">
+                            <PushNotificationConsent
+                                portal="admin"
+                                benefit="Get notified about new service requests and job updates"
+                                density="compact"
+                            />
+                        </div>
+                    </>
+                )}
 
                 {/* System Status */}
                 <MobileSectionTitle>System Status</MobileSectionTitle>
