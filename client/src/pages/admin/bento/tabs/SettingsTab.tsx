@@ -37,6 +37,7 @@ import SystemIntegritySummary from "./settings/SystemIntegritySummary";
 import { canOpenServiceFeedbackWorkspace } from "@/lib/service-feedback-capabilities";
 import { PushNotificationConsent } from "@/components/notifications/PushNotificationConsent";
 const ServiceFeedbackSection = lazy(() => import("./settings/ServiceFeedbackSection"));
+const QaCleanupSection = lazy(() => import("./settings/QaCleanupSection"));
 
 function BodyPortal({ children }: { children: React.ReactNode }) {
     if (typeof document === "undefined") return null;
@@ -861,6 +862,19 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                 </MobilePanel>
                 )}
 
+                {/* Selective test-record removal. Separate from the Danger Zone
+                    below: that wipes everything, this removes named records only. */}
+                {isSuperAdmin && (
+                    <>
+                        <MobileSectionTitle>Test data</MobileSectionTitle>
+                        <div className="mx-4 mb-6">
+                            <Suspense fallback={null}>
+                                <QaCleanupSection />
+                            </Suspense>
+                        </div>
+                    </>
+                )}
+
                 {/* Danger Zone */}
                 <MobileSectionTitle>Advanced</MobileSectionTitle>
                 <div className="mx-4 mb-6 rounded-[20px] border border-red-200 bg-white overflow-hidden">
@@ -1021,6 +1035,15 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         </div>
                     </BentoCard>
                 </motion.div>
+
+                {/* Selective test-record removal — Super Admin only. */}
+                {isSuperAdmin && (
+                    <div className="w-full">
+                        <Suspense fallback={null}>
+                            <QaCleanupSection />
+                        </Suspense>
+                    </div>
+                )}
 
                 {/* Row 4: Service Config */}
                 <div className="w-full">

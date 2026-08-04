@@ -925,4 +925,86 @@ router.delete('/api/admin/data/all', requireAdminAuth, requireSuperAdmin, async 
     }
 });
 
+// ============================================
+// QA / test-record cleanup — Super Admin only
+// ============================================
+
+/**
+ * Testing against production leaves real rows behind: service requests sitting
+ * in the staff queue, customer accounts that can genuinely log in. This removes
+ * them selectively, by explicit phone or ticket number.
+ *
+ * Deliberately NOT a pattern sweep. "Delete everything named QA" would one day
+ * match a real customer. And anything the cleanup cannot fully clean — a
+ * converted job, a payment, a shop order — is refused rather than orphaned.
+ */
+
+/**
+ * POST /api/admin/system/qa-cleanup/preview — read-only. Resolves exactly what
+ * would be removed and why it might be refused. Changes nothing.
+ */
+router.post('/api/admin/system/qa-cleanup/preview', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+        const { previewCleanup } = await import('../services/qa-cleanup.service.js');
+        const preview = await previewCleanup({
+            phones: Array.isArray(req.body?.phones) ? req.body.phones : [],
+            ticketNumbers: Array.isArray(req.body?.ticketNumbers) ? req.body.ticketNumbers : [],
+        });
+        res.json(preview);
+    } catch (error: any) {
+        console.error('[QACleanup] Preview failed:', (error as Error).message);
+        res.status(500).json({ error: 'Failed to preview cleanup' });
+    }
+});
+
+/**
+ * POST /api/admin/system/qa-cleanup/execute — destructive.
+ *
+ * Requires the typed confirmation so it cannot be reached by a stray click, and
+ * re-runs the preview server-side: approval only means anything against the
+ * current state, and a blocker that appeared since must still stop it.
+ */
+router.post('/api/admin/system/qa-cleanup/execute', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+        if (req.body?.confirmation !== 'DELETE TEST DATA') {
+            return res.status(400).json({
+                error: "Confirmation required. Send { confirmation: 'DELETE TEST DATA' } to proceed.",
+            });
+        }
+
+        const phones = Array.isArray(req.body?.phones) ? req.body.phones : [];
+        const ticketNumbers = Array.isArray(req.body?.ticketNumbers) ? req.body.ticketNumbers : [];
+
+        const { executeCleanup } = await import('../services/qa-cleanup.service.js');
+        const result = await executeCleanup({ phones, ticketNumbers });
+
+        // Deliberately records the identifiers: this is a destructive admin
+        // action and "what exactly was removed" is the whole point of the trail.
+        auditLogger.log({
+            userId: req.session.adminUserId || 'unknown',
+            action: 'DELETE',
+            entity: 'QATestData',
+            entityId: result.serviceRequests.map((s) => s.ticketNumber ?? s.id).join(',') || 'none',
+            details:
+                `QA cleanup removed ${result.deleted.customers} customer(s) and ` +
+                `${result.deleted.serviceRequests} service request(s). ` +
+                `Targets: ${[...phones, ...ticketNumbers].join(', ')}`,
+            req,
+            severity: 'warning',
+        }).catch(() => {});
+
+        console.log('[QACleanup] Removed', result.deleted);
+
+        res.json({ success: true, ...result });
+    } catch (error: any) {
+        const message = (error as Error).message || 'Failed to delete test data';
+        // A refusal is the tool working, not a server fault.
+        if (message.startsWith('Refusing to delete:')) {
+            return res.status(409).json({ error: message, code: 'CLEANUP_BLOCKED' });
+        }
+        console.error('[QACleanup] Execute failed:', message);
+        res.status(500).json({ error: 'Failed to delete test data' });
+    }
+});
+
 export default router;
