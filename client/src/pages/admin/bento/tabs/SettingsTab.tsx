@@ -625,10 +625,20 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
         { label: "Filters", count: serviceFilterCategories.length, icon: Filter, color: "text-cyan-500", bg: "bg-cyan-50" },
     ];
 
+    /**
+     * The search box used to set state that nothing read — typing filtered
+     * nothing. Rows now hide themselves when they do not match, and section
+     * titles step aside while a search is active so the results are not broken
+     * up by headings whose contents have all gone.
+     */
+    const settingsQuery = searchQuery.trim().toLowerCase();
+    const matchesSettingsSearch = (...text: (string | undefined)[]) =>
+        !settingsQuery || text.some((t) => (t ?? "").toLowerCase().includes(settingsQuery));
+
     const MobileSettingsRow = ({ icon: Icon, iconColor, iconBg, label, helper, right, onClick }: {
         icon: any; iconColor: string; iconBg: string; label: string; helper?: string;
         right: React.ReactNode; onClick?: () => void;
-    }) => (
+    }) => !matchesSettingsSearch(label, helper) ? null : (
         <button type="button" onClick={onClick} className="flex items-center gap-3 w-full px-4 py-3 text-left active:bg-slate-50 transition-colors">
             <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-[10px] ${iconBg}`}>
                 <Icon className={`h-4 w-4 ${iconColor}`} />
@@ -644,7 +654,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
         </button>
     );
 
-    const MobileSectionTitle = ({ children }: { children: string }) => (
+    const MobileSectionTitle = ({ children }: { children: string }) => settingsQuery ? null : (
         <p className="px-4 pt-5 pb-1.5 text-[11px] font-extrabold uppercase tracking-[0.12em] text-slate-400">{children}</p>
     );
 
