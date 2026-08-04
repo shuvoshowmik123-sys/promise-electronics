@@ -1358,7 +1358,17 @@ export const adminStageApi = {
             body: JSON.stringify(data),
         }).then(res => res.serviceRequest || res),
     sendCustodyOtp: (id: string, data: { action: "receive" | "delivery" }) =>
-        fetchApi<{ success: boolean; action: "receive" | "delivery"; targetStage: string; expiresAt: string; phone: string }>(`/admin/service-requests/${id}/custody-otp/send`, {
+        fetchApi<{
+            success: boolean;
+            action: "receive" | "delivery";
+            targetStage: string;
+            expiresAt: string;
+            phone: string;
+            delivered: { inApp: boolean; sms: boolean };
+            codeIssued: boolean;
+            needsNoCodeHandover: boolean;
+            maxAttempts?: number;
+        }>(`/admin/service-requests/${id}/custody-otp/send`, {
             method: "POST",
             body: JSON.stringify(data),
         }),
@@ -1367,6 +1377,11 @@ export const adminStageApi = {
             method: "POST",
             body: JSON.stringify(data),
         }).then(res => res.serviceRequest || res),
+    noCodeCustodyHandover: (id: string, data: { action: "receive" | "delivery"; reason: string; proofPhotoUrl: string }) =>
+        fetchApi<any>(`/admin/service-requests/${id}/custody-handover/no-code`, {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
     updateExpectedDates: (id: string, data: {
         expectedPickupDate?: string | null;
         expectedReturnDate?: string | null;
@@ -1407,7 +1422,14 @@ export const adminPickupsApi = {
     getAll: (status?: string) => fetchApi<PickupSchedule[]>(status ? `/admin/pickups?status=${status}` : "/admin/pickups"),
     getPending: () => fetchApi<PickupSchedule[]>("/admin/pickups/pending"),
     transferFromServiceRequest: (serviceRequestId: string, data?: { tier?: string; tierCost?: number }) =>
-        fetchApi<{ pickup: PickupSchedule; alreadyExisted: boolean }>(`/admin/service-requests/${serviceRequestId}/transfer-to-pickup`, {
+        fetchApi<{
+            pickup: PickupSchedule;
+            alreadyExisted: boolean;
+            /** Present when the transfer advanced the request's stage. */
+            stage?: string;
+            /** Set when exactly one driver existed and the task was assigned automatically. */
+            autoAssignedDriver?: string | null;
+        }>(`/admin/service-requests/${serviceRequestId}/transfer-to-pickup`, {
             method: "POST",
             body: JSON.stringify(data || {}),
         }),

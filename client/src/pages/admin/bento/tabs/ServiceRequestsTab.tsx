@@ -557,7 +557,20 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
             if (selectedRequest?.id) queryClient.invalidateQueries({ queryKey: ["next-stages", selectedRequest.id] });
             queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
-            toast.success(res.alreadyExisted ? "Already in Pickup & Delivery" : "Transferred to Pickup & Delivery");
+            // The transfer now advances the stage and may assign a driver, so the
+            // logistics board is stale too. Without this the task appears
+            // unassigned until the tab is reloaded.
+            queryClient.invalidateQueries({ queryKey: ["logistics-tasks"] });
+
+            if (res.alreadyExisted) {
+                toast.success("Already in Pickup & Delivery");
+                return;
+            }
+            toast.success(
+                res.autoAssignedDriver
+                    ? `Transferred to Pickup & Delivery — assigned to ${res.autoAssignedDriver}`
+                    : "Transferred to Pickup & Delivery",
+            );
         },
         onError: (e: Error) => toast.error(e.message || "Failed to transfer to pickup"),
     });

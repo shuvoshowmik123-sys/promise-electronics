@@ -170,7 +170,13 @@ export async function createTask(input: CreateTaskInput): Promise<LogisticsTask>
         RETURNING *
     `);
 
-    return rowToTask(result.rows[0]);
+    const created = rowToTask(result.rows[0]);
+    // Same sole-driver rule as quote→pickup: only when unambiguous, never reassign.
+    if (!created.assignedDriverId) {
+        const assigned = await autoAssignSoleDriver(created.id);
+        if (assigned) return assigned;
+    }
+    return created;
 }
 
 export async function createTaskFromServiceRequest(
@@ -553,6 +559,60 @@ export async function assignDriver(id: string, driverId: string, driverName: str
     `);
 
     return result.rows[0] ? rowToTask(result.rows[0]) : null;
+}
+
+/**
+ * Assign the only driver there is.
+ *
+ * A four-person shop with one driver should not be asked which driver. Picking
+ * from a list of one is a decision the system can make, and every unassigned
+ * task is one a human has to remember to touch.
+ *
+ * Only fires when the answer is unambiguous:
+ *   - the task exists and has no driver yet
+ *   - exactly ONE eligible driver exists
+ *
+ * With two or more drivers this does nothing and the manual picker stands —
+ * choosing between real people is a routing decision, not a default. So this
+ * quietly stops applying as the shop grows, which is the intended behaviour.
+ *
+ * Never throws: a failure here must not fail the transfer that triggered it.
+ */
+export async function autoAssignSoleDriver(taskId: string): Promise<LogisticsTask | null> {
+    try {
+        const existing = await db.execute(sql`
+            SELECT assigned_driver_id FROM logistics_tasks WHERE id = ${taskId} LIMIT 1
+        `);
+        const row = existing.rows[0] as any;
+        if (!row) return null;
+        if (row.assigned_driver_id) return null; // already has someone — never reassign
+
+        const drivers = await db.execute(sql`
+            SELECT id, name FROM users
+            WHERE role = 'Driver' AND status = 'Active'
+            LIMIT 2
+        `);
+
+        if (drivers.rows.length !== 1) return null;
+
+        const driver = drivers.rows[0] as any;
+        const assigned = await assignDriver(taskId, driver.id, driver.name ?? "Driver");
+        console.log(`[Logistics] Auto-assigned sole driver to task ${taskId}`);
+        return assigned;
+    } catch (error) {
+        console.error("[Logistics] Auto-assign failed:", (error as Error).message);
+        return null;
+    }
+}
+
+/** Task id for a pickup schedule, so callers can act on what sync just created. */
+export async function getPickupTaskIdForSchedule(pickupScheduleId: string): Promise<string | null> {
+    const rows = await db.execute(sql`
+        SELECT id FROM logistics_tasks
+        WHERE legacy_pickup_schedule_id = ${pickupScheduleId} AND task_type = 'pickup'
+        LIMIT 1
+    `);
+    return (rows.rows[0] as any)?.id ?? null;
 }
 
 export async function rescheduleTask(id: string, scheduledDate: string, timeWindow?: string, reason?: string): Promise<LogisticsTask | null> {

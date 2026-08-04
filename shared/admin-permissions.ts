@@ -63,6 +63,7 @@ export function getDefaultPermissionsForRole(role: string): Record<string, boole
         "pickup.reschedule": true,
         "pickup.cancel": true,
         "pickup.routePlan": true,
+        "pickup.confirmHandover": true,
         "map.viewAreaAnalytics": true,
       };
     case "Cashier":
@@ -131,6 +132,7 @@ export function getDefaultPermissionsForRole(role: string): Record<string, boole
         users: false,
         settings: false,
         pickup: true,
+        "pickup.confirmHandover": true,
         canCreate: false,
         canEdit: true,
         canDelete: false,

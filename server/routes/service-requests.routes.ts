@@ -640,7 +640,7 @@ router.post('/api/admin/service-requests/:id/transition-stage', requireAdminAuth
 
 });
 
-router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth, requireGranularPermission('serviceRequests.transitionStage'), async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth, requireGranularPermission('pickup.confirmHandover'), async (req: Request, res: Response) => {
     try {
         const { action } = req.body;
         if (action !== "receive" && action !== "delivery") {
@@ -663,6 +663,56 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
         const purpose = getCustodyPurpose(request.id, action);
         const code = smsService.generateOtpCode();
         const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+        const label = getCustodyLabel(request, action);
+
+        // Deliver first — only persist OTP when at least one channel succeeds (no orphan codes).
+        let inApp = false;
+        if (request.customerId) {
+            try {
+                await notificationRepo.createNotification({
+                    userId: request.customerId,
+                    title: `Handover code — ${request.ticketNumber || request.id}`,
+                    message: `Your Promise Electronics ${label} code is ${code}. Valid for 5 minutes. Tell this code to the staff member only when they are with you.`,
+                    type: "repair",
+                    link: `/track-order?order=${encodeURIComponent(request.ticketNumber || request.id)}&type=service`,
+                    contextType: "customer",
+                } as any);
+                inApp = true;
+            } catch (err) {
+                console.error("[CustodyOTP] In-app notification failed:", (err as Error).message);
+            }
+        }
+
+        let smsOk = false;
+        try {
+            const sms = await smsService.sendSms({
+                to: normalizedPhone,
+                message: `Promise Electronics ${label} OTP for ${request.ticketNumber || request.id}: ${code}. Valid for 5 minutes.`,
+            });
+            smsOk = !!sms.success;
+            if (!sms.success) {
+                console.error("[CustodyOTP] SMS delivery failed:", sms.error || "unknown");
+            }
+        } catch (err) {
+            console.error("[CustodyOTP] SMS threw:", (err as Error).message);
+        }
+
+        const delivered = { inApp, sms: smsOk };
+        const anyDelivered = inApp || smsOk;
+
+        if (!anyDelivered) {
+            // Never insert OTP; never show code to driver; UI must use no-code path.
+            return res.json({
+                success: true,
+                action,
+                targetStage,
+                expiresAt: expiresAt.toISOString(),
+                phone: `+${normalizedPhone.slice(0, 5)}*****${normalizedPhone.slice(-2)}`,
+                delivered,
+                codeIssued: false,
+                needsNoCodeHandover: true,
+            });
+        }
 
         await db.insert(otpCodes).values({
             id: randomUUID(),
@@ -675,23 +725,10 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
             ipAddress: req.ip || null,
         });
 
-        const label = getCustodyLabel(request, action);
-        const sms = await smsService.sendSms({
-            to: normalizedPhone,
-            message: `Promise Electronics ${label} OTP for ${request.ticketNumber || request.id}: ${code}. Valid for 5 minutes.`,
-        });
-
-        if (!sms.success && process.env.NODE_ENV === 'production') {
-            return res.status(500).json({ error: 'Failed to send custody OTP' });
-        }
-        if (!sms.success) {
-            console.log(`[CustodyOTP][DEV] Code for ${normalizedPhone}: ${code} (SMS not configured — dev fallback)`);
-        }
-
         await serviceRequestRepo.createServiceRequestEvent({
             serviceRequestId: request.id,
             status: request.trackingStatus || request.status,
-            message: `Customer OTP sent for ${label}.`,
+            message: `Customer OTP issued for ${label} (inApp=${inApp}, sms=${smsOk}).`,
             actor: 'System',
         });
 
@@ -701,6 +738,10 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
             targetStage,
             expiresAt: expiresAt.toISOString(),
             phone: `+${normalizedPhone.slice(0, 5)}*****${normalizedPhone.slice(-2)}`,
+            delivered,
+            codeIssued: true,
+            needsNoCodeHandover: false,
+            maxAttempts: 3,
             ...(process.env.NODE_ENV !== 'production' ? { _testCode: code } : {}),
         });
     } catch (error: any) {
@@ -709,7 +750,7 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
     }
 });
 
-router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminAuth, requireGranularPermission('serviceRequests.transitionStage'), async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminAuth, requireGranularPermission('pickup.confirmHandover'), async (req: Request, res: Response) => {
     try {
         const { action, code } = req.body;
         if (action !== "receive" && action !== "delivery") {
@@ -804,6 +845,103 @@ router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminA
         res.status(400).json({ error: error.message || 'Failed to confirm custody OTP' });
     }
 });
+
+/**
+ * Explicit lower-assurance handover when no channel can deliver a customer code.
+ * Requires typed reason + photo proof. Never silently downgrades verification.
+ */
+router.post(
+    '/api/admin/service-requests/:id/custody-handover/no-code',
+    requireAdminAuth,
+    requireGranularPermission('pickup.confirmHandover'),
+    async (req: Request, res: Response) => {
+        try {
+            const { action, reason, proofPhotoUrl } = req.body as {
+                action?: string;
+                reason?: string;
+                proofPhotoUrl?: string;
+            };
+            if (action !== "receive" && action !== "delivery") {
+                return res.status(400).json({ error: 'Invalid custody action' });
+            }
+            const reasonText = typeof reason === "string" ? reason.trim() : "";
+            if (reasonText.length < 8) {
+                return res.status(400).json({ error: 'A reason of at least 8 characters is required' });
+            }
+            const photo = typeof proofPhotoUrl === "string" ? proofPhotoUrl.trim() : "";
+            if (!photo || !/^https?:\/\//i.test(photo)) {
+                return res.status(400).json({ error: 'A photo proof URL is required' });
+            }
+
+            const request = await serviceRequestRepo.getServiceRequest(req.params.id);
+            if (!request) return res.status(404).json({ error: 'Service request not found' });
+            if (action === "delivery" && !request.convertedJobId) {
+                return res.status(409).json({ error: 'Delivery handover requires a linked job ticket' });
+            }
+
+            const adminUser = await userRepo.getUser(req.session.adminUserId!);
+            const actor = adminUser?.name || 'Admin';
+            const targetStage = getCustodyTargetStage(request, action);
+            const label = getCustodyLabel(request, action);
+            const result = await jobService.transitionStage(request.id, targetStage, actor);
+
+            await serviceRequestRepo.createServiceRequestEvent({
+                serviceRequestId: request.id,
+                status: result.serviceRequest.trackingStatus || result.serviceRequest.status,
+                message: `Lower-assurance no-code ${label}: ${reasonText}`,
+                actor,
+            });
+
+            await auditLogger.log({
+                userId: req.session.adminUserId!,
+                action: 'CONFIRM_CUSTODY_NO_CODE',
+                entity: 'ServiceRequest',
+                entityId: request.id,
+                details: `No-code handover (${label}). Reason recorded. Proof photo attached. Stage → ${targetStage}.`,
+                oldValue: { stage: request.stage, trackingStatus: request.trackingStatus, assurance: 'otp' },
+                newValue: {
+                    stage: result.serviceRequest.stage,
+                    trackingStatus: result.serviceRequest.trackingStatus,
+                    assurance: 'no_code_lower',
+                    reason: reasonText,
+                    proofPhotoUrl: photo,
+                },
+                req,
+            });
+
+            if (result.serviceRequest.customerId) {
+                notifyCustomerUpdate(result.serviceRequest.customerId, {
+                    type: 'order_update',
+                    orderId: result.serviceRequest.id,
+                    ticketNumber: result.serviceRequest.ticketNumber,
+                    stage: result.serviceRequest.stage,
+                    trackingStatus: result.serviceRequest.trackingStatus,
+                    updatedAt: new Date().toISOString(),
+                });
+            }
+
+            publishServiceRequestEvent({
+                action: 'status_changed',
+                entityId: result.serviceRequest.id,
+                invalidate: [...SERVICE_REQUEST_REALTIME_TAGS],
+                permissions: ['serviceRequests'],
+                payload: {
+                    serviceRequestId: result.serviceRequest.id,
+                    ticketNumber: result.serviceRequest.ticketNumber || result.serviceRequest.id,
+                    status: result.serviceRequest.stage || result.serviceRequest.status || undefined,
+                },
+            });
+
+            res.json({
+                ...result,
+                handoverAssurance: 'no_code_lower',
+            });
+        } catch (error: any) {
+            logRouteError('ServiceRequests.NoCodeCustodyHandover', req, error);
+            res.status(400).json({ error: error.message || 'Failed to record no-code handover' });
+        }
+    },
+);
 
 /**
  * POST /api/admin/service-requests/:id/verify-and-convert - Verify & Convert to Job Ticket

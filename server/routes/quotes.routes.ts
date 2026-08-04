@@ -466,6 +466,52 @@ router.get('/api/pickups/by-request/:serviceRequestId', async (req: Request, res
 });
 
 /**
+/**
+ * Finish a transfer: move the request into `pickup_scheduled` and give the task
+ * a driver when there is only one to give it to.
+ *
+ * Creating the pickup schedule used to be the entire operation, which left the
+ * request sitting in its old stage. The action button is driven by that stage,
+ * so it stayed on "Transfer Pickup" and a second click hit the idempotent
+ * branch and reported "Already in Pickup & Delivery" — the transfer had worked
+ * both times, the screen just never said so.
+ *
+ * Both steps are best-effort. The pickup schedule is already committed by this
+ * point; a stage that will not advance (because the request is further along)
+ * must not turn a successful transfer into an error.
+ */
+async function finishPickupTransfer(
+    serviceRequestId: string,
+    pickupScheduleId: string,
+): Promise<{ stage?: string; autoAssignedDriver?: string | null }> {
+    let stage: string | undefined;
+    let autoAssignedDriver: string | null = null;
+
+    try {
+        const { jobService } = await import('../services/job.service.js');
+        const result = await jobService.transitionStage(serviceRequestId, 'pickup_scheduled', 'System');
+        stage = result.serviceRequest.stage ?? undefined;
+    } catch (err) {
+        // Already at or past pickup_scheduled is the common case here, and is fine.
+        console.log('[Pickup] Stage not advanced:', (err as Error).message);
+    }
+
+    try {
+        const { getPickupTaskIdForSchedule, autoAssignSoleDriver } =
+            await import('../services/logistics-task.service.js');
+        const taskId = await getPickupTaskIdForSchedule(pickupScheduleId);
+        if (taskId) {
+            const assigned = await autoAssignSoleDriver(taskId);
+            autoAssignedDriver = assigned?.assignedDriverName ?? null;
+        }
+    } catch (err) {
+        console.error('[Pickup] Auto-assign step failed:', (err as Error).message);
+    }
+
+    return { stage, autoAssignedDriver };
+}
+
+/**
  * POST /api/admin/service-requests/:id/transfer-to-pickup
  * Creates a pickup & delivery schedule from a service request (idempotent).
  * Used by the "Transfer to Pickup & Delivery" action on pickup-type requests.
@@ -481,8 +527,9 @@ router.post('/api/admin/service-requests/:id/transfer-to-pickup', requireAdminAu
         const existing = await storage.getPickupScheduleByServiceRequestId(sr.id);
         if (existing) {
             syncPickupScheduleToLogisticsTask(existing.id)
+                .then(() => finishPickupTransfer(sr.id, existing.id))
                 .catch((err) => console.error('[Logistics] Transfer self-heal sync failed:', (err as Error).message));
-            return res.json({ pickup: existing, alreadyExisted: true });
+            return res.json({ pickup: existing, alreadyExisted: true, stage: 'pickup_scheduled' });
         }
 
         const { tier, tierCost } = req.body || {};
@@ -500,10 +547,13 @@ router.post('/api/admin/service-requests/:id/transfer-to-pickup', requireAdminAu
             updatedAt: new Date().toISOString()
         });
 
-        syncPickupScheduleToLogisticsTask(pickup.id)
+        // Sync must land before we can auto-assign — the task does not exist yet.
+        await syncPickupScheduleToLogisticsTask(pickup.id)
             .catch((err) => console.error('[Logistics] Transfer-to-pickup sync failed:', (err as Error).message));
 
-        res.status(201).json({ pickup, alreadyExisted: false });
+        const outcome = await finishPickupTransfer(sr.id, pickup.id);
+
+        res.status(201).json({ pickup, alreadyExisted: false, ...outcome });
     } catch (error: any) {
         res.status(500).json({ error: error?.message || 'Failed to transfer to pickup' });
     }

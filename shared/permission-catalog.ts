@@ -51,6 +51,7 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "pickup.reschedule", label: "Reschedule task", module: "pickup", action: "reschedule", risk: "medium", description: "Change the scheduled date/time of a pickup or delivery.", consequence: "Customer may need to be informed.", suggestedRoles: ["Manager", "Driver", "Super Admin"], coverageCritical: true },
   { key: "pickup.cancel", label: "Cancel task", module: "pickup", action: "cancel", risk: "high", description: "Cancel a pickup or delivery task.", consequence: "Customer handover blocked until rescheduled.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
   { key: "pickup.routePlan", label: "Manage route plan", module: "pickup", action: "routePlan", risk: "medium", description: "Reorder and batch-assign driver routes.", consequence: "Affects delivery efficiency and driver workload.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
+  { key: "pickup.confirmHandover", label: "Confirm customer handover", module: "pickup", action: "confirmHandover", risk: "high", description: "Send or verify a customer custody code (or record an audited no-code handover) when a device changes hands.", consequence: "Advances custody stage; does not grant arbitrary service-request stage control.", suggestedRoles: ["Driver", "Manager", "Super Admin"], coverageCritical: true },
 
   // ── POS ──
   { key: "pos.view", label: "View POS register", module: "pos", action: "view", risk: "low", description: "See the point-of-sale screen and product catalog.", consequence: "Read-only; cannot process transactions.", suggestedRoles: ["Cashier", "Manager", "Super Admin"], coverageCritical: false },
@@ -169,7 +170,7 @@ export const LEGACY_TO_GRANULAR: Record<string, string[]> = {
   dashboard: ["dashboard.view"],
   serviceRequests: ["serviceRequests.view", "serviceRequests.reply", "serviceRequests.logCall", "serviceRequests.quote", "serviceRequests.transitionStage", "serviceRequests.convertToJob", "serviceRequests.edit"],
   jobs: ["jobs.view", "jobs.viewAll", "jobs.create", "jobs.assignTechnician", "jobs.reportOutcome", "jobs.reviewOutcome", "jobs.advanceStatus", "jobs.edit", "jobs.manageWorkHolds", "jobs.delete"],
-  pickup: ["pickup.viewAssigned"],
+  pickup: ["pickup.viewAssigned", "pickup.confirmHandover"],
   pos: ["pos.view", "pos.processPayment", "pos.openRegister"],
   finance: ["finance.view", "finance.createRecord", "finance.editRecord", "finance.deleteRecord"],
   // Legacy corporate:true = full B2B + ops keys (backward compatible). One granular key must NOT satisfy every corporate route — routes use narrow guards.
@@ -227,7 +228,7 @@ export const LEGACY_TO_GRANULAR: Record<string, string[]> = {
 
 export const ROLE_PRESETS: Record<string, string[]> = {
   "Driver Basic": [
-    "pickup.viewAssigned", "attendance.checkIn", "notifications.view",
+    "pickup.viewAssigned", "pickup.confirmHandover", "attendance.checkIn", "notifications.view",
   ],
   "Technician Basic": [
     "jobs.view", "jobs.reportOutcome", "jobs.advanceStatus",
@@ -244,7 +245,7 @@ export const ROLE_PRESETS: Record<string, string[]> = {
     "serviceRequests.view", "serviceRequests.reply", "serviceRequests.logCall", "serviceRequests.quote", "serviceRequests.transitionStage", "serviceRequests.convertToJob", "serviceRequests.edit",
     "jobs.view", "jobs.create", "jobs.assignTechnician", "jobs.reportOutcome", "jobs.reviewOutcome", "jobs.advanceStatus", "jobs.edit", "jobs.manageWorkHolds", "jobs.recordPayment",
     "repairJourney.view", "repairJourney.customerUpdate",
-    "pickup.viewAll", "pickup.assignDriver", "pickup.reschedule", "pickup.cancel", "pickup.routePlan",
+    "pickup.viewAll", "pickup.assignDriver", "pickup.reschedule", "pickup.cancel", "pickup.routePlan", "pickup.confirmHandover",
     "pos.view", "pos.processPayment", "pos.openRegister", "pos.closeRegister", "pos.refund",
     "finance.view", "finance.createRecord", "finance.editRecord", "finance.export",
     // New Managers: shop ops only — no corporate ops / B2B / billing by default
