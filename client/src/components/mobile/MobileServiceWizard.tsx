@@ -35,7 +35,7 @@ import { Label } from "@/components/ui/label";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { publicAreaMapApi, publicSettingsApi, quoteRequestsApi, serviceCatalogApi, serviceRequestsApi } from "@/lib/api";
+import { customerAuthApi, publicAreaMapApi, publicSettingsApi, quoteRequestsApi, serviceCatalogApi, serviceRequestsApi } from "@/lib/api";
 import { materialIntakeKey, resolveIntakeIdempotencyKey } from "@/lib/intake-idempotency";
 import { getApiUrl } from "@/lib/config";
 import { getIKFolder } from "@/lib/imagekit-config";
@@ -180,6 +180,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [phone, setPhone] = useState(normalizePhone(customer?.phone || ""));
   const [address, setAddress] = useState(customer?.address || "");
   const [ticketNumber, setTicketNumber] = useState("");
+  const [setupRequestState, setSetupRequestState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const idempotencyKeyRef = useRef<string | null>(null);
   const payloadMaterialRef = useRef<string | null>(null);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
@@ -518,6 +519,31 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
 
   const isSubmitting = repairMutation.isPending || quoteMutation.isPending;
 
+  /**
+   * Ask staff to verify this customer and issue a one-time setup link.
+   *
+   * Deliberately does NOT create, activate, or authenticate anything: an
+   * anonymous browser submitting a repair request is not proof that it owns the
+   * phone number. The response is the same generic acknowledgement whether or
+   * not an account exists, so this cannot be used to probe account state.
+   */
+  const requestOnlineAccess = async () => {
+    if (setupRequestState === "sending" || setupRequestState === "sent") return;
+    setSetupRequestState("sending");
+    try {
+      await customerAuthApi.requestRecovery({
+        phone: phone.startsWith("+880") ? phone : `+880${normalizePhone(phone)}`,
+        name: customerName.trim() || undefined,
+        ticketNumber: ticketNumber || undefined,
+        message: "Online access requested from the repair confirmation screen.",
+      });
+      setSetupRequestState("sent");
+    } catch {
+      // Never block tracking on this — the ticket number above still works.
+      setSetupRequestState("error");
+    }
+  };
+
   if (step === 6) {
     return (
       <main className="min-h-screen bg-emerald-50 px-4 pb-28 pt-5">
@@ -541,6 +567,50 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
               <p className="mt-1 font-mono text-xl font-bold text-slate-950">#{ticketNumber}</p>
             </div>
             <PushMomentOfValue portal="customer" t={t} className="mt-5" />
+
+            {/* Online access for anonymous submitters.
+              *
+              * Intake creates an unclaimed account for this phone so the request
+              * has an owner. Registering against it is refused (correctly — an
+              * anonymous browser is not proof of phone ownership), which left the
+              * customer with no route to an account at all. This asks staff to
+              * verify and send a one-time setup link.
+              *
+              * It never activates anything, never takes a password, and never
+              * reveals whether an account already exists. Tracking above keeps
+              * working regardless of what happens here. */}
+            {!customer && (
+              <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 text-left">
+                {setupRequestState === "sent" ? (
+                  <p className="text-sm leading-6 text-slate-700" data-testid="setup-access-sent">
+                    Request sent. Our team will call you to verify your identity and send a
+                    one-time account setup link.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-sm font-semibold text-slate-900">Want to track this online?</p>
+                    <p className="mt-1 text-xs leading-5 text-slate-600">
+                      We will call you to confirm it is you, then send a one-time setup link.
+                    </p>
+                    {setupRequestState === "error" && (
+                      <p className="mt-2 text-xs font-medium text-amber-700" data-testid="setup-access-error">
+                        Could not send that request. You can still track with your ticket number above.
+                      </p>
+                    )}
+                    <Button
+                      variant="outline"
+                      className="mt-3 h-12 w-full rounded-2xl border-emerald-300 bg-white"
+                      disabled={setupRequestState === "sending"}
+                      onClick={requestOnlineAccess}
+                      data-testid="button-setup-online-access"
+                    >
+                      {setupRequestState === "sending" ? "Sending…" : "Set up online access"}
+                    </Button>
+                  </>
+                )}
+              </div>
+            )}
+
             <div className="mt-6 grid grid-cols-2 gap-3">
               <Button variant="outline" className="h-12 rounded-2xl border-emerald-200" asChild>
                 <Link href="/home">{t("dock.home")}</Link>

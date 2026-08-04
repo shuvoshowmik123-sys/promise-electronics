@@ -4,7 +4,7 @@ import { sql, eq } from "drizzle-orm";
 import * as schema from "../../shared/schema.js";
 import { nanoid } from "../repositories/base.js";
 import { normalizePhone } from "../utils/phone.js";
-import bcrypt from "bcryptjs";
+import { NO_CUSTOMER_PASSWORD } from "./customer-password.js";
 import { getInventoryItem } from "../repositories/inventory.repository.js";
 import { isSelectableCustomerService } from "../utils/service-visibility.js";
 import type { ServiceRequest } from "../../shared/schema.js";
@@ -448,7 +448,11 @@ async function resolveCustomerUnderPhoneLock(
                 role: "Customer",
                 status: "Active",
                 customerAccountState: "unclaimed",
-                password: await bcrypt.hash(nanoid(), 12),
+                // Was `await bcrypt.hash(nanoid(), 12)`: ~2s of cost-12 hashing,
+                // inside this transaction, while holding a pool connection and the
+                // advisory lock above — to protect a value nothing can ever verify
+                // against. See NO_CUSTOMER_PASSWORD.
+                password: NO_CUSTOMER_PASSWORD,
                 permissions: "{}",
             } as any)
             .returning();

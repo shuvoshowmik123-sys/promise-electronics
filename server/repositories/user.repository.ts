@@ -6,7 +6,8 @@
  */
 
 import { db, nanoid, eq, desc, schema, type User, type InsertUser, type UpsertCustomerFromGoogle } from './base.js';
-import { count, sql } from 'drizzle-orm';
+import { count, sql, or, isNull, asc } from 'drizzle-orm';
+import { normalizePhone } from '../utils/phone.js';
 
 function isMissingDefaultWorkLocationColumn(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error ?? '');
@@ -96,23 +97,38 @@ export async function getUserByPhone(phone: string): Promise<User | undefined> {
  * Handles various phone formats: +8801712345678, 8801712345678, 01712345678
  */
 export async function getUserByPhoneNormalized(phone: string): Promise<User | undefined> {
-    const normalizeToDigits = (p: string): string => {
-        let digits = p.replace(/\D/g, '');
-        if (digits.startsWith('880')) digits = digits.slice(3);
-        if (digits.startsWith('0')) digits = digits.slice(1);
-        return digits.slice(-10);
-    };
+    // Canonical normaliser — the same one that WRITES users.phone_normalized
+    // (auth.routes.ts, users.routes.ts, retail-intake). Other normalisers in the
+    // tree produce different shapes (01xxxxxxxxx, 880xxxxxxxxxx); using one of
+    // those here would match nothing and fail silently.
+    const targetDigits = normalizePhone(phone);
+    if (!targetDigits) return undefined;
 
-    const targetDigits = normalizeToDigits(phone);
+    // Indexed read (idx_users_phone_normalized). Covers every row written since
+    // the column started being populated.
+    const [indexed] = await db
+        .select()
+        .from(schema.users)
+        .where(eq(schema.users.phoneNormalized, targetDigits))
+        .orderBy(asc(schema.users.joinedAt))
+        .limit(1);
 
-    // Get all users and filter in memory
-    // TODO: Add normalized_phone column for better performance at scale
-    const users = await db.select().from(schema.users);
+    if (indexed) return indexed;
 
-    return users.find(user => {
-        if (!user.phone) return false;
-        return normalizeToDigits(user.phone) === targetDigits;
-    });
+    // Legacy rows only: phone_normalized null or blank. This cannot be dropped —
+    // the column is not backfilled for every path, so an indexed-only lookup
+    // would silently find fewer users than before. Bounded to the legacy set
+    // rather than the whole table, which is what this function used to load.
+    const legacy = await db
+        .select()
+        .from(schema.users)
+        .where(or(
+            isNull(schema.users.phoneNormalized),
+            eq(sql`btrim(${schema.users.phoneNormalized})`, ''),
+        ))
+        .orderBy(asc(schema.users.joinedAt));
+
+    return legacy.find(user => user.phone && normalizePhone(user.phone) === targetDigits);
 }
 
 export async function getUserByGoogleSub(googleSub: string): Promise<User | undefined> {
