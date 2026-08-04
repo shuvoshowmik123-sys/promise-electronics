@@ -368,6 +368,34 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
         () => (srData?.items ?? []).map((r) => r.id).filter(Boolean),
         [srData?.items],
     );
+
+    /**
+     * Keep the open drawer in step with the list.
+     *
+     * `selectedRequest` is a snapshot taken when the row was clicked, so
+     * invalidating the list refreshed the table behind the drawer while the
+     * drawer itself kept rendering the old row. Transferring to Pickup &
+     * Delivery advances the stage server-side, but the drawer still showed
+     * "Intake" and still offered "Transfer to Pickup & Delivery" — click it
+     * again and the idempotent endpoint answered "Already in Pickup &
+     * Delivery". The transfer had worked both times; only the screen was stale.
+     *
+     * Compared on the fields the drawer's actions actually branch on rather
+     * than object identity, which changes on every refetch and would loop.
+     */
+    useEffect(() => {
+        if (!selectedRequest?.id) return;
+        const fresh = (srData?.items ?? []).find((r) => r.id === selectedRequest.id);
+        if (!fresh) return;
+        if (
+            fresh.stage !== selectedRequest.stage ||
+            fresh.status !== selectedRequest.status ||
+            fresh.trackingStatus !== selectedRequest.trackingStatus ||
+            fresh.convertedJobId !== selectedRequest.convertedJobId
+        ) {
+            setSelectedRequest(fresh);
+        }
+    }, [srData?.items, selectedRequest]);
     const { data: intakeSummary } = useQuery({
         queryKey: ["intake-summary", pageRequestIds.join(",")],
         queryFn: () => intakeSummaryApi.byIds(pageRequestIds),
