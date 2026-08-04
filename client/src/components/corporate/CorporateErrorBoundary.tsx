@@ -2,6 +2,7 @@ import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+import { isStaleBuildError, recoverFromStaleBuild } from '@/lib/app-update-recovery';
 
 interface Props {
     children: ReactNode;
@@ -28,9 +29,19 @@ export class CorporateErrorBoundary extends Component<Props, State> {
 
     componentDidCatch(error: Error, errorInfo: ErrorInfo) {
         console.error('[CorporatePortal] Error caught by boundary:', error, errorInfo);
+
+        // React resolves a failed React.lazy import into the boundary, so it
+        // never reaches the global handlers installed by
+        // installStaleBuildRecovery(). Same gap as CustomerErrorBoundary.
+        if (isStaleBuildError(error)) void recoverFromStaleBuild();
     }
 
     handleReset = () => {
+        // The chunk is gone from the server; only a full reload can recover.
+        if (isStaleBuildError(this.state.error)) {
+            window.location.reload();
+            return;
+        }
         this.setState({ hasError: false, error: null });
     };
 
