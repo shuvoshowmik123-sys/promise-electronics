@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
     enforceCustomerLoginPolicy,
+    establishCustomerSession,
     CustomerAccountNotActivatedError,
 } from "../services/customer-session.service.js";
 
@@ -81,11 +82,12 @@ router.post("/api/auth/firebase", async (req: Request, res: Response) => {
         });
 
         await regenerateSession(req);
-        (req.session as any).customerId = user!.id;
-        (req.session as any).userId = user!.id;
-        (req.session as any).role = user!.role;
-        (req.session as any).authMethod = "firebase";
-        (req.session as any).authenticatedAt = Date.now();
+        // ITEM 6: shared helper sets passwordChangedAtStamp so requireCustomerAuth
+        // freshness checks pass (hand-rolled fields left stamp missing → SESSION_REAUTH_REQUIRED).
+        await establishCustomerSession(req, res, {
+            customerId: user!.id,
+            authMethod: "firebase",
+        });
 
         req.session.save((saveErr) => {
             if (saveErr) {

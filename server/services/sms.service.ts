@@ -85,22 +85,27 @@ async function sendSms(options: SendSmsOptions): Promise<SmsResponse> {
 
         const result = await response.json();
 
-        console.log('[SMS] Provider response received');
-
         // SMS.net.bd returns error code 0 for success
         if (result.error === 0 || result.error === '0' || result.status === 'success') {
+            console.log('[SMS] Provider response received: success');
             return {
                 success: true,
                 messageId: result.msg_id || result.message_id || 'sent',
             };
         } else {
+            // HOTFIX-2: never log or return any raw provider value — the error,
+            // code, status, message, or response body can echo the customer SMS
+            // body, phone numbers, URLs, tokens, or credentials. Fixed strings
+            // only; the provider reason is recoverable from the dashboard.
+            console.error('[SMS] Provider response received: failure category=provider_rejected');
             return {
                 success: false,
-                error: result.msg || result.message || 'Failed to send SMS',
+                error: 'Failed to send SMS',
             };
         }
     } catch {
-        console.error('[SMS] Error sending SMS');
+        // Fixed message only — fetch error text can embed the provider URL.
+        console.error('[SMS] Error sending SMS: network failure');
         return {
             success: false,
             error: 'Network error while sending SMS',

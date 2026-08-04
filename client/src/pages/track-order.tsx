@@ -10,6 +10,7 @@ import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { CustomerAuthModal } from "@/components/auth/CustomerAuthModal";
 import { QueryErrorState } from "@/components/customer/QueryErrorState";
 import { publicSettingsApi, customerServiceRequestsApi, shopOrdersApi, customerWarrantiesApi, type WarrantyInfo, fetchApi } from "@/lib/api";
+import { isPublicServiceTicketNumber } from "@/lib/service-request-lookup";
 import type { ServiceRequest, ServiceRequestEvent, Order } from "@shared/schema";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -250,9 +251,18 @@ export default function TrackOrderPage() {
     refetchInterval: sseSupported ? false : 15000,
   });
 
+  // ITEM 5: wizard Track links use public ticket numbers (SRV-...), not internal ids.
+  // getOne hits GET /customer/service-requests/:id which queries the id column only.
+  // Use the ticket-aware authenticated route for tickets; keep getOne for list selection by id.
   const { data: serviceRequestDetails, isLoading: serviceRequestDetailLoading, isError: serviceRequestError, refetch: refetchServiceDetails } = useQuery({
     queryKey: ["/customer/service-requests", selectedOrderId],
-    queryFn: () => customerServiceRequestsApi.getOne(selectedOrderId!),
+    queryFn: (): Promise<ServiceRequest & { timeline?: ServiceRequestEvent[]; message?: string }> => {
+      const key = selectedOrderId!;
+      if (isPublicServiceTicketNumber(key)) {
+        return customerServiceRequestsApi.track(key);
+      }
+      return customerServiceRequestsApi.getOne(key);
+    },
     enabled: !!selectedOrderId && selectedOrderType === "service" && isAuthenticated,
     refetchInterval: sseSupported ? false : 15000,
     retry: 1,

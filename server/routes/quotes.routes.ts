@@ -112,12 +112,29 @@ router.post('/api/quotes', serviceRequestLimiter, async (req: Request, res: Resp
                 createdAt: new Date().toISOString()
             });
 
-            repairJourneyService.createJourneyFromQuote({
-                quoteRequestId: quoteRequest.id,
-                customerId: customerId || null,
-                customerNote: validated.description || undefined,
-                serviceMode: (validated.serviceMode as any) || undefined,
-            }).catch(err => console.error('[RepairJourney] Failed to create journey from quote:', (err as Error).message));
+            // ITEM 1: use post-intake resolved owner (quoteRequest.customerId), not the
+            // pre-intake session capture which is null for anonymous submissions.
+            // ITEM 2: await so failures are observable; do NOT reject the already-committed
+            // service request — customer already has a ticket; journey is best-effort linkage.
+            // HOTFIX-2: the log below does NOT recreate a missing journey. Re-running
+            // intake is idempotent and does NOT recreate the journey either, and
+            // reconcileOrphanJourneys only assigns ownership to a journey that already
+            // exists. Missing-journey recreation remains a separate follow-up that
+            // requires an explicit non-guessing design — no migration/outbox here.
+            try {
+                await repairJourneyService.createJourneyFromQuote({
+                    quoteRequestId: quoteRequest.id,
+                    customerId: quoteRequest.customerId || null,
+                    customerNote: validated.description || undefined,
+                    serviceMode: (validated.serviceMode as any) || undefined,
+                });
+            } catch (err) {
+                console.error(
+                    '[RepairJourney] FAILED to create journey from quote',
+                    quoteRequest.id,
+                    (err as Error).message,
+                );
+            }
         }
 
         res.status(result.idempotent ? 200 : 201).json(publicQuote);

@@ -354,12 +354,27 @@ router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ?
         const srServiceMode = validated.servicePreference === 'home_pickup' ? 'pickup' as const
             : validated.servicePreference === 'service_center' ? 'drop_off' as const
             : 'drop_off' as const;
-        repairJourneyService.createJourneyFromServiceRequest({
-            serviceRequestId: request.id,
-            customerId: request.customerId || null,
-            serviceMode: srServiceMode,
-            customerNote: validated.description || undefined,
-        }).catch(err => console.error('[RepairJourney] Failed to create journey from service request:', err));
+        // ITEM 2: await so failures are observable; do NOT reject the already-committed
+        // service request — customer already has a ticket; journey is best-effort linkage.
+        // HOTFIX-2: the log below does NOT recreate a missing journey. Re-running
+        // intake is idempotent and does NOT recreate the journey either, and
+        // reconcileOrphanJourneys only assigns ownership to a journey that already
+        // exists. Missing-journey recreation remains a separate follow-up that
+        // requires an explicit non-guessing design — no migration/outbox here.
+        try {
+            await repairJourneyService.createJourneyFromServiceRequest({
+                serviceRequestId: request.id,
+                customerId: request.customerId || null,
+                serviceMode: srServiceMode,
+                customerNote: validated.description || undefined,
+            });
+        } catch (err) {
+            console.error(
+                '[RepairJourney] FAILED to create journey from service request',
+                request.id,
+                (err as Error).message,
+            );
+        }
 
         res.status(201).json(sanitizePublicServiceRequest(request as any));
     } catch (error: any) {

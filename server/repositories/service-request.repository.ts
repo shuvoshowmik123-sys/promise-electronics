@@ -5,7 +5,7 @@
  * Includes timeline events, quotes, and stage transitions.
  */
 
-import { db, nanoid, eq, desc, asc, like, isNull, and, or, lt, sql, count, inArray, schema, type ServiceRequest, type InsertServiceRequest, type ServiceRequestEvent, type InsertServiceRequestEvent } from './base.js';
+import { db, nanoid, eq, desc, asc, like, and, or, lt, sql, count, inArray, schema, type ServiceRequest, type InsertServiceRequest, type ServiceRequestEvent, type InsertServiceRequestEvent } from './base.js';
 import { executeLegacyQuery, isMissingColumnError, mapLegacyServiceRequestRow } from './legacy-schema.js';
 
 const SERVICE_REQUESTS_LEGACY_COLUMNS = [
@@ -434,49 +434,22 @@ export async function createServiceRequestEvent(event: InsertServiceRequestEvent
 // ============================================
 
 export async function linkServiceRequestToCustomer(requestId: string, customerId: string): Promise<ServiceRequest | undefined> {
-    const [updated] = await db
-        .update(schema.serviceRequests)
-        .set({ customerId })
-        .where(eq(schema.serviceRequests.id, requestId))
-        .returning();
-    return updated;
+    // Canonical implementation lives in customer.service (includes journey adoption).
+    const { customerService } = await import('../services/customer.service.js');
+    const ok = await customerService.linkServiceRequestToCustomer(requestId, customerId);
+    if (!ok) return undefined;
+    // HOTFIX-3: was `{ id, customerId } as ServiceRequest` — two fields cast to a
+    // full row, so any caller reading .phone or .status got undefined with no
+    // type error. Nothing calls this today (both live call sites use
+    // customerService directly), which is precisely why it had to be fixed
+    // before someone trusted it. Re-read the row so the declared type is true.
+    return getServiceRequest(requestId);
 }
 
 export async function linkServiceRequestsByPhone(phone: string, customerId: string): Promise<number> {
-    const normalizeToDigits = (p: string): string => {
-        let digits = p.replace(/\D/g, '');
-        if (digits.startsWith('880')) digits = digits.slice(3);
-        if (digits.startsWith('0')) digits = digits.slice(1);
-        return digits.slice(-10);
-    };
-
-    const normalizedPhone = normalizeToDigits(phone);
-
-    // Get all unlinked requests
-    const unlinkedRequests = await db
-        .select()
-        .from(schema.serviceRequests)
-        .where(isNull(schema.serviceRequests.customerId));
-
-    // Filter in JS
-    const requestsToLink = unlinkedRequests.filter(req => {
-        const reqPhone = normalizeToDigits(req.phone);
-        return reqPhone === normalizedPhone;
-    });
-
-    if (requestsToLink.length === 0) return 0;
-
-    // Update them
-    let linkedCount = 0;
-    for (const req of requestsToLink) {
-        await db
-            .update(schema.serviceRequests)
-            .set({ customerId })
-            .where(eq(schema.serviceRequests.id, req.id));
-        linkedCount++;
-    }
-
-    return linkedCount;
+    // Canonical implementation lives in customer.service (includes journey adoption).
+    const { customerService } = await import('../services/customer.service.js');
+    return customerService.linkServiceRequestsByPhone(phone, customerId);
 }
 
 // ============================================
