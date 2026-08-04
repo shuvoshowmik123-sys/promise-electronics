@@ -1,7 +1,12 @@
 node_modules
 dist
 .git
+# Every env file, not just `.env`. The previous single-line rule let
+# .env.production.local and .env.render.local — which holds a Render API key —
+# be copied into the image by `COPY . .` on any local build. Build config that
+# the browser needs arrives as ARG instead; see Dockerfile.
 .env
+.env.*
 sqlite.db
 *.log
 .DS_Store
