@@ -6,8 +6,6 @@
  */
 
 import admin from 'firebase-admin';
-import { join, resolve } from 'path';
-import { readFileSync, existsSync } from 'fs';
 import {
     registerDeviceToken as persistDeviceToken,
     deactivateToken,
@@ -15,28 +13,20 @@ import {
     listActiveStaffDeviceTokens,
 } from '../pushService.js';
 
-// Resolve server directory in a way that works for both ESM and CJS bundles.
-// process.cwd() on Render is /app, and the service account sits at /app/server/
-const SERVER_DIR = resolve(process.cwd(), 'server');
-
-// Check if Firebase Admin is already initialized
-if (!admin.apps.length) {
-    const serviceAccountPath = join(SERVER_DIR, 'firebase-service-account.json');
-
-    if (existsSync(serviceAccountPath)) {
-        try {
-            const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'));
-            admin.initializeApp({
-                credential: admin.credential.cert(serviceAccount),
-            });
-            console.log('[FCM] Firebase Admin initialized with service account');
-        } catch (e: any) {
-            console.error('[FCM] Failed to initialize Firebase Admin:', e.message);
-        }
-    } else {
-        console.log('[FCM] firebase-service-account.json not found - push notifications disabled');
-    }
-}
+// Imported for its side effect: services/firebase.ts initializes the default
+// Firebase app, and every send below relies on that app existing.
+//
+// This module used to run a second, independent initializer that looked only
+// for server/firebase-service-account.json. That file is gitignored and
+// untracked, so it never reaches Render, and the production build copies only
+// dist/ anyway — meaning this path always failed there and logged
+// "push notifications disabled", which was alarming and wrong. The real
+// credential arrives through FIREBASE_SERVICE_ACCOUNT_BASE64 or the Render
+// secret file at /etc/secrets, both of which services/firebase.ts handles.
+//
+// Importing it here also removes an ordering hazard: sends no longer depend on
+// some other module having imported firebase.ts first.
+import './firebase.js';
 
 interface PushPayload {
     title: string;

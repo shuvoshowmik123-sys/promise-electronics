@@ -26,6 +26,7 @@ import { loadRepairCaseByServiceRequest } from '../services/repair-case.service.
 import { getCallAttempts, createCallAttempt, updateCallAttempt, getIntakeSummaryBulk } from '../services/call-attempt.service.js';
 import { getActiveServiceAreaById } from '../repositories/service-area.repository.js';
 import { deriveServiceRequestPaymentState, applyDerivedPaymentState } from '../services/service-request-payment-projection.service.js';
+import { notifyAdminsWithPush } from '../services/fcm.service.js';
 import {
     sendOrPriceQuote,
     acceptRetailQuote,
@@ -358,6 +359,33 @@ router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ?
                 message: `Request #${request.ticketNumber || request.id} needs review.`,
                 sound: true,
             },
+        });
+
+        // The broadcast above is Server-Sent Events: an in-page toast that only
+        // reaches an admin who already has the panel open in a browser tab. It
+        // cannot wake a closed tab or a phone, so for a long time nobody was
+        // notified of a new request unless they happened to be watching.
+        //
+        // notifyAdminsWithPush has existed in fcm.service.ts since push was
+        // added and had no callers at all — the VAPID work made browsers
+        // subscribe successfully to a pipe with nothing feeding it. This is the
+        // feed.
+        //
+        // Deliberately not awaited and impossible to reject: the service
+        // request is already committed and the customer already holds a ticket
+        // number. A dead FCM token or an unreachable Firebase must never turn a
+        // successful intake into an error response.
+        void notifyAdminsWithPush({
+            type: 'service_request_created',
+            title: 'New service request',
+            body: `${request.brand || 'TV'} — ${request.primaryIssue || 'repair request'}`,
+            data: {
+                serviceRequestId: String(request.id),
+                ticketNumber: String(request.ticketNumber || request.id),
+                url: '/admin/service-requests',
+            },
+        }).catch((err) => {
+            console.error('[ServiceRequests] Admin push failed', (err as Error).message);
         });
 
         const srServiceMode = validated.servicePreference === 'home_pickup' ? 'pickup' as const

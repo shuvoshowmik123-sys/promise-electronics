@@ -23,6 +23,7 @@ const CustomerAuthModal = lazy(() => import("@/components/auth/CustomerAuthModal
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { getApiUrl } from "@/lib/config";
 import { getIKFolder } from "@/lib/imagekit-config";
+import { resolveSettingArray } from "@/lib/setting-array";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   canUseSavedContactSummary,
@@ -166,23 +167,29 @@ export default function RepairRequestPage() {
     },
   });
 
-  const getSettingArray = (key: string, defaultValue: string[]): string[] => {
-    const setting = settings.find((s) => s.key === key);
-    if (setting?.value) {
-      try {
-        return JSON.parse(setting.value);
-      } catch {
-        return defaultValue;
-      }
-    }
-    return defaultValue;
-  };
+  // An empty stored catalog counts as "not configured" — see setting-array.ts
+  // for why that distinction took a production outage to notice.
+  const getSettingArray = (key: string, defaultValue: string[]): string[] =>
+    resolveSettingArray(settings, key, defaultValue);
 
   const tvBrands = getSettingArray("tv_brands", ["Sony", "Samsung", "LG", "Walton", "Vision"]);
   const tvSizesFromSettings = getSettingArray("tv_sizes", []);
   const tvInches = tvSizesFromSettings.length > 0 ? tvSizesFromSettings : getSettingArray("tv_inches", ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch"]);
-  const serviceCategories = getSettingArray("service_categories", ["No Power", "No Display", "Broken Screen", "Sound Issue", "Software"]);
   const commonSymptoms = getSettingArray("common_symptoms", ["Blinking Red Light", "Lines on Screen", "Dim Picture", "Wifi Not Connecting", "Remote Not Working", "Burning Smell"]);
+
+  /**
+   * Primary Issue reads the same catalog as every other intake form.
+   *
+   * It used to read service_categories while the mobile wizard, get-quote and
+   * intake-wizard all read common_symptoms — four forms writing one notNull
+   * column from two different vocabularies. Desktop recorded a service category
+   * ("TV Repair"), mobile recorded a symptom ("No picture"), and any report
+   * grouping on primary_issue was mixing the two.
+   *
+   * common_symptoms wins because it is what three of the four forms already
+   * used, and therefore what most of the existing column data looks like.
+   */
+  const primaryIssueOptions = commonSymptoms;
 
   const nextStep = () => {
     if (step === 1) {
@@ -648,7 +655,7 @@ export default function RepairRequestPage() {
                         <SelectValue placeholder="Select Issue Type" />
                       </SelectTrigger>
                       <SelectContent>
-                        {serviceCategories.map((category) => (
+                        {primaryIssueOptions.map((category) => (
                           <SelectItem
                             key={category}
                             value={category}
