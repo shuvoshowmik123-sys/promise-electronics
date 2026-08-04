@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
     MessageSquare, CheckCircle, Clock, Mail, Search, Send,
-    User, Loader2, X, KeyRound, ExternalLink, Phone,
+    User, Loader2, X, KeyRound, ExternalLink, Phone, Copy,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { formatDistanceToNow } from "date-fns";
@@ -27,6 +27,101 @@ import { useIsMobile } from "@/hooks/use-mobile";
 const fetchInquiries = () => fetchApi<any[]>("/inquiries");
 
 type StatusFilter = "all" | "Pending" | "Replied";
+
+/**
+ * Normalise for a tel: href — digits with at most one leading `+`.
+ *
+ * Returns null when the result could not be dialled, so the caller can show the
+ * number without offering a call action. A `tel:` link built from junk produces
+ * an href that silently does nothing, which is worse than not offering it.
+ */
+function toDialable(value: string): string | null {
+    const plus = value.trimStart().startsWith("+");
+    const digits = value.replace(/\D/g, "");
+    // BD mobile is 11 local digits; allow 8–15 to cover landline and +880 forms.
+    if (digits.length < 8 || digits.length > 15) return null;
+    return plus ? `+${digits}` : digits;
+}
+
+/**
+ * The phone number on a recovery request is the whole job: staff call it to
+ * verify identity before issuing a reset link. It was previously rendered at
+ * 10px in slate-400 and truncated, so a +880 number was unreadable in the
+ * desktop column — the most important field on the card styled like a
+ * timestamp.
+ *
+ * Rendered as a tel: link (one tap to call on mobile) with a copy button for
+ * desktop, where staff paste into WhatsApp rather than dial. Lives on its own
+ * full-width row in both layouts: the badge cluster beside the name is
+ * shrink-0, so a phone placed there gets squeezed and clipped at 390px.
+ */
+function InquiryPhone({ phone, emphasised }: { phone?: string | null; emphasised: boolean }) {
+    const value = (phone || "").trim();
+
+    if (!value || value === "not provided") {
+        return (
+            <p className="text-xs font-medium text-amber-600">
+                No phone number provided — cannot verify this request
+            </p>
+        );
+    }
+
+    const dialable = toDialable(value);
+
+    const copy = async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        e.preventDefault();
+        try {
+            await navigator.clipboard.writeText(value);
+            toast.success("Phone number copied");
+        } catch {
+            toast.error("Could not copy — select the number manually");
+        }
+    };
+
+    // Wraps rather than clips: this row is full-width, so a long +880 number has
+    // room, and if it ever runs out it must break instead of disappearing.
+    const numberClass = emphasised
+        ? "font-semibold tracking-wide text-slate-900 break-all"
+        : "text-sm text-slate-600 break-all";
+
+    const iconClass = emphasised ? "h-4 w-4 shrink-0 text-violet-600" : "h-3.5 w-3.5 shrink-0 text-slate-400";
+
+    return (
+        <div className="flex items-center gap-1 min-w-0" data-testid="inquiry-phone">
+            {dialable ? (
+                <a
+                    href={`tel:${dialable}`}
+                    onClick={(e) => e.stopPropagation()}
+                    className={`inline-flex min-h-10 min-w-0 items-center gap-1.5 rounded ${numberClass} hover:underline ${emphasised ? "hover:text-violet-700" : "hover:text-slate-900"} focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500`}
+                    data-testid="inquiry-phone-link"
+                >
+                    <Phone className={iconClass} aria-hidden="true" />
+                    {value}
+                </a>
+            ) : (
+                <span
+                    className={`inline-flex min-h-10 min-w-0 items-center gap-1.5 ${numberClass}`}
+                    title="Not a dialable number"
+                    data-testid="inquiry-phone-text"
+                >
+                    <Phone className={iconClass} aria-hidden="true" />
+                    {value}
+                </span>
+            )}
+            <button
+                type="button"
+                onClick={copy}
+                title="Copy phone number"
+                aria-label="Copy phone number"
+                data-testid="button-copy-phone"
+                className="ml-auto grid h-10 w-10 shrink-0 place-items-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+            >
+                <Copy className="h-4 w-4" />
+            </button>
+        </div>
+    );
+}
 
 export default function InquiriesTab() {
     const queryClient = useQueryClient();
@@ -213,9 +308,6 @@ export default function InquiriesTab() {
                                             </div>
                                             <div className="min-w-0">
                                                 <p className="text-sm font-bold text-slate-900 truncate">{inq.name}</p>
-                                                <p className="text-[10px] text-slate-400 truncate flex items-center gap-1">
-                                                    {inq.phone ? <><Phone className="h-3 w-3" />{inq.phone}</> : null}
-                                                </p>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
@@ -226,6 +318,10 @@ export default function InquiriesTab() {
                                             </span>
                                         </div>
                                     </div>
+
+                                    {/* Full-width row: the badge cluster above is shrink-0, so a phone
+                                        placed beside the name gets squeezed and clipped at 390px. */}
+                                    <InquiryPhone phone={inq.phone} emphasised={isRecovery} />
 
                                     <p className="text-[12px] text-slate-500 line-clamp-2">{inq.message}</p>
 
@@ -328,7 +424,6 @@ export default function InquiriesTab() {
                                                     </div>
                                                     <div className="min-w-0 overflow-hidden">
                                                         <h3 className="font-semibold text-sm truncate pr-2">{inq.name}</h3>
-                                                        <p className="text-xs text-muted-foreground truncate pr-2">{inq.phone || ""}</p>
                                                     </div>
                                                 </div>
                                                 <div className="flex items-center gap-2 shrink-0">
@@ -336,6 +431,11 @@ export default function InquiriesTab() {
                                                     <span className="hidden sm:inline-block text-xs text-muted-foreground whitespace-nowrap">{formatDistanceToNow(new Date(inq.createdAt), { addSuffix: true })}</span>
                                                     {statusBadge(inq.status)}
                                                 </div>
+                                            </div>
+                                            {/* Full-width row: the badge cluster above is shrink-0, so a phone
+                                                placed beside the name gets squeezed and clipped in a narrow column. */}
+                                            <div className="pl-14 mb-2">
+                                                <InquiryPhone phone={inq.phone} emphasised={isRecovery} />
                                             </div>
                                             <div className="pl-14">
                                                 <p className="text-sm text-slate-600 line-clamp-2 group-hover:line-clamp-none transition-all">{inq.message}</p>
