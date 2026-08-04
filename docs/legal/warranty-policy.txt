@@ -1,0 +1,102 @@
+PASTE-READY — Settings > Legal Pages > Warranty Policy
+Plain text. Do not add markdown; the page shows characters literally.
+---------------------------------------------------------------
+
+Promise Electronics
+116, Hossain Tower, Naya Paltan, Dhaka, Bangladesh
+Phone: +880 1944 88999
+
+
+THE SHORT VERSION
+
+Your warranty is printed on your job ticket and invoice. It is not the same
+for every repair, because a replaced panel and a repaired board are not the
+same job. Check your ticket — that figure is the one that applies to you.
+
+
+STANDARD PERIODS
+
+  Display or panel replacement . . . . . . . . . 6 months
+  Panel repair  . . . . . . . . . . . . . . . . . 60 days
+  Board-level repair, power supply, backlight
+  and other work  . . . . . . . . . . . . . . . . As stated on your
+                                                  job ticket
+
+Where a part carries its own manufacturer's or supplier's warranty, that is
+stated separately on your invoice. It applies to the part; ours applies to
+the work.
+
+The warranty starts on the day you collect the device or we deliver it, not
+on the day you brought it in.
+
+
+WHAT IS COVERED
+
+The same fault coming back.
+
+If the problem we repaired returns within the stated period, bring the
+device in. We inspect it, and if it is the same fault, we repair it again —
+no charge for parts or labour.
+
+
+WHAT IS NOT COVERED
+
+  - A different fault. Televisions have many components. A new, unrelated
+    failure is a new repair.
+  - Physical damage — impact, a cracked or pressed panel, damage in
+    transport after we returned the device
+  - Liquid, moisture, or insect ingress
+  - Power problems — surges, lightning, unstable supply. Please use a
+    stabiliser or surge protector.
+  - Work by another technician. If the device has been opened or worked on
+    by anyone else after our repair, we can no longer know what changed,
+    and the warranty on that work ends.
+  - Removed or altered warranty seal or service label
+  - Normal wear of components we did not replace
+
+
+HOW TO MAKE A CLAIM
+
+  1. Call +880 1944 88999 or come to the shop
+  2. Bring the device and your invoice or job ticket — or just give us your
+     phone number, and we will find your record
+  3. We inspect it and tell you whether it falls under the warranty, and
+     why
+
+We will always tell you the reason for a decision. If we conclude a fault
+is not covered, we explain what we found and quote you for the repair
+before doing anything.
+
+
+COLLECTION AND DELIVERY ON A WARRANTY CLAIM
+
+The repair itself is free under warranty. If you ask us to collect and
+return the device rather than bringing it in, transport is charged at our
+normal rate, because the driver's journey is a real cost separate from the
+repair.
+
+
+IF WE CANNOT REPAIR IT AGAIN
+
+If the same fault returns and it cannot be repaired, we replace the part or
+provide a device of equivalent specification and condition.
+
+
+BACK UP YOUR DATA
+
+A warranty repair may again require replacing components that hold settings
+and signed-in accounts. Please back up anything you need beforehand.
+
+
+TRANSFERRING THE WARRANTY
+
+The warranty covers the device, not the person. If you sell or give away
+the television, the remaining warranty goes with it — the new owner needs
+the invoice or job ticket number.
+
+
+Read alongside our Terms & Conditions and Privacy Policy.
+
+Promise Electronics
+116, Hossain Tower, Naya Paltan, Dhaka
++880 1944 88999

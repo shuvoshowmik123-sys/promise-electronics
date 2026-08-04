@@ -38,6 +38,7 @@ import { canOpenServiceFeedbackWorkspace } from "@/lib/service-feedback-capabili
 import { PushNotificationConsent } from "@/components/notifications/PushNotificationConsent";
 import { isWebPushConfigured } from "@/lib/web-push";
 const ServiceFeedbackSection = lazy(() => import("./settings/ServiceFeedbackSection"));
+const PoliciesSection = lazy(() => import("./settings/PoliciesSection"));
 const QaCleanupSection = lazy(() => import("./settings/QaCleanupSection"));
 
 function BodyPortal({ children }: { children: React.ReactNode }) {
@@ -875,6 +876,11 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         right={null} onClick={() => setSelectedPanel("cmshome")} />
                     <MobileSettingsRow icon={Building2} iconColor="text-emerald-500" iconBg="bg-emerald-50" label="About Us Page" helper={`${teamMembers.length} team member${teamMembers.length !== 1 ? 's' : ''}`}
                         right={null} onClick={() => setSelectedPanel("about")} />
+                    {/* Helper text carries the words an admin is likely to search
+                        for — "terms", "privacy", "warranty" — since the search box
+                        matches on label and helper only. */}
+                    <MobileSettingsRow icon={Shield} iconColor="text-slate-600" iconBg="bg-slate-100" label="Legal Pages" helper="Terms & Conditions, Privacy Policy, Warranty Policy"
+                        right={null} onClick={() => setSelectedPanel("policies")} />
                 </MobilePanel>
 
                 {/* Data Setup */}
@@ -1171,6 +1177,34 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                     </motion.div>
                 </div>
 
+                {/* Row 5b: Legal Pages — Terms, Privacy, Warranty */}
+                <motion.div variants={itemVariants} className="h-full">
+                    <BentoCard
+                        className="cursor-pointer group relative overflow-hidden h-full hover:-translate-y-1 hover:shadow-xl transition-all duration-300"
+                        title="Legal Pages"
+                        icon={<Shield className="w-5 h-5 text-slate-600" />}
+                        variant="glass"
+                        onClick={() => setSelectedPanel("policies")}
+                    >
+                        <div className="flex flex-col h-full justify-between pb-2 mt-2 relative z-10">
+                            <div className="space-y-3">
+                                <div className="p-3 bg-white/50 backdrop-blur-sm rounded-xl border border-slate-200/60 group-hover:bg-slate-100/50 transition-colors">
+                                    <p className="text-sm font-semibold text-slate-800">Terms, Privacy &amp; Warranty</p>
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1">Shown on website and in the app</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2">
+                                    <span className="px-2 py-1 bg-white border border-slate-200/60 rounded-md text-xs font-semibold text-slate-600 shadow-sm">Terms &amp; Conditions</span>
+                                    <span className="px-2 py-1 bg-white border border-slate-200/60 rounded-md text-xs font-semibold text-slate-600 shadow-sm">Privacy Policy</span>
+                                    <span className="px-2 py-1 bg-white border border-slate-200/60 rounded-md text-xs font-semibold text-slate-600 shadow-sm">Warranty Policy</span>
+                                </div>
+                            </div>
+                            <div className="text-slate-700 font-semibold text-sm text-center pt-5 opacity-0 group-hover:opacity-100 transition-all">
+                                Open Legal Editor &rarr;
+                            </div>
+                        </div>
+                    </BentoCard>
+                </motion.div>
+
                 {/* Row 6: Bulk Import Center (Super Admin only, desktop) */}
                 {isSuperAdmin && <motion.div variants={itemVariants} className="h-full">
                     <BentoCard
@@ -1239,8 +1273,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             <MobileBottomSheetHandle />
                             <div className="border-b border-slate-100 bg-white px-4 py-3">
                                 <h2 className="flex min-w-0 items-center gap-2 text-base font-black text-slate-900">
-                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-5 h-5 text-indigo-500" /> : selectedPanel === "about" ? <Building2 className="w-5 h-5 text-emerald-500" /> : selectedPanel === "feedback" ? <MessageSquareHeart className="w-5 h-5 text-emerald-600" /> : <Upload className="w-5 h-5 text-blue-600" />}
-                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS" : selectedPanel === "about" ? "About Us" : selectedPanel === "feedback" ? "Service Feedback" : "Bulk Import Center"}</span>
+                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-5 h-5 text-indigo-500" /> : selectedPanel === "about" ? <Building2 className="w-5 h-5 text-emerald-500" /> : selectedPanel === "feedback" ? <MessageSquareHeart className="w-5 h-5 text-emerald-600" /> : selectedPanel === "policies" ? <Shield className="w-5 h-5 text-slate-600" /> : <Upload className="w-5 h-5 text-blue-600" />}
+                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS" : selectedPanel === "about" ? "About Us" : selectedPanel === "feedback" ? "Service Feedback" : selectedPanel === "policies" ? "Legal Pages" : "Bulk Import Center"}</span>
                                 </h2>
                             </div>
                             <div className="custom-scrollbar flex-1 overflow-y-auto bg-slate-50/30 px-3 pb-4">
@@ -1302,10 +1336,17 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 {selectedPanel === "bulkimport" && (
                                     <Suspense fallback={null}><BulkImportSection /></Suspense>
                                 )}
+                                {selectedPanel === "policies" && (
+                                    <Suspense fallback={null}><PoliciesSection /></Suspense>
+                                )}
                             </div>
                             <div className="flex flex-col gap-2 border-t border-slate-100 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                                 <Button variant="outline" className="h-11 rounded-xl" onClick={() => setSelectedPanel(null)}>Close</Button>
-                                {selectedPanel !== "bulkimport" && selectedPanel !== "feedback" && (
+                                {/* "policies" is excluded: PoliciesSection saves itself through
+                                    policiesApi, and handleSaveAll knows nothing about policy text.
+                                    Offering Save & Close there would close the panel, save unrelated
+                                    settings, and silently drop whatever was typed. */}
+                                {selectedPanel !== "bulkimport" && selectedPanel !== "feedback" && selectedPanel !== "policies" && (
                                     <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
                                         {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                         Save & Close
@@ -1324,8 +1365,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         >
                             <div className="flex items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 p-6">
                                 <h2 className="flex min-w-0 items-center gap-3 text-2xl font-black text-slate-900">
-                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-6 h-6 text-indigo-500" /> : selectedPanel === "about" ? <Building2 className="w-6 h-6 text-emerald-500" /> : selectedPanel === "feedback" ? <MessageSquareHeart className="w-6 h-6 text-emerald-600" /> : <Upload className="w-6 h-6 text-blue-600" />}
-                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS Editor" : selectedPanel === "about" ? "About Us Editor" : selectedPanel === "feedback" ? "Service Feedback" : "Bulk Import Center"}</span>
+                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-6 h-6 text-indigo-500" /> : selectedPanel === "about" ? <Building2 className="w-6 h-6 text-emerald-500" /> : selectedPanel === "feedback" ? <MessageSquareHeart className="w-6 h-6 text-emerald-600" /> : selectedPanel === "policies" ? <Shield className="w-6 h-6 text-slate-600" /> : <Upload className="w-6 h-6 text-blue-600" />}
+                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS Editor" : selectedPanel === "about" ? "About Us Editor" : selectedPanel === "feedback" ? "Service Feedback" : selectedPanel === "policies" ? "Legal Pages — Terms, Privacy & Warranty" : "Bulk Import Center"}</span>
                                 </h2>
                                 <Button variant="ghost" size="icon" onClick={() => setSelectedPanel(null)} className="h-10 w-10 shrink-0 rounded-full bg-slate-100 hover:bg-slate-200">
                                     <X className="w-5 h-5" />
@@ -1390,10 +1431,13 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 {selectedPanel === "bulkimport" && (
                                     <Suspense fallback={null}><BulkImportSection /></Suspense>
                                 )}
+                                {selectedPanel === "policies" && (
+                                    <Suspense fallback={null}><PoliciesSection /></Suspense>
+                                )}
                             </div>
                             <div className="flex flex-col gap-2 border-t border-slate-100 bg-white p-5 md:flex-row md:justify-end">
                                 <Button variant="outline" className="h-10 rounded-xl" onClick={() => setSelectedPanel(null)}>Close</Button>
-                                {selectedPanel !== "bulkimport" && (
+                                {selectedPanel !== "bulkimport" && selectedPanel !== "policies" && (
                                     <Button className="h-10 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
                                         {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                         Save & Close
