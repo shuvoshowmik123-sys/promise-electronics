@@ -45,6 +45,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { format } from "date-fns";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { TrackingTimeline } from "@/components/mobile/TrackingTimeline";
+import { HandoverCodeCard } from "@/components/customer/HandoverCodeCard";
 
 
 import React, { useState, useEffect, useRef, lazy, Suspense } from "react";
@@ -766,8 +767,12 @@ export default function TrackOrderPage() {
             </div>
           </div>
 
+          {/* The handover code has a permanent home, explained before it exists,
+              so a code appearing at the door is expected rather than alarming. */}
+          <HandoverCodeCard serviceRequestId={serviceRequestDetails.id} />
+
           {/* Timeline */}
-          <h3 className="text-lg font-bold text-slate-950 px-2 mb-2">Repair Progress</h3>
+          <h3 className="text-lg font-bold text-slate-950 px-2 mb-2 mt-5">Repair Progress</h3>
           <TrackingTimeline order={serviceRequestDetails} />
           </div>
         </div>

@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { CheckCircle2, Package, Phone, Search, Wrench } from "lucide-react";
+import { CheckCircle2, ClipboardCheck, Package, Phone, Search, Truck, Wrench } from "lucide-react";
 import type { ServiceRequest } from "@shared/schema";
 
 interface TrackingTimelineProps {
@@ -7,9 +7,24 @@ interface TrackingTimelineProps {
 }
 
 export function TrackingTimeline({ order }: TrackingTimelineProps) {
+    /**
+     * "Received" used to light up the moment a request was submitted, because
+     * `intake` was folded into it. To a customer whose TV is still in their own
+     * living room, that reads as "they have my TV" — and the three steps after
+     * it imply a repair already under way. It made an honest system look like it
+     * was inventing progress.
+     *
+     * Request and device are now separate, and the collection phase that sits
+     * between them is visible rather than hidden.
+     */
     const stages = [
-        { id: "received", label: "Received", icon: Package, activeStates: ["Request Received", "Arriving to Receive", "Awaiting Drop-off", "Received", "intake", "assessment", "device_received"] },
-        { id: "diagnosing", label: "Diagnosing", icon: Search, activeStates: ["Technician Assigned", "Diagnosis Completed", "assessment", "authorized"] },
+        { id: "requested", label: "Request received", icon: ClipboardCheck, activeStates: ["Request Received", "intake"] },
+        { id: "collection", label: "Collection arranged", icon: Truck, activeStates: ["Arriving to Receive", "Awaiting Drop-off", "pickup_scheduled", "authorized", "assessment"] },
+        // No bare "Received" here: matching is substring-based, so it also
+        // matched "Request Received" and lit the device step the moment a
+        // request was submitted — the original bug wearing a different hat.
+        { id: "received", label: "TV with us", icon: Package, activeStates: ["Device Collected", "Device Received", "picked_up", "device_received"] },
+        { id: "diagnosing", label: "Diagnosing", icon: Search, activeStates: ["Technician Assigned", "Diagnosis Completed"] },
         { id: "repairing", label: "Repairing", icon: Wrench, activeStates: ["Parts Pending", "Repairing", "in_repair"] },
         { id: "ready", label: "Ready", icon: CheckCircle2, activeStates: ["Ready for Delivery", "Delivered", "ready", "completed", "out_for_delivery"] },
     ];

@@ -22,6 +22,12 @@ import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import type { UserPermissions } from "@shared/schema";
 import { useOffline } from "@/contexts/OfflineContext";
 import { canAttendanceCheckIn, canViewAttendanceReport } from "@/lib/attendance-capabilities";
+import {
+    type AdminMobileChromeDirection,
+    createAdminMobileChromeScrollState,
+    syncAdminMobileChromeScroll,
+    updateAdminMobileChromeScroll,
+} from "@/lib/admin-mobile-chrome";
 
 // Shared Components & Utilities
 import { OfflineBanner } from "@/components/admin/OfflineBanner";
@@ -367,10 +373,12 @@ export default function DesignConcept() {
     const [notificationOpen, setNotificationOpen] = useState(false);
     const [mobileChromeHidden, setMobileChromeHidden] = useState(false);
     const [visitedTabs, setVisitedTabs] = useState<string[]>(() => [activeTab]);
-    const mobileChromeScrollTopRef = useRef(0);
-    const mobileChromeHiddenRef = useRef(false);
+    const mobileChromeScrollStateRef = useRef(createAdminMobileChromeScrollState());
     const mobileChromeLockedRef = useRef(false);
     const mobileScrollTickingRef = useRef(false);
+    const mobileTouchYRef = useRef<number | null>(null);
+    const mobileInputDirectionRef = useRef<AdminMobileChromeDirection>(null);
+    const mobileInputDirectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const { isEnabled, isLoading: modulesLoading } = useModules();
     const { logout, user, hasPermission, permissions, status } = useAdminAuth();
@@ -629,59 +637,84 @@ export default function DesignConcept() {
             setSelectedFinanceRecordId(null);
             setSelectedFinanceRecordType(null);
         }
-        mobileChromeScrollTopRef.current = 0;
-        mobileChromeHiddenRef.current = false;
+        mobileChromeScrollStateRef.current = createAdminMobileChromeScrollState();
         mobileChromeLockedRef.current = false;
         setMobileChromeHidden(false);
     }, [activeTab, selectedCorporateClientId, selectedFinanceRecordId, selectedFinanceRecordType]);
+
+    useEffect(() => {
+        const clearDirectionTimer = () => {
+            if (mobileInputDirectionTimerRef.current) clearTimeout(mobileInputDirectionTimerRef.current);
+            mobileInputDirectionTimerRef.current = null;
+        };
+        const releaseDirectionAfterTransition = () => {
+            clearDirectionTimer();
+            mobileInputDirectionTimerRef.current = setTimeout(() => {
+                mobileInputDirectionRef.current = null;
+                mobileInputDirectionTimerRef.current = null;
+            }, 300);
+        };
+        const handleTouchStart = (event: TouchEvent) => {
+            clearDirectionTimer();
+            mobileTouchYRef.current = event.touches[0]?.clientY ?? null;
+            mobileInputDirectionRef.current = null;
+        };
+        const handleTouchMove = (event: TouchEvent) => {
+            const nextY = event.touches[0]?.clientY;
+            const previousY = mobileTouchYRef.current;
+            if (nextY === undefined || previousY === null) return;
+            const delta = nextY - previousY;
+            if (Math.abs(delta) >= 1) {
+                mobileInputDirectionRef.current = delta < 0 ? "down" : "up";
+                mobileTouchYRef.current = nextY;
+            }
+        };
+        const handleTouchEnd = () => {
+            mobileTouchYRef.current = null;
+            releaseDirectionAfterTransition();
+        };
+        const handleWheel = (event: WheelEvent) => {
+            if (window.innerWidth >= 768 || Math.abs(event.deltaY) < 1) return;
+            mobileInputDirectionRef.current = event.deltaY > 0 ? "down" : "up";
+            releaseDirectionAfterTransition();
+        };
+        window.addEventListener("touchstart", handleTouchStart, { passive: true });
+        window.addEventListener("touchmove", handleTouchMove, { passive: true });
+        window.addEventListener("touchend", handleTouchEnd, { passive: true });
+        window.addEventListener("touchcancel", handleTouchEnd, { passive: true });
+        window.addEventListener("wheel", handleWheel, { passive: true });
+        return () => {
+            clearDirectionTimer();
+            window.removeEventListener("touchstart", handleTouchStart);
+            window.removeEventListener("touchmove", handleTouchMove);
+            window.removeEventListener("touchend", handleTouchEnd);
+            window.removeEventListener("touchcancel", handleTouchEnd);
+            window.removeEventListener("wheel", handleWheel);
+        };
+    }, []);
 
     useEffect(() => {
         const handleMobileChrome = (event: Event) => {
             const detail = (event as CustomEvent<{ hidden?: boolean; scrollTop?: number; syncOnly?: boolean }>).detail;
             if (typeof detail?.scrollTop === "number") {
                 if (mobileChromeLockedRef.current) return;
-                const prev = mobileChromeScrollTopRef.current;
-                const cur = detail.scrollTop;
-                if (detail.syncOnly) {
-                    mobileChromeScrollTopRef.current = cur;
-                    const shouldHide = cur > 24;
-                    if (mobileChromeHiddenRef.current !== shouldHide) {
-                        mobileChromeHiddenRef.current = shouldHide;
-                        setMobileChromeHidden(shouldHide);
-                    }
-                    return;
-                }
-                const delta = cur - prev;
-                // Ignore momentum micro-jitter (iOS rubber-band, sub-pixel settle).
-                if (Math.abs(delta) < 6) {
-                    mobileChromeScrollTopRef.current = cur;
-                    const shouldHide = cur > 24 ? true : cur < 16 ? false : mobileChromeHiddenRef.current;
-                    if (mobileChromeHiddenRef.current !== shouldHide) {
-                        mobileChromeHiddenRef.current = shouldHide;
-                        setMobileChromeHidden(shouldHide);
-                    }
-                    return;
-                }
-                mobileChromeScrollTopRef.current = cur;
-
-                // Hysteresis: hide after the list is meaningfully scrolled, reveal on upward motion.
-                let shouldHide = mobileChromeHiddenRef.current;
-                if (delta < 0) shouldHide = false;
-                else if (cur > 24) shouldHide = true;
-                if (cur < 16) shouldHide = false;
-
-                if (mobileChromeHiddenRef.current === shouldHide) return;
-                mobileChromeHiddenRef.current = shouldHide;
-                setMobileChromeHidden(shouldHide);
+                const previous = mobileChromeScrollStateRef.current;
+                const next = detail.syncOnly
+                    ? syncAdminMobileChromeScroll(previous, detail.scrollTop)
+                    : updateAdminMobileChromeScroll(previous, detail.scrollTop, mobileInputDirectionRef.current);
+                mobileChromeScrollStateRef.current = next;
+                if (previous.hidden !== next.hidden) setMobileChromeHidden(next.hidden);
                 return;
             }
             const hidden = Boolean(detail?.hidden);
-            mobileChromeHiddenRef.current = hidden;
+            mobileChromeScrollStateRef.current = createAdminMobileChromeScrollState(
+                hidden,
+                hidden ? mobileChromeScrollStateRef.current.scrollTop : 0,
+            );
             setMobileChromeHidden(hidden);
             if (hidden) {
                 mobileChromeLockedRef.current = true;
             } else {
-                mobileChromeScrollTopRef.current = 0;
                 // Keep locked briefly so scroll-driven re-hide doesn't fire
                 // in the same frame as the restore dispatch.
                 setTimeout(() => { mobileChromeLockedRef.current = false; }, 350);

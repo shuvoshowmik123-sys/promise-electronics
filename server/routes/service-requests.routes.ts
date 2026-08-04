@@ -673,7 +673,10 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
                     userId: request.customerId,
                     title: `Handover code — ${request.ticketNumber || request.id}`,
                     message: `Your Promise Electronics ${label} code is ${code}. Valid for 5 minutes. Tell this code to the staff member only when they are with you.`,
-                    type: "repair",
+                    // Typed so the customer's tracking page can find the live
+                    // code and show it in its own place rather than leaving the
+                    // customer to dig through a notification list.
+                    type: "handover_code",
                     link: `/track-order?order=${encodeURIComponent(request.ticketNumber || request.id)}&type=service`,
                     contextType: "customer",
                 } as any);

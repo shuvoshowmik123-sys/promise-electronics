@@ -873,6 +873,72 @@ router.get('/api/customer/service-requests', requireCustomerAuth, async (req: Re
 /**
  * GET /api/customer/service-requests/:id - Get service request details
  */
+/**
+ * GET /api/customer/service-requests/:id/handover-code
+ *
+ * The live handover code for the customer's own repair, or an explicit "not
+ * yet" so the tracking page can explain what the space is for.
+ *
+ * The customer can never ask for a code — one exists only after a staff member
+ * or driver is standing in front of them and has issued it. That is the whole
+ * point of the control: it proves the customer is present and consenting, so
+ * letting either side conjure one on demand would defeat it.
+ *
+ * The code is returned only while its OTP is genuinely live — unverified and
+ * unexpired — so it disappears from the screen the moment it is used or times
+ * out, rather than lingering as a stale number someone might read out later.
+ */
+router.get('/api/customer/service-requests/:id/handover-code', requireCustomerAuth, async (req: Request, res: Response) => {
+    try {
+        const order = await storage.getServiceRequest(req.params.id);
+        if (!order) return res.status(404).json({ error: 'Service request not found' });
+        if (order.customerId !== req.session.customerId) {
+            return res.status(403).json({ error: 'Access denied' });
+        }
+
+        const purposes = [`custody_receive:${order.id}`, `custody_delivery:${order.id}`];
+        const live = await db.execute(sql`
+            SELECT purpose, expires_at
+            FROM otp_codes
+            WHERE purpose IN (${sql.join(purposes.map((p) => sql`${p}`), sql`, `)})
+              AND verified_at IS NULL
+              AND expires_at > NOW()
+            ORDER BY created_at DESC
+            LIMIT 1
+        `);
+        const row = ((live as any).rows ?? live)[0] as { purpose: string; expires_at: string } | undefined;
+
+        if (!row) {
+            return res.json({ active: false });
+        }
+
+        // The plaintext lives in the notification that was sent to this
+        // customer; otp_codes stores only a hash. Scoped to this customer and
+        // to a code that is still live.
+        const notif = await db.execute(sql`
+            SELECT message FROM notifications
+            WHERE user_id = ${req.session.customerId}
+              AND type = 'handover_code'
+            ORDER BY created_at DESC
+            LIMIT 1
+        `);
+        const message = String((((notif as any).rows ?? notif)[0]?.message) ?? '');
+        const code = message.match(/\b(\d{6})\b/)?.[1] ?? null;
+
+        if (!code) return res.json({ active: false });
+
+        return res.json({
+            active: true,
+            code,
+            action: row.purpose.startsWith('custody_delivery') ? 'delivery' : 'receive',
+            expiresAt: row.expires_at,
+        });
+    } catch (error) {
+        console.error('[HandoverCode] Lookup failed:', (error as Error).message);
+        res.status(500).json({ error: 'Could not load the handover code' });
+    }
+});
+
 router.get('/api/customer/service-requests/:id', requireCustomerAuth, async (req: Request, res: Response) => {
     try {
         const order = await storage.getServiceRequest(req.params.id);
