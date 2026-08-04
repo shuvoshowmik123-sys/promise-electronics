@@ -333,6 +333,15 @@ router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ?
 
         const request = result.serviceRequest;
 
+        // Remember that THIS browser created this customer record, so the person
+        // who just submitted can register with their own number instead of being
+        // told to contact support about a record they made seconds ago.
+        // Only set for anonymous submissions, and only when intake resolved an
+        // owner we did not already have from the session.
+        if (!customerId && request?.customerId) {
+            req.session.pendingClaimUserId = request.customerId;
+        }
+
         publishServiceRequestEvent({
             action: 'created',
             entityId: request.id,

@@ -143,7 +143,7 @@ function normalizePhone(raw: string) {
 export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
-  const { customer } = useCustomerAuth();
+  const { customer, register } = useCustomerAuth();
   const { language, t } = useCustomerLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -181,6 +181,8 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [address, setAddress] = useState(customer?.address || "");
   const [ticketNumber, setTicketNumber] = useState("");
   const [setupRequestState, setSetupRequestState] = useState<"idle" | "sending" | "sent" | "error">("idle");
+  const [accountPassword, setAccountPassword] = useState("");
+  const [accountCreated, setAccountCreated] = useState(false);
   const idempotencyKeyRef = useRef<string | null>(null);
   const payloadMaterialRef = useRef<string | null>(null);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
@@ -458,7 +460,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
     setStep((current) => Math.min(totalSteps - 1, current + 1));
   };
 
-  const submit = () => {
+  const submit = async () => {
     if (!canContinue()) {
       toast.error("Please add your name and phone number");
       return;
@@ -467,6 +469,36 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
     const safePhone = phone.startsWith("+880") ? phone : `+880${normalizePhone(phone)}`;
     const safeName = customerName.trim();
     const safeAddress = address.trim();
+
+    // Create the account BEFORE submitting, when a password was given.
+    //
+    // Ordering is the whole fix. Submitting first makes intake create an
+    // unclaimed account for this phone, which then refuses the customer's own
+    // registration ("contact support to activate online access") for a record
+    // they made seconds earlier. Registering first means intake sees a real
+    // session and links to it, so that record is never created.
+    //
+    // A failure here must not cost them the repair request — it is optional, so
+    // fall through and submit anonymously.
+    if (!customer && accountPassword.length >= 6 && !accountCreated) {
+      try {
+        await register({
+          name: safeName,
+          phone: safePhone,
+          address: safeAddress || undefined,
+          password: accountPassword,
+        });
+        setAccountCreated(true);
+        toast.success("Account created — this repair will be saved to it.");
+      } catch (error: any) {
+        const message = String(error?.message || "");
+        if (/already registered/i.test(message)) {
+          toast.error("This number already has an account. Sign in to link this repair.");
+        } else {
+          toast.error("Could not create the account. Submitting your request anyway.");
+        }
+      }
+    }
 
     if (mode === "repair") {
       repairMutation.mutate({
@@ -970,16 +1002,74 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
               <h1 className="text-2xl font-bold text-slate-950">{t("wizard.finalStep")}</h1>
               <p className="mt-2 text-sm text-slate-600">{t("wizard.finalDesc")}</p>
             </div>
-            <div className="space-y-4 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
+            {/* A real <form> with autocomplete attributes, so Chrome and iOS
+              * offer to save the credential. Without name/autoComplete and a
+              * username field next to the password, browsers skip the save
+              * prompt entirely and the customer never gets their password
+              * remembered. */}
+            <form
+              className="space-y-4 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm"
+              onSubmit={(event) => event.preventDefault()}
+            >
               <div className="space-y-2">
-                <Label>{t("wizard.name")}</Label>
-                <Input value={customerName} onChange={(event) => setCustomerName(event.target.value)} className="h-12 rounded-2xl border-emerald-100" placeholder="Your name" />
+                <Label htmlFor="wizard-name">{t("wizard.name")}</Label>
+                <Input
+                  id="wizard-name"
+                  name="name"
+                  autoComplete="name"
+                  value={customerName}
+                  onChange={(event) => setCustomerName(event.target.value)}
+                  className="h-12 rounded-2xl border-emerald-100"
+                  placeholder="Your name"
+                />
               </div>
               <div className="space-y-2">
-                <Label>{t("wizard.phone")}</Label>
-                <PhoneInput value={phone} onChange={(event) => setPhone(event.target.value)} className="h-12 rounded-2xl border-emerald-100" placeholder="1XXXXXXXXX" />
+                <Label htmlFor="wizard-phone">{t("wizard.phone")}</Label>
+                <PhoneInput
+                  id="wizard-phone"
+                  name="username"
+                  autoComplete="username"
+                  value={phone}
+                  onChange={(event) => setPhone(event.target.value)}
+                  className="h-12 rounded-2xl border-emerald-100"
+                  placeholder="1XXXXXXXXX"
+                />
               </div>
-            </div>
+
+              {/* Optional account creation, offered only to signed-out visitors.
+                * When a password is given the account is created BEFORE the
+                * request is submitted, so intake links to a real account and
+                * never creates the unclaimed row that used to block this person
+                * from registering with their own number afterwards. */}
+              {!customer && (
+                <div className="space-y-2 border-t border-emerald-100 pt-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <Label htmlFor="wizard-password">Create a password (optional)</Label>
+                      <p className="mt-1 text-xs leading-5 text-slate-500">
+                        Set one now and you can track this repair online straight away.
+                      </p>
+                    </div>
+                  </div>
+                  <Input
+                    id="wizard-password"
+                    name="new-password"
+                    type="password"
+                    autoComplete="new-password"
+                    value={accountPassword}
+                    onChange={(event) => setAccountPassword(event.target.value)}
+                    className="h-12 rounded-2xl border-emerald-100"
+                    placeholder="At least 6 characters"
+                    data-testid="input-wizard-password"
+                  />
+                  {accountPassword.length > 0 && accountPassword.length < 6 && (
+                    <p className="text-xs font-medium text-amber-700">
+                      Password must be at least 6 characters.
+                    </p>
+                  )}
+                </div>
+              )}
+            </form>
             <div className="rounded-3xl bg-emerald-50 p-4 text-sm text-slate-700">
               <p className="font-bold text-slate-950">{t("wizard.summary")}</p>
               <p className="mt-2">{brand || "TV"} {screenSize} - {selectedProblem?.en || primaryIssue}</p>
@@ -1001,7 +1091,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
           </Button>
           <Button
             type="button"
-            onClick={step === 5 ? submit : nextStep}
+            onClick={step === 5 ? () => void submit() : nextStep}
             disabled={isSubmitting}
             className="h-12 flex-1 rounded-2xl bg-emerald-600 font-bold hover:bg-emerald-700"
           >

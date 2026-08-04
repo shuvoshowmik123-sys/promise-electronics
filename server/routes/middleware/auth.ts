@@ -36,6 +36,20 @@ declare module 'express-session' {
         passwordChangedAtStamp?: number;
         /** Set when customer identity cleared due to freshness failure — blocks silent anonymous downgrade. */
         customerSessionRevoked?: "SESSION_REVOKED" | "SESSION_REAUTH_REQUIRED";
+        /**
+         * Id of an unclaimed customer this browser created by submitting a repair
+         * request anonymously.
+         *
+         * Anonymous intake makes an unclaimed account so the request has an owner,
+         * which then blocked the submitter from registering with their own number —
+         * they were told to contact support about a record they had just created.
+         *
+         * This is the proof that closes that loop: only the browser that submitted
+         * the request holds this session value, so only it can claim the account.
+         * Knowing the phone number is not enough. It is cleared the moment it is
+         * used, and on logout with the rest of the session.
+         */
+        pendingClaimUserId?: string;
     }
 }
 

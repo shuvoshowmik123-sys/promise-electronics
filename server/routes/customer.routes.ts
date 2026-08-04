@@ -97,6 +97,63 @@ async function getServiceRequestPayments(serviceRequestId: string, jobTicketId?:
 /**
  * POST /api/customer/register - Register new customer
  */
+/**
+ * Activate the unclaimed account this same browser created by submitting a
+ * repair request, and sign the customer in.
+ *
+ * Sets the password they chose, flips the account to active, and clears the
+ * one-time claim marker so the same session cannot claim twice. Deliberately
+ * mirrors the normal registration response so the client needs no special case.
+ */
+async function claimUnclaimedAccount(
+    req: Request,
+    res: Response,
+    existingUser: User,
+    validated: { name: string; phone: string; email?: string; address?: string; password: string },
+) {
+    const hashedPassword = await bcrypt.hash(validated.password, 12);
+
+    const updated = await userRepo.updateUser(existingUser.id, {
+        name: validated.name || existingUser.name,
+        email: validated.email || existingUser.email,
+        address: validated.address || existingUser.address,
+        password: hashedPassword,
+        customerAccountState: 'active',
+        passwordChangedAt: new Date(),
+    } as any);
+
+    const user = updated ?? existingUser;
+
+    // Any staff-issued link for this account is now redundant, and leaving one
+    // live would keep an unnecessary credential-reset capability open. Same rule
+    // the login path already applies.
+    await db.execute(sql`
+        UPDATE customer_reset_links
+        SET invalidated_at = NOW(), invalidated_reason = 'claimed_by_submitter'
+        WHERE user_id = ${user.id}
+          AND consumed_at IS NULL
+          AND invalidated_at IS NULL
+    `);
+
+    if (user.phone) {
+        await customerService.linkServiceRequestsByPhone(user.phone, user.id);
+    }
+
+    await regenerateSession(req);
+    const { csrfToken } = await establishCustomerSession(req, res, {
+        customerId: user.id,
+        authMethod: 'phone',
+    });
+    // regenerate() already dropped it; being explicit so the intent survives a
+    // future refactor of session handling.
+    delete req.session.pendingClaimUserId;
+
+    console.log('[CustomerAuth] Unclaimed account claimed by original submitter');
+
+    const { password: _pw, ...safeUser } = user;
+    return res.status(201).json({ ...safeUser, csrfToken });
+}
+
 router.post('/api/customer/register', registrationLimiter, async (req: Request, res: Response) => {
     try {
         const validated = customerRegisterSchema.parse(req.body);
@@ -104,6 +161,15 @@ router.post('/api/customer/register', registrationLimiter, async (req: Request, 
         const existingUser = await userRepo.getUserByPhoneNormalized(validated.phone);
         if (existingUser) {
             if (existingUser.customerAccountState === 'unclaimed') {
+                // Same-session claim: this browser submitted the repair request that
+                // created this unclaimed record, so it is the submitter, not a
+                // stranger who happens to know the number. Nothing else can hold
+                // this session value — knowing the phone is not enough.
+                if (req.session.pendingClaimUserId === existingUser.id) {
+                    const claimed = await claimUnclaimedAccount(req, res, existingUser, validated);
+                    return claimed;
+                }
+
                 return res.status(400).json({
                     error: 'This phone is already linked to a repair record. Please contact support to activate online access.',
                     code: 'ACCOUNT_SETUP_REQUIRED',
