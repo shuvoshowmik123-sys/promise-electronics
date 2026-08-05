@@ -1429,6 +1429,10 @@ export const adminPickupsApi = {
             stage?: string;
             /** Set when exactly one driver existed and the task was assigned automatically. */
             autoAssignedDriver?: string | null;
+            /** Logistics task created by the transfer — the target for assigning a driver. */
+            taskId?: string | null;
+            /** True when the task exists but nobody was assigned automatically. */
+            driverChoiceRequired?: boolean;
         }>(`/admin/service-requests/${serviceRequestId}/transfer-to-pickup`, {
             method: "POST",
             body: JSON.stringify(data || {}),

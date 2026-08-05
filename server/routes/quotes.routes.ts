@@ -483,9 +483,23 @@ router.get('/api/pickups/by-request/:serviceRequestId', async (req: Request, res
 async function finishPickupTransfer(
     serviceRequestId: string,
     pickupScheduleId: string,
-): Promise<{ stage?: string; autoAssignedDriver?: string | null }> {
+): Promise<{
+    stage?: string;
+    autoAssignedDriver?: string | null;
+    /**
+     * The logistics task the transfer produced. Returned so the caller can offer
+     * a driver straight away: with two or more drivers autoAssignSoleDriver
+     * deliberately assigns nobody, and until now nothing told the admin that a
+     * choice was still outstanding — the task simply sat unassigned in Pickup &
+     * Delivery waiting for someone to notice.
+     */
+    taskId?: string | null;
+    /** True when the task exists but no driver was assigned automatically. */
+    driverChoiceRequired?: boolean;
+}> {
     let stage: string | undefined;
     let autoAssignedDriver: string | null = null;
+    let taskId: string | null = null;
 
     try {
         const { jobService } = await import('../services/job.service.js');
@@ -499,7 +513,7 @@ async function finishPickupTransfer(
     try {
         const { getPickupTaskIdForSchedule, autoAssignSoleDriver } =
             await import('../services/logistics-task.service.js');
-        const taskId = await getPickupTaskIdForSchedule(pickupScheduleId);
+        taskId = await getPickupTaskIdForSchedule(pickupScheduleId);
         if (taskId) {
             const assigned = await autoAssignSoleDriver(taskId);
             autoAssignedDriver = assigned?.assignedDriverName ?? null;
@@ -508,7 +522,12 @@ async function finishPickupTransfer(
         console.error('[Pickup] Auto-assign step failed:', (err as Error).message);
     }
 
-    return { stage, autoAssignedDriver };
+    return {
+        stage,
+        autoAssignedDriver,
+        taskId,
+        driverChoiceRequired: Boolean(taskId) && !autoAssignedDriver,
+    };
 }
 
 /**
@@ -523,13 +542,30 @@ router.post('/api/admin/service-requests/:id/transfer-to-pickup', requireAdminAu
             return res.status(404).json({ error: 'Service request not found' });
         }
 
-        // Idempotent — return the existing pickup if already transferred
+        // Idempotent — return the existing pickup if already transferred.
+        //
+        // The self-heal now runs BEFORE responding rather than as a detached
+        // promise. Pressing the button a second time is exactly how an admin
+        // asks "who is taking this?", and answering that needs the task id and
+        // assignment state in the response — which a fire-and-forget call
+        // cannot provide.
         const existing = await storage.getPickupScheduleByServiceRequestId(sr.id);
         if (existing) {
-            syncPickupScheduleToLogisticsTask(existing.id)
-                .then(() => finishPickupTransfer(sr.id, existing.id))
-                .catch((err) => console.error('[Logistics] Transfer self-heal sync failed:', (err as Error).message));
-            return res.json({ pickup: existing, alreadyExisted: true, stage: 'pickup_scheduled' });
+            let outcome: Awaited<ReturnType<typeof finishPickupTransfer>> = {};
+            try {
+                await syncPickupScheduleToLogisticsTask(existing.id);
+                outcome = await finishPickupTransfer(sr.id, existing.id);
+            } catch (err) {
+                console.error('[Logistics] Transfer self-heal sync failed:', (err as Error).message);
+            }
+            return res.json({
+                pickup: existing,
+                alreadyExisted: true,
+                stage: outcome.stage ?? 'pickup_scheduled',
+                autoAssignedDriver: outcome.autoAssignedDriver ?? null,
+                taskId: outcome.taskId ?? null,
+                driverChoiceRequired: outcome.driverChoiceRequired ?? false,
+            });
         }
 
         const { tier, tierCost } = req.body || {};

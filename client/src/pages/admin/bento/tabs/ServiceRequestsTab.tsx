@@ -121,7 +121,8 @@ function getStatusChangeWarning(type: 'internal' | 'tracking', from: string, to:
         color: 'bg-blue-50 border-blue-200 text-blue-800',
     };
 }
-import { serviceRequestsApi, adminQuotesApi, adminStageApi, jobTicketsApi, settingsApi, adminPickupsApi, repairCaseApi, callAttemptsApi, intakeSummaryApi } from "@/lib/api";
+import { serviceRequestsApi, adminQuotesApi, adminStageApi, jobTicketsApi, settingsApi, adminPickupsApi, adminLogisticsApi, repairCaseApi, callAttemptsApi, intakeSummaryApi } from "@/lib/api";
+import { resolveCustodyOwner } from "@/lib/custody-owner";
 import { useRollback } from "@/contexts/RollbackContext";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { cn } from "@/lib/utils";
@@ -329,6 +330,8 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
     const [rollbackTarget, setRollbackTarget] = useState("");
     const [showMobileMoreActions, setShowMobileMoreActions] = useState(false);
     const { addRollbackRequest } = useRollback();
+    // Open once a transfer produces a task that nobody was auto-assigned to.
+    const [driverPicker, setDriverPicker] = useState<{ taskId: string; ticketNumber: string | null } | null>(null);
     const [custodyOtp, setCustodyOtp] = useState<{ requestId: string; action: CustodyOtpAction; targetStage: string; phone?: string } | null>(null);
     const [custodyOtpCode, setCustodyOtpCode] = useState("");
 
@@ -592,18 +595,49 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             // unassigned until the tab is reloaded.
             queryClient.invalidateQueries({ queryKey: ["logistics-tasks"] });
 
-            if (res.alreadyExisted) {
-                toast.success("Already in Pickup & Delivery");
+            if (res.autoAssignedDriver) {
+                toast.success(
+                    res.alreadyExisted
+                        ? `Already in Pickup & Delivery — ${res.autoAssignedDriver}`
+                        : `Transferred to Pickup & Delivery — assigned to ${res.autoAssignedDriver}`,
+                );
                 return;
             }
-            toast.success(
-                res.autoAssignedDriver
-                    ? `Transferred to Pickup & Delivery — assigned to ${res.autoAssignedDriver}`
-                    : "Transferred to Pickup & Delivery",
-            );
+
+            // With two or more drivers autoAssignSoleDriver assigns nobody on
+            // purpose. Previously that ended here: the task sat unassigned in
+            // Pickup & Delivery and nothing said a choice was still owed. Ask
+            // for the driver now, while the admin is still looking at the case.
+            if (res.driverChoiceRequired && res.taskId) {
+                setDriverPicker({ taskId: res.taskId, ticketNumber: selectedRequest?.ticketNumber ?? null });
+                return;
+            }
+
+            toast.success(res.alreadyExisted ? "Already in Pickup & Delivery" : "Transferred to Pickup & Delivery");
         },
         onError: (e: Error) => toast.error(e.message || "Failed to transfer to pickup"),
     });
+    // Only fetched once the picker opens — most requests never need the list.
+    const { data: availableDrivers = [], isLoading: driversLoading } = useQuery({
+        queryKey: ["logistics-drivers"],
+        queryFn: adminLogisticsApi.listDrivers,
+        enabled: !!driverPicker,
+        staleTime: 5 * 60 * 1000,
+    });
+
+    const assignDriverMutation = useMutation({
+        mutationFn: ({ taskId, driver }: { taskId: string; driver: { id: string; name: string } }) =>
+            adminLogisticsApi.assign(taskId, { driverId: driver.id, driverName: driver.name }),
+        onSuccess: (_r, vars) => {
+            queryClient.invalidateQueries({ queryKey: ["logistics-tasks"] });
+            queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
+            queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
+            setDriverPicker(null);
+            toast.success(`Assigned to ${vars.driver.name}`);
+        },
+        onError: (e: Error) => toast.error(e.message || "Failed to assign driver"),
+    });
+
     const sendCustodyOtpMutation = useMutation({
         mutationFn: ({ id, action }: { id: string; action: CustodyOtpAction }) => adminStageApi.sendCustodyOtp(id, { action }),
         onSuccess: (r, vars) => {
@@ -899,27 +933,55 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 disabled: false,
             };
         }
-        const receiveStage = findNextStage(selectedIsPickup ? "picked_up" : "device_received");
+        /**
+         * Pickup requests hand off to the driver, not to this desk.
+         *
+         * This branch must come BEFORE the custody branch below, and used not
+         * to. getNextValidStages returns stageFlow.slice(index + 1) — every
+         * remaining stage, not the next one — so findNextStage("picked_up")
+         * matched from "intake" onwards and the custody branch won every time.
+         * "Receive Pickup OTP" therefore occupied the one primary action slot
+         * on mobile for the whole life of a pickup request, and this transfer
+         * branch was unreachable: dead code behind a condition that could never
+         * be false first.
+         *
+         * Collecting the customer's code belongs to whoever is standing at the
+         * customer's door. Offering it here invites an admin at a desk to
+         * confirm a handover that has not physically happened.
+         */
+        const custodyOwner = resolveCustodyOwner({
+            serviceMode: selectedIsPickup ? "pickup" : selectedRequest.serviceMode,
+            stage: selectedStage,
+            convertedJobId: selectedRequest.convertedJobId,
+        });
+        if (canTransitionStage && custodyOwner === "pickup_desk") {
+            const transferred = selectedStage === "pickup_scheduled";
+            return {
+                title: transferred ? "With Pickup & Delivery" : "Send to pickup desk",
+                body: transferred
+                    ? "The driver confirms the customer's code at the door."
+                    : "Create the Pickup & Delivery job, then choose the driver.",
+                label: transferred ? "Open Pickup & Delivery" : "Transfer to Pickup & Delivery",
+                tone: "blue",
+                icon: <Truck className="h-4 w-4" />,
+                onClick: () => transferred
+                    ? setLocation(buildNavigateAdminTabPath("pickup"))
+                    : transferToPickupMutation.mutate(selectedRequest.id),
+                disabled: transferToPickupMutation.isPending,
+            };
+        }
+        // Drop-off only. The customer is at the counter, so the person taking
+        // the device is the person reading the code — that is this desk.
+        const receiveStage = custodyOwner === "service_desk" ? findNextStage("device_received") : undefined;
         if (canTransitionStage && receiveStage) {
             return {
                 title: "Confirm custody",
                 body: "Customer OTP is required before this can become a job.",
-                label: selectedIsPickup ? "Receive Pickup OTP" : "Receive Device OTP",
+                label: "Receive Device OTP",
                 tone: "emerald",
                 icon: <CheckCircle className="h-4 w-4" />,
                 onClick: () => handleStageSelect(selectedRequest.id, receiveStage),
                 disabled: sendCustodyOtpMutation.isPending,
-            };
-        }
-        if (canTransitionStage && selectedIsPickup && ["authorized", "assessment", "intake", "pickup_scheduled"].includes(selectedStage)) {
-            return {
-                title: "Move to pickup desk",
-                body: "Create or open the Pickup & Delivery work item for scheduling.",
-                label: selectedStage === "pickup_scheduled" ? "Open Pickup" : "Transfer Pickup",
-                tone: "blue",
-                icon: <Truck className="h-4 w-4" />,
-                onClick: () => selectedStage === "pickup_scheduled" ? setLocation(buildNavigateAdminTabPath("pickup")) : transferToPickupMutation.mutate(selectedRequest.id),
-                disabled: transferToPickupMutation.isPending,
             };
         }
         const nextStage = canTransitionStage
@@ -1919,6 +1981,89 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                     );
                                 })()}
                             </MobileBottomSheetFrame>
+                        </div>
+                    )}
+
+                    {/* Driver chooser — a list of people, not a <Select>. One tap
+                        per driver, same sheet on mobile and desktop so the two
+                        views cannot drift apart again. */}
+                    {driverPicker && (
+                        <div className="fixed inset-0 z-[75] flex items-end justify-center md:items-center md:p-6">
+                            <motion.div
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 1 }}
+                                exit={{ opacity: 0 }}
+                                className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm"
+                                onClick={() => setDriverPicker(null)}
+                            />
+                            <motion.div
+                                initial={{ opacity: 0, y: 24 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                exit={{ opacity: 0, y: 24 }}
+                                className="relative w-full max-w-md rounded-t-[2rem] bg-white p-4 shadow-2xl md:rounded-3xl md:p-6"
+                            >
+                                <div className="md:hidden"><MobileBottomSheetHandle /></div>
+                                <div className="mt-3 md:mt-0">
+                                    <h3 className="text-lg font-black text-slate-950">Who is collecting this?</h3>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                                        {driverPicker.ticketNumber ? `Request #${driverPicker.ticketNumber} is` : "This request is"} in Pickup &amp; Delivery and needs a driver.
+                                    </p>
+                                </div>
+
+                                <div className="mt-4 max-h-[45vh] space-y-2 overflow-y-auto">
+                                    {driversLoading && (
+                                        <div className="flex items-center justify-center py-8">
+                                            <Loader2 className="h-5 w-5 animate-spin text-slate-400" />
+                                        </div>
+                                    )}
+                                    {!driversLoading && availableDrivers.length === 0 && (
+                                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                                            <p className="text-sm font-bold text-amber-900">No drivers available</p>
+                                            <p className="mt-1 text-xs font-semibold text-amber-700">
+                                                Add a user with the Driver role, then assign from Pickup &amp; Delivery.
+                                            </p>
+                                        </div>
+                                    )}
+                                    {!driversLoading && availableDrivers.map((driver) => (
+                                        <button
+                                            key={driver.id}
+                                            type="button"
+                                            disabled={assignDriverMutation.isPending}
+                                            onClick={() => assignDriverMutation.mutate({
+                                                taskId: driverPicker.taskId,
+                                                driver: { id: driver.id, name: driver.name },
+                                            })}
+                                            className="flex min-h-[56px] w-full items-center justify-between rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left transition-colors active:bg-slate-50 disabled:opacity-60 md:hover:border-blue-300 md:hover:bg-blue-50/50"
+                                        >
+                                            <span className="flex items-center gap-3">
+                                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-50 text-sm font-black text-blue-700">
+                                                    {driver.name.charAt(0).toUpperCase()}
+                                                </span>
+                                                <span>
+                                                    <span className="block text-sm font-black text-slate-900">{driver.name}</span>
+                                                    <span className="block text-xs font-semibold text-slate-500">{driver.role}</span>
+                                                </span>
+                                            </span>
+                                            {assignDriverMutation.isPending
+                                                ? <Loader2 className="h-4 w-4 animate-spin text-slate-400" />
+                                                : <ChevronRight className="h-4 w-4 text-slate-300" />}
+                                        </button>
+                                    ))}
+                                </div>
+
+                                <div className="mt-4 flex flex-col gap-2">
+                                    {/* Leaving it unassigned is legitimate — the pickup desk may
+                                        want to plan a route first — but it must be a choice, not
+                                        the silent default it used to be. */}
+                                    <Button
+                                        variant="outline"
+                                        className="h-11 rounded-xl"
+                                        onClick={() => setDriverPicker(null)}
+                                    >
+                                        Decide later in Pickup &amp; Delivery
+                                    </Button>
+                                </div>
+                            </motion.div>
                         </div>
                     )}
 

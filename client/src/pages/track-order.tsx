@@ -927,6 +927,16 @@ export default function TrackOrderPage() {
               >
                 &larr; Back to Orders
               </Button>
+              {/* The handover code lives here on desktop too.
+                  It was only ever rendered in the mobile branch above, so a
+                  customer who signed in on a computer and opened their order
+                  had nowhere for the code to appear — they saw it once at
+                  submission and could never find it again. */}
+              {selectedOrderType === "service" && serviceRequestDetails && (
+                <div className="mb-6">
+                  <HandoverCodeCard serviceRequestId={serviceRequestDetails.id} />
+                </div>
+              )}
               {selectedOrderType === "service" && serviceRequestDetails ? (
                 serviceRequestDetails.isQuote && serviceRequestDetails.quoteStatus !== "Accepted" ? (
                   <Suspense fallback={<div className="flex items-center justify-center py-12"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>}>
