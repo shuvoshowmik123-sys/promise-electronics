@@ -192,6 +192,18 @@ export default function RepairRequestPage() {
    */
   const primaryIssueOptions = commonSymptoms;
 
+  /**
+   * The secondary list never repeats the main fault.
+   *
+   * primaryIssue and symptoms are different things and are used differently:
+   * primaryIssue becomes jobTickets.issue — the line the technician reads on the
+   * job ticket — while symptoms stay on the service request as supporting
+   * badges and are not carried into the job at all. Both legitimately draw from
+   * the same fault vocabulary, but showing that vocabulary twice, unfiltered,
+   * made them look like one duplicated question.
+   */
+  const secondarySymptomOptions = commonSymptoms.filter((sym) => sym !== primaryIssue);
+
   const nextStep = () => {
     if (step === 1) {
       const errors: Record<string, boolean> = {};
@@ -662,10 +674,24 @@ export default function RepairRequestPage() {
                   </div>
 
                   <div className="space-y-2">
-                    <Label>Primary Issue *</Label>
-                    <Select value={primaryIssue} onValueChange={(val) => { setPrimaryIssue(val); clearError('primaryIssue'); }}>
+                    <Label>Main Fault *</Label>
+                    <p className="text-xs text-muted-foreground">
+                      The one problem that best describes why the TV needs repair. This becomes the
+                      headline on the job ticket your technician works from.
+                    </p>
+                    <Select
+                      value={primaryIssue}
+                      onValueChange={(val) => {
+                        setPrimaryIssue(val);
+                        // Promoting a symptom to the main fault must not leave it
+                        // recorded in both fields — the job ticket would then
+                        // repeat the same words the badges already show.
+                        setSelectedSymptoms((prev) => prev.filter((sym) => sym !== val));
+                        clearError('primaryIssue');
+                      }}
+                    >
                       <SelectTrigger data-testid="select-issue" className={validationErrors.primaryIssue ? 'border-red-500' : ''}>
-                        <SelectValue placeholder="Select Issue Type" />
+                        <SelectValue placeholder="Select the main fault" />
                       </SelectTrigger>
                       <SelectContent>
                         {primaryIssueOptions.map((category) => (
@@ -681,10 +707,25 @@ export default function RepairRequestPage() {
                     </Select>
                   </div>
 
+                  {/* The main fault is removed from this list.
+                      Both controls read common_symptoms, so before this the same
+                      options appeared twice on one screen with nothing to say how
+                      they differed — a customer could tick the very fault they had
+                      just chosen above. What the shop actually needs is one
+                      headline fault plus anything ELSE happening alongside it. */}
                   <div className="space-y-2">
-                    <Label>Common Symptoms (Select all that apply)</Label>
+                    <Label>Anything else happening? (optional)</Label>
+                    <p className="text-xs text-muted-foreground">
+                      Tick any other symptoms you have noticed. These help the technician
+                      diagnose, but the main fault above is what defines the job.
+                    </p>
                     <div className="grid grid-cols-2 gap-4">
-                      {commonSymptoms.map((sym) => (
+                      {secondarySymptomOptions.length === 0 && (
+                        <p className="col-span-2 text-sm text-muted-foreground">
+                          No other symptoms to add.
+                        </p>
+                      )}
+                      {secondarySymptomOptions.map((sym) => (
                         <div key={sym} className="flex items-center space-x-2" data-testid={`symptom-checkbox-${sym.toLowerCase().replace(/\s+/g, '-')}`}>
                           <Checkbox
                             id={sym}
