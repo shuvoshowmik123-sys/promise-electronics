@@ -9,6 +9,7 @@ import {
     establishCustomerSession,
     CustomerAccountNotActivatedError,
 } from "../services/customer-session.service.js";
+import { toCustomerSessionView } from "../services/customer-session-view.js";
 
 const router = Router();
 
@@ -94,16 +95,10 @@ router.post("/api/auth/firebase", async (req: Request, res: Response) => {
                 console.error("[FirebaseAuth] Session save failed:", (saveErr as Error).message);
                 return res.status(500).json({ error: "Session creation failed" });
             }
-            res.json({
-                ok: true,
-                user: {
-                    id: user!.id,
-                    name: user!.name,
-                    email: user!.email,
-                    role: user!.role,
-                    profileImageUrl: (user! as any).profileImageUrl,
-                },
-            });
+            // Was a hand-written five-field object that omitted `phone`, so the
+            // client concluded the account had no phone number and demanded
+            // profile completion. See customer-session-view.ts.
+            res.json({ ok: true, user: toCustomerSessionView(user!) });
         });
     } catch (e: any) {
         if (e instanceof CustomerAccountNotActivatedError) {

@@ -39,6 +39,7 @@ import {
 } from '../services/customer-session.service.js';
 import { TIMING_EQUALISER_HASH, isPlaceholderPassword } from '../services/customer-password.js';
 import { deriveServiceRequestPaymentState, applyCustomerSafePaymentState } from '../services/service-request-payment-projection.service.js';
+import { toCustomerSessionView } from '../services/customer-session-view.js';
 
 const router = Router();
 
@@ -150,8 +151,7 @@ async function claimUnclaimedAccount(
 
     console.log('[CustomerAuth] Unclaimed account claimed by original submitter');
 
-    const { password: _pw, ...safeUser } = user;
-    return res.status(201).json({ ...safeUser, csrfToken });
+    return res.status(201).json({ ...toCustomerSessionView(user), csrfToken });
 }
 
 router.post('/api/customer/register', registrationLimiter, async (req: Request, res: Response) => {
@@ -200,7 +200,7 @@ router.post('/api/customer/register', registrationLimiter, async (req: Request, 
             authMethod: 'phone',
         });
 
-        const { password: _, ...safeUser } = user;
+        const safeUser = toCustomerSessionView(user);
 
         notifyAdminUpdate({
             type: 'customer_created',
@@ -288,8 +288,7 @@ router.post('/api/customer/login', authLimiter, async (req: Request, res: Respon
             await customerService.linkServiceRequestsByPhone(user.phone, user.id);
         }
 
-        const { password: _, ...safeUser } = user;
-        res.json({ ...safeUser, csrfToken });
+        res.json({ ...toCustomerSessionView(user), csrfToken });
     } catch (error: any) {
         if (error instanceof z.ZodError) {
             return res.status(400).json({ error: 'Invalid login data' });
@@ -358,8 +357,7 @@ router.post('/api/customer/google-auth', authLimiter, async (req: Request, res: 
             await customerService.linkServiceRequestsByPhone(user.phone, user.id);
         }
 
-        const { password: _, ...safeUser } = user;
-        res.json({ ...safeUser, csrfToken });
+        res.json({ ...toCustomerSessionView(user), csrfToken });
 
     } catch (error) {
         console.error('[CustomerAuth] Google auth failed:', (error as Error).message);
@@ -421,8 +419,7 @@ router.post('/api/customer/link-google', requireCustomerAuth, async (req: Reques
             return res.status(500).json({ error: 'Failed to update user' });
         }
 
-        const { password: _, ...safeUser } = updatedUser;
-        res.json(safeUser);
+        res.json(toCustomerSessionView(updatedUser));
 
     } catch (error) {
         console.error('[CustomerAuth] Link Google failed:', (error as Error).message);
@@ -679,7 +676,7 @@ router.post('/api/customer/reset-link/complete', resetLinkLimiter, async (req: R
         }
 
         const fresh = await userRepo.getUser(outcome.userId);
-        const { password: _pw, ...safeUser } = (fresh ?? {}) as any;
+        const safeUser = fresh ? toCustomerSessionView(fresh) : {};
 
         console.log(`[ResetLink] Password set via one-time link for user ${outcome.userId}`);
         res.json({ ...safeUser, csrfToken });
@@ -751,8 +748,7 @@ router.get('/api/customer/me', async (req: Request, res: Response) => {
             });
         }
 
-        const { password: _, ...safeCustomer } = customer;
-        res.json(safeCustomer);
+        res.json(toCustomerSessionView(customer));
     } catch (error) {
         // Infrastructure failure — not an auth failure. Client must not treat this as logout.
         console.error('[CustomerAuth] /me lookup failed:', (error as Error)?.message);
@@ -776,7 +772,6 @@ router.put('/api/customer/profile', requireCustomerAuth, async (req: Request, re
         const { phone, address, name, email, avatar, profileImageUrl } = req.body;
 
         const updates: any = {};
-        if (phone !== undefined) updates.phone = phone;
         if (address !== undefined) updates.address = address;
         if (name !== undefined) updates.name = name;
         if (email !== undefined) updates.email = email;
@@ -784,6 +779,32 @@ router.put('/api/customer/profile', requireCustomerAuth, async (req: Request, re
         if (profileImageUrl !== undefined) updates.profileImageUrl = profileImageUrl;
 
         const oldCustomer = await storage.getCustomer(customerId);
+
+        /**
+         * phone and phone_normalized must move together.
+         *
+         * updateCustomer is updateUser, which does a raw `.set(updates)` — it
+         * normalizes nothing. Writing `phone` alone left `phone_normalized`
+         * holding the OLD number, and that column is what login resolves
+         * against (getUserByPhoneNormalized). A customer who changed their
+         * number could then sign in only with the number they had abandoned,
+         * while the new one silently failed to match any account.
+         *
+         * The stored `phone` is also canonicalised to +880 form here. The
+         * desktop repair form keeps its input state stripped of the prefix and
+         * sent that bare local part straight through, so an account could end
+         * up holding "1712345678" while every other record used
+         * "+8801712345678".
+         */
+        if (phone !== undefined) {
+            const normalized = normalizePhone(phone);
+            if (phone && !normalized) {
+                return res.status(400).json({ error: 'Please enter a valid Bangladeshi phone number.' });
+            }
+            updates.phone = normalized ? `+880${normalized}` : phone;
+            updates.phoneNormalized = normalized;
+        }
+
         const isAddingPhone = phone && !oldCustomer?.phone;
 
         const customer = await storage.updateCustomer(customerId, updates);
@@ -798,12 +819,21 @@ router.put('/api/customer/profile', requireCustomerAuth, async (req: Request, re
             }
         }
 
-        const { password: _, ...safeCustomer } = customer;
-        res.json(safeCustomer);
+        res.json(toCustomerSessionView(customer));
     } catch (error: any) {
         console.error('[CustomerProfile] Update failed:', (error as Error).message);
 
-        if (error?.code === '23505' && error?.constraint === 'customers_phone_key') {
+        /**
+         * The real constraint is users_phone_unique (migrations/0000, line 1101).
+         * This checked customers_phone_key — a name from the old `customers`
+         * table — so a duplicate number never matched, fell through, and came
+         * back as a generic 500 with no indication of what was wrong.
+         *
+         * Matching on the column rather than one exact name keeps this working
+         * if the constraint is ever renamed again, and still covers databases
+         * created under the legacy name.
+         */
+        if (error?.code === '23505' && String(error?.constraint || '').includes('phone')) {
             return res.status(409).json({
                 error: 'This phone number is already in use. Please try a different number.',
                 code: 'PHONE_EXISTS'

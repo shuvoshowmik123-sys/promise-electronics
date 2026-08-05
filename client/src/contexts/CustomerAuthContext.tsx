@@ -112,7 +112,11 @@ export function CustomerAuthProvider({ children }: { children: ReactNode }) {
       body: JSON.stringify({ idToken }),
     });
     await clearPersistedClientState();
-    setCustomer(user as CustomerSession);
+    // No `as` cast here on purpose. The previous cast asserted the shape rather
+    // than checking it, which is why nobody noticed the endpoint was returning
+    // five fields with no `phone` — the session then looked like an account
+    // with no phone number and demanded profile completion on every sign-in.
+    setCustomer(user);
   };
 
   const register = async (data: { name: string; phone: string; email?: string; address?: string; password: string }) => {

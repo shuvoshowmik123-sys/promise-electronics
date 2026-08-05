@@ -143,7 +143,7 @@ function normalizePhone(raw: string) {
 export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
-  const { customer, register } = useCustomerAuth();
+  const { customer, register, isAuthenticated } = useCustomerAuth();
   const { language, t } = useCustomerLanguage();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -179,6 +179,18 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [customerName, setCustomerName] = useState(customer?.name || "");
   const [phone, setPhone] = useState(normalizePhone(customer?.phone || ""));
   const [address, setAddress] = useState(customer?.address || "");
+  /**
+   * Whether the customer has edited a contact field by hand.
+   *
+   * The three useState calls above only read `customer` on the FIRST render,
+   * and authentication resolves asynchronously — so on mobile the fields stayed
+   * blank for anyone whose session had not arrived by then. Desktop had a sync
+   * effect for exactly this; the wizard had none.
+   *
+   * Syncing must not clobber typing, hence the flag: once the customer touches
+   * a field, a late-arriving session no longer overwrites it.
+   */
+  const contactTouched = useRef(false);
   const [ticketNumber, setTicketNumber] = useState("");
   const [setupRequestState, setSetupRequestState] = useState<"idle" | "sending" | "sent" | "error">("idle");
   const [accountPassword, setAccountPassword] = useState("");
@@ -186,6 +198,17 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const idempotencyKeyRef = useRef<string | null>(null);
   const payloadMaterialRef = useRef<string | null>(null);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
+
+  // Fill contact details once the session arrives. Matches the effect desktop
+  // Repair Request has had all along; without it the mobile wizard asked a
+  // signed-in customer to retype the name and number it already knew.
+  useEffect(() => {
+    if (!isAuthenticated || !customer) return;
+    if (contactTouched.current) return;
+    setCustomerName(customer.name || "");
+    setPhone(normalizePhone(customer.phone || ""));
+    setAddress(customer.address || "");
+  }, [isAuthenticated, customer]);
 
   // Pre-fill from calculator query params (?brand=...&size=...&issue=...)
   const wizardHydrated = useRef(false);
@@ -969,7 +992,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                     {t("pickupPin.open")}
                   </Button>
                 </div>
-                <Textarea value={address} onChange={(event) => setAddress(event.target.value)} className="min-h-24 rounded-2xl border-emerald-100" placeholder="Area, road, house..." />
+                <Textarea value={address} onChange={(event) => { contactTouched.current = true; setAddress(event.target.value); }} className="min-h-24 rounded-2xl border-emerald-100" placeholder="Area, road, house..." />
                 {pickupLatitude != null && pickupLongitude != null && (
                   <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
                     <MapPin className="h-3.5 w-3.5" />
@@ -1018,7 +1041,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                   name="name"
                   autoComplete="name"
                   value={customerName}
-                  onChange={(event) => setCustomerName(event.target.value)}
+                  onChange={(event) => { contactTouched.current = true; setCustomerName(event.target.value); }}
                   className="h-12 rounded-2xl border-emerald-100"
                   placeholder="Your name"
                 />
@@ -1030,7 +1053,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                   name="username"
                   autoComplete="username"
                   value={phone}
-                  onChange={(event) => setPhone(event.target.value)}
+                  onChange={(event) => { contactTouched.current = true; setPhone(event.target.value); }}
                   className="h-12 rounded-2xl border-emerald-100"
                   placeholder="1XXXXXXXXX"
                 />

@@ -24,6 +24,7 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { getApiUrl } from "@/lib/config";
 import { getIKFolder } from "@/lib/imagekit-config";
 import { resolveSettingArray } from "@/lib/setting-array";
+import { samePhone } from "@/lib/phone";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   canUseSavedContactSummary,
@@ -441,8 +442,17 @@ export default function RepairRequestPage() {
       } else if (isAuthenticated && customer) {
         // Update customer profile with the form data if they're logged in
         // This saves their phone/address if they skipped profile completion earlier
+        /**
+         * `phone` state holds the local part — the effect above strips +880 for
+         * the input — while customer.phone holds "+8801712345678". Comparing
+         * them directly was never equal, so needsUpdate was ALWAYS true and
+         * every submission rewrote the account phone with the bare local part,
+         * leaving one account holding "1712345678" while every other record
+         * used the +880 form. Compare like with like.
+         */
+        const phoneChanged = Boolean(phone) && !samePhone(phone, customer.phone);
         const needsUpdate =
-          (phone && phone !== customer.phone) ||
+          phoneChanged ||
           (address && address !== customer.address) ||
           (customerName && customerName !== customer.name);
 
@@ -450,7 +460,10 @@ export default function RepairRequestPage() {
           try {
             await updateProfile({
               name: customerName || undefined,
-              phone: phone || undefined,
+              // Only send the phone when it actually changed. Sending it on
+              // every submission is how an unrelated edit (a new address) could
+              // rewrite the number the customer signs in with.
+              phone: phoneChanged ? `+880${phone}` : undefined,
               address: address || undefined,
             });
             // Clear the skipped flag since we now have their info
