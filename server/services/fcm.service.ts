@@ -96,6 +96,35 @@ export async function sendPushToDevice(token: string, payload: PushPayload): Pro
                     defaultSound: true,
                 },
             },
+            /**
+             * The admin panel is a browser PWA, and until now this message
+             * carried delivery options for Android only. Web push has its own
+             * block, and without it the message goes at FCM's default urgency —
+             * which browser push services are permitted to batch and hold
+             * rather than wake the device for.
+             *
+             * Urgency "high" asks for immediate delivery instead of coalescing
+             * with whenever the browser next wakes. TTL bounds how long an
+             * alert about a NEW repair request is still worth showing: four
+             * hours, not FCM's default four weeks, so nobody is greeted by a
+             * pile of yesterday's notifications on launch.
+             *
+             * fcmOptions.link is what makes a click open the right screen.
+             */
+            webpush: {
+                headers: {
+                    Urgency: 'high',
+                    TTL: String(4 * 60 * 60),
+                },
+                notification: {
+                    title: payload.title,
+                    body: payload.body,
+                    icon: '/logo.png',
+                    badge: '/favicon.png',
+                    requireInteraction: false,
+                },
+                fcmOptions: payload.data?.url ? { link: payload.data.url } : undefined,
+            },
         };
 
         await admin.messaging().send(message);
@@ -139,6 +168,35 @@ export async function sendPushToAllAdmins(payload: PushPayload): Promise<number>
                     defaultSound: true,
                 },
             },
+            /**
+             * The admin panel is a browser PWA, and until now this message
+             * carried delivery options for Android only. Web push has its own
+             * block, and without it the message goes at FCM's default urgency —
+             * which browser push services are permitted to batch and hold
+             * rather than wake the device for.
+             *
+             * Urgency "high" asks for immediate delivery instead of coalescing
+             * with whenever the browser next wakes. TTL bounds how long an
+             * alert about a NEW repair request is still worth showing: four
+             * hours, not FCM's default four weeks, so nobody is greeted by a
+             * pile of yesterday's notifications on launch.
+             *
+             * fcmOptions.link is what makes a click open the right screen.
+             */
+            webpush: {
+                headers: {
+                    Urgency: 'high',
+                    TTL: String(4 * 60 * 60),
+                },
+                notification: {
+                    title: payload.title,
+                    body: payload.body,
+                    icon: '/logo.png',
+                    badge: '/favicon.png',
+                    requireInteraction: false,
+                },
+                fcmOptions: payload.data?.url ? { link: payload.data.url } : undefined,
+            },
         };
 
         const response = await admin.messaging().sendEachForMulticast(message);
@@ -149,6 +207,17 @@ export async function sendPushToAllAdmins(payload: PushPayload): Promise<number>
             const invalidTokens: string[] = [];
             response.responses.forEach((resp, idx) => {
                 if (!resp.success) {
+                    // The error code is the whole diagnosis when push "does not
+                    // work": registration-token-not-registered means the browser
+                    // dropped the subscription, invalid-argument means the
+                    // message shape was wrong, third-party-auth-error means the
+                    // VAPID key does not match the project. Without it, a
+                    // failure was indistinguishable from a delivery that simply
+                    // never displayed.
+                    console.error(
+                        `[FCM] Send failed for token ${idx + 1}/${tokens.length}:`,
+                        (resp.error as any)?.code || resp.error?.message || 'unknown',
+                    );
                     invalidTokens.push(tokens[idx]);
                 }
             });
