@@ -594,6 +594,10 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             // logistics board is stale too. Without this the task appears
             // unassigned until the tab is reloaded.
             queryClient.invalidateQueries({ queryKey: ["logistics-tasks"] });
+            // The wizard card names the driver from this query, so it has to
+            // refetch or the card stays on "Send to pickup desk" after a
+            // successful transfer — which is what made the button look dead.
+            queryClient.invalidateQueries({ queryKey: ["pickup-by-request"] });
 
             if (res.autoAssignedDriver) {
                 toast.success(
@@ -617,6 +621,35 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
         },
         onError: (e: Error) => toast.error(e.message || "Failed to transfer to pickup"),
     });
+    /**
+     * The logistics task for the open request, so the wizard can NAME the driver.
+     *
+     * Read from logistics_tasks rather than the legacy pickup_schedules row: the
+     * legacy table only has `assignedStaff`, while assignment actually writes
+     * `assigned_driver_name` on the task — that is what autoAssignSoleDriver and
+     * the assign endpoint both set. It also carries the task id, which is what
+     * the driver picker needs.
+     *
+     * Without this the screen had nothing to say after a transfer, so it offered
+     * "Open Pickup & Delivery" — a button that navigated away from the case the
+     * admin was reading and answered neither question they actually had: did the
+     * transfer work, and who is collecting it.
+     */
+    const selectedIsPickupMode = selectedRequest?.serviceMode === "pickup"
+        || selectedRequest?.servicePreference === "pickup"
+        || selectedRequest?.servicePreference === "home_pickup";
+
+    const { data: selectedPickupTasks } = useQuery({
+        queryKey: ["pickup-by-request", selectedRequest?.id],
+        queryFn: () => adminLogisticsApi.list({
+            serviceRequestId: selectedRequest!.id,
+            taskType: "pickup",
+        }),
+        enabled: !!selectedRequest?.id && !!selectedIsPickupMode,
+        staleTime: 15 * 1000,
+    });
+    const selectedPickupTask = selectedPickupTasks?.[0] ?? null;
+
     // Only fetched once the picker opens — most requests never need the list.
     const { data: availableDrivers = [], isLoading: driversLoading } = useQuery({
         queryKey: ["logistics-drivers"],
@@ -632,6 +665,9 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             queryClient.invalidateQueries({ queryKey: ["logistics-tasks"] });
             queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
             queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
+            // Without this the wizard card keeps showing "Waiting for a driver"
+            // after the driver has just been chosen.
+            queryClient.invalidateQueries({ queryKey: ["pickup-by-request"] });
             setDriverPicker(null);
             toast.success(`Assigned to ${vars.driver.name}`);
         },
@@ -955,18 +991,61 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             convertedJobId: selectedRequest.convertedJobId,
         });
         if (canTransitionStage && custodyOwner === "pickup_desk") {
-            const transferred = selectedStage === "pickup_scheduled";
+            // A pickup row is the proof the transfer happened. The stage alone is
+            // not: a request can reach pickup_scheduled by other routes, and the
+            // admin's real question is "is this with the drivers, and who has it".
+            const transferred = Boolean(selectedPickupTask) || selectedStage === "pickup_scheduled";
+            const driverName = selectedPickupTask?.assignedDriverName?.trim() || null;
+
+            // Done, and with a named driver. The button greys out because there
+            // is nothing left to press — pressing it again transferred nothing
+            // and said "Already in Pickup & Delivery", which reads like a fault.
+            if (transferred && driverName) {
+                return {
+                    title: `Driver assigned — ${driverName}`,
+                    body: `${driverName} is collecting this device and will confirm the customer's code at the door. Nothing more is needed here; follow it in Pickup & Delivery.`,
+                    label: "Transferred to Pickup & Delivery",
+                    // Slate + disabled so the button is plainly spent. Leaving it
+                    // blue and live invited a second press, which transferred
+                    // nothing and answered "Already in Pickup & Delivery" — a
+                    // reply that reads like a failure.
+                    tone: "slate",
+                    icon: <CheckCircle className="h-4 w-4" />,
+                    onClick: () => undefined,
+                    disabled: true,
+                };
+            }
+
+            // Transferred, nobody assigned. Not a dead end — name the gap and
+            // offer the one action that closes it.
+            if (transferred) {
+                return {
+                    title: "Waiting for a driver",
+                    body: "This is in Pickup & Delivery but nobody is assigned yet. Choose who collects it.",
+                    label: "Choose driver",
+                    tone: "amber",
+                    icon: <Truck className="h-4 w-4" />,
+                    onClick: () => {
+                        if (selectedPickupTask?.id) {
+                            setDriverPicker({ taskId: selectedPickupTask.id, ticketNumber: selectedRequest.ticketNumber ?? null });
+                            return;
+                        }
+                        // No task loaded yet — re-running the transfer is
+                        // idempotent and returns the existing task id, from
+                        // which the mutation opens the picker.
+                        transferToPickupMutation.mutate(selectedRequest.id);
+                    },
+                    disabled: transferToPickupMutation.isPending || assignDriverMutation.isPending,
+                };
+            }
+
             return {
-                title: transferred ? "With Pickup & Delivery" : "Send to pickup desk",
-                body: transferred
-                    ? "The driver confirms the customer's code at the door."
-                    : "Create the Pickup & Delivery job, then choose the driver.",
-                label: transferred ? "Open Pickup & Delivery" : "Transfer to Pickup & Delivery",
+                title: "Send to pickup desk",
+                body: "Create the Pickup & Delivery job, then choose the driver who collects it.",
+                label: "Transfer to Pickup & Delivery",
                 tone: "blue",
                 icon: <Truck className="h-4 w-4" />,
-                onClick: () => transferred
-                    ? setLocation(buildNavigateAdminTabPath("pickup"))
-                    : transferToPickupMutation.mutate(selectedRequest.id),
+                onClick: () => transferToPickupMutation.mutate(selectedRequest.id),
                 disabled: transferToPickupMutation.isPending,
             };
         }
@@ -1878,23 +1957,14 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         <ChevronRight className="h-4 w-4 text-slate-400" />
                                     </button>
 
-                                    {canTransitionStage && (selectedRequest.servicePreference === "pickup" || selectedRequest.servicePreference === "home_pickup" || selectedRequest.serviceMode === "pickup") && (
-                                        <button
-                                            type="button"
-                                            className="flex w-full items-center justify-between rounded-2xl border border-blue-100 bg-blue-50 px-3 py-3 text-left disabled:opacity-60"
-                                            disabled={transferToPickupMutation.isPending}
-                                            onClick={() => {
-                                                transferToPickupMutation.mutate(selectedRequest.id);
-                                                setShowMobileMoreActions(false);
-                                            }}
-                                        >
-                                            <span>
-                                                <span className="block text-sm font-black text-blue-900">Transfer to Pickup & Delivery</span>
-                                                <span className="block text-xs font-semibold text-blue-600">Use when this request needs logistics</span>
-                                            </span>
-                                            <Truck className="h-4 w-4 text-blue-600" />
-                                        </button>
-                                    )}
+                                    {/* "Transfer to Pickup & Delivery" is deliberately NOT
+                                        here any more. It is a step in the case's forward
+                                        flow, not a manual override, so it belongs in the
+                                        wizard action at the top of the sheet where the
+                                        next step always lives. Offering it in both places
+                                        meant the same request could be transferred from
+                                        two screens, with different feedback each time and
+                                        no indication afterwards that it had happened. */}
 
                                     {canTransitionStage && selectedRequest.status !== "New" && !isClosedState && (
                                         <button
