@@ -50,6 +50,8 @@ function mockRouteDependencies(overrides: {
         requireAdminAuth: passthroughMiddleware,
         requireCustomerAuth: passthroughMiddleware,
         requireGranularPermission: () => passthroughMiddleware,
+        requireAnyGranularPermission: () => passthroughMiddleware,
+        actorHasPermission: async () => true,
         requireSuperAdmin: passthroughMiddleware,
         getCustomerId: () => null,
     }));

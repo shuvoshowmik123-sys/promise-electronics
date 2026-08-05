@@ -16,6 +16,8 @@ import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 import { useCustomerMobileChrome } from "@/contexts/CustomerMobileChromeContext";
 import { customerAuthApi } from "@/lib/api";
+import { classifyGoogleSignInError } from "@/lib/google-signin-error";
+import { useExclusiveAuthAction } from "@/hooks/use-exclusive-auth-action";
 
 function RecoveryHelpPanel({ compact = false }: { compact?: boolean }) {
   const { t } = useCustomerLanguage();
@@ -120,8 +122,59 @@ export default function LoginPage() {
   const { login, register, loginWithGoogle } = useCustomerAuth();
   const { t } = useCustomerLanguage();
   const { setBottomNavSuppressed } = useCustomerMobileChrome();
-  const [isLoading, setIsLoading] = useState(false);
+  /**
+   * One authentication action at a time, decided synchronously.
+   *
+   * A `useState` guard could not do this: React state does not update
+   * synchronously, so two events in the same tick both read null and both
+   * proceed. The hook takes the decision on a ref; the state it exposes drives
+   * labels and disabled attributes only.
+   */
+  const auth = useExclusiveAuthAction();
+  const isAuthBusy = auth.isBusy;
+  const isLoading = auth.activeAction === "phone" || auth.activeAction === "register";
+  const isGoogleLoading = auth.activeAction === "google";
   const [showRecoveryHelp, setShowRecoveryHelp] = useState(false);
+
+  /**
+   * Finish the Google sign-in the way the phone sign-in finishes.
+   *
+   * Both Google buttons were `onClick={loginWithGoogle}` — the bare context
+   * function. Two consequences, and the first is the one customers hit:
+   *
+   * On SUCCESS nothing navigated. This page has no redirect on auth state (its
+   * only effect suppresses the bottom nav), and setLocation("/") lives inside
+   * the phone-login and register handlers, which Google never reaches. So the
+   * session was created correctly and the customer was left staring at the
+   * login screen with "Continue with Google" still on it — which reads as "it
+   * didn't work", and appeared to fix itself on refresh because reloading
+   * re-reads the session and routes them.
+   *
+   * On FAILURE the rejected promise had no handler at all, so a Firebase or
+   * API error produced silence rather than a message.
+   */
+  const handleGoogleSignIn = async () => {
+    // Synchronous, BEFORE any await: a second tap in the same tick loses here
+    // rather than opening a second popup.
+    if (!auth.acquire("google")) return;
+    try {
+      await loginWithGoogle();
+      toast({
+        title: t("login.successTitle"),
+        description: t("login.successDesc"),
+      });
+      setLocation("/");
+    } catch (error: unknown) {
+      toast({
+        title: t("login.googleFailed"),
+        // Classified to a translation key, never the raw provider text.
+        description: t(classifyGoogleSignInError(error)),
+        variant: "destructive",
+      });
+    } finally {
+      auth.release("google");
+    }
+  };
 
   useEffect(() => {
     setBottomNavSuppressed(showRecoveryHelp);
@@ -130,7 +183,9 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsLoading(true);
+    // Enter in the phone form while Google is signing in must not start a
+    // second sign-in against the same session. Synchronous, before any await.
+    if (!auth.acquire("phone")) return;
 
     const formData = new FormData(e.currentTarget);
     const phoneSuffix = formData.get("phone") as string;
@@ -143,7 +198,7 @@ export default function LoginPage() {
         description: "Please enter a valid 10-digit mobile number.",
         variant: "destructive",
       });
-      setIsLoading(false);
+      auth.release("phone");
       return;
     }
 
@@ -152,8 +207,8 @@ export default function LoginPage() {
     try {
       await login(fullPhone, password);
       toast({
-        title: "Login Successful",
-        description: "Welcome back to Promise Electronics!",
+        title: t("login.successTitle"),
+        description: t("login.successDesc"),
       });
       setLocation("/");
     } catch (error: any) {
@@ -163,13 +218,13 @@ export default function LoginPage() {
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      auth.release("phone");
     }
   };
 
   const handleRegister = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    setIsLoading(true);
+    if (!auth.acquire("register")) return;
 
     const formData = new FormData(e.currentTarget);
     const name = formData.get("name") as string;
@@ -186,7 +241,7 @@ export default function LoginPage() {
         description: "Please enter a valid 10-digit mobile number.",
         variant: "destructive",
       });
-      setIsLoading(false);
+      auth.release("register");
       return;
     }
 
@@ -196,7 +251,7 @@ export default function LoginPage() {
         description: t("login.passwordMismatch"),
         variant: "destructive",
       });
-      setIsLoading(false);
+      auth.release("register");
       return;
     }
 
@@ -222,7 +277,7 @@ export default function LoginPage() {
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      auth.release("register");
     }
   };
 
@@ -323,7 +378,7 @@ export default function LoginPage() {
                     <input type="checkbox" className="h-4 w-4 rounded border-slate-300" data-testid="checkbox-mobile-remember" />
                     {t("login.rememberMe")}
                   </label>
-                  <Button type="submit" className="h-11 w-full rounded-2xl bg-emerald-600 text-base font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700" disabled={isLoading} data-testid="button-mobile-login-submit">
+                  <Button type="submit" className="h-11 w-full rounded-2xl bg-emerald-600 text-base font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700" disabled={isAuthBusy} data-testid="button-mobile-login-submit">
                     {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -333,8 +388,15 @@ export default function LoginPage() {
                       t("login.signIn")
                     )}
                   </Button>
-                  <Button type="button" variant="outline" className="h-10 w-full rounded-2xl border-slate-200 text-sm font-bold" onClick={loginWithGoogle} data-testid="button-mobile-google-signin">
-                    {t("login.google")}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-10 w-full rounded-2xl border-slate-200 text-sm font-bold"
+                    onClick={handleGoogleSignIn}
+                    disabled={isAuthBusy}
+                    data-testid="button-mobile-google-signin"
+                  >
+                    {isGoogleLoading ? t("login.googleSigningIn") : t("login.google")}
                   </Button>
                 </form>
                 {showRecoveryHelp && <RecoveryHelpPanel compact />}
@@ -377,7 +439,7 @@ export default function LoginPage() {
                       <Input id="mobile-register-confirm-password" name="confirmPassword" type="password" autoComplete="new-password" className="h-12 rounded-2xl border-emerald-100 bg-emerald-50/50 pl-11" placeholder={t("login.confirmPasswordPlaceholder")} data-testid="input-mobile-register-confirm-password" required />
                     </div>
                   </div>
-                  <Button type="submit" className="h-12 w-full rounded-2xl bg-emerald-600 text-base font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700" disabled={isLoading} data-testid="button-mobile-register-submit">
+                  <Button type="submit" className="h-12 w-full rounded-2xl bg-emerald-600 text-base font-black shadow-lg shadow-emerald-100 hover:bg-emerald-700" disabled={isAuthBusy} data-testid="button-mobile-register-submit">
                     {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -457,7 +519,7 @@ export default function LoginPage() {
                   </div>
                 </CardContent>
                 <CardFooter className="flex flex-col gap-4">
-                  <Button type="submit" className="w-full" disabled={isLoading} data-testid="button-login-submit">
+                  <Button type="submit" className="w-full" disabled={isAuthBusy} data-testid="button-login-submit">
                     {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -479,7 +541,8 @@ export default function LoginPage() {
                     type="button"
                     variant="outline"
                     className="w-full"
-                    onClick={loginWithGoogle}
+                    onClick={handleGoogleSignIn}
+                    disabled={isAuthBusy}
                     data-testid="button-google-signin"
                   >
                     <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
@@ -488,7 +551,7 @@ export default function LoginPage() {
                       <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
                       <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                     </svg>
-                    {t("login.google")}
+                    {isGoogleLoading ? "Signing in…" : t("login.google")}
                   </Button>
                 </CardFooter>
               </form>
@@ -594,7 +657,7 @@ export default function LoginPage() {
                   </div>
                 </CardContent>
                 <CardFooter className="flex flex-col gap-4">
-                  <Button type="submit" className="w-full" disabled={isLoading} data-testid="button-register-submit">
+                  <Button type="submit" className="w-full" disabled={isAuthBusy} data-testid="button-register-submit">
                     {isLoading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />

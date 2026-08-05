@@ -332,7 +332,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
     const { addRollbackRequest } = useRollback();
     // Open once a transfer produces a task that nobody was auto-assigned to.
     const [driverPicker, setDriverPicker] = useState<{ taskId: string; ticketNumber: string | null } | null>(null);
-    const [custodyOtp, setCustodyOtp] = useState<{ requestId: string; action: CustodyOtpAction; targetStage: string; phone?: string } | null>(null);
+    const [custodyOtp, setCustodyOtp] = useState<{ requestId: string; action: CustodyOtpAction; targetStage: string } | null>(null);
     const [custodyOtpCode, setCustodyOtpCode] = useState("");
 
     useEffect(() => {
@@ -677,9 +677,11 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
     const sendCustodyOtpMutation = useMutation({
         mutationFn: ({ id, action }: { id: string; action: CustodyOtpAction }) => adminStageApi.sendCustodyOtp(id, { action }),
         onSuccess: (r, vars) => {
-            setCustodyOtp({ requestId: vars.id, action: vars.action, targetStage: r.targetStage, phone: r.phone });
+            // No phone: custody is an account control now, not a phone one, so
+            // the response no longer echoes a number the desk does not need.
+            setCustodyOtp({ requestId: vars.id, action: vars.action, targetStage: r.targetStage });
             setCustodyOtpCode("");
-            toast.success("Customer OTP sent");
+            toast.success("Online code is available in the customer's repair page");
         },
         onError: (e: Error) => { toast.error(e.message || "Failed to send OTP"); },
     });
@@ -2145,7 +2147,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                 <h3 className="mt-4 text-lg font-black text-slate-950">Customer OTP Required</h3>
                                 <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm">
                                     <div className="flex justify-between"><span className="font-bold text-slate-400">Stage</span><span className="font-black text-slate-800">{formatStageName(custodyOtp.targetStage || "")}</span></div>
-                                    <div className="mt-1 flex justify-between"><span className="font-bold text-slate-400">Phone</span><span className="font-black text-slate-800">{custodyOtp.phone || selectedRequest?.phone}</span></div>
+                                    <div className="mt-1 text-[11px] font-semibold text-slate-500">Ask the customer to open My Repairs and read you the code.</div>
                                 </div>
                                 <Input value={custodyOtpCode} onChange={(event) => setCustodyOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="one-time-code" placeholder="6-digit code" className="mt-3 h-12 rounded-2xl text-center text-lg font-black tracking-[0.35em]" />
                                 <div className="mt-5 grid grid-cols-2 gap-2 pb-[env(safe-area-inset-bottom)]">
@@ -2314,7 +2316,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                     <div className="grid gap-4 py-2">
                         <div className="bg-muted/50 p-3 rounded-xl space-y-1.5 text-sm">
                             <div className="flex justify-between"><span className="text-muted-foreground">Stage:</span><span className="font-medium">{formatStageName(custodyOtp?.targetStage || "")}</span></div>
-                            <div className="flex justify-between"><span className="text-muted-foreground">Phone:</span><span>{custodyOtp?.phone || selectedRequest?.phone}</span></div>
+                            <div className="flex justify-between"><span className="text-muted-foreground">Phone:</span><span>{selectedRequest?.phone}</span></div>
                         </div>
                         <div className="grid gap-2">
                             <Label>OTP</Label>

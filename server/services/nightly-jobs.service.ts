@@ -206,6 +206,56 @@ export async function pruneExpiredSessions() {
     }
 }
 
+// ─── Custody code redaction sweeper ───────────────────────────────────────────
+/**
+ * Remove handover-code plaintext from notifications whose issuance is settled.
+ *
+ * The six digits have to live somewhere readable — the customer reads them off
+ * their own screen — and `custody_handover_codes` stores only a hash, so the
+ * plaintext sits in the linked notification. Once the issuance is verified,
+ * superseded or simply expired, that text is a dead secret with no reason to
+ * remain, and the notifications table would otherwise accumulate every custody
+ * code the shop has ever issued.
+ *
+ * This sweeper is what makes inline redaction safe to treat as best-effort.
+ * Previously a redaction failure had to be fatal to the confirmation response
+ * — the only alternative was leaking the code — which meant a driver could see
+ * a 500 after custody had already moved, with a retry that could only return
+ * "already used".
+ *
+ * It is EVENTUAL cleanup, not a guarantee: it runs on an interval and swallows
+ * its own failures, so a settled code can stay readable until the next
+ * successful pass. That window is bounded by the interval below, which is why
+ * the interval matches the code's own five-minute lifetime rather than running
+ * hourly or nightly.
+ *
+ * Expired issuances are included: nothing else ever touched them, so their
+ * codes stayed readable indefinitely.
+ *
+ * The row itself is kept. That a code was issued, and when, is audit evidence.
+ */
+export async function redactSettledCustodyCodes() {
+    if (!isDbReady()) {
+        console.log('[NightlyJobs] Skipping custody redaction — DB not ready');
+        return;
+    }
+    try {
+        const result = await db.execute(sql`
+            UPDATE notifications n
+            SET message = 'Handover code is no longer valid.'
+            FROM custody_handover_codes c
+            WHERE n.id = c.notification_id
+              AND n.type = 'handover_code'
+              AND (c.verified_at IS NOT NULL OR c.invalidated_at IS NOT NULL OR c.expires_at <= NOW())
+              AND n.message ~ '[0-9]{6}'
+        `);
+        const redacted = (result as any).rowCount ?? 0;
+        if (redacted > 0) console.log(`[NightlyJobs] Redacted ${redacted} settled handover code notification(s)`);
+    } catch {
+        logBackgroundFailure('NightlyJobs', 'CUSTODY_REDACTION_FAILED');
+    }
+}
+
 // ─── Initializer (call from server/index.ts) ──────────────────────────────────
 
 let _started = false;
@@ -238,6 +288,10 @@ export function initNightlyJobs() {
     // Session cleanup once per 24h alongside audit log retention
     trackInterval(setInterval(pruneExpiredSessions, 24 * 60 * 60 * 1000));
 
+    // Codes live five minutes, so the sweep runs on the same cadence: an
+    // hourly pass left an expired code readable for most of an hour.
+    trackInterval(setInterval(redactSettledCustodyCodes, 5 * 60 * 1000));
+
     // TECHNICIAN-FLOW-01B: continuous active-work 7-day one-shot alerts (hourly)
     trackInterval(setInterval(() => {
         import('./technician-queue.service.js')
@@ -251,6 +305,7 @@ export function initNightlyJobs() {
     trackTimeout(setTimeout(() => updateAcceptanceRatios().catch(() => {}), 90_000));
     trackTimeout(setTimeout(() => pruneOldAuditLogs().catch(() => {}), 120_000));
     trackTimeout(setTimeout(() => pruneExpiredSessions().catch(() => {}), 150_000));
+    trackTimeout(setTimeout(() => redactSettledCustodyCodes().catch(() => {}), 165_000));
     trackTimeout(setTimeout(() => {
         import('./technician-queue.service.js')
             .then((m) => m.sweepActiveWorkAlerts())

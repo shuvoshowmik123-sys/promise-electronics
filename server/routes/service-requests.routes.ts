@@ -8,19 +8,19 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { createHash, randomUUID } from 'crypto';
 
-import { jobRepo, serviceRequestRepo, userRepo, systemRepo, settingsRepo, notificationRepo } from '../repositories/index.js';
+import { jobRepo, serviceRequestRepo, userRepo, systemRepo, settingsRepo, notificationRepo, pickupRepo } from '../repositories/index.js';
 import { insertServiceRequestSchema, otpCodes, type ServiceRequest } from '../../shared/schema.js';
-import { requireAdminAuth, requireCustomerAuth, requireGranularPermission, requireSuperAdmin, getCustomerId } from './middleware/auth.js';
+import { requireAdminAuth, requireCustomerAuth, requireGranularPermission, requireAnyGranularPermission, requireSuperAdmin, getCustomerId, actorHasPermission } from './middleware/auth.js';
 import { notifyAdminUpdate, notifyCustomerUpdate } from './middleware/sse-broker.js';
 import { serviceRequestLimiter } from './middleware/rate-limit.js';
 import { auditLogger } from '../utils/auditLogger.js';
-import { jobService, JobOwnsLifecycleError } from '../services/job.service.js';
+import { jobService, JobOwnsLifecycleError, isPostCustodyLifecycleStage } from '../services/job.service.js';
 import { publishJobTicketEvent, publishServiceRequestEvent } from '../services/admin-realtime.service.js';
 import { deriveTrackingStatus } from '../lib/workflowAutomation.js';
 import { logRouteError } from '../utils/route-error.js';
 import { smsService } from '../services/sms.service.js';
 import { db } from '../db.js';
-import { and, desc, eq, gt } from 'drizzle-orm';
+import { and, desc, eq, gt, sql } from 'drizzle-orm';
 import { repairJourneyService } from '../services/customer-repair-journey.service.js';
 import { loadRepairCaseByServiceRequest } from '../services/repair-case.service.js';
 import { getCallAttempts, createCallAttempt, updateCallAttempt, getIntakeSummaryBulk } from '../services/call-attempt.service.js';
@@ -28,6 +28,14 @@ import { getActiveServiceAreaById } from '../repositories/service-area.repositor
 import { deriveServiceRequestPaymentState, applyDerivedPaymentState } from '../services/service-request-payment-projection.service.js';
 import { notifyAdminsWithPush } from '../services/fcm.service.js';
 import * as pushService from '../pushService.js';
+import {
+    resolveCustodyAuthority,
+    issueCustodyCode,
+    hashCustodyCode,
+    redactCustodyNotification,
+    CustodyAuthorityError,
+} from '../services/custody-handover.service.js';
+import { completeCustody, describeCustodyOutcome, type CustodyCompletionOutcome } from '../services/custody-completion.service.js';
 import {
     sendOrPriceQuote,
     acceptRetailQuote,
@@ -55,6 +63,33 @@ const SERVICE_REQUEST_CREATE_REALTIME_TAGS = [...SERVICE_REQUEST_REALTIME_TAGS, 
 const JOB_REALTIME_TAGS = ["jobTickets", "jobOverview", "dashboardStats"] as const;
 const JOB_CREATE_REALTIME_TAGS = [...JOB_REALTIME_TAGS, "adminNotifications", "adminNotificationCount"] as const;
 const CUSTODY_STAGES = ["picked_up", "device_received", "completed"];
+
+/**
+ * The two custody completion clocks, defined together because their
+ * relationship is the correctness property — separately they each look fine.
+ *
+ * LEASE bounds how long one claimed completion excludes others. It must exceed
+ * the slowest honest completion, or a slow worker's own lease expires beneath
+ * it and a second confirmation runs completeCustody concurrently.
+ *
+ * RESUME_WINDOW bounds how long an already-verified but unfinished handover may
+ * be finished after a crash, measured from `verified_at`.
+ *
+ * RESUME_WINDOW must be comfortably GREATER than LEASE. If it is not, a worker
+ * that claims the lease and dies holds the issuance until a point where no
+ * retry can resume it, and the handover is stranded — the driver has the TV,
+ * the customer has gone, and the system can neither finish nor reissue.
+ * Recovery was previously bounded by the code's own `expires_at` (issuance + 5
+ * minutes); since the lease can only be claimed after issuance, that bound was
+ * always the earlier of the two and recovery was unreachable in every case.
+ */
+const CUSTODY_LEASE_SECONDS = 300;
+const CUSTODY_RESUME_WINDOW_SECONDS = 30 * 60;
+if (CUSTODY_RESUME_WINDOW_SECONDS <= CUSTODY_LEASE_SECONDS) {
+    throw new Error(
+        "Custody resume window must exceed the completion lease, or a crashed completion can never be resumed.",
+    );
+}
 
 function hashOtpCode(code: string): string {
     return createHash('sha256').update(code).digest('hex');
@@ -669,7 +704,7 @@ router.post('/api/admin/service-requests/:id/transition-stage', requireAdminAuth
 
 });
 
-router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth, requireGranularPermission('pickup.confirmHandover'), async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth, requireAnyGranularPermission(['pickup.confirmHandover', 'serviceRequests.confirmCounterCustody']), async (req: Request, res: Response) => {
     try {
         const { action } = req.body;
         if (action !== "receive" && action !== "delivery") {
@@ -678,127 +713,75 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
 
         const request = await serviceRequestRepo.getServiceRequest(req.params.id);
         if (!request) return res.status(404).json({ error: 'Service request not found' });
-        if (!request.phone) return res.status(400).json({ error: 'Customer phone number is required' });
         if (action === "delivery" && !request.convertedJobId) {
-            return res.status(409).json({ error: 'Delivery OTP requires a linked job ticket' });
-        }
-
-        const normalizedPhone = smsService.normalizePhoneNumber(request.phone);
-        if (!smsService.isValidBangladeshPhone(normalizedPhone)) {
-            return res.status(400).json({ error: 'Customer phone number is invalid' });
-        }
-
-        const targetStage = getCustodyTargetStage(request, action);
-        const purpose = getCustodyPurpose(request.id, action);
-        const code = smsService.generateOtpCode();
-        const expiresAt = new Date(Date.now() + 5 * 60 * 1000);
-        const label = getCustodyLabel(request, action);
-
-        // Deliver first — only persist OTP when at least one channel succeeds (no orphan codes).
-        let inApp = false;
-        if (request.customerId) {
-            try {
-                await notificationRepo.createNotification({
-                    userId: request.customerId,
-                    title: `Handover code — ${request.ticketNumber || request.id}`,
-                    message: `Your Promise Electronics ${label} code is ${code}. Valid for 5 minutes. Tell this code to the staff member only when they are with you.`,
-                    // Typed so the customer's tracking page can find the live
-                    // code and show it in its own place rather than leaving the
-                    // customer to dig through a notification list.
-                    type: "handover_code",
-                    link: `/track-order?order=${encodeURIComponent(request.ticketNumber || request.id)}&type=service`,
-                    contextType: "customer",
-                } as any);
-                inApp = true;
-            } catch (err) {
-                console.error("[CustodyOTP] In-app notification failed:", (err as Error).message);
-            }
-        }
-
-        let smsOk = false;
-        try {
-            const sms = await smsService.sendSms({
-                to: normalizedPhone,
-                message: `Promise Electronics ${label} OTP for ${request.ticketNumber || request.id}: ${code}. Valid for 5 minutes.`,
-            });
-            smsOk = !!sms.success;
-            if (!sms.success) {
-                console.error("[CustodyOTP] SMS delivery failed:", sms.error || "unknown");
-            }
-        } catch (err) {
-            console.error("[CustodyOTP] SMS threw:", (err as Error).message);
+            return res.status(409).json({ error: 'Delivery code requires a linked job ticket' });
         }
 
         /**
-         * Push the customer's own devices.
-         *
-         * The code is deliberately NOT in the push body. A lock-screen preview
-         * is readable by whoever is holding the phone, including the person at
-         * the door asking for the code — which would defeat the control. The
-         * push only says a code is waiting; reading it requires opening the app.
+         * No phone requirement. The code never travels by phone — it appears
+         * only in the customer's My Repairs page — so demanding a valid
+         * Bangladeshi number here refused a code to customers who could read it
+         * perfectly well, and pushed them onto the lower-assurance no-code path
+         * for no reason.
          */
-        let pushDevices = 0;
-        if (request.customerId) {
-            try {
-                pushDevices = await pushService.sendToUser(request.customerId, {
-                    title: "Handover code ready",
-                    body: `Open your repair ${request.ticketNumber || request.id} to see the code for our staff member.`,
-                    data: { type: "handover_code", serviceRequestId: String(request.id) },
-                });
-            } catch (err) {
-                console.error("[CustodyOTP] Push failed:", (err as Error).message);
-            }
-        }
-        const pushOk = pushDevices > 0;
-
-        /**
-         * Three facts, not one boolean.
-         *
-         * `inApp` only ever meant "a notification row was written" — it never
-         * meant the customer could see it. Reporting that as delivery let a
-         * driver be told a code was issued while the customer, not signed in on
-         * the phone in their hand, had no way to read it. The no-code path was
-         * then skipped at exactly the moment it was needed.
-         *
-         * A stored notification is still worth issuing a code for — a customer
-         * watching the tracking page sees it within the 15s poll — but the
-         * driver must be told that is the ONLY channel that worked, so they can
-         * ask "can you see it?" before relying on it. That question is the
-         * fourth fact, and only the driver can answer it.
-         */
-        const delivered = { notificationStored: inApp, push: pushOk, sms: smsOk };
-        const anyDelivered = inApp || pushOk || smsOk;
-        const activelyDelivered = pushOk || smsOk;
-
-        if (!anyDelivered) {
-            // Never insert OTP; never show code to driver; UI must use no-code path.
+        if (!request.customerId) {
             return res.json({
                 success: true,
                 action,
-                targetStage,
-                expiresAt: expiresAt.toISOString(),
-                phone: `+${normalizedPhone.slice(0, 5)}*****${normalizedPhone.slice(-2)}`,
-                delivered,
+                targetStage: getCustodyTargetStage(request, action),
+                expiresAt: null,
                 codeIssued: false,
                 needsNoCodeHandover: true,
+                customerPortalNotified: false,
+                pushReminderAccepted: false,
+                maxAttempts: 3,
             });
         }
 
-        await db.insert(otpCodes).values({
-            id: randomUUID(),
-            phone: normalizedPhone,
-            codeHash: hashOtpCode(code),
-            purpose,
-            attempts: 0,
-            maxAttempts: 3,
-            expiresAt,
-            ipAddress: req.ip || null,
+        // Assignment decides, not the role. Throws 404 for the wrong driver
+        // (ticket numbers are guessable, so 403 would confirm existence) and
+        // 409 when no unique active task exists.
+        const authority = await resolveCustodyAuthority({
+            request,
+            action,
+            actorUserId: req.session.adminUserId!,
+            actorHasCounterCustody: await actorHasPermission(req, 'serviceRequests.confirmCounterCustody'),
         });
+
+        const targetStage = getCustodyTargetStage(request, action);
+        const label = getCustodyLabel(request, action);
+
+        // Code + notification commit together, or neither exists.
+        const issued = await issueCustodyCode({
+            request,
+            customerId: request.customerId,
+            action,
+            authority,
+            label,
+        });
+
+        /**
+         * Push is advisory and strictly post-commit. It carries NO code: a
+         * lock-screen preview is readable by whoever holds the phone, including
+         * the person at the door asking for it. Failure here must never
+         * invalidate a code the customer can already see in the portal.
+         */
+        let pushReminderAccepted = false;
+        try {
+            const devices = await pushService.sendToUser(request.customerId, {
+                title: "Handover code ready",
+                body: `Open repair ${request.ticketNumber || request.id} in My Repairs to see your code.`,
+                data: { type: "handover_code", serviceRequestId: String(request.id) },
+            });
+            pushReminderAccepted = devices > 0;
+        } catch (err) {
+            console.error('[CustodyCode] Push reminder failed:', (err as Error).message);
+        }
 
         await serviceRequestRepo.createServiceRequestEvent({
             serviceRequestId: request.id,
             status: request.trackingStatus || request.status,
-            message: `Customer OTP issued for ${label} (inApp=${inApp}, sms=${smsOk}).`,
+            message: `Online handover code issued for ${label} (mode=${authority.mode}, custodian=${authority.custodianUserId}).`,
             actor: 'System',
         });
 
@@ -806,91 +789,500 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
             success: true,
             action,
             targetStage,
-            expiresAt: expiresAt.toISOString(),
-            phone: `+${normalizedPhone.slice(0, 5)}*****${normalizedPhone.slice(-2)}`,
-            delivered,
+            expiresAt: issued.expiresAt.toISOString(),
             codeIssued: true,
             needsNoCodeHandover: false,
-            /**
-             * Only a stored notification reached the customer — nothing was
-             * pushed to a device and no SMS was accepted. The code is real, but
-             * the customer can only see it by having the app open. The driver
-             * must confirm they can before relying on it, and fall back to the
-             * audited no-code handover if they cannot.
-             */
-            requiresCustomerVisibilityCheck: !activelyDelivered,
+            customerPortalNotified: issued.customerPortalNotified,
+            pushReminderAccepted,
             maxAttempts: 3,
-            ...(process.env.NODE_ENV !== 'production' ? { _testCode: code } : {}),
         });
     } catch (error: any) {
+        if (error instanceof CustodyAuthorityError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
         logRouteError('ServiceRequests.SendCustodyOtp', req, error);
-        res.status(500).json({ error: error.message || 'Failed to send custody OTP' });
+        res.status(500).json({ error: error.message || 'Failed to issue custody code' });
     }
 });
 
-router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminAuth, requireGranularPermission('pickup.confirmHandover'), async (req: Request, res: Response) => {
+router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminAuth, requireAnyGranularPermission(['pickup.confirmHandover', 'serviceRequests.confirmCounterCustody']), async (req: Request, res: Response) => {
     try {
         const { action, code } = req.body;
         if (action !== "receive" && action !== "delivery") {
             return res.status(400).json({ error: 'Invalid custody action' });
         }
         if (!code) {
-            return res.status(400).json({ error: 'OTP code is required' });
+            return res.status(400).json({ error: 'Handover code is required' });
         }
 
         const request = await serviceRequestRepo.getServiceRequest(req.params.id);
         if (!request) return res.status(404).json({ error: 'Service request not found' });
-        if (!request.phone) return res.status(400).json({ error: 'Customer phone number is required' });
-
-        const normalizedPhone = smsService.normalizePhoneNumber(request.phone);
-        const purpose = getCustodyPurpose(request.id, action);
-        const records = await db
-            .select()
-            .from(otpCodes)
-            .where(and(
-                eq(otpCodes.phone, normalizedPhone),
-                eq(otpCodes.purpose, purpose),
-                gt(otpCodes.expiresAt, new Date())
-            ))
-            .orderBy(desc(otpCodes.createdAt))
-            .limit(1);
-        const otpRecord = records[0];
-
-        if (!otpRecord || otpRecord.verifiedAt) {
-            return res.status(400).json({ error: 'OTP not found or expired. Please send a new OTP.' });
-        }
-        if (otpRecord.attempts >= otpRecord.maxAttempts) {
-            return res.status(400).json({ error: 'Maximum OTP attempts exceeded. Please send a new OTP.' });
-        }
-
-        const codeHash = hashOtpCode(code.toString().trim());
-        if (codeHash !== otpRecord.codeHash) {
-            await db.update(otpCodes)
-                .set({ attempts: otpRecord.attempts + 1 })
-                .where(eq(otpCodes.id, otpRecord.id));
-            return res.status(400).json({
-                error: 'Invalid OTP code',
-                remainingAttempts: otpRecord.maxAttempts - otpRecord.attempts - 1,
+        if (!request.customerId) {
+            return res.status(409).json({
+                error: 'This repair has no linked customer account. Use the audited no-code handover.',
+                code: 'NO_CUSTOMER_ACCOUNT',
             });
         }
 
-        await db.update(otpCodes)
-            .set({ verifiedAt: new Date() })
-            .where(eq(otpCodes.id, otpRecord.id));
+        /**
+         * Same authority as issuance: whoever confirms must be the person the
+         * device is actually changing hands with.
+         *
+         * `allowCompletedTask` is what makes an interrupted completion
+         * recoverable. Custody completes the logistics task, so once that write
+         * lands there is no executable task left and every retry answered
+         * NO_UNIQUE_ACTIVE_TASK — the previous "resume" branch could never be
+         * reached. Accepting a completed task here is safe because the driver
+         * still has to present the same unexpired code below, and issuance
+         * (which must never see a completed task) does not pass this flag.
+         */
+        const counterPermitted = await actorHasPermission(req, 'serviceRequests.confirmCounterCustody');
+        const authority = await resolveCustodyAuthority({
+            request,
+            action,
+            actorUserId: req.session.adminUserId!,
+            actorHasCounterCustody: counterPermitted,
+            allowCompletedTask: true,
+        });
+
+        /**
+         * Claim the attempt atomically.
+         *
+         * The UPDATE ... RETURNING both increments and selects in one statement,
+         * so two drivers submitting at once cannot each read attempts=0 and both
+         * be granted a try. The row is pinned by every identity field, not just
+         * the request: a superseded, expired, verified or differently-assigned
+         * issuance can never be the one that matches.
+         */
+        const claimed = await db.execute(sql`
+            UPDATE custody_handover_codes
+            SET attempts = attempts + 1
+            WHERE id = (
+                SELECT id FROM custody_handover_codes
+                WHERE service_request_id = ${request.id}
+                  AND customer_id = ${request.customerId}
+                  AND custody_mode = ${authority.mode}
+                  AND action = ${action}
+                  AND custodian_user_id = ${authority.custodianUserId}
+                  AND logistics_task_id IS NOT DISTINCT FROM ${authority.logisticsTaskId}
+                  AND verified_at IS NULL
+                  AND invalidated_at IS NULL
+                  AND expires_at > NOW()
+                ORDER BY created_at DESC
+                LIMIT 1
+                FOR UPDATE
+            )
+            AND attempts < max_attempts
+            RETURNING id, code_hash, attempts, max_attempts
+        `);
+        const row = (((claimed as any).rows ?? claimed)[0]) as
+            | { id: string; code_hash: string; attempts: number; max_attempts: number }
+            | undefined;
+
+        /**
+         * Resume an issuance that was verified but whose completion did not land.
+         *
+         * Settlement and the canonical delivery cannot share one database
+         * transaction — the lifecycle operation spans the job, the logistics
+         * task and the journey, and owns its own writes. So a crash between
+         * "verified" and "delivered" is possible, and compensation in a catch
+         * block cannot cover a process that simply died.
+         *
+         * The verified row IS the durable record that the customer authorised
+         * this handover, so the same code is allowed to finish the job it
+         * started: the driver re-enters it and completion runs again. That is
+         * safe because updateTaskStatusWithLifecycle is idempotent — a delivery
+         * already completed against an already-Delivered job is a no-op — so
+         * retrying converges on exactly one delivery rather than repeating it.
+         *
+         * Deliberately narrow: same identity, same code, still inside the
+         * recovery window measured from verification, and only while the work is
+         * genuinely unfinished. Once the job is Delivered the code is spent and
+         * this path refuses it.
+         */
+        let resumedIssuance: { id: string; code_hash: string } | undefined;
+        if (!row) {
+            const resumable = await db.execute(sql`
+                SELECT id, code_hash FROM custody_handover_codes
+                WHERE service_request_id = ${request.id}
+                  AND customer_id = ${request.customerId}
+                  AND custody_mode = ${authority.mode}
+                  AND action = ${action}
+                  AND custodian_user_id = ${authority.custodianUserId}
+                  AND logistics_task_id IS NOT DISTINCT FROM ${authority.logisticsTaskId}
+                  AND verified_at IS NOT NULL
+                  -- Without this, a FINISHED handover could be replayed with its
+                  -- own still-valid code: completeCustody would run again and
+                  -- write a second timeline event for one physical handover.
+                  AND completed_at IS NULL
+                  AND invalidated_at IS NULL
+                  -- Bounded by VERIFICATION, not by the code's expiry.
+                  --
+                  -- This read "expires_at > NOW()", which made crash recovery
+                  -- unreachable. expires_at is issuance + 5 minutes and the
+                  -- completion lease is also 5 minutes, but the lease can only
+                  -- be claimed AFTER issuance, so the lease always outlives the
+                  -- code. A worker that claimed and then died held the issuance
+                  -- until a moment when this clause could no longer be true, and
+                  -- the verified handover was stranded with no way to finish.
+                  --
+                  -- The two clocks answer different questions. expires_at bounds
+                  -- how long the customer's code may be used to PROVE
+                  -- authorisation. Resumption is about finishing work that was
+                  -- already proven, so it is bounded from verified_at, the
+                  -- moment the customer authorised it, and generously enough to
+                  -- outlast any lease held by a process that has since died.
+                  --
+                  -- Still narrow: same driver, same task, same code hash, only
+                  -- while unfinished, and never after completion.
+                  AND verified_at > NOW() - (${CUSTODY_RESUME_WINDOW_SECONDS} * INTERVAL '1 second')
+                ORDER BY created_at DESC
+                LIMIT 1
+            `);
+            resumedIssuance = (((resumable as any).rows ?? resumable)[0]) as
+                | { id: string; code_hash: string }
+                | undefined;
+
+            if (resumedIssuance && hashCustodyCode(String(code)) !== resumedIssuance.code_hash) {
+                resumedIssuance = undefined;
+            }
+        }
+
+        if (!row && !resumedIssuance) {
+            return res.status(400).json({
+                error: 'No usable handover code. Ask the customer to refresh, or issue a new code.',
+                code: 'NO_LIVE_ISSUANCE',
+            });
+        }
+
+        if (row && hashCustodyCode(String(code)) !== row.code_hash) {
+            return res.status(400).json({
+                error: 'Incorrect code',
+                remainingAttempts: Math.max(0, row.max_attempts - row.attempts),
+            });
+        }
+
+        // The issuance being completed: a freshly claimed one, or the verified
+        // one we are resuming after an interrupted completion.
+        const issuanceId = row?.id ?? resumedIssuance!.id;
+
+        if (row) {
+            // Replay protection: only the first confirmation of THIS issuance wins.
+            const settled = await db.execute(sql`
+                UPDATE custody_handover_codes
+                SET verified_at = NOW()
+                WHERE id = ${row.id} AND verified_at IS NULL
+                RETURNING id
+            `);
+            if (!(((settled as any).rows ?? settled)[0])) {
+                return res.status(409).json({ error: 'This code was already used.', code: 'ALREADY_VERIFIED' });
+            }
+        }
 
         const adminUser = await userRepo.getUser(req.session.adminUserId!);
         const actor = adminUser?.name || 'Admin';
         const targetStage = getCustodyTargetStage(request, action);
-        const result = await jobService.transitionStage(request.id, targetStage, actor);
+
+        /**
+         * Release the verification if the custody move fails.
+         *
+         * The issuance is marked verified first, and that has to happen first —
+         * otherwise two submissions could both pass replay protection. But a
+         * spent code with no custody move leaves the driver holding a TV the
+         * system says was never collected.
+         *
+         * This is only safe because transitionStage is now transactional: a
+         * thrown transition changed nothing, so releasing the code cannot
+         * resurrect it against a request whose custody already advanced. It was
+         * previously two unrelated statements, and the comment here claimed a
+         * guarantee the code did not provide.
+         */
+        /**
+         * When a job owns the lifecycle, custody is recorded — not staged.
+         *
+         * Delivery custody targets stage `completed`, which is a post-custody
+         * lifecycle stage. transitionStage refuses those outright once a job
+         * exists (JOB-LIFECYCLE-TRUST-01A), and the delivery route requires a
+         * job. Both branches therefore answered 409 and delivery confirmation
+         * could never succeed — a dead end that predates this work and has
+         * been live in production since that guard shipped.
+         *
+         * The guard is right: the job is the source of truth after conversion,
+         * and nothing else may publish repair, ready or delivery conclusions on
+         * the service request. What the OTP proves is narrower than a lifecycle
+         * change — it proves the device physically changed hands. So record
+         * exactly that on the timeline and leave the job to close itself.
+         */
+        /**
+         * One completion path, serialized per issuance.
+         *
+         * completeCustody converges every fact custody implies — job, logistics
+         * task, legacy pickup row, stage where the job does not own it — and
+         * each step is safe to repeat, so a resumed attempt converges instead
+         * of double-applying.
+         *
+         * Serialization is the lease claimed below, not an advisory lock. An
+         * earlier version used pg_advisory_xact_lock; it is gone, because the
+         * only way to hold one across the completion is to hold a pool
+         * connection across it too, which deadlocks the very services the
+         * completion calls.
+         */
+        let result;
+        // Assigned inside the claim branch below; typed explicitly because
+        // TypeScript narrows a closure-assigned `let` to `never` otherwise.
+        let custodyOutcome: CustodyCompletionOutcome | null = null;
+        let settledOutcome: CustodyCompletionOutcome | null = null;
+        let alreadyCompleted = false;
+        let completionInProgress = false;
+        try {
+            /**
+             * Claim a lease, then do the work with NO connection held.
+             *
+             * The design before the lease opened a transaction, took an advisory
+             * lock, and ran completeCustody inside it — while completeCustody
+             * reached back into the same pool for the job, task, pickup and
+             * journey writes. With DB_POOL_MAX=5 and five confirmations for five
+             * DIFFERENT issuances, each takes a different lock so none blocks
+             * another: they simply hold all five connections and then wait for
+             * a sixth that cannot exist. The same-issuance test never showed
+             * this because four competitors lost the one lock immediately.
+             *
+             * That is why the lifecycle work still runs outside any transaction
+             * here, and why it must keep doing so: completeCustody's downstream
+             * services (logistics-task, job-status-transition, the repos) issue
+             * their own global-pool statements. Holding a connection across them
+             * reintroduces the deadlock exactly.
+             *
+             * The lease is the cross-statement owner token. Only the claimer may
+             * settle, and the expiry means a crashed process releases its claim
+             * with nothing needing to clean up.
+             */
+            const leaseToken = randomUUID();
+            /**
+             * The lease must outlive the slowest honest completion, not the
+             * typical one.
+             *
+             * At 60s a slow completion — cold start, retry, contended job row —
+             * could still be running when its own lease expired. A second
+             * confirmation then satisfied the `expires_at < NOW()` branch of the
+             * claim and ran completeCustody CONCURRENTLY with the first. The
+             * settle is token-gated, so the loser could never double-mark or
+             * write a second timeline event, but both had already driven real
+             * lifecycle writes by then.
+             *
+             * Five minutes is far above any completion this path can legitimately
+             * take and far below anything a driver would wait through, so the
+             * only claim that now sees an expired lease is one whose owner is
+             * genuinely gone.
+             *
+             * Paired with CUSTODY_RESUME_WINDOW_SECONDS: raising this without
+             * raising that one strands crashed completions. See the constants.
+             */
+            const LEASE_SECONDS = CUSTODY_LEASE_SECONDS;
+
+            /**
+             * Claim and diagnosis in ONE transaction.
+             *
+             * They used to be two statements: a conditional UPDATE, then a
+             * SELECT to explain a failure. Between them the row could change, so
+             * the reason returned to the driver described a state that no longer
+             * held — "already completed" for a row that had just been re-leased,
+             * or a bare NO_LIVE_ISSUANCE for one that had in fact completed.
+             *
+             * FOR UPDATE NOWAIT makes the row's state stable across both reads
+             * without ever waiting: a competing claimer holding the row fails
+             * instantly with 55P03 rather than blocking on a pool connection.
+             * The transaction issues no outbound calls, so it holds its
+             * connection for microseconds.
+             */
+            type ClaimOutcome = 'claimed' | 'completed' | 'in_progress' | 'unusable';
+            let claimOutcome: ClaimOutcome;
+            try {
+                claimOutcome = await db.transaction(async (tx): Promise<ClaimOutcome> => {
+                    const locked = await tx.execute(sql`
+                        SELECT completed_at,
+                               (completion_lease_expires_at IS NOT NULL AND completion_lease_expires_at >= NOW()) AS leased
+                        FROM custody_handover_codes
+                        WHERE id = ${issuanceId}
+                        FOR UPDATE NOWAIT
+                    `);
+                    const lockedRow = (((locked as any).rows ?? locked)[0]) as any;
+                    if (!lockedRow) return 'unusable';
+                    if (lockedRow.completed_at) return 'completed';
+                    if (lockedRow.leased) return 'in_progress';
+
+                    const claimed = await tx.execute(sql`
+                        UPDATE custody_handover_codes
+                        SET completion_lease_token = ${leaseToken},
+                            completion_lease_expires_at = NOW() + (${LEASE_SECONDS} * INTERVAL '1 second')
+                        WHERE id = ${issuanceId}
+                          AND completed_at IS NULL
+                          AND invalidated_at IS NULL
+                          AND verified_at IS NOT NULL
+                          -- Same clock as the resume query above, deliberately.
+                          -- This clause used to be "expires_at > NOW()", which
+                          -- re-imposed the code's 5-minute life on a completion
+                          -- the customer had ALREADY authorised, so the resume
+                          -- path could select an issuance and then fail to claim
+                          -- it. Verification is what this row proves; bounding
+                          -- the claim by verification is what makes the two
+                          -- agree. The fresh path sets verified_at moments
+                          -- earlier, so it satisfies this trivially.
+                          AND verified_at > NOW() - (${CUSTODY_RESUME_WINDOW_SECONDS} * INTERVAL '1 second')
+                          AND service_request_id = ${request.id}
+                          AND customer_id = ${request.customerId}
+                          AND custody_mode = ${authority.mode}
+                          AND action = ${action}
+                          AND custodian_user_id = ${authority.custodianUserId}
+                          AND logistics_task_id IS NOT DISTINCT FROM ${authority.logisticsTaskId}
+                          AND code_hash = ${hashCustodyCode(String(code))}
+                          AND (completion_lease_expires_at IS NULL OR completion_lease_expires_at < NOW())
+                        RETURNING id
+                    `);
+                    return (((claimed as any).rows ?? claimed)[0]) ? 'claimed' : 'unusable';
+                });
+            } catch (claimError: any) {
+                // 55P03 lock_not_available: another confirmation holds the row
+                // right now. That is precisely COMPLETION_IN_PROGRESS, and NOWAIT
+                // reports it immediately instead of occupying a pool connection.
+                if (claimError?.code === '55P03') {
+                    claimOutcome = 'in_progress';
+                } else {
+                    throw claimError;
+                }
+            }
+
+            if (claimOutcome === 'completed') {
+                alreadyCompleted = true;
+            } else if (claimOutcome === 'in_progress') {
+                completionInProgress = true;
+            } else if (claimOutcome === 'unusable') {
+                throw new CustodyAuthorityError(400, 'NO_LIVE_ISSUANCE', 'This handover code is no longer usable.');
+            } else {
+                const outcome = await completeCustody({
+                    request,
+                    action,
+                    authority,
+                    actorName: actor,
+                    actorUserId: req.session.adminUserId!,
+                    actorRole: adminUser?.role || "Driver",
+                });
+
+                /**
+                 * Settle in one short transaction: the timeline event and the
+                 * completion marker commit together, and only the lease owner
+                 * may do it. This transaction makes no outbound calls, so it
+                 * holds a connection for microseconds rather than for the whole
+                 * completion.
+                 */
+                await db.transaction(async (tx) => {
+                    await serviceRequestRepo.createServiceRequestEvent({
+                        serviceRequestId: request.id,
+                        status: outcome.serviceRequest.trackingStatus || outcome.serviceRequest.status,
+                        message: `Customer confirmed ${getCustodyLabel(request, action)} with their online handover code.`,
+                        actor,
+                    }, tx as any);
+
+                    const marked = await tx.execute(sql`
+                        UPDATE custody_handover_codes
+                        SET completed_at = NOW(),
+                            completion_lease_token = NULL,
+                            completion_lease_expires_at = NULL
+                        WHERE id = ${issuanceId}
+                          AND completed_at IS NULL
+                          AND completion_lease_token = ${leaseToken}
+                        RETURNING id
+                    `);
+                    if ((((marked as any).rows ?? marked) as unknown[]).length !== 1) {
+                        throw new Error('Custody completion marker did not apply to exactly one issuance.');
+                    }
+                });
+
+                custodyOutcome = outcome;
+            }
+
+            if (completionInProgress) {
+                return res.status(409).json({
+                    error: 'This handover is being completed right now. Try again in a moment.',
+                    code: 'COMPLETION_IN_PROGRESS',
+                });
+            }
+
+            if (alreadyCompleted) {
+                return res.status(409).json({
+                    error: 'This handover has already been completed.',
+                    code: 'ALREADY_COMPLETED',
+                });
+            }
+
+            // Read once into a plain const so later use is not narrowed to
+            // `never` by the closure assignment above.
+            settledOutcome = custodyOutcome as CustodyCompletionOutcome | null;
+            result = { serviceRequest: settledOutcome!.serviceRequest };
+        } catch (transitionError) {
+            /**
+             * verified_at is NOT cleared here, deliberately.
+             *
+             * It records that the customer read their code back and authorised
+             * this physical handover. That fact does not become untrue because
+             * a later write failed — and completeCustody may already have
+             * converged real lifecycle state (job Delivered, task completed)
+             * before the failure, since those commit outside this transaction.
+             *
+             * Clearing it would demand a SECOND authorisation for a handover
+             * that already happened: the driver has the TV, the customer has
+             * gone, and the system would be asking them to prove it again.
+             * Leaving verified_at set with completed_at null is exactly the
+             * state the recovery path is built to resume.
+             */
+            console.error(
+                '[CustodyCode] Completion failed; issuance stays verified for retry:',
+                (transitionError as Error).message,
+            );
+            throw transitionError;
+        }
+
+        /**
+         * Best-effort, because redactSettledCustodyCodes() sweeps every five
+         * minutes — the same cadence codes live for — and will close anything
+         * missed here.
+         *
+         * This was briefly fatal, on the reasoning that a readable code is the
+         * leak this design exists to prevent. That was the wrong trade: custody
+         * has already moved by this point, so failing the response told the
+         * driver the handover had not happened when it had — and the retry
+         * could only answer "already used". The sweeper removes the dilemma:
+         * the response can report the truth, and the secret still cannot
+         * survive.
+         */
+        await redactCustodyNotification(issuanceId, 'used').catch((err) =>
+            console.error('[CustodyCode] Inline redaction failed; sweeper will close it:', (err as Error).message));
 
         await auditLogger.log({
             userId: req.session.adminUserId!,
             action: 'CONFIRM_CUSTODY_OTP',
             entity: 'ServiceRequest',
             entityId: request.id,
-            details: `Customer OTP confirmed for ${getCustodyLabel(request, action)}. Stage moved to ${targetStage}.`,
+            /**
+             * Describe what actually converged.
+             *
+             * This used to read "Stage moved to completed" on every delivery —
+             * a stage that never moves, because the job owns it after
+             * conversion. An audit trail asserting a write that did not happen
+             * is worse than a thin one: it sends whoever reads it looking in
+             * the wrong place.
+             */
+            details: `Customer OTP confirmed for ${getCustodyLabel(request, action)}. ${
+                settledOutcome ? describeCustodyOutcome(action, settledOutcome, false) : 'No custody changes recorded.'
+            }`,
             oldValue: { stage: request.stage, trackingStatus: request.trackingStatus },
-            newValue: { stage: result.serviceRequest.stage, trackingStatus: result.serviceRequest.trackingStatus },
+            newValue: {
+                stage: result.serviceRequest.stage,
+                trackingStatus: result.serviceRequest.trackingStatus,
+                jobDelivered: settledOutcome?.jobDelivered ?? false,
+                taskCompleted: settledOutcome?.taskCompleted ?? false,
+                pickupSchedule: settledOutcome?.pickupScheduleStatus ?? null,
+            },
             req,
         });
 
@@ -919,6 +1311,14 @@ router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminA
 
         res.json(result);
     } catch (error: any) {
+        // Authority denials carry their own status — 404 for a driver this task
+        // is not assigned to, 409 when no unique active task exists. Without
+        // this branch they collapsed into a generic 400, which reads as "wrong
+        // code" and tells an unauthorised caller nothing about why they failed
+        // but also hid the denial from anyone auditing it.
+        if (error instanceof CustodyAuthorityError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
         logRouteError('ServiceRequests.ConfirmCustodyOtp', req, error);
         res.status(400).json({ error: error.message || 'Failed to confirm custody OTP' });
     }
@@ -931,7 +1331,7 @@ router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminA
 router.post(
     '/api/admin/service-requests/:id/custody-handover/no-code',
     requireAdminAuth,
-    requireGranularPermission('pickup.confirmHandover'),
+    requireAnyGranularPermission(['pickup.confirmHandover', 'serviceRequests.confirmCounterCustody']),
     async (req: Request, res: Response) => {
         try {
             const { action, reason, proofPhotoUrl } = req.body as {
@@ -957,11 +1357,52 @@ router.post(
                 return res.status(409).json({ error: 'Delivery handover requires a linked job ticket' });
             }
 
+            /**
+             * The no-code path is the LOWER-assurance route, which makes it the
+             * more attractive one to abuse: it advances custody with no customer
+             * involvement at all. It therefore needs the same authority as the
+             * coded path — the assigned driver, or explicit counter-custody
+             * permission — not merely pickup.confirmHandover, which every driver
+             * holds for every job in the system.
+             */
+            const authority = await resolveCustodyAuthority({
+                request,
+                action,
+                actorUserId: req.session.adminUserId!,
+                actorHasCounterCustody: await actorHasPermission(req, 'serviceRequests.confirmCounterCustody'),
+            });
+
             const adminUser = await userRepo.getUser(req.session.adminUserId!);
             const actor = adminUser?.name || 'Admin';
-            const targetStage = getCustodyTargetStage(request, action);
             const label = getCustodyLabel(request, action);
-            const result = await jobService.transitionStage(request.id, targetStage, actor);
+
+            /**
+             * Same completion path as the coded handover.
+             *
+             * This used to call transitionStage(..., 'completed') for delivery,
+             * which converted jobs reject outright — so the audited fallback,
+             * the one used precisely when the code path has already failed, was
+             * itself broken for every delivery. It also left the logistics task
+             * untouched and relied on the driver UI to finish the pickup record
+             * with a second request that could not succeed either.
+             *
+             * Routing it through completeCustody means the lower-assurance path
+             * reaches exactly the same end state as the coded one. Only the
+             * evidence differs — reason and photo instead of a customer code —
+             * and that difference stays recorded in the audit entry below.
+             */
+            const custodyOutcome = await completeCustody({
+                request,
+                action,
+                authority,
+                actorName: actor,
+                actorUserId: req.session.adminUserId!,
+                actorRole: adminUser?.role || 'Driver',
+                lowerAssurance: true,
+                reason: reasonText,
+                proofPhotoUrl: photo,
+            });
+            const result = { serviceRequest: custodyOutcome.serviceRequest };
 
             await serviceRequestRepo.createServiceRequestEvent({
                 serviceRequestId: request.id,
@@ -975,7 +1416,7 @@ router.post(
                 action: 'CONFIRM_CUSTODY_NO_CODE',
                 entity: 'ServiceRequest',
                 entityId: request.id,
-                details: `No-code handover (${label}). Reason recorded. Proof photo attached. Stage → ${targetStage}.`,
+                details: `No-code handover (${label}). Reason recorded. Proof photo attached. ${describeCustodyOutcome(action, custodyOutcome, true)}`,
                 oldValue: { stage: request.stage, trackingStatus: request.trackingStatus, assurance: 'otp' },
                 newValue: {
                     stage: result.serviceRequest.stage,
@@ -1015,6 +1456,9 @@ router.post(
                 handoverAssurance: 'no_code_lower',
             });
         } catch (error: any) {
+            if (error instanceof CustodyAuthorityError) {
+                return res.status(error.status).json({ error: error.message, code: error.code });
+            }
             logRouteError('ServiceRequests.NoCodeCustodyHandover', req, error);
             res.status(400).json({ error: error.message || 'Failed to record no-code handover' });
         }

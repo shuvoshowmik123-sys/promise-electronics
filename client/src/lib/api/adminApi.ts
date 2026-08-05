@@ -1362,19 +1362,18 @@ export const adminStageApi = {
             success: boolean;
             action: "receive" | "delivery";
             targetStage: string;
-            expiresAt: string;
-            phone: string;
-            /**
-             * Three separate facts. `notificationStored` means a row was
-             * written, NOT that the customer can see it — it was previously
-             * called `inApp` and reported as delivery, which let a driver be
-             * told a code was issued while the customer had no way to read it.
-             */
-            delivered: { notificationStored: boolean; push: boolean; sms: boolean };
+            /** Null when no code was issued (no linked customer account). */
+            expiresAt: string | null;
             codeIssued: boolean;
             needsNoCodeHandover: boolean;
-            /** Only the stored notification worked — driver must confirm the customer can see it. */
-            requiresCustomerVisibilityCheck?: boolean;
+            /** The code and its notification committed together. */
+            customerPortalNotified: boolean;
+            /**
+             * Firebase ACCEPTED a reminder for delivery. This is provider
+             * acceptance, not proof the notification appeared on the customer's
+             * device — and the reminder never contains the code.
+             */
+            pushReminderAccepted: boolean;
             maxAttempts?: number;
         }>(`/admin/service-requests/${id}/custody-otp/send`, {
             method: "POST",

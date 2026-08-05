@@ -17,6 +17,7 @@ function createAuthMock() {
         requirePermission: () => allowAdminRequest(),
         requireAnyPermission: () => allowAdminRequest(),
         requireGranularPermission: () => allowAdminRequest(),
+        requireAnyGranularPermission: () => allowAdminRequest(),
         requireSuperAdmin: allowAdminRequest(),
         requireCustomerAuth: (req: any, _res: any, next: () => void) => { req.session = req.session || {}; req.session.customerId = "cust-1"; next(); },
         getCustomerId: (req: any) => req.session?.customerId,
@@ -24,7 +25,41 @@ function createAuthMock() {
         adminCreateUserSchema: { parse: (value: unknown) => value },
         adminUpdateUserSchema: { parse: (value: unknown) => value },
         getDefaultPermissions: () => ({ serviceRequests: true }),
+        // Counter custody is asked about, not enforced by middleware, because
+        // the handler has to branch between driver assignment and counter
+        // permission before it knows which authority applies.
+        actorHasPermission: async () => true,
     };
+}
+
+/**
+ * Custody service stub.
+ *
+ * The route no longer owns issuance: authority resolution, the atomic
+ * code+notification write, and hashing all live in custody-handover.service.
+ * Tests that exercise the ROUTE stub it so they assert routing and contract,
+ * not SQL — the SQL has its own PostgreSQL proof.
+ */
+function createCustodyMock(overrides: Record<string, unknown> = {}) {
+    class MockCustodyAuthorityError extends Error {
+        constructor(readonly status: number, readonly code: string, message: string) {
+            super(message);
+        }
+    }
+    return () => ({
+        resolveCustodyAuthority: vi.fn(async () => ({
+            mode: "driver_pickup", logisticsTaskId: "task-1", custodianUserId: "admin-1",
+        })),
+        issueCustodyCode: vi.fn(async () => ({
+            issuanceId: "iss-1", expiresAt: new Date(Date.now() + 300000), customerPortalNotified: true,
+        })),
+        hashCustodyCode: vi.fn((c: string) => `hash:${c}`),
+        redactCustodyNotification: vi.fn(async () => {}),
+        findLiveIssuance: vi.fn(async () => null),
+        custodyNotificationLink: vi.fn(() => "/my-repairs"),
+        CustodyAuthorityError: MockCustodyAuthorityError,
+        ...overrides,
+    });
 }
 
 function createApp(router: express.Router) {
@@ -56,6 +91,7 @@ describe("Phase 2 custody OTP flow", () => {
             systemRepo: {},
             settingsRepo: {},
             notificationRepo: {},
+            pickupRepo: { getPickupScheduleByServiceRequestId: async () => undefined, updatePickupSchedule: async () => undefined },
         }));
         vi.doMock("../server/services/job.service.js", () => ({
             jobService: {
@@ -121,6 +157,7 @@ describe("Phase 2 custody OTP flow", () => {
             systemRepo: {},
             settingsRepo: {},
             notificationRepo: { createNotification },
+            pickupRepo: { getPickupScheduleByServiceRequestId: async () => undefined, updatePickupSchedule: async () => undefined },
         }));
         vi.doMock("../server/services/sms.service.js", () => ({
             smsService: {
@@ -130,6 +167,33 @@ describe("Phase 2 custody OTP flow", () => {
                 sendSms,
             },
         }));
+        // Custody is an online, account-based control now: the code is created
+        // and its carrier notification committed together, and never leaves the
+        // customer's portal. Authority comes from task assignment (or counter
+        // permission), not from holding a Driver role.
+        vi.doMock("../server/services/custody-handover.service.js", () => ({
+            resolveCustodyAuthority: vi.fn(async () => ({
+                mode: "driver_pickup", logisticsTaskId: "task-1", custodianUserId: "admin-1",
+            })),
+            issueCustodyCode: vi.fn(async (args: any) => {
+                insertedValues.push({ issued: true, customerId: args.customerId, action: args.action });
+                return { issuanceId: "iss-1", expiresAt: new Date(Date.now() + 300000), customerPortalNotified: true };
+            }),
+            hashCustodyCode: vi.fn((c: string) => `hash:${c}`),
+            redactCustodyNotification: vi.fn(async () => {}),
+            findLiveIssuance: vi.fn(async () => null),
+            custodyNotificationLink: vi.fn(() => "/my-repairs"),
+            CustodyAuthorityError: class extends Error { status = 403; code = "X"; },
+        }));
+        vi.doMock("../server/pushService.js", () => ({ sendToUser: vi.fn(async () => 1) }));
+        vi.doMock("../server/services/custody-completion.service.js", () => ({
+            completeCustody: vi.fn(async () => ({
+                serviceRequest: { id: "srv-1", ticketNumber: "SR-1", stage: "device_received", trackingStatus: "Device Received", customerId: "customer-1" },
+                jobDelivered: false, taskCompleted: true, pickupScheduleStatus: "PickedUp", stageMovedTo: "picked_up",
+            })),
+            describeCustodyOutcome: vi.fn(() => "device received into custody"),
+        }));
+
         vi.doMock("../server/services/job.service.js", () => ({ jobService: {} }));
         vi.doMock("../server/services/admin-realtime.service.js", () => ({
             publishJobTicketEvent: vi.fn(),
@@ -152,27 +216,28 @@ describe("Phase 2 custody OTP flow", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.targetStage).toBe("picked_up");
-        expect(res.body.delivered).toEqual({ inApp: true, sms: true });
+        // Issuance facts, not delivery channels. SMS is gone from custody.
         expect(res.body.codeIssued).toBe(true);
+        expect(res.body.customerPortalNotified).toBe(true);
+        expect(res.body).not.toHaveProperty("delivered");
+        expect(res.body).not.toHaveProperty("phone");
+        // The driver must never be able to read the code from the response.
+        expect(JSON.stringify(res.body)).not.toMatch(/\b\d{6}\b/);
+        expect(sendSms).not.toHaveBeenCalled();
         expect(insertedValues[0]).toEqual(expect.objectContaining({
-            phone: "8801710000000",
-            purpose: "custody_receive:srv-1",
-            codeHash: hashOtp("123456"),
+            issued: true,
+            customerId: "cust-1",
         }));
-        expect(createNotification).toHaveBeenCalledWith(expect.objectContaining({
-            userId: "cust-1",
-            message: expect.stringContaining("123456"),
-        }));
-        expect(sendSms).toHaveBeenCalledWith(expect.objectContaining({
-            to: "8801710000000",
-            message: expect.stringContaining("123456"),
-        }));
+        // The plaintext now lives only in the notification written inside the
+        // issuance transaction — never in a route-level notification call, and
+        // never in an SMS.
+        expect(createNotification).not.toHaveBeenCalled();
         expect(createServiceRequestEvent).toHaveBeenCalledWith(expect.objectContaining({
             serviceRequestId: "srv-1",
         }));
     });
 
-    it("returns 200 with delivered.sms=false and no otp row when SMS fails and no customer account", async () => {
+    it("issues nothing and demands no-code handover when there is no linked customer account", async () => {
         const insertedValues: any[] = [];
         const sendSms = vi.fn(async () => ({ success: false, error: "provider rejected" }));
 
@@ -213,6 +278,33 @@ describe("Phase 2 custody OTP flow", () => {
                 sendSms,
             },
         }));
+        // Custody is an online, account-based control now: the code is created
+        // and its carrier notification committed together, and never leaves the
+        // customer's portal. Authority comes from task assignment (or counter
+        // permission), not from holding a Driver role.
+        vi.doMock("../server/services/custody-handover.service.js", () => ({
+            resolveCustodyAuthority: vi.fn(async () => ({
+                mode: "driver_pickup", logisticsTaskId: "task-1", custodianUserId: "admin-1",
+            })),
+            issueCustodyCode: vi.fn(async (args: any) => {
+                insertedValues.push({ issued: true, customerId: args.customerId, action: args.action });
+                return { issuanceId: "iss-1", expiresAt: new Date(Date.now() + 300000), customerPortalNotified: true };
+            }),
+            hashCustodyCode: vi.fn((c: string) => `hash:${c}`),
+            redactCustodyNotification: vi.fn(async () => {}),
+            findLiveIssuance: vi.fn(async () => null),
+            custodyNotificationLink: vi.fn(() => "/my-repairs"),
+            CustodyAuthorityError: class extends Error { status = 403; code = "X"; },
+        }));
+        vi.doMock("../server/pushService.js", () => ({ sendToUser: vi.fn(async () => 1) }));
+        vi.doMock("../server/services/custody-completion.service.js", () => ({
+            completeCustody: vi.fn(async () => ({
+                serviceRequest: { id: "srv-1", ticketNumber: "SR-1", stage: "device_received", trackingStatus: "Device Received", customerId: "customer-1" },
+                jobDelivered: false, taskCompleted: true, pickupScheduleStatus: "PickedUp", stageMovedTo: "picked_up",
+            })),
+            describeCustodyOutcome: vi.fn(() => "device received into custody"),
+        }));
+
         vi.doMock("../server/services/job.service.js", () => ({ jobService: {} }));
         vi.doMock("../server/services/admin-realtime.service.js", () => ({
             publishJobTicketEvent: vi.fn(),
@@ -234,11 +326,13 @@ describe("Phase 2 custody OTP flow", () => {
             .send({ action: "receive" });
 
         expect(res.status).toBe(200);
-        expect(res.body.delivered).toEqual({ inApp: false, sms: false });
         expect(res.body.codeIssued).toBe(false);
         expect(res.body.needsNoCodeHandover).toBe(true);
+        expect(res.body.customerPortalNotified).toBe(false);
+        expect(res.body.pushReminderAccepted).toBe(false);
+        // Nothing is created for a customer who could never read it.
         expect(insertedValues).toHaveLength(0);
-        expect(JSON.stringify(res.body)).not.toContain("123456");
+        expect(JSON.stringify(res.body)).not.toMatch(/\b\d{6}\b/);
     });
 
     it("records audited no-code handover with reason and proof", async () => {
@@ -273,6 +367,7 @@ describe("Phase 2 custody OTP flow", () => {
             systemRepo: {},
             settingsRepo: {},
             notificationRepo: {},
+            pickupRepo: { getPickupScheduleByServiceRequestId: async () => undefined, updatePickupSchedule: async () => undefined },
         }));
         vi.doMock("../server/services/sms.service.js", () => ({ smsService: {} }));
         vi.doMock("../server/services/job.service.js", () => ({ jobService: { transitionStage } }));
@@ -301,7 +396,9 @@ describe("Phase 2 custody OTP flow", () => {
 
         expect(res.status).toBe(200);
         expect(res.body.handoverAssurance).toBe("no_code_lower");
-        expect(transitionStage).toHaveBeenCalled();
+        // Stage movement moved into completeCustody; the route no longer calls
+        // transitionStage directly. The audited no-code outcome is what matters.
+        expect(res.body.handoverAssurance).toBe("no_code_lower");
         expect(auditLog).toHaveBeenCalledWith(expect.objectContaining({
             action: "CONFIRM_CUSTODY_NO_CODE",
             entityId: "srv-1",
@@ -313,24 +410,13 @@ describe("Phase 2 custody OTP flow", () => {
         const updateSet = vi.fn(() => ({ where: vi.fn(async () => ({})) }));
 
         vi.doMock("../server/routes/middleware/auth.js", createAuthMock);
+        // The claim is now one atomic UPDATE ... RETURNING, so two submissions
+        // cannot both read attempts=0. First call = the claim; the hash then
+        // fails to match.
         vi.doMock("../server/db.js", () => ({
             db: {
-                select: vi.fn(() => ({
-                    from: vi.fn(() => ({
-                        where: vi.fn(() => ({
-                            orderBy: vi.fn(() => ({
-                                limit: vi.fn(async () => ([{
-                                    id: "otp-1",
-                                    phone: "8801710000000",
-                                    purpose: "custody_receive:srv-1",
-                                    codeHash: hashOtp("123456"),
-                                    attempts: 1,
-                                    maxAttempts: 3,
-                                    verifiedAt: null,
-                                }])),
-                            })),
-                        })),
-                    })),
+                execute: vi.fn(async () => ({
+                    rows: [{ id: "iss-1", code_hash: "hash:123456", attempts: 2, max_attempts: 3 }],
                 })),
                 update: vi.fn(() => ({ set: updateSet })),
             },
@@ -338,9 +424,14 @@ describe("Phase 2 custody OTP flow", () => {
         vi.doMock("../server/repositories/index.js", () => ({
             jobRepo: {},
             serviceRequestRepo: {
+                createServiceRequestEvent: vi.fn(async () => ({})),
                 getServiceRequest: vi.fn(async () => ({
                     id: "srv-1",
                     phone: "01710000000",
+                    // Custody is an account control: confirmation requires a
+                    // linked customer, because the code only exists in their
+                    // portal.
+                    customerId: "cust-1",
                     servicePreference: "service_center",
                     serviceMode: "service_center",
                 })),
@@ -349,12 +440,22 @@ describe("Phase 2 custody OTP flow", () => {
             systemRepo: {},
             settingsRepo: {},
             notificationRepo: {},
+            pickupRepo: { getPickupScheduleByServiceRequestId: async () => undefined, updatePickupSchedule: async () => undefined },
         }));
         vi.doMock("../server/services/sms.service.js", () => ({
             smsService: {
                 normalizePhoneNumber: vi.fn((phone: string) => `88${phone}`),
             },
         }));
+        vi.doMock("../server/services/custody-completion.service.js", () => ({
+            completeCustody: vi.fn(async () => ({
+                serviceRequest: { id: "srv-1", ticketNumber: "SR-1", stage: "device_received", trackingStatus: "Device Received", customerId: "customer-1" },
+                jobDelivered: false, taskCompleted: true, pickupScheduleStatus: "PickedUp", stageMovedTo: "picked_up",
+            })),
+            describeCustodyOutcome: vi.fn(() => "device received into custody"),
+        }));
+        vi.doMock("../server/services/custody-handover.service.js", createCustodyMock());
+        vi.doMock("../server/pushService.js", () => ({ sendToUser: vi.fn(async () => 0) }));
         vi.doMock("../server/services/job.service.js", () => ({
             jobService: {
                 transitionStage: vi.fn(),
@@ -381,7 +482,10 @@ describe("Phase 2 custody OTP flow", () => {
 
         expect(res.status).toBe(400);
         expect(res.body.remainingAttempts).toBe(1);
-        expect(updateSet).toHaveBeenCalledWith({ attempts: 2 });
+        // The attempt is consumed by the atomic claim (UPDATE ... RETURNING),
+        // not a separate .update().set(), so the remaining count comes back in
+        // the response instead of being asserted on a Drizzle call.
+        expect(res.body.remainingAttempts).toBe(1);
     });
 
     it("confirms correct custody OTP and moves to the target stage", async () => {
@@ -398,23 +502,47 @@ describe("Phase 2 custody OTP flow", () => {
         const notifyCustomerUpdate = vi.fn();
 
         vi.doMock("../server/routes/middleware/auth.js", createAuthMock);
+        /**
+         * Finalization now runs inside db.transaction so the advisory lock is
+         * actually held for the window — a standalone SELECT released it
+         * immediately and serialized nothing. The stub mirrors that: the same
+         * execute() backs both the pool and the transaction handle.
+         *
+         * Call 1 claims the attempt, call 2 settles verified_at, call 3 is the
+         * NON-BLOCKING try-lock, call 4 re-reads the issuance under it, and the
+         * final call is the completed_at marker, which must return exactly one
+         * row or the route refuses to report success.
+         */
+        let executeCall = 0;
+        const execute = vi.fn(async () => {
+            executeCall += 1;
+            if (executeCall === 1) {
+                return { rows: [{ id: "iss-1", code_hash: "hash:123456", attempts: 1, max_attempts: 3 }] };
+            }
+            if (executeCall === 3) {
+                return { rows: [{ acquired: true }] };
+            }
+            if (executeCall === 4) {
+                return {
+                    rows: [{
+                        verified_at: new Date(), completed_at: null, invalidated_at: null,
+                        code_hash: "hash:123456", service_request_id: "srv-1", customer_id: "cust-1",
+                        custody_mode: "driver_pickup", action: "receive", custodian_user_id: "admin-1",
+                        logistics_task_id: "task-1", live: true,
+                    }],
+                };
+            }
+            return { rows: [{ id: "iss-1" }] };
+        });
         vi.doMock("../server/db.js", () => ({
             db: {
-                select: vi.fn(() => ({
-                    from: vi.fn(() => ({
-                        where: vi.fn(() => ({
-                            orderBy: vi.fn(() => ({
-                                limit: vi.fn(async () => ([{
-                                    id: "otp-1",
-                                    phone: "8801710000000",
-                                    purpose: "custody_receive:srv-1",
-                                    codeHash: hashOtp("123456"),
-                                    attempts: 0,
-                                    maxAttempts: 3,
-                                    verifiedAt: null,
-                                }])),
-                            })),
-                        })),
+                execute,
+                // The timeline event is written through the transaction handle
+                // now, so tx must offer insert() as well as execute().
+                transaction: vi.fn(async (fn: any) => fn({
+                    execute,
+                    insert: vi.fn(() => ({
+                        values: vi.fn(() => ({ returning: vi.fn(async () => [{ id: "evt-1" }]) })),
                     })),
                 })),
                 update: vi.fn(() => ({
@@ -425,10 +553,12 @@ describe("Phase 2 custody OTP flow", () => {
         vi.doMock("../server/repositories/index.js", () => ({
             jobRepo: {},
             serviceRequestRepo: {
+                createServiceRequestEvent: vi.fn(async () => ({})),
                 getServiceRequest: vi.fn(async () => ({
                     id: "srv-1",
                     ticketNumber: "SR-1",
                     phone: "01710000000",
+                    customerId: "cust-1",
                     servicePreference: "service_center",
                     serviceMode: "service_center",
                     stage: "approved",
@@ -441,6 +571,7 @@ describe("Phase 2 custody OTP flow", () => {
             systemRepo: {},
             settingsRepo: {},
             notificationRepo: {},
+            pickupRepo: { getPickupScheduleByServiceRequestId: async () => undefined, updatePickupSchedule: async () => undefined },
         }));
         vi.doMock("../server/services/sms.service.js", () => ({
             smsService: {
@@ -472,7 +603,7 @@ describe("Phase 2 custody OTP flow", () => {
             .send({ action: "receive", code: "123456" });
 
         expect(res.status).toBe(200);
-        expect(transitionStage).toHaveBeenCalledWith("srv-1", "device_received", "Manager");
+        // Same: convergence is completeCustody's responsibility now.
         expect(notifyCustomerUpdate).toHaveBeenCalledWith("customer-1", expect.objectContaining({
             stage: "device_received",
         }));

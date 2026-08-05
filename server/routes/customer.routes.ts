@@ -40,6 +40,7 @@ import {
 import { TIMING_EQUALISER_HASH, isPlaceholderPassword } from '../services/customer-password.js';
 import { deriveServiceRequestPaymentState, applyCustomerSafePaymentState } from '../services/service-request-payment-projection.service.js';
 import { toCustomerSessionView } from '../services/customer-session-view.js';
+import { findLiveIssuance, custodyNotificationLink } from '../services/custody-handover.service.js';
 
 const router = Router();
 
@@ -922,56 +923,33 @@ router.get('/api/customer/service-requests/:id/handover-code', requireCustomerAu
     try {
         const order = await storage.getServiceRequest(req.params.id);
         if (!order) return res.status(404).json({ error: 'Service request not found' });
+        // Ownership is exact. A phone match must never expose a repair that
+        // already belongs to somebody else.
         if (order.customerId !== req.session.customerId) {
-            return res.status(403).json({ error: 'Access denied' });
-        }
-
-        const purposes = [`custody_receive:${order.id}`, `custody_delivery:${order.id}`];
-        const live = await db.execute(sql`
-            SELECT purpose, expires_at, created_at
-            FROM otp_codes
-            WHERE purpose IN (${sql.join(purposes.map((p) => sql`${p}`), sql`, `)})
-              AND verified_at IS NULL
-              AND expires_at > NOW()
-            ORDER BY created_at DESC
-            LIMIT 1
-        `);
-        const row = ((live as any).rows ?? live)[0] as
-            | { purpose: string; expires_at: string; created_at: string }
-            | undefined;
-
-        if (!row) {
-            return res.json({ active: false });
+            return res.status(404).json({ error: 'Service request not found' });
         }
 
         /**
-         * The plaintext lives in the notification that was sent to this
-         * customer; otp_codes stores only a hash.
+         * One live issuance, correlated to its notification by ID.
          *
-         * This query used to filter on user_id and type alone, so it returned
-         * the customer's NEWEST handover notification regardless of which
-         * repair it belonged to. A customer with two open repairs could open
-         * repair A, be shown repair B's code, read it to the driver standing in
-         * front of them, and have it fail — because the OTP row above IS scoped
-         * to A while the code shown was B's. The comment here previously
-         * claimed a scoping the SQL did not perform.
-         *
-         * `link` is the only per-request key on the notifications table (there
-         * is no serviceRequestId column), and it is written deterministically
-         * by the custody route, so it is reconstructed identically here.
-         *
-         * The time floor pins the result to the same issuance as the live OTP:
-         * without it, an older notification for this same request — from an
-         * earlier, already-expired code — could still win.
+         * The previous version paired the live OTP with the customer's NEWEST
+         * handover notification and used a 60-second window to guess whether
+         * they belonged together. With two open repairs that returned the wrong
+         * repair's code, which then failed at the customer's door. The issuance
+         * ID is written into the notification link inside the same transaction
+         * that creates both rows, so correlation is now exact by construction —
+         * there is no timing involved.
          */
-        const expectedLink = `/track-order?order=${encodeURIComponent(order.ticketNumber || order.id)}&type=service`;
+        const issuance = await findLiveIssuance(order.id, req.session.customerId!);
+        if (!issuance) return res.json({ active: false });
+
+        const expectedLink = custodyNotificationLink(order.ticketNumber || order.id, issuance.id);
         const notif = await db.execute(sql`
             SELECT message FROM notifications
-            WHERE user_id = ${req.session.customerId}
+            WHERE id = ${issuance.notificationId}
+              AND user_id = ${req.session.customerId}
               AND type = 'handover_code'
               AND link = ${expectedLink}
-              AND created_at >= ${new Date(new Date(row.created_at).getTime() - 60_000)}
-            ORDER BY created_at DESC
             LIMIT 1
         `);
         const message = String((((notif as any).rows ?? notif)[0]?.message) ?? '');
@@ -982,8 +960,8 @@ router.get('/api/customer/service-requests/:id/handover-code', requireCustomerAu
         return res.json({
             active: true,
             code,
-            action: row.purpose.startsWith('custody_delivery') ? 'delivery' : 'receive',
-            expiresAt: row.expires_at,
+            action: issuance.action === 'delivery' ? 'delivery' : 'receive',
+            expiresAt: issuance.expiresAt,
         });
     } catch (error) {
         console.error('[HandoverCode] Lookup failed:', (error as Error).message);

@@ -290,6 +290,27 @@ export const requireGranularPermission = (granularKey: string) => async (req: Re
     }
 };
 
+/**
+ * Ask whether the current admin holds a permission, without rejecting.
+ *
+ * Custody authority is not a single gate: a home pickup is authorised by task
+ * assignment, a counter handover by an explicit permission. The handler has to
+ * branch on which one applies, so it needs to *ask* about the permission rather
+ * than be blocked by middleware before it can decide.
+ */
+export async function actorHasPermission(req: Request, granularKey: string): Promise<boolean> {
+    if (!req.session?.adminUserId) return false;
+    try {
+        const user = await storage.getUser(req.session.adminUserId);
+        if (!user) return false;
+        return hasGranularPerm(getEffectivePermissionsForUser(user), granularKey);
+    } catch (error) {
+        // Fail closed: an unreadable permission set is not permission.
+        console.error('[Auth] actorHasPermission check failed:', (error as Error).message);
+        return false;
+    }
+}
+
 export const requireAnyGranularPermission = (granularKeys: string[]) => async (req: Request, res: Response, next: NextFunction) => {
     if (!req.session?.adminUserId) {
         return res.status(401).json({ error: 'Admin authentication required' });

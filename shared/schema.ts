@@ -2044,6 +2044,100 @@ export type InsertRollbackRequest = z.infer<typeof insertRollbackRequestSchema>;
 export type RollbackRequest = typeof rollbackRequests.$inferSelect;
 
 // OTP Codes Table (Phone Verification)
+/**
+ * The online custody handover code.
+ *
+ * Deliberately NOT otp_codes. That table is keyed by `phone`, which meant a
+ * valid Bangladeshi number had to exist before a custody code could be issued
+ * or verified — even though this code never travels by phone. It appears only
+ * inside the authenticated customer's My Repairs page, is read aloud to the
+ * staff member standing in front of them, and is typed into the admin panel.
+ *
+ * Two custody modes, both first-class:
+ *   driver_pickup   — home pickup/delivery. Requires exactly one active
+ *                     logistics task; the custodian IS that task's assigned
+ *                     driver. Managers and Super Admins cannot bypass it; they
+ *                     reassign the task first, so the chain of custody keeps
+ *                     naming one accountable person.
+ *   counter_service — walk-in drop-off and collection. These legitimately have
+ *                     no logistics task, so logistics_task_id is nullable and
+ *                     authority comes from serviceRequests.confirmCounterCustody.
+ *
+ * Only the hash is stored here. The plaintext lives in the linked notification,
+ * which is redacted when the issuance is superseded (inside the issuing
+ * transaction), when it is verified (inline, best-effort), and in all remaining
+ * cases — including natural expiry — by redactSettledCustodyCodes(), which
+ * sweeps every five minutes, the same cadence codes live for. Expiry has no
+ * other trigger, so without that sweep an unused code would stay readable
+ * forever.
+ */
+export const custodyHandoverCodes = pgTable("custody_handover_codes", {
+  id: text("id").primaryKey(),
+  serviceRequestId: text("service_request_id").notNull().references(() => serviceRequests.id),
+  /**
+   * Null for counter_service: a walk-in has no journey and no task.
+   *
+   * No `.references()` here because logistics_tasks is a MAIN-migration table
+   * with no Drizzle model to point at. The foreign key IS enforced — the
+   * migration declares it — this model simply cannot express it.
+   */
+  logisticsTaskId: text("logistics_task_id"),
+  customerId: text("customer_id").notNull().references(() => users.id),
+  /** Never null — every custody event names an accountable person. */
+  custodianUserId: text("custodian_user_id").notNull().references(() => users.id),
+  custodyMode: text("custody_mode").notNull(), // driver_pickup | counter_service
+  action: text("action").notNull(),            // receive | delivery
+  /** The notification carrying the plaintext, so it can be redacted later. */
+  /**
+   * Not nullable: issuance writes the code and its carrier notification in one
+   * transaction, so a row without a notification would be a code nobody could
+   * ever read.
+   */
+  notificationId: text("notification_id").notNull().references(() => notifications.id),
+  codeHash: text("code_hash").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  maxAttempts: integer("max_attempts").notNull().default(3),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  /** The customer authorised custody — they read the code back correctly. */
+  verifiedAt: timestamp("verified_at", { withTimezone: true }),
+  /**
+   * Every required custody write converged: job, logistics task, legacy pickup
+   * row, timeline. Separate from verifiedAt because those two can drift — a
+   * crash between them leaves an authorised handover that never finished, and
+   * resuming it needs to know which of the two happened.
+   */
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  /**
+   * Short completion lease.
+   *
+   * Confirmation used to hold an open transaction (and one of five pool
+   * connections) across the whole completion, while completeCustody reached
+   * back into the same pool for the job, task, pickup and journey writes. Five
+   * confirmations for five DIFFERENT issuances each took a different advisory
+   * lock, so none blocked the others — they simply consumed every connection
+   * and then waited for one that could never arrive.
+   *
+   * The lease replaces that: claimed and released by ordinary short statements,
+   * so no connection is held while downstream work runs. The token identifies
+   * the owner so only the claimer may settle, and the expiry means a crashed
+   * process releases it without anything having to clean up.
+   */
+  completionLeaseToken: text("completion_lease_token"),
+  completionLeaseExpiresAt: timestamp("completion_lease_expires_at", { withTimezone: true }),
+  invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+  invalidatedReason: text("invalidated_reason"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => {
+  return {
+    serviceRequestIdx: index("idx_custody_codes_service_request").on(table.serviceRequestId),
+    taskIdx: index("idx_custody_codes_task").on(table.logisticsTaskId),
+    customerIdx: index("idx_custody_codes_customer").on(table.customerId),
+    expiryIdx: index("idx_custody_codes_expiry").on(table.expiresAt),
+  };
+});
+
+export type CustodyHandoverCode = typeof custodyHandoverCodes.$inferSelect;
+
 export const otpCodes = pgTable("otp_codes", {
   id: text("id").primaryKey(),
   phone: text("phone").notNull(),

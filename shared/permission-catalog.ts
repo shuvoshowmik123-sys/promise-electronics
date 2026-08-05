@@ -23,6 +23,12 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "serviceRequests.quote", label: "Send repair quote", module: "serviceRequests", action: "quote", risk: "high", description: "Create and send price quotes to customers.", consequence: "Financial commitment; customer sees the price and can accept.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: true },
   { key: "serviceRequests.transitionStage", label: "Change request stage", module: "serviceRequests", action: "transitionStage", risk: "high", description: "Move a request between stages (Authorized, Pickup Scheduled, In Repair, etc.).", consequence: "Affects workflow and customer-visible status.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
   { key: "serviceRequests.convertToJob", label: "Convert to job ticket", module: "serviceRequests", action: "convertToJob", risk: "high", description: "Create a job ticket from a service request.", consequence: "Starts the repair workflow; assigns resources.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
+  // Counter custody is the walk-in half of the handover control. A drop-off has
+  // no logistics task and therefore no assigned driver to authorise against, so
+  // the authority has to be an explicit permission rather than an assignment.
+  // Deliberately in NO role preset: it must be granted deliberately, per person,
+  // because whoever holds it is recorded as the named custodian of a device.
+  { key: "serviceRequests.confirmCounterCustody", label: "Confirm counter custody", module: "serviceRequests", action: "confirmCounterCustody", risk: "high", description: "Issue and verify the online handover code for a walk-in drop-off or counter collection, where no logistics task exists.", consequence: "Records the acting staff member as custodian and advances custody stage; does not grant driver-assigned pickup authority.", suggestedRoles: ["Super Admin"], coverageCritical: true },
   { key: "serviceRequests.edit", label: "Edit service requests", module: "serviceRequests", action: "edit", risk: "high", description: "Edit service request fields and customer intake details.", consequence: "Can alter customer-facing/request workflow data.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: true },
 
   // ── Jobs ──
@@ -168,6 +174,8 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
 
 export const LEGACY_TO_GRANULAR: Record<string, string[]> = {
   dashboard: ["dashboard.view"],
+  // confirmCounterCustody is intentionally absent from this pack: it is granted
+  // per person, never as a side effect of holding the service-requests module.
   serviceRequests: ["serviceRequests.view", "serviceRequests.reply", "serviceRequests.logCall", "serviceRequests.quote", "serviceRequests.transitionStage", "serviceRequests.convertToJob", "serviceRequests.edit"],
   jobs: ["jobs.view", "jobs.viewAll", "jobs.create", "jobs.assignTechnician", "jobs.reportOutcome", "jobs.reviewOutcome", "jobs.advanceStatus", "jobs.edit", "jobs.manageWorkHolds", "jobs.delete"],
   pickup: ["pickup.viewAssigned", "pickup.confirmHandover"],

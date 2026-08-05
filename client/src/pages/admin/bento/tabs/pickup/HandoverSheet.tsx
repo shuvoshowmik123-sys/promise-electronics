@@ -41,13 +41,15 @@ export function HandoverSheet({
     const [step, setStep] = useState<"idle" | "sent" | "no_code">("idle");
     const [digits, setDigits] = useState<string[]>(Array(OTP_LEN).fill(""));
     const [sentPhone, setSentPhone] = useState<string>("");
-    const [delivered, setDelivered] = useState<{ notificationStored: boolean; push: boolean; sms: boolean } | null>(null);
     /**
-     * True when the ONLY channel that worked was a stored notification: nothing
-     * reached a device. The code is real but the customer can only see it by
-     * having the app open, so the driver must ask before relying on it.
-     */
-    const [needsVisibilityCheck, setNeedsVisibilityCheck] = useState(false);
+      * Issuance status, not delivery channels.
+      *
+      * The old shape reported inApp/sms/push as if they were delivery. They were
+      * not: SMS is no longer part of custody at all, and a push is only a
+      * reminder that never carries the code. The only fact that matters to the
+      * driver is that the code is waiting in the customer's portal.
+      */
+    const [issuance, setIssuance] = useState<{ portalNotified: boolean; pushAccepted: boolean } | null>(null);
     const [remainingAttempts, setRemainingAttempts] = useState(MAX_ATTEMPTS);
     const [verifyError, setVerifyError] = useState<string | null>(null);
     const [codCollected, setCodCollected] = useState(false);
@@ -70,8 +72,7 @@ export function HandoverSheet({
         setStep("idle");
         setDigits(Array(OTP_LEN).fill(""));
         setSentPhone("");
-        setDelivered(null);
-        setNeedsVisibilityCheck(false);
+        setIssuance(null);
         setRemainingAttempts(MAX_ATTEMPTS);
         setVerifyError(null);
         setCodCollected(false);
@@ -98,9 +99,7 @@ export function HandoverSheet({
     const sendMutation = useMutation({
         mutationFn: () => adminStageApi.sendCustodyOtp(target!.serviceRequestId, { action: mode }),
         onSuccess: (res) => {
-            setDelivered(res.delivered);
-            setNeedsVisibilityCheck(Boolean((res as any).requiresCustomerVisibilityCheck));
-            setSentPhone(res.phone || target?.phone || "");
+            setIssuance({ portalNotified: res.customerPortalNotified, pushAccepted: res.pushReminderAccepted });
             setRemainingAttempts(res.maxAttempts ?? MAX_ATTEMPTS);
             setVerifyError(null);
             if (res.needsNoCodeHandover || !res.codeIssued) {
@@ -111,11 +110,7 @@ export function HandoverSheet({
                 return;
             }
             setStep("sent");
-            const parts: string[] = [];
-            if (res.delivered?.push) parts.push("app notification");
-            if (res.delivered?.sms) parts.push("SMS");
-            if (!parts.length && res.delivered?.notificationStored) parts.push("in-app only");
-            toast.success(parts.length ? `Code sent via ${parts.join(" + ")}` : "Code issued");
+            toast.success("Online code is available in the customer's repair page");
             setTimeout(() => inputsRef.current[0]?.focus(), 100);
         },
         onError: (e: Error) => toast.error(e.message || "Failed to send code"),
@@ -124,15 +119,27 @@ export function HandoverSheet({
     const confirmMutation = useMutation({
         mutationFn: (code: string) => adminStageApi.confirmCustodyOtp(target!.serviceRequestId, { action: mode, code }),
         onSuccess: async () => {
-            if (target?.pickupId) {
-                await adminPickupsApi.update(target.pickupId, mode === "delivery"
-                    ? { status: "Delivered", deliveredAt: new Date() } as any
-                    : { status: "PickedUp", pickedUpAt: new Date() } as any);
-            }
+            /**
+             * No second mutation. The server completes the handover.
+             *
+             * This used to PATCH /api/admin/pickups with Delivered/PickedUp
+             * straight after a successful confirmation — the client deciding,
+             * on its own, that custody had changed. For delivery that request
+             * could never succeed: the route guards on the service request
+             * reaching completed/closed, which the job lifecycle forbids
+             * anything but the job to set. The OTP was consumed and the pickup
+             * stayed unfinished.
+             *
+             * Confirmation now completes the job, the logistics task and the
+             * pickup record server-side, so the client's only remaining job is
+             * to refetch and show the truth.
+             */
             toast.success(mode === "delivery" ? "Device released — verified delivery" : "Device received — custody confirmed");
             queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
             queryClient.invalidateQueries({ queryKey: ["service-requests"] });
             queryClient.invalidateQueries({ queryKey: ["serviceRequests"] });
+            queryClient.invalidateQueries({ queryKey: ["logistics-tasks"] });
+            queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
             onVerified?.(mode);
             onClose();
         },
@@ -156,13 +163,14 @@ export function HandoverSheet({
             proofPhotoUrl: noCodePhotoUrl.trim(),
         }),
         onSuccess: async () => {
-            if (target?.pickupId) {
-                await adminPickupsApi.update(target.pickupId, mode === "delivery"
-                    ? { status: "Delivered", deliveredAt: new Date() } as any
-                    : { status: "PickedUp", pickedUpAt: new Date() } as any);
-            }
+            // Same rule as the coded path: the server completes the handover,
+            // the client only refetches. This follow-up could never succeed for
+            // delivery anyway — the pickup route guards on a stage the job
+            // lifecycle forbids anything but the job to set.
             toast.success("Lower-assurance handover recorded");
             queryClient.invalidateQueries({ queryKey: ["adminPickups"] });
+            queryClient.invalidateQueries({ queryKey: ["logistics-tasks"] });
+            queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
             queryClient.invalidateQueries({ queryKey: ["service-requests"] });
             onVerified?.(mode);
             onClose();
@@ -272,9 +280,10 @@ export function HandoverSheet({
                                             No code could be delivered. Record a lower-assurance handover with a reason and photo proof. This is audited.
                                         </p>
                                     </div>
-                                    {delivered && (
+                                    {issuance && (
                                         <p className="text-xs text-slate-500">
-                                            Channels: push {delivered.push ? "ok" : "failed"}, SMS {delivered.sms ? "ok" : "failed"}, in-app {delivered.notificationStored ? "stored" : "failed"}
+                                            Portal code {issuance.portalNotified ? "issued" : "not issued"} · Reminder{" "}
+                                            {issuance.pushAccepted ? "accepted" : "unavailable"}
                                         </p>
                                     )}
                                     <div>
@@ -311,27 +320,24 @@ export function HandoverSheet({
                             ) : (
                                 <>
                                     <p className="mt-5 text-sm text-slate-500">{subtitle}</p>
-                                    {sentPhone && <p className="mt-1 text-xs text-slate-400">Customer contact {sentPhone}</p>}
-                                    {/* Nothing reached a device — the code exists but the
-                                        customer can only see it with the app open. Say so
-                                        plainly rather than letting the driver assume it
-                                        arrived, which is what the old single `inApp`
-                                        boolean encouraged. */}
-                                    {needsVisibilityCheck && (
-                                        <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
-                                            <p className="text-xs leading-relaxed text-amber-900">
-                                                <strong>Ask the customer if they can see the code.</strong> No SMS or
-                                                phone notification was delivered — it is only visible inside their app.
-                                                If they cannot see it, use the no-code handover instead.
-                                            </p>
-                                        </div>
-                                    )}
-                                    {delivered && (
-                                        <p className="mt-1 text-xs text-slate-500">
-                                            Delivered: {delivered.push ? "push" : delivered.notificationStored ? "in-app only" : "—"}
+                                    {/* Permanent instruction, not a conditional warning.
+                                        The code lives only in the customer's portal, so the
+                                        driver ALWAYS has to ask them to open it — there is no
+                                        longer any channel that could have delivered it
+                                        another way. */}
+                                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3">
+                                        <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+                                        <p className="text-xs leading-relaxed text-blue-900">
+                                            <strong>Ask the customer to open My Repairs and tell you the handover
+                                            code.</strong> The code is shown only in their account — it is never sent
+                                            by SMS and never shown to you.
+                                        </p>
+                                    </div>
+                                    {issuance && (
+                                        <p className="mt-2 text-xs text-slate-500">
+                                            Portal code {issuance.portalNotified ? "issued" : "not issued"}
                                             {" · "}
-                                            SMS {delivered.sms ? "yes" : "no"}
+                                            Reminder {issuance.pushAccepted ? "accepted" : "unavailable"}
                                         </p>
                                     )}
                                     <p className="mt-3 text-sm font-bold text-slate-700" data-testid="handover-attempts-remaining">

@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
+import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
+import { useExclusiveAuthAction } from "@/hooks/use-exclusive-auth-action";
+import { classifyGoogleSignInError } from "@/lib/google-signin-error";
 import { toast } from "sonner";
 import { Loader2, Phone, Lock, User, Mail, MapPin } from "lucide-react";
 
@@ -45,19 +48,32 @@ export function CustomerAuthModal({
   description = "Sign in to your account to continue.",
 }: CustomerAuthModalProps) {
   const { login, register, loginWithGoogle } = useCustomerAuth();
+  const { t } = useCustomerLanguage();
   const [activeTab, setActiveTab] = useState(defaultTab);
-  const [isLoading, setIsLoading] = useState(false);
+  /**
+   * Same exclusive-action policy as the login page.
+   *
+   * This modal is the wider surface — repair request, quote, intake wizard,
+   * checkout, profile, tracking and PublicLayout all open it — and it had the
+   * weaker guard: one boolean that React updates asynchronously, so two clicks
+   * in a tick both passed. It also displayed `e.message`, i.e. raw Firebase or
+   * API text, straight to the customer.
+   */
+  const auth = useExclusiveAuthAction();
+  const isLoading = auth.isBusy;
 
   const handleGoogleSignIn = async () => {
-    setIsLoading(true);
+    // Synchronous, before any await.
+    if (!auth.acquire("google")) return;
     try {
       await loginWithGoogle();
       onOpenChange(false);
       onSuccess?.();
-    } catch (e: any) {
-      toast.error(e.message ?? "Google sign-in failed");
+    } catch (e: unknown) {
+      // Classified to a translation key — never the provider's own text.
+      toast.error(t(classifyGoogleSignInError(e)));
     } finally {
-      setIsLoading(false);
+      auth.release("google");
     }
   };
 
@@ -87,7 +103,7 @@ export function CustomerAuthModal({
 
     const fullPhone = "+880" + cleanPhone;
 
-    setIsLoading(true);
+    if (!auth.acquire("phone")) return;
     try {
       await login(fullPhone, loginPassword);
       toast.success("Logged in successfully!");
@@ -96,7 +112,7 @@ export function CustomerAuthModal({
     } catch (error: any) {
       toast.error(error.message || "Login failed");
     } finally {
-      setIsLoading(false);
+      auth.release("phone");
     }
   };
 
@@ -126,7 +142,7 @@ export function CustomerAuthModal({
 
     const fullPhone = "+880" + cleanPhone;
 
-    setIsLoading(true);
+    if (!auth.acquire("register")) return;
     try {
       await register({
         name: registerName,
@@ -141,7 +157,7 @@ export function CustomerAuthModal({
     } catch (error: any) {
       toast.error(error.message || "Registration failed");
     } finally {
-      setIsLoading(false);
+      auth.release("register");
     }
   };
 

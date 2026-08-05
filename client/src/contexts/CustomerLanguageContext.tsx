@@ -225,6 +225,22 @@ const translations = {
   "login.rememberMe":     { en: "Remember me",         bn: "মনে রাখুন" },
   "login.orContinue":     { en: "Or continue with",    bn: "অথবা এর সাথে চালিয়ে যান" },
   "login.google":         { en: "Continue with Google", bn: "গুগল দিয়ে চালিয়ে যান" },
+  "login.googleSigningIn": { en: "Signing in...",       bn: "সাইন ইন হচ্ছে..." },
+  "login.googleFailed":   { en: "Google Sign-In Failed", bn: "গুগল সাইন-ইন ব্যর্থ হয়েছে" },
+  // Success needs translating too. The failure path was translated while the
+  // success toast stayed hardcoded English, so a customer in Bangla mode saw
+  // their own language only when something went wrong.
+  "login.successTitle":   { en: "Login Successful",     bn: "লগইন সফল হয়েছে" },
+  "login.successDesc":    { en: "Welcome back to Promise Electronics!", bn: "প্রমিজ ইলেকট্রনিক্সে আবার স্বাগতম!" },
+  // Approved Google sign-in outcomes. Deliberately a closed set: the raw
+  // Firebase/API text is written for developers and must never reach a
+  // customer, so an unrecognised failure gets the generic line rather than
+  // whatever the provider happened to say.
+  "login.googleCancelled": { en: "Google sign-in was cancelled.", bn: "গুগল সাইন-ইন বাতিল করা হয়েছে।" },
+  "login.googlePopupBlocked": { en: "Please allow the Google sign-in popup and try again.", bn: "গুগল সাইন-ইন পপ-আপ চালু করে আবার চেষ্টা করুন।" },
+  "login.googleNetwork":  { en: "Google sign-in could not connect. Check your internet connection and try again.", bn: "গুগল সাইন-ইনে সংযোগ করা যায়নি। ইন্টারনেট সংযোগ দেখে আবার চেষ্টা করুন।" },
+  "login.googleSetupRequired": { en: "This account needs to be set up first. Please contact Promise Electronics.", bn: "এই অ্যাকাউন্টটি আগে সেট আপ করতে হবে। অনুগ্রহ করে প্রমিজ ইলেকট্রনিক্সে যোগাযোগ করুন।" },
+  "login.googleGeneric":  { en: "Google sign-in could not be completed. Please try again.", bn: "গুগল সাইন-ইন সম্পন্ন করা যায়নি। আবার চেষ্টা করুন।" },
   "login.recoveryHelp":   { en: "Need help signing in?", bn: "সাইন ইন করতে সাহায্য দরকার?" },
   "login.recoveryTitle":  { en: "Support-assisted recovery", bn: "সাপোর্টের মাধ্যমে অ্যাকাউন্ট রিকভারি" },
   "login.recoveryDesc":   { en: "We do not reset passwords automatically. Our team will verify your account and help you reset safely.", bn: "আমরা স্বয়ংক্রিয়ভাবে পাসওয়ার্ড রিসেট করি না। আমাদের টিম আপনার অ্যাকাউন্ট যাচাই করে নিরাপদে রিসেট করতে সাহায্য করবে।" },

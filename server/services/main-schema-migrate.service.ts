@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_07_30_customer_reset_links";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_05_custody_handover_codes";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -1954,6 +1954,42 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       )`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_customer_reset_links_user_id ON customer_reset_links (user_id)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_customer_reset_links_expires ON customer_reset_links (expires_at)`);
+    },
+  },
+  {
+    id: "2026_08_05_custody_handover_codes",
+    description:
+      "Dedicated storage for the online custody handover code. Deliberately NOT otp_codes: that table is keyed by phone, which forced a valid Bangladeshi number to exist before a code could be issued or verified even though this code never travels by phone — it appears only inside the authenticated customer's My Repairs page. Only code_hash is stored; the plaintext lives in the linked notification and is redacted once the issuance is settled. custody_mode distinguishes driver_pickup (requires a logistics task whose assigned driver is the custodian) from counter_service (walk-in drop-off and collection, which legitimately have no task). logistics_task_id is therefore nullable. custodian_user_id is never null: every custody event names an accountable person.",
+    up: async (client) => {
+      await client.query(`CREATE TABLE IF NOT EXISTS custody_handover_codes (
+        id TEXT PRIMARY KEY,
+        service_request_id TEXT NOT NULL REFERENCES service_requests(id) ON DELETE CASCADE,
+        logistics_task_id TEXT REFERENCES logistics_tasks(id),
+        customer_id TEXT NOT NULL REFERENCES users(id),
+        custodian_user_id TEXT NOT NULL REFERENCES users(id),
+        custody_mode TEXT NOT NULL,
+        action TEXT NOT NULL,
+        notification_id TEXT NOT NULL REFERENCES notifications(id) ON DELETE RESTRICT,
+        code_hash TEXT NOT NULL,
+        attempts INTEGER NOT NULL DEFAULT 0,
+        max_attempts INTEGER NOT NULL DEFAULT 3,
+        expires_at TIMESTAMPTZ NOT NULL,
+        verified_at TIMESTAMPTZ,
+        completed_at TIMESTAMPTZ,
+        completion_lease_token TEXT,
+        completion_lease_expires_at TIMESTAMPTZ,
+        invalidated_at TIMESTAMPTZ,
+        invalidated_reason TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_custody_codes_service_request ON custody_handover_codes (service_request_id)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_custody_codes_task ON custody_handover_codes (logistics_task_id)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_custody_codes_customer ON custody_handover_codes (customer_id)`);
+      // The hot path: find the one live issuance for this repair + action.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_custody_codes_active
+        ON custody_handover_codes (service_request_id, action, expires_at)
+        WHERE verified_at IS NULL AND invalidated_at IS NULL`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_custody_codes_expiry ON custody_handover_codes (expires_at)`);
     },
   },
 ];

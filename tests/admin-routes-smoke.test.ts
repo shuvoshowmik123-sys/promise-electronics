@@ -17,6 +17,8 @@ function createAuthMock() {
         requirePermission: () => allowAdminRequest(),
         requireAnyPermission: () => allowAdminRequest(),
         requireGranularPermission: () => allowAdminRequest(),
+        requireAnyGranularPermission: () => allowAdminRequest(),
+        actorHasPermission: async () => true,
         requireSuperAdmin: allowAdminRequest(),
         requireCustomerAuth: (req: any, _res: any, next: () => void) => { req.session = req.session || {}; req.session.customerId = "cust-1"; next(); },
         getCustomerId: (req: any) => req.session?.customerId,

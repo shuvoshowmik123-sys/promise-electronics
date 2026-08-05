@@ -288,21 +288,36 @@ export class JobService {
             closed: "Case closed."
         };
 
-        // Update the stage
-        const [updated] = await db
-            .update(schema.serviceRequests)
-            .set({ stage: newStage as any })
-            .where(eq(schema.serviceRequests.id, id))
-            .returning();
-
-        // Add timeline event with appropriate tracking status
+        /**
+         * The stage change and the timeline entry that explains it are one fact.
+         *
+         * These were two independent statements. If the event insert failed
+         * after the stage update committed, the request had silently moved with
+         * no record of who moved it or why — and callers that undo their own
+         * work on failure (custody confirmation releases the handover code)
+         * would then let the same code be used again against a request whose
+         * custody had already advanced.
+         *
+         * One transaction means a caller's error handling can trust that a
+         * thrown transition changed nothing.
+         */
         const trackingStatus = stageToTrackingStatus[newStage] || "Request Received";
-        await db.insert(schema.serviceRequestEvents).values({
-            id: nanoid(),
-            serviceRequestId: id,
-            status: trackingStatus as any,
-            message: stageMessages[newStage] || `Status updated to ${newStage}`,
-            actor: actorName,
+        const updated = await db.transaction(async (tx) => {
+            const [row] = await tx
+                .update(schema.serviceRequests)
+                .set({ stage: newStage as any })
+                .where(eq(schema.serviceRequests.id, id))
+                .returning();
+
+            await tx.insert(schema.serviceRequestEvents).values({
+                id: nanoid(),
+                serviceRequestId: id,
+                status: trackingStatus as any,
+                message: stageMessages[newStage] || `Status updated to ${newStage}`,
+                actor: actorName,
+            });
+
+            return row;
         });
 
         return { serviceRequest: updated };

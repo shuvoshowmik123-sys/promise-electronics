@@ -422,8 +422,30 @@ export async function getServiceRequestEvents(serviceRequestId: string): Promise
         .orderBy(schema.serviceRequestEvents.occurredAt);
 }
 
-export async function createServiceRequestEvent(event: InsertServiceRequestEvent): Promise<ServiceRequestEvent> {
-    const [newEvent] = await db.insert(schema.serviceRequestEvents)
+/**
+ * Minimal shape of a drizzle transaction handle, so callers can enrol this
+ * write in a transaction they already own.
+ */
+type EventExecutor = Pick<typeof db, "insert">;
+
+/**
+ * @param executor Optional transaction handle. Pass the `tx` from
+ *   db.transaction to make this event commit or roll back WITH the caller's
+ *   other writes.
+ *
+ *   Custody confirmation needs that: it writes the timeline event and the
+ *   issuance's completed_at marker as one fact. Using the global pool here
+ *   meant the event took its own connection and committed independently — so a
+ *   rollback of the surrounding transaction left the event behind, and a retry
+ *   produced a second one for a single physical handover. It also consumed a
+ *   second pool connection while the caller's transaction held one, which is
+ *   how a pool of five can be exhausted by concurrent confirmations.
+ */
+export async function createServiceRequestEvent(
+    event: InsertServiceRequestEvent,
+    executor: EventExecutor = db,
+): Promise<ServiceRequestEvent> {
+    const [newEvent] = await executor.insert(schema.serviceRequestEvents)
         .values({ ...event, id: nanoid() })
         .returning();
     return newEvent;
