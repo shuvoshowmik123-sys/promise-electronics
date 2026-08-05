@@ -27,6 +27,7 @@ import { getCallAttempts, createCallAttempt, updateCallAttempt, getIntakeSummary
 import { getActiveServiceAreaById } from '../repositories/service-area.repository.js';
 import { deriveServiceRequestPaymentState, applyDerivedPaymentState } from '../services/service-request-payment-projection.service.js';
 import { notifyAdminsWithPush } from '../services/fcm.service.js';
+import * as pushService from '../pushService.js';
 import {
     sendOrPriceQuote,
     acceptRetailQuote,
@@ -728,8 +729,46 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
             console.error("[CustodyOTP] SMS threw:", (err as Error).message);
         }
 
-        const delivered = { inApp, sms: smsOk };
-        const anyDelivered = inApp || smsOk;
+        /**
+         * Push the customer's own devices.
+         *
+         * The code is deliberately NOT in the push body. A lock-screen preview
+         * is readable by whoever is holding the phone, including the person at
+         * the door asking for the code — which would defeat the control. The
+         * push only says a code is waiting; reading it requires opening the app.
+         */
+        let pushDevices = 0;
+        if (request.customerId) {
+            try {
+                pushDevices = await pushService.sendToUser(request.customerId, {
+                    title: "Handover code ready",
+                    body: `Open your repair ${request.ticketNumber || request.id} to see the code for our staff member.`,
+                    data: { type: "handover_code", serviceRequestId: String(request.id) },
+                });
+            } catch (err) {
+                console.error("[CustodyOTP] Push failed:", (err as Error).message);
+            }
+        }
+        const pushOk = pushDevices > 0;
+
+        /**
+         * Three facts, not one boolean.
+         *
+         * `inApp` only ever meant "a notification row was written" — it never
+         * meant the customer could see it. Reporting that as delivery let a
+         * driver be told a code was issued while the customer, not signed in on
+         * the phone in their hand, had no way to read it. The no-code path was
+         * then skipped at exactly the moment it was needed.
+         *
+         * A stored notification is still worth issuing a code for — a customer
+         * watching the tracking page sees it within the 15s poll — but the
+         * driver must be told that is the ONLY channel that worked, so they can
+         * ask "can you see it?" before relying on it. That question is the
+         * fourth fact, and only the driver can answer it.
+         */
+        const delivered = { notificationStored: inApp, push: pushOk, sms: smsOk };
+        const anyDelivered = inApp || pushOk || smsOk;
+        const activelyDelivered = pushOk || smsOk;
 
         if (!anyDelivered) {
             // Never insert OTP; never show code to driver; UI must use no-code path.
@@ -772,6 +811,14 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
             delivered,
             codeIssued: true,
             needsNoCodeHandover: false,
+            /**
+             * Only a stored notification reached the customer — nothing was
+             * pushed to a device and no SMS was accepted. The code is real, but
+             * the customer can only see it by having the app open. The driver
+             * must confirm they can before relying on it, and fall back to the
+             * audited no-code handover if they cannot.
+             */
+            requiresCustomerVisibilityCheck: !activelyDelivered,
             maxAttempts: 3,
             ...(process.env.NODE_ENV !== 'production' ? { _testCode: code } : {}),
         });

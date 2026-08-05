@@ -928,7 +928,7 @@ router.get('/api/customer/service-requests/:id/handover-code', requireCustomerAu
 
         const purposes = [`custody_receive:${order.id}`, `custody_delivery:${order.id}`];
         const live = await db.execute(sql`
-            SELECT purpose, expires_at
+            SELECT purpose, expires_at, created_at
             FROM otp_codes
             WHERE purpose IN (${sql.join(purposes.map((p) => sql`${p}`), sql`, `)})
               AND verified_at IS NULL
@@ -936,19 +936,41 @@ router.get('/api/customer/service-requests/:id/handover-code', requireCustomerAu
             ORDER BY created_at DESC
             LIMIT 1
         `);
-        const row = ((live as any).rows ?? live)[0] as { purpose: string; expires_at: string } | undefined;
+        const row = ((live as any).rows ?? live)[0] as
+            | { purpose: string; expires_at: string; created_at: string }
+            | undefined;
 
         if (!row) {
             return res.json({ active: false });
         }
 
-        // The plaintext lives in the notification that was sent to this
-        // customer; otp_codes stores only a hash. Scoped to this customer and
-        // to a code that is still live.
+        /**
+         * The plaintext lives in the notification that was sent to this
+         * customer; otp_codes stores only a hash.
+         *
+         * This query used to filter on user_id and type alone, so it returned
+         * the customer's NEWEST handover notification regardless of which
+         * repair it belonged to. A customer with two open repairs could open
+         * repair A, be shown repair B's code, read it to the driver standing in
+         * front of them, and have it fail — because the OTP row above IS scoped
+         * to A while the code shown was B's. The comment here previously
+         * claimed a scoping the SQL did not perform.
+         *
+         * `link` is the only per-request key on the notifications table (there
+         * is no serviceRequestId column), and it is written deterministically
+         * by the custody route, so it is reconstructed identically here.
+         *
+         * The time floor pins the result to the same issuance as the live OTP:
+         * without it, an older notification for this same request — from an
+         * earlier, already-expired code — could still win.
+         */
+        const expectedLink = `/track-order?order=${encodeURIComponent(order.ticketNumber || order.id)}&type=service`;
         const notif = await db.execute(sql`
             SELECT message FROM notifications
             WHERE user_id = ${req.session.customerId}
               AND type = 'handover_code'
+              AND link = ${expectedLink}
+              AND created_at >= ${new Date(new Date(row.created_at).getTime() - 60_000)}
             ORDER BY created_at DESC
             LIMIT 1
         `);

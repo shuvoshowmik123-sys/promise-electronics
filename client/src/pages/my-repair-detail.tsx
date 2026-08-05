@@ -5,6 +5,7 @@ import { ArrowLeft, CalendarClock, CheckCircle2, Clock3, CreditCard, HelpCircle,
 import { customerRepairJourneysApi, type AcceptJourneyQuotePayload, type CustomerRepairSchedule, type JourneySchedulePayload } from "@/lib/api/customerApi";
 import { useCustomerLanguage, type CustomerLang } from "@/contexts/CustomerLanguageContext";
 import { PillButton, RefBadge, SectionEyebrow, StatusChip, toneForStatus } from "@/components/customer/mobile-kit";
+import { HandoverCodeCard } from "@/components/customer/HandoverCodeCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -350,6 +351,13 @@ export default function MyRepairDetailPage() {
             <p className="mt-2 text-sm font-bold leading-6 text-slate-800 break-words">{presentation.nextLine}</p>
           </section>
 
+          {/* Handover code. This page is behind CustomerProtectedRoute, which is
+              the only reason it can appear here: the code is a custody secret,
+              so it must never reach the anonymous /track/:id printed-QR route. */}
+          {detail.serviceRequestId ? (
+            <HandoverCodeCard serviceRequestId={detail.serviceRequestId} />
+          ) : null}
+
           {(detail.nextAction || detail.nextActionLabel) && (
             <section className="rounded-[1.75rem] border border-emerald-100 bg-white p-4">
               <SectionEyebrow>{t("journey.nextAction")}</SectionEyebrow>
@@ -419,6 +427,9 @@ export default function MyRepairDetailPage() {
               <SectionEyebrow>{t("journey.whatHappensNext")}</SectionEyebrow>
               <p className="mt-2 font-bold text-slate-800">{presentation.nextLine}</p>
             </div>
+            {detail.serviceRequestId ? (
+              <div className="mt-4"><HandoverCodeCard serviceRequestId={detail.serviceRequestId} /></div>
+            ) : null}
             <div className="mt-6"><BillingSummary events={detail.events} /></div>
             <div className="mt-6">
               <ServiceFeedbackCard ticketNumber={ticketRef} />

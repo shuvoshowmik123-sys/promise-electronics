@@ -1364,9 +1364,17 @@ export const adminStageApi = {
             targetStage: string;
             expiresAt: string;
             phone: string;
-            delivered: { inApp: boolean; sms: boolean };
+            /**
+             * Three separate facts. `notificationStored` means a row was
+             * written, NOT that the customer can see it — it was previously
+             * called `inApp` and reported as delivery, which let a driver be
+             * told a code was issued while the customer had no way to read it.
+             */
+            delivered: { notificationStored: boolean; push: boolean; sms: boolean };
             codeIssued: boolean;
             needsNoCodeHandover: boolean;
+            /** Only the stored notification worked — driver must confirm the customer can see it. */
+            requiresCustomerVisibilityCheck?: boolean;
             maxAttempts?: number;
         }>(`/admin/service-requests/${id}/custody-otp/send`, {
             method: "POST",

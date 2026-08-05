@@ -41,7 +41,13 @@ export function HandoverSheet({
     const [step, setStep] = useState<"idle" | "sent" | "no_code">("idle");
     const [digits, setDigits] = useState<string[]>(Array(OTP_LEN).fill(""));
     const [sentPhone, setSentPhone] = useState<string>("");
-    const [delivered, setDelivered] = useState<{ inApp: boolean; sms: boolean } | null>(null);
+    const [delivered, setDelivered] = useState<{ notificationStored: boolean; push: boolean; sms: boolean } | null>(null);
+    /**
+     * True when the ONLY channel that worked was a stored notification: nothing
+     * reached a device. The code is real but the customer can only see it by
+     * having the app open, so the driver must ask before relying on it.
+     */
+    const [needsVisibilityCheck, setNeedsVisibilityCheck] = useState(false);
     const [remainingAttempts, setRemainingAttempts] = useState(MAX_ATTEMPTS);
     const [verifyError, setVerifyError] = useState<string | null>(null);
     const [codCollected, setCodCollected] = useState(false);
@@ -65,6 +71,7 @@ export function HandoverSheet({
         setDigits(Array(OTP_LEN).fill(""));
         setSentPhone("");
         setDelivered(null);
+        setNeedsVisibilityCheck(false);
         setRemainingAttempts(MAX_ATTEMPTS);
         setVerifyError(null);
         setCodCollected(false);
@@ -92,6 +99,7 @@ export function HandoverSheet({
         mutationFn: () => adminStageApi.sendCustodyOtp(target!.serviceRequestId, { action: mode }),
         onSuccess: (res) => {
             setDelivered(res.delivered);
+            setNeedsVisibilityCheck(Boolean((res as any).requiresCustomerVisibilityCheck));
             setSentPhone(res.phone || target?.phone || "");
             setRemainingAttempts(res.maxAttempts ?? MAX_ATTEMPTS);
             setVerifyError(null);
@@ -104,8 +112,9 @@ export function HandoverSheet({
             }
             setStep("sent");
             const parts: string[] = [];
-            if (res.delivered?.inApp) parts.push("in-app notification");
+            if (res.delivered?.push) parts.push("app notification");
             if (res.delivered?.sms) parts.push("SMS");
+            if (!parts.length && res.delivered?.notificationStored) parts.push("in-app only");
             toast.success(parts.length ? `Code sent via ${parts.join(" + ")}` : "Code issued");
             setTimeout(() => inputsRef.current[0]?.focus(), 100);
         },
@@ -265,7 +274,7 @@ export function HandoverSheet({
                                     </div>
                                     {delivered && (
                                         <p className="text-xs text-slate-500">
-                                            Channels: in-app {delivered.inApp ? "ok" : "failed"}, SMS {delivered.sms ? "ok" : "failed"}
+                                            Channels: push {delivered.push ? "ok" : "failed"}, SMS {delivered.sms ? "ok" : "failed"}, in-app {delivered.notificationStored ? "stored" : "failed"}
                                         </p>
                                     )}
                                     <div>
@@ -303,9 +312,24 @@ export function HandoverSheet({
                                 <>
                                     <p className="mt-5 text-sm text-slate-500">{subtitle}</p>
                                     {sentPhone && <p className="mt-1 text-xs text-slate-400">Customer contact {sentPhone}</p>}
+                                    {/* Nothing reached a device — the code exists but the
+                                        customer can only see it with the app open. Say so
+                                        plainly rather than letting the driver assume it
+                                        arrived, which is what the old single `inApp`
+                                        boolean encouraged. */}
+                                    {needsVisibilityCheck && (
+                                        <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                                            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                                            <p className="text-xs leading-relaxed text-amber-900">
+                                                <strong>Ask the customer if they can see the code.</strong> No SMS or
+                                                phone notification was delivered — it is only visible inside their app.
+                                                If they cannot see it, use the no-code handover instead.
+                                            </p>
+                                        </div>
+                                    )}
                                     {delivered && (
                                         <p className="mt-1 text-xs text-slate-500">
-                                            Delivered: {delivered.inApp ? "app" : "—"}
+                                            Delivered: {delivered.push ? "push" : delivered.notificationStored ? "in-app only" : "—"}
                                             {" · "}
                                             SMS {delivered.sms ? "yes" : "no"}
                                         </p>
