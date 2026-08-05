@@ -53,3 +53,7 @@ if (API_PREFIX) {
 }
 
 createRoot(document.getElementById("root")!).render(<App />);
+
+requestAnimationFrame(() => {
+    window.dispatchEvent(new Event("promise-app-mounted"));
+});
