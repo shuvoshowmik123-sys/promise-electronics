@@ -413,8 +413,12 @@ router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ?
         // successful intake into an error response.
         void notifyAdminsWithPush({
             type: 'service_request_created',
-            title: 'New service request',
-            body: `${request.brand || 'TV'} — ${request.primaryIssue || 'repair request'}`,
+            // Lead with the device rather than a generic subject line: a bare
+            // "New service request" is the kind of vague title Chrome's push
+            // classifier scores as low-information. The ticket number makes it
+            // actionable from the lock screen.
+            title: `New repair request — ${request.brand || 'TV'}`,
+            body: `${request.primaryIssue || 'Repair request'}. Ticket ${request.ticketNumber || request.id}.`,
             /**
              * Dispatch only.
              *
@@ -788,8 +792,30 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
         let pushReminderAccepted = false;
         try {
             const devices = await pushService.sendToUser(request.customerId, {
-                title: "Handover code ready",
-                body: `Open repair ${request.ticketNumber || request.id} in My Repairs to see your code.`,
+                /**
+                 * Worded to survive Chrome's on-device push spam filter.
+                 *
+                 * The previous copy — "Handover code ready" / "Open repair X in
+                 * My Repairs to see your code" — is structurally identical to
+                 * OTP phishing: a vague subject, no named party, and an
+                 * instruction to tap through for a code. Chrome's classifier
+                 * (Android, since May 2025) reads title and body text, and that
+                 * is the exact shape it was built to catch. Flagged
+                 * notifications are shown behind a "may be deceptive" warning,
+                 * which for a real handover code is the worst possible moment
+                 * to lose the customer's trust.
+                 *
+                 * The fix is specificity, not urgency: name the business, name
+                 * the device, say what is physically happening. The code itself
+                 * still never appears here — that is a security requirement, and
+                 * it is precisely why the old wording had to be vague. Naming
+                 * the rest of the context is what makes it read as
+                 * transactional rather than as bait.
+                 */
+                // getCustodyLabel returns internal wording ("pickup receive"),
+                // which reads oddly to a customer. Customer-facing terms here.
+                title: `Promise Electronics ${action === "receive" ? "collection" : "delivery"} — ${request.brand || "your TV"}`,
+                body: `Our staff member is with you now. Your 6-digit code is in My Repairs, under ${request.ticketNumber || request.id}.`,
                 data: { type: "handover_code", serviceRequestId: String(request.id) },
             });
             pushReminderAccepted = devices > 0;

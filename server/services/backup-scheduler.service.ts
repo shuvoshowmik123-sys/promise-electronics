@@ -305,8 +305,9 @@ export async function processClaimedBackupRun(
   const ok = await completeBackupFailed(claim.id, claim.claimToken, "BACKUP_PROVIDER_FAILED");
   if (ok) {
     sendPushToAllAdmins({
-      title: "Daily Backup Failed",
-      body: "Automated daily backup failed. Check Super Admin system status.",
+      // Named sender + the specific day, rather than a bare alarm phrase.
+      title: `Promise Electronics backup failed — ${claim.runDay}`,
+      body: "The automated database backup did not complete. Review it in Super Admin system status.",
       data: { type: "backup_failure", date: claim.runDay },
     }).catch(() => {});
   }

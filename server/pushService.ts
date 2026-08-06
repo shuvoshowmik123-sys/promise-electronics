@@ -243,20 +243,36 @@ export async function removeUserTokens(userId: string, token?: string): Promise<
 // ============ Notification Templates ============
 
 export async function notifyOrderStatusChange(userId: string, ticketNumber: string, newStatus: string): Promise<void> {
+    // Exclamation marks and "Check your quote!" were the flagged patterns here.
+    // Each line now states what happened, plainly, with no call to action.
     const statusMessages: Record<string, string> = {
-        "Request Received": "Your repair request has been received.",
+        "Request Received": "Promise Electronics has received your repair request.",
         "Technician Assigned": "A technician has been assigned to your repair.",
-        "Diagnosis Completed": "Diagnosis is complete. Check your quote!",
+        "Diagnosis Completed": "Diagnosis is complete. Your quote is in My Repairs.",
         "Repairing": "Your device is now being repaired.",
-        "Ready for Delivery": "Your device is ready for pickup/delivery!",
-        "Delivered": "Your device has been delivered. Thank you!",
-        "Arriving to Receive": "Our team is on the way to pick up your device.",
-        "Parts Pending": "We're waiting for parts to arrive for your repair.",
+        "Ready for Delivery": "Your device is repaired and ready for collection or delivery.",
+        "Delivered": "Your device has been delivered.",
+        "Arriving to Receive": "Our driver is on the way to collect your device.",
+        "Parts Pending": "Your repair is waiting on a replacement part.",
     };
 
+    /**
+     * Copy is written for Chrome's push spam filter as much as for the reader.
+     *
+     * Since May 2025 Chrome runs an on-device classifier over web push title
+     * and body text on Android, and shows anything it dislikes behind a "may be
+     * deceptive" warning. It reacts to exclamation marks, urgency words, vague
+     * subjects and "tap to view" phrasing — all of which this file used.
+     *
+     * The rule applied throughout: name the specific thing (ticket, device,
+     * amount) and state a fact. A message that reads like a receipt passes; one
+     * that reads like an advertisement does not. It is also simply more useful
+     * — "Repair Update: Ready" told the customer nothing their lock screen
+     * could act on.
+     */
     await sendToUser(userId, {
-        title: `Repair Update: ${newStatus}`,
-        body: statusMessages[newStatus] || `Your repair status is now: ${newStatus}`,
+        title: `Repair ${ticketNumber}`,
+        body: statusMessages[newStatus] || `Status updated to ${newStatus}.`,
         data: {
             type: "repair_update",
             ticketNumber,
@@ -267,8 +283,11 @@ export async function notifyOrderStatusChange(userId: string, ticketNumber: stri
 
 export async function notifyQuoteReady(userId: string, serviceRequestId: string, amount: number): Promise<void> {
     await sendToUser(userId, {
-        title: "Your Quote is Ready!",
-        body: `Estimated cost: ৳${amount.toLocaleString()}. Tap to view details.`,
+        // Was "Your Quote is Ready!" / "…Tap to view details." — an exclamation
+        // mark and a tap-through instruction, two of the filter's clearest
+        // triggers. The amount is the useful part, so lead with it.
+        title: `Repair quote — ৳${amount.toLocaleString()}`,
+        body: `Promise Electronics has priced your repair at ৳${amount.toLocaleString()}. Review it in My Repairs to approve or decline.`,
         data: {
             type: "quote_ready",
             serviceRequestId,
@@ -279,8 +298,11 @@ export async function notifyQuoteReady(userId: string, serviceRequestId: string,
 
 export async function notifyQuoteAccepted(userId: string, ticketNumber: string): Promise<void> {
     await sendToUser(userId, {
-        title: "Quote Accepted",
-        body: "Thank you! We'll begin working on your repair soon.",
+        // Was "Thank you! We'll begin working on your repair soon." — no
+        // specifics, an exclamation, and a vague promise. Confirmation of a
+        // recorded fact reads as transactional.
+        title: `Quote approved — ${ticketNumber}`,
+        body: `Your approval is recorded. Promise Electronics will begin the repair and update this page as it progresses.`,
         data: {
             type: "repair_update",
             ticketNumber,

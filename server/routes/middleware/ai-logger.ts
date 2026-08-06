@@ -88,8 +88,15 @@ export const aiErrorHandler = async (
 
             // Push notification — keep body generic
             await pushService.sendToUser(admin.id, {
-                title: "Server Issue Detected",
-                body: "A server issue requires your review. Open System Health.",
+                /**
+                 * Names the system and the severity instead of an unattributed
+                 * alarm. "Server Issue Detected / requires your review" has no
+                 * named sender and an urgency cue, which is the shape Chrome's
+                 * push classifier penalises. The body still carries no raw
+                 * cause or fix — that constraint is unchanged.
+                 */
+                title: `Promise Electronics system health — ${diagnosis.severity}`,
+                body: "A server issue was recorded and needs Super Admin review in System Health.",
                 data: {
                     type: "server_error",
                     severity: diagnosis.severity,
