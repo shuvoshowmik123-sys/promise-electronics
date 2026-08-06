@@ -266,7 +266,12 @@ export function HandoverSheet({
                             ) : step === "idle" ? (
                                 <>
                                     <p className="mt-5 text-sm text-slate-500 max-w-[280px]">
-                                        Send a 6-digit code to the customer&apos;s account (and SMS when available). Ask them to read it out — never guess the code yourself.
+                                        {/* No SMS. The code exists only in the customer's authenticated
+                                            account — see the security note further down, and the comment at
+                                            the top of this file. Telling a driver SMS "may" arrive sends
+                                            them waiting for a message that is never sent, instead of
+                                            directing the customer to My Repairs. */}
+                                        Send a 6-digit code to the customer&apos;s account. Ask them to open My Repairs and read it out — never guess the code yourself.
                                     </p>
                                     {target?.phone && (
                                         <p className="mt-2 text-sm font-bold text-slate-700">{target.phone}</p>
