@@ -545,12 +545,28 @@ router.post('/api/job-tickets/:id/advance-status', requireAdminAuth, requireGran
         const testingConfirmed = isExplicitTestingConfirmed(req.body?.testingConfirmed);
         const extraPatch: Record<string, unknown> = {};
         if (nextStatus === 'Completed') {
-            extraPatch.completedAt = new Date();
-            const warrantyDays = (job as any).warrantyDays ?? 30;
-            if (warrantyDays > 0 && !(job as any).warrantyExpiryDate) {
-                const expiry = new Date();
-                expiry.setDate(expiry.getDate() + warrantyDays);
-                extraPatch.warrantyExpiryDate = expiry;
+            const completedAt = new Date();
+            extraPatch.completedAt = completedAt;
+            /**
+             * Both warranty clocks, resolved together.
+             *
+             * This used to compute only the labour expiry inline, duplicating
+             * the same six lines that pos-billing had. The parts clock had no
+             * writer at all, so parts_warranty_expiry_date was never populated
+             * and every parts claim fell back to the labour period.
+             *
+             * resolveJobWarranty snapshots the longest fitted-part warranty onto
+             * the job, so a later catalogue edit cannot shorten a warranty
+             * already sold. It never overwrites an existing expiry.
+             */
+            const { resolveJobWarranty } = await import('../services/job-warranty.service.js');
+            const resolved = await resolveJobWarranty(job as any, completedAt);
+            if (resolved.warrantyExpiryDate && !(job as any).warrantyExpiryDate) {
+                extraPatch.warrantyExpiryDate = resolved.warrantyExpiryDate;
+            }
+            if (resolved.partsWarrantyExpiryDate && !(job as any).partsWarrantyExpiryDate) {
+                extraPatch.partsWarrantyExpiryDate = resolved.partsWarrantyExpiryDate;
+                extraPatch.partsWarrantyDays = resolved.partsWarrantyDays;
             }
         }
 
@@ -1135,12 +1151,27 @@ router.post('/api/job-tickets/bulk-update', requireAdminAuth, requireGranularPer
                 const bulkPatch = { ...updates };
                 delete bulkPatch.status;
                 if (updates.status === 'Completed') {
-                    if (!bulkPatch.completedAt) bulkPatch.completedAt = new Date();
-                    const warrantyDays = (job as any).warrantyDays ?? 30;
-                    if (warrantyDays > 0 && !(job as any).warrantyExpiryDate && !bulkPatch.warrantyExpiryDate) {
-                        const expiry = new Date();
-                        expiry.setDate(expiry.getDate() + warrantyDays);
-                        bulkPatch.warrantyExpiryDate = expiry;
+                    /**
+                     * The THIRD completion path, and the one most easily missed.
+                     *
+                     * Bulk status update had its own copy of the warranty
+                     * calculation, so jobs completed in bulk would have received
+                     * a labour warranty and no parts warranty at all — a silent
+                     * difference in what the customer is owed, decided by which
+                     * screen the staff member happened to use.
+                     */
+                    const bulkCompletedAt = (bulkPatch.completedAt as Date) || new Date();
+                    if (!bulkPatch.completedAt) bulkPatch.completedAt = bulkCompletedAt;
+
+                    const { resolveJobWarranty } = await import('../services/job-warranty.service.js');
+                    const bulkWarranty = await resolveJobWarranty(job as any, bulkCompletedAt);
+
+                    if (bulkWarranty.warrantyExpiryDate && !(job as any).warrantyExpiryDate && !bulkPatch.warrantyExpiryDate) {
+                        bulkPatch.warrantyExpiryDate = bulkWarranty.warrantyExpiryDate;
+                    }
+                    if (bulkWarranty.partsWarrantyExpiryDate && !(job as any).partsWarrantyExpiryDate && !bulkPatch.partsWarrantyExpiryDate) {
+                        bulkPatch.partsWarrantyExpiryDate = bulkWarranty.partsWarrantyExpiryDate;
+                        bulkPatch.partsWarrantyDays = bulkWarranty.partsWarrantyDays;
                     }
                 }
                 const transition = await transitionJobStatus({

@@ -615,18 +615,33 @@ export async function createPosSaleAtomic(input: CreatePosSaleInput): Promise<Cr
           completionPatch.paymentId = transaction.id;
           completionPatch.paidAt = new Date();
         }
+        /**
+         * Both warranty clocks, from the one resolver.
+         *
+         * The labour expiry was computed inline here and again in jobs.routes,
+         * the same six lines twice. The parts clock had no writer anywhere, so
+         * parts_warranty_expiry_date stayed NULL and every parts claim was
+         * judged against the labour period.
+         *
+         * One `completedAt` is shared by both so they cannot disagree by a day
+         * across a midnight boundary. Neither expiry is overwritten if already
+         * set — paying an already-completed job must not extend a warranty the
+         * customer has been running down.
+         */
+        const jobCompletedAt = new Date();
+        const { resolveJobWarranty } = await import("./job-warranty.service.js");
+        const resolvedWarranty = await resolveJobWarranty(job as any, jobCompletedAt);
+
         if (job.status !== "Completed") {
           completionPatch.status = "Completed";
-          completionPatch.completedAt = new Date();
-          if (warrantyDays > 0 && !(job as any).warrantyExpiryDate) {
-            const expiry = new Date();
-            expiry.setDate(expiry.getDate() + warrantyDays);
-            completionPatch.warrantyExpiryDate = expiry;
-          }
-        } else if (warrantyDays > 0 && !(job as any).warrantyExpiryDate) {
-          const expiry = new Date();
-          expiry.setDate(expiry.getDate() + warrantyDays);
-          completionPatch.warrantyExpiryDate = expiry;
+          completionPatch.completedAt = jobCompletedAt;
+        }
+        if (warrantyDays > 0 && !(job as any).warrantyExpiryDate && resolvedWarranty.warrantyExpiryDate) {
+          completionPatch.warrantyExpiryDate = resolvedWarranty.warrantyExpiryDate;
+        }
+        if (!(job as any).partsWarrantyExpiryDate && resolvedWarranty.partsWarrantyExpiryDate) {
+          completionPatch.partsWarrantyExpiryDate = resolvedWarranty.partsWarrantyExpiryDate;
+          completionPatch.partsWarrantyDays = resolvedWarranty.partsWarrantyDays;
         }
 
         await tx
