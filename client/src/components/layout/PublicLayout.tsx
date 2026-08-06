@@ -309,69 +309,6 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
       {/* Mobile Bottom Navigation */}
       {!hideBottomNav && <MobileBottomNav />}
 
-      {/*
-        GOOGLE-OAUTH-BRANDING: app-purpose and Google Sign-In disclosure.
-
-        Google's OAuth branding review renders the page with JavaScript. This
-        text used to live ONLY in the static splash in index.html, which React
-        deletes on mount — so the reviewer saw a TV repair site that never
-        mentioned an application, a customer account, or Google.
-
-        Deliberately NOT inside <footer>, which is `hidden md:block`. Google
-        renders mobile-first, and a `display:none` block is not what a reviewer
-        sees. This band is visible at every width, on every public page, and
-        survives hydration.
-
-        `pb-28 md:pb-10` clears the fixed MobileBottomNav so the text is not
-        covered on phones.
-
-        LAYOUT: centred and stacked on mobile; on desktop a left-aligned row so
-        the copy does not sit as a lonely narrow column in a 1440px band. It
-        carries the SAME gradient as the footer below it and no bottom border,
-        so the two read as one continuous region instead of two stacked footers.
-
-        TO REVERT: delete this entire <section> block.
-      */}
-      <section
-        aria-label="About the Promise Electronics Customer Portal"
-        className="bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 text-slate-300 border-t border-slate-700/60"
-      >
-        <div className="container mx-auto max-w-5xl px-4 py-10 pb-28 md:pb-10">
-          <div className="flex flex-col items-center text-center md:flex-row md:items-start md:gap-7 md:text-left">
-            {/*
-              The company logo from Settings (`logo_url`), not a hardcoded file.
-              Same source the header uses, so changing it in admin updates here
-              too — and it falls back to the bundled asset if the setting is empty.
-            */}
-            <img
-              src={logoUrl || images.logo}
-              alt={`${siteName} logo`}
-              width={72}
-              height={72}
-              className="h-16 w-16 shrink-0 rounded-xl bg-white/95 object-contain p-1.5 shadow-sm md:h-[72px] md:w-[72px]"
-            />
-            <div className="mt-4 md:mt-0">
-              <h2 className="text-white text-lg font-bold mb-3">Promise Electronics Customer Portal</h2>
-              <p className="text-sm leading-relaxed">
-                Promise Electronics is a television repair service in Dhaka, Bangladesh.
-                Our Customer Portal lets you book a TV repair, get a quote, track your
-                repair status, receive service updates, and view your repair history
-                and warranty.
-              </p>
-              <p className="mt-3 text-sm leading-relaxed">
-                You can create an account with your phone number, or sign in securely
-                with Google. We use your Google name, email address and profile picture
-                only to create your customer account and sign you in — we never receive
-                your Google password. How we handle your information is explained in our{" "}
-                <Link href="/privacy-policy"><span className="underline hover:text-white cursor-pointer">Privacy Policy</span></Link>{" "}
-                and{" "}
-                <Link href="/terms-and-conditions"><span className="underline hover:text-white cursor-pointer">Terms &amp; Conditions</span></Link>.
-              </p>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Neumorphic Footer */}
       <footer className="hidden md:block bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 text-slate-300 py-12 md:pb-12 relative overflow-hidden">
         <div className="container mx-auto px-4 grid md:grid-cols-4 gap-8">
