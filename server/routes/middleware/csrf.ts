@@ -34,7 +34,9 @@ export function setCsrfToken(req: Request, res: Response, next: NextFunction) {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         httpOnly: false, // Essential: allows Frontend JS to read the token
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days (match session)
+        // Tracks the session lifetime. A CSRF cookie that dies first leaves the
+        // customer apparently signed in while every mutation is rejected.
+        maxAge: Number(process.env.SESSION_MAX_AGE_DAYS || 90) * 24 * 60 * 60 * 1000
     });
 
     next();

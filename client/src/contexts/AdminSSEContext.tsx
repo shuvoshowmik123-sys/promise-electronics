@@ -6,6 +6,7 @@ import { playNotificationSound, type NotificationTone } from "@/lib/notification
 import { settingsApi } from "@/lib/api";
 import { useQuery } from "@tanstack/react-query";
 import { invalidateActiveRealtimeQueries, isAdminRealtimeEvent } from "@/lib/admin-realtime";
+import { isLegacySseEvent, tagsForLegacyEvent } from "@/lib/legacy-sse-bridge";
 import type { AdminRealtimeQueryTag } from "@shared/types/admin-realtime";
 import {
   isInquiryVisibilitySseEvent,
@@ -242,6 +243,7 @@ export function AdminSSEProvider({ children }: { children: ReactNode }) {
                             }
 
                             if (data.toast) {
+
                                 if (data.toast.sound) {
                                     playNotificationSound(notificationTone);
                                 }
@@ -253,6 +255,31 @@ export function AdminSSEProvider({ children }: { children: ReactNode }) {
                                     toast.success(data.toast.title, description ? { description } : undefined);
                                 } else {
                                     toast.info(data.toast.title, description ? { description } : undefined);
+                                }
+                            }
+                        }
+                        /**
+                         * Legacy publishers — the branch that was missing.
+                         *
+                         * Seventeen event types are published as
+                         * `{ type, data }` through notifyAdminUpdate. They
+                         * arrived, were parsed, and then fell off the end of
+                         * this chain because nothing matched them, so saving an
+                         * order or accepting a quote still needed a manual
+                         * refresh. Translating them here fixes every one of
+                         * those publishers without a server deploy.
+                         *
+                         * Always summary priority: these are bulk background
+                         * changes, and coalescing them into the existing 800ms
+                         * flush means a burst of ten mutations costs one
+                         * refetch rather than ten.
+                         */
+                        else if (isLegacySseEvent(data)) {
+                            const tags = tagsForLegacyEvent(data);
+                            if (tags.length > 0) {
+                                tags.forEach((tag) => pendingSummaryInvalidationsRef.current.add(tag));
+                                if (!document.hidden) {
+                                    scheduleSummaryFlush(800);
                                 }
                             }
                         }

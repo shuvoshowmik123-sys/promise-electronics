@@ -131,7 +131,15 @@ export async function establishCustomerSession(
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     httpOnly: false,
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    /**
+     * Must not outlive the session, and must not die before it either.
+     *
+     * This was pinned at 7 days while the session now runs to 90. A shorter CSRF
+     * cookie is the worse failure: the customer still appears signed in, then
+     * every action that changes something is rejected, which reads as the site
+     * being broken rather than as a session that ended.
+     */
+    maxAge: Number(process.env.SESSION_MAX_AGE_DAYS || 90) * 24 * 60 * 60 * 1000,
   });
   return { csrfToken };
 }

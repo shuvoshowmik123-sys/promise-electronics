@@ -134,17 +134,55 @@ export async function createApp(): Promise<Express> {
     const isProduction = process.env.NODE_ENV === "production";
     const PgStore = pgSession(session);
 
+    /**
+     * Session lifetime — customers should not be asked to sign in repeatedly.
+     *
+     * This is a TV repair shop, not a bank. Someone books a repair, then checks
+     * back days later to see where their television is. Being logged out between
+     * those visits is the whole complaint, and re-authenticating protects
+     * nothing here: the account holds repair history and an address, and every
+     * genuinely sensitive action (the handover code) is separately gated.
+     *
+     * Three things were wrong:
+     *
+     * 1. No `rolling`. The cookie's expiry was written once at login and never
+     *    refreshed, so the clock ran down even for someone using the site daily.
+     *    With rolling, every request pushes the expiry out — an active customer
+     *    is never logged out, which is the behaviour being asked for.
+     *
+     * 2. maxAge was 7 days. A customer whose repair takes longer than a week
+     *    was guaranteed to be logged out mid-repair. 90 days covers a repair,
+     *    its warranty questions, and the next visit.
+     *
+     * 3. sameSite "none". That was chosen for a Vercel-to-Render cross-origin
+     *    setup, but the browser only ever talks to promiseelectronics.com — the
+     *    API is reached through a same-origin /api/* rewrite, and the deployed
+     *    bundle contains no onrender.com URL. So the cookie is first-party, and
+     *    "none" only opts it into the third-party-cookie restrictions browsers
+     *    are tightening, for no benefit. "lax" is correct and more durable.
+     *
+     *    Overridable: if the Capacitor native app ships, its WebView origin IS
+     *    cross-site and will need "none" again. No native project exists in the
+     *    repo today (no android/ or ios/ directory), so "lax" is safe now and
+     *    one env var restores the old behaviour without a code change.
+     */
+    const sessionSameSite =
+        (process.env.SESSION_COOKIE_SAMESITE as "lax" | "none" | "strict" | undefined) ??
+        (isProduction ? "lax" : "lax");
+    const SESSION_MAX_AGE_MS = Number(process.env.SESSION_MAX_AGE_DAYS || 90) * 24 * 60 * 60 * 1000;
+
     const sessionConfig: session.SessionOptions = {
         secret: process.env.SESSION_SECRET!,
         resave: false,
         saveUninitialized: false,
+        // Refresh the expiry on every request so an active customer never ages out.
+        rolling: true,
         cookie: {
-            secure: isProduction,          // HTTPS in prod (required for sameSite:none)
+            // sameSite "none" additionally REQUIRES secure:true, so keep them linked.
+            secure: isProduction || sessionSameSite === "none",
             httpOnly: true,
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-            // none = cross-origin cookies work (Vercel ↔ Render). Requires secure:true (HTTPS).
-            // lax in dev (no HTTPS locally).
-            sameSite: isProduction ? "none" : "lax",
+            maxAge: SESSION_MAX_AGE_MS,
+            sameSite: sessionSameSite,
         },
     };
 
