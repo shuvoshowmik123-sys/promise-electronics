@@ -37,11 +37,31 @@ const PrivacyPolicyPage = lazy(() => import("@/pages/privacy-policy"));
 const WarrantyPolicyPage = lazy(() => import("@/pages/warranty-policy"));
 const TermsAndConditionsPage = lazy(() => import("@/pages/terms-and-conditions"));
 
-function RootRoute() {
-    const [, setLocation] = useLocation();
-    setTimeout(() => setLocation("/home"), 0);
-    return null;
-}
+/**
+ * GOOGLE-OAUTH-BRANDING: `/` renders the homepage instead of redirecting.
+ *
+ * This used to be a RootRoute that did `setLocation("/home")`. Google's OAuth
+ * branding review opens the registered homepage — https://promiseelectronics.com
+ * — with JavaScript enabled. The redirect moved the reviewer to /home, whose
+ * title is "Expert TV Repair & Electronics Service in Dhaka" and whose body
+ * never mentions an application, a customer account, or Google Sign-In.
+ *
+ * The static purpose text in index.html could not save it: the splash is
+ * removed on mount and the router navigates away in the same tick, so raw-HTML
+ * checks passed while every rendered check failed. That is exactly why
+ * "Your home page does not explain the purpose of your app" kept coming back.
+ *
+ * `/home` still renders the same page, so existing links and bookmarks keep
+ * working — nothing is redirected, one route simply gained a second path.
+ *
+ * TO REVERT: restore the RootRoute redirect below and point `path="/"` at it.
+ *   function RootRoute() {
+ *       const [, setLocation] = useLocation();
+ *       setTimeout(() => setLocation("/home"), 0);
+ *       return null;
+ *   }
+ * Reverting will re-break branding verification if Google ever re-reviews.
+ */
 
 function RepairRequestRedirect() {
     const [, setLocation] = useLocation();
@@ -101,7 +121,10 @@ export function CustomerRouter() {
                     <Suspense fallback={<PageSkeleton />}>
                         <ErrorBoundary name="CustomerRouter">
                             <Switch location={location}>
-                                <Route path="/" component={RootRoute} />
+                                {/* GOOGLE-OAUTH-BRANDING: both paths render the homepage; `/` no longer redirects. */}
+                                <Route path="/">
+                                    <CustomerErrorBoundary fallbackTitle="Home Error"><HomePage /></CustomerErrorBoundary>
+                                </Route>
                                 <Route path="/home">
                                     <CustomerErrorBoundary fallbackTitle="Home Error"><HomePage /></CustomerErrorBoundary>
                                 </Route>

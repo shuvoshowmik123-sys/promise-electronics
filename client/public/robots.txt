@@ -22,6 +22,16 @@ Disallow: /api/
 Disallow: /checkout
 Disallow: /my-profile
 
+# GOOGLE-OAUTH-BRANDING: /privacy-policy and /terms-and-conditions are React
+# pages that load their text from /api/policies/* at runtime. With /api/ blocked
+# above, a crawler that renders JavaScript still could not fetch that content —
+# so both legal pages were unreadable to Google in every mode. These two
+# endpoints are public, read-only policy text and are safe to expose.
+# Allow must precede the broader Disallow for longest-match to apply.
+# TO REVERT: delete the two Allow lines below.
+Allow: /api/policies/privacy
+Allow: /api/policies/terms
+
 # Block development/utility pages
 Disallow: /*.json$
 Disallow: /*?*
