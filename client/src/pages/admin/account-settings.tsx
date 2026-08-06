@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { User, Mail, Phone, Shield, Lock, Save, Loader2, CheckCircle, KeyRound } from "lucide-react";
+import { User, Mail, Phone, Shield, Lock, Save, Loader2, CheckCircle, KeyRound, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -8,6 +8,8 @@ import { accountApi } from "@/lib/api/adminApi";
 import { toast } from "sonner";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { useAdminMobileMode } from "@/hooks/useAdminMobileMode";
+import { PushNotificationConsent } from "@/components/notifications/PushNotificationConsent";
+import { isWebPushConfigured } from "@/lib/web-push";
 
 const PERMISSION_LABELS: Record<string, string> = {
     dashboard: "Dashboard",
@@ -43,6 +45,9 @@ export default function AccountSettingsPage() {
     const queryClient = useQueryClient();
     const { refreshUser, logout } = useAdminAuth();
     const isMobile = useAdminMobileMode();
+    // Hide the whole block when VAPID is not configured, rather than showing a
+    // heading above a control that correctly refuses to render.
+    const pushConfigured = isWebPushConfigured();
 
     const { data: account, isLoading } = useQuery({
         queryKey: ["account"],
@@ -124,8 +129,33 @@ export default function AccountSettingsPage() {
             >
                 <div className="pb-1">
                     <h1 className="text-base font-black text-slate-900">Account Settings</h1>
-                    <p className="text-xs text-slate-500">Profile and credentials</p>
+                    <p className="text-xs text-slate-500">Profile, notifications and credentials</p>
                 </div>
+
+                {/*
+                  Push consent lives here, not in Settings.
+                  Settings is permission-gated, so a Technician or Driver — the
+                  people who most need to hear about a new job — could not reach
+                  the toggle at all. Account Settings is exempt from tab gating
+                  (see design-concept.tsx: `id === "account"`), so every signed-in
+                  staff member can turn their own notifications on.
+
+                  It is a per-user device permission, not a system setting, so
+                  this is also where it belongs conceptually.
+                */}
+                {pushConfigured && (
+                    <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
+                        <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-400">
+                            <Bell className="h-3.5 w-3.5" />
+                            My notifications
+                        </div>
+                        <PushNotificationConsent
+                            portal="admin"
+                            benefit="Get notified about new service requests and job updates"
+                            density="compact"
+                        />
+                    </div>
+                )}
 
                 {/* Profile */}
                 <div className="rounded-2xl border border-slate-200 bg-white p-4 space-y-3">
@@ -240,8 +270,22 @@ export default function AccountSettingsPage() {
         <div className="max-w-3xl mx-auto space-y-6 pb-24 md:pb-8">
             <div>
                 <h1 className="text-2xl font-black text-slate-900">Account Settings</h1>
-                <p className="text-sm text-slate-500 mt-1">Manage your profile and credentials.</p>
+                <p className="text-sm text-slate-500 mt-1">Manage your profile, notifications and credentials.</p>
             </div>
+
+            {/* Push consent — see the note in the mobile layout above. */}
+            {pushConfigured && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">
+                    <div className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-slate-400">
+                        <Bell className="h-4 w-4" />
+                        My notifications
+                    </div>
+                    <PushNotificationConsent
+                        portal="admin"
+                        benefit="Get notified about new service requests and job updates"
+                    />
+                </div>
+            )}
 
             {/* Profile Section */}
             <div className="rounded-2xl border border-slate-200 bg-white p-5 space-y-4">

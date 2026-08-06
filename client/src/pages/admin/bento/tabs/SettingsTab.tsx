@@ -35,8 +35,6 @@ const ServiceConfigEditor = lazy(() => import("./settings/ServiceConfigEditor").
 import { TagListCard } from "./settings/TagListCard";
 import SystemIntegritySummary from "./settings/SystemIntegritySummary";
 import { canOpenServiceFeedbackWorkspace } from "@/lib/service-feedback-capabilities";
-import { PushNotificationConsent } from "@/components/notifications/PushNotificationConsent";
-import { isWebPushConfigured } from "@/lib/web-push";
 const ServiceFeedbackSection = lazy(() => import("./settings/ServiceFeedbackSection"));
 const PoliciesSection = lazy(() => import("./settings/PoliciesSection"));
 const QaCleanupSection = lazy(() => import("./settings/QaCleanupSection"));
@@ -635,7 +633,6 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
      */
     // Push is optional: without VITE_FIREBASE_VAPID_KEY in the build there is
     // nothing to switch on, and the consent control hides itself.
-    const pushConfigured = isWebPushConfigured();
 
     const settingsQuery = searchQuery.trim().toLowerCase();
     const matchesSettingsSearch = (...text: (string | undefined)[]) =>
@@ -702,24 +699,12 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
 
             <MobileScrollContent className="px-0 space-y-0 pt-1">
 
-                {/* Staff push consent — gesture-only; never auto-prompt.
-                  * The heading is gated on the same condition as the control.
-                  * It used to render unconditionally, so when push was
-                  * unconfigured the section title appeared above nothing — which
-                  * reads as broken rather than absent, and sent us looking for a
-                  * missing toggle that was correctly hiding itself. */}
-                {pushConfigured && (
-                    <>
-                        <MobileSectionTitle>My notifications</MobileSectionTitle>
-                        <div className="mx-4 mb-1">
-                            <PushNotificationConsent
-                                portal="admin"
-                                benefit="Get notified about new service requests and job updates"
-                                density="compact"
-                            />
-                        </div>
-                    </>
-                )}
+                {/* Staff push consent MOVED to Account Settings.
+                  * Settings is permission-gated, so Technicians and Drivers —
+                  * the staff who most need job alerts — could never reach this
+                  * toggle. Account Settings is exempt from tab gating, and a
+                  * per-user device permission belongs there rather than beside
+                  * system-wide configuration. */}
 
                 {/* System Status */}
                 <MobileSectionTitle>System Status</MobileSectionTitle>
@@ -985,12 +970,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
             {/* Main Bento Layout */}
             <div className="flex flex-col gap-6">
 
-                <motion.div variants={itemVariants} className="w-full max-w-xl">
-                    <PushNotificationConsent
-                        portal="admin"
-                        benefit="Get notified about new service requests and job updates"
-                    />
-                </motion.div>
+                {/* Push consent MOVED to Account Settings — see the note in the
+                  * mobile branch above. */}
 
                 {/* Row 1 & 2: General Section (visual cards — dialogs rendered separately below) */}
                 <GeneralSection
