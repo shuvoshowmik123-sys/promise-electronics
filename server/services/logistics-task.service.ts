@@ -36,17 +36,59 @@ async function notifyAssignedDriver(task: LogisticsTask | null): Promise<void> {
     if (task.status === "completed" || task.status === "cancelled") return;
 
     const label = task.taskType === "delivery" ? "Delivery" : "Pickup";
-    const ref = task.serviceRequestId || task.jobTicketId || task.id;
-    const when = task.scheduledDate ? ` for ${task.scheduledDate}` : "";
+
+    /**
+     * Tell the driver what they are actually collecting.
+     *
+     * The first version sent the task id — "Pickup LT-9F3A2C7B10" — which is a
+     * random string that means nothing to the person reading it on a phone.
+     *
+     * A driver needs three things before setting off: WHO to ask for, WHERE to
+     * go, and WHAT the device is. Screen size in particular decides whether a
+     * 65" panel needs a box and a bigger vehicle, and finding that out on the
+     * doorstep is a wasted trip.
+     *
+     * The device fields live on service_requests, not on the task, so this
+     * looks them up. One indexed lookup on an event that happens a few times a
+     * day, and it is wrapped so a failed lookup degrades to a shorter message
+     * rather than losing the notification entirely.
+     */
+    let device = "";
+    if (task.serviceRequestId) {
+        try {
+            const rows = await db.execute(sql`
+                SELECT brand, model_number, screen_size
+                FROM service_requests WHERE id = ${task.serviceRequestId} LIMIT 1
+            `);
+            const r = rows.rows[0] as any;
+            if (r) {
+                device = [r.brand, r.screen_size ? `${r.screen_size}"` : null, r.model_number]
+                    .filter(Boolean)
+                    .join(" ");
+            }
+        } catch (err) {
+            console.error("[Logistics] Device lookup for push failed:", (err as Error).message);
+        }
+    }
+
+    const where = task.taskType === "delivery" ? task.deliveryAddress : task.pickupAddress;
+    const place = task.zone || where || null;
+    const when = task.timeWindow || task.scheduledDate || null;
+
+    // "Rahim Uddin · Samsung 65" UA65AU7700 · Gulshan-2 · 10am-1pm"
+    const body = [
+        task.customerName || null,
+        device || null,
+        place,
+        when,
+    ].filter(Boolean).join(" · ");
 
     try {
         const { notifyStaffAssignment } = await import("./staff-assignment-notify.service.js");
         await notifyStaffAssignment({
             userId: task.assignedDriverId,
             title: `${label} assigned to you`,
-            // Reference and timing only — no customer phone or address, because
-            // this renders on a lock screen. Full detail is inside the app.
-            message: `${label} ${ref}${when}. Open Pickup & Delivery to start.`,
+            message: body || `Open Pickup & Delivery to start.`,
             link: "/admin?tab=pickup",
             type: "assignment",
         });
@@ -1021,4 +1063,17 @@ export async function syncPickupScheduleToLogisticsTask(pickupScheduleId: string
             `);
         }
     }
+
+    /**
+     * This function writes logistics_tasks with raw INSERT/UPDATE rather than
+     * going through createTask or updateTaskStatus, so none of the publishes on
+     * those paths fire. It is the sync that runs when a pickup schedule is
+     * created — i.e. exactly the transfer-to-pickup flow — which is why the
+     * board did not update when a request was transferred.
+     *
+     * One event for the whole sync rather than per-row: the client only needs
+     * to know the board changed, and the query it refetches returns every task
+     * anyway.
+     */
+    publishPickupChange("updated", { id: pickupScheduleId } as LogisticsTask);
 }

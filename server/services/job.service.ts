@@ -320,6 +320,42 @@ export class JobService {
             return row;
         });
 
+        /**
+         * Announce the stage change so open boards refresh themselves.
+         *
+         * transitionStage is the single write path for a request's stage — it is
+         * how a transfer to Pickup & Delivery, a receipt, and every other
+         * progression happens — and it published nothing at all. The Service
+         * Requests tab holds a `serviceRequests` query and the server was
+         * already emitting that tag from other routes, so the tab was listening
+         * to a channel this particular writer never spoke on. Transferring a
+         * request left the list showing the old stage until someone refreshed.
+         *
+         * Published AFTER the transaction commits: an event sent from inside it
+         * would tell clients to refetch a row that is not visible yet, and they
+         * would read the pre-transition value.
+         *
+         * Permission-scoped, so it reaches the people who work service requests
+         * rather than every connected admin.
+         */
+        try {
+            const { publishServiceRequestEvent } = await import("./admin-realtime.service.js");
+            publishServiceRequestEvent({
+                action: "updated",
+                entityId: id,
+                invalidate: ["serviceRequests", "serviceRequestDetails", "dashboardStats"],
+                permissions: [
+                    "serviceRequests",
+                    "serviceRequests.view",
+                    "serviceRequests.transitionStage",
+                    "serviceRequests.convertToJob",
+                ],
+            });
+        } catch (err) {
+            // Realtime is advisory; the stage change is already committed.
+            console.error("[JobService] Stage realtime publish failed:", (err as Error).message);
+        }
+
         return { serviceRequest: updated };
     }
 

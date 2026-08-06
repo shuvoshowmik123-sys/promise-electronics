@@ -24,6 +24,7 @@ const PUSH = read("server/pushService.ts");
 const FCM = read("server/services/fcm.service.ts");
 const SR_ROUTES = read("server/routes/service-requests.routes.ts");
 const JOBS_ROUTES = read("server/routes/jobs.routes.ts");
+const JOB_SERVICE = read("server/services/job.service.ts");
 
 describe("driver assignment notifies the assigned driver", () => {
     it("assignDriver notifies", () => {
@@ -66,15 +67,52 @@ describe("driver assignment notifies the assigned driver", () => {
         expect(guard).toContain("if (!task?.assignedDriverId) return;");
     });
 
-    it("carries no customer phone or address into a lock-screen preview", () => {
+    it("tells the driver what they are collecting, not a random id", () => {
+        /**
+         * The first version sent the task id — "Pickup LT-9F3A2C7B10" — which
+         * means nothing to someone reading it on a phone.
+         *
+         * A driver needs WHO to ask for, WHERE to go, and WHAT the device is.
+         * Screen size decides whether a 65" panel needs a box and a bigger
+         * vehicle, and discovering that on the doorstep is a wasted trip. These
+         * are staff seeing operational data they already have in the app, so
+         * including it is correct — the earlier exclusion was over-cautious.
+         */
+        const fn = LOGISTICS.slice(
+            LOGISTICS.indexOf("async function notifyAssignedDriver"),
+            LOGISTICS.indexOf("function publishPickupChange"),
+        );
+        expect(fn).toContain("task.customerName");
+        expect(fn).toContain("screen_size");
+        expect(fn).toContain("model_number");
+        expect(fn).toContain("brand");
+        // Location: zone preferred, falling back to the relevant address.
+        expect(fn).toContain("task.zone");
+        expect(fn).toContain("pickupAddress");
+        expect(fn).toContain("deliveryAddress");
+        // The bare task id must no longer be the message.
+        expect(fn).not.toMatch(/message:\s*`\$\{label\}\s*\$\{ref\}/);
+    });
+
+    it("still keeps the phone number out of the preview", () => {
+        // No operational need on a lock screen — the driver taps through to the
+        // task to call, and a phone number is the one field a shoulder-surfer
+        // could act on directly.
         const fn = LOGISTICS.slice(
             LOGISTICS.indexOf("async function notifyAssignedDriver"),
             LOGISTICS.indexOf("function publishPickupChange"),
         );
         expect(fn).not.toContain("customerPhone");
-        expect(fn).not.toContain("pickupAddress");
-        expect(fn).not.toContain("deliveryAddress");
-        expect(fn).not.toContain("customerName");
+    });
+
+    it("degrades to a usable message when the device lookup fails", () => {
+        const fn = LOGISTICS.slice(
+            LOGISTICS.indexOf("async function notifyAssignedDriver"),
+            LOGISTICS.indexOf("function publishPickupChange"),
+        );
+        // A failed lookup must shorten the message, never lose the notification.
+        expect(fn).toContain("Device lookup for push failed");
+        expect(fn).toContain("body || `Open Pickup & Delivery to start.`");
     });
 });
 
@@ -172,5 +210,42 @@ describe("staff-wide pushes reach only the people they concern", () => {
         expect(FCM).toMatch(/sendPushToAllAdmins\([\s\S]{0,120}requiredPermissions\?: string\[\]/);
         expect(FCM).toContain("payload.requiredPermissions");
         expect(FCM).toContain("getAllDeviceTokens(requiredPermissions)");
+    });
+});
+
+describe("stage changes and pickup syncs reach open boards", () => {
+    it("transitionStage publishes serviceRequests", () => {
+        // This is the single write path for a request's stage - transfer to
+        // Pickup & Delivery included - and it published nothing, so the Service
+        // Requests tab showed the old stage until someone refreshed. The tab was
+        // already listening on `serviceRequests`; this writer never spoke on it.
+        const fn = JOB_SERVICE.slice(
+            JOB_SERVICE.indexOf("Announce the stage change"),
+            JOB_SERVICE.indexOf("Announce the stage change") + 1400,
+        );
+        expect(fn).toContain("publishServiceRequestEvent");
+        expect(fn).toContain('"serviceRequests"');
+    });
+
+    it("publishes AFTER commit, not inside the transaction", () => {
+        // An event sent from inside would tell clients to refetch a row that is
+        // not visible yet, and they would read the pre-transition value.
+        const idxCommit = JOB_SERVICE.indexOf("return { serviceRequest: updated };");
+        const idxPublish = JOB_SERVICE.indexOf("publishServiceRequestEvent");
+        expect(idxPublish).toBeGreaterThan(0);
+        expect(idxPublish).toBeLessThan(idxCommit);
+        // and after the transaction closes — the publish must sit between the
+        // committed transaction and the return, never inside the callback.
+        const txClose = JOB_SERVICE.indexOf("return row;");
+        expect(txClose).toBeGreaterThan(0);
+        expect(idxPublish).toBeGreaterThan(txClose);
+    });
+
+    it("the pickup-schedule sync publishes too", () => {
+        // It writes logistics_tasks with raw INSERT/UPDATE rather than through
+        // createTask, so none of the publishes on those paths fire. This is the
+        // sync that runs on transfer-to-pickup.
+        const fn = LOGISTICS.slice(LOGISTICS.indexOf("export async function syncPickupScheduleToLogisticsTask"));
+        expect(fn).toContain("publishPickupChange");
     });
 });
