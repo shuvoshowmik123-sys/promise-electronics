@@ -415,6 +415,25 @@ router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ?
             type: 'service_request_created',
             title: 'New service request',
             body: `${request.brand || 'TV'} — ${request.primaryIssue || 'repair request'}`,
+            /**
+             * Dispatch only.
+             *
+             * STAFF_PORTAL_ROLES includes Driver, Technician and Cashier, so
+             * this previously buzzed every one of them for every new request —
+             * a driver woken for a walk-in that never becomes a pickup, a
+             * technician woken for a job not yet assigned to anyone. Nobody is
+             * assigned at intake, so the people who need to know are the ones
+             * who triage: whoever can act on a service request.
+             *
+             * Drivers and technicians are notified when work is actually
+             * assigned to them, by name, from the assignment itself.
+             */
+            requiredPermissions: [
+                'serviceRequests',
+                'serviceRequests.view',
+                'serviceRequests.transitionStage',
+                'serviceRequests.convertToJob',
+            ],
             data: {
                 serviceRequestId: String(request.id),
                 ticketNumber: String(request.ticketNumber || request.id),

@@ -60,8 +60,8 @@ export async function unregisterAdminDeviceToken(userId: string, token: string):
 /**
  * Active staff-portal device tokens from the database (not customer tokens).
  */
-export async function getAllDeviceTokens(): Promise<string[]> {
-    return listActiveStaffDeviceTokens();
+export async function getAllDeviceTokens(requiredPermissions?: string[]): Promise<string[]> {
+    return listActiveStaffDeviceTokens(requiredPermissions);
 }
 
 /** @deprecated use unregisterAdminDeviceToken for ownership-safe unregister */
@@ -120,7 +120,12 @@ export async function sendPushToDevice(token: string, payload: PushPayload): Pro
                     title: payload.title,
                     body: payload.body,
                     icon: '/logo.png',
-                    badge: '/favicon.png',
+                    // Monochrome silhouette, not favicon.png. Android discards colour
+                    // in the badge and fills every opaque pixel, so the full-colour
+                    // favicon rendered as a solid white dot. An FCM message carrying
+                    // its own webpush.notification bypasses the service worker, so
+                    // fixing sw.js alone did not cover this path.
+                    badge: '/notification-badge.png',
                     requireInteraction: false,
                 },
                 fcmOptions: payload.data?.url ? { link: payload.data.url } : undefined,
@@ -139,13 +144,16 @@ export async function sendPushToDevice(token: string, payload: PushPayload): Pro
 /**
  * Send push notification to all registered admin/staff devices
  */
-export async function sendPushToAllAdmins(payload: PushPayload): Promise<number> {
+export async function sendPushToAllAdmins(
+    payload: PushPayload,
+    requiredPermissions?: string[],
+): Promise<number> {
     if (!admin.apps.length) {
         console.log('[FCM] Firebase not initialized, skipping push');
         return 0;
     }
 
-    const tokens = await getAllDeviceTokens();
+    const tokens = await getAllDeviceTokens(requiredPermissions);
 
     if (tokens.length === 0) {
         console.log('[FCM] No admin device tokens registered');
@@ -192,7 +200,12 @@ export async function sendPushToAllAdmins(payload: PushPayload): Promise<number>
                     title: payload.title,
                     body: payload.body,
                     icon: '/logo.png',
-                    badge: '/favicon.png',
+                    // Monochrome silhouette, not favicon.png. Android discards colour
+                    // in the badge and fills every opaque pixel, so the full-colour
+                    // favicon rendered as a solid white dot. An FCM message carrying
+                    // its own webpush.notification bypasses the service worker, so
+                    // fixing sw.js alone did not cover this path.
+                    badge: '/notification-badge.png',
                     requireInteraction: false,
                 },
                 fcmOptions: payload.data?.url ? { link: payload.data.url } : undefined,
@@ -244,6 +257,11 @@ export async function notifyAdminsWithPush(payload: {
     title: string;
     body: string;
     data?: Record<string, string>;
+    /**
+     * Who this concerns. Without it the push reaches every staff device,
+     * including drivers and technicians with no involvement in the event.
+     */
+    requiredPermissions?: string[];
 }): Promise<void> {
     await sendPushToAllAdmins({
         title: payload.title,
@@ -252,5 +270,5 @@ export async function notifyAdminsWithPush(payload: {
             type: payload.type,
             ...payload.data,
         },
-    });
+    }, payload.requiredPermissions);
 }

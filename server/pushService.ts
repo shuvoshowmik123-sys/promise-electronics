@@ -4,6 +4,8 @@ import { eq, and, inArray } from "drizzle-orm";
 import * as schema from "../shared/schema.js";
 
 import { firebaseAdmin as admin } from './services/firebase.js';
+import { getEffectivePermissionsForUser } from './routes/middleware/auth.js';
+import { resolveGranularPermission } from '../shared/permission-catalog.js';
 
 /** Staff portal roles that may receive admin push (not Customer / Corporate). */
 const STAFF_PORTAL_ROLES = ["Super Admin", "Manager", "Cashier", "Technician", "Driver"] as const;
@@ -36,7 +38,40 @@ async function sendToDevice(token: string, payload: PushNotificationPayload): Pr
                     color: '#0f172a',
                     sound: 'default'
                 }
-            }
+            },
+            /**
+             * Browser PWA delivery — this was missing entirely.
+             *
+             * The android block above only governs the native app. Staff use the
+             * admin panel as a browser PWA, so their pushes went at FCM's
+             * DEFAULT urgency, which browser push services are permitted to
+             * batch and hold rather than wake the device for. The result is a
+             * notification that arrives late and silently, or only when the app
+             * is next opened — exactly the "no sound, nothing happened"
+             * symptom.
+             *
+             * Urgency high asks for immediate delivery. TTL bounds staleness at
+             * four hours instead of FCM's four-week default, so nobody opens the
+             * app to a pile of yesterday's assignments.
+             *
+             * The badge must be the monochrome silhouette: Android discards
+             * colour and fills every opaque pixel, so a full-colour icon renders
+             * as a solid white dot. See client/public/sw.js.
+             */
+            webpush: {
+                headers: {
+                    Urgency: 'high',
+                    TTL: String(4 * 60 * 60),
+                },
+                notification: {
+                    title: payload.title,
+                    body: payload.body,
+                    icon: '/logo.png',
+                    badge: '/notification-badge.png',
+                    requireInteraction: false,
+                },
+                fcmOptions: payload.data?.url ? { link: String(payload.data.url) } : undefined,
+            },
         });
 
         console.log(`[Push] Notification sent successfully to ${token.substring(0, 20)}...`);
@@ -144,16 +179,50 @@ export async function deactivateUserOwnedToken(userId: string, token: string): P
  * joining device_tokens.user_id → users and filtering staff roles excludes
  * customer tokens without a portal column.
  */
-export async function listActiveStaffDeviceTokens(): Promise<string[]> {
+export async function listActiveStaffDeviceTokens(
+    requiredPermissions?: string[],
+): Promise<string[]> {
     const rows = await db
-        .select({ token: schema.deviceTokens.token })
+        .select({
+            token: schema.deviceTokens.token,
+            role: schema.users.role,
+            permissions: schema.users.permissions,
+        })
         .from(schema.deviceTokens)
         .innerJoin(schema.users, eq(schema.deviceTokens.userId, schema.users.id))
         .where(and(
             eq(schema.deviceTokens.isActive, true),
             inArray(schema.users.role, [...STAFF_PORTAL_ROLES]),
         ));
-    return rows.map((r) => r.token);
+
+    if (!requiredPermissions || requiredPermissions.length === 0) {
+        return rows.map((r) => r.token);
+    }
+
+    /**
+     * Narrow a staff-wide push to the people it concerns.
+     *
+     * STAFF_PORTAL_ROLES includes Driver, Technician and Cashier, so an
+     * unfiltered broadcast buzzed every one of them for every new service
+     * request — a driver woken for a walk-in drop-off they will never touch, a
+     * technician woken for a pickup. That is not a confidentiality problem
+     * (staff may see this data) but it is noise, and constant irrelevant alerts
+     * are how people learn to ignore the one that is actually theirs.
+     *
+     * Filtered in JS rather than SQL because permissions are a JSON column and
+     * the precedence rules — Super Admin wildcard, legacy coarse keys,
+     * deprecated expansions — already live in resolveGranularPermission. Doing
+     * it here means one implementation of the rule, not two.
+     */
+    return rows
+        .filter((r) => {
+            const effective = getEffectivePermissionsForUser({
+                role: r.role,
+                permissions: r.permissions,
+            });
+            return requiredPermissions.some((p) => resolveGranularPermission(effective, p));
+        })
+        .map((r) => r.token);
 }
 
 // Remove all tokens for a user (on logout)

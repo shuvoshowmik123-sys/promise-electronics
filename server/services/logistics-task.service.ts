@@ -16,6 +16,45 @@ import { publishPickupEvent } from "./admin-realtime.service.js";
  * connected admin is allowed to see. Publishing is best-effort: a realtime
  * failure must never fail the write that already succeeded.
  */
+/**
+ * Tell the assigned driver they have work.
+ *
+ * Assignment previously wrote the row and told nobody — no push, no bell — so a
+ * driver learned about a collection only by opening the app and looking.
+ *
+ * Sent to the ONE assigned driver by user id, never broadcast to the pickup
+ * team. Skipped when there is no driver (an unassigned task has nobody to tell)
+ * and when the task is already finished, so a late status edit on a completed
+ * job does not buzz someone about work they did yesterday.
+ *
+ * Awaited rather than fire-and-forget so a failure is logged in request scope,
+ * but it can never throw: notifyStaffAssignment swallows its own errors, and an
+ * assignment that succeeded must not be undone by an unreachable phone.
+ */
+async function notifyAssignedDriver(task: LogisticsTask | null): Promise<void> {
+    if (!task?.assignedDriverId) return;
+    if (task.status === "completed" || task.status === "cancelled") return;
+
+    const label = task.taskType === "delivery" ? "Delivery" : "Pickup";
+    const ref = task.serviceRequestId || task.jobTicketId || task.id;
+    const when = task.scheduledDate ? ` for ${task.scheduledDate}` : "";
+
+    try {
+        const { notifyStaffAssignment } = await import("./staff-assignment-notify.service.js");
+        await notifyStaffAssignment({
+            userId: task.assignedDriverId,
+            title: `${label} assigned to you`,
+            // Reference and timing only — no customer phone or address, because
+            // this renders on a lock screen. Full detail is inside the app.
+            message: `${label} ${ref}${when}. Open Pickup & Delivery to start.`,
+            link: "/admin?tab=pickup",
+            type: "assignment",
+        });
+    } catch (err) {
+        console.error("[Logistics] Driver assignment notify failed:", (err as Error).message);
+    }
+}
+
 function publishPickupChange(
     action: "created" | "updated" | "deleted",
     task: LogisticsTask | null,
@@ -201,6 +240,13 @@ export async function createTask(input: CreateTaskInput): Promise<LogisticsTask>
 
     const created = rowToTask(result.rows[0]);
     publishPickupChange("created", created);
+    // A task created with a driver already on it never passes through
+    // assignDriver, so it would otherwise be the one assignment nobody is told
+    // about. autoAssignSoleDriver below DOES route through assignDriver, so
+    // that branch is already covered and must not notify twice.
+    if (created.assignedDriverId) {
+        await notifyAssignedDriver(created);
+    }
     // Same sole-driver rule as quote→pickup: only when unambiguous, never reassign.
     if (!created.assignedDriverId) {
         const assigned = await autoAssignSoleDriver(created.id);
@@ -594,6 +640,7 @@ export async function assignDriver(id: string, driverId: string, driverName: str
 
     const updatedTask = result.rows[0] ? rowToTask(result.rows[0]) : null;
     publishPickupChange("updated", updatedTask);
+    await notifyAssignedDriver(updatedTask);
     return updatedTask;
 }
 

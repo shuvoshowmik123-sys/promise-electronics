@@ -1518,6 +1518,31 @@ router.patch('/api/job-tickets/:id', requireAdminAuth, requireGranularPermission
             },
         });
 
+        /**
+         * Tell the technician the job is theirs.
+         *
+         * Assignment used to write the row and notify nobody, so a technician
+         * learned about new work by opening the app and looking. Sent to the ONE
+         * newly assigned person — reassigning away from someone does not buzz
+         * the whole workshop, and re-saving a job without changing the assignee
+         * does not re-notify, because the guard compares against the previous
+         * value.
+         */
+        if (
+            updateData.assignedTechnicianId &&
+            updateData.assignedTechnicianId !== existingJob.assignedTechnicianId
+        ) {
+            const { notifyStaffAssignment } = await import('../services/staff-assignment-notify.service.js');
+            await notifyStaffAssignment({
+                userId: String(updateData.assignedTechnicianId),
+                title: 'Job assigned to you',
+                message: `${job.device || 'Device'} — ${job.issue || 'repair'}. Job ${job.id}.`,
+                link: '/admin?tab=jobs',
+                type: 'assignment',
+                jobId: job.id,
+            });
+        }
+
         if (updateData.technician !== undefined || updateData.assignedTechnicianId !== undefined) {
             try {
                 const projection = await jobService.syncLinkedServiceRequestFromJob(job.id, "System Projection");
