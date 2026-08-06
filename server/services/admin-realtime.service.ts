@@ -52,3 +52,31 @@ export function publishServiceRequestEvent(event: ScopedAdminRealtimeInput): voi
 export function publishAdminNotificationEvent(event: ScopedAdminRealtimeInput): void {
   publishScopedAdminEvent("notification", event);
 }
+
+/**
+ * Pickup / delivery board.
+ *
+ * Logistics-task mutations published nothing at all, so the receive and
+ * delivery tabs only updated on a manual refresh — a driver marking a
+ * collection done left dispatch looking at stale rows.
+ *
+ * Defaults to the pickup permission family so the event reaches dispatch and
+ * drivers rather than every connected admin. Callers may still pass their own
+ * `permissions` to narrow it further.
+ */
+export const PICKUP_REALTIME_PERMISSIONS = [
+  "pickup.viewAll",
+  "pickup.viewAssigned",
+  "pickup.assignDriver",
+  "pickup.confirmHandover",
+  "pickup.reschedule",
+  "pickup.cancel",
+  "pickup.routePlan",
+];
+
+export function publishPickupEvent(event: ScopedAdminRealtimeInput): void {
+  publishScopedAdminEvent("pickup", {
+    permissions: PICKUP_REALTIME_PERMISSIONS,
+    ...event,
+  });
+}

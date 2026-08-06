@@ -21,7 +21,7 @@ export default function SystemHealthTab({ onNavigate }: SystemHealthTabProps) {
 
     // Aggregated Health Check Query
     const { data: healthData, isLoading } = useQuery({
-        queryKey: ["systemHealthAggregated"],
+        queryKey: ["systemHealth"],
         queryFn: async () => {
             const [jobs, requests, inventory] = await Promise.all([
                 jobTicketsApi.getAll("all"),

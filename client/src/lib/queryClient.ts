@@ -285,7 +285,7 @@ export function initQueryPersistence() {
           'challans',
           'corporate-clients',
           'admin-users',
-          'admin-orders',
+          'orders',
           'settings',
         ];
         return typeof key === 'string' && persistedQueries.some(q => key.includes(q));

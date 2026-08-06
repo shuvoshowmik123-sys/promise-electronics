@@ -2,6 +2,35 @@ import { db } from "../db.js";
 import { sql } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import { normalizePhone } from "../utils/phone.js";
+import { publishPickupEvent } from "./admin-realtime.service.js";
+
+/**
+ * Tell the pickup board a task changed.
+ *
+ * Nothing in this service published realtime events, so the receive and
+ * delivery tabs only updated when someone refreshed the page: a driver could
+ * complete a collection and dispatch would keep looking at a stale row.
+ *
+ * Carries only the task id — never customer, address or code data. Clients
+ * refetch through the normal authorised endpoint, so this cannot widen what a
+ * connected admin is allowed to see. Publishing is best-effort: a realtime
+ * failure must never fail the write that already succeeded.
+ */
+function publishPickupChange(
+    action: "created" | "updated" | "deleted",
+    task: LogisticsTask | null,
+): void {
+    if (!task) return;
+    try {
+        publishPickupEvent({
+            action,
+            entityId: task.id,
+            invalidate: ["logisticsTasks", "adminPickups", "dashboardStats"],
+        });
+    } catch {
+        // Realtime is advisory. The database write is the source of truth.
+    }
+}
 
 export type TaskType = "pickup" | "delivery" | "transfer" | "manual";
 export type SourceType = "service_request" | "job_ticket" | "manual";
@@ -171,6 +200,7 @@ export async function createTask(input: CreateTaskInput): Promise<LogisticsTask>
     `);
 
     const created = rowToTask(result.rows[0]);
+    publishPickupChange("created", created);
     // Same sole-driver rule as quote→pickup: only when unambiguous, never reassign.
     if (!created.assignedDriverId) {
         const assigned = await autoAssignSoleDriver(created.id);
@@ -268,6 +298,8 @@ export async function listTasks(filter: ListTasksFilter = {}): Promise<Logistics
 }
 
 export async function getTask(id: string): Promise<LogisticsTask | null> {
+    // Read path — publishes nothing. A realtime event here would fire on every
+    // fetch and make every client refetch, which is a feedback loop.
     const result = await db.execute(sql`SELECT * FROM logistics_tasks WHERE id = ${id}`);
     return result.rows[0] ? rowToTask(result.rows[0]) : null;
 }
@@ -319,7 +351,9 @@ export async function updateTaskStatus(id: string, status: string, extra?: {
         RETURNING *
     `);
 
-    return result.rows[0] ? rowToTask(result.rows[0]) : null;
+    const updatedTask = result.rows[0] ? rowToTask(result.rows[0]) : null;
+    publishPickupChange("updated", updatedTask);
+    return updatedTask;
 }
 
 /** JOB-LIFECYCLE-TRUST-01A — retail delivery must not complete before Job Ready → Delivered. */
@@ -558,7 +592,9 @@ export async function assignDriver(id: string, driverId: string, driverName: str
         RETURNING *
     `);
 
-    return result.rows[0] ? rowToTask(result.rows[0]) : null;
+    const updatedTask = result.rows[0] ? rowToTask(result.rows[0]) : null;
+    publishPickupChange("updated", updatedTask);
+    return updatedTask;
 }
 
 /**
@@ -627,7 +663,9 @@ export async function rescheduleTask(id: string, scheduledDate: string, timeWind
         RETURNING *
     `);
 
-    return result.rows[0] ? rowToTask(result.rows[0]) : null;
+    const updatedTask = result.rows[0] ? rowToTask(result.rows[0]) : null;
+    publishPickupChange("updated", updatedTask);
+    return updatedTask;
 }
 
 export async function cancelTask(id: string, reason?: string): Promise<LogisticsTask | null> {
@@ -641,7 +679,9 @@ export async function cancelTask(id: string, reason?: string): Promise<Logistics
         RETURNING *
     `);
 
-    return result.rows[0] ? rowToTask(result.rows[0]) : null;
+    const updatedTask = result.rows[0] ? rowToTask(result.rows[0]) : null;
+    publishPickupChange("updated", updatedTask);
+    return updatedTask;
 }
 
 export async function updateTask(id: string, updates: Record<string, unknown>): Promise<LogisticsTask | null> {
@@ -686,7 +726,9 @@ export async function updateTask(id: string, updates: Record<string, unknown>): 
         RETURNING *
     `);
 
-    return result.rows[0] ? rowToTask(result.rows[0]) : null;
+    const updatedTask = result.rows[0] ? rowToTask(result.rows[0]) : null;
+    publishPickupChange("updated", updatedTask);
+    return updatedTask;
 }
 
 // ── Batch operations ──────────────────────────────────────────────────────

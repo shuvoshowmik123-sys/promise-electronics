@@ -203,7 +203,7 @@ function SuperAdminShiftMonitor({ now }: { now: Date }) {
     const [viewerRecord, setViewerRecord] = useState<AttendanceRecord | null>(null);
 
     const { data: allAttendance = [], isLoading } = useQuery({
-        queryKey: ["allAttendance"],
+        queryKey: ["attendance", "all"],
         queryFn: attendanceApi.getAll,
         refetchInterval: 60_000,
         staleTime: 30_000,
@@ -355,7 +355,7 @@ export default function ShiftTab() {
         (permissions as Record<string, boolean | undefined>).attendance === true;
 
     const { data: record, isLoading } = useQuery<AttendanceRecord | null>({
-        queryKey: ["attendanceToday"],
+        queryKey: ["attendance", "today"],
         queryFn: attendanceApi.getToday,
         refetchInterval: 60_000,
         staleTime: 30_000,
@@ -364,7 +364,7 @@ export default function ShiftTab() {
     });
 
     const { data: history = [] } = useQuery<AttendanceRecord[]>({
-        queryKey: ["attendanceMyHistory", 7],
+        queryKey: ["attendance", "myHistory", 7],
         queryFn: () => attendanceApi.getMyHistory(7),
         staleTime: 60_000,
         enabled: canCheckIn && !isSuperAdmin,
@@ -373,10 +373,10 @@ export default function ShiftTab() {
 
     useEffect(() => {
         if (canCheckIn) return;
-        qc.cancelQueries({ queryKey: ["attendanceToday"] });
-        qc.removeQueries({ queryKey: ["attendanceToday"] });
-        qc.cancelQueries({ queryKey: ["attendanceMyHistory"] });
-        qc.removeQueries({ queryKey: ["attendanceMyHistory"] });
+        qc.cancelQueries({ queryKey: ["attendance", "today"] });
+        qc.removeQueries({ queryKey: ["attendance", "today"] });
+        qc.cancelQueries({ queryKey: ["attendance", "myHistory"] });
+        qc.removeQueries({ queryKey: ["attendance", "myHistory"] });
     }, [canCheckIn, qc]);
 
     const isCheckedIn = !!record?.checkInTime;
@@ -450,8 +450,8 @@ export default function ShiftTab() {
             return attendanceApi.checkIn(undefined, loc.lat, loc.lng, loc.accuracy);
         },
         onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ["attendanceToday"] });
-            qc.invalidateQueries({ queryKey: ["attendanceMyHistory"] });
+            qc.invalidateQueries({ queryKey: ["attendance", "today"] });
+            qc.invalidateQueries({ queryKey: ["attendance", "myHistory"] });
         },
     });
 
@@ -468,8 +468,8 @@ export default function ShiftTab() {
             return attendanceApi.checkOut(loc.lat, loc.lng, loc.accuracy);
         },
         onSuccess: () => {
-            qc.invalidateQueries({ queryKey: ["attendanceToday"] });
-            qc.invalidateQueries({ queryKey: ["attendanceMyHistory"] });
+            qc.invalidateQueries({ queryKey: ["attendance", "today"] });
+            qc.invalidateQueries({ queryKey: ["attendance", "myHistory"] });
         },
     });
 

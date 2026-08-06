@@ -430,7 +430,7 @@ export default function AttendanceTab() {
     const [viewerRecord, setViewerRecord] = useState<AttendanceRecord | null>(null);
 
     const { data: allAttendance = [], isLoading: attendanceLoading } = useQuery({
-        queryKey: ["allAttendance"],
+        queryKey: ["attendance", "all"],
         queryFn: attendanceApi.getAll,
         enabled: canReport,
         retry: false,
@@ -445,8 +445,8 @@ export default function AttendanceTab() {
 
     useEffect(() => {
         if (canReport) return;
-        queryClient.cancelQueries({ queryKey: ["allAttendance"] });
-        queryClient.removeQueries({ queryKey: ["allAttendance"] });
+        queryClient.cancelQueries({ queryKey: ["attendance", "all"] });
+        queryClient.removeQueries({ queryKey: ["attendance", "all"] });
         queryClient.cancelQueries({ queryKey: ["attendanceStaff"] });
         queryClient.removeQueries({ queryKey: ["attendanceStaff"] });
     }, [canReport, queryClient]);

@@ -57,14 +57,14 @@ export default function OrdersTab({ initialSearchQuery, onSearchConsumed }: { in
     const queryClient = useQueryClient();
 
     const { data: orders, isLoading } = useQuery({
-        queryKey: ["admin-orders"],
+        queryKey: ["orders"],
         queryFn: () => adminOrdersApi.getAll()
     });
 
     const acceptMutation = useMutation({
         mutationFn: (orderId: string) => adminOrdersApi.accept(orderId),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+            queryClient.invalidateQueries({ queryKey: ["orders"] });
             toast.success("Order accepted successfully");
         },
         onError: () => toast.error("Failed to accept order")
@@ -74,7 +74,7 @@ export default function OrdersTab({ initialSearchQuery, onSearchConsumed }: { in
         mutationFn: ({ orderId, reason }: { orderId: string; reason: string }) =>
             adminOrdersApi.decline(orderId, reason),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["admin-orders"] });
+            queryClient.invalidateQueries({ queryKey: ["orders"] });
             toast.success("Order declined");
             setDeclineDialog({ open: false, orderId: null, reason: "" });
         },

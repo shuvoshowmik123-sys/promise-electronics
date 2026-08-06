@@ -7,7 +7,8 @@ export type AdminRealtimeTopic =
   | "pos"
   | "finance"
   | "corporate"
-  | "orders";
+  | "orders"
+  | "pickup";
 
 export type AdminRealtimeAction =
   | "created"
@@ -24,6 +25,14 @@ export type AdminRealtimeQueryTag =
   | "pendingRollbacks"
   | "serviceRequests"
   | "serviceRequestDetails"
+  /**
+   * Pickup / delivery board. Matches PickupTab's existing queryKey root, so no
+   * client rename is needed — the tab simply had no channel to listen to.
+   * Receive and delivery previously required a manual refresh: nothing in the
+   * logistics-task mutations published any realtime event at all.
+   */
+  | "logisticsTasks"
+  | "adminPickups"
   | "customers"
   | "customerDetails"
   | "adminNotifications"
