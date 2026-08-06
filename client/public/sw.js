@@ -1,4 +1,7 @@
-const CACHE_NAME = 'promise-electronics-v6';
+// Bumped to v7: the push badge changed. Without a new cache name the old
+// service worker keeps serving the previous asset list and the status-bar mark
+// stays a white dot on devices that already installed v6.
+const CACHE_NAME = 'promise-electronics-v7';
 const OFFLINE_URL = '/offline.html';
 
 const urlsToCache = [
@@ -6,6 +9,7 @@ const urlsToCache = [
   '/offline.html',
   '/logo.png',
   '/favicon.png',
+  '/notification-badge.png',
   '/manifest.json',
   '/manifest-admin.json',
   '/manifest-corporate.json'
@@ -116,7 +120,19 @@ self.addEventListener('push', (event) => {
   const options = {
     body: p.body || '',
     icon: p.icon || '/logo.png',
-    badge: '/favicon.png',
+    /**
+     * The status-bar mark. MUST be a monochrome silhouette.
+     *
+     * Android ignores every colour in the badge and fills each opaque pixel
+     * with the system tint, so only the ALPHA channel survives. favicon.png is
+     * 78% fully opaque — the whole logo disc — so it rendered as a solid white
+     * circle: the "white dot" in the status bar, with no logo visible at all.
+     *
+     * notification-badge.png is generated from the same logo but keeps only the
+     * light marks opaque (19% coverage), so the emblem reads as a shape rather
+     * than a blob. 96x96 is the size Android expects.
+     */
+    badge: '/notification-badge.png',
     // Same tag replaces an existing notification instead of stacking duplicates.
     tag: p.tag || p.collapseKey || undefined,
     renotify: Boolean(p.tag),
