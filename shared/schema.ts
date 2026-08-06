@@ -276,6 +276,20 @@ export const jobTickets = pgTable("job_tickets", {
   warrantyDays: integer("warranty_days").default(30), // Standard 30 days
   gracePeriodDays: integer("grace_period_days").default(7), // Standard 7 days
   warrantyExpiryDate: timestamp("warranty_expiry_date"), // Calculated end date
+  /**
+   * Parts warranty, tracked separately from the labour warranty above.
+   *
+   * warranty_claims has always recorded claim_type ('service' | 'parts'), but
+   * both resolved to the single warrantyExpiryDate — so a fitted panel still
+   * under a manufacturer's 6-month cover was refused the moment the 30-day
+   * labour warranty lapsed. The published Terms promise the two are separate.
+   *
+   * Nullable by design: NULL means this job has no distinct parts warranty, and
+   * the validity check falls back to the service expiry. Every job written
+   * before this column existed therefore behaves exactly as it did.
+   */
+  partsWarrantyDays: integer("parts_warranty_days"),
+  partsWarrantyExpiryDate: timestamp("parts_warranty_expiry_date"),
   warrantyTermsAccepted: boolean("warranty_terms_accepted").default(false),
   mobileMedia: text("mobile_media").default("[]"),
   lastMobileUpdateAt: timestamp("last_mobile_update_at"),
@@ -552,6 +566,12 @@ export const inventoryItems = pgTable("inventory_items", {
   maxPrice: real("max_price"),
   status: text("status").notNull().default("In Stock"),
   lowStockThreshold: integer("low_stock_threshold").default(5),
+  /**
+   * Default warranty this part carries, in days. Snapshotted onto the job when
+   * fitted, so later edits here never change a warranty already sold.
+   * NULL = no distinct parts warranty; the job's service warranty applies.
+   */
+  warrantyDays: integer("warranty_days"),
   images: text("images"),
   showOnWebsite: boolean("show_on_website").default(false),
   showOnAndroidApp: boolean("show_on_android_app").default(true),
@@ -660,6 +680,16 @@ export const localPurchases = pgTable("local_purchases", {
   receiptImageUrl: text("receipt_image_url"),     // Mandatory receipt photo
   purchasedBy: text("purchased_by").notNull(),    // Username who sourced it
   status: text("status").notNull().default("Consumed"), // Consumed | Returned
+  /**
+   * Warranty given to the customer on THIS sourced part.
+   *
+   * Sourced parts are bought ad hoc from a local vendor, so the period is
+   * negotiated per purchase — six months on one LVDS, three on the next. It
+   * cannot live on a catalogue because there is no catalogue entry. NULL means
+   * no distinct parts warranty was promised, and the job's service warranty
+   * applies.
+   */
+  warrantyDays: integer("warranty_days"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   storeId: text("store_id"),
 });
@@ -1330,6 +1360,8 @@ export const serviceCatalog = pgTable("service_catalog", {
   isActive: boolean("is_active").default(true),
   displayOrder: integer("display_order").default(0),
   features: text("features"),
+  /** Default labour warranty for this service, in days. NULL = shop default. */
+  warrantyDays: integer("warranty_days"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 

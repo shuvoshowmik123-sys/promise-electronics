@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_05_custody_handover_codes";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_06_parts_warranty_separation";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -1990,6 +1990,50 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
         ON custody_handover_codes (service_request_id, action, expires_at)
         WHERE verified_at IS NULL AND invalidated_at IS NULL`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_custody_codes_expiry ON custody_handover_codes (expires_at)`);
+    },
+  },
+  {
+    id: "2026_08_06_parts_warranty_separation",
+    description:
+      "Separate warranty clocks for parts and labour. job_tickets carried ONE warranty_days and ONE warranty_expiry_date, so a parts claim and a service claim resolved to the same date. warranty_claims already recorded claim_type ('service' | 'parts' | 'general') and the validity check computed that type, stored it, and then ignored it — every claim was judged against the single service expiry. That contradicts the published Terms & Conditions, which promise a 6-month period on display or panel replacement, 60 days on panel repair, and a manufacturer's part warranty 'stated separately from our warranty on the labour'. Both columns are nullable on purpose: NULL means 'this job has no distinct parts warranty', and the validity check falls back to the service expiry, so every existing job keeps behaving exactly as before.",
+    up: async (client) => {
+      await client.query(`
+        ALTER TABLE job_tickets
+          ADD COLUMN IF NOT EXISTS parts_warranty_days INTEGER,
+          ADD COLUMN IF NOT EXISTS parts_warranty_expiry_date TIMESTAMP
+      `);
+      // Claims are read by expiry when auditing what was honoured and when.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_job_tickets_parts_warranty_expiry
+        ON job_tickets (parts_warranty_expiry_date)
+        WHERE parts_warranty_expiry_date IS NOT NULL`);
+
+      /**
+       * Where a warranty period is DECIDED, as opposed to where it expires.
+       *
+       * Three sources, because the shop sells three ways:
+       *   inventory_items   stocked parts — the period is a property of the part
+       *   service_catalog   labour — the period is a property of the service
+       *   local_purchases   sourced parts — bought ad hoc from a local vendor,
+       *                     where the period is negotiated per purchase and is
+       *                     genuinely different every time
+       *
+       * All nullable. NULL means "no distinct warranty for this", and callers
+       * fall back to the job's service warranty — so nothing that exists today
+       * changes behaviour.
+       */
+      await client.query(`ALTER TABLE inventory_items ADD COLUMN IF NOT EXISTS warranty_days INTEGER`);
+      await client.query(`ALTER TABLE service_catalog ADD COLUMN IF NOT EXISTS warranty_days INTEGER`);
+      await client.query(`ALTER TABLE local_purchases ADD COLUMN IF NOT EXISTS warranty_days INTEGER`);
+
+      /**
+       * Powers "what did I do last time?" for sourced parts.
+       *
+       * Typing LVDS should recall the last LVDS purchase — supplier, both
+       * prices, warranty — because these are not catalogue products with a
+       * stable price. Lowercased so "LVDS", "lvds" and "Lvds" are one part.
+       */
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_local_purchases_part_name_lower
+        ON local_purchases (LOWER(part_name), created_at DESC)`);
     },
   },
 ];

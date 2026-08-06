@@ -65,18 +65,41 @@ router.get(
                 ? new Date(job.warrantyExpiryDate) > now
                 : false;
 
+            /**
+             * Report BOTH clocks.
+             *
+             * This returned only the labour warranty, so a staff member looking
+             * at a job with live parts cover was told "expired" and would turn
+             * the customer away. The `warranty` object keeps its original shape
+             * for existing callers; `parts` is additive.
+             *
+             * `parts` is null when the job has no distinct parts warranty, which
+             * is every job created before the column existed — the caller can
+             * then show a single period exactly as before.
+             */
+            const daysBetween = (d: Date) =>
+                Math.ceil((d.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+
+            const partsExpiry = job.partsWarrantyExpiryDate
+                ? new Date(job.partsWarrantyExpiryDate)
+                : null;
+
             res.json({
                 job,
                 warranty: {
                     valid: warrantyValid,
                     expiryDate: job.warrantyExpiryDate,
                     daysRemaining: job.warrantyExpiryDate
-                        ? Math.ceil(
-                              (new Date(job.warrantyExpiryDate).getTime() - now.getTime()) /
-                                  (1000 * 60 * 60 * 24),
-                          )
+                        ? daysBetween(new Date(job.warrantyExpiryDate))
                         : 0,
                 },
+                parts: partsExpiry
+                    ? {
+                          valid: partsExpiry > now,
+                          expiryDate: job.partsWarrantyExpiryDate,
+                          daysRemaining: daysBetween(partsExpiry),
+                      }
+                    : null,
             });
         } catch (error: any) {
             console.error('[Warranty] Error checking warranty:', error);
@@ -162,11 +185,33 @@ router.post('/api/warranty-claims', requireGranularPermission('warranty.create')
         const validTypes = ['service', 'parts', 'crr', 'reservice', 'general'];
         const resolvedType = validTypes.includes(claimType) ? claimType : 'general';
 
+        /**
+         * Judge the claim against the clock that actually governs it.
+         *
+         * resolvedType was computed, stored on the claim, and then ignored: this
+         * check only ever read job.warrantyExpiryDate, so a parts claim and a
+         * service claim on the same job produced the same answer. A panel still
+         * inside a manufacturer's six-month cover was refused the moment the
+         * 30-day labour warranty lapsed — which is the opposite of what the
+         * published Terms promise.
+         *
+         * A 'parts' claim now reads the parts expiry when the job has one.
+         * Falling back to the service expiry is deliberate rather than lazy:
+         * every job created before parts_warranty_expiry_date existed has NULL
+         * there, and those jobs must keep behaving exactly as they did. A
+         * fallback also fails in the customer's favour, which is the right
+         * direction for an ambiguous warranty.
+         */
         const now = new Date();
+        const claimIsPartsOnly = resolvedType === 'parts';
+        const governingExpiry = claimIsPartsOnly && job.partsWarrantyExpiryDate
+            ? job.partsWarrantyExpiryDate
+            : job.warrantyExpiryDate;
+
         let warrantyValid = false;
         let warrantyExpiryDate: Date | null = null;
-        if (job.warrantyExpiryDate) {
-            warrantyExpiryDate = new Date(job.warrantyExpiryDate);
+        if (governingExpiry) {
+            warrantyExpiryDate = new Date(governingExpiry);
             if (warrantyExpiryDate > now) warrantyValid = true;
         }
 

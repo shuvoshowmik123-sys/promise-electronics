@@ -18,7 +18,7 @@ import { requireAdminAuth, requirePermission, requireGranularPermission, require
 import { auditLogger } from '../utils/auditLogger.js';
 import { inventoryService } from '../services/inventory.service.js';
 import { db } from '../db.js';
-import { gte, lte, and, eq, isNull, count } from 'drizzle-orm';
+import { gte, lte, and, eq, isNull, count, sql } from 'drizzle-orm';
 
 const router = Router();
 
@@ -101,6 +101,110 @@ router.get('/api/inventory/local-purchases', requireAdminAuth, requireGranularPe
         res.json(purchases);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch local purchases' });
+    }
+});
+
+/**
+ * GET /api/inventory/local-purchases/suggest?name=LVDS
+ *
+ * "What did I do last time?" for a sourced part.
+ *
+ * Sourced parts are bought ad hoc from whichever local vendor has one, so they
+ * have no catalogue entry, no stable price, and a warranty negotiated per
+ * purchase. Staff were retyping supplier, both prices and the warranty every
+ * time, from memory, at a counter with a customer waiting.
+ *
+ * Everything needed to stop that is already in local_purchases — it had simply
+ * never been read back. Deriving the answer from history rather than adding a
+ * sourced-parts catalogue is deliberate: a catalogue would need maintaining and
+ * would imply a canonical price that does not exist for these parts. This needs
+ * no upkeep at all — every purchase recorded improves the next suggestion.
+ *
+ * Returns the MOST RECENT purchase for the name, not an average: the last price
+ * paid is the best estimate of the next one, and an average across six months
+ * of a volatile local market is worse than useless.
+ *
+ * Matching is case-insensitive and exact-on-name. Deliberately not fuzzy —
+ * suggesting the wrong part's price at a counter is worse than suggesting
+ * nothing, because it is silently plausible.
+ */
+router.get('/api/inventory/local-purchases/suggest', requireAdminAuth, requireGranularPermission('inventory.view'), async (req: Request, res: Response) => {
+    try {
+        const name = String(req.query.name || '').trim();
+        if (!name) {
+            return res.json({ found: false, suggestion: null });
+        }
+
+        const rows = await db.execute(sql`
+            SELECT part_name      AS "partName",
+                   supplier_name  AS "supplierName",
+                   cost_price     AS "costPrice",
+                   selling_price  AS "sellingPrice",
+                   warranty_days  AS "warrantyDays",
+                   created_at     AS "lastPurchasedAt"
+            FROM local_purchases
+            WHERE LOWER(part_name) = LOWER(${name})
+            ORDER BY created_at DESC
+            LIMIT 1
+        `);
+
+        const row = ((rows as any).rows ?? rows)[0];
+        if (!row) {
+            return res.json({ found: false, suggestion: null });
+        }
+
+        res.json({
+            found: true,
+            suggestion: {
+                partName: row.partName,
+                supplierName: row.supplierName ?? null,
+                costPrice: row.costPrice != null ? Number(row.costPrice) : null,
+                sellingPrice: row.sellingPrice != null ? Number(row.sellingPrice) : null,
+                warrantyDays: row.warrantyDays != null ? Number(row.warrantyDays) : null,
+                lastPurchasedAt: row.lastPurchasedAt,
+            },
+        });
+    } catch (error) {
+        // A failed suggestion must never block the sale — the form still works
+        // when typed by hand, which is exactly how it works today.
+        console.error('[LocalPurchase] Suggestion lookup failed:', (error as Error).message);
+        res.json({ found: false, suggestion: null });
+    }
+});
+
+/**
+ * GET /api/inventory/local-purchases/recent-names?limit=8
+ *
+ * Distinct sourced-part names, most recently used first. Feeds the "recent"
+ * list in the POS picker, where the same twenty parts are most of the volume.
+ */
+router.get('/api/inventory/local-purchases/recent-names', requireAdminAuth, requireGranularPermission('inventory.view'), async (req: Request, res: Response) => {
+    try {
+        const limit = Math.min(Math.max(parseInt(String(req.query.limit || '8'), 10) || 8, 1), 50);
+        const rows = await db.execute(sql`
+            SELECT DISTINCT ON (LOWER(part_name))
+                   part_name     AS "partName",
+                   supplier_name AS "supplierName",
+                   selling_price AS "sellingPrice",
+                   warranty_days AS "warrantyDays",
+                   created_at    AS "lastPurchasedAt"
+            FROM local_purchases
+            ORDER BY LOWER(part_name), created_at DESC
+        `);
+        const all = ((rows as any).rows ?? rows) as any[];
+        // DISTINCT ON forces ordering by the distinct key, so recency ordering
+        // has to happen after the fact.
+        all.sort((a, b) => new Date(b.lastPurchasedAt).getTime() - new Date(a.lastPurchasedAt).getTime());
+        res.json(all.slice(0, limit).map((r) => ({
+            partName: r.partName,
+            supplierName: r.supplierName ?? null,
+            sellingPrice: r.sellingPrice != null ? Number(r.sellingPrice) : null,
+            warrantyDays: r.warrantyDays != null ? Number(r.warrantyDays) : null,
+            lastPurchasedAt: r.lastPurchasedAt,
+        })));
+    } catch (error) {
+        console.error('[LocalPurchase] Recent names failed:', (error as Error).message);
+        res.json([]);
     }
 });
 
