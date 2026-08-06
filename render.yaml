@@ -14,6 +14,46 @@ services:
     startCommand: npm start
     healthCheckPath: /health
     autoDeploy: true
+    # ── Only rebuild when something the SERVER cares about changed ────────────
+    #
+    # Every push to main used to redeploy this service, whatever it touched. That
+    # is not merely wasted build minutes: a deploy restarts the Node process,
+    # which drops every open SSE connection and every in-flight session. A CSS
+    # tweak on the customer site was interrupting the admin panel's live updates.
+    #
+    # Deliberately expressed as ignoredPaths rather than paths. With an allow
+    # list, any directory nobody remembered to add would silently stop
+    # deploying — the worst failure here, because the symptom is "my fix didn't
+    # work" long after the cause. With a deny list, anything unrecognised still
+    # deploys: noisier, but never silently stale.
+    #
+    # `shared/` is deliberately absent from this list: it is imported by both
+    # sides, so a change there must rebuild the server as well as the frontend.
+    #
+    # client/ is ignored because Vercel serves the frontend in production. This
+    # service still BUILDS the client (see buildCommand) so it can serve the app
+    # standalone as a fallback, but that copy only needs refreshing when the
+    # server itself redeploys.
+    buildFilter:
+      ignoredPaths:
+        - client/**
+        - docs/**
+        - tests/**
+        - e2e/**
+        - mockups/**
+        - mobile-qa/**
+        - mobile_app_flutter/**
+        - playwright-report/**
+        - test-results/**
+        - qa-tooling/**
+        - qa-tmp-reminders-reconciliation/**
+        - skills/**
+        - resources/**
+        - assets/**
+        - db-baselines/**
+        - "*.md"
+        - "*.png"
+        - "*.log"
     envVars:
       - key: NODE_ENV
         value: production

@@ -2,6 +2,27 @@
     "version": 2,
     "buildCommand": "npx vite build",
     "outputDirectory": "dist/public",
+    "___comment_ignoreCommand": [
+        "Only rebuild the frontend when something the frontend uses changed.",
+        "Every push to main used to rebuild here, including server-only commits",
+        "that produced byte-identical output — burning build quota to ship the",
+        "same bundle. Render was rebuilding the client on those same pushes too,",
+        "so a backend change built the frontend twice, once on each host.",
+        "",
+        "Vercel treats exit 0 as SKIP and any non-zero as BUILD. `git diff",
+        "--quiet` exits 0 when the listed paths are unchanged, so this skips",
+        "exactly when nothing relevant moved.",
+        "",
+        "Fail-safe by construction: on a shallow clone or first deploy HEAD^ does",
+        "not resolve, git exits non-zero, and the build RUNS. Being unsure always",
+        "means building, never silently serving a stale bundle.",
+        "",
+        "`shared/` is listed because it is imported by both sides — a change",
+        "there must rebuild the frontend as well as the server. package.json and",
+        "the lockfile are listed because a dependency change alters the bundle",
+        "even when no client file was touched."
+    ],
+    "ignoreCommand": "git diff --quiet HEAD^ HEAD -- client shared package.json package-lock.json vite.config.ts postcss.config.js tsconfig.json components.json vercel.json",
     "rewrites": [
         {
             "source": "/api/:path*",
