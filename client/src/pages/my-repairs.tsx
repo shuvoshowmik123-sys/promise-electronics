@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { CalendarClock, ChevronRight, Clock3, Monitor, Wrench } from "lucide-react";
@@ -97,6 +97,39 @@ export default function MyRepairsPage() {
   });
 
   const journeys = useMemo(() => data.filter((journey) => filterJourney(journey, filter)), [data, filter]);
+
+  /**
+   * Land the customer on their handover code, not on a list.
+   *
+   * The custody notification links to
+   * /my-repairs?order=<ticket>&type=service&issuance=<id>, and this page ignored
+   * every one of those parameters — worse, it does not render HandoverCodeCard
+   * at all. That card lives on the DETAIL page. So a customer tapping "Handover
+   * code ready" arrived at a list, with a driver standing in front of them, and
+   * had to work out which repair to open.
+   *
+   * Matched here rather than by changing the link, because the link format is
+   * reproduced and compared server-side (customer.routes.ts builds an
+   * expectedLink from the same helper); altering it would break that matcher.
+   *
+   * `order` is ticketNumber-or-id, so both are accepted. Replace rather than
+   * push, so Back returns to wherever they came from instead of bouncing them
+   * into this redirect again.
+   */
+  useEffect(() => {
+    if (!data.length) return;
+    const params = new URLSearchParams(window.location.search);
+    const order = params.get("order");
+    if (!order) return;
+
+    const match = data.find(
+      (j) => j.srTicketNumber === order || j.serviceRequestId === order || j.id === order,
+    );
+    if (match) {
+      window.history.replaceState(null, "", "/my-repairs");
+      setLocation("/my-repairs/" + match.id, { replace: true });
+    }
+  }, [data, setLocation]);
   const selected = journeys[0] || data[0] || null;
 
   const filterOptions = [

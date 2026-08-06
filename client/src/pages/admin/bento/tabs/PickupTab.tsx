@@ -42,9 +42,36 @@ function isToday(d: string | null): boolean {
     return task.getFullYear() === now.getFullYear() && task.getMonth() === now.getMonth() && task.getDate() === now.getDate();
 }
 
+/**
+ * Work that needs doing now.
+ *
+ * This used to be `isToday(scheduledDate)` alone, which hid the majority of real
+ * tasks: transferring a service request to Pickup & Delivery creates the task
+ * with NO scheduled date — createTaskFromServiceRequest sets one only when a
+ * caller passes an override, and the transfer route passes none. isToday(null)
+ * is false, so every transferred job was invisible here and appeared only under
+ * "All". Drivers are defaulted into this lane, so the people who most need the
+ * list were the ones seeing an empty one.
+ *
+ * "Today" therefore means anything still open that is not scheduled for a
+ * FUTURE day: due today, undated, or overdue. Undated work is not
+ * work-for-later — it is work nobody has scheduled yet, which is precisely what
+ * should be picked up now. Fixed in the lane rather than by stamping a date on
+ * creation, because inventing a schedule nobody agreed to would be a lie in the
+ * data that then shows on the customer's side.
+ */
+function isDueNow(t: LogisticsTask): boolean {
+    if (!t.scheduledDate) return true;      // unscheduled == outstanding
+    if (isToday(t.scheduledDate)) return true;
+    const d = new Date(t.scheduledDate);
+    const now = new Date();
+    const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+    return d.getTime() <= endOfToday.getTime();   // overdue still needs doing
+}
+
 function matchLane(t: LogisticsTask, lane: Lane): boolean {
     if (lane === "all") return true;
-    if (lane === "today") return isToday(t.scheduledDate) && !["completed", "cancelled"].includes(t.status);
+    if (lane === "today") return isDueNow(t) && !["completed", "cancelled"].includes(t.status);
     if (lane === "pickups") return t.taskType === "pickup" && !["completed", "cancelled"].includes(t.status);
     if (lane === "deliveries") return t.taskType === "delivery" && !["completed", "cancelled"].includes(t.status);
     if (lane === "assigned") return t.status === "assigned";
