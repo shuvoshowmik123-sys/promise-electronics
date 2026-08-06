@@ -22,7 +22,46 @@ import {
     adminUpdateUserSchema,
     getDefaultPermissions
 } from './middleware/auth.js';
-import { getNewStaffPermissionMap } from '../../shared/permission-catalog.js';
+import { getNewStaffPermissionMap, findDroppedBaselinePermissions } from '../../shared/permission-catalog.js';
+
+/**
+ * Guard a permissions write against silently revoking a role's baseline.
+ *
+ * Returns an error body to send, or null when the save is safe. Accepts the
+ * column in either shape — the API takes a JSON string, some callers pass an
+ * object — and ignores writes that do not touch permissions at all.
+ *
+ * An unparseable value is left alone: schema validation owns that error, and
+ * this guard should not turn a malformed payload into a confusing one.
+ */
+function assertNoSilentBaselineDrop(
+    permissions: unknown,
+    role: string,
+    acknowledged: boolean,
+): { error: string; code: string; droppedPermissions: string[] } | null {
+    if (permissions === undefined || permissions === null) return null;
+    if (acknowledged) return null;
+
+    let parsed: Record<string, any>;
+    try {
+        parsed = typeof permissions === 'string' ? JSON.parse(permissions) : (permissions as Record<string, any>);
+    } catch {
+        return null;
+    }
+    if (!parsed || typeof parsed !== 'object' || Object.keys(parsed).length === 0) return null;
+
+    const dropped = findDroppedBaselinePermissions(role, parsed);
+    if (dropped.length === 0) return null;
+
+    return {
+        error:
+            `This would remove ${dropped.length} permission(s) that the ${role} role needs to function: ` +
+            `${dropped.join(', ')}. Stored permissions replace the role preset rather than adding to it, ` +
+            `so anything not included here is revoked. Re-send with acknowledgeBaselineRemoval: true if that is intended.`,
+        code: 'BASELINE_PERMISSION_REMOVAL',
+        droppedPermissions: dropped,
+    };
+}
 
 import { notifySpecificAdmin } from './middleware/sse-broker.js';
 import { MailerService } from '../services/mailer.js';
@@ -319,6 +358,28 @@ router.patch('/api/users/:id', requireAdminAuth, requireGranularPermission('user
             }
         }
 
+        /**
+         * Refuse to silently drop a role's baseline permissions.
+         *
+         * Stored permissions REPLACE the preset, so saving a set that omits a
+         * baseline key revokes it without anyone intending to. That is how a
+         * Driver lost `pickup.confirmHandover` while gaining four other pickup
+         * permissions — the loss was invisible until "Access denied" appeared
+         * at a customer's door.
+         *
+         * Enforced here rather than only in the editor because the column is
+         * also reachable from the API, bulk import and scripts. Removing a
+         * baseline permission stays possible; it just has to be deliberate.
+         */
+        const baselineCheck = assertNoSilentBaselineDrop(
+            updates.permissions,
+            (updates.role as string) ?? targetUser.role,
+            req.body?.acknowledgeBaselineRemoval === true,
+        );
+        if (baselineCheck) {
+            return res.status(400).json(baselineCheck);
+        }
+
         // Never persist a plaintext password.
         if (updates.password) {
             updates.password = await bcrypt.hash(updates.password, 12);
@@ -518,6 +579,17 @@ router.patch('/api/admin/users/:id', requireAdminAuth, async (req: Request, res:
             if (validated.permissions) {
                 return res.status(403).json({ error: 'Only Super Admins can change user permissions' });
             }
+        }
+
+        // Same baseline guard as PATCH /api/users/:id — the Super Admin route
+        // must not be the way round it.
+        const adminBaselineCheck = assertNoSilentBaselineDrop(
+            (validated as any).permissions,
+            (validated.role as string) ?? targetUser.role,
+            req.body?.acknowledgeBaselineRemoval === true,
+        );
+        if (adminBaselineCheck) {
+            return res.status(400).json(adminBaselineCheck);
         }
 
         let updates: any = { ...validated };

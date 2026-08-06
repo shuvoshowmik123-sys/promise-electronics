@@ -485,6 +485,40 @@ export function getNewStaffPermissionMap(role: string): Record<string, boolean> 
   return {};
 }
 
+/**
+ * Baseline permissions from the role preset that a saved set would remove.
+ *
+ * Stored permissions REPLACE the role preset rather than merging with it
+ * (getEffectivePermissionsForUser). So editing a user to add permissions also
+ * silently drops every preset key the editor did not resubmit. That is how a
+ * Driver ended up without `pickup.confirmHandover` while holding four other
+ * pickup permissions: they could see their route and reschedule it, but not
+ * complete the handover their job consists of.
+ *
+ * The failure is invisible at save time and only surfaces as "Access denied"
+ * later, in front of a customer. This returns what is about to be lost so the
+ * caller can refuse, or require an explicit acknowledgement.
+ *
+ * A legacy coarse key counts as covering its granular expansion — holding
+ * `pickup` genuinely grants `pickup.confirmHandover` via resolveGranularPermission,
+ * so it is not a drop.
+ *
+ * Deliberately NOT a merge. Merging the preset back in would resurrect every
+ * permission an administrator had removed on purpose, since revocation here is
+ * expressed as absence rather than an explicit false.
+ */
+export function findDroppedBaselinePermissions(
+  role: string,
+  permissions: Record<string, any>,
+): string[] {
+  if (role === "Super Admin") return [];
+  const presetName = ROLE_TO_PRESET[role];
+  const baseline = presetName ? ROLE_PRESETS[presetName] : undefined;
+  if (!baseline) return [];
+
+  return baseline.filter((key) => !resolveGranularPermission(permissions, key));
+}
+
 /** Resolve direct, legacy, and deprecated granular permission grants consistently. */
 export function resolveGranularPermission(
   effectivePermissions: Record<string, any>,
