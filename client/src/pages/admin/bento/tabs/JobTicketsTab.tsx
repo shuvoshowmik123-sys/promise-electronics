@@ -38,6 +38,8 @@ const LocalPurchaseModal = lazy(() => import("@/components/inventory/LocalPurcha
 import { getJobSkillRules, hasAnySkill, type TechUser } from "@/components/admin/TechnicianPicker";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
+import { useLocation } from "wouter";
+import { buildNavigateAdminTabPath } from "@/lib/admin-workspace-routing";
 
 type JobGroupKey = "new" | "repairing" | "waiting-parts" | "decision" | "ready" | "delivered" | "all";
 
@@ -78,6 +80,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
     const { sseSupported } = useAdminSSE();
     const isMobile = useIsMobile();
     const queryClient = useQueryClient();
+    const [, setLocation] = useLocation();
     const previousJobCountRef = useRef(0);
 
     // Canonical create-job visibility: matches requireGranularPermission("jobs.create")
@@ -238,6 +241,33 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         enabled: canAccessJobs && canFetchSettings,
         retry: false,
     });
+
+    /**
+     * The jobs the till can actually bill, straight from the server.
+     *
+     * The "Bill at POS" button keys off membership of THIS list rather than a
+     * local status check. The server also requires the walk-in lane, so a
+     * completed corporate job is not billable — re-deriving the rule here would
+     * eventually drift from it and offer a handoff that silently links nothing.
+     * Same query key as PosTab, so the two share one cache entry.
+     */
+    const { data: billableJobsRaw } = useQuery({
+        queryKey: ["jobTickets", "ready-for-billing"],
+        queryFn: jobTicketsApi.getReadyForBilling,
+        enabled: canAccessJobs,
+        retry: false,
+    });
+
+    const billableJobIds = useMemo(
+        () => new Set((Array.isArray(billableJobsRaw) ? billableJobsRaw : []).map((job: any) => job.id)),
+        [billableJobsRaw],
+    );
+
+    const handleBillAtPos = (job: JobTicket) => {
+        // The till reads this id and attaches the job itself. Nothing is
+        // pre-selected here, so a stale tap cannot bill the wrong ticket.
+        setLocation(buildNavigateAdminTabPath("pos", { target: job.id }));
+    };
 
     useEffect(() => {
         if (canAccessJobs) return;
@@ -1101,6 +1131,8 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 canReportNg={canReportNg}
                                 canMutateJob={(job) => !isJobReadOnlyForCurrentUser(job)}
                                 currencySymbol={getCurrencySymbol()}
+                                billableJobIds={billableJobIds}
+                                onBillAtPos={handleBillAtPos}
                             />
                         ) : effectiveViewMode === "list" ? (
                             <JobTicketList

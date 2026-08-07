@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import type { MouseEvent } from "react";
-import { User, UserCheck } from "lucide-react";
+import { CreditCard, User, UserCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -24,6 +24,17 @@ interface JobCardMobileProps {
     canReviewNg: boolean;
     canReportNg?: boolean;
     currencySymbol: string;
+    /**
+     * True only when the server's billing list actually contains this job.
+     *
+     * Deliberately NOT derived from job.status here. The server also requires
+     * the walk-in lane, so a completed corporate job is not billable — a
+     * status-only check would show this button on jobs the POS cannot link,
+     * and the handoff would land on an empty till with no explanation.
+     * Membership of the real list is the only thing that cannot disagree.
+     */
+    isBillable?: boolean;
+    onBillAtPos?: (job: JobTicket) => void;
 }
 
 /**
@@ -45,6 +56,8 @@ export function JobCardMobile({
     canReviewNg,
     canReportNg = false,
     currencySymbol,
+    isBillable = false,
+    onBillAtPos,
 }: JobCardMobileProps) {
     const j = job as any;
     const isTechnician = userRole === "Technician";
@@ -134,6 +147,25 @@ export function JobCardMobile({
                             </span>
                         </span>
                     </div>
+                    {/*
+                      * Only rendered once the job is genuinely on the server's
+                      * billing list — the customer is at the counter and the
+                      * repair is finished. Taking it straight to the till with
+                      * the job already attached is the whole point: the till
+                      * then only needs parts and warranty.
+                      */}
+                    {isBillable && onBillAtPos && (
+                        <Button
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onBillAtPos(job);
+                            }}
+                            className="h-9 w-full rounded-lg gap-1.5 bg-emerald-600 text-[11px] font-bold text-white shadow-sm hover:bg-emerald-700"
+                        >
+                            <CreditCard className="w-3.5 h-3.5" />
+                            Bill at POS
+                        </Button>
+                    )}
                     <div className="flex items-center justify-between gap-1.5">
                         {job.estimatedCost != null && (
                             <span className="text-[10px] font-semibold text-slate-500 shrink-0 font-mono">

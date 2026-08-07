@@ -67,6 +67,9 @@ interface JobTicketGridProps {
     canReportNg?: boolean;
     canMutateJob: (job: JobTicket) => boolean;
     currencySymbol?: string;
+    /** Ids the server's ready-for-billing list actually returned. */
+    billableJobIds?: Set<string>;
+    onBillAtPos?: (job: JobTicket) => void;
 }
 
 export function JobTicketGrid({
@@ -87,6 +90,8 @@ export function JobTicketGrid({
     canReportNg = false,
     canMutateJob,
     currencySymbol = "৳",
+    billableJobIds,
+    onBillAtPos,
 }: JobTicketGridProps) {
     const isMobile = useIsMobile();
 
@@ -114,6 +119,8 @@ export function JobTicketGrid({
                         canReviewNg={canReviewNg}
                         canReportNg={canReportNg && canMutateJob(job)}
                         currencySymbol={currencySymbol}
+                        isBillable={billableJobIds?.has(job.id) ?? false}
+                        onBillAtPos={onBillAtPos}
                     />
                 ))}
             </motion.div>

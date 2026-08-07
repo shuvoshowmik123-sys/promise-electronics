@@ -59,7 +59,7 @@ interface PosTabProps {
 }
 
 export default function PosTab({ initialSearchQuery, initialTransactionId, onSearchConsumed }: PosTabProps = {}) {
-    const [, setLocation] = useLocation();
+    const [location, setLocation] = useLocation();
     const queryClient = useQueryClient();
     const [isMobile, setIsMobile] = useState(false);
     const { user } = useAdminAuth();
@@ -299,6 +299,83 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
             setLinkedJobCharges(prev => prev.filter(j => j.jobId !== jobId));
         }
     };
+
+    /**
+     * Attach the job handed over from the Jobs tab ("Bill at POS").
+     *
+     * The tech finished a repair with the customer standing there; walking them
+     * to a desktop to link the ticket by hand was the cost this removes. The
+     * till now opens with the job already on the sale, leaving only parts and
+     * warranty to enter.
+     *
+     * Guarded rather than trusted:
+     *  - the id must be in billableJobs, so a stale or hand-edited link cannot
+     *    attach a job the server does not consider billable
+     *  - waits for that list to load instead of dropping the request in the gap
+     *  - skips if already linked, so a re-render cannot double-add
+     *  - survives a closed register: the handoff is remembered and applied once
+     *    the drawer session opens, rather than silently lost behind the lock
+     *    screen
+     * The parameter is cleared once consumed so a refresh does not re-link a
+     * job the cashier deliberately removed.
+     */
+    /**
+     * Attach the job handed over from the Jobs tab ("Bill at POS").
+     *
+     * The tech finished a repair with the customer standing there; walking them
+     * to a desktop to link the ticket by hand was the cost this removes. The
+     * till opens with the job already on the sale, leaving only the parts used
+     * and the warranty to enter.
+     *
+     * Guarded rather than trusted:
+     *  - the id must be in billableJobs, so a stale or hand-edited link cannot
+     *    attach a job the server does not consider billable
+     *  - waits for that list to load instead of dropping the request in the gap
+     *  - skips if already linked, so a re-render cannot double-add
+     *  - survives a closed register: the handoff is held until the drawer
+     *    session opens rather than being lost behind the lock screen
+     * The parameter is cleared once consumed, so a refresh cannot re-link a job
+     * the cashier deliberately removed.
+     *
+     * These MUST stay above the `if (drawerLoading) return` guard further down.
+     * Placed below it they are skipped while the drawer query is in flight and
+     * then run once it resolves, so the component calls more hooks than on the
+     * previous render — React tears the whole till down with "Rendered more
+     * hooks than during the previous render". Depending on `activeDrawer`
+     * rather than the derived `hasDrawerSession` is what lets them live up
+     * here, since that const is declared after the guard.
+     */
+    const pendingBillJobRef = useRef<string | null>(null);
+
+    useEffect(() => {
+        const target = new URLSearchParams(window.location.search).get("target");
+        if (target) pendingBillJobRef.current = target;
+    }, [location]);
+
+    useEffect(() => {
+        const jobId = pendingBillJobRef.current;
+        if (!jobId || !activeDrawer || jobsLoading) return;
+        if (!billableJobs.some((j: any) => j.id === jobId)) return;
+
+        pendingBillJobRef.current = null;
+        const params = new URLSearchParams(window.location.search);
+        params.delete("target");
+        const qs = params.toString();
+        window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
+
+        setLinkedJobCharges((prev) => {
+            if (prev.some((j) => j.jobId === jobId)) return prev;
+            const job = billableJobs.find((j: any) => j.id === jobId) as any;
+            toast.success(`Job ${getSafeJobDisplayRef(job) || jobId} linked`, {
+                description: "Add the parts used and the warranty to finish billing.",
+            });
+            return [...prev, {
+                jobId, serviceItemId: null, serviceItemName: null, minPrice: 0, maxPrice: 0, billedAmount: 0, isValid: false,
+                customerName: job?.customer || null, customerPhone: job?.customerPhone || null,
+                customerAddress: job?.customerAddress || null, assistedByNames: job?.assistedByNames || null,
+            }];
+        });
+    }, [billableJobs, jobsLoading, activeDrawer]);
 
     const handleServiceItemSelect = (jobId: string, serviceItemId: string) => {
         const si = serviceItems?.find((s: any) => s.id === serviceItemId);
@@ -708,6 +785,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
 
     const hasDrawerSession = !!activeDrawer;
     const isDrawerCounting = activeDrawer?.status === 'counting';
+
     const canViewDrawerDiscrepancy = !!activeDrawer && !!user && (
         activeDrawer.openedBy === user.id || user.role === 'Super Admin'
     );
