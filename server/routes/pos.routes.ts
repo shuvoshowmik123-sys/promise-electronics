@@ -93,9 +93,19 @@ router.post(
       if (!Array.isArray(cartItems)) cartItems = [];
       if (!Array.isArray(linkedJobs)) linkedJobs = [];
 
+      /**
+       * The warranty chosen at the counter has to survive normalisation.
+       *
+       * This mapped only jobId and billedAmount, so anything the till sent
+       * about warranty was silently dropped one line before the billing
+       * service could act on it. Kept nullable: "no warranty" is a real answer
+       * and must not be confused with "the till did not say".
+       */
       const normalizedLinks = linkedJobs.map((l: any) => ({
         jobId: String(l.jobId || ""),
         billedAmount: Number(l.billedAmount),
+        serviceWarrantyMonths: l.serviceWarrantyMonths != null ? Number(l.serviceWarrantyMonths) : null,
+        partsWarrantyMonths: l.partsWarrantyMonths != null ? Number(l.partsWarrantyMonths) : null,
       }));
 
       const actor = (req as any).user;

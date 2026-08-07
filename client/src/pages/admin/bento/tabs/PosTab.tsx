@@ -19,6 +19,7 @@ import { inventoryApi, jobTicketsApi, posTransactionsApi, settingsApi, adminCust
 import { toast } from "sonner";
 import { CartItem, LinkedJobCharge, TransactionData, PAYMENT_METHODS, parseImages, parseTransactionForReprint } from "./pos/pos-types";
 import { MobileProductPicker, type MobilePickerItem } from "./pos/MobileProductPicker";
+import { WARRANTY_SETTING_KEYS, DEFAULT_PARTS_MONTH_OPTIONS, DEFAULT_SERVICE_MONTH_OPTIONS, parseMonthOptions, formatWarrantyMonths } from "@shared/warranty-options";
 import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 const CustomerDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.CustomerDialog })));
 const JobLinkDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.JobLinkDialog })));
@@ -377,6 +378,35 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
         });
     }, [billableJobs, jobsLoading, activeDrawer]);
 
+    /**
+     * Warranty option lists, from settings with the shared defaults as fallback.
+     * A malformed setting must still leave the counter able to promise cover.
+     */
+    const partsMonthOptions = useMemo(
+        () => parseMonthOptions(
+            (settings as any[])?.find((s) => s.key === WARRANTY_SETTING_KEYS.partsMonths)?.value,
+            DEFAULT_PARTS_MONTH_OPTIONS,
+        ),
+        [settings],
+    );
+    const serviceMonthOptions = useMemo(
+        () => parseMonthOptions(
+            (settings as any[])?.find((s) => s.key === WARRANTY_SETTING_KEYS.serviceMonths)?.value,
+            DEFAULT_SERVICE_MONTH_OPTIONS,
+        ),
+        [settings],
+    );
+
+    const handleWarrantyChange = (jobId: string, kind: "parts" | "service", raw: string) => {
+        const months = raw === "none" ? null : Number(raw);
+        setLinkedJobCharges((prev) => prev.map((j) => {
+            if (j.jobId !== jobId) return j;
+            return kind === "parts"
+                ? { ...j, partsWarrantyMonths: months }
+                : { ...j, serviceWarrantyMonths: months };
+        }));
+    };
+
     const handleServiceItemSelect = (jobId: string, serviceItemId: string) => {
         const si = serviceItems?.find((s: any) => s.id === serviceItemId);
         if (!si) return;
@@ -503,7 +533,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
 
     const submitCheckout = () => {
         const subtotal = calculateSubtotal(); const tax = calculateTax(subtotal); const total = calculateTotal(); const vatRate = getVatPercentage();
-        const linkedJobsData = linkedJobCharges.map(j => ({ jobId: j.jobId, serviceItemId: j.serviceItemId, serviceItemName: j.serviceItemName, minPrice: j.minPrice, maxPrice: j.maxPrice, billedAmount: j.billedAmount, customerName: j.customerName, customerPhone: j.customerPhone, customerAddress: j.customerAddress, assistedByNames: j.assistedByNames }));
+        const linkedJobsData = linkedJobCharges.map(j => ({ jobId: j.jobId, serviceItemId: j.serviceItemId, serviceItemName: j.serviceItemName, minPrice: j.minPrice, maxPrice: j.maxPrice, billedAmount: j.billedAmount, customerName: j.customerName, customerPhone: j.customerPhone, customerAddress: j.customerAddress, assistedByNames: j.assistedByNames, serviceWarrantyMonths: j.serviceWarrantyMonths ?? null, partsWarrantyMonths: j.partsWarrantyMonths ?? null }));
 
         checkoutMutation.mutate({
             id: `POS-${Date.now()}`, customer: customerName || null, customerPhone: customerPhone || null, customerAddress: customerAddress || null,
@@ -771,6 +801,50 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                     {!charge.isValid && charge.billedAmount > 0 && <p className="text-[10px] text-red-500 mt-1">Amount must be between {getCurrencySymbol()}{charge.minPrice} and {getCurrencySymbol()}{charge.maxPrice}</p>}
                                 </div>
                             )}
+                            {/*
+                              * Warranty is set HERE, not deferred to the evening
+                              * like the sourced-part cost. A cost is a fact that
+                              * can be looked up tonight; a warranty is a promise
+                              * made to the customer's face, and if it is not
+                              * recorded now there is nothing to reconstruct it
+                              * from when they claim in month four.
+                              *
+                              * "No warranty" stays selectable — some repairs
+                              * carry none, and defaulting to a period would put
+                              * a promise on the record nobody made.
+                              */}
+                            <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                    <Label className="text-[10px] text-indigo-600 mb-1 block">Parts warranty</Label>
+                                    <Select
+                                        value={charge.partsWarrantyMonths != null ? String(charge.partsWarrantyMonths) : "none"}
+                                        onValueChange={(v) => handleWarrantyChange(charge.jobId, "parts", v)}
+                                    >
+                                        <SelectTrigger className="h-7 text-xs bg-white/50 backdrop-blur-sm border-indigo-200"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none" className="text-xs">No warranty</SelectItem>
+                                            {partsMonthOptions.map((m) => (
+                                                <SelectItem key={m} value={String(m)} className="text-xs">{formatWarrantyMonths(m)}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div>
+                                    <Label className="text-[10px] text-indigo-600 mb-1 block">Service warranty</Label>
+                                    <Select
+                                        value={charge.serviceWarrantyMonths != null ? String(charge.serviceWarrantyMonths) : "none"}
+                                        onValueChange={(v) => handleWarrantyChange(charge.jobId, "service", v)}
+                                    >
+                                        <SelectTrigger className="h-7 text-xs bg-white/50 backdrop-blur-sm border-indigo-200"><SelectValue /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="none" className="text-xs">No warranty</SelectItem>
+                                            {serviceMonthOptions.map((m) => (
+                                                <SelectItem key={m} value={String(m)} className="text-xs">{formatWarrantyMonths(m)}</SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 );

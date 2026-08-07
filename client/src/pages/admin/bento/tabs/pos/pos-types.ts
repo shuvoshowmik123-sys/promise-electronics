@@ -7,6 +7,13 @@ export type CartItem = {
 };
 
 export type LinkedJobCharge = {
+    /**
+     * Warranty promised at the counter, in months, or null for none.
+     * Set here rather than inferred, because only the person at the till knows
+     * what was actually said to the customer.
+     */
+    serviceWarrantyMonths?: number | null;
+    partsWarrantyMonths?: number | null;
     jobId: string;
     serviceItemId: string | null;
     serviceItemName: string | null;

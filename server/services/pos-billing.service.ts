@@ -35,7 +35,32 @@ export class PosBillingError extends Error {
 
 const PAID_METHODS = new Set(["Cash", "Bank", "bKash", "Nagad"]);
 
-export type LinkedJobInput = { jobId: string; billedAmount: number };
+export type LinkedJobInput = {
+  jobId: string;
+  billedAmount: number;
+  /**
+   * Warranty chosen at the counter, in months, when the cashier set one.
+   *
+   * The period is negotiated per repair — none, one month, six — and the only
+   * moment anyone knows which is the moment it is promised to the customer's
+   * face. Left undefined the resolver's own answer stands, so a till that does
+   * not offer the choice keeps behaving exactly as it did.
+   *
+   * Months rather than days because that is the unit the shop quotes in.
+   */
+  serviceWarrantyMonths?: number | null;
+  partsWarrantyMonths?: number | null;
+};
+
+/** Months are what the counter promises; days are what the clock stores. */
+const DAYS_PER_MONTH = 30;
+
+function monthsToDays(months: unknown): number | null {
+  const n = Number(months);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  // Bounded so a malformed payload cannot mint a decade of cover.
+  return Math.min(12, Math.round(n)) * DAYS_PER_MONTH;
+}
 
 export type CreatePosSaleInput = {
   validated: schema.InsertPosTransaction;
@@ -365,6 +390,8 @@ export async function createPosSaleAtomic(input: CreatePosSaleInput): Promise<Cr
       job: schema.JobTicket;
       billedAmount: number;
       priorPaid: number;
+      serviceWarrantyMonths?: number | null;
+      partsWarrantyMonths?: number | null;
     }> = [];
 
     for (const linked of input.linkedJobs) {
@@ -453,7 +480,13 @@ export async function createPosSaleAtomic(input: CreatePosSaleInput): Promise<Cr
       }
 
       lockedJobs.push(jobRow);
-      allocations.push({ job: jobRow, billedAmount, priorPaid: paidAllocated });
+      allocations.push({
+        job: jobRow,
+        billedAmount,
+        priorPaid: paidAllocated,
+        serviceWarrantyMonths: linked.serviceWarrantyMonths ?? null,
+        partsWarrantyMonths: linked.partsWarrantyMonths ?? null,
+      });
     }
 
     // Resolve service area
@@ -636,12 +669,43 @@ export async function createPosSaleAtomic(input: CreatePosSaleInput): Promise<Cr
           completionPatch.status = "Completed";
           completionPatch.completedAt = jobCompletedAt;
         }
-        if (warrantyDays > 0 && !(job as any).warrantyExpiryDate && resolvedWarranty.warrantyExpiryDate) {
-          completionPatch.warrantyExpiryDate = resolvedWarranty.warrantyExpiryDate;
+        /**
+         * A period chosen at the counter wins over the resolver's default.
+         *
+         * The resolver infers parts cover from what was fitted and falls back to
+         * a 30 day labour default. Neither knows what was actually said to the
+         * customer. When the cashier picked a period, that is the promise, and
+         * it is what must be recorded — otherwise a customer told "six months"
+         * holds a card that says one.
+         *
+         * Still never overwrites an expiry already set: paying an
+         * already-completed job must not extend a warranty being run down.
+         */
+        const chosenServiceDays = monthsToDays(a.serviceWarrantyMonths);
+        const chosenPartsDays = monthsToDays(a.partsWarrantyMonths);
+        const addDays = (from: Date, days: number) => {
+          const d = new Date(from);
+          d.setDate(d.getDate() + days);
+          return d;
+        };
+
+        if (!(job as any).warrantyExpiryDate) {
+          if (chosenServiceDays) {
+            completionPatch.warrantyDays = chosenServiceDays;
+            completionPatch.warrantyExpiryDate = addDays(jobCompletedAt, chosenServiceDays);
+          } else if (warrantyDays > 0 && resolvedWarranty.warrantyExpiryDate) {
+            completionPatch.warrantyExpiryDate = resolvedWarranty.warrantyExpiryDate;
+          }
         }
-        if (!(job as any).partsWarrantyExpiryDate && resolvedWarranty.partsWarrantyExpiryDate) {
-          completionPatch.partsWarrantyExpiryDate = resolvedWarranty.partsWarrantyExpiryDate;
-          completionPatch.partsWarrantyDays = resolvedWarranty.partsWarrantyDays;
+
+        if (!(job as any).partsWarrantyExpiryDate) {
+          if (chosenPartsDays) {
+            completionPatch.partsWarrantyDays = chosenPartsDays;
+            completionPatch.partsWarrantyExpiryDate = addDays(jobCompletedAt, chosenPartsDays);
+          } else if (resolvedWarranty.partsWarrantyExpiryDate) {
+            completionPatch.partsWarrantyExpiryDate = resolvedWarranty.partsWarrantyExpiryDate;
+            completionPatch.partsWarrantyDays = resolvedWarranty.partsWarrantyDays;
+          }
         }
 
         await tx
