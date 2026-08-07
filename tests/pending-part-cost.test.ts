@@ -60,8 +60,17 @@ describe("the IOU is a separate record, not a weakened ledger", () => {
         expect(SCHEMA).toMatch(/settledAt: timestamp\("settled_at"\),/);
     });
 
-    it("bumps the required schema version", () => {
-        expect(MIGRATE).toContain('REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_08_pending_part_costs"');
+    it("is registered in the migration ledger", () => {
+        /**
+         * Presence, not position.
+         *
+         * Pinning REQUIRED_MAIN_SCHEMA_VERSION here breaks the moment any later
+         * migration is appended — which has now happened three times in this
+         * codebase, each time a false alarm about unrelated work. The ledger is
+         * append-only, so membership is the durable property; being newest is
+         * true for exactly as long as nobody adds anything.
+         */
+        expect(MIGRATE).toContain('id: "2026_08_08_pending_part_costs"');
     });
 });
 

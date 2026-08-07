@@ -77,6 +77,10 @@ const EVENING_MIN = 20 * 60;                // 20:00
  * same memory of what a part cost.
  */
 const SHIFT_CLOSE_MIN = 19 * 60;            // 19:00
+/** Shop is shut; whatever is still open is what gets recorded. */
+const SHIFT_SNAPSHOT_MIN = 20 * 60 + 30;    // 20:30
+/** The morning after, once people are in and can act on it. */
+const MORNING_REPORT_MIN = 9 * 60 + 30;     // 09:30
 
 /** A job untouched this long is nudged; twice as long and a manager hears. */
 const STALE_JOB_DAYS = 2;
@@ -100,7 +104,8 @@ export type ReminderKind =
     | "parts_declaration"
     | "stale_job"
     | "stale_job_escalation"
-    | "pending_part_cost";
+    | "pending_part_cost"
+    | "shift_close_report";
 
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 let sweepInFlight = false;
@@ -263,6 +268,15 @@ async function managerIds(): Promise<string[]> {
             eq(schema.users.status, "Active"),
             inArray(schema.users.role, [...MANAGER_ROLES]),
         ));
+    return rows.map((r) => r.id);
+}
+
+/** The morning report is a supervisory view and goes to one desk only. */
+async function superAdminIds(): Promise<string[]> {
+    const rows = await db
+        .select({ id: schema.users.id })
+        .from(schema.users)
+        .where(and(eq(schema.users.status, "Active"), eq(schema.users.role, "Super Admin")));
     return rows.map((r) => r.id);
 }
 
@@ -487,6 +501,111 @@ async function sweepStaleJobs(runDay: string, minutes: number): Promise<void> {
 }
 
 /**
+ * Record what each person still owed when the shop closed.
+ *
+ * Taken at closing time, not recomputed in the morning. By then it is
+ * unrecoverable — a technician who declares yesterday's parts at 9am would
+ * look like they closed cleanly, and the pattern this exists to reveal would
+ * quietly erase itself. The record has to be made at the moment it was true.
+ *
+ * Counts only. The detail already lives in the tables these were counted from,
+ * and storing copies would let the two disagree.
+ */
+async function snapshotShiftClose(runDay: string, minutes: number): Promise<void> {
+    if (minutes < SHIFT_SNAPSHOT_MIN) return;
+
+    const rows = await db.execute(sql`
+        SELECT u.id, u.name, u.role,
+               EXISTS (
+                   SELECT 1 FROM attendance_records a
+                   WHERE a.user_id = u.id
+                     AND (a.check_in_time AT TIME ZONE 'UTC' AT TIME ZONE ${DHAKA_TZ})::date = ${runDay}::date
+               ) AS "attendanceOk",
+               (
+                   SELECT COUNT(*) FROM job_tickets j
+                   WHERE j.assigned_technician_id = u.id
+                     AND (j.product_lines IS NULL OR j.product_lines = '' OR j.product_lines = '[]')
+                     AND EXISTS (
+                         SELECT 1 FROM audit_logs al
+                         WHERE al.entity = 'JobTicket' AND al.entity_id = j.id
+                           AND (al.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${DHAKA_TZ})::date = ${runDay}::date
+                     )
+               ) AS "partsOutstanding",
+               (
+                   SELECT COUNT(*) FROM pending_part_costs p
+                   WHERE p.billed_by = u.id AND p.settled_at IS NULL
+                     AND (p.created_at AT TIME ZONE 'UTC' AT TIME ZONE ${DHAKA_TZ})::date = ${runDay}::date
+               ) AS "costsOutstanding"
+        FROM users u
+        WHERE u.status = 'Active'
+          AND u.role IN (${sql.join([...ATTENDANCE_ROLES, ...MANAGER_ROLES].map((r) => sql`${r}`), sql`, `)})
+    `);
+
+    for (const row of ((rows as any).rows ?? rows) as any[]) {
+        const parts = Number(row.partsOutstanding) || 0;
+        const costs = Number(row.costsOutstanding) || 0;
+        const attendanceOk = Boolean(row.attendanceOk);
+        const clean = attendanceOk && parts === 0 && costs === 0;
+        // ON CONFLICT DO NOTHING, not an upsert: the first snapshot of the day
+        // is the honest one. A later pass must not quietly rewrite history
+        // after someone has caught up.
+        await db.execute(sql`
+            INSERT INTO shift_close_records
+                (id, run_day, user_id, user_name, user_role, attendance_ok,
+                 parts_outstanding, costs_outstanding, closed_clean, created_at)
+            VALUES (${randomUUID()}, ${runDay}, ${String(row.id)}, ${String(row.name ?? "")},
+                    ${String(row.role ?? "")}, ${attendanceOk}, ${parts}, ${costs}, ${clean}, NOW())
+            ON CONFLICT (run_day, user_id) DO NOTHING
+        `);
+    }
+}
+
+/**
+ * One digest to the Super Admin the next morning.
+ *
+ * Deliberately aggregated and deliberately late. The evening nudge is private —
+ * nobody is publicly named at 19:00 while they still have time to fix it. By
+ * 09:30 the day is closed and the question has changed from "please finish" to
+ * "who did not", which is a supervisory question and belongs to one person.
+ *
+ * That split is what makes this discipline rather than surveillance, and it is
+ * why staff accept it.
+ *
+ * Silent when everyone closed cleanly. A daily "all good" would be the fastest
+ * way to make this report unread.
+ */
+async function sendMorningReport(runDay: string, minutes: number): Promise<void> {
+    if (minutes < MORNING_REPORT_MIN) return;
+
+    // Yesterday in Dhaka terms.
+    const yesterday = new Date(`${runDay}T12:00:00Z`);
+    yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+    const reportDay = yesterday.toISOString().slice(0, 10);
+
+    const rows = await db.execute(sql`
+        SELECT user_name AS "userName", attendance_ok AS "attendanceOk",
+               parts_outstanding AS "parts", costs_outstanding AS "costs"
+        FROM shift_close_records
+        WHERE run_day = ${reportDay} AND closed_clean = false
+        ORDER BY user_name
+    `);
+    const misses = ((rows as any).rows ?? rows) as any[];
+    if (misses.length === 0) return;
+
+    const names = misses.map((m) => String(m.userName)).filter(Boolean);
+    const summary = names.slice(0, 3).join(", ");
+    const extra = names.length > 3 ? ` and ${names.length - 3} more` : "";
+
+    for (const managerId of await superAdminIds()) {
+        await sendOnce(runDay, "shift_close_report", managerId, {
+            title: `${misses.length} did not close cleanly yesterday`,
+            message: `${summary}${extra}. Attendance, parts or buying prices were left outstanding.`,
+            link: "/admin#attendance",
+        });
+    }
+}
+
+/**
  * Keep both ledgers bounded.
  *
  * The bell reads notifications on every load, so an unbounded table gets slower
@@ -527,6 +646,8 @@ export async function runNudgeSweep(): Promise<void> {
             ["ATTENDANCE_SWEEP_FAILED", () => sweepAttendance(runDay, minutes)],
             ["PARTS_SWEEP_FAILED", () => sweepPartsDeclaration(runDay, minutes)],
             ["PENDING_COST_SWEEP_FAILED", () => sweepPendingPartCosts(runDay, minutes)],
+            ["SHIFT_SNAPSHOT_FAILED", () => snapshotShiftClose(runDay, minutes)],
+            ["MORNING_REPORT_FAILED", () => sendMorningReport(runDay, minutes)],
             ["STALE_JOB_SWEEP_FAILED", () => sweepStaleJobs(runDay, minutes)],
         ] as const);
 
@@ -552,7 +673,7 @@ export async function runNudgeSweep(): Promise<void> {
 
 export function startNudgeScheduler(): void {
     if (schedulerTimer) return;
-    console.log("[Nudges] Started — attendance 10:30/11:00, manager digest 11:30, shift close 19:00, evening 20:00 Asia/Dhaka");
+    console.log("[Nudges] Started — morning report 09:30, attendance 10:30/11:00, digest 11:30, shift close 19:00, evening 20:00, snapshot 20:30 Asia/Dhaka");
     schedulerTimer = setInterval(() => {
         // A slow sweep must not overlap itself; correctness still comes from
         // the dispatch ledger, this only avoids pointless concurrent work.

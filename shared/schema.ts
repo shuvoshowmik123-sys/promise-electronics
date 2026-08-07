@@ -2001,6 +2001,49 @@ export const pendingPartCosts = pgTable("pending_part_costs", {
 
 export type PendingPartCost = typeof pendingPartCosts.$inferSelect;
 
+/**
+ * What each person still owed when the shop closed, one row per person per day.
+ *
+ * Snapshotted at closing time rather than computed the next morning, because
+ * by then it is unrecoverable: a technician who declares yesterday's parts at
+ * 9am would look like they closed cleanly, and the one thing this is meant to
+ * show — the pattern, over weeks — would quietly erase itself. The record has
+ * to be taken at the moment it was true.
+ *
+ * Counts, not a list. The morning report answers "who closed clean and who did
+ * not", and the detail already lives in the tables it was counted from. Storing
+ * copies would let the two disagree.
+ *
+ * This is deliberately not punitive on its own. One missed evening is noise —
+ * someone was on a late delivery. The value is only visible across a month,
+ * which is why it is kept rather than merely notified.
+ */
+export const shiftCloseRecords = pgTable("shift_close_records", {
+  id: text("id").primaryKey(),
+  /** Asia/Dhaka calendar day. The shop's day, not UTC's. */
+  runDay: text("run_day").notNull(),
+  userId: text("user_id").notNull(),
+  userName: text("user_name").notNull(),
+  userRole: text("user_role").notNull(),
+  /** Did they record attendance at all today. */
+  attendanceOk: boolean("attendance_ok").notNull().default(false),
+  /** Jobs they touched today that still have no parts recorded. */
+  partsOutstanding: integer("parts_outstanding").notNull().default(0),
+  /** Sourced parts they billed today with no buying price. */
+  costsOutstanding: integer("costs_outstanding").notNull().default(0),
+  /** True when nothing was owed — the state everyone should be in. */
+  closedClean: boolean("closed_clean").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => {
+  return {
+    // One snapshot per person per day; the sweep polls and must not duplicate.
+    onceIdx: uniqueIndex("uq_shift_close_once").on(table.runDay, table.userId),
+    dayIdx: index("idx_shift_close_run_day").on(table.runDay),
+  };
+});
+
+export type ShiftCloseRecord = typeof shiftCloseRecords.$inferSelect;
+
 export const insertNotificationSchema = createInsertSchema(notifications).omit({
   id: true,
   createdAt: true,
