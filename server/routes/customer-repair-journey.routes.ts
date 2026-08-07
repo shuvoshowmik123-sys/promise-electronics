@@ -1,5 +1,6 @@
 import { Router, Request, Response } from "express";
 import { requireCustomerAuth, getCustomerId } from "./middleware/auth.js";
+import { isTvSymptom } from "../../shared/tv-symptoms.js";
 import { repairJourneyService } from "../services/customer-repair-journey.service.js";
 
 const router = Router();
@@ -234,7 +235,7 @@ router.post(
         return res.status(401).json({ error: "Not authenticated", code: "NOT_AUTHENTICATED" });
       }
 
-      const { claimType, issueDescription } = req.body;
+      const { claimType, issueDescription, problemType } = req.body;
       if (!claimType || !["service", "parts"].includes(claimType)) {
         return res.status(400).json({ error: "Claim type must be 'service' or 'parts'" });
       }
@@ -242,11 +243,17 @@ router.post(
         return res.status(400).json({ error: "Issue description is required" });
       }
 
+      /**
+       * An unrecognised symptom is dropped rather than rejected. The claim is
+       * what matters; a stale client sending an old value must not cost the
+       * customer their claim over a dropdown.
+       */
       const result = await repairJourneyService.createWarrantyClaim({
         jobId: req.params.jobId,
         customerId,
         claimType,
         issueDescription: issueDescription.trim(),
+        problemType: isTvSymptom(problemType) ? problemType : null,
       });
 
       if (!result.success) {

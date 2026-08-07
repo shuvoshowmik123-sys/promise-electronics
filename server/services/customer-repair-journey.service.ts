@@ -1197,6 +1197,8 @@ export const repairJourneyService = {
     jobId: string;
     customerId: string;
     claimType: "service" | "parts";
+    /** Symptom the customer picked, in their own vocabulary. Optional. */
+    problemType?: string | null;
     issueDescription: string;
   }): Promise<{ success: true; claimId: string } | { success: false; error: string; status: number }> {
     const job = await jobRepo.getJobTicket(opts.jobId);
@@ -1266,9 +1268,9 @@ export const repairJourneyService = {
 
     await db.execute(sql`
       INSERT INTO warranty_claims (id, original_job_id, customer, customer_phone, device, claim_type, claim_reason,
-        warranty_valid, warranty_expiry_date, claimed_by, claimed_by_name, claimed_by_role, status, created_at, updated_at)
+        problem_type, warranty_valid, warranty_expiry_date, claimed_by, claimed_by_name, claimed_by_role, status, created_at, updated_at)
       VALUES (${claimId}, ${opts.jobId}, ${customer?.name || "Customer"}, ${customer?.phone || ""},
-        ${(job as any).device || ""}, ${opts.claimType}, ${opts.issueDescription},
+        ${(job as any).device || ""}, ${opts.claimType}, ${opts.issueDescription}, ${opts.problemType ?? null},
         TRUE, ${expiryDate.toISOString()}::timestamp, ${opts.customerId}, ${customer?.name || "Customer"}, 'Customer',
         'pending', NOW(), NOW())
     `);

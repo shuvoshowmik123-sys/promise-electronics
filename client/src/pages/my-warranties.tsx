@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { TV_SYMPTOMS, labelTvSymptom } from "@shared/tv-symptoms";
 import { useCustomerLanguage, type TranslationKey } from "@/contexts/CustomerLanguageContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -43,17 +44,19 @@ function WarrantyClaimSheet({
 }: {
   target: WarrantyClaimTarget | null;
   onClose: () => void;
-  onSubmit: (data: { claimType: WarrantyClaimType; issueDescription: string }) => void;
+  onSubmit: (data: { claimType: WarrantyClaimType; issueDescription: string; problemType: string | null }) => void;
   busy: boolean;
 }) {
-  const { t } = useCustomerLanguage();
+  const { t, language } = useCustomerLanguage();
   const [claimType, setClaimType] = useState<WarrantyClaimType>("service");
   const [issueDescription, setIssueDescription] = useState("");
+  const [problemType, setProblemType] = useState<string | null>(null);
 
   useEffect(() => {
     if (target) {
       setClaimType(target.claimType);
       setIssueDescription("");
+      setProblemType(null);
     }
   }, [target]);
 
@@ -63,8 +66,15 @@ function WarrantyClaimSheet({
   const hasPartsWarranty = target.warranty.partsWarranty.isActive;
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!issueDescription.trim()) return;
-    onSubmit({ claimType, issueDescription: issueDescription.trim() });
+    // A picked symptom is a complete answer on its own. Demanding prose as
+    // well turns a two-tap claim into an essay, and the people most likely to
+    // give up are the ones least comfortable writing in English.
+    if (!problemType && !issueDescription.trim()) return;
+    onSubmit({
+      claimType,
+      issueDescription: issueDescription.trim() || labelTvSymptom(problemType, "en"),
+      problemType,
+    });
   };
 
   return (
@@ -78,6 +88,22 @@ function WarrantyClaimSheet({
         <SectionEyebrow>{t("warranties.claimTitle")}</SectionEyebrow>
         <h2 className="mt-2 text-2xl font-black text-slate-950">{target.warranty.device}</h2>
         <RefBadge className="mt-3">{formatWarrantyRef(target.warranty.jobId)}</RefBadge>
+
+        {/*
+          * Reassurance BEFORE any question. Someone opening a claim is already
+          * annoyed their television broke again; leading with a form reads as a
+          * hurdle, and leading with "yes, you are covered" removes the anxiety
+          * the rest of the sheet would otherwise be fighting.
+          */}
+        <div className="mt-4 flex items-center gap-2 rounded-2xl border border-emerald-100 bg-emerald-50 px-3 py-2.5">
+          <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" />
+          <p className="text-sm font-black text-emerald-800">
+            {t("claim.covered")}
+            <span className="ml-1 font-semibold text-emerald-700">
+              · {(claimType === "parts" ? target.warranty.partsWarranty : target.warranty.serviceWarranty).remainingDays} {t("warranties.daysLeft")}
+            </span>
+          </p>
+        </div>
 
         <label className="mt-5 block">
           <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t("warranties.claimType")}</span>
@@ -94,21 +120,76 @@ function WarrantyClaimSheet({
           </p>
         </label>
 
+        <div className="mt-5">
+          <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t("claim.whatsWrong")}</span>
+          {/* Their own words, from the same list they picked at intake — not the
+              technician's component list. Asking a customer to name a board is
+              asking them to do the diagnosis. */}
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {TV_SYMPTOMS.map((symptom) => {
+              const active = problemType === symptom.value;
+              return (
+                <button
+                  key={symptom.value}
+                  type="button"
+                  onClick={() => setProblemType(active ? null : symptom.value)}
+                  className={`h-12 rounded-2xl border px-3 text-sm font-bold transition-colors ${
+                    active
+                      ? "border-emerald-300 bg-emerald-50 text-emerald-800"
+                      : "border-slate-200 bg-white text-slate-600"
+                  }`}
+                >
+                  {language === "bn" ? symptom.bn : symptom.en}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <label className="mt-4 block">
-          <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t("warranties.issue")}</span>
+          <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t("claim.tellUsMore")}</span>
           <textarea
             value={issueDescription}
             onChange={(event) => setIssueDescription(event.target.value)}
             placeholder={t("warranties.issuePlaceholder")}
-            className="mt-2 min-h-32 w-full rounded-2xl border border-emerald-100 bg-emerald-50/40 px-3 py-3 text-sm font-medium text-slate-800 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
+            className="mt-2 min-h-24 w-full rounded-2xl border border-emerald-100 bg-emerald-50/40 px-3 py-3 text-sm font-medium text-slate-800 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
           />
         </label>
+
+        {/*
+          * The four questions every customer has, answered before they ask —
+          * do I pay, who moves the TV, how long, and what if it is something
+          * else. Shown only once they have said what is wrong, so the sheet
+          * opens as a question rather than a wall of policy.
+          */}
+        {problemType && (
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <p className="text-xs font-black uppercase tracking-wide text-slate-500">{t("claim.nextTitle")}</p>
+            <ul className="mt-2 space-y-1.5 text-sm font-medium leading-5 text-slate-700">
+              <li>• {t("claim.nextCheck")}</li>
+              <li>• {t("claim.nextCollect")}</li>
+              <li>• {t("claim.nextReply")}</li>
+            </ul>
+            {/*
+              * The different-fault case, said plainly and in advance.
+              *
+              * The app never refuses a claim for a mismatched symptom — that
+              * would read as "you are trying to get out of it" and is exactly
+              * the feeling this sheet exists to avoid. It sets the expectation
+              * instead: a new quotation, and nothing done without agreement.
+              * The discount itself is the shop's judgement, not the system's.
+              */}
+            <p className="mt-2.5 border-t border-slate-200 pt-2.5 text-xs font-medium leading-5 text-slate-500">
+              {t("claim.differentFault")}
+            </p>
+          </div>
+        )}
 
         <div className="mt-5 grid grid-cols-2 gap-3">
           <button type="button" onClick={onClose} className="h-12 rounded-2xl border border-slate-200 text-sm font-black text-slate-600">
             {t("journey.cancel")}
           </button>
-          <PillButton disabled={busy || !issueDescription.trim()}>{t("warranties.submitClaim")}</PillButton>
+          <PillButton disabled={busy || (!problemType && !issueDescription.trim())}>{t("warranties.submitClaim")}</PillButton>
         </div>
       </form>
     </div>
@@ -458,8 +539,12 @@ export default function MyWarrantiesPage() {
   });
 
   const claimMutation = useMutation({
-    mutationFn: (data: { jobId: string; claimType: WarrantyClaimType; issueDescription: string }) =>
-      customerWarrantiesApi.claim(data.jobId, { claimType: data.claimType, issueDescription: data.issueDescription }),
+    mutationFn: (data: { jobId: string; claimType: WarrantyClaimType; issueDescription: string; problemType: string | null }) =>
+      customerWarrantiesApi.claim(data.jobId, {
+        claimType: data.claimType,
+        issueDescription: data.issueDescription,
+        problemType: data.problemType,
+      }),
     onSuccess: () => {
       toast({ title: t("warranties.claimSubmitted") });
       setClaimTarget(null);

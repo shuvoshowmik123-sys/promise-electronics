@@ -252,7 +252,7 @@ export type WarrantyInfo = {
 
 export const customerWarrantiesApi = {
     getAll: () => fetchApi<WarrantyInfo[]>("/customer/warranties"),
-    claim: (jobId: string, data: { claimType: "service" | "parts"; issueDescription: string }) =>
+    claim: (jobId: string, data: { claimType: "service" | "parts"; issueDescription: string; problemType?: string | null }) =>
         fetchApi<{ claimId: string; message: string }>(`/customer/warranties/${jobId}/claim`, {
             method: "POST",
             body: JSON.stringify(data),

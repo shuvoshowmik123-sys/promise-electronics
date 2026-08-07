@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_08_shift_close_records";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_08_claim_problem_type";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2112,6 +2112,18 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
         ON shift_close_records (run_day, user_id)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_shift_close_run_day
         ON shift_close_records (run_day)`);
+    },
+  },
+  {
+    id: "2026_08_08_claim_problem_type",
+    description:
+      "The symptom a customer picks when claiming warranty. Free text alone produced 'tv not working properly', which cannot be triaged, routed or counted. A picked symptom lets the shop prepare before the television arrives, makes repeated failures on one supplier's part visible as a pattern, and can be compared against what the original repair covered — which is how a different fault is identified before the customer is at the counter expecting it free. Uses the customer-facing vocabulary (No Power, No Display, Lines on Screen) rather than the technician's component list, because asking a customer to name a component is asking them to do the diagnosis. Nullable so claims filed before this existed, and staff-filed claims, keep working. Additive only: one nullable column.",
+    up: async (client) => {
+      await client.query(`ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS problem_type TEXT`);
+      // Pattern queries ask "which symptom, how often" over a date range.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_warranty_claims_problem_type
+        ON warranty_claims (problem_type)
+        WHERE problem_type IS NOT NULL`);
     },
   },
 ];

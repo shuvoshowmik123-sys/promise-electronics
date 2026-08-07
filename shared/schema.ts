@@ -2365,6 +2365,26 @@ export const warrantyClaims = pgTable("warranty_claims", {
   // Claim Details
   claimType: text("claim_type").notNull(), // 'service' | 'parts'
   claimReason: text("claim_reason").notNull(),
+  /**
+   * The symptom the customer picked, in their own vocabulary.
+   *
+   * Free text alone gave "tv not working properly", which nobody can triage,
+   * route, or count. A picked symptom does three things prose cannot: it lets
+   * the shop prepare before the television arrives, it makes five backlight
+   * failures on one supplier's part visible as a pattern, and it can be
+   * compared against what the original repair actually covered — which is how
+   * a different fault is spotted before the customer is standing at the
+   * counter expecting it free.
+   *
+   * Deliberately the CUSTOMER-facing list (No Power, No Display, Lines on
+   * Screen…), not the technician's component list (T-Con, Mainboard…). They
+   * describe symptoms; technicians describe causes, and asking a customer to
+   * name a component is asking them to do the diagnosis.
+   *
+   * Nullable: claims filed before this existed, and staff-filed claims, have
+   * no symptom and must keep working.
+   */
+  problemType: text("problem_type"),
   warrantyValid: boolean("warranty_valid").notNull(), // Auto-computed on creation
   warrantyExpiryDate: timestamp("warranty_expiry_date"), // Snapshot of the relevant expiry date
 
