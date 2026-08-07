@@ -190,8 +190,23 @@ export const customerServiceRequestsApi = {
 // Customer Order Tracking API (for backwards compatibility)
 export const customerOrdersApi = customerServiceRequestsApi;
 
+export type NgExplanation = {
+    device: string | null;
+    diagnosis: string;
+    failedRepairType: string;
+    reportedAt: string;
+    decisionType: string | null;
+    decisionRecordedAt: string | null;
+    awaitingDecision: boolean;
+};
+
 export const customerRepairJourneysApi = {
     getAll: () => fetchApi<CustomerRepairJourneyEnriched[]>("/customer/repair-journeys"),
+    /**
+     * Why a repair could not be completed. `ng` is null for ordinary repairs,
+     * which is most of them — render nothing rather than an empty panel.
+     */
+    getNg: (jobId: string) => fetchApi<{ ng: NgExplanation | null }>(`/customer/jobs/${jobId}/ng`),
     getOne: (id: string) => fetchApi<CustomerRepairJourneyDetail>(`/customer/repair-journeys/${id}`),
     requestSchedule: (id: string, data: JourneySchedulePayload) =>
         fetchApi<{ scheduleId: string; status: string }>(`/customer/repair-journeys/${id}/schedule`, {

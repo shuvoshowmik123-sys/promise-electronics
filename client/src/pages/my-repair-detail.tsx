@@ -6,6 +6,7 @@ import { customerRepairJourneysApi, type AcceptJourneyQuotePayload, type Custome
 import { useCustomerLanguage, type CustomerLang } from "@/contexts/CustomerLanguageContext";
 import { PillButton, RefBadge, SectionEyebrow, StatusChip, toneForStatus } from "@/components/customer/mobile-kit";
 import { HandoverCodeCard } from "@/components/customer/HandoverCodeCard";
+import { NgExplanationCard } from "@/components/customer/NgExplanationCard";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -358,6 +359,12 @@ export default function MyRepairDetailPage() {
             <HandoverCodeCard serviceRequestId={detail.serviceRequestId} />
           ) : null}
 
+          {/* Renders nothing unless this repair actually has a verified NG
+              report, which is the uncommon case. Placed high because a customer
+              whose television may be beyond repair should not have to scroll
+              past delivery dates to find that out. */}
+          <NgExplanationCard jobId={detail.jobTicketId} />
+
           {(detail.nextAction || detail.nextActionLabel) && (
             <section className="rounded-[1.75rem] border border-emerald-100 bg-white p-4">
               <SectionEyebrow>{t("journey.nextAction")}</SectionEyebrow>
@@ -430,6 +437,9 @@ export default function MyRepairDetailPage() {
             {detail.serviceRequestId ? (
               <div className="mt-4"><HandoverCodeCard serviceRequestId={detail.serviceRequestId} /></div>
             ) : null}
+            {/* The desktop tree renders separately from the mobile one, so this
+                has to appear in both or half the customers never see it. */}
+            <div className="mt-4"><NgExplanationCard jobId={detail.jobTicketId} /></div>
             <div className="mt-6"><BillingSummary events={detail.events} /></div>
             <div className="mt-6">
               <ServiceFeedbackCard ticketNumber={ticketRef} />

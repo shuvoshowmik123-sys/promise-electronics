@@ -553,6 +553,78 @@ export const repairJourneyService = {
     }));
   },
 
+  /**
+   * What the customer is told when their television cannot be repaired.
+   *
+   * The portal was blind to this entirely: a TV could be declared
+   * not-repairable, a decision recorded on the customer's behalf, and nothing
+   * of it ever appeared in their account. Every explanation happened by phone,
+   * which is slow for the shop and anxious for the customer — they know
+   * something is wrong and have to ring to find out what.
+   *
+   * Deliberately NOT the technician's report. technical_notes, the parts
+   * snapshot and the evidence attachments are an internal engineering record;
+   * repeating them to a customer reads as either jargon or excuse-making.
+   * What is returned is the three things a person actually wants: what failed,
+   * what we propose, and what happens next.
+   *
+   * Ownership is checked by phone the same way warranty claims are, because a
+   * job id in a URL must never be enough to read someone else's diagnosis.
+   */
+  async getNgExplanation(jobId: string, customerId: string) {
+    const jobRows = await db.execute(sql`
+      SELECT id, customer_phone, device, status FROM job_tickets WHERE id = ${jobId}
+    `);
+    const job = jobRows.rows[0] as any;
+    if (!job) return { success: false as const, status: 404, error: "Repair not found" };
+
+    if (!job.customer_phone) {
+      return { success: false as const, status: 403, error: "This repair does not belong to your account" };
+    }
+    const customer = await storage.getCustomer(customerId);
+    const jobPhone = normalizePhone(job.customer_phone);
+    const custPhone = normalizePhone(customer?.phone);
+    if (!custPhone || !jobPhone || custPhone !== jobPhone) {
+      return { success: false as const, status: 403, error: "This repair does not belong to your account" };
+    }
+
+    // Only a report a manager has verified is shown. A pending one is still
+    // being checked internally, and telling a customer their TV is dead before
+    // the shop is sure is worse than telling them nothing.
+    const reportRows = await db.execute(sql`
+      SELECT id, failed_repair_type, diagnosis, report_status, reported_at
+      FROM job_ng_reports
+      WHERE job_id = ${jobId} AND report_status <> 'pending_review'
+      ORDER BY reported_at DESC
+      LIMIT 1
+    `);
+    const report = reportRows.rows[0] as any;
+    if (!report) return { success: true as const, ng: null };
+
+    const decisionRows = await db.execute(sql`
+      SELECT decision_type, recorded_at
+      FROM job_ng_customer_decisions
+      WHERE job_id = ${jobId}
+      ORDER BY recorded_at DESC
+      LIMIT 1
+    `);
+    const decision = decisionRows.rows[0] as any;
+
+    return {
+      success: true as const,
+      ng: {
+        device: job.device ?? null,
+        /** Plain-language summary of the fault, written by the technician. */
+        diagnosis: String(report.diagnosis || ""),
+        failedRepairType: String(report.failed_repair_type || ""),
+        reportedAt: report.reported_at,
+        decisionType: decision ? String(decision.decision_type) : null,
+        decisionRecordedAt: decision ? decision.recorded_at : null,
+        awaitingDecision: !decision,
+      },
+    };
+  },
+
   async getJourneyDetail(journeyId: string, customerId: string) {
     const journeyRows = await db.execute(sql`
       SELECT j.*,

@@ -177,6 +177,16 @@ const translations = {
   "warranties.daysLeft":  { en: "days left",          bn: "দিন বাকি" },
   "warranties.expiredOn": { en: "Expired on",         bn: "মেয়াদ শেষ" },
   "warranties.until":     { en: "Until",               bn: "পর্যন্ত" },
+  "ng.title":        { en: "About your television",  bn: "আপনার টেলিভিশন সম্পর্কে" },
+  "ng.whatWeFound":  { en: "What we found",          bn: "আমরা যা পেয়েছি" },
+  "ng.whatNext":     { en: "What happens next",      bn: "এরপর কী হবে" },
+  "ng.awaiting":     { en: "Our team will call you to talk through the options. Nothing is charged for this check.", bn: "আমাদের টিম আপনাকে ফোন করে বিকল্পগুলো জানাবে। এই পরীক্ষার জন্য কোনো চার্জ নেই।" },
+  "ng.decided":      { en: "Your decision is recorded and we are acting on it.", bn: "আপনার সিদ্ধান্ত রেকর্ড করা হয়েছে এবং আমরা সেই অনুযায়ী কাজ করছি।" },
+  "ng.callUs":       { en: "Questions? Call us — we are happy to explain.", bn: "প্রশ্ন আছে? আমাদের ফোন করুন — আমরা ব্যাখ্যা করতে পেরে খুশি হব।" },
+  "ng.decision.replacement":       { en: "Replacement agreed",        bn: "প্রতিস্থাপনে সম্মত" },
+  "ng.decision.repair_alternative":{ en: "Alternative repair agreed", bn: "বিকল্প মেরামতে সম্মত" },
+  "ng.decision.quote_required":    { en: "Quotation being prepared",  bn: "কোটেশন তৈরি হচ্ছে" },
+  "ng.decision.decline":           { en: "You chose not to proceed",  bn: "আপনি এগিয়ে না যাওয়ার সিদ্ধান্ত নিয়েছেন" },
   "warranties.noPartsCover": { en: "No separate parts warranty on this repair — the service warranty covers it.", bn: "এই মেরামতে আলাদা যন্ত্রাংশ ওয়ারেন্টি নেই — সার্ভিস ওয়ারেন্টি এটি কভার করে।" },
 
   // ── Support ──

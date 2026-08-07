@@ -26,6 +26,35 @@ router.get(
 );
 
 /**
+ * GET /api/customer/jobs/:jobId/ng — why a repair could not be completed
+ *
+ * Returns { ng: null } when there is nothing to explain, which is the common
+ * case. The client should render nothing at all rather than an empty panel:
+ * a "no problems found" box on every ordinary repair would train people to
+ * ignore the one that matters.
+ */
+router.get(
+  "/api/customer/jobs/:jobId/ng",
+  requireCustomerAuth,
+  async (req: Request, res: Response) => {
+    try {
+      const customerId = getCustomerId(req);
+      if (!customerId) {
+        return res.status(401).json({ error: "Not authenticated", code: "NOT_AUTHENTICATED" });
+      }
+      const result = await repairJourneyService.getNgExplanation(req.params.jobId, customerId);
+      if (!result.success) {
+        return res.status(result.status).json({ error: result.error });
+      }
+      res.json({ ng: result.ng });
+    } catch (error: any) {
+      console.error("[RepairJourney] NG explanation error:", (error as Error).message);
+      res.status(500).json({ error: "Failed to fetch repair details" });
+    }
+  }
+);
+
+/**
  * GET /api/customer/repair-journeys/:id — detail with events & schedules
  */
 router.get(
