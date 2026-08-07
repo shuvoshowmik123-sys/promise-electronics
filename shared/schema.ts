@@ -1952,6 +1952,55 @@ export const reminderDispatches = pgTable("reminder_dispatches", {
 
 export type ReminderDispatch = typeof reminderDispatches.$inferSelect;
 
+/**
+ * A sourced part billed before anyone had time to record what it cost.
+ *
+ * At the counter the customer is waiting for a bill, not for a margin figure.
+ * Forcing the buying price in at that moment produces either a queue or a
+ * guessed number typed to make the form go away — and a guessed cost is worse
+ * than a blank one, because a blank one can be chased and a wrong one cannot
+ * be detected. So the sale completes on the selling price alone and the cost
+ * is collected at the end of the shift, when the person who bought the part
+ * can actually think.
+ *
+ * Deliberately NOT stored by relaxing NOT NULL on local_purchases. That ledger
+ * promises every row has a job, a cost and a receipt, and it is the audit
+ * trail for petty cash. A row here is an IOU, not a purchase record: it
+ * graduates into local_purchases once the cost lands, and until then it is
+ * honest about being incomplete.
+ *
+ * `jobTicketId` is nullable because a walk-in counter sale has no job, which is
+ * exactly the case local_purchases cannot represent.
+ */
+export const pendingPartCosts = pgTable("pending_part_costs", {
+  id: text("id").primaryKey(),
+  /** The bill this part was sold on — where the manager goes to settle it. */
+  posTransactionId: text("pos_transaction_id").notNull(),
+  jobTicketId: text("job_ticket_id"),
+  partName: text("part_name").notNull(),
+  sellingPrice: real("selling_price").notNull(),
+  quantity: integer("quantity").notNull().default(1),
+  /** Warranty promised on this part, so it is not lost with the cost. */
+  warrantyDays: integer("warranty_days"),
+  /** Who owes the number. The nudge goes to this person, nobody else. */
+  billedBy: text("billed_by").notNull(),
+  billedByName: text("billed_by_name").notNull(),
+  /** NULL until settled — this is what the evening sweep looks for. */
+  costPrice: real("cost_price"),
+  settledAt: timestamp("settled_at"),
+  settledBy: text("settled_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  storeId: text("store_id"),
+}, (table) => {
+  return {
+    // The evening sweep asks "what does this person still owe today?"
+    outstandingIdx: index("idx_pending_part_costs_outstanding").on(table.billedBy, table.settledAt),
+    transactionIdx: index("idx_pending_part_costs_transaction").on(table.posTransactionId),
+  };
+});
+
+export type PendingPartCost = typeof pendingPartCosts.$inferSelect;
+
 export const insertNotificationSchema = createInsertSchema(notifications).omit({
   id: true,
   createdAt: true,

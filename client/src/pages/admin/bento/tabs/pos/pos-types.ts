@@ -4,6 +4,17 @@ export type CartItem = {
     price: string;
     quantity: number;
     image?: string;
+    /**
+     * Set only on ad-hoc sourced parts, which have no catalogue entry.
+     *
+     * The buying price is optional at the counter: the customer is waiting for
+     * a bill, not a margin figure. When it is absent the sale still completes
+     * and the number is chased at the end of the shift, so both of these must
+     * survive checkout rather than being shown in a toast and dropped.
+     */
+    isSourced?: boolean;
+    sourcedCostPrice?: number | null;
+    sourcedWarrantyDays?: number | null;
 };
 
 export type LinkedJobCharge = {

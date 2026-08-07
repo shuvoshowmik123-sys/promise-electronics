@@ -194,7 +194,14 @@ describe("migration safety", () => {
         expect(body).toContain("CREATE TABLE IF NOT EXISTS reminder_dispatches");
     });
 
-    it("bumps the required schema version", () => {
-        expect(MIGRATE).toContain('REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_07_reminder_dispatches"');
+    it("is registered in the migration ledger", () => {
+        /**
+         * Presence, not position. This originally pinned
+         * REQUIRED_MAIN_SCHEMA_VERSION to this id, so the next migration
+         * appended anywhere in the project failed it — a false alarm about
+         * unrelated work rather than a real regression. The ledger is
+         * append-only; being last is temporary by definition.
+         */
+        expect(MIGRATE).toContain('id: "2026_08_07_reminder_dispatches"');
     });
 });

@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_07_reminder_dispatches";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_08_pending_part_costs";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2056,6 +2056,36 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       // Retention sweeps delete by age; the bell never reads this table.
       await client.query(`CREATE INDEX IF NOT EXISTS idx_reminder_dispatches_created_at
         ON reminder_dispatches (created_at)`);
+    },
+  },
+  {
+    id: "2026_08_08_pending_part_costs",
+    description:
+      "Sourced parts billed before their buying price was recorded. At the counter the customer waits for a bill, not for a margin figure, and forcing the cost in there produces a guessed number typed to clear the form — worse than a blank, because a blank can be chased and a wrong one cannot be detected. The sale completes on the selling price and the cost is collected at the end of the shift by the person who bought the part. Deliberately a separate table rather than relaxing NOT NULL on local_purchases: that ledger promises every row has a job, a cost and a receipt and is the petty-cash audit trail, whereas a row here is an IOU that graduates into it once settled. job_ticket_id is nullable because a walk-in counter sale has no job, which is precisely what local_purchases cannot represent. Additive only: one new table.",
+    up: async (client) => {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS pending_part_costs (
+          id                  TEXT PRIMARY KEY,
+          pos_transaction_id  TEXT NOT NULL,
+          job_ticket_id       TEXT,
+          part_name           TEXT NOT NULL,
+          selling_price       REAL NOT NULL,
+          quantity            INTEGER NOT NULL DEFAULT 1,
+          warranty_days       INTEGER,
+          billed_by           TEXT NOT NULL,
+          billed_by_name      TEXT NOT NULL,
+          cost_price          REAL,
+          settled_at          TIMESTAMP,
+          settled_by          TEXT,
+          created_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+          store_id            TEXT
+        )
+      `);
+      // "What does this person still owe today?" — the evening sweep's question.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_pending_part_costs_outstanding
+        ON pending_part_costs (billed_by, settled_at)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_pending_part_costs_transaction
+        ON pending_part_costs (pos_transaction_id)`);
     },
   },
 ];

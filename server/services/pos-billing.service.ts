@@ -572,6 +572,42 @@ export async function createPosSaleAtomic(input: CreatePosSaleInput): Promise<Cr
       );
     }
 
+    /**
+     * Sourced parts sold without a buying price become an IOU.
+     *
+     * Written inside the same transaction as the sale, so a bill can never
+     * exist without its outstanding cost being recorded — that gap is exactly
+     * how a margin goes missing unnoticed. The evening sweep reads these and
+     * nudges the one person who knows the number: whoever billed it.
+     *
+     * Parts sold WITH a cost need no row; nothing is owed.
+     */
+    const sourcedNeedingCost = (input.cartItems || []).filter(
+      (item: any) => item?.isSourced && (item.sourcedCostPrice == null || Number(item.sourcedCostPrice) <= 0),
+    );
+    if (sourcedNeedingCost.length > 0 && input.actorUserId) {
+      const billedByName = String(
+        (input.req as any)?.user?.name || (input.req as any)?.user?.username || "Staff",
+      );
+      // A counter sale has no job; a job-linked sale attributes to the first.
+      const jobTicketId = allocations[0]?.job?.id ?? null;
+      await tx.insert(schema.pendingPartCosts).values(
+        sourcedNeedingCost.map((item: any) => ({
+          id: nanoid(),
+          posTransactionId: transaction.id,
+          jobTicketId,
+          partName: String(item.name || "Sourced part"),
+          sellingPrice: Number(item.price) || 0,
+          quantity: Number(item.quantity) || 1,
+          warrantyDays: item.sourcedWarrantyDays != null ? Number(item.sourcedWarrantyDays) : null,
+          billedBy: String(input.actorUserId),
+          billedByName,
+          costPrice: null,
+          storeId: (input.validated as any).storeId ?? null,
+        })),
+      );
+    }
+
     // Inventory stock updates inside same transaction
     for (const item of input.cartItems) {
       if (item?.id && item?.quantity) {

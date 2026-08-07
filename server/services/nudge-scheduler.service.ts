@@ -68,6 +68,15 @@ const ATTENDANCE_FIRST_MIN = 10 * 60 + 30;  // 10:30
 const ATTENDANCE_SECOND_MIN = 11 * 60;      // 11:00
 const MANAGER_DIGEST_MIN = 11 * 60 + 30;    // 11:30
 const EVENING_MIN = 20 * 60;                // 20:00
+/**
+ * Shift close runs at 19:00, an hour before the parts nudge.
+ *
+ * The shop closes by 20:00, so a reminder that arrives at 20:00 reaches people
+ * already on their way home. An hour of margin is the difference between "I
+ * will do it now" and "I will do it tomorrow", and tomorrow never carries the
+ * same memory of what a part cost.
+ */
+const SHIFT_CLOSE_MIN = 19 * 60;            // 19:00
 
 /** A job untouched this long is nudged; twice as long and a manager hears. */
 const STALE_JOB_DAYS = 2;
@@ -90,7 +99,8 @@ export type ReminderKind =
     | "attendance_evening"
     | "parts_declaration"
     | "stale_job"
-    | "stale_job_escalation";
+    | "stale_job_escalation"
+    | "pending_part_cost";
 
 let schedulerTimer: ReturnType<typeof setInterval> | null = null;
 let sweepInFlight = false;
@@ -366,6 +376,47 @@ async function sweepPartsDeclaration(runDay: string, minutes: number): Promise<v
 }
 
 /**
+ * The buying price nobody had time to record at the counter.
+ *
+ * Goes to the person who billed it and to nobody else — they are the only one
+ * who knows what was paid. A manager digest here would be noise, because a
+ * manager cannot answer the question.
+ *
+ * Deep-links to the bill itself rather than a list, so the answer is one tap
+ * away from the notification. Every nudge in this file lands on the exact
+ * thing it is about; a reminder that opens a home page is a reminder people
+ * learn to ignore.
+ */
+async function sweepPendingPartCosts(runDay: string, minutes: number): Promise<void> {
+    if (minutes < SHIFT_CLOSE_MIN) return;
+
+    const rows = await db.execute(sql`
+        SELECT billed_by                AS "billedBy",
+               COUNT(*)                 AS "outstanding",
+               MIN(part_name)           AS "samplePart",
+               MIN(pos_transaction_id)  AS "sampleBill"
+        FROM pending_part_costs
+        WHERE settled_at IS NULL
+          AND (created_at AT TIME ZONE 'UTC' AT TIME ZONE ${DHAKA_TZ})::date = ${runDay}::date
+        GROUP BY billed_by
+    `);
+
+    for (const row of ((rows as any).rows ?? rows) as any[]) {
+        const count = Number(row.outstanding);
+        if (!row.billedBy || count < 1) continue;
+        await sendOnce(runDay, "pending_part_cost", String(row.billedBy), {
+            title: count === 1
+                ? "1 sourced part needs its buying price"
+                : `${count} sourced parts need their buying price`,
+            message: count === 1
+                ? `${row.samplePart ?? "A part"} was billed today without a cost recorded.`
+                : `Starting with ${row.samplePart ?? "today's parts"}. Adding the cost separates the profit on today's sales.`,
+            link: "/admin/finance?target=pending-costs",
+        });
+    }
+}
+
+/**
  * Stalled work: the technician on day two, a manager on day four.
  *
  * Escalating sideways rather than repeating is the whole design. A job still
@@ -475,6 +526,7 @@ export async function runNudgeSweep(): Promise<void> {
         : ([
             ["ATTENDANCE_SWEEP_FAILED", () => sweepAttendance(runDay, minutes)],
             ["PARTS_SWEEP_FAILED", () => sweepPartsDeclaration(runDay, minutes)],
+            ["PENDING_COST_SWEEP_FAILED", () => sweepPendingPartCosts(runDay, minutes)],
             ["STALE_JOB_SWEEP_FAILED", () => sweepStaleJobs(runDay, minutes)],
         ] as const);
 
@@ -500,7 +552,7 @@ export async function runNudgeSweep(): Promise<void> {
 
 export function startNudgeScheduler(): void {
     if (schedulerTimer) return;
-    console.log("[Nudges] Started — attendance 10:30/11:00, manager digest 11:30, evening 20:00 Asia/Dhaka");
+    console.log("[Nudges] Started — attendance 10:30/11:00, manager digest 11:30, shift close 19:00, evening 20:00 Asia/Dhaka");
     schedulerTimer = setInterval(() => {
         // A slow sweep must not overlap itself; correctness still comes from
         // the dispatch ledger, this only avoids pointless concurrent work.

@@ -725,6 +725,16 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
             name: part.partName.trim(),
             price: String(part.sellingPrice),
             quantity: 1,
+            isSourced: true,
+            /**
+             * Both of these were previously shown in a toast and then thrown
+             * away. The cost may legitimately be absent — that is the whole
+             * point of settling it at the end of the shift — but "absent" and
+             * "discarded" are different states, and only one of them can be
+             * chased later. The warranty must never be lost at all.
+             */
+            sourcedCostPrice: Number.isFinite(part.costPrice) && part.costPrice > 0 ? part.costPrice : null,
+            sourcedWarrantyDays: part.warrantyDays ?? null,
         });
         toast.success(`${part.partName.trim()} added`, {
             description: part.warrantyDays
