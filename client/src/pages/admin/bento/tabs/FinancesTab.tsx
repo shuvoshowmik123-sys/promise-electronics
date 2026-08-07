@@ -12,6 +12,7 @@ import { useMemo, useState, useEffect, useRef, lazy, Suspense } from "react";
 // Lazy-loaded finance sub-sections — only the visible section's chunk downloads,
 // instead of bundling all ~3400 LOC of sub-tabs into the Finance chunk eagerly.
 const SalesTab = lazy(() => import("./FinancesTabSales").then(m => ({ default: m.SalesTab })));
+const PendingCostsView = lazy(() => import("./FinancesTabPendingCosts").then(m => ({ default: m.PendingCostsView })));
 const PettyCashTab = lazy(() => import("./FinancesTabPettyCash").then(m => ({ default: m.PettyCashTab })));
 const DuesTab = lazy(() => import("./FinancesTabDues").then(m => ({ default: m.DuesTab })));
 const RefundsTab = lazy(() => import("./FinancesTabRefunds").then(m => ({ default: m.RefundsTab })));
@@ -23,7 +24,7 @@ import { toast } from "sonner";
 import { InsertPettyCashRecord, InsertDueRecord } from "@shared/schema";
 
 export default function FinancesTab({ defaultTab, initialSearchQuery, initialRecordId, initialRecordType, onSearchConsumed }: {
-    defaultTab?: "sales" | "petty-cash" | "dues" | "refunds" | "drawer" | "manual-payments";
+    defaultTab?: "sales" | "petty-cash" | "dues" | "refunds" | "drawer" | "manual-payments" | "pending-costs";
     initialSearchQuery?: string;
     initialRecordId?: string;
     initialRecordType?: string;
@@ -43,8 +44,8 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
     const [moneyInView, setMoneyInView] = useState<"payments" | "sales" | "dues">(
         defaultTab === "sales" ? "sales" : defaultTab === "dues" ? "dues" : "payments"
     );
-    const [moneyOutView, setMoneyOutView] = useState<"expenses" | "refunds">(
-        defaultTab === "refunds" ? "refunds" : "expenses"
+    const [moneyOutView, setMoneyOutView] = useState<"expenses" | "refunds" | "pending-costs">(
+        defaultTab === "refunds" ? "refunds" : defaultTab === "pending-costs" ? "pending-costs" : "expenses"
     );
     const [kpiOpen, setKpiOpen] = useState(false);
     const [financeSearchQuery, setFinanceSearchQuery] = useState(initialSearchQuery || "");
@@ -339,6 +340,9 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
                         items={[
                             { value: "expenses", label: "Expenses" },
                             { value: "refunds", label: "Refunds" },
+                            // Where the 19:00 nudge lands. Labelled in the words
+                            // the nudge itself uses, so the tap and the tab agree.
+                            { value: "pending-costs", label: "Buying Price" },
                         ]}
                     />
                 )}
@@ -583,7 +587,7 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
                     {/* MONEY OUT — Expenses · Refunds */}
                     <TabsContent value="money-out" className="space-y-2 md:mt-6 md:space-y-4">
                         <div className="hidden rounded-full bg-rose-50 p-1 gap-1 md:inline-flex">
-                            {(["expenses", "refunds"] as const).map((k) => (
+                            {(["expenses", "refunds", "pending-costs"] as const).map((k) => (
                                 <button key={k} onClick={() => setMoneyOutView(k)}
                                     className={`rounded-full px-4 py-1.5 text-sm font-semibold transition-all capitalize ${moneyOutView === k ? "bg-rose-600 text-white shadow-sm" : "text-rose-700 hover:bg-rose-100"}`}>
                                     {k}
@@ -592,6 +596,9 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
                         </div>
                         {moneyOutView === "expenses" && (
                             <PettyCashTab getCurrencySymbol={getCurrencySymbol} createPettyCashMutation={createPettyCashMutation} deletePettyCashMutation={deletePettyCashMutation} exportToCSV={exportToCSV} initialSearchQuery={financeSearchQuery} />
+                        )}
+                        {moneyOutView === "pending-costs" && (
+                            <Suspense fallback={null}><PendingCostsView /></Suspense>
                         )}
                         {moneyOutView === "refunds" && (
                             <RefundsTab refundsData={refundsData} isLoading={isRefundsLoading} getCurrencySymbol={getCurrencySymbol} refundsApi={refundsApi} queryClient={queryClient} initialSearchQuery={financeSearchQuery} />

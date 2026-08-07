@@ -1067,8 +1067,15 @@ export default function DesignConcept() {
                                                     onSearchConsumed={() => setGlobalSearchQuery('')}
                                                 />}
                                                 {tabId === 'orders' && <OrdersTab initialSearchQuery={globalSearchQuery} onSearchConsumed={() => setGlobalSearchQuery('')} />}
+                                                {/*
+                                                  * The 19:00 buying-price nudge deep-links to
+                                                  * /admin/finance?target=pending-costs. Honouring
+                                                  * it here is what makes that notification land on
+                                                  * the one number it is asking for, rather than on
+                                                  * a sales list the reader then has to navigate.
+                                                  */}
                                                 {tabId === 'finance' && <FinancesTab
-                                                    defaultTab="sales"
+                                                    defaultTab={selectedFinanceRecordId === 'pending-costs' ? 'pending-costs' : 'sales'}
                                                     initialSearchQuery={globalSearchQuery}
                                                     initialRecordId={selectedFinanceRecordId ?? undefined}
                                                     initialRecordType={selectedFinanceRecordType ?? undefined}

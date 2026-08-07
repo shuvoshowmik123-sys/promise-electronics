@@ -156,3 +156,53 @@ describe("settling", () => {
         expect(POS_ROUTE).toMatch(/!Number\.isFinite\(cost\) \|\| cost < 0/);
     });
 });
+
+describe("the nudge lands on a screen that asks the question", () => {
+    const FINANCE = read("client/src/pages/admin/bento/tabs/FinancesTab.tsx");
+    const PANEL = read("client/src/pages/admin/bento/tabs/FinancesTabPendingCosts.tsx");
+    const SHELL = read("client/src/pages/admin/design-concept.tsx");
+
+    it("the deep link the nudge sends is honoured by the shell", () => {
+        /**
+         * The parts-declaration nudge once pointed at a jobs list that asked
+         * nothing, which is how a reminder becomes noise. This one opens the
+         * view where the number is typed.
+         */
+        expect(SHELL).toMatch(/selectedFinanceRecordId === 'pending-costs' \? 'pending-costs' : 'sales'/);
+        const NUDGE_SRC = read("server/services/nudge-scheduler.service.ts");
+        expect(NUDGE_SRC).toContain("/admin/finance?target=pending-costs");
+    });
+
+    it("Finance exposes the view on both surfaces", () => {
+        expect(FINANCE).toContain('"pending-costs"');
+        expect(FINANCE).toContain("PendingCostsView");
+        // Mobile segment tab and desktop pill row both carry it.
+        expect(FINANCE).toMatch(/\{ value: "pending-costs", label: "Buying Price" \}/);
+        expect(FINANCE).toMatch(/\["expenses", "refunds", "pending-costs"\] as const/);
+    });
+
+    it("shows the selling price as the memory cue", () => {
+        // Someone recalling what they paid hours ago is helped most by the
+        // price it went out at — usually the number they quoted around.
+        expect(PANEL).toContain("Sold at");
+        expect(PANEL).toContain("row.sellingPrice");
+    });
+
+    it("computes the margin as the number is typed", () => {
+        expect(PANEL).toMatch(/Profit \$\{money\(margin\)\}/);
+        expect(PANEL).toMatch(/Loss \$\{money\(Math\.abs\(margin\)\)\}/);
+    });
+
+    it("is personal by default, with an explicit manager toggle", () => {
+        expect(PANEL).toMatch(/\["Super Admin", "Manager"\]\.includes/);
+        expect(PANEL).toMatch(/showAll \? "\?all=true" : ""/);
+    });
+
+    it("treats nothing-owed as the normal state, not an error", () => {
+        expect(PANEL).toContain("Nothing outstanding");
+    });
+
+    it("a repeated tap cannot double-settle", () => {
+        expect(PANEL).toMatch(/Already settled/);
+    });
+});
