@@ -15,9 +15,10 @@ import { PrintStyles } from "@/components/print";
 import { Search, UserPlus, Trash2, CreditCard, Plus, ShoppingCart, Package, Loader2, Minus, FileText, Banknote, Smartphone, Clock, Shield, ChevronDown, Link, ListPlus, X, Landmark, ScanBarcode, LockKeyhole, AlertTriangle, TrendingUp, Equal, Ban, RefreshCcw, Wallet } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { inventoryApi, jobTicketsApi, posTransactionsApi, settingsApi, adminCustomersApi, drawerApi, publicAreaMapApi } from "@/lib/api";
+import { inventoryApi, jobTicketsApi, posTransactionsApi, settingsApi, adminCustomersApi, drawerApi, publicAreaMapApi, localPurchasesApi } from "@/lib/api";
 import { toast } from "sonner";
 import { CartItem, LinkedJobCharge, TransactionData, PAYMENT_METHODS, parseImages, parseTransactionForReprint } from "./pos/pos-types";
+import { MobileProductPicker, type MobilePickerItem } from "./pos/MobileProductPicker";
 import { getSafeJobDisplayRef } from "@shared/job-display-utils";
 const CustomerDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.CustomerDialog })));
 const JobLinkDialog = lazy(() => import("./pos/PosDialogs").then(m => ({ default: m.JobLinkDialog })));
@@ -110,7 +111,6 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     const lastKeyTimeRef = useRef(0);
     const barcodeTimerRef = useRef<NodeJS.Timeout | null>(null);
     const holdConfirmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-    const mobileScrollTickingRef = useRef(false);
 
     // ── Data Queries ──
     const { data: products, isLoading: productsLoading } = useQuery({ queryKey: ["products"], queryFn: inventoryApi.getAll });
@@ -487,13 +487,8 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
         setShowCustomerAutocomplete(false);
     };
 
-    // ── Categories (mobile filter chips) ──
-    const categories = useMemo(() => {
-        if (!products?.length) return ["All"];
-        const cats = new Set<string>();
-        (products as any[]).forEach((p) => { if (p.category) cats.add(p.category); });
-        return ["All", ...Array.from(cats).sort()];
-    }, [products]);
+    // Category chips now live inside MobileProductPicker, which derives them
+    // from the items it is given.
 
     // ── Filtered Products ──
     const filteredProducts = (() => {
@@ -502,6 +497,134 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
         if (activeCategory === "All") return bySearch;
         return bySearch.filter((p: any) => p.category === activeCategory);
     })();
+
+    // ── Mobile picker ────────────────────────────────────────────────────
+    /**
+     * The mobile picker owns its own search and category filtering, so it takes
+     * the whole catalogue rather than the pre-filtered desktop list.
+     *
+     * `price` here is the display string. Nothing derives money from it: the add
+     * handler below re-reads the raw price off the product by id, so what lands
+     * in the cart and in the stored transaction is byte-identical to the desktop
+     * path regardless of how this is formatted.
+     */
+    const pickerItems: MobilePickerItem[] = useMemo(() => {
+        return ((products as any[]) ?? []).map((p) => {
+            const inv = (inventoryItems as any[])?.find((i: any) => i.id === p.id);
+            return {
+                id: p.id,
+                name: p.name,
+                price: `${getCurrencySymbol()} ${Number(p.price).toLocaleString()}`,
+                category: p.category ?? undefined,
+                images: p.images ?? null,
+                stock: Number(inv?.stock ?? p.stock ?? 0),
+            };
+        });
+    }, [products, inventoryItems]);
+
+    // Recently sold items, newest first. Survives reload — the same twenty parts
+    // are most of the counter's volume and retyping them is the cost being cut.
+    const [recentItemIds, setRecentItemIds] = useState<string[]>(() => {
+        try {
+            const raw = localStorage.getItem("pos-recent-item-ids");
+            const parsed: unknown = raw ? JSON.parse(raw) : [];
+            return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+        } catch {
+            return [];
+        }
+    });
+
+    const rememberRecentItem = (id: string) => {
+        setRecentItemIds((prev) => {
+            const next = [id, ...prev.filter((existing) => existing !== id)].slice(0, 12);
+            try {
+                localStorage.setItem("pos-recent-item-ids", JSON.stringify(next));
+            } catch {
+                // A full or blocked localStorage must never break a sale.
+            }
+            return next;
+        });
+    };
+
+    const handlePickerAdd = (item: { id: string }) => {
+        const product = (products as any[])?.find((p: any) => p.id === item.id);
+        if (!product) return;
+        const inv = (inventoryItems as any[])?.find((i: any) => i.id === product.id);
+        const stock = Number(inv?.stock ?? product.stock ?? 0);
+        if (stock <= 0) {
+            toast.error(`"${product.name}" is out of stock`);
+            return;
+        }
+        const imgs = parseImages(product.images);
+        addToCart({ id: product.id, name: product.name, price: String(product.price), quantity: 1, image: imgs[0] });
+        rememberRecentItem(product.id);
+    };
+
+    /**
+     * Sourced parts already bought for a job, used to answer "what did I pay
+     * last time?" without a round trip per keystroke — the picker's suggestion
+     * hook is synchronous by design.
+     */
+    const { data: localPurchaseHistory } = useQuery({
+        queryKey: ["local-purchases-history"],
+        queryFn: () => localPurchasesApi.getAll(),
+        staleTime: 5 * 60 * 1000,
+    });
+
+    const sourcedPartSuggestion = useMemo(() => {
+        const byName = new Map<string, any>();
+        for (const purchase of ((localPurchaseHistory as any[]) ?? [])) {
+            const key = String(purchase.partName ?? "").trim().toLowerCase();
+            if (!key) continue;
+            const seen = byName.get(key);
+            // Most recent wins — the last price paid is the best estimate of the
+            // next one. Never an average: this is a volatile local market.
+            if (!seen || new Date(purchase.createdAt) > new Date(seen.createdAt)) {
+                byName.set(key, purchase);
+            }
+        }
+        return (name: string) => {
+            const match = byName.get(name.trim().toLowerCase());
+            if (!match) return undefined;
+            return {
+                supplierName: match.supplierName ?? undefined,
+                costPrice: match.costPrice ?? undefined,
+                sellingPrice: match.sellingPrice ?? undefined,
+                warrantyDays: match.warrantyDays ?? undefined,
+            };
+        };
+    }, [localPurchaseHistory]);
+
+    /**
+     * A sourced part is billed to the sale immediately.
+     *
+     * It is deliberately NOT written to local_purchases here. That ledger
+     * requires a job ticket (jobTicketId is NOT NULL) which a counter sale need
+     * not have, and every row in it is expected to carry a receipt photo.
+     * Writing a receiptless row tied to a guessed job would quietly weaken the
+     * petty-cash audit trail that LocalPurchaseModal exists to enforce. Parts
+     * bought against a repair still go through that modal, which is also what
+     * feeds the warranty resolver.
+     */
+    const handleAddSourcedPart = (part: {
+        partName: string;
+        supplierName?: string;
+        costPrice: number;
+        sellingPrice: number;
+        warrantyDays?: number;
+    }) => {
+        addToCart({
+            id: `sourced:${part.partName.trim().toLowerCase()}`,
+            name: part.partName.trim(),
+            price: String(part.sellingPrice),
+            quantity: 1,
+        });
+        toast.success(`${part.partName.trim()} added`, {
+            description: part.warrantyDays
+                ? `Sourced part · ${part.warrantyDays}-day warranty`
+                : "Sourced part · no warranty given",
+        });
+    };
 
     const subtotal = calculateSubtotal(); const tax = calculateTax(subtotal); const total = calculateTotal();
     const cartCount = cartItems.length + linkedJobCharges.length;
@@ -1369,137 +1492,29 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
             )}
 
             <div className="flex flex-col flex-1 min-h-0 overflow-hidden md:hidden">
-                {/* Header: session pill + search + category chips */}
-                <div className="flex-none bg-[#f8fafc] border-b border-slate-100/80 px-3 pb-1.5 pt-1 space-y-1.5">
-                    {/* Live session indicator — opener name */}
-                    {hasDrawerSession && activeDrawer && (
-                        <div className={cn("flex items-center gap-2 rounded-xl px-2.5 py-1.5 text-[11px]", isDrawerCounting ? "bg-amber-100" : "bg-emerald-100")}>
-                            <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", isDrawerCounting ? "bg-amber-500" : "bg-emerald-500 animate-pulse")} />
-                            <span className={cn("font-black uppercase tracking-wide", isDrawerCounting ? "text-amber-800" : "text-emerald-800")}>
-                                {isDrawerCounting ? "Under Review" : "Live"}
-                            </span>
-                            <span className="text-slate-400 ml-auto">Opened by</span>
-                            <span className="font-bold text-slate-700">{activeDrawer.openedByName}</span>
-                            <span className="text-slate-400">
-                                {activeDrawer.openedAt ? new Date(activeDrawer.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
-                            </span>
-                        </div>
-                    )}
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-                        <input
-                            type="text"
-                            placeholder="Search products or scan barcode…"
-                            className="w-full h-10 pl-9 pr-9 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                            value={productSearch}
-                            onChange={handleProductSearch}
-                        />
-                        <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1.5">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                            <ScanBarcode className="w-4 h-4 text-slate-400" />
-                        </div>
+                {/* Live session indicator — opener name */}
+                {hasDrawerSession && activeDrawer && (
+                    <div className={cn("mx-3 mt-1 flex flex-none items-center gap-2 rounded-xl px-2.5 py-1.5 text-[11px]", isDrawerCounting ? "bg-amber-100" : "bg-emerald-100")}>
+                        <div className={cn("w-1.5 h-1.5 rounded-full shrink-0", isDrawerCounting ? "bg-amber-500" : "bg-emerald-500 animate-pulse")} />
+                        <span className={cn("font-black uppercase tracking-wide", isDrawerCounting ? "text-amber-800" : "text-emerald-800")}>
+                            {isDrawerCounting ? "Under Review" : "Live"}
+                        </span>
+                        <span className="text-slate-400 ml-auto">Opened by</span>
+                        <span className="font-bold text-slate-700">{activeDrawer.openedByName}</span>
+                        <span className="text-slate-400">
+                            {activeDrawer.openedAt ? new Date(activeDrawer.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
+                        </span>
                     </div>
-                    {categories.length > 1 && (
-                        <div className="overflow-x-auto -mx-0.5 pb-0.5" style={{ scrollbarWidth: "none" }}>
-                            <div className="flex gap-1 px-0.5 min-w-max">
-                                {categories.map(cat => (
-                                    <button
-                                        key={cat}
-                                        type="button"
-                                        onClick={() => setActiveCategory(cat)}
-                                        className={cn(
-                                            "h-7 px-2.5 rounded-lg border text-[11px] font-bold transition-colors",
-                                            activeCategory === cat
-                                                ? "bg-slate-800 border-slate-800 text-white"
-                                                : "bg-white border-slate-200 text-slate-500",
-                                        )}
-                                    >
-                                        {cat}
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
-                    )}
-                </div>
-
-                {/* Product grid scroll area */}
-                <div
-                    className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden bg-[#f8fafc] px-3 pt-2 pb-4"
-                    onScroll={(e) => {
-                        if (mobileScrollTickingRef.current) return;
-                        const el = e.currentTarget;
-                        mobileScrollTickingRef.current = true;
-                        requestAnimationFrame(() => {
-                            mobileScrollTickingRef.current = false;
-                            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { scrollTop: el.scrollTop } }));
-                        });
-                    }}
-                >
-                    {productsLoading ? (
-                        <div className="flex items-center justify-center py-16">
-                            <Loader2 className="h-8 w-8 animate-spin text-slate-300" />
-                        </div>
-                    ) : filteredProducts.length === 0 ? (
-                        <div className="flex flex-col items-center justify-center py-16 gap-3">
-                            <Package className="h-10 w-10 text-slate-200" />
-                            <p className="text-sm font-medium text-slate-400">No products found</p>
-                        </div>
-                    ) : (
-                        <div className="grid grid-cols-2 gap-2.5">
-                            {filteredProducts.map((product: any) => {
-                                const imgs = parseImages(product.images);
-                                const imgUrl = imgs[0] || "";
-                                const inv = inventoryItems?.find((i: any) => i.id === product.id);
-                                const stock = Number(inv?.stock ?? product.stock ?? 0);
-                                const isOut = stock <= 0;
-                                const isLow = !isOut && stock <= 5;
-                                const sv = isOut
-                                    ? { bar: "bg-rose-500", pill: "bg-rose-100 text-rose-700 border-rose-200", label: "Out" }
-                                    : isLow
-                                    ? { bar: "bg-amber-500", pill: "bg-amber-100 text-amber-700 border-amber-200", label: "Low" }
-                                    : stock >= 20
-                                    ? { bar: "bg-violet-500", pill: "bg-violet-100 text-violet-700 border-violet-200", label: `${stock} left` }
-                                    : { bar: "bg-blue-500", pill: "bg-blue-100 text-blue-700 border-blue-200", label: `${stock} left` };
-                                return (
-                                    <div key={product.id} className={cn("relative bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden flex flex-col", isOut && "opacity-60")}>
-                                        {/* left accent bar — stock-tone colour */}
-                                        <div className={cn("absolute left-0 top-0 bottom-0 w-[3px]", sv.bar)} />
-                                        <div className="pl-3 pr-2.5 pt-2 pb-2.5">
-                                            <span className={cn("inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold", sv.pill)}>
-                                                {sv.label}
-                                            </span>
-                                            <div className="mt-1.5 aspect-square w-full rounded-xl bg-slate-50 overflow-hidden flex items-center justify-center">
-                                                {imgUrl
-                                                    ? <img src={imgUrl} alt={product.name} className="w-full h-full object-cover" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }} />
-                                                    : <Package className="w-8 h-8 text-slate-200" />
-                                                }
-                                            </div>
-                                            <p className={cn("mt-2 text-sm font-bold leading-snug line-clamp-2", isOut ? "text-slate-400" : "text-slate-900")}>
-                                                {product.name}
-                                            </p>
-                                            <div className="mt-2 flex items-center justify-between gap-1">
-                                                <span className={cn("text-sm font-black tabular-nums", isOut ? "text-slate-400" : "text-blue-600")}>
-                                                    {getCurrencySymbol()} {Number(product.price).toLocaleString()}
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    disabled={isOut}
-                                                    onClick={() => addToCart({ id: product.id, name: product.name, price: String(product.price), quantity: 1, image: imgUrl })}
-                                                    className={cn(
-                                                        "w-9 h-9 rounded-xl flex items-center justify-center transition-all active:scale-[0.93]",
-                                                        isOut ? "bg-slate-100 text-slate-300 cursor-not-allowed" : "bg-blue-600 text-white shadow-sm",
-                                                    )}
-                                                >
-                                                    {isOut ? <Ban className="w-4 h-4" /> : <Plus className="w-5 h-5" />}
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-                </div>
+                )}
+                <MobileProductPicker
+                    items={pickerItems}
+                    recentItemIds={recentItemIds}
+                    isLoading={productsLoading}
+                    onAdd={handlePickerAdd}
+                    onAddSourcedPart={handleAddSourcedPart}
+                    sourcedPartSuggestion={sourcedPartSuggestion}
+                    cartBarVisible={cartCount > 0 && !mobileCartOpen}
+                />
             </div>
 
             {/* ─── DESKTOP LAYOUT (hidden on mobile) ──────────────────────── */}

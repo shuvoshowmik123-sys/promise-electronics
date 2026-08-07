@@ -29,6 +29,17 @@ export interface MobileProductPickerProps {
         sellingPrice?: number;
         warrantyDays?: number;
     } | undefined;
+    /**
+     * Whether the floating cart bar is currently showing.
+     *
+     * The list scrolls under fixed chrome that it cannot see: the tab dock
+     * always, plus the cart bar once the sale has a line on it. Without the
+     * matching bottom padding that chrome covers the end of the list — and,
+     * worse, the sourced-part form's Cancel/Add buttons, which sit inside this
+     * scroll area. A tap there lands on "View Cart" instead of submitting, so
+     * the part cannot be added at all.
+     */
+    cartBarVisible?: boolean;
 }
 
 type Tone = "emerald" | "blue" | "amber" | "rose" | "violet" | "slate";
@@ -112,6 +123,7 @@ export function MobileProductPicker({
     onAdd,
     onAddSourcedPart,
     sourcedPartSuggestion,
+    cartBarVisible = false,
 }: MobileProductPickerProps) {
     const searchRef = useRef<HTMLInputElement>(null);
     const scrollTickingRef = useRef(false);
@@ -297,7 +309,15 @@ export function MobileProductPicker({
             </div>
 
             <div
-                className="flex-1 min-h-0 space-y-2 overflow-y-auto overflow-x-hidden bg-[#f8fafc] px-3 pt-2 pb-24"
+                className={cn(
+                    "flex-1 min-h-0 space-y-2 overflow-y-auto overflow-x-hidden bg-[#f8fafc] px-3 pt-2",
+                    // Clears the tab dock, and the cart bar on top of it when a
+                    // sale is in progress. Measured against the 390x844 mobile
+                    // shell: dock ~7rem, dock + cart bar ~13rem.
+                    cartBarVisible
+                        ? "pb-[calc(13rem+env(safe-area-inset-bottom))]"
+                        : "pb-[calc(7rem+env(safe-area-inset-bottom))]",
+                )}
                 onScroll={onListScroll}
             >
                 {isLoading ? (

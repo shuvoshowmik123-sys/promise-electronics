@@ -1,13 +1,25 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ShoppingCart, Upload, Save, Loader2, Image as ImageIcon, X } from "lucide-react";
+import { ShoppingCart, Upload, Save, Loader2, Image as ImageIcon, X, History } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { localPurchasesApi } from "@/lib/api";
+import { fetchApi, localPurchasesApi } from "@/lib/api";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
+import { format } from "date-fns";
+
+interface LocalPurchaseSuggestion {
+    found: boolean;
+    suggestion: {
+        supplierName: string | null;
+        costPrice: number | null;
+        sellingPrice: number | null;
+        warrantyDays: number | null;
+        lastPurchasedAt: string | null;
+    } | null;
+}
 
 interface LocalPurchaseModalProps {
     jobTicketId: string;
@@ -21,12 +33,40 @@ export function LocalPurchaseModal({ jobTicketId, open, onOpenChange, onSuccess 
     const [supplierName, setSupplierName] = useState("");
     const [costPrice, setCostPrice] = useState("");
     const [sellingPrice, setSellingPrice] = useState("");
+    const [warrantyDays, setWarrantyDays] = useState("");
     const [quantity, setQuantity] = useState("1");
     const [receiptImage, setReceiptImage] = useState<string | null>(null);
+    const [prefillNote, setPrefillNote] = useState<string | null>(null);
 
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const valuesRef = useRef({ supplierName, costPrice, sellingPrice, warrantyDays });
     const { toast } = useToast();
     const queryClient = useQueryClient();
+
+    useEffect(() => {
+        valuesRef.current = { supplierName, costPrice, sellingPrice, warrantyDays };
+    }, [supplierName, costPrice, sellingPrice, warrantyDays]);
+
+    const handlePartNameBlur = async () => {
+        const name = partName.trim();
+        if (!name) return;
+        try {
+            const res = await fetchApi<LocalPurchaseSuggestion>(`/inventory/local-purchases/suggest?name=${encodeURIComponent(name)}`);
+            const s = res.suggestion;
+            if (!res.found || !s) return;
+            const current = valuesRef.current;
+            let filled = false;
+            if (s.supplierName && !current.supplierName.trim()) { setSupplierName(s.supplierName); filled = true; }
+            if (s.costPrice != null && !current.costPrice.trim()) { setCostPrice(String(s.costPrice)); filled = true; }
+            if (s.sellingPrice != null && !current.sellingPrice.trim()) { setSellingPrice(String(s.sellingPrice)); filled = true; }
+            if (s.warrantyDays != null && s.warrantyDays > 0 && !current.warrantyDays.trim()) { setWarrantyDays(String(s.warrantyDays)); filled = true; }
+            if (filled && s.lastPurchasedAt) {
+                setPrefillNote(format(new Date(s.lastPurchasedAt), "d MMM yyyy"));
+            }
+        } catch {
+            // A failed suggestion must never block the form — hand-typed entry still works.
+        }
+    };
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -43,6 +83,7 @@ export function LocalPurchaseModal({ jobTicketId, open, onOpenChange, onSuccess 
         mutationFn: async () => {
             if (!receiptImage) throw new Error("Receipt image is mandatory for petty cash purchases.");
 
+            const parsedWarranty = Number(warrantyDays);
             return await localPurchasesApi.create({
                 jobTicketId,
                 partName,
@@ -51,6 +92,9 @@ export function LocalPurchaseModal({ jobTicketId, open, onOpenChange, onSuccess 
                 sellingPrice: parseFloat(sellingPrice),
                 quantity: parseInt(quantity, 10),
                 receiptImageUrl: receiptImage,
+                warrantyDays: warrantyDays.trim() !== "" && Number.isFinite(parsedWarranty) && parsedWarranty > 0
+                    ? Math.round(parsedWarranty)
+                    : undefined,
             });
         },
         onSuccess: () => {
@@ -78,8 +122,10 @@ export function LocalPurchaseModal({ jobTicketId, open, onOpenChange, onSuccess 
         setSupplierName("");
         setCostPrice("");
         setSellingPrice("");
+        setWarrantyDays("");
         setQuantity("1");
         setReceiptImage(null);
+        setPrefillNote(null);
         onOpenChange(false);
     };
 
@@ -110,7 +156,16 @@ export function LocalPurchaseModal({ jobTicketId, open, onOpenChange, onSuccess 
                         <form id="local-purchase-form" onSubmit={handleSubmit} className="space-y-4">
                             <div className="space-y-2">
                                 <Label htmlFor="partName" className="text-xs font-bold text-slate-500 uppercase tracking-wider">Part Details</Label>
-                                <Input id="partName" placeholder="e.g. 250V Capacitor" value={partName} onChange={e => setPartName(e.target.value)} required className="bg-slate-50/50" />
+                                <Input id="partName" placeholder="e.g. 250V Capacitor" value={partName} onChange={e => setPartName(e.target.value)} onBlur={handlePartNameBlur} required className="bg-slate-50/50" />
+                                {prefillNote && (
+                                    <div className="flex items-center gap-2 rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-[10px] font-medium text-violet-700">
+                                        <History className="h-4 w-4 shrink-0" />
+                                        <span className="flex-1">Filled from your last purchase — {prefillNote}</span>
+                                        <button type="button" aria-label="Dismiss" onClick={() => setPrefillNote(null)} className="shrink-0 text-violet-400 hover:text-violet-600">
+                                            <X className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -124,7 +179,7 @@ export function LocalPurchaseModal({ jobTicketId, open, onOpenChange, onSuccess 
                                 </div>
                             </div>
 
-                            <div className="grid grid-cols-2 gap-4 pt-2">
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 pt-2">
                                 <div className="space-y-2">
                                     <Label htmlFor="cost" className="text-xs font-bold text-red-500 uppercase tracking-wider flex items-center gap-1">
                                         Cost Price (Paid)
@@ -142,6 +197,13 @@ export function LocalPurchaseModal({ jobTicketId, open, onOpenChange, onSuccess 
                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">৳</span>
                                         <Input id="sell" type="number" step="0.01" min="0" value={sellingPrice} onChange={e => setSellingPrice(e.target.value)} required className="pl-7 bg-emerald-50/30 border-emerald-100 focus-visible:ring-emerald-500" />
                                     </div>
+                                </div>
+                                <div className="space-y-2 col-span-2 sm:col-span-1">
+                                    <Label htmlFor="warranty" className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                                        Warranty (days)
+                                    </Label>
+                                    <Input id="warranty" type="number" min="0" placeholder="e.g. 180" value={warrantyDays} onChange={e => setWarrantyDays(e.target.value)} className="bg-slate-50/50" />
+                                    <p className="text-[10px] font-medium text-slate-500">Leave empty if no warranty was given.</p>
                                 </div>
                             </div>
 

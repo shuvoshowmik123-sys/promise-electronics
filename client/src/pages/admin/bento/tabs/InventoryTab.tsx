@@ -93,6 +93,7 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
         price: "",
         minPrice: null as string | null,
         maxPrice: null as string | null,
+        warrantyDays: null as string | null,
         status: "In Stock",
         lowStockThreshold: 5,
         images: null as string | null,
@@ -336,6 +337,7 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
             price: "",
             minPrice: null,
             maxPrice: null,
+            warrantyDays: null,
             status: "In Stock",
             lowStockThreshold: 5,
             images: null,
@@ -412,6 +414,7 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
             price: item.price.toString(),
             minPrice: item.minPrice ? item.minPrice.toString() : null,
             maxPrice: item.maxPrice ? item.maxPrice.toString() : null,
+            warrantyDays: item.warrantyDays != null ? item.warrantyDays.toString() : null,
             status: item.status,
             lowStockThreshold: item.lowStockThreshold || 5,
             images: item.images,
@@ -462,11 +465,13 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
         }
         const validUrls = getValidImageUrls();
         const validFeatures = getValidFeatures();
+        const parsedWarrantyDays = formData.warrantyDays ? parseInt(formData.warrantyDays.toString(), 10) : NaN;
         const dataWithImagesAndFeatures = {
             ...formData,
             price: parseFloat(formData.price.toString()),
             minPrice: formData.minPrice ? parseFloat(formData.minPrice.toString()) : null,
             maxPrice: formData.maxPrice ? parseFloat(formData.maxPrice.toString()) : null,
+            warrantyDays: Number.isFinite(parsedWarrantyDays) && parsedWarrantyDays > 0 ? parsedWarrantyDays : null,
             hotDealPrice: formData.hotDealPrice ? parseFloat(formData.hotDealPrice.toString()) : null,
             images: validUrls.length > 0 ? JSON.stringify(validUrls) : null,
             features: validFeatures.length > 0 ? JSON.stringify(validFeatures) : null,
@@ -868,18 +873,25 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
 
                         {/* Pricing & Stock (Product vs Service) */}
                         {formData.itemType === "product" ? (
-                            <div className="grid grid-cols-3 gap-4">
-                                <div className="space-y-2">
-                                    <Label>Stock Qty</Label>
-                                    <Input type="number" value={formData.stock} onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) || 0 })} className="bg-slate-50" />
+                            <div className="space-y-4">
+                                <div className="grid grid-cols-3 gap-4">
+                                    <div className="space-y-2">
+                                        <Label>Stock Qty</Label>
+                                        <Input type="number" value={formData.stock} onChange={(e) => setFormData({ ...formData, stock: parseInt(e.target.value) || 0 })} className="bg-slate-50" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Price ({getCurrencySymbol()})</Label>
+                                        <Input type="number" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} className="bg-slate-50" />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label>Low Stock Alert</Label>
+                                        <Input type="number" value={formData.lowStockThreshold || 5} onChange={(e) => setFormData({ ...formData, lowStockThreshold: parseInt(e.target.value) || 5 })} className="bg-slate-50" />
+                                    </div>
                                 </div>
                                 <div className="space-y-2">
-                                    <Label>Price ({getCurrencySymbol()})</Label>
-                                    <Input type="number" value={formData.price} onChange={(e) => setFormData({ ...formData, price: e.target.value })} className="bg-slate-50" />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label>Low Stock Alert</Label>
-                                    <Input type="number" value={formData.lowStockThreshold || 5} onChange={(e) => setFormData({ ...formData, lowStockThreshold: parseInt(e.target.value) || 5 })} className="bg-slate-50" />
+                                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Warranty (days)</Label>
+                                    <Input type="number" min="0" placeholder="e.g. 180" value={formData.warrantyDays || ""} onChange={(e) => setFormData({ ...formData, warrantyDays: e.target.value || null })} className="bg-slate-50" />
+                                    <p className="text-[10px] font-medium text-slate-500">Default warranty for this part. Copied onto the job when fitted.</p>
                                 </div>
                             </div>
                         ) : (
@@ -894,6 +906,11 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                                         <Label>Max Price ({getCurrencySymbol()})</Label>
                                         <Input type="number" value={formData.maxPrice || ""} onChange={(e) => setFormData({ ...formData, maxPrice: e.target.value || null })} className="bg-white" />
                                     </div>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider">Warranty (days)</Label>
+                                    <Input type="number" min="0" placeholder="e.g. 180" value={formData.warrantyDays || ""} onChange={(e) => setFormData({ ...formData, warrantyDays: e.target.value || null })} className="bg-white" />
+                                    <p className="text-[10px] font-medium text-slate-500">Default labour warranty for this service.</p>
                                 </div>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">

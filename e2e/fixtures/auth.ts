@@ -39,7 +39,7 @@ export async function loginAsAdmin(page: Page, username = 'admin', password = 'a
   await page.getByTestId('input-admin-password').fill(password);
   await page.getByTestId('button-admin-login').click();
   // Wait for URL to leave /admin/login (not just match /admin)
-  await page.waitForURL((url) => url.pathname === '/admin' || url.hash.startsWith('#'), { timeout: 15_000 });
+  await page.waitForURL((url) => url.pathname === '/admin' || url.pathname.startsWith('/admin/') || url.hash.startsWith('#'), { timeout: 15_000 });
   // Verify admin shell loaded: wait for dock or top chrome to exist in DOM
   await page.waitForFunction(() => {
     const dock = document.querySelector('nav[class*="fixed"]');
