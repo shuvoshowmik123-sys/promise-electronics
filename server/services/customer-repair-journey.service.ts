@@ -1143,14 +1143,39 @@ export const repairJourneyService = {
       return { success: false, error: "This job does not belong to your account", status: 403 };
     }
 
-    const now = new Date();
-    const expiryDate = (job as any).warrantyExpiryDate ? new Date((job as any).warrantyExpiryDate) : null;
-    if (!expiryDate || expiryDate < now) {
-      return { success: false, error: "Warranty has expired for this repair", status: 400 };
-    }
-
     if (!["service", "parts"].includes(opts.claimType)) {
       return { success: false, error: "Claim type must be 'service' or 'parts'", status: 400 };
+    }
+
+    /**
+     * Judge the claim against the clock it is actually about.
+     *
+     * This checked warrantyExpiryDate — the LABOUR clock — for every claim,
+     * including parts claims. A panel replacement carrying six months of parts
+     * cover was refused the moment its 30-day labour warranty lapsed, which is
+     * the exact case the separation exists for and is a promise published in
+     * the Terms & Conditions. Same defect as the staff route, which was fixed
+     * earlier; this customer-facing path was missed.
+     *
+     * Falls back to the labour expiry when a job carries no distinct parts
+     * warranty, so every pre-separation job behaves exactly as before.
+     */
+    const now = new Date();
+    const partsExpiryRaw = (job as any).partsWarrantyExpiryDate;
+    const serviceExpiryRaw = (job as any).warrantyExpiryDate;
+    const governingRaw = opts.claimType === "parts" && partsExpiryRaw
+      ? partsExpiryRaw
+      : serviceExpiryRaw;
+
+    const expiryDate = governingRaw ? new Date(governingRaw) : null;
+    if (!expiryDate || expiryDate < now) {
+      return {
+        success: false,
+        error: opts.claimType === "parts"
+          ? "The parts warranty for this repair has expired"
+          : "The service warranty for this repair has expired",
+        status: 400,
+      };
     }
 
     // B: block duplicate active claims

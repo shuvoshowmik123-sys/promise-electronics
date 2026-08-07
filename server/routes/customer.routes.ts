@@ -1177,33 +1177,59 @@ router.get('/api/customer/warranties', requireCustomerAuth, async (req: Request,
         const jobs = await storage.getJobTicketsByCustomerPhone(user.phone);
 
         const now = new Date();
-        const warranties = jobs
-            .filter(job => job.status === 'Completed' && (job.warrantyDays || 0) > 0)
-            .map(job => {
-                const isActive = job.warrantyExpiryDate ? new Date(job.warrantyExpiryDate) > now : false;
-                const remainingDays = job.warrantyExpiryDate
-                    ? Math.max(0, Math.ceil((new Date(job.warrantyExpiryDate).getTime() - now.getTime()) / (1000 * 60 * 60 * 24)))
-                    : 0;
 
-                return {
-                    jobId: job.id,
-                    device: job.device,
-                    issue: job.issue,
-                    completedAt: job.completedAt,
-                    serviceWarranty: {
-                        days: job.warrantyDays || 0,
-                        expiryDate: job.warrantyExpiryDate,
-                        isActive: isActive,
-                        remainingDays: remainingDays,
-                    },
-                    partsWarranty: {
-                        days: job.warrantyDays || 0,
-                        expiryDate: job.warrantyExpiryDate,
-                        isActive: isActive,
-                        remainingDays: remainingDays,
-                    }
-                };
-            });
+        /**
+         * Both clocks, read from their own columns.
+         *
+         * This previously filled serviceWarranty and partsWarranty from the SAME
+         * labour fields, so the customer was shown two warranties that were
+         * always identical twins and the separation was cosmetic. The parts
+         * columns exist and are populated at completion; they simply were never
+         * read here.
+         *
+         * `days` is derived from the expiry rather than trusted from the stored
+         * day count: partsWarrantyDays is deliberately left null when an expiry
+         * was carried over from an earlier completion, and reporting 0 days
+         * against a live expiry would read as "no warranty" to the customer.
+         */
+        const clock = (expiry: Date | string | null | undefined, storedDays?: number | null) => {
+            if (!expiry) {
+                return { days: storedDays ?? 0, expiryDate: null, isActive: false, remainingDays: 0 };
+            }
+            const expiryDate = new Date(expiry);
+            const msLeft = expiryDate.getTime() - now.getTime();
+            return {
+                days: storedDays ?? 0,
+                expiryDate: expiry,
+                isActive: msLeft > 0,
+                remainingDays: Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60 * 24))),
+            };
+        };
+
+        const warranties = jobs
+            /**
+             * A job qualifies on EITHER clock. The old filter required
+             * warrantyDays > 0, so a repair carrying only a parts warranty —
+             * exactly the panel-replacement case the separation was built for —
+             * was hidden from the customer entirely.
+             */
+            .filter((job) => {
+                if (job.status !== 'Completed') return false;
+                const anyService = (job.warrantyDays || 0) > 0 || !!job.warrantyExpiryDate;
+                const anyParts = ((job as any).partsWarrantyDays || 0) > 0 || !!(job as any).partsWarrantyExpiryDate;
+                return anyService || anyParts;
+            })
+            .map(job => ({
+                jobId: job.id,
+                device: job.device,
+                issue: job.issue,
+                completedAt: job.completedAt,
+                serviceWarranty: clock(job.warrantyExpiryDate, job.warrantyDays),
+                partsWarranty: clock(
+                    (job as any).partsWarrantyExpiryDate,
+                    (job as any).partsWarrantyDays,
+                ),
+            }));
 
         res.json(warranties);
     } catch (error) {

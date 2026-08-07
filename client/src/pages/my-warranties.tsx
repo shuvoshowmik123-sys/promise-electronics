@@ -1,5 +1,6 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
+import { cn } from "@/lib/utils";
 import { useCustomerLanguage, type TranslationKey } from "@/contexts/CustomerLanguageContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -249,11 +250,116 @@ function WarrantyCard({ warranty, onClaim }: { warranty: WarrantyInfo; onClaim: 
   );
 }
 
+/**
+ * One card per repaired television, both warranty clocks always visible.
+ *
+ * An earlier draft put parts behind a slider. That hides the one thing the
+ * separation exists to show — the two clocks expire on DIFFERENT dates — and a
+ * customer who never discovers the parts warranty never claims it, which is the
+ * support call this page is meant to prevent. Both are shown, always.
+ *
+ * An absent warranty is EXPLAINED rather than hidden, for the same reason: a
+ * blank space raises "why didn't anyone tell me", one sentence answers it.
+ *
+ * Coverage is keyed off the expiry date, not the stored day count. partsWarrantyDays
+ * is deliberately left null when an expiry is carried over from an earlier
+ * completion, so a `days > 0` test — which is what this used to do — hid live
+ * warranties from the customer.
+ */
+function WarrantyClock({
+  kind, icon, label, help, clock, onClaim, jobId,
+}: {
+  kind: WarrantyClaimType;
+  icon: ReactNode;
+  label: string;
+  help: string;
+  clock: WarrantyInfo["serviceWarranty"];
+  onClaim: (claimType: WarrantyClaimType) => void;
+  jobId: string;
+}) {
+  const { t } = useCustomerLanguage();
+  const exists = Boolean(clock.expiryDate);
+  const active = clock.isActive;
+
+  // Elapsed share of the period, for the time bar. Falls back to a full bar on
+  // an expired clock so it never reads as "no data".
+  const pct = (() => {
+    if (!exists || !active) return 100;
+    const total = clock.days > 0 ? clock.days : Math.max(clock.remainingDays, 1);
+    return Math.min(100, Math.max(0, Math.round(((total - clock.remainingDays) / total) * 100)));
+  })();
+
+  return (
+    <div
+      className={cn(
+        "rounded-2xl border p-3",
+        active ? "border-emerald-100 bg-emerald-50/60" : "border-slate-200 bg-slate-50",
+      )}
+      data-testid={`mobile-row-${kind}-${jobId}`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className={cn("shrink-0", active ? "text-emerald-600" : "text-slate-400")}>{icon}</span>
+          <div className="min-w-0">
+            <p className="text-[11px] font-black uppercase tracking-wide text-slate-500">{label}</p>
+            <p className="text-[11px] leading-4 text-slate-400">{help}</p>
+          </div>
+        </div>
+        <div className="shrink-0 text-right">
+          {!exists ? (
+            <span className="text-xs font-bold text-slate-400">—</span>
+          ) : active ? (
+            <>
+              <p className="text-base font-black leading-none tabular-nums text-emerald-700">
+                {clock.remainingDays}
+              </p>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-600">
+                {t("warranties.daysLeft")}
+              </p>
+            </>
+          ) : (
+            <p className="text-[11px] font-bold text-slate-500">
+              {t("warranties.expiredOn")}{" "}
+              {format(new Date(clock.expiryDate as string), "dd MMM yyyy")}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {exists && (
+        <>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white">
+            <div
+              className={cn("h-full rounded-full", active ? "bg-emerald-500" : "bg-slate-300")}
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          {active && clock.expiryDate && (
+            <p className="mt-1.5 text-[10px] font-medium text-slate-500">
+              {t("warranties.until")} {format(new Date(clock.expiryDate), "dd MMM yyyy")}
+            </p>
+          )}
+        </>
+      )}
+
+      {active && (
+        <button
+          type="button"
+          onClick={() => onClaim(kind)}
+          className="mt-2.5 h-10 w-full rounded-xl bg-emerald-600 text-xs font-black text-white shadow-sm active:scale-[0.98]"
+          data-testid={`mobile-claim-${kind}-${jobId}`}
+        >
+          {t("warranties.claimTitle")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 function MobileWarrantyCard({ warranty, onClaim }: { warranty: WarrantyInfo; onClaim: (claimType: WarrantyClaimType) => void }) {
   const { t } = useCustomerLanguage();
   const isActive = warranty.serviceWarranty.isActive || warranty.partsWarranty.isActive;
-  const hasServiceWarranty = warranty.serviceWarranty.days > 0;
-  const hasPartsWarranty = warranty.partsWarranty.days > 0;
+  const hasParts = Boolean(warranty.partsWarranty.expiryDate);
 
   return (
     <div
@@ -287,66 +393,45 @@ function MobileWarrantyCard({ warranty, onClaim }: { warranty: WarrantyInfo; onC
           >
             {warranty.issue}
           </p>
+          {warranty.completedAt && (
+            <p className="mt-1 text-[11px] font-medium text-slate-400">
+              {format(new Date(warranty.completedAt), "dd MMM yyyy")}
+            </p>
+          )}
         </div>
       </div>
 
       <div className="mt-4 space-y-2">
-        {hasServiceWarranty && (
-          <div
-            className="flex items-center justify-between rounded-xl bg-slate-50 p-3"
-            data-testid={`mobile-row-service-${warranty.jobId}`}
-          >
-            <div className="flex items-center gap-2">
-              <Wrench className="h-4 w-4 text-slate-500" />
-              <div>
-                <span className="text-sm font-medium text-slate-700">{t("warranties.service")}</span>
-                <p className="text-[11px] leading-4 text-slate-400">{t("warranties.serviceHelp")}</p>
-              </div>
-            </div>
-            <span className="text-xs font-semibold text-slate-600">
-              {warranty.serviceWarranty.isActive
-                ? `${warranty.serviceWarranty.remainingDays} ${t("warranties.daysLeft")}`
-                : warranty.serviceWarranty.expiryDate
-                  ? `${t("warranties.expiredOn")} ${format(new Date(warranty.serviceWarranty.expiryDate), "dd MMM yyyy")}`
-                  : t("status.cancelled")}
-            </span>
-          </div>
-        )}
-        {hasPartsWarranty && (
-          <div
-            className="flex items-center justify-between rounded-xl bg-slate-50 p-3"
-            data-testid={`mobile-row-parts-${warranty.jobId}`}
-          >
-            <div className="flex items-center gap-2">
-              <Cpu className="h-4 w-4 text-slate-500" />
-              <div>
-                <span className="text-sm font-medium text-slate-700">{t("warranties.parts")}</span>
-                <p className="text-[11px] leading-4 text-slate-400">{t("warranties.partsHelp")}</p>
-              </div>
-            </div>
-            <span className="text-xs font-semibold text-slate-600">
-              {warranty.partsWarranty.isActive
-                ? `${warranty.partsWarranty.remainingDays} ${t("warranties.daysLeft")}`
-                : warranty.partsWarranty.expiryDate
-                  ? `${t("warranties.expiredOn")} ${format(new Date(warranty.partsWarranty.expiryDate), "dd MMM yyyy")}`
-                  : t("status.cancelled")}
-            </span>
-          </div>
-        )}
+        <WarrantyClock
+          kind="parts"
+          jobId={warranty.jobId}
+          icon={<Cpu className="h-4 w-4" />}
+          label={t("warranties.parts")}
+          help={t("warranties.partsHelp")}
+          clock={warranty.partsWarranty}
+          onClaim={onClaim}
+        />
+        <WarrantyClock
+          kind="service"
+          jobId={warranty.jobId}
+          icon={<Wrench className="h-4 w-4" />}
+          label={t("warranties.service")}
+          help={t("warranties.serviceHelp")}
+          clock={warranty.serviceWarranty}
+          onClaim={onClaim}
+        />
       </div>
-      {isActive && (
-        <div className="mt-4 grid grid-cols-2 gap-2">
-          {warranty.serviceWarranty.isActive && (
-            <button type="button" onClick={() => onClaim("service")} className="h-11 rounded-2xl bg-emerald-600 px-3 text-xs font-black text-white shadow-sm shadow-emerald-100">
-              {t("warranties.service")}
-            </button>
-          )}
-          {warranty.partsWarranty.isActive && (
-            <button type="button" onClick={() => onClaim("parts")} className="h-11 rounded-2xl bg-emerald-600 px-3 text-xs font-black text-white shadow-sm shadow-emerald-100">
-              {t("warranties.parts")}
-            </button>
-          )}
-        </div>
+
+      {/*
+        * Explaining the gap, rather than leaving one. Most repairs carry no
+        * distinct parts warranty, and silence here is what produces the
+        * "nobody told me" call this page exists to avoid.
+        */}
+      {!hasParts && warranty.serviceWarranty.expiryDate && (
+        <p className="mt-2 rounded-xl bg-slate-50 px-3 py-2 text-[11px] font-medium leading-4 text-slate-500">
+          {t("warranties.noPartsCover")}{" "}
+          {format(new Date(warranty.serviceWarranty.expiryDate), "dd MMM yyyy")}
+        </p>
       )}
     </div>
   );

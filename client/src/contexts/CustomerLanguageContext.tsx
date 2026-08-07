@@ -176,6 +176,8 @@ const translations = {
   "warranties.termsDesc": { en: "Parts warranty is void for voltage, liquid, or physical damage. Service warranty covers workmanship issues only.", bn: "ভোল্টেজ, পানি বা শারীরিক ক্ষতিতে পার্টস ওয়ারেন্টি বাতিল হবে। সার্ভিস ওয়ারেন্টি শুধু কাজের ত্রুটি কভার করে।" },
   "warranties.daysLeft":  { en: "days left",          bn: "দিন বাকি" },
   "warranties.expiredOn": { en: "Expired on",         bn: "মেয়াদ শেষ" },
+  "warranties.until":     { en: "Until",               bn: "পর্যন্ত" },
+  "warranties.noPartsCover": { en: "No separate parts warranty on this repair — the service warranty covers it.", bn: "এই মেরামতে আলাদা যন্ত্রাংশ ওয়ারেন্টি নেই — সার্ভিস ওয়ারেন্টি এটি কভার করে।" },
 
   // ── Support ──
   "support.eyebrow":      { en: "Customer Care",      bn: "কাস্টমার কেয়ার" },
