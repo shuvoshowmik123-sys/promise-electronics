@@ -8,7 +8,7 @@ import {
     Shield, AlertTriangle, Code2, ChevronRight, ChevronDown, Percent,
     Phone, MapPin, Clock, Trash2, ShoppingBag, Tv, Ruler, AlertCircle, Filter,
     Mail, MessageCircle, Facebook, Instagram, Youtube, Languages, CheckCircle2,
-    MessageSquareHeart,
+    MessageSquareHeart, ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +31,7 @@ import type { TeamMember } from "./settings/AboutUsSection";
 const CmsHomeSection = lazy(() => import("./settings/CmsHomeSection"));
 const AboutUsSection = lazy(() => import("./settings/AboutUsSection"));
 const BulkImportSection = lazy(() => import("./settings/BulkImportSection"));
+const OperationsSettingsPanel = lazy(() => import("./settings/OperationsSettingsPanel").then(m => ({ default: m.OperationsSettingsPanel })));
 const ServiceConfigEditor = lazy(() => import("./settings/ServiceConfigEditor").then(m => ({ default: m.ServiceConfigEditor })));
 import { TagListCard } from "./settings/TagListCard";
 import SystemIntegritySummary from "./settings/SystemIntegritySummary";
@@ -58,6 +59,7 @@ function resolveSettingsDestination(query: string): { sheet?: 'identity' | 'fina
     if (/(home|homepage|hero|faq|pricing|banner|cms|website)/.test(normalized)) return { panel: "cmshome" };
     if (/(about|team|mission|vision|address)/.test(normalized)) return { panel: "about" };
     if (/(import|bulk|csv|data setup)/.test(normalized)) return { panel: "bulkimport" };
+    if (/(warranty period|closed day|holiday|rest day|friday|weekend)/.test(normalized)) return { panel: "operations" };
     return {};
 }
 
@@ -135,6 +137,15 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     const [commonSymptoms, setCommonSymptoms] = useState<string[]>([]);
     const [serviceFilterCategories, setServiceFilterCategories] = useState<string[]>([]);
     const [rawSettingsKeys, setRawSettingsKeys] = useState<string[]>([]);
+    /**
+     * The untouched key/value rows.
+     *
+     * Everything else here is parsed into individual pieces of state, which
+     * suits fields this screen owns. The operations panel owns its own keys and
+     * saves them itself, so it needs the raw rows rather than another dozen
+     * useState declarations threaded through this file.
+     */
+    const [rawSettings, setRawSettings] = useState<Array<{ key: string; value: string }>>([]);
 
     // --- CMS / Home State ---
     const [heroTitle, setHeroTitle] = useState("");
@@ -296,6 +307,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
             setLoading(true);
             const settings = await settingsApi.getAll(); // Direct array return
             setRawSettingsKeys(settings.map((s: any) => s.key));
+            setRawSettings(settings.map((s: any) => ({ key: String(s.key), value: String(s.value ?? '') })));
 
             settings.forEach((s: any) => {
                 try {
@@ -866,6 +878,10 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         matches on label and helper only. */}
                     <MobileSettingsRow icon={Shield} iconColor="text-slate-600" iconBg="bg-slate-100" label="Legal Pages" helper="Terms & Conditions, Privacy Policy, Warranty Policy"
                         right={null} onClick={() => setSelectedPanel("policies")} />
+                    {/* Helper carries "warranty", "holiday", "Friday" and "rest day"
+                        because the search box matches label and helper only. */}
+                    <MobileSettingsRow icon={ShieldCheck} iconColor="text-emerald-600" iconBg="bg-emerald-50" label="Warranty & Closed Days" helper="Warranty periods, weekly rest day, holidays"
+                        right={null} onClick={() => setSelectedPanel("operations")} />
                 </MobilePanel>
 
                 {/* Data Setup */}
@@ -1254,8 +1270,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                             <MobileBottomSheetHandle />
                             <div className="border-b border-slate-100 bg-white px-4 py-3">
                                 <h2 className="flex min-w-0 items-center gap-2 text-base font-black text-slate-900">
-                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-5 h-5 text-indigo-500" /> : selectedPanel === "about" ? <Building2 className="w-5 h-5 text-emerald-500" /> : selectedPanel === "feedback" ? <MessageSquareHeart className="w-5 h-5 text-emerald-600" /> : selectedPanel === "policies" ? <Shield className="w-5 h-5 text-slate-600" /> : <Upload className="w-5 h-5 text-blue-600" />}
-                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS" : selectedPanel === "about" ? "About Us" : selectedPanel === "feedback" ? "Service Feedback" : selectedPanel === "policies" ? "Legal Pages" : "Bulk Import Center"}</span>
+                                    {selectedPanel === "cmshome" ? <LayoutTemplate className="w-5 h-5 text-indigo-500" /> : selectedPanel === "about" ? <Building2 className="w-5 h-5 text-emerald-500" /> : selectedPanel === "feedback" ? <MessageSquareHeart className="w-5 h-5 text-emerald-600" /> : selectedPanel === "operations" ? <ShieldCheck className="w-5 h-5 text-emerald-600" /> : selectedPanel === "policies" ? <Shield className="w-5 h-5 text-slate-600" /> : <Upload className="w-5 h-5 text-blue-600" />}
+                                    <span className="truncate">{selectedPanel === "cmshome" ? "Homepage CMS" : selectedPanel === "about" ? "About Us" : selectedPanel === "feedback" ? "Service Feedback" : selectedPanel === "operations" ? "Warranty & Closed Days" : selectedPanel === "policies" ? "Legal Pages" : "Bulk Import Center"}</span>
                                 </h2>
                             </div>
                             <div className="custom-scrollbar flex-1 overflow-y-auto bg-slate-50/30 px-3 pb-4">
@@ -1320,6 +1336,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 {selectedPanel === "policies" && (
                                     <Suspense fallback={null}><PoliciesSection /></Suspense>
                                 )}
+                                {selectedPanel === "operations" && (
+                                    <Suspense fallback={null}><OperationsSettingsPanel settings={rawSettings} /></Suspense>
+                                )}
                             </div>
                             <div className="flex flex-col gap-2 border-t border-slate-100 bg-white p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                                 <Button variant="outline" className="h-11 rounded-xl" onClick={() => setSelectedPanel(null)}>Close</Button>
@@ -1327,7 +1346,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     policiesApi, and handleSaveAll knows nothing about policy text.
                                     Offering Save & Close there would close the panel, save unrelated
                                     settings, and silently drop whatever was typed. */}
-                                {selectedPanel !== "bulkimport" && selectedPanel !== "feedback" && selectedPanel !== "policies" && (
+                                {selectedPanel !== "bulkimport" && selectedPanel !== "feedback" && selectedPanel !== "policies" && selectedPanel !== "operations" && (
                                     <Button className="h-11 rounded-xl bg-blue-600 text-white hover:bg-blue-700" onClick={() => { setSelectedPanel(null); handleSaveAll(); }}>
                                         {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
                                         Save & Close
@@ -1414,6 +1433,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 )}
                                 {selectedPanel === "policies" && (
                                     <Suspense fallback={null}><PoliciesSection /></Suspense>
+                                )}
+                                {selectedPanel === "operations" && (
+                                    <Suspense fallback={null}><OperationsSettingsPanel settings={rawSettings} /></Suspense>
                                 )}
                             </div>
                             <div className="flex flex-col gap-2 border-t border-slate-100 bg-white p-5 md:flex-row md:justify-end">
