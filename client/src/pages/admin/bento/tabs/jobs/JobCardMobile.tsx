@@ -1,6 +1,6 @@
 import { motion } from "framer-motion";
 import type { MouseEvent } from "react";
-import { CreditCard, User, UserCheck } from "lucide-react";
+import { CreditCard, PackagePlus, User, UserCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -35,6 +35,9 @@ interface JobCardMobileProps {
      */
     isBillable?: boolean;
     onBillAtPos?: (job: JobTicket) => void;
+    /** True when this job has no parts recorded — what the nightly nudge chases. */
+    needsPartsDeclaration?: boolean;
+    onDeclareParts?: (job: JobTicket) => void;
 }
 
 /**
@@ -58,6 +61,8 @@ export function JobCardMobile({
     currencySymbol,
     isBillable = false,
     onBillAtPos,
+    needsPartsDeclaration = false,
+    onDeclareParts,
 }: JobCardMobileProps) {
     const j = job as any;
     const isTechnician = userRole === "Technician";
@@ -154,6 +159,18 @@ export function JobCardMobile({
                       * the job already attached is the whole point: the till
                       * then only needs parts and warranty.
                       */}
+                    {needsPartsDeclaration && onDeclareParts && (
+                        <Button
+                            onClick={(event) => {
+                                event.stopPropagation();
+                                onDeclareParts(job);
+                            }}
+                            className="h-9 w-full rounded-lg gap-1.5 border border-violet-100 bg-violet-50 text-[11px] font-bold text-violet-700 shadow-none hover:bg-violet-100"
+                        >
+                            <PackagePlus className="w-3.5 h-3.5" />
+                            List parts used
+                        </Button>
+                    )}
                     {isBillable && onBillAtPos && (
                         <Button
                             onClick={(event) => {

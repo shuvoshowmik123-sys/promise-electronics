@@ -11,7 +11,8 @@ import { Badge } from "@/components/ui/badge";
 import {
     Dialog, DialogContent, DialogTitle,
 } from "@/components/ui/dialog";
-import { jobTicketsApi, settingsApi, adminUsersApi, jobIntakeApi } from "@/lib/api";
+import { jobTicketsApi, settingsApi, adminUsersApi, jobIntakeApi, inventoryApi } from "@/lib/api";
+import type { ProductLineItem } from "./jobs/PartsDeclaration";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
@@ -35,6 +36,18 @@ const FinalTestDialog = lazy(() => import("@/components/admin/workflow/FinalTest
 const NgResolutionWizard = lazy(() => import("@/components/admin/workflow/NgResolutionWizard").then(m => ({ default: m.NgResolutionWizard })));
 const KanbanBoard = lazy(() => import("@/components/admin/workflow/KanbanBoard").then(m => ({ default: m.KanbanBoard })));
 const LocalPurchaseModal = lazy(() => import("@/components/inventory/LocalPurchaseModal").then(m => ({ default: m.LocalPurchaseModal })));
+const PartsDeclaration = lazy(() => import("./jobs/PartsDeclaration").then(m => ({ default: m.PartsDeclaration })));
+
+/** Tolerates absent or malformed stored JSON — never throws at the technician. */
+function parseProductLines(raw: unknown): ProductLineItem[] {
+    if (typeof raw !== "string" || !raw.trim()) return [];
+    try {
+        const parsed: unknown = JSON.parse(raw);
+        return Array.isArray(parsed) ? (parsed as ProductLineItem[]) : [];
+    } catch {
+        return [];
+    }
+}
 import { getJobSkillRules, hasAnySkill, type TechUser } from "@/components/admin/TechnicianPicker";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
@@ -151,6 +164,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
     const [isAdvanceDialogOpen, setIsAdvanceDialogOpen] = useState(false);
     const [isFinalTestDialogOpen, setIsFinalTestDialogOpen] = useState(false);
     const [isLocalPurchaseOpen, setIsLocalPurchaseOpen] = useState(false);
+    const [isPartsDeclarationOpen, setIsPartsDeclarationOpen] = useState(false);
     const [isNgWizardOpen, setIsNgWizardOpen] = useState(false);
 
     // Selection States
@@ -262,6 +276,68 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         () => new Set((Array.isArray(billableJobsRaw) ? billableJobsRaw : []).map((job: any) => job.id)),
         [billableJobsRaw],
     );
+
+    /**
+     * Parts declaration.
+     *
+     * productLines is stored as a JSON string on the job. Malformed or absent
+     * values degrade to an empty list rather than throwing — a technician
+     * opening this screen must never meet a crash caused by an older record.
+     */
+    const { data: partsInventoryRaw } = useQuery({
+        queryKey: ["inventory"],
+        queryFn: inventoryApi.getAll,
+        enabled: canAccessJobs,
+        retry: false,
+    });
+
+    const partsInventory = useMemo(
+        () => ((partsInventoryRaw as any[]) ?? [])
+            .filter((item) => (item.itemType ?? "product") !== "service")
+            .map((item) => ({
+                id: item.id,
+                name: item.name,
+                category: item.category ?? undefined,
+                price: item.price ?? 0,
+                stock: item.stock ?? undefined,
+                isSerialized: Boolean(item.isSerialized),
+            })),
+        [partsInventoryRaw],
+    );
+
+    /**
+     * A job owes a declaration when work has started and nothing is recorded.
+     *
+     * Not shown on Pending jobs: nothing has been fitted yet, so prompting there
+     * would be noise on the busiest lane in the list. Mirrors what the nightly
+     * nudge chases, so the button and the notification agree.
+     */
+    const jobNeedsPartsDeclaration = (job: JobTicket): boolean => {
+        if (!hasPermission("canEdit")) return false;
+        const status = job.status ?? "";
+        if (["Pending", "Cancelled", "Abandoned", "Forfeited"].includes(status)) return false;
+        return parseProductLines((job as any).productLines).length === 0;
+    };
+
+    const savePartsMutation = useMutation({
+        mutationFn: (lines: ProductLineItem[]) => {
+            if (!selectedJob) throw new Error("No job selected");
+            return jobTicketsApi.update(selectedJob.id, {
+                productLines: JSON.stringify(lines),
+            } as any);
+        },
+        onSuccess: (_data, lines) => {
+            queryClient.invalidateQueries({ queryKey: ["jobTickets"] });
+            // Stock moves as a side effect of this save, so the catalogue the
+            // next declaration reads must not be stale.
+            queryClient.invalidateQueries({ queryKey: ["inventory"] });
+            setIsPartsDeclarationOpen(false);
+            toast.success(
+                lines.length === 0 ? "Recorded: no parts used" : `${lines.length} part${lines.length === 1 ? "" : "s"} recorded`,
+            );
+        },
+        onError: () => toast.error("Could not save parts. Nothing was changed."),
+    });
 
     const handleBillAtPos = (job: JobTicket) => {
         // The till reads this id and attaches the job itself. Nothing is
@@ -1133,6 +1209,11 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                 currencySymbol={getCurrencySymbol()}
                                 billableJobIds={billableJobIds}
                                 onBillAtPos={handleBillAtPos}
+                                needsPartsDeclaration={jobNeedsPartsDeclaration}
+                                onDeclareParts={(job) => {
+                                    setSelectedJob(job);
+                                    setIsPartsDeclarationOpen(true);
+                                }}
                             />
                         ) : effectiveViewMode === "list" ? (
                             <JobTicketList
@@ -1440,6 +1521,31 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                     />
                 </Suspense>
             )}
+
+            {/* PARTS DECLARATION — where the nightly nudge sends technicians */}
+            <Dialog open={isPartsDeclarationOpen} onOpenChange={setIsPartsDeclarationOpen}>
+                {/*
+                  * [&>button]:hidden suppresses the Dialog's own close control.
+                  * PartsDeclaration draws its own, sized for a thumb, and the
+                  * two rendered on top of each other as a doubled ✕.
+                  */}
+                <DialogContent className="max-w-none w-screen h-[100dvh] p-0 gap-0 rounded-none border-0 md:h-[85vh] md:w-[92vw] md:max-w-4xl md:rounded-2xl overflow-hidden [&>button]:hidden">
+                    <DialogTitle className="sr-only">Parts used</DialogTitle>
+                    {selectedJob && (
+                        <Suspense fallback={null}>
+                            <PartsDeclaration
+                                jobId={selectedJob.id}
+                                jobLabel={`${getSafeJobDisplayRef(selectedJob) || selectedJob.id} · ${(selectedJob as any).device ?? "Repair"}`}
+                                initialLines={parseProductLines((selectedJob as any).productLines)}
+                                inventory={partsInventory}
+                                isSaving={savePartsMutation.isPending}
+                                onSave={(lines) => savePartsMutation.mutate(lines)}
+                                onCancel={() => setIsPartsDeclarationOpen(false)}
+                            />
+                        </Suspense>
+                    )}
+                </DialogContent>
+            </Dialog>
 
             {/* QR CODE DIALOG */}
             <Dialog open={qrDialogOpen} onOpenChange={setQrDialogOpen}>

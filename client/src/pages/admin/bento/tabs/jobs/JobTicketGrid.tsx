@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { BentoCard } from "../../shared";
-import { Clock, Eye, MoreVertical, PenTool, Phone, Printer, QrCode, User, Zap } from "lucide-react";
+import { Clock, Eye, MoreVertical, PackagePlus, PenTool, Phone, Printer, QrCode, User, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { JobTicket } from "@shared/schema";
 import { getSafeJobDisplayRef } from "@shared/job-display-utils";
@@ -70,6 +70,9 @@ interface JobTicketGridProps {
     /** Ids the server's ready-for-billing list actually returned. */
     billableJobIds?: Set<string>;
     onBillAtPos?: (job: JobTicket) => void;
+    /** Decides whether a job still owes a parts declaration. */
+    needsPartsDeclaration?: (job: JobTicket) => boolean;
+    onDeclareParts?: (job: JobTicket) => void;
 }
 
 export function JobTicketGrid({
@@ -92,6 +95,8 @@ export function JobTicketGrid({
     currencySymbol = "৳",
     billableJobIds,
     onBillAtPos,
+    needsPartsDeclaration,
+    onDeclareParts,
 }: JobTicketGridProps) {
     const isMobile = useIsMobile();
 
@@ -121,6 +126,8 @@ export function JobTicketGrid({
                         currencySymbol={currencySymbol}
                         isBillable={billableJobIds?.has(job.id) ?? false}
                         onBillAtPos={onBillAtPos}
+                        needsPartsDeclaration={needsPartsDeclaration?.(job) ?? false}
+                        onDeclareParts={onDeclareParts}
                     />
                 ))}
             </motion.div>
@@ -277,6 +284,25 @@ export function JobTicketGrid({
                                         })()}
                                     </div>
                                 </div>
+                                {/*
+                                  * Desktop parts declaration. Originally wired
+                                  * only into the mobile card, which left desktop
+                                  * with no way to reach the screen at all —
+                                  * counter staff work on desktop, so the parts
+                                  * they fit were unrecordable there.
+                                  */}
+                                {(needsPartsDeclaration?.(job) ?? false) && onDeclareParts && (
+                                    <Button
+                                        onClick={(event: MouseEvent) => {
+                                            event.stopPropagation();
+                                            onDeclareParts(job);
+                                        }}
+                                        className="w-full h-10 mb-2 rounded-lg gap-2 border border-violet-100 bg-violet-50 font-bold text-violet-700 shadow-none hover:bg-violet-100"
+                                    >
+                                        <PackagePlus className="w-4 h-4" />
+                                        List parts used
+                                    </Button>
+                                )}
                                 <Button
                                     onClick={handlePrimaryAction}
                                     className={cn(
