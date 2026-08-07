@@ -60,11 +60,17 @@ describe("schema carries a separate parts clock", () => {
 });
 
 describe("the migration is safe to run on a live database", () => {
-    it("exists and is the required version", () => {
-        expect(MIGRATE).toContain("2026_08_06_parts_warranty_separation");
-        expect(MIGRATE).toMatch(
-            /REQUIRED_MAIN_SCHEMA_VERSION\s*=\s*"2026_08_06_parts_warranty_separation"/,
-        );
+    it("is registered in the migration ledger", () => {
+        /**
+         * Asserts the migration EXISTS, not that it is the newest one.
+         *
+         * This originally pinned REQUIRED_MAIN_SCHEMA_VERSION to this id, which
+         * made the test fail the moment any later migration was appended — a
+         * false alarm about unrelated work, not a real regression. The ledger
+         * is append-only, so presence in it is the property worth protecting;
+         * being last is temporary by definition.
+         */
+        expect(MIGRATE).toContain('id: "2026_08_06_parts_warranty_separation"');
     });
 
     it("is purely additive — no data loss, re-runnable", () => {

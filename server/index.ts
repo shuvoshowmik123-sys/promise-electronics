@@ -15,6 +15,7 @@ import { sanitizeErrorForResponse, logErrorSafe } from "./utils/safe-error.js";
 import { startDrawerDayCloseScheduler, stopDrawerDayCloseScheduler } from "./services/drawer-day-close.service.js";
 import { startAbandonmentScheduler, stopAbandonmentScheduler } from "./services/abandonment.service.js";
 import { startReminderScheduler, stopReminderScheduler } from "./services/reminder.service.js";
+import { startNudgeScheduler, stopNudgeScheduler } from "./services/nudge-scheduler.service.js";
 import { startBackupScheduler, stopBackupScheduler } from "./services/backup-scheduler.service.js";
 import { seedDefaultCommissionRules } from "./services/commission.service.js";
 import { initNightlyJobs, stopNightlyJobs } from "./services/nightly-jobs.service.js";
@@ -349,6 +350,7 @@ async function runOptionalJobsPhase(): Promise<void> {
             startDrawerDayCloseScheduler();
             startAbandonmentScheduler();
             startReminderScheduler();
+            startNudgeScheduler();
             startBackupScheduler();
             initNightlyJobs();
             startSystemIncidentSchedulers();
@@ -370,6 +372,7 @@ async function runOptionalJobsPhase(): Promise<void> {
     stopSystemIncidentSchedulers();
     stopAbandonmentScheduler();
     stopReminderScheduler();
+    stopNudgeScheduler();
     stopBackupScheduler();
     stopNightlyJobs();
     stopSystemIncidentSchedulers();

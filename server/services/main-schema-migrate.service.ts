@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_06_parts_warranty_separation";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_07_reminder_dispatches";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2034,6 +2034,28 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
        */
       await client.query(`CREATE INDEX IF NOT EXISTS idx_local_purchases_part_name_lower
         ON local_purchases (LOWER(part_name), created_at DESC)`);
+    },
+  },
+  {
+    id: "2026_08_07_reminder_dispatches",
+    description:
+      "Ledger of reminders actually sent, so the nudge scheduler can be idempotent. The scheduler polls on an interval, so without a durable record a 10:30 attendance nudge would re-fire on every poll until the Dhaka day rolled over. The unique index IS the idempotency: a dispatch is an INSERT ... ON CONFLICT DO NOTHING and the push is only sent when a row was actually created, which is atomic in a single statement and therefore survives process restarts and two instances running concurrently. target_ref is NOT NULL DEFAULT '' rather than nullable because NULL is not equal to NULL in a unique index, so nullable day-scoped rows would never collide and every poll would send again. Additive only: one new table, nothing existing is touched.",
+    up: async (client) => {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS reminder_dispatches (
+          id            TEXT PRIMARY KEY,
+          run_day       TEXT NOT NULL,
+          reminder_kind TEXT NOT NULL,
+          user_id       TEXT NOT NULL,
+          target_ref    TEXT NOT NULL DEFAULT '',
+          created_at    TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+      `);
+      await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_reminder_dispatch_once
+        ON reminder_dispatches (run_day, reminder_kind, user_id, target_ref)`);
+      // Retention sweeps delete by age; the bell never reads this table.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_reminder_dispatches_created_at
+        ON reminder_dispatches (created_at)`);
     },
   },
 ];

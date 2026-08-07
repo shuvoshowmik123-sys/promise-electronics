@@ -1914,6 +1914,44 @@ export const notifications = pgTable("notifications", {
   };
 });
 
+/**
+ * One row per reminder actually sent.
+ *
+ * The scheduler polls every few minutes, so without this a 10:30 attendance
+ * nudge would fire again at 10:35, 10:40, and every poll until the day rolled
+ * over. The unique index below IS the idempotency: a dispatch is an INSERT ...
+ * ON CONFLICT DO NOTHING, and the push is only sent when the insert actually
+ * created a row. That is atomic in one statement, so it holds across process
+ * restarts and across two instances running at once — neither of which a
+ * short-lived in-memory "already sent" set would survive.
+ *
+ * `targetRef` distinguishes reminders that repeat per subject on the same day:
+ * a technician can legitimately be nudged about three different stalled jobs,
+ * but never twice about the same one. It is the empty string rather than NULL
+ * for day-scoped reminders, because NULL is not equal to NULL in a unique
+ * index and every insert would slip past the conflict check.
+ */
+export const reminderDispatches = pgTable("reminder_dispatches", {
+  id: text("id").primaryKey(),
+  /** Calendar day in Asia/Dhaka, not UTC — the shop's day is what staff live in. */
+  runDay: text("run_day").notNull(),
+  /** e.g. attendance_first, attendance_second, parts_declaration, stale_job */
+  reminderKind: text("reminder_kind").notNull(),
+  userId: text("user_id").notNull(),
+  /** Job id or similar when the reminder is about one thing; "" when day-scoped. */
+  targetRef: text("target_ref").notNull().default(""),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => {
+  return {
+    onceIdx: uniqueIndex("uq_reminder_dispatch_once").on(
+      table.runDay, table.reminderKind, table.userId, table.targetRef,
+    ),
+    createdAtIdx: index("idx_reminder_dispatches_created_at").on(table.createdAt),
+  };
+});
+
+export type ReminderDispatch = typeof reminderDispatches.$inferSelect;
+
 export const insertNotificationSchema = createInsertSchema(notifications).omit({
   id: true,
   createdAt: true,
