@@ -119,6 +119,65 @@ export function dhakaRunDay(d: Date = nowUtc()): string {
     return `${y}-${m}-${day}`;
 }
 
+/**
+ * Is today a day nobody is expected to work?
+ *
+ * The attendance sweep chased two people on a Friday — the shop's weekly rest
+ * day — because nothing in the system knew Friday was closed. A nudge that
+ * cries wolf on a rest day is precisely how staff learn to ignore every nudge,
+ * which would cost the parts declarations this scheduler exists to collect.
+ *
+ * Settings-driven rather than hardcoded: the rest day differs by country, and
+ * public holidays move every year.
+ *
+ *   shop.restDays  JSON array of weekday numbers, 0=Sunday … 5=Friday, 6=Saturday
+ *   shop.holidays  JSON array of "YYYY-MM-DD" strings, Asia/Dhaka calendar days
+ *
+ * Defaults to Friday closed, matching this shop. A malformed or missing value
+ * must never silence a normal working day, so every failure path returns false
+ * — the sweep runs and someone is nudged, which is recoverable. Silently
+ * skipping a real workday is not.
+ */
+const DEFAULT_REST_DAYS = [5]; // Friday
+
+export async function isNonWorkingDay(runDay: string): Promise<boolean> {
+    try {
+        const rows = await db.execute(sql`
+            SELECT key, value FROM settings WHERE key IN ('shop.restDays', 'shop.holidays')
+        `);
+        const map = new Map<string, string>();
+        for (const row of ((rows as any).rows ?? rows) as any[]) {
+            map.set(String(row.key), String(row.value));
+        }
+
+        const parseArray = (raw: string | undefined): unknown[] => {
+            if (!raw) return [];
+            try {
+                const parsed: unknown = JSON.parse(raw);
+                return Array.isArray(parsed) ? parsed : [];
+            } catch {
+                return [];
+            }
+        };
+
+        const holidays = parseArray(map.get('shop.holidays')).map((d) => String(d));
+        if (holidays.includes(runDay)) return true;
+
+        const restRaw = parseArray(map.get('shop.restDays'));
+        const restDays = restRaw.length > 0
+            ? restRaw.map((d) => Number(d)).filter((d) => Number.isInteger(d) && d >= 0 && d <= 6)
+            : DEFAULT_REST_DAYS;
+
+        // runDay is already the Dhaka calendar date, so the weekday is read from
+        // it directly rather than from the server's own clock.
+        const weekday = new Date(`${runDay}T12:00:00Z`).getUTCDay();
+        return restDays.includes(weekday);
+    } catch {
+        logBackgroundFailure("Nudges", "REST_DAY_LOOKUP_FAILED");
+        return false;
+    }
+}
+
 /** Minutes past local midnight in Asia/Dhaka. */
 export function dhakaMinutes(d: Date = nowUtc()): number {
     const parts = new Intl.DateTimeFormat("en-GB", {
@@ -402,11 +461,24 @@ export async function runNudgeSweep(): Promise<void> {
     const runDay = dhakaRunDay(now);
     const minutes = dhakaMinutes(now);
 
-    for (const [code, sweep] of [
-        ["ATTENDANCE_SWEEP_FAILED", () => sweepAttendance(runDay, minutes)],
-        ["PARTS_SWEEP_FAILED", () => sweepPartsDeclaration(runDay, minutes)],
-        ["STALE_JOB_SWEEP_FAILED", () => sweepStaleJobs(runDay, minutes)],
-    ] as const) {
+    /**
+     * Nothing that chases a person's daily duty runs on a rest day or holiday.
+     *
+     * Stalled jobs are deliberately still swept: a job that has not moved in
+     * four days is not less stuck because today is Friday, and that nudge is
+     * about work sitting in the shop rather than about someone's attendance.
+     */
+    const closed = await isNonWorkingDay(runDay);
+
+    const sweeps = closed
+        ? ([["STALE_JOB_SWEEP_FAILED", () => sweepStaleJobs(runDay, minutes)]] as const)
+        : ([
+            ["ATTENDANCE_SWEEP_FAILED", () => sweepAttendance(runDay, minutes)],
+            ["PARTS_SWEEP_FAILED", () => sweepPartsDeclaration(runDay, minutes)],
+            ["STALE_JOB_SWEEP_FAILED", () => sweepStaleJobs(runDay, minutes)],
+        ] as const);
+
+    for (const [code, sweep] of sweeps) {
         try {
             await sweep();
         } catch {

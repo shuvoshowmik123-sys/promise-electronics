@@ -1,7 +1,7 @@
 // Bumped to v7: the push badge changed. Without a new cache name the old
 // service worker keeps serving the previous asset list and the status-bar mark
 // stays a white dot on devices that already installed v6.
-const CACHE_NAME = 'promise-electronics-v7';
+const CACHE_NAME = 'promise-electronics-v8';
 const OFFLINE_URL = '/offline.html';
 
 const urlsToCache = [
@@ -10,6 +10,7 @@ const urlsToCache = [
   '/logo.png',
   '/favicon.png',
   '/notification-badge.png',
+  '/notification-icon.png',
   '/manifest.json',
   '/manifest-admin.json',
   '/manifest-corporate.json'
@@ -119,7 +120,7 @@ self.addEventListener('push', (event) => {
   const title = p.title || 'Promise Electronics';
   const options = {
     body: p.body || '',
-    icon: p.icon || '/logo.png',
+    icon: p.icon || '/notification-icon.png',
     /**
      * The status-bar mark. MUST be a monochrome silhouette.
      *

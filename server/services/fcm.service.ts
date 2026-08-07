@@ -119,7 +119,7 @@ export async function sendPushToDevice(token: string, payload: PushPayload): Pro
                 notification: {
                     title: payload.title,
                     body: payload.body,
-                    icon: '/logo.png',
+                    icon: '/notification-icon.png',
                     // Monochrome silhouette, not favicon.png. Android discards colour
                     // in the badge and fills every opaque pixel, so the full-colour
                     // favicon rendered as a solid white dot. An FCM message carrying
@@ -199,7 +199,7 @@ export async function sendPushToAllAdmins(
                 notification: {
                     title: payload.title,
                     body: payload.body,
-                    icon: '/logo.png',
+                    icon: '/notification-icon.png',
                     // Monochrome silhouette, not favicon.png. Android discards colour
                     // in the badge and fills every opaque pixel, so the full-colour
                     // favicon rendered as a solid white dot. An FCM message carrying

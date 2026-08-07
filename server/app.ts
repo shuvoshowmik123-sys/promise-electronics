@@ -186,7 +186,24 @@ export async function createApp(): Promise<Express> {
         },
     };
 
-    const usePgSession = isProduction || process.env.SESSION_STORE === "postgres";
+    /**
+     * Persist sessions whenever a database exists — do not make it conditional
+     * on NODE_ENV.
+     *
+     * This previously required NODE_ENV === "production" (or an explicit opt-in)
+     * before using Postgres. If that variable is unset or misspelled on the
+     * host, the server silently falls back to MemoryStore, and every restart
+     * signs out every user. On a plan that sleeps when idle, that is several
+     * forced logins a day with nothing in the logs to explain them — and a 90
+     * day cookie cannot help, because the server has forgotten the session the
+     * cookie refers to.
+     *
+     * A memory store is never the right choice when DATABASE_URL is present, so
+     * the default is inverted: persist unless someone explicitly asks not to.
+     * Tests keep the in-memory store, which is what makes them isolated.
+     */
+    const isTestEnv = process.env.NODE_ENV === "test";
+    const usePgSession = !isTestEnv && process.env.SESSION_STORE !== "memory";
     if (process.env.DATABASE_URL && usePgSession) {
         sessionConfig.store = new PgStore({
             pool: sharedPool as any,
@@ -195,8 +212,12 @@ export async function createApp(): Promise<Express> {
             pruneSessionInterval: false as any,
         });
         console.log('[Session] Using PostgreSQL session store (persistent)');
+    } else if (!isTestEnv && !process.env.DATABASE_URL) {
+        // Loud, because sessions will not survive a restart and that shows up
+        // as unexplained logouts rather than as an error.
+        console.warn('[Session] No DATABASE_URL — sessions are in memory and will be LOST on restart');
     } else {
-        console.log('[Session] Using memory session store (dev only)');
+        console.log('[Session] Using memory session store (test/opt-out)');
     }
 
     app.use(session(sessionConfig));

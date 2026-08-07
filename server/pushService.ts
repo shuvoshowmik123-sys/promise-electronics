@@ -66,7 +66,7 @@ async function sendToDevice(token: string, payload: PushNotificationPayload): Pr
                 notification: {
                     title: payload.title,
                     body: payload.body,
-                    icon: '/logo.png',
+                    icon: '/notification-icon.png',
                     badge: '/notification-badge.png',
                     requireInteraction: false,
                 },
@@ -277,6 +277,10 @@ export async function notifyOrderStatusChange(userId: string, ticketNumber: stri
             type: "repair_update",
             ticketNumber,
             status: newStatus,
+            // The service worker navigates to data.url and falls back to "/".
+            // Without this every tap landed on the home page instead of the
+            // thing the notification was about.
+            url: `/my-repairs?order=${encodeURIComponent(ticketNumber)}`,
         },
     });
 }
@@ -292,6 +296,7 @@ export async function notifyQuoteReady(userId: string, serviceRequestId: string,
             type: "quote_ready",
             serviceRequestId,
             amount: String(amount),
+            url: `/my-repairs?order=${encodeURIComponent(serviceRequestId)}`,
         },
     });
 }
@@ -306,6 +311,7 @@ export async function notifyQuoteAccepted(userId: string, ticketNumber: string):
         data: {
             type: "repair_update",
             ticketNumber,
+            url: `/my-repairs?order=${encodeURIComponent(ticketNumber)}`,
         },
     });
 }
@@ -316,6 +322,9 @@ export async function notifyPromotional(userId: string, title: string, body: str
         body,
         data: {
             type: "promotional",
+            // `route` was never read by the service worker, which looks for
+            // `url` — promotional taps also landed on the home page.
+            url: route || "/native/home",
             route: route || "/native/home",
         },
     });
