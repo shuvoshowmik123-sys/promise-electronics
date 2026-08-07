@@ -47,6 +47,13 @@ export type StoredLinkedJobCharge = {
     customerPhone: string | null;
     customerAddress: string | null;
     assistedByNames?: string | null;
+    /**
+     * Warranty promised at the counter, in months. Persisted with the
+     * transaction so a reprinted invoice shows what was actually agreed on the
+     * day, not what the settings happen to offer now.
+     */
+    serviceWarrantyMonths?: number | null;
+    partsWarrantyMonths?: number | null;
 };
 
 export type TransactionData = {

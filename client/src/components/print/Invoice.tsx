@@ -16,7 +16,23 @@ type LinkedJobCharge = {
   customerPhone?: string | null;
   customerAddress?: string | null;
   assistedByNames?: string | null;
+  /**
+   * Warranty promised at the counter, in months. Null means none was given.
+   *
+   * The invoice is the only copy of that promise the customer walks out with.
+   * Leaving it off meant a period agreed out loud existed nowhere they could
+   * point at later — which is exactly the argument this is meant to prevent.
+   */
+  serviceWarrantyMonths?: number | null;
+  partsWarrantyMonths?: number | null;
 };
+
+/** Months as the customer would say them. Absence is stated, not omitted. */
+function warrantyLabel(months: number | null | undefined): string {
+  const n = Number(months);
+  if (!Number.isFinite(n) || n <= 0) return "No warranty";
+  return n === 1 ? "1 month" : `${n} months`;
+}
 
 type InvoiceData = {
   id: string;
@@ -190,6 +206,18 @@ export const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ data, company
                 {job.assistedByNames && (
                   <p className="text-xs text-gray-500 italic">Assisted by: {job.assistedByNames}</p>
                 )}
+                {/*
+                  * Both periods, always printed, including when there is none.
+                  * "No warranty" written down is a fact both sides agreed; a
+                  * blank line is something each side later remembers
+                  * differently. Parts first, because it is usually the longer
+                  * of the two and the one being asked about.
+                  */}
+                <p className="text-xs text-gray-600 mt-1">
+                  Parts warranty: {warrantyLabel(job.partsWarrantyMonths)}
+                  {" · "}
+                  Service warranty: {warrantyLabel(job.serviceWarrantyMonths)}
+                </p>
               </td>
               <td className="py-3 px-4 text-center">1 pcs</td>
               <td className="py-3 px-4 text-right">৳{job.billedAmount.toFixed(2)}</td>
