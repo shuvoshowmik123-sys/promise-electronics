@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, History, Loader2, Package, PackagePlus, Plus, ScanBarcode, Search, Store, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MobileTabLayout, MobileTabHeader, MobileScrollContent } from "../../shared";
 
 export type MobilePickerItem = {
     id: string;
@@ -70,47 +71,49 @@ function CatalogueRow({ item, onPress }: { item: MobilePickerItem; onPress: (ite
     const stock = item.stock;
     const isOut = stock !== undefined && stock <= 0;
     const isLow = !isOut && stock !== undefined && stock <= 5;
+    const accentTone = isOut ? "bg-rose-500" : isLow ? "bg-amber-500" : stock !== undefined ? "bg-emerald-500" : "bg-slate-300";
 
     return (
         <button
             type="button"
             onClick={() => onPress(item)}
             className={cn(
-                "flex w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-2.5 py-2 text-left shadow-sm active:scale-[0.98]",
+                "relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-slate-200 bg-white px-3 py-3 text-left shadow-sm active:scale-[0.98]",
                 isOut && "opacity-60",
             )}
         >
+            <span className={cn("absolute inset-y-3 left-0 w-1 rounded-r-full", accentTone)} />
             {imageUrl ? (
                 <img
                     src={imageUrl}
                     alt=""
                     loading="lazy"
                     onError={() => setImgFailed(true)}
-                    className="h-10 w-10 shrink-0 rounded-xl border border-slate-100 bg-slate-50 object-cover"
+                    className="h-14 w-14 shrink-0 rounded-xl border border-slate-100 bg-slate-50 object-cover"
                 />
             ) : (
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-50">
-                    <Package className="h-4 w-4 text-slate-300" />
+                <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-slate-100 bg-slate-50">
+                    <Package className="h-6 w-6 text-slate-300" />
                 </span>
             )}
             <span className="min-w-0 flex-1">
-                <span className="block truncate text-[13px] font-bold text-slate-950">{item.name}</span>
+                <span className="line-clamp-2 text-sm font-bold leading-snug text-slate-950">{item.name}</span>
                 {item.category && (
-                    <span className="block truncate text-[10px] font-medium text-slate-500">{item.category}</span>
+                    <span className="mt-0.5 block truncate text-[11px] font-medium text-slate-500">{item.category}</span>
                 )}
-            </span>
-            <span className="flex shrink-0 flex-col items-end gap-1">
-                <span className="text-[13px] font-black tabular-nums text-slate-950">{item.price}</span>
                 {stock !== undefined && (
                     <span
                         className={cn(
-                            "inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide",
+                            "mt-1.5 inline-flex items-center rounded-full border px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide",
                             isOut ? toneClasses.rose : isLow ? toneClasses.amber : toneClasses.emerald,
                         )}
                     >
                         {isOut ? "Out" : isLow ? `Low · ${stock}` : `${stock} in stock`}
                     </span>
                 )}
+            </span>
+            <span className="shrink-0 self-center text-base font-black tabular-nums text-slate-950">
+                {item.price}
             </span>
         </button>
     );
@@ -126,7 +129,6 @@ export function MobileProductPicker({
     cartBarVisible = false,
 }: MobileProductPickerProps) {
     const searchRef = useRef<HTMLInputElement>(null);
-    const scrollTickingRef = useRef(false);
     const [query, setQuery] = useState("");
     const [activeCategory, setActiveCategory] = useState("All");
     const [sourcedOpen, setSourcedOpen] = useState(false);
@@ -226,39 +228,13 @@ export function MobileProductPicker({
         searchRef.current?.focus();
     };
 
-    // The admin shell listens for this event to hide/reveal top+bottom chrome on scroll.
-    const onListScroll = (e: { currentTarget: HTMLDivElement }) => {
-        if (window.innerWidth >= 768 || scrollTickingRef.current) return;
-        const el = e.currentTarget;
-        scrollTickingRef.current = true;
-        requestAnimationFrame(() => {
-            scrollTickingRef.current = false;
-            /**
-             * `syncOnly: true` is load-bearing, not decoration.
-             *
-             * design-concept.tsx branches on it: with the flag the listener runs
-             * syncAdminMobileChromeScroll, without it updateAdminMobileChromeScroll,
-             * which additionally consults mobileInputDirectionRef — direction
-             * state this component never sets. Omitting the flag drives the
-             * chrome from a half-initialised direction, so the header hides or
-             * reveals against the scroll while this list is the active surface.
-             *
-             * Matches MobileScrollContent in MobileAdminPrimitives, which is the
-             * canonical scrolling surface for every other mobile tab.
-             */
-            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", {
-                detail: { scrollTop: el.scrollTop, syncOnly: true },
-            }));
-        });
-    };
-
     const inputClass =
         "h-9 w-full rounded-xl border border-slate-200 bg-white px-2.5 text-[13px] font-bold text-slate-950 placeholder:font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400";
     const labelClass = "text-[9px] font-bold uppercase tracking-wide text-slate-500";
 
     return (
-        <div className="flex h-full min-h-0 flex-col bg-[#f8fafc]">
-            <div className="flex-none space-y-1.5 border-b border-slate-100/80 bg-[#f8fafc] px-3 pb-1.5 pt-1">
+        <MobileTabLayout className="md:overflow-auto">
+            <MobileTabHeader className="border-b border-slate-100/80 pt-1">
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
@@ -306,19 +282,17 @@ export function MobileProductPicker({
                         </div>
                     </div>
                 )}
-            </div>
+            </MobileTabHeader>
 
-            <div
+            <MobileScrollContent
                 className={cn(
-                    "flex-1 min-h-0 space-y-2 overflow-y-auto overflow-x-hidden bg-[#f8fafc] px-3 pt-2",
-                    // Clears the tab dock, and the cart bar on top of it when a
-                    // sale is in progress. Measured against the 390x844 mobile
-                    // shell: dock ~7rem, dock + cart bar ~13rem.
+                    "md:hidden space-y-2",
+                    // House dock clearance; extra room when the floating cart bar
+                    // sits above the dock so sourced-part Cancel/Add stay tappable.
                     cartBarVisible
-                        ? "pb-[calc(13rem+env(safe-area-inset-bottom))]"
-                        : "pb-[calc(7rem+env(safe-area-inset-bottom))]",
+                        ? "pb-[calc(11.5rem+env(safe-area-inset-bottom))]"
+                        : "pb-[calc(5.5rem+env(safe-area-inset-bottom))]",
                 )}
-                onScroll={onListScroll}
             >
                 {isLoading ? (
                     <div className="flex items-center justify-center py-16">
@@ -327,33 +301,33 @@ export function MobileProductPicker({
                 ) : trimmedQuery && filteredItems.length === 0 ? (
                     <>
                         <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
-                            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100">
-                                <Package className="h-4 w-4 text-slate-400" />
+                            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
+                                <Package className="h-5 w-5 text-slate-400" />
                             </span>
-                            <p className="text-[13px] font-bold text-slate-950">No catalogue match</p>
-                            <p className="text-[10px] font-medium text-slate-500">
+                            <p className="text-sm font-bold text-slate-950">No catalogue match</p>
+                            <p className="text-[11px] font-medium text-slate-500">
                                 Nothing stocked named &ldquo;{trimmedQuery}&rdquo;. Source it ad-hoc instead.
                             </p>
                         </div>
                         {sourcedOpen ? (
-                            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                                <div className="flex items-center gap-2">
+                            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                                <div className="flex items-center gap-3">
                                     <span
                                         className={cn(
-                                            "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border",
+                                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border",
                                             toneClasses.violet,
                                         )}
                                     >
-                                        <Store className="h-4 w-4" />
+                                        <Store className="h-5 w-5" />
                                     </span>
                                     <div className="min-w-0">
-                                        <p className="text-[13px] font-bold text-slate-950">Sourced part</p>
-                                        <p className="text-[10px] font-medium text-slate-500">
+                                        <p className="text-sm font-bold text-slate-950">Sourced part</p>
+                                        <p className="text-[11px] font-medium text-slate-500">
                                             Bought from a local vendor for this job
                                         </p>
                                     </div>
                                 </div>
-                                <div className="mt-2.5 space-y-2">
+                                <div className="mt-3 space-y-2.5">
                                     <label className="block">
                                         <span className={labelClass}>Part name</span>
                                         <input
@@ -409,11 +383,11 @@ export function MobileProductPicker({
                                         />
                                     </label>
                                 </div>
-                                <div className="mt-2.5 grid grid-cols-2 gap-2">
+                                <div className="mt-3 grid grid-cols-2 gap-2">
                                     <button
                                         type="button"
                                         onClick={() => setSourcedOpen(false)}
-                                        className="h-10 rounded-xl border border-slate-200 bg-white text-[11px] font-bold text-slate-500 active:scale-[0.98]"
+                                        className="h-11 rounded-xl border border-slate-200 bg-white text-[12px] font-bold text-slate-500 active:scale-[0.98]"
                                     >
                                         Cancel
                                     </button>
@@ -421,9 +395,9 @@ export function MobileProductPicker({
                                         type="button"
                                         disabled={!canSubmitSourced}
                                         onClick={submitSourced}
-                                        className="flex h-10 items-center justify-center gap-1 rounded-xl bg-violet-600 text-[11px] font-bold text-white shadow-sm active:scale-[0.98] disabled:opacity-40"
+                                        className="flex h-11 items-center justify-center gap-1.5 rounded-xl bg-violet-600 text-[12px] font-bold text-white shadow-sm active:scale-[0.98] disabled:opacity-40"
                                     >
-                                        <Plus className="h-3.5 w-3.5" />
+                                        <Plus className="h-4 w-4" />
                                         Add to sale
                                     </button>
                                 </div>
@@ -432,11 +406,11 @@ export function MobileProductPicker({
                             <button
                                 type="button"
                                 onClick={openSourcedForm}
-                                className="flex w-full items-center justify-between gap-2 rounded-2xl border border-violet-100 bg-violet-50 px-3 py-2.5 text-left shadow-sm active:scale-[0.99]"
+                                className="flex w-full items-center justify-between gap-3 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3.5 text-left shadow-sm active:scale-[0.98]"
                             >
-                                <span className="flex min-w-0 items-center gap-2">
-                                    <PackagePlus className="h-4 w-4 shrink-0 text-violet-700" />
-                                    <span className="truncate text-[13px] font-bold text-violet-700">
+                                <span className="flex min-w-0 items-center gap-2.5">
+                                    <PackagePlus className="h-5 w-5 shrink-0 text-violet-700" />
+                                    <span className="line-clamp-2 text-sm font-bold text-violet-700">
                                         Add &ldquo;{trimmedQuery}&rdquo; as a sourced part
                                     </span>
                                 </span>
@@ -446,34 +420,34 @@ export function MobileProductPicker({
                     </>
                 ) : !trimmedQuery && items.length === 0 ? (
                     <div className="flex flex-col items-center gap-2 px-3 py-16 text-center">
-                        <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-100">
-                            <Package className="h-4 w-4 text-slate-400" />
+                        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
+                            <Package className="h-5 w-5 text-slate-400" />
                         </span>
-                        <p className="text-[13px] font-bold text-slate-950">Catalogue is empty</p>
-                        <p className="text-[10px] font-medium text-slate-500">
+                        <p className="text-sm font-bold text-slate-950">Catalogue is empty</p>
+                        <p className="text-[11px] font-medium text-slate-500">
                             Stocked items will appear here. Type a name above to source a part instead.
                         </p>
                     </div>
                 ) : (
                     <>
                         {recentItems.length > 0 && (
-                            <section className="space-y-1.5">
-                                <p className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-slate-500">
+                            <section className="space-y-2">
+                                <p className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wide text-slate-500">
                                     <History className="h-3.5 w-3.5" />
                                     Recent
                                 </p>
-                                <div className="space-y-1.5">
+                                <div className="space-y-2">
                                     {recentItems.map((item) => (
                                         <CatalogueRow key={`recent-${item.id}`} item={item} onPress={handleAdd} />
                                     ))}
                                 </div>
                             </section>
                         )}
-                        <section className="space-y-1.5">
+                        <section className="space-y-2">
                             {recentItems.length > 0 && (
                                 <p className="text-[9px] font-bold uppercase tracking-wide text-slate-500">All items</p>
                             )}
-                            <div className="space-y-1.5">
+                            <div className="space-y-2">
                                 {filteredItems.map((item) => (
                                     <CatalogueRow key={item.id} item={item} onPress={handleAdd} />
                                 ))}
@@ -481,7 +455,7 @@ export function MobileProductPicker({
                         </section>
                     </>
                 )}
-            </div>
-        </div>
+            </MobileScrollContent>
+        </MobileTabLayout>
     );
 }
