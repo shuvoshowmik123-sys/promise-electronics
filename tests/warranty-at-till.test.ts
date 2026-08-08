@@ -98,17 +98,22 @@ describe("a period chosen at the counter is the one recorded", () => {
         expect(BILLING).toMatch(/if \(chosenPartsDays\)/);
     });
 
-    it("still never overwrites an expiry already set", () => {
-        // Paying an already-completed job must not extend a warranty the
-        // customer has been running down.
-        expect(BILLING).toMatch(/if \(!\(job as any\)\.warrantyExpiryDate\)/);
-        expect(BILLING).toMatch(/if \(!\(job as any\)\.partsWarrantyExpiryDate\)/);
+    it("still never extends a warranty once money has been taken", () => {
+        /**
+         * This used to assert a bare !expiry guard, which was the bug: it also
+         * blocked the counter's choice against a default stamped seconds
+         * earlier at completion. The real rule is about whether the job has
+         * been billed, not whether a date happens to be present.
+         */
+        expect(BILLING).toContain("const firstBilling = Number(job.paidAmount || 0) <= 0");
+        expect(BILLING).toMatch(/mayOverride = \(existing: unknown\) => !existing \|\| firstBilling/);
     });
 
     it("falls back to the resolver when the till chose nothing", () => {
-        // A till that does not offer the choice must behave exactly as before.
-        expect(BILLING).toMatch(/else if \(warrantyDays > 0 && resolvedWarranty\.warrantyExpiryDate\)/);
-        expect(BILLING).toMatch(/else if \(resolvedWarranty\.partsWarrantyExpiryDate\)/);
+        // A till that does not offer the choice must behave exactly as before,
+        // and the fallback must still only fill a genuinely empty clock.
+        expect(BILLING).toMatch(/else if \(!\(job as any\)\.warrantyExpiryDate && warrantyDays > 0/);
+        expect(BILLING).toMatch(/else if \(!\(job as any\)\.partsWarrantyExpiryDate && resolvedWarranty\.partsWarrantyExpiryDate\)/);
     });
 
     it("a malformed payload cannot mint years of cover", () => {
@@ -137,5 +142,84 @@ describe("the till UI", () => {
         expect(POS_TAB).toContain("WARRANTY_SETTING_KEYS.partsMonths");
         expect(POS_TAB).toContain("WARRANTY_SETTING_KEYS.serviceMonths");
         expect(POS_TAB).toContain("parseMonthOptions");
+    });
+});
+
+describe("the counter choice survives the completion default (regression)", () => {
+    /**
+     * Found by QA, not by this suite, and the omission is instructive.
+     *
+     * Marking a job Completed already stamps a 30-day labour default via
+     * resolveJobWarranty. The original guard here was "never overwrite an
+     * existing expiry", so by the time the cashier chose three months the
+     * expiry existed and the whole block was skipped — the customer was told
+     * three months and issued thirty days.
+     *
+     * The earlier tests asserted the override code EXISTED. They could not see
+     * that a guard upstream had already fired, which is the limit of asserting
+     * on file contents rather than behaviour.
+     */
+    const JOBS_ROUTES = read("server/routes/jobs.routes.ts");
+
+    it("completing a job really does stamp a default first", () => {
+        // The precondition that made the bug possible. If this ever stops being
+        // true the override below becomes unnecessary rather than wrong.
+        expect(JOBS_ROUTES).toMatch(/extraPatch\.warrantyExpiryDate = resolved\.warrantyExpiryDate/);
+    });
+
+    it("an unbilled job still accepts the counter's choice", () => {
+        expect(BILLING).toContain("const firstBilling = Number(job.paidAmount || 0) <= 0");
+        expect(BILLING).toMatch(/mayOverride = \(existing: unknown\) => !existing \|\| firstBilling/);
+        expect(BILLING).toMatch(/if \(mayOverride\(\(job as any\)\.warrantyExpiryDate\)\)/);
+        expect(BILLING).toMatch(/if \(mayOverride\(\(job as any\)\.partsWarrantyExpiryDate\)\)/);
+    });
+
+    it("no longer gates the override on the expiry being absent", () => {
+        // The exact shape of the bug: a bare !expiry check around the choice.
+        expect(BILLING).not.toMatch(/if \(!\(job as any\)\.warrantyExpiryDate\) \{\s*\n\s*if \(chosenServiceDays\)/);
+    });
+
+    it("a part-paid job can never have its warranty extended", () => {
+        // Once money is taken the period is fixed; re-paying must not move it.
+        expect(BILLING).toMatch(/firstBilling/);
+        const block = BILLING.slice(BILLING.indexOf("const firstBilling"));
+        expect(block.slice(0, 1200)).toContain("paidAmount");
+    });
+
+    it("the resolver fallback still only fills a genuinely empty clock", () => {
+        // Overriding is for an explicit choice. The inferred default must not
+        // start overwriting real expiries as a side effect of this fix.
+        expect(BILLING).toMatch(/else if \(!\(job as any\)\.warrantyExpiryDate && warrantyDays > 0/);
+        expect(BILLING).toMatch(/else if \(!\(job as any\)\.partsWarrantyExpiryDate && resolvedWarranty\.partsWarrantyExpiryDate\)/);
+    });
+});
+
+describe("the settings the till reads can actually be saved", () => {
+    /**
+     * The Settings panel shipped without its keys on the server allowlist, so
+     * every save returned 400 and the screen silently did nothing. A UI cannot
+     * reveal this — the request looks correct right up to the response.
+     */
+    const SETTINGS_ROUTE = read("server/routes/settings.routes.ts");
+
+    it("every key the client writes is accepted by the server", () => {
+        const OPS = read("client/src/pages/admin/bento/tabs/settings/OperationsSettingsPanel.tsx");
+        const written = [
+            ...[...OPS.matchAll(/WARRANTY_SETTING_KEYS\.(\w+)/g)].map((m) => m[1]),
+        ];
+        expect(written.length).toBeGreaterThan(0);
+
+        for (const key of [
+            "warranty.partsMonthOptions",
+            "warranty.serviceMonthOptions",
+            "shop.restDays",
+            "shop.holidays",
+        ]) {
+            expect(SETTINGS_ROUTE, `${key} must be allowlisted`).toContain(`'${key}'`);
+        }
+    });
+
+    it("the allowlist is what rejects everything else", () => {
+        expect(SETTINGS_ROUTE).toMatch(/if \(!ALLOWED_SETTING_KEYS\.includes\(validated\.key\)\)/);
     });
 });

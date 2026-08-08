@@ -147,7 +147,25 @@ const ALLOWED_SETTING_KEYS = [
 
     // Payment — customer Send Money verification (shown on the track page)
     'bkash_send_money_number',
-    'nagad_send_money_number'
+    'nagad_send_money_number',
+
+    /**
+     * Operations — warranty periods the counter may offer, and the days nobody
+     * works.
+     *
+     * These were added with a Settings panel but not listed here, so every save
+     * returned 400 and the panel silently did nothing. Writing a settings
+     * screen without adding its keys to this allowlist is a mistake the UI
+     * cannot reveal — the request looks fine right up to the response.
+     *
+     * warranty.*  read by the till and the customer's warranty card
+     * shop.*      read by the nudge scheduler, which must not chase anyone on
+     *             a rest day or a holiday
+     */
+    'warranty.partsMonthOptions',
+    'warranty.serviceMonthOptions',
+    'shop.restDays',
+    'shop.holidays'
 ];
 
 /**

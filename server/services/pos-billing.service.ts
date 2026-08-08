@@ -725,20 +725,40 @@ export async function createPosSaleAtomic(input: CreatePosSaleInput): Promise<Cr
           return d;
         };
 
-        if (!(job as any).warrantyExpiryDate) {
+        /**
+         * A choice made at the counter beats a default the system guessed.
+         *
+         * The original guard was "never overwrite an existing expiry", which
+         * silently dropped every counter choice. Marking a job Completed
+         * already stamps a 30-day labour default (jobs.routes, via
+         * resolveJobWarranty), so by the time the cashier picks three months
+         * the expiry exists and the whole block was skipped. The customer was
+         * told three months and issued thirty days.
+         *
+         * The guard could not tell a default written seconds ago from a
+         * warranty a customer has been running down for weeks. `firstBilling`
+         * is that distinction: until this job has taken any money, nothing has
+         * been promised in writing and the counter is still deciding. Once it
+         * is invoiced the period is fixed, so re-paying a partially-paid job
+         * can never extend cover.
+         */
+        const firstBilling = Number(job.paidAmount || 0) <= 0;
+        const mayOverride = (existing: unknown) => !existing || firstBilling;
+
+        if (mayOverride((job as any).warrantyExpiryDate)) {
           if (chosenServiceDays) {
             completionPatch.warrantyDays = chosenServiceDays;
             completionPatch.warrantyExpiryDate = addDays(jobCompletedAt, chosenServiceDays);
-          } else if (warrantyDays > 0 && resolvedWarranty.warrantyExpiryDate) {
+          } else if (!(job as any).warrantyExpiryDate && warrantyDays > 0 && resolvedWarranty.warrantyExpiryDate) {
             completionPatch.warrantyExpiryDate = resolvedWarranty.warrantyExpiryDate;
           }
         }
 
-        if (!(job as any).partsWarrantyExpiryDate) {
+        if (mayOverride((job as any).partsWarrantyExpiryDate)) {
           if (chosenPartsDays) {
             completionPatch.partsWarrantyDays = chosenPartsDays;
             completionPatch.partsWarrantyExpiryDate = addDays(jobCompletedAt, chosenPartsDays);
-          } else if (resolvedWarranty.partsWarrantyExpiryDate) {
+          } else if (!(job as any).partsWarrantyExpiryDate && resolvedWarranty.partsWarrantyExpiryDate) {
             completionPatch.partsWarrantyExpiryDate = resolvedWarranty.partsWarrantyExpiryDate;
             completionPatch.partsWarrantyDays = resolvedWarranty.partsWarrantyDays;
           }
