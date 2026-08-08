@@ -3,18 +3,30 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { SectionEyebrow, PillButton } from "@/components/customer/mobile-kit";
-import { Tv, Smartphone, Home, Wifi, Camera, Cable, CheckCircle2, Loader2, Send } from "lucide-react";
+import { Tv, CircuitBoard, Zap, Cpu, Lightbulb, Cable, CheckCircle2, Loader2, Send } from "lucide-react";
 import { usePageTitle } from "@/hooks/usePageTitle";
 import { toast } from "sonner";
 import { CustomerErrorBoundary } from "@/components/customer/CustomerErrorBoundary";
 
+/**
+ * The parts this shop actually sources — televisions, nothing else.
+ *
+ * This grid used to advertise mobile screens, air conditioners, CCTV and
+ * network switches. None of that is work we take, so every one of those tiles
+ * invited an enquiry we would have to turn down, and made the one true tile
+ * ("Television Parts") look like a sideline instead of the whole business.
+ *
+ * The labels are the components the bench already names in MISSING_PARTS_LIST
+ * and in the technician's work-done list, so what a customer asks for and what
+ * a technician fits are finally the same words.
+ */
 const PART_CATEGORIES = [
-    { icon: Tv, label: "Television Parts", sub: "Panels, boards, remotes" },
-    { icon: Smartphone, label: "Mobile & Tablet", sub: "Screens, batteries" },
-    { icon: Home, label: "Home Appliances", sub: "AC, fridge, washing" },
-    { icon: Camera, label: "CCTV & Security", sub: "Cameras, DVR, cables" },
-    { icon: Wifi, label: "Networking", sub: "Routers, switches, SFP" },
-    { icon: Cable, label: "Cables & Accessories", sub: "HDMI, power, adapters" },
+    { icon: Tv, label: "TV Panel", sub: "Open cell, COF, panel repair" },
+    { icon: CircuitBoard, label: "Motherboard", sub: "Main board, HDMI board" },
+    { icon: Zap, label: "Power Board", sub: "Power supply, fuses" },
+    { icon: Cpu, label: "T-Con Board", sub: "Timing control boards" },
+    { icon: Lightbulb, label: "Backlight", sub: "LED strips, drivers" },
+    { icon: Cable, label: "Remote & Accessories", sub: "Remotes, stands, cables" },
 ];
 
 const TRUST_ITEMS = [
@@ -76,7 +88,7 @@ export default function ShopHoldingPage() {
                 <div className="container mx-auto px-4">
                     <h1 className="text-3xl font-heading font-bold mb-2">Parts & Accessories</h1>
                     <p className="text-muted-foreground">
-                        Request a quote for any part — we source genuine components and get back to you fast.
+                        Request a quote for any television part — we source genuine components and get back to you fast.
                     </p>
                 </div>
             </div>
@@ -168,7 +180,7 @@ export default function ShopHoldingPage() {
                                         required
                                     />
                                     <Textarea
-                                        placeholder="What part do you need? Include the device model if you know it."
+                                        placeholder="Which part do you need? Include your TV brand and model if you know it."
                                         value={message}
                                         onChange={e => setMessage(e.target.value)}
                                         className="rounded-xl bg-slate-50 border-slate-200 min-h-[100px]"
