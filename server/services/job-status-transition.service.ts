@@ -373,6 +373,34 @@ async function projectSurfacesInTx(
     }
   }
 
+  /**
+   * A warranty claim closes when the repair it asked for is finished.
+   *
+   * create-job set the claim to in_repair and pointed new_job_id at the
+   * re-service job, but nothing ever moved it on. Claims piled up at in_repair
+   * whether the television went home a week ago or was still on the bench, so
+   * the claims list could not answer the only question it exists to answer:
+   * what is still outstanding.
+   *
+   * It lives here, with the SR and journey projections, because this runs
+   * inside the same transaction as the status write on every path that
+   * completes a job — advance-status, POS billing, the NG flow. A hook on one
+   * route would have closed claims finished one way and not another.
+   *
+   * The WHERE clause is the whole guard: only a claim still in_repair moves,
+   * so a re-opened or already-closed claim is left alone, and re-running the
+   * transition is a no-op rather than a second closure.
+   */
+  if (job.status === "Completed") {
+    await tx.execute(sql`
+      UPDATE warranty_claims
+      SET status = 'completed',
+          notes = COALESCE(notes, ${`Closed automatically: re-service job ${job.id} completed.`}),
+          updated_at = NOW()
+      WHERE new_job_id = ${job.id} AND status = 'in_repair'
+    `);
+  }
+
   return { srChanged, trackingStatus, requestStatus, serviceRequestId, journeyUpdated, journeyId };
 }
 
