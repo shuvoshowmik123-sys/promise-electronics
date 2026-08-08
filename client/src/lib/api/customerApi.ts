@@ -252,7 +252,16 @@ export type WarrantyInfo = {
 
 export const customerWarrantiesApi = {
     getAll: () => fetchApi<WarrantyInfo[]>("/customer/warranties"),
-    claim: (jobId: string, data: { claimType: "service" | "parts"; issueDescription: string; problemType?: string | null }) =>
+    /**
+     * Best-effort. The caller is expected to let the claim proceed when this
+     * rejects — a photo must never be the reason someone cannot claim.
+     */
+    uploadClaimPhoto: (file: string, fileName: string) =>
+        fetchApi<{ url: string; thumbnailUrl?: string }>("/customer/uploads/claim-photo", {
+            method: "POST",
+            body: JSON.stringify({ file, fileName }),
+        }),
+    claim: (jobId: string, data: { claimType: "service" | "parts"; issueDescription: string; problemType?: string | null; evidenceUrls?: string[] }) =>
         fetchApi<{ claimId: string; message: string }>(`/customer/warranties/${jobId}/claim`, {
             method: "POST",
             body: JSON.stringify(data),

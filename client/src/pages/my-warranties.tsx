@@ -19,6 +19,8 @@ import {
   Wrench,
   Cpu,
   Calendar,
+  Camera,
+  X,
   Loader2,
   Clock,
   AlertCircle,
@@ -44,21 +46,57 @@ function WarrantyClaimSheet({
 }: {
   target: WarrantyClaimTarget | null;
   onClose: () => void;
-  onSubmit: (data: { claimType: WarrantyClaimType; issueDescription: string; problemType: string | null }) => void;
+  onSubmit: (data: { claimType: WarrantyClaimType; issueDescription: string; problemType: string | null; evidenceUrls: string[] }) => void;
   busy: boolean;
 }) {
   const { t, language } = useCustomerLanguage();
   const [claimType, setClaimType] = useState<WarrantyClaimType>("service");
   const [issueDescription, setIssueDescription] = useState("");
   const [problemType, setProblemType] = useState<string | null>(null);
+  const [evidenceUrls, setEvidenceUrls] = useState<string[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadFailed, setUploadFailed] = useState(false);
 
   useEffect(() => {
     if (target) {
       setClaimType(target.claimType);
       setIssueDescription("");
       setProblemType(null);
+      setEvidenceUrls([]);
+      setUploadFailed(false);
     }
   }, [target]);
+
+  /**
+   * Upload is best-effort by design.
+   *
+   * A failure here — no camera permission, a dead connection, ImageKit
+   * unreachable — must never stop the claim. The customer already has a broken
+   * television; blocking them over a photo would be the worst possible moment
+   * to be strict. The note that appears says exactly that, so they do not sit
+   * waiting for something that will not happen.
+   */
+  const onPickFile = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    setUploadFailed(false);
+    setUploading(true);
+    try {
+      const base64: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(new Error("read failed"));
+        reader.onloadend = () => resolve(String(reader.result || ""));
+        reader.readAsDataURL(file);
+      });
+      const res = await customerWarrantiesApi.uploadClaimPhoto(base64, file.name);
+      setEvidenceUrls((prev) => [...prev, res.url].slice(0, 5));
+    } catch {
+      setUploadFailed(true);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   if (!target) return null;
 
@@ -74,6 +112,7 @@ function WarrantyClaimSheet({
       claimType,
       issueDescription: issueDescription.trim() || labelTvSymptom(problemType, "en"),
       problemType,
+      evidenceUrls,
     });
   };
 
@@ -155,6 +194,38 @@ function WarrantyClaimSheet({
             className="mt-2 min-h-24 w-full rounded-2xl border border-emerald-100 bg-emerald-50/40 px-3 py-3 text-sm font-medium text-slate-800 outline-none focus:border-emerald-400 focus:ring-4 focus:ring-emerald-100"
           />
         </label>
+
+        <div className="mt-4">
+          <span className="text-xs font-black uppercase tracking-wide text-slate-500">{t("claim.photoTitle")}</span>
+          <p className="mt-1 text-xs leading-5 text-slate-500">{t("claim.photoHelp")}</p>
+          {evidenceUrls.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              {evidenceUrls.map((url) => (
+                <div key={url} className="relative">
+                  <img src={url} alt="" className="h-16 w-16 rounded-xl border border-emerald-100 object-cover" />
+                  <button
+                    type="button"
+                    aria-label="Remove"
+                    onClick={() => setEvidenceUrls((prev) => prev.filter((u) => u !== url))}
+                    className="absolute -right-1.5 -top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-slate-900 text-white"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {evidenceUrls.length < 5 && (
+            <label className="mt-2 flex h-12 cursor-pointer items-center justify-center gap-2 rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 text-sm font-bold text-emerald-700">
+              {uploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Camera className="h-4 w-4" />}
+              {uploading ? "…" : t("claim.photoAdd")}
+              <input type="file" accept="image/*,video/*" capture="environment" className="hidden" onChange={onPickFile} disabled={uploading} />
+            </label>
+          )}
+          {uploadFailed && (
+            <p className="mt-2 text-xs font-medium leading-5 text-slate-500">{t("claim.photoFailed")}</p>
+          )}
+        </div>
 
         {/*
           * The four questions every customer has, answered before they ask —
@@ -539,11 +610,12 @@ export default function MyWarrantiesPage() {
   });
 
   const claimMutation = useMutation({
-    mutationFn: (data: { jobId: string; claimType: WarrantyClaimType; issueDescription: string; problemType: string | null }) =>
+    mutationFn: (data: { jobId: string; claimType: WarrantyClaimType; issueDescription: string; problemType: string | null; evidenceUrls: string[] }) =>
       customerWarrantiesApi.claim(data.jobId, {
         claimType: data.claimType,
         issueDescription: data.issueDescription,
         problemType: data.problemType,
+        evidenceUrls: data.evidenceUrls,
       }),
     onSuccess: () => {
       toast({ title: t("warranties.claimSubmitted") });

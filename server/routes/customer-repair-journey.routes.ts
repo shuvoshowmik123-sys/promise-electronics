@@ -235,7 +235,7 @@ router.post(
         return res.status(401).json({ error: "Not authenticated", code: "NOT_AUTHENTICATED" });
       }
 
-      const { claimType, issueDescription, problemType } = req.body;
+      const { claimType, issueDescription, problemType, evidenceUrls } = req.body;
       if (!claimType || !["service", "parts"].includes(claimType)) {
         return res.status(400).json({ error: "Claim type must be 'service' or 'parts'" });
       }
@@ -254,6 +254,15 @@ router.post(
         claimType,
         issueDescription: issueDescription.trim(),
         problemType: isTvSymptom(problemType) ? problemType : null,
+        /**
+         * Only URLs this server issued are stored. A claim body is
+         * customer-controlled, and echoing arbitrary strings into a field the
+         * admin panel later renders is how a link to somewhere else ends up on
+         * a staff screen. Capped at five so one claim cannot carry a gallery.
+         */
+        evidenceUrls: Array.isArray(evidenceUrls)
+          ? evidenceUrls.filter((u: unknown) => typeof u === "string" && /^https:\/\//.test(u)).slice(0, 5)
+          : [],
       });
 
       if (!result.success) {

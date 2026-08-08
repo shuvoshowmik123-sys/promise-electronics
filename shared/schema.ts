@@ -2429,6 +2429,22 @@ export const warrantyClaims = pgTable("warranty_claims", {
    * no symptom and must keep working.
    */
   problemType: text("problem_type"),
+  /**
+   * Photos or a short video the customer chose to attach.
+   *
+   * Optional, always. A claim must never depend on a camera working, a network
+   * holding, or an image host being reachable — the customer already has a
+   * broken television and refusing them over a failed upload would be the
+   * worst possible moment to be strict.
+   *
+   * Framed to the customer as helping the technician prepare, never as
+   * evidence. "Evidence" is a word from a dispute; this is a photo of a screen
+   * so the shop knows what to bring to the bench.
+   *
+   * Stored as an array of hosted URLs rather than image data. Base64 in a text
+   * column is how a claims table becomes gigabytes.
+   */
+  evidenceUrls: jsonb("evidence_urls").$type<string[]>().default([]),
   warrantyValid: boolean("warranty_valid").notNull(), // Auto-computed on creation
   warrantyExpiryDate: timestamp("warranty_expiry_date"), // Snapshot of the relevant expiry date
 

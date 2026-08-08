@@ -11,7 +11,7 @@ import { v2 as cloudinary } from 'cloudinary';
 import { ObjectStorageService, ObjectNotFoundError } from '../objectStorage.js';
 import ImageKit from 'imagekit';
 import { uploadLimiter, uploadAuthLimiter } from './middleware/rate-limit.js';
-import { requireAdminAuth, requireGranularPermission } from './middleware/auth.js';
+import { requireAdminAuth, requireGranularPermission, requireCustomerAuth } from './middleware/auth.js';
 import { getIKFolder } from '../utils/imagekit-folder.js';
 
 const router = Router();
@@ -94,6 +94,64 @@ router.post('/api/imagekit/upload', requireAdminAuth, uploadLimiter, async (req:
         res.status(500).json({ error: error.message || 'Failed to upload file' });
     }
 });
+
+/**
+ * POST /api/customer/uploads/claim-photo — a photo attached to a warranty claim
+ *
+ * Mirrors the admin upload but scoped to a signed-in customer, into its own
+ * folder, with a hard size cap. Customers are not staff and this is reachable
+ * from a public login, so it is deliberately the narrowest endpoint possible:
+ * one folder, nothing configurable by the caller.
+ *
+ * The failure mode matters more than the happy path. Every error here is
+ * recoverable by the client, because the claim itself must never depend on a
+ * camera working, a network holding, or ImageKit being reachable — the
+ * customer already has a broken television, and refusing them over a failed
+ * upload would be the worst possible moment to be strict.
+ */
+router.post(
+    '/api/customer/uploads/claim-photo',
+    requireCustomerAuth,
+    uploadLimiter,
+    async (req: Request, res: Response) => {
+        try {
+            const imagekit = getImageKit();
+            if (!imagekit) {
+                // 503, not 500: nothing the customer did is wrong, and the
+                // client is expected to let the claim proceed without a photo.
+                return res.status(503).json({ error: 'Photo upload unavailable', code: 'UPLOAD_UNAVAILABLE' });
+            }
+
+            const { file, fileName } = req.body as { file?: string; fileName?: string };
+            if (!file || typeof file !== 'string') {
+                return res.status(400).json({ error: 'No file provided' });
+            }
+
+            /**
+             * ~8MB of base64 — a generous phone photo or a few seconds of
+             * video. Checked before handing anything to ImageKit so an
+             * oversized upload fails fast rather than after a slow round trip
+             * on a phone connection.
+             */
+            const MAX_BASE64_LENGTH = Math.floor((8 * 1024 * 1024 * 4) / 3);
+            if (file.length > MAX_BASE64_LENGTH) {
+                return res.status(413).json({ error: 'That file is too large', code: 'FILE_TOO_LARGE' });
+            }
+
+            const result = await imagekit.upload({
+                file,
+                // A caller-supplied name is never trusted into a path.
+                fileName: `claim-${Date.now()}-${String(fileName || 'photo').replace(/[^a-zA-Z0-9._-]/g, '').slice(0, 40)}`,
+                folder: getIKFolder('warranty-claims'),
+            });
+
+            res.json({ url: result.url, thumbnailUrl: result.thumbnailUrl });
+        } catch (error: any) {
+            console.error('[ClaimUpload] failed:', (error as Error).message);
+            res.status(500).json({ error: 'Could not upload that photo', code: 'UPLOAD_FAILED' });
+        }
+    },
+);
 
 // ============================================
 // Object Storage API (Legacy)

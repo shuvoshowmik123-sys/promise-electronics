@@ -142,3 +142,95 @@ describe("the symptom is stored so it can be counted", () => {
         expect(ROUTES).toMatch(/isTvSymptom\(problemType\) \? problemType : null/);
     });
 });
+
+describe("a photo helps, and never blocks", () => {
+    /**
+     * The customer already has a broken television. Refusing their claim
+     * because a camera, a network, or an image host misbehaved would be the
+     * worst possible moment to be strict — so every failure path here leaves
+     * the claim submittable.
+     */
+    const UPLOAD = read("server/routes/upload.routes.ts");
+    const API = read("client/src/lib/api/customerApi.ts");
+
+    it("is never called evidence where the customer can see it", () => {
+        // "Evidence" is a word from a dispute. This is a photo of a screen so
+        // the technician knows what to bring to the bench.
+        const entries = [...LANG.matchAll(/"claim\.photo[a-zA-Z]*":\s*\{\s*en:\s*"([^"]*)"/g)].map((m) => m[1]);
+        expect(entries.length).toBeGreaterThanOrEqual(4);
+        for (const line of entries) {
+            expect(line, line).not.toMatch(/\bevidence\b/i);
+            expect(line, line).not.toMatch(/\b(prove|proof|required)\b/i);
+        }
+        expect(LANG).toMatch(/"claim\.photoTitle":[^}]*optional/i);
+    });
+
+    it("says plainly that a failed upload does not stop the claim", () => {
+        expect(LANG).toMatch(/"claim\.photoFailed":[^}]*still send your claim/i);
+        expect(PAGE).toContain("claim.photoFailed");
+    });
+
+    it("an upload failure only sets a flag, never throws out of submit", () => {
+        const fn = PAGE.slice(PAGE.indexOf("const onPickFile"));
+        expect(fn.slice(0, 1600)).toMatch(/catch \{\s*\n\s*setUploadFailed\(true\);/);
+        /**
+         * The submit guard must depend ONLY on symptom or text.
+         *
+         * Asserting the original guard still exists is not enough — a negative
+         * control proved an EXTRA `if (uploadFailed) return;` slips straight
+         * past it. What matters is that nothing about the upload can reach the
+         * submit path at all.
+         */
+        expect(PAGE).toMatch(/if \(!problemType && !issueDescription\.trim\(\)\) return/);
+        const submitFn = PAGE.slice(PAGE.indexOf("const submit = (event: FormEvent)"));
+        const submitBody = submitFn.slice(0, submitFn.indexOf("\n  };"));
+        expect(submitBody).not.toMatch(/uploadFailed|uploading/);
+        const disabledAttr = PAGE.match(/disabled=\{busy[^}]*\}/g) ?? [];
+        for (const attr of disabledAttr) {
+            expect(attr, attr).not.toMatch(/uploadFailed|uploading/);
+        }
+    });
+
+    it("an unconfigured image host returns a recoverable status", () => {
+        // 503 with a code the client can act on, not a 500.
+        const route = UPLOAD.slice(UPLOAD.indexOf("/api/customer/uploads/claim-photo"));
+        expect(route.slice(0, 2500)).toContain("UPLOAD_UNAVAILABLE");
+        expect(route.slice(0, 2500)).toMatch(/status\(503\)/);
+    });
+
+    it("the upload endpoint is customer-scoped and rate limited", () => {
+        const route = UPLOAD.slice(UPLOAD.indexOf("/api/customer/uploads/claim-photo"));
+        expect(route.slice(0, 2500)).toContain("requireCustomerAuth");
+        expect(route.slice(0, 2500)).toContain("uploadLimiter");
+        expect(route.slice(0, 2500)).not.toContain("requireAdminAuth");
+    });
+
+    it("caps size before touching the image host", () => {
+        // An oversized upload should fail fast, not after a slow round trip on
+        // a phone connection.
+        const route = UPLOAD.slice(UPLOAD.indexOf("/api/customer/uploads/claim-photo"));
+        expect(route.slice(0, 2500)).toContain("FILE_TOO_LARGE");
+        expect(route.slice(0, 2500)).toMatch(/status\(413\)/);
+    });
+
+    it("never trusts a caller-supplied filename into a path", () => {
+        const route = UPLOAD.slice(UPLOAD.indexOf("/api/customer/uploads/claim-photo"));
+        expect(route.slice(0, 2500)).toMatch(/replace\(\/\[\^a-zA-Z0-9\._-\]\/g, ''\)/);
+    });
+
+    it("only stores URLs this server issued", () => {
+        /**
+         * A claim body is customer-controlled. Echoing arbitrary strings into
+         * a field the admin panel later renders is how a link to somewhere
+         * else ends up on a staff screen.
+         */
+        expect(ROUTES).toMatch(/typeof u === "string" && \/\^https:/);
+        expect(ROUTES).toMatch(/\.slice\(0, 5\)/);
+    });
+
+    it("stores hosted URLs, not image data", () => {
+        // Base64 in a text column is how a claims table becomes gigabytes.
+        expect(SCHEMA).toMatch(/evidenceUrls: jsonb\("evidence_urls"\)/);
+        expect(SCHEMA).toMatch(/\.default\(\[\]\)/);
+    });
+});

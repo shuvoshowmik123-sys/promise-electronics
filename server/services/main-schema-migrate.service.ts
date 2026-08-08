@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_09_job_stock_deductions";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_09_claim_evidence_urls";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2146,6 +2146,14 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
         ON job_stock_deductions (job_ticket_id, inventory_item_id)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_job_stock_deductions_job
         ON job_stock_deductions (job_ticket_id)`);
+    },
+  },
+  {
+    id: "2026_08_09_claim_evidence_urls",
+    description:
+      "Photos or a short video a customer may attach to a warranty claim, so the technician can prepare before the television arrives and so repeated failures on one supplier's part are visible with pictures attached. Always optional: a claim must never depend on a camera, a network, or an image host being reachable, and refusing someone with a broken television over a failed upload would be the worst possible moment to be strict. Stored as an array of hosted URLs rather than image data, because base64 in a text column is how a claims table becomes gigabytes. Defaults to an empty array so every existing claim reads correctly. Additive only: one nullable jsonb column.",
+    up: async (client) => {
+      await client.query(`ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS evidence_urls JSONB DEFAULT '[]'::jsonb`);
     },
   },
 ];
