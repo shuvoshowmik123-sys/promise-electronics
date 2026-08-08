@@ -11,6 +11,7 @@ import { eq, and, sql } from 'drizzle-orm';
 import { jobRepo, serviceRequestRepo, inventoryRepo } from '../repositories/index.js';
 import { allocateJobIdInTx } from '../repositories/job.repository.js';
 import { nanoid } from 'nanoid';
+import { claimStockDeduction, releaseStockDeductions } from './job-stock-deduction.service.js';
 import type { JobTicket, ServiceRequest } from '../../shared/schema.js';
 import { repairJourneyService } from './customer-repair-journey.service.js';
 import { normalizePhone } from '../utils/phone.js';
@@ -110,51 +111,80 @@ export class JobService {
      * Synchronizes parts used in a job with inventory stock and serial numbers.
      * Handles reverting old parts and deducting new parts.
      */
+    /**
+     * Three defects were fixed here together, because they share one cause.
+     *
+     * DOUBLE COUNTING. This deducted stock knowing nothing about the till,
+     * which deducts for cart items. The same part recorded in both places took
+     * two units out of the count for one unit off the shelf. Both paths now
+     * claim through job_stock_deductions first, and only the winner moves
+     * stock — deduct once per part per job, whoever records it first.
+     *
+     * LOST UPDATES. `Number(item.stock) - qty` reads and then writes. Two
+     * people saving the same job at once both read 5 and both write 4, so one
+     * deduction vanishes. Now a single SQL expression, evaluated by the
+     * database.
+     *
+     * PARTIAL WRITES. None of this was in a transaction. A five-part job
+     * failing on part three left stock half-updated with no rollback, and the
+     * ledger would have made that worse by recording claims for movements that
+     * never happened.
+     *
+     * Reverting the old list releases its claims, so re-adding a part the
+     * technician removed is allowed again rather than silently refused for the
+     * life of the job.
+     */
     async syncJobParts(jobId: string, oldPartsJson: string | null, newPartsJson: string | null): Promise<void> {
         const oldParts: any[] = JSON.parse(oldPartsJson || '[]');
         const newParts: any[] = JSON.parse(newPartsJson || '[]');
 
-        // 1. Revert old stock & serials
-        for (const part of oldParts) {
-            if (part.isSerialized && part.serialNumbers) {
-                for (const serial of part.serialNumbers) {
-                    if (!serial) continue;
-                    await db.update(schema.inventorySerials)
-                        .set({ status: 'in_stock', jobTicketId: null, consumedAt: null })
-                        .where(and(eq(schema.inventorySerials.inventoryItemId, part.inventoryItemId), eq(schema.inventorySerials.serialNumber, serial)));
+        await db.transaction(async (tx) => {
+            // 1. Revert old stock & serials
+            for (const part of oldParts) {
+                if (part.isSerialized && part.serialNumbers) {
+                    for (const serial of part.serialNumbers) {
+                        if (!serial) continue;
+                        await tx.update(schema.inventorySerials)
+                            .set({ status: 'in_stock', jobTicketId: null, consumedAt: null })
+                            .where(and(eq(schema.inventorySerials.inventoryItemId, part.inventoryItemId), eq(schema.inventorySerials.serialNumber, serial)));
+                    }
+                }
+                if (part.quantity > 0) {
+                    await tx.update(schema.inventoryItems)
+                        .set({ stock: sql`COALESCE(${schema.inventoryItems.stock}, 0) + ${Number(part.quantity)}` })
+                        .where(eq(schema.inventoryItems.id, part.inventoryItemId));
                 }
             }
-            if (part.quantity > 0) {
-                const item = await inventoryRepo.getInventoryItem(part.inventoryItemId);
-                if (item) {
-                    // Add stock back
-                    await db.update(schema.inventoryItems)
-                        .set({ stock: Number(item.stock) + Number(part.quantity) })
-                        .where(eq(schema.inventoryItems.id, item.id));
-                }
-            }
-        }
 
-        // 2. Apply new stock & serials
-        for (const part of newParts) {
-            if (part.isSerialized && part.serialNumbers) {
-                for (const serial of part.serialNumbers) {
-                    if (!serial) continue;
-                    await db.update(schema.inventorySerials)
-                        .set({ status: 'consumed', jobTicketId: jobId, consumedAt: new Date() })
-                        .where(and(eq(schema.inventorySerials.inventoryItemId, part.inventoryItemId), eq(schema.inventorySerials.serialNumber, serial)));
+            // The old list's stock is back on the shelf, so its claims are void.
+            if (oldParts.length > 0) {
+                await releaseStockDeductions(jobId, tx as any);
+            }
+
+            // 2. Apply new stock & serials
+            for (const part of newParts) {
+                if (part.isSerialized && part.serialNumbers) {
+                    for (const serial of part.serialNumbers) {
+                        if (!serial) continue;
+                        await tx.update(schema.inventorySerials)
+                            .set({ status: 'consumed', jobTicketId: jobId, consumedAt: new Date() })
+                            .where(and(eq(schema.inventorySerials.inventoryItemId, part.inventoryItemId), eq(schema.inventorySerials.serialNumber, serial)));
+                    }
+                }
+                if (part.quantity > 0) {
+                    const claim = await claimStockDeduction(
+                        jobId, part.inventoryItemId, Number(part.quantity), "job", tx as any,
+                    );
+                    // Not granted means the till already took these units for
+                    // this job. The part is still recorded; the shelf is not
+                    // touched twice.
+                    if (!claim.granted) continue;
+                    await tx.update(schema.inventoryItems)
+                        .set({ stock: sql`GREATEST(0, COALESCE(${schema.inventoryItems.stock}, 0) - ${claim.quantity})` })
+                        .where(eq(schema.inventoryItems.id, part.inventoryItemId));
                 }
             }
-            if (part.quantity > 0) {
-                const item = await inventoryRepo.getInventoryItem(part.inventoryItemId);
-                if (item) {
-                    // Deduct stock
-                    await db.update(schema.inventoryItems)
-                        .set({ stock: Number(item.stock) - Number(part.quantity) })
-                        .where(eq(schema.inventoryItems.id, item.id));
-                }
-            }
-        }
+        });
     }
 
     /**

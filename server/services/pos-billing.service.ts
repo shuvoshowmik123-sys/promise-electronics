@@ -20,6 +20,7 @@ import { getActiveServiceAreaById } from "../repositories/service-area.repositor
 import { isNgProtectedStatus } from "./job-ng-protected.js";
 import { repairJourneyService } from "./customer-repair-journey.service.js";
 import { auditLogger } from "../utils/auditLogger.js";
+import { claimStockDeduction } from "./job-stock-deduction.service.js";
 
 export class PosBillingError extends Error {
   status: number;
@@ -608,16 +609,44 @@ export async function createPosSaleAtomic(input: CreatePosSaleInput): Promise<Cr
       );
     }
 
-    // Inventory stock updates inside same transaction
+    /**
+     * Inventory stock, deducted at most once per part per job.
+     *
+     * This used to deduct for every cart line unconditionally, knowing nothing
+     * about the technician's part list — so the same LVDS recorded on the job
+     * and billed here took two boards out of the count for one off the shelf.
+     * The defence was a rule people had to remember.
+     *
+     * Now a job-linked sale claims through job_stock_deductions first. Already
+     * claimed by the job means the part has left the shelf; the till prices it
+     * and moves nothing. Not claimed means the cashier is catching something
+     * the technician missed, and it deducts normally — that case is a genuine
+     * new part, not a duplicate.
+     *
+     * A counter sale with no job attached has nothing to reconcile against and
+     * keeps deducting exactly as before. Sourced parts are skipped too: they
+     * never came off a shelf this system tracks.
+     */
+    const stockJobId = allocations[0]?.job?.id ?? null;
     for (const item of input.cartItems) {
-      if (item?.id && item?.quantity) {
-        await tx
-          .update(schema.inventoryItems)
-          .set({
-            stock: sql`GREATEST(0, COALESCE(${schema.inventoryItems.stock}, 0) - ${item.quantity})`,
-          })
-          .where(eq(schema.inventoryItems.id, item.id));
+      if (!item?.id || !item?.quantity) continue;
+      if (item?.isSourced) continue;
+
+      let unitsToDeduct = Number(item.quantity);
+      if (stockJobId) {
+        const claim = await claimStockDeduction(
+          stockJobId, String(item.id), unitsToDeduct, "pos", tx as any,
+        );
+        if (!claim.granted) continue;
+        unitsToDeduct = claim.quantity;
       }
+
+      await tx
+        .update(schema.inventoryItems)
+        .set({
+          stock: sql`GREATEST(0, COALESCE(${schema.inventoryItems.stock}, 0) - ${unitsToDeduct})`,
+        })
+        .where(eq(schema.inventoryItems.id, item.id));
     }
 
     // Petty cash / due / drawer

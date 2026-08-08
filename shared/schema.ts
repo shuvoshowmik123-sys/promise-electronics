@@ -2044,6 +2044,50 @@ export const shiftCloseRecords = pgTable("shift_close_records", {
 
 export type ShiftCloseRecord = typeof shiftCloseRecords.$inferSelect;
 
+/**
+ * Proof that a part has already come off the shelf for a job.
+ *
+ * Two independent paths reduce stock — the technician recording parts on the
+ * job, and the cashier billing a cart at the till — and neither knew the other
+ * existed. Recording the same LVDS in both places took two boards out of the
+ * count for one board off the shelf. The workaround was a rule in people's
+ * heads ("parts on the job, never in the cart"), and rules like that break on
+ * the first busy Thursday.
+ *
+ * The rule this enforces: deduct ONCE per part per job, whoever records it
+ * first. A part added at billing that is not on the job still deducts, because
+ * nothing has counted it yet — that case is a cashier catching something the
+ * technician missed, not a duplicate.
+ *
+ * A one-sided check would not do. Skipping at billing whatever is already on
+ * the job handles bill-after-job, but not the reverse: bill first, then the
+ * technician adds the same part, and the job path deducts again knowing
+ * nothing. Both paths must consult the same record, which is what makes this a
+ * table rather than a condition.
+ *
+ * The unique index IS the mechanism, not a safety net. Claiming a deduction is
+ * an INSERT ... ON CONFLICT DO NOTHING, and stock only moves when a row was
+ * actually created — atomic in one statement, so it holds under concurrent
+ * saves and across two instances.
+ */
+export const jobStockDeductions = pgTable("job_stock_deductions", {
+  id: text("id").primaryKey(),
+  jobTicketId: text("job_ticket_id").notNull(),
+  inventoryItemId: text("inventory_item_id").notNull(),
+  /** Units taken. A later increase tops up by the difference. */
+  quantity: integer("quantity").notNull(),
+  /** "job" | "pos" — which path took it. Shows who catches what. */
+  source: text("source").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => {
+  return {
+    onceIdx: uniqueIndex("uq_job_stock_deduction_once").on(table.jobTicketId, table.inventoryItemId),
+    jobIdx: index("idx_job_stock_deductions_job").on(table.jobTicketId),
+  };
+});
+
+export type JobStockDeduction = typeof jobStockDeductions.$inferSelect;
+
 export const insertNotificationSchema = createInsertSchema(notifications).omit({
   id: true,
   createdAt: true,

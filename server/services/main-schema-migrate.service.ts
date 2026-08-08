@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_08_claim_problem_type";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_09_job_stock_deductions";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2124,6 +2124,28 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       await client.query(`CREATE INDEX IF NOT EXISTS idx_warranty_claims_problem_type
         ON warranty_claims (problem_type)
         WHERE problem_type IS NOT NULL`);
+    },
+  },
+  {
+    id: "2026_08_09_job_stock_deductions",
+    description:
+      "Proof that a part has already come off the shelf for a job. Two independent paths reduced stock — the technician recording parts on the job, and the cashier billing at the till — and neither knew the other existed, so recording the same part in both places took two units out of the count for one unit off the shelf. The rule enforced is deduct once per part per job, whoever records it first, while a part added at billing that is not on the job still deducts because nothing has counted it yet. A one-sided check would not work: skipping at billing what is already on the job handles bill-after-job but not the reverse, where the technician adds the part afterwards and the job path deducts again knowing nothing. Both paths consult this table. The unique index is the mechanism rather than a safety net — claiming a deduction is an INSERT ... ON CONFLICT DO NOTHING and stock only moves when a row was created, which is atomic in one statement and therefore holds under concurrent saves and across instances. Additive only: one new table. Note this stops drift going forward and cannot repair historical double-counts, so a physical stock count is advisable around deployment.",
+    up: async (client) => {
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS job_stock_deductions (
+          id                 TEXT PRIMARY KEY,
+          job_ticket_id      TEXT NOT NULL,
+          inventory_item_id  TEXT NOT NULL,
+          quantity           INTEGER NOT NULL,
+          source             TEXT NOT NULL,
+          created_at         TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+      `);
+      // The claim itself. Without this the whole design is advisory.
+      await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uq_job_stock_deduction_once
+        ON job_stock_deductions (job_ticket_id, inventory_item_id)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_job_stock_deductions_job
+        ON job_stock_deductions (job_ticket_id)`);
     },
   },
 ];
