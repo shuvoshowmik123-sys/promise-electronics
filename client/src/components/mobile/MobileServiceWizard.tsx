@@ -1026,11 +1026,11 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
             </div>
             <div className="space-y-3">
               {[
-                { id: "home_pickup", title: t("wizard.pickupDrop"), icon: Truck },
-                // Was a hardcoded English title with an unused `bn` field, so this
-                // option never translated for Bangla users. Use the t() key.
-                { id: "service_center", title: t("wizard.dropOff"), icon: MapPin },
-                { id: "both", title: t("wizard.callFirst"), icon: Phone },
+                // Each option says who moves the television and whether it costs
+                // anything. The three titles alone are our vocabulary and answer neither.
+                { id: "home_pickup", title: t("wizard.pickupDrop"), help: t("wizard.pickupDropHelp"), icon: Truck },
+                { id: "service_center", title: t("wizard.dropOff"), help: t("wizard.dropOffHelp"), icon: MapPin },
+                { id: "both", title: t("wizard.callFirst"), help: t("wizard.callFirstHelp"), icon: Phone },
               ].map((option) => {
                 const Icon = option.icon;
                 const selected = servicePreference === option.id;
@@ -1044,8 +1044,11 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                     <span className={`flex h-12 w-12 items-center justify-center rounded-2xl ${selected ? "bg-white/15" : "bg-emerald-50 text-emerald-700"}`}>
                       <Icon className="h-6 w-6" />
                     </span>
-                    <span>
+                    <span className="min-w-0">
                       <span className="block font-bold">{option.title}</span>
+                      <span className={`mt-0.5 block text-[12px] leading-snug ${selected ? "text-white/80" : "text-slate-500"}`}>
+                        {option.help}
+                      </span>
                     </span>
                   </button>
                 );

@@ -935,14 +935,14 @@ export default function RepairRequestPage() {
                         <RadioGroupItem value="home_pickup" id="home_pickup" data-testid="radio-pickup" />
                         <Label htmlFor="home_pickup" className="flex-1 cursor-pointer">
                           <span className="font-bold block">Pickup & Drop Service</span>
-                          <span className="text-muted-foreground text-sm">We collect your device, repair it, and deliver it back. (Additional charge applies)</span>
+                          <span className="text-muted-foreground text-sm">{t("wizard.pickupDropHelp")}</span>
                         </Label>
                       </div>
                       <div className="flex items-center space-x-2 border p-4 rounded-lg hover:bg-slate-50 cursor-pointer">
                         <RadioGroupItem value="service_center" id="service_center" data-testid="radio-center" />
                         <Label htmlFor="service_center" className="flex-1 cursor-pointer">
                           <span className="font-bold block">Service Center Visit</span>
-                          <span className="text-muted-foreground text-sm">You bring the device to our nearest branch.</span>
+                          <span className="text-muted-foreground text-sm">{t("wizard.dropOffHelp")}</span>
                         </Label>
                       </div>
                     </RadioGroup>

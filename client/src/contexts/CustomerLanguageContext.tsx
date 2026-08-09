@@ -360,6 +360,27 @@ const translations = {
   "pickupPin.gpsDenied":       { en: "Could not get your location. Please allow location access.", bn: "আপনার অবস্থান পাওয়া যায়নি। লোকেশন অনুমতি দিন।" },
   "pickupPin.pinned":          { en: "Location pinned",         bn: "অবস্থান পিন করা হয়েছে" },
   "wizard.dropOff":        { en: "Drop-off",                  bn: "শপে নিয়ে আসব" },
+  /**
+   * What each choice actually means, in plain words.
+   *
+   * "Pickup & drop", "Drop-off" and "Call first" are our words, not the
+   * customer's. None of them answers the only question being asked — who
+   * physically moves the television, and does it cost anything. The mobile
+   * wizard showed the three titles with no explanation at all, and the desktop
+   * form had explanations hardcoded in English, so a Bangla reader got none.
+   */
+  "wizard.pickupDropHelp": {
+    en: "We come to your home, collect the TV, and bring it back when it is repaired. An extra charge applies for this.",
+    bn: "আমরা আপনার বাসায় গিয়ে টিভি নিয়ে আসব, মেরামতের পর আবার পৌঁছে দেব। এর জন্য অতিরিক্ত খরচ লাগবে।",
+  },
+  "wizard.dropOffHelp": {
+    en: "You bring the TV to our shop yourself and collect it once it is ready. No transport charge.",
+    bn: "আপনি নিজে টিভি আমাদের দোকানে দিয়ে যাবেন এবং ঠিক হলে নিয়ে যাবেন। কোনো পরিবহন খরচ নেই।",
+  },
+  "wizard.callFirstHelp": {
+    en: "Not sure which suits you? We will call and decide together before anything is arranged.",
+    bn: "কোনটি ভালো হবে বুঝতে পারছেন না? আমরা ফোন করে একসাথে ঠিক করব, তার আগে কিছুই করা হবে না।",
+  },
   "wizard.callFirst":      { en: "Call me first",             bn: "আগে আমাকে কল করুন" },
   "wizard.pickupAddress":  { en: "Pickup address",            bn: "পিকআপ ঠিকানা" },
   "wizard.finalStep":      { en: "Final step",                bn: "শেষ ধাপ" },
