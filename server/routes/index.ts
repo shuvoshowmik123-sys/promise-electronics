@@ -34,6 +34,7 @@ import quotesRoutes from './quotes.routes.js';
 import reviewsRoutes from './reviews.routes.js';
 import otpRoutes from './otp.routes.js';
 import uploadRoutes from './upload.routes.js';
+import tvModelRoutes from './tv-model.routes.js';
 import aiRoutes from './ai.routes.js';
 import lensRoutes from './lens.routes.js';
 import brainRoutes from './brain.routes.js';
@@ -113,6 +114,8 @@ export async function registerRoutes(
 
     // File upload routes (moved to top for priority)
     app.use(uploadRoutes);
+    // Public: the homepage fault simulator checks a typed model number.
+    app.use(tvModelRoutes);
     routeLog('[Routes] ✓ Upload routes registered (priority)');
     // Setup Customer Authentication (Google OAuth)
     // ============================================
