@@ -3,55 +3,47 @@
  *
  * The shop has stored `pickupTier` on every request for a long time and never
  * attached a price to it: `pickup_schedules.tierCost` takes whatever the caller
- * passes and otherwise defaults to zero. So the customer portal has been
- * promising "an extra charge applies" while the till has never asked for it.
+ * passes and otherwise defaults to zero. So the portal has been promising "an
+ * extra charge applies" while the till has never asked for it.
  *
- * Everything here is read from Settings rather than compiled in, and every
- * screen that shows a pickup price reads it through this file. If the homepage
- * quotes one number and the invoice another, the argument at the counter is
- * unwinnable — so there is exactly one calculator.
+ * Two numbers make a fare:
+ *
+ *   area fare  — what it costs to reach this part of the city, drawn as a
+ *                circle on the Area Intelligence map. Distance alone is the
+ *                wrong model in Dhaka: five kilometres across Gulshan at six
+ *                in the evening beats fifteen on a highway, so the fare is set
+ *                per place by someone who knows the traffic, not computed.
+ *
+ *   tier extra — what the customer's choice of timing costs on top. Added, not
+ *                multiplied: a base plus an add-on is two numbers staff can
+ *                explain at the counter, where three tiers across a dozen
+ *                areas would be a table nobody can hold in their head.
+ *
+ * Nothing is priced until somebody sets it. Every default here is null, and an
+ * unpriced area returns `configured: false` so the customer is shown nothing
+ * at all rather than a number this file invented.
  */
 
-export const PICKUP_TIER_PRICES_KEY = "pickup_tier_prices";
-export const PICKUP_ZONE_BANDS_KEY = "pickup_zone_bands";
+export const PICKUP_AREA_FARES_KEY = "pickup_area_fares";
+export const PICKUP_TIER_EXTRAS_KEY = "pickup_tier_extras";
+export const PICKUP_ANYWHERE_ELSE_KEY = "pickup_anywhere_else";
 export const PICKUP_FREE_OVER_KEY = "pickup_free_over";
 export const PICKUP_HOLD_DAYS_KEY = "pickup_hold_days";
 
-/**
- * The three tiers, in the order a customer should meet them.
- *
- * Priced as a base plus add-ons rather than a discount off the top. "Flexible,
- * or 50% more to choose your day" and "600, or 50% off if we choose" are the
- * same money and land completely differently: the first reads as a fair base
- * with optional upgrades, the second as a fine for being particular.
- */
 export const PICKUP_TIERS = ["flexible", "chooseDay", "sameDay"] as const;
 export type PickupTier = (typeof PICKUP_TIERS)[number];
 
-export type PickupTierPrices = Record<PickupTier, number>;
+/** Added to the area fare. `flexible` is the base and is normally zero. */
+export type PickupTierExtras = Record<PickupTier, number>;
 
-export type PickupZoneBand = {
-  label: string;
-  /** Service area ids that fall in this band. */
-  areaIds: string[];
-  /** Added to the tier price. Additive, never multiplied — see below. */
-  extra: number;
+export type PickupAreaFare = {
+  /** The whole transport cost for this place, before any tier extra. */
+  fare: number;
+  /** How far the circle reaches, in kilometres. */
+  radiusKm: number;
 };
 
-/**
- * Deliberately conservative defaults.
- *
- * These are what a shop sees before anyone opens Settings, so they must be
- * plausible rather than free. A default of zero would quietly ship the exact
- * bug this file exists to fix.
- */
-export const DEFAULT_TIER_PRICES: PickupTierPrices = {
-  flexible: 300,
-  chooseDay: 600,
-  sameDay: 1200,
-};
-
-export const DEFAULT_FREE_OVER = 3000;
+/** One month, as agreed — how long a decided-against television is kept. */
 export const DEFAULT_HOLD_DAYS = 30;
 
 type SettingRow = { key: string; value: string | null };
@@ -63,109 +55,175 @@ function readJson<T>(settings: SettingRow[], key: string, fallback: T): T {
     const parsed = JSON.parse(row.value);
     return parsed == null ? fallback : (parsed as T);
   } catch {
-    // A malformed setting must not make pickup free. Fall back to the default,
-    // which is a real price.
     return fallback;
   }
 }
 
-const money = (n: unknown, fallback: number): number => {
+/**
+ * A money value, or null when it has not been set.
+ *
+ * Null rather than zero on purpose. Zero is a price — it says collection is
+ * free — and a malformed setting must never accidentally say that.
+ */
+function money(n: unknown): number | null {
+  if (n === null || n === undefined || n === "") return null;
   const v = Number(n);
-  // Negative or absurd values are treated as unset: a stored -500 would
-  // otherwise pay the customer to have their television collected.
-  return Number.isFinite(v) && v >= 0 && v <= 100_000 ? Math.round(v) : fallback;
-};
+  // A negative fare would pay the customer to have their television collected.
+  return Number.isFinite(v) && v >= 0 && v <= 100_000 ? Math.round(v) : null;
+}
 
-export function readTierPrices(settings: SettingRow[]): PickupTierPrices {
-  const raw = readJson<Partial<PickupTierPrices>>(settings, PICKUP_TIER_PRICES_KEY, {});
+export function readTierExtras(settings: SettingRow[]): PickupTierExtras {
+  const raw = readJson<Partial<Record<PickupTier, unknown>>>(settings, PICKUP_TIER_EXTRAS_KEY, {});
   return {
-    flexible: money(raw.flexible, DEFAULT_TIER_PRICES.flexible),
-    chooseDay: money(raw.chooseDay, DEFAULT_TIER_PRICES.chooseDay),
-    sameDay: money(raw.sameDay, DEFAULT_TIER_PRICES.sameDay),
+    flexible: money(raw.flexible) ?? 0,
+    chooseDay: money(raw.chooseDay) ?? 0,
+    sameDay: money(raw.sameDay) ?? 0,
   };
 }
 
-export function readZoneBands(settings: SettingRow[]): PickupZoneBand[] {
-  const raw = readJson<unknown[]>(settings, PICKUP_ZONE_BANDS_KEY, []);
-  if (!Array.isArray(raw)) return [];
-  return raw
-    .map((b) => {
-      const band = b as Partial<PickupZoneBand>;
-      return {
-        label: String(band?.label ?? "").trim() || "Zone",
-        areaIds: Array.isArray(band?.areaIds) ? band!.areaIds!.map(String) : [],
-        extra: money(band?.extra, 0),
-      };
-    })
-    .filter((b) => b.areaIds.length > 0);
+export function readAreaFares(settings: SettingRow[]): Record<string, PickupAreaFare> {
+  const raw = readJson<Record<string, unknown>>(settings, PICKUP_AREA_FARES_KEY, {});
+  const out: Record<string, PickupAreaFare> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [areaId, value] of Object.entries(raw)) {
+    const v = value as Partial<PickupAreaFare>;
+    const fare = money(v?.fare);
+    const radius = Number(v?.radiusKm);
+    // A circle with no fare, or no radius, is not a rated place.
+    if (fare === null || !Number.isFinite(radius) || radius <= 0) continue;
+    out[String(areaId)] = { fare, radiusKm: radius };
+  }
+  return out;
 }
 
-export const readFreeOverAmount = (settings: SettingRow[]): number =>
-  money(readJson<number>(settings, PICKUP_FREE_OVER_KEY, DEFAULT_FREE_OVER), DEFAULT_FREE_OVER);
+export const readAnywhereElseFare = (settings: SettingRow[]): number | null =>
+  money(readJson<unknown>(settings, PICKUP_ANYWHERE_ELSE_KEY, null));
 
-export const readHoldDays = (settings: SettingRow[]): number =>
-  money(readJson<number>(settings, PICKUP_HOLD_DAYS_KEY, DEFAULT_HOLD_DAYS), DEFAULT_HOLD_DAYS);
+export const readFreeOverAmount = (settings: SettingRow[]): number | null =>
+  money(readJson<unknown>(settings, PICKUP_FREE_OVER_KEY, null));
 
-export type PickupQuote = {
-  /** What to charge, after any waiver. */
-  amount: number;
-  /** Tier price before the zone was added, for showing the breakdown. */
-  tierAmount: number;
-  /** Extra for the distance band, 0 when the area is unknown or central. */
-  zoneAmount: number;
-  zoneLabel: string | null;
-  /** True when the repair is large enough that collection is on us. */
-  waived: boolean;
-  /** The threshold that waived it, for the sentence shown to the customer. */
-  waivedOver: number | null;
-};
+export function readHoldDays(settings: SettingRow[]): number {
+  const v = money(readJson<unknown>(settings, PICKUP_HOLD_DAYS_KEY, null));
+  return v && v > 0 ? v : DEFAULT_HOLD_DAYS;
+}
+
+/** Kilometres between two points. Good enough for a city, and no dependency. */
+export function distanceKm(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371;
+  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
+  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
+  const lat1 = (a.lat * Math.PI) / 180;
+  const lat2 = (b.lat * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.sin(dLng / 2) ** 2 * Math.cos(lat1) * Math.cos(lat2);
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+export type PickupQuote =
+  | { configured: false }
+  | {
+      configured: true;
+      /** What to charge, after any waiver. */
+      amount: number;
+      areaFare: number;
+      tierExtra: number;
+      /** The area whose circle claimed this address, or null for "anywhere else". */
+      areaId: string | null;
+      /** True when this address fell outside every rated circle. */
+      outsideAllAreas: boolean;
+      waived: boolean;
+      waivedOver: number | null;
+    };
 
 /**
- * What this customer pays to have their television collected and returned.
+ * The fare for one collection.
  *
- * Zone is ADDED to the tier, never multiplied. Three tiers times four zones as
- * a multiplication table is twelve numbers nobody can hold in their head or
- * change safely; a base plus an add-on is two numbers, and staff can explain
- * either of them at the counter.
+ * An address is claimed by the SMALLEST circle that contains it. Smallest wins
+ * because it is the most specific statement someone made about the map — a
+ * tight circle drawn around one neighbourhood is a deliberate act, while a wide
+ * one is a general rule. Highest-price-wins was the alternative and was
+ * rejected: every overlap silently favouring the shop is the kind of thing that
+ * costs trust the day a customer notices.
  *
- * `repairEstimate` is the low end of the range the customer was shown. Waiving
- * on the optimistic end would promise free collection on a repair that then
- * comes in under the threshold, and taking it back later is worse than never
- * having offered.
+ * "Contains" is measured against the radius, not by nearest centre. An address
+ * three kilometres from a two-kilometre circle is OUTSIDE it — otherwise a
+ * twenty-kilometre trip whose nearest circle happened to be Banani would be
+ * charged the Banani fare, which is the exact leak this exists to close.
  */
 export function quotePickup(opts: {
   tier: PickupTier;
-  serviceAreaId?: string | null;
+  /** Where the customer is. Without it, only "anywhere else" can apply. */
+  point?: { lat: number; lng: number } | null;
+  /** Rated circles: area id → centre. Fares come from settings. */
+  areaCentres?: Record<string, { lat: number; lng: number }>;
+  /** Low end of the repair estimate; the waiver never uses the optimistic end. */
   repairEstimate?: number | null;
   settings: SettingRow[];
 }): PickupQuote {
-  const prices = readTierPrices(opts.settings);
-  const bands = readZoneBands(opts.settings);
+  const fares = readAreaFares(opts.settings);
+  const extras = readTierExtras(opts.settings);
+  const anywhereElse = readAnywhereElseFare(opts.settings);
+
+  let areaId: string | null = null;
+  let areaFare: number | null = null;
+  let bestRadius = Infinity;
+
+  if (opts.point && opts.areaCentres) {
+    for (const [id, centre] of Object.entries(opts.areaCentres)) {
+      const rated = fares[id];
+      if (!rated) continue;
+      const d = distanceKm(opts.point, centre);
+      if (d <= rated.radiusKm && rated.radiusKm < bestRadius) {
+        bestRadius = rated.radiusKm;
+        areaId = id;
+        areaFare = rated.fare;
+      }
+    }
+  }
+
+  const outsideAllAreas = areaFare === null;
+  if (outsideAllAreas) areaFare = anywhereElse;
+
+  // Nothing has been priced yet. Say nothing rather than invent a number.
+  if (areaFare === null) return { configured: false };
+
+  const tierExtra = extras[opts.tier] ?? 0;
   const freeOver = readFreeOverAmount(opts.settings);
-
-  const tierAmount = prices[opts.tier] ?? prices.flexible;
-  const band = opts.serviceAreaId
-    ? bands.find((b) => b.areaIds.includes(String(opts.serviceAreaId)))
-    : undefined;
-  const zoneAmount = band?.extra ?? 0;
-
   const estimate = Number(opts.repairEstimate);
-  const waived = freeOver > 0 && Number.isFinite(estimate) && estimate >= freeOver;
+  const waived = freeOver !== null && freeOver > 0 && Number.isFinite(estimate) && estimate >= freeOver;
 
   return {
-    amount: waived ? 0 : tierAmount + zoneAmount,
-    tierAmount,
-    zoneAmount,
-    zoneLabel: band?.label ?? null,
+    configured: true,
+    amount: waived ? 0 : areaFare + tierExtra,
+    areaFare,
+    tierExtra,
+    areaId,
+    outsideAllAreas,
     waived,
     waivedOver: waived ? freeOver : null,
   };
 }
 
-/** Settings stores the tier as free text on the request; normalise it back. */
+/**
+ * The cheapest fare anywhere, for "from ৳X" before an address is known.
+ *
+ * The homepage shows a price with no address at all, so it cannot know the
+ * real fare. Showing the minimum with "depends on your area" is honest;
+ * showing a specific number that later changes is not.
+ */
+export function minimumFare(settings: SettingRow[]): number | null {
+  const fares = Object.values(readAreaFares(settings)).map((f) => f.fare);
+  const anywhereElse = readAnywhereElseFare(settings);
+  if (anywhereElse !== null) fares.push(anywhereElse);
+  if (fares.length === 0) return null;
+  return Math.min(...fares) + (readTierExtras(settings).flexible ?? 0);
+}
+
+/** Old rows stored the tier as free text; normalise it back. */
 export function toPickupTier(raw: unknown): PickupTier {
   const s = String(raw ?? "").trim().toLowerCase().replace(/[\s_-]/g, "");
   if (s === "sameday" || s === "emergency" || s === "urgent") return "sameDay";
   if (s === "chooseday" || s === "scheduled" || s === "priority") return "chooseDay";
+  // Anything unrecognised takes the cheapest. Guessing upward would overcharge
+  // somebody over a value we did not understand.
   return "flexible";
 }
