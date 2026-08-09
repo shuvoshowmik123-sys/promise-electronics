@@ -369,7 +369,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
         setSrPage(1);
     }, [debouncedSrSearch, srStatusFilter]);
 
-    const { data: srData, isLoading } = useQuery({
+    const { data: srData, isLoading, isError, error: srError, isFetching, refetch: refetchRequests } = useQuery({
         queryKey: ["serviceRequests", srPage, srPageSize, debouncedSrSearch, srStatusFilter],
         queryFn: () =>
             serviceRequestsApi.getAll({
@@ -881,6 +881,42 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
     }, [serviceRequests, intakeLaneMap]);
 
     if (isLoading) return <DashboardSkeleton />;
+
+    /**
+     * A failed load must not look like an empty inbox.
+     *
+     * There was no error branch at all: when the request failed — a timed-out
+     * cold start, an expired session, a dropped connection — srData stayed
+     * undefined and the tab fell through to "No service requests found". Staff
+     * could not tell "nothing came in today" from "this screen is broken", and
+     * the only way to retry was to reload the whole admin panel.
+     *
+     * Queries here are configured retry: false, so nothing recovers on its own.
+     * Somebody has to be told, and given a button.
+     */
+    if (isError) {
+        return (
+            <div className="flex min-h-[60vh] items-center justify-center p-6">
+                <div className="w-full max-w-md rounded-2xl border border-red-200 bg-red-50 p-6 text-center">
+                    <AlertTriangle className="mx-auto h-8 w-8 text-red-500" />
+                    <h3 className="mt-3 text-base font-black text-red-900">Could not load service requests</h3>
+                    <p className="mt-1.5 text-sm font-semibold text-red-800/80">
+                        This is a loading problem, not an empty inbox — requests may still be coming in.
+                    </p>
+                    <p className="mt-2 break-words text-xs text-red-700/70">
+                        {(srError as Error)?.message || "The server did not respond."}
+                    </p>
+                    <Button
+                        className="mt-4 h-11 w-full rounded-xl bg-red-600 hover:bg-red-700"
+                        onClick={() => refetchRequests()}
+                        disabled={isFetching}
+                    >
+                        {isFetching ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Retrying…</> : "Try again"}
+                    </Button>
+                </div>
+            </div>
+        );
+    }
 
     // Server applied search + status. Full page shown; lane filter not applied (would be wrong cross-page).
     const paginated = serviceRequests;
