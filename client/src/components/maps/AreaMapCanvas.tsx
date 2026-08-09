@@ -5,7 +5,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import type { ServiceAreaMapItem } from '@/lib/api';
 import { cn } from '@/lib/utils';
 
-export type AreaMapMetric = 'requests' | 'jobs' | 'completed' | 'completion' | 'revenue' | 'collected' | 'warranty';
+export type AreaMapMetric = 'requests' | 'jobs' | 'completed' | 'completion' | 'revenue' | 'collected' | 'warranty' | 'pickupFare';
 
 interface Coordinates {
     latitude: number;
@@ -46,6 +46,15 @@ export interface CustomerImmersiveCameraApi {
 
 interface AreaMapCanvasProps {
     areas: ServiceAreaMapItem[];
+    /**
+     * Collection fare per area id, for the 'pickupFare' metric.
+     *
+     * Fares are not part of the map data — they live under Area Intelligence's
+     * own settings — so they arrive alongside rather than on the area itself.
+     * An area missing from this map is unrated, which is a state the map has
+     * to show rather than treat as zero.
+     */
+    pickupFares?: Record<string, number>;
     selectedAreaId?: string | null;
     onSelectArea?: (area: ServiceAreaMapItem) => void;
     serviceCenter?: Coordinates | null;
@@ -134,7 +143,8 @@ type CameraIntent =
           duration: number;
       };
 
-function metricValue(area: ServiceAreaMapItem, metric: AreaMapMetric) {
+function metricValue(area: ServiceAreaMapItem, metric: AreaMapMetric, pickupFares?: Record<string, number>) {
+    if (metric === 'pickupFare') return pickupFares?.[area.id] ?? 0;
     if (metric === 'completed') return area.completedJobCount ?? 0;
     if (metric === 'jobs') return area.jobCount ?? 0;
     if (metric === 'revenue') return area.billedTotal ?? 0;
@@ -154,20 +164,34 @@ function demandColor(demand: ServiceAreaMapItem['demandLevel']) {
     return '#94a3b8';
 }
 
-function areaFeatures(areas: ServiceAreaMapItem[], metric: AreaMapMetric): FeatureCollection<Polygon | MultiPolygon> {
-    const maximum = Math.max(1, ...areas.map((area) => metricValue(area, metric)));
+function areaFeatures(
+    areas: ServiceAreaMapItem[],
+    metric: AreaMapMetric,
+    pickupFares?: Record<string, number>,
+): FeatureCollection<Polygon | MultiPolygon> {
+    const maximum = Math.max(1, ...areas.map((area) => metricValue(area, metric, pickupFares)));
     return {
         type: 'FeatureCollection',
         features: areas.flatMap((area) => {
             if (!area.boundaryGeoJson?.geometry) return [];
-            const value = metricValue(area, metric);
+            const value = metricValue(area, metric, pickupFares);
             const normalized = Math.sqrt(value / maximum);
+            /**
+             * On the fare map an unrated area is pink, not pale.
+             *
+             * A quiet area and an unpriced one look identical on a normal
+             * choropleth — both near-zero — and the unpriced one is the
+             * expensive mistake: every collection there is quoted at the
+             * fallback until somebody notices. Pink is not on the demand scale,
+             * so it cannot be mistaken for "a bit of work here".
+             */
+            const unrated = metric === 'pickupFare' && pickupFares?.[area.id] === undefined;
             return [{
                 type: 'Feature',
                 id: area.id,
                 properties: {
                     id: area.id,
-                    color: demandColor(area.demandLevel),
+                    color: unrated ? '#ec4899' : demandColor(area.demandLevel),
                     height: 120 + normalized * 2200,
                 },
                 geometry: area.boundaryGeoJson.geometry as Polygon | MultiPolygon,
@@ -231,6 +255,7 @@ export function AreaMapCanvas({
     routeGeometry,
     routeMethod = null,
     metric = 'requests',
+    pickupFares,
     threeDimensional = false,
     presentation = 'default',
     interactive = true,
@@ -257,7 +282,7 @@ export function AreaMapCanvas({
     const [mapFailed, setMapFailed] = useState(false);
     /** Bumped when MapLibre finishes load so marker effects re-run if props arrived early. */
     const [mapEpoch, setMapEpoch] = useState(0);
-    const features = useMemo(() => areaFeatures(areas, metric), [areas, metric]);
+    const features = useMemo(() => areaFeatures(areas, metric, pickupFares), [areas, metric, pickupFares]);
     const labels = useMemo(() => labelFeatures(areas), [areas]);
     const featuresRef = useRef(features);
     const labelsRef = useRef(labels);

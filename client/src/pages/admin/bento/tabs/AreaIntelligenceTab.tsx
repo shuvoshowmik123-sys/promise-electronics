@@ -48,6 +48,9 @@ import {
 } from '@/lib/api';
 import { cn } from '@/lib/utils';
 import { MobileScrollContent, MobileTabHeader, MobileTabLayout } from '../shared';
+import { settingsApi } from '@/lib/api';
+import { PickupFaresPanel } from '@/components/admin/PickupFaresPanel';
+import { readAreaFares } from '@shared/pickup-pricing';
 
 const METRICS: Array<{ id: AreaMapMetric; label: string; icon: typeof BarChart3 }> = [
     { id: 'requests', label: 'Requests', icon: BarChart3 },
@@ -57,6 +60,9 @@ const METRICS: Array<{ id: AreaMapMetric; label: string; icon: typeof BarChart3 
     { id: 'revenue', label: 'Revenue', icon: CircleDollarSign },
     { id: 'collected', label: 'Collected', icon: CircleDollarSign },
     { id: 'warranty', label: 'Warranty', icon: CheckCircle2 },
+    // A fare is another way of reading the map, not a separate mode. Adding it
+    // here inherits the choropleth, the legend and the selection behaviour.
+    { id: 'pickupFare', label: 'Pickup fare', icon: CircleDollarSign },
 ];
 
 interface AreaFormState {
@@ -650,6 +656,26 @@ export default function AreaIntelligenceTab() {
         queryFn: adminAreaMapApi.getServiceCenter,
         staleTime: 60_000,
     });
+    /**
+     * Fares live under Area Intelligence rather than System Settings.
+     *
+     * The Settings screen also holds maintenance mode and registrations;
+     * widening access to it so somebody can change a fare is not a trade worth
+     * making. Same storage, different door — and this door already has the
+     * map.manageAreas permission on it.
+     */
+    const { data: allSettings = [] } = useQuery({
+        queryKey: ['settings-pickup-fares'],
+        queryFn: settingsApi.getAll,
+        staleTime: 60_000,
+        enabled: canManage,
+    });
+    const areaFares = useMemo(() => readAreaFares(allSettings as any), [allSettings]);
+    const fareByArea = useMemo(
+        () => Object.fromEntries(Object.entries(areaFares).map(([id, f]) => [id, f.fare])),
+        [areaFares],
+    );
+
     const { data: health } = useQuery({
         queryKey: ['area-health'],
         queryFn: adminAreaMapApi.getHealth,
@@ -763,6 +789,7 @@ export default function AreaIntelligenceTab() {
             selectedAreaId={selectedId}
             onSelectArea={selectArea}
             metric={metric}
+            pickupFares={fareByArea}
             threeDimensional={!isMobile && threeDimensional}
             serviceCenter={serviceCenterMapLocation}
             searchLocation={searchLocation}
@@ -894,6 +921,7 @@ export default function AreaIntelligenceTab() {
                                 areas={data?.areas ?? []}
                                 selectedAreaId={selectedId}
                                 metric={metric}
+                                                pickupFares={fareByArea}
                                 threeDimensional={false}
                                 interactive={false}
                                 cooperativeGestures
@@ -976,8 +1004,14 @@ export default function AreaIntelligenceTab() {
                                         <div className="flex-none border-b border-slate-100 px-2 pb-2">
                                             <MobileBottomSheetDragHandle onClose={() => setMobileDetailsOpen(false)} />
                                             <div className="px-2 pb-1">
-                                                <p className="text-sm font-black text-slate-900">Area details</p>
-                                                <p className="text-[11px] font-medium text-slate-500">Aggregate operational performance only</p>
+                                                <p className="text-sm font-black text-slate-900">
+                                                    {metric === 'pickupFare' ? 'Pickup fares' : 'Area details'}
+                                                </p>
+                                                <p className="text-[11px] font-medium text-slate-500">
+                                                    {metric === 'pickupFare'
+                                                        ? 'What collection costs here, and shop-wide'
+                                                        : 'Aggregate operational performance only'}
+                                                </p>
                                             </div>
                                         </div>
                                         <div
@@ -985,6 +1019,16 @@ export default function AreaIntelligenceTab() {
                                             className="min-h-0 flex-1 overflow-y-scroll overscroll-contain px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]"
                                             style={{ WebkitOverflowScrolling: "touch", maxHeight: "100%" }}
                                         >
+                                            {metric === 'pickupFare' ? (
+                                                <PickupFaresPanel
+                                                    className="pt-1"
+                                                    settings={allSettings as any}
+                                                    area={{ id: selectedArea.id, label: areaLabel(selectedArea) }}
+                                                    canManage={canManage}
+                                                    currency="৳"
+                                                />
+                                            ) : (
+                                              <>
                                             <AreaDetails
                                                 area={{
                                                     ...selectedArea,
@@ -1041,6 +1085,8 @@ export default function AreaIntelligenceTab() {
                                                     </Button>
                                                 </div>
                                             )}
+                                              </>
+                                            )}
                                         </div>
                                     </MobileBottomSheetFrame>
                                 </div>
@@ -1095,6 +1141,7 @@ export default function AreaIntelligenceTab() {
                                                     setMobileMapExploreOpen(false);
                                                 }}
                                                 metric={metric}
+                                                pickupFares={fareByArea}
                                                 threeDimensional={false}
                                                 interactive
                                                 cooperativeGestures={false}
@@ -1153,11 +1200,18 @@ export default function AreaIntelligenceTab() {
             <main className="relative min-w-0 flex-1">
                 {map}
                 <div className="absolute left-4 top-4 flex gap-2"><Button variant="secondary" onClick={() => setPresentation(true)}><Expand className="h-4 w-4" /> Presentation</Button></div>
-                <div className="absolute bottom-4 left-4 rounded-lg border border-white/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur"><span className="font-bold capitalize">{metric}</span> · taller areas indicate higher values</div>
+                <div className="absolute bottom-4 left-4 rounded-lg border border-white/80 bg-white/90 px-3 py-2 text-xs shadow-sm backdrop-blur"><span className="font-bold">{METRICS.find((m) => m.id === metric)?.label ?? metric}</span>{metric === 'pickupFare' ? <> · <span className="font-bold text-pink-600">pink</span> areas have no fare set</> : ' · taller areas indicate higher values'}</div>
             </main>
 
-            <aside className="w-[330px] shrink-0 border-l border-slate-200 bg-white p-5">
-                {selectedArea ? <><AreaDetails area={{ ...selectedArea, isPublic: selectedIsPublic, isActive: selectedRecord?.isActive ?? selectedArea.isActive }} />{canManage && <div className="mt-5 space-y-2"><div className="grid grid-cols-2 gap-2"><Button variant="outline" onClick={() => openEditor(selectedArea)}><Pencil className="h-4 w-4" /> Edit</Button><Button variant="outline" className="text-rose-600" onClick={() => { if (window.confirm(`Deactivate ${areaLabel(selectedArea)}? It will also be unpublished.`)) deactivate.mutate(selectedArea.id); }}><Trash2 className="h-4 w-4" /> Deactivate</Button></div>{selectedIsPublic ? <Button variant="outline" className="w-full" disabled={unpublish.isPending} onClick={() => { if (window.confirm(`Unpublish ${areaLabel(selectedArea)} from the customer map?`)) unpublish.mutate(selectedArea.id); }}>Unpublish from customers</Button> : <Button className="w-full" disabled={!selectedPublishable || publish.isPending} onClick={() => { if (!selectedPublishable) { toast.error('Name, centroid and boundary required to publish'); return; } if (window.confirm(`Publish ${areaLabel(selectedArea)} to the public customer map?`)) publish.mutate(selectedArea.id); }}>Publish to customers</Button>}</div>}</> : <div className="flex h-full flex-col items-center justify-center text-center text-slate-400"><Map className="mb-3 h-10 w-10" /><p className="font-bold text-slate-600">Select an area</p><p className="mt-1 text-sm">Inspect aggregate demand, completion and revenue.</p></div>}
+            <aside className="w-[330px] shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-5">
+                {metric === 'pickupFare' ? (
+                    <PickupFaresPanel
+                        settings={allSettings as any}
+                        area={selectedArea ? { id: selectedArea.id, label: areaLabel(selectedArea) } : null}
+                        canManage={canManage}
+                        currency="৳"
+                    />
+                ) : selectedArea ? <><AreaDetails area={{ ...selectedArea, isPublic: selectedIsPublic, isActive: selectedRecord?.isActive ?? selectedArea.isActive }} />{canManage && <div className="mt-5 space-y-2"><div className="grid grid-cols-2 gap-2"><Button variant="outline" onClick={() => openEditor(selectedArea)}><Pencil className="h-4 w-4" /> Edit</Button><Button variant="outline" className="text-rose-600" onClick={() => { if (window.confirm(`Deactivate ${areaLabel(selectedArea)}? It will also be unpublished.`)) deactivate.mutate(selectedArea.id); }}><Trash2 className="h-4 w-4" /> Deactivate</Button></div>{selectedIsPublic ? <Button variant="outline" className="w-full" disabled={unpublish.isPending} onClick={() => { if (window.confirm(`Unpublish ${areaLabel(selectedArea)} from the customer map?`)) unpublish.mutate(selectedArea.id); }}>Unpublish from customers</Button> : <Button className="w-full" disabled={!selectedPublishable || publish.isPending} onClick={() => { if (!selectedPublishable) { toast.error('Name, centroid and boundary required to publish'); return; } if (window.confirm(`Publish ${areaLabel(selectedArea)} to the public customer map?`)) publish.mutate(selectedArea.id); }}>Publish to customers</Button>}</div>}</> : <div className="flex h-full flex-col items-center justify-center text-center text-slate-400"><Map className="mb-3 h-10 w-10" /><p className="font-bold text-slate-600">Select an area</p><p className="mt-1 text-sm">Inspect aggregate demand, completion and revenue.</p></div>}
             </aside>
         </div>
     );
