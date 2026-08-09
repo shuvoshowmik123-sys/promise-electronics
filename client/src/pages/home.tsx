@@ -22,6 +22,7 @@ import { QuickActionsGrid } from "@/components/mobile/QuickActionsGrid";
 import { ScrollableList } from "@/components/ui/ScrollableList";
 import { MobileHero } from "@/components/mobile/MobileHero";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
+import { FaultSimulator } from "@/components/customer/FaultSimulator";
 
 const CustomerDistanceExplorer = lazy(() => import("@/components/customer/CustomerDistanceExplorer"));
 
@@ -646,14 +647,7 @@ export default function HomePage() {
       genuinePartsDesc: "Authentic parts warranty",
     };
 
-  const problemTitleBn: Record<string, string> = {
-    "No Power": "পাওয়ার নেই",
-    "No Picture": "ছবি নেই",
-    "Broken Screen": "স্ক্রিন ভাঙা",
-    "Sound Issue": "সাউন্ড সমস্যা",
-    "WiFi Issue": "WiFi সমস্যা",
-    "Lines on Screen": "স্ক্রিনে লাইন",
-  };
+
 
   // Shared calculator data — settings-driven with hardcoded fallbacks
   type CalcSizeBucket = "small" | "medium" | "large";
@@ -808,110 +802,22 @@ export default function HomePage() {
             )}
           </div>
 
-          {/* Problem-Based Navigation (Mobile) */}
-          <div className="mb-8">
-            <h3 className="mb-4 text-lg font-bold text-slate-950">{mobileCopy.whatsWrong}</h3>
-            <div className="grid grid-cols-3 gap-3">
-              {problemNavItems.slice(0, 6).map((item: any) => {
-                const Icon = iconMap[item.icon] || HelpCircle;
-                const title = language === "bn" ? item.titleBn || problemTitleBn[item.title] || item.title : item.title;
-                return (
-                  <Link key={item.id} href="/repair">
-                    <div className="flex aspect-square flex-col items-center justify-center gap-2 rounded-3xl border border-emerald-100 bg-white p-3 text-center shadow-sm active:bg-emerald-50">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
-                        {item.iconUrl ? (
-                          <img src={item.iconUrl} alt={title} className="w-5 h-5 object-contain" />
-                        ) : (
-                          <Icon className="w-5 h-5" />
-                        )}
-                      </div>
-                      <span className="text-[10px] font-bold leading-tight text-slate-700">{title}</span>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
+          {/*
+            FIND YOUR FAULT — replaces the symptom grid and the estimate
+            calculator that used to sit here one above the other.
 
-          {/* Mobile Estimate Calculator */}
-          <div className="mb-8">
-            <h3 className="text-lg font-bold text-slate-950 mb-1">{t("desktop.calc.title")}</h3>
-            <p className="text-xs text-slate-500 mb-4">{t("desktop.calc.subtitle")}</p>
-            <div className="rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm space-y-3">
-              <div>
-                <label className="block text-[10px] font-bold text-emerald-700 uppercase tracking-wide mb-1.5">{t("desktop.calc.labelBrand")}</label>
-                <Select value={estBrand} onValueChange={setEstBrand}>
-                  <SelectTrigger className="h-11 rounded-2xl border border-emerald-100 bg-emerald-50/40 text-sm focus:ring-emerald-300">
-                    <SelectValue placeholder={language === "bn" ? "ব্র্যান্ড বেছে নিন" : "Select brand"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CALC_BRANDS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-emerald-700 uppercase tracking-wide mb-1.5">{t("desktop.calc.labelSize")}</label>
-                <Select value={estSize} onValueChange={setEstSize}>
-                  <SelectTrigger className="h-11 rounded-2xl border border-emerald-100 bg-emerald-50/40 text-sm focus:ring-emerald-300">
-                    <SelectValue placeholder={language === "bn" ? "স্ক্রিন সাইজ বেছে নিন" : "Select size"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CALC_SIZES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-emerald-700 uppercase tracking-wide mb-1.5">{t("desktop.calc.labelProblem")}</label>
-                <Select value={estIssue} onValueChange={setEstIssue}>
-                  <SelectTrigger className="h-11 rounded-2xl border border-emerald-100 bg-emerald-50/40 text-sm focus:ring-emerald-300">
-                    <SelectValue placeholder={language === "bn" ? "সমস্যা বেছে নিন" : "Select problem"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {CALC_ISSUES.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Result panel + persistent CTA */}
-              {(() => {
-                const mBucket = estSize ? calcSizeBucket(estSize) : null;
-                const mRange = estIssue && mBucket ? PRICE_MATRIX[estIssue]?.[mBucket] : null;
-                const mAllSelected = estBrand && estSize && estIssue;
-                const mBookUrl = mAllSelected
-                  ? `/repair?brand=${encodeURIComponent(estBrand)}&size=${encodeURIComponent(estSize)}&issue=${encodeURIComponent(estIssue)}`
-                  : "/repair";
-                return (
-                  <>
-                    {/* Result state */}
-                    {!mAllSelected ? (
-                      <p className="text-xs text-slate-400 text-center py-2">{t("desktop.calc.idle")}</p>
-                    ) : mRange ? (
-                      <div className="rounded-2xl bg-emerald-50 border border-emerald-100 p-4">
-                        <p className="text-[10px] font-bold text-emerald-600 uppercase tracking-wide mb-0.5">{t("desktop.calc.resultLabel")}</p>
-                        <p className="text-3xl font-black text-emerald-700 mb-1">
-                          ৳{mRange[0].toLocaleString()} – ৳{mRange[1].toLocaleString()}
-                        </p>
-                        <p className="text-[10px] text-emerald-600/70 leading-relaxed">{t("desktop.calc.disclaimer")}</p>
-                      </div>
-                    ) : (
-                      <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4">
-                        <p className="text-sm font-medium text-slate-700">{t("desktop.calc.noData")}</p>
-                        <p className="text-xs text-slate-400 mt-0.5">{t("desktop.calc.noDataSub")}</p>
-                      </div>
-                    )}
-
-                    {/* Always-visible CTA */}
-                    <Link href={mBookUrl}>
-                      <Button className="mt-4 w-full h-14 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-base font-bold shadow-lg shadow-emerald-200 text-white border-none">
-                        {mAllSelected ? t("desktop.calc.bookThis") : t("desktop.calc.bookGeneral")}
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </Link>
-                  </>
-                );
-              })()}
-            </div>
-          </div>
+            Both of those asked the customer to name their fault in our words
+            before anything happened; the grid then only linked to /repair, and
+            the calculator was three dropdowns. Showing the fault instead means
+            someone who cannot say "vertical lines" can still point at their
+            problem, and the two blocks become one shorter card.
+          */}
+          <FaultSimulator
+            brands={CALC_BRANDS}
+            sizes={CALC_SIZES}
+            priceMatrix={PRICE_MATRIX}
+            sizeBucket={calcSizeBucket}
+          />
 
           {/* Why Promise Feels Different */}
           <div className="mb-8">
