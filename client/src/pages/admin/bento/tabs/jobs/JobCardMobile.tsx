@@ -10,6 +10,7 @@ import { HighlightMatch } from "../../shared";
 import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
 import { getPrimaryAction, getStatusVisual, mobileCardVariants } from "./jobActions";
 import { getJobModelDisplay } from "./jobIdentityDisplay";
+import { formatScreenSize } from "@shared/tv-options";
 
 interface JobCardMobileProps {
     job: JobTicket;
@@ -129,7 +130,7 @@ export function JobCardMobile({
                     </h3>
                     <p className="text-[11px] text-slate-500 mt-0.5 line-clamp-1">
                         {[
-                            job.screenSize ? `${job.screenSize}"` : null,
+                            job.screenSize ? formatScreenSize(job.screenSize) : null,
                             getJobModelDisplay(job as any),
                         ].filter(Boolean).join(" · ")}
                         {((job.screenSize || getJobModelDisplay(job as any)) && job.issue) ? " · " : ""}

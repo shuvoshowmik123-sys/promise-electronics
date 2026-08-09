@@ -14,6 +14,7 @@ import { ClientClassBadge } from "@/components/admin/ClientClassBadge";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { JobCardMobile } from "./JobCardMobile";
 import { getPrimaryAction, getStatusVisual, mobileListVariants } from "./jobActions";
+import { formatScreenSize } from "@shared/tv-options";
 
 // We need a local or imported HighlightMatch. Let's assume it exists in JobTicketsTab or we can recreate it.
 // Assuming HighlightMatch from JobTicketsTab can be imported if it was exported, or we'll recreate a simple one.
@@ -227,7 +228,7 @@ export function JobTicketGrid({
                                 <h3 className="text-sm font-bold text-slate-800 flex items-start justify-between gap-3">
                                     <span className="flex-1 leading-snug line-clamp-2"><HighlightMatch text={job.device} query={searchQuery} /></span>
                                 </h3>
-                                {job.screenSize && <span className="text-[10px] px-1.5 py-0.5 bg-slate-50/80 rounded text-slate-500 font-mono border border-slate-200 mt-1.5 inline-block">{job.screenSize}"</span>}
+                                {job.screenSize && <span className="text-[10px] px-1.5 py-0.5 bg-slate-50/80 rounded text-slate-500 font-mono border border-slate-200 mt-1.5 inline-block">{formatScreenSize(job.screenSize)}</span>}
                                 <p className="text-xs text-slate-500 mt-2.5 line-clamp-2 leading-relaxed font-medium">
                                     <HighlightMatch text={job.issue} query={searchQuery} />
                                 </p>

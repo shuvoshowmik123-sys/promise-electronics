@@ -34,6 +34,7 @@ import { Badge } from "@/components/ui/badge";
 import { MobileKpiGrid, MobileScrollContent, MobileSegmentTabs, MobileTabHeader, MobileTabLayout } from "../shared";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { formatScreenSize } from "@shared/tv-options";
 
 type Filter = "all" | "active" | "quotes" | "done";
 type SourceFilter = "all" | AdminJourneyListItem["sourceType"];
@@ -663,7 +664,7 @@ function JourneyDetailPanel({
               <p className="mt-1 text-sm font-black text-slate-900">{deviceLabel(selectedJourney)}</p>
               <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] font-bold text-slate-500">
                 {selectedJourney.serialNumber && <span>S/N {selectedJourney.serialNumber}</span>}
-                {selectedJourney.screenSize && <span>{selectedJourney.screenSize}"</span>}
+                {selectedJourney.screenSize && <span>{formatScreenSize(selectedJourney.screenSize)}</span>}
                 <span>{displayReference(selectedJourney)}</span>
               </div>
             </div>

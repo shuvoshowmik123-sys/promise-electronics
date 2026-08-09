@@ -27,6 +27,7 @@ import {
 } from "./jobIdentityDisplay";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 import { MediaViewer } from "@/components/MediaViewer";
+import { formatScreenSize } from "@shared/tv-options";
 
 interface JobDetailsSheetProps {
     job: any | null;
@@ -351,7 +352,7 @@ export function JobDetailsSheet({
                                         <div className="flex items-baseline justify-between gap-3">
                                             <dt className="text-xs font-semibold text-slate-500 shrink-0">Size</dt>
                                             <dd className="font-mono text-xs text-slate-800 text-right">
-                                                {job.screenSize ? `${job.screenSize}"` : "Not recorded"}
+                                                {job.screenSize ? formatScreenSize(job.screenSize) : "Not recorded"}
                                             </dd>
                                         </div>
                                         <div className="flex items-baseline justify-between gap-3">
@@ -886,7 +887,7 @@ export function JobDetailsSheet({
                                 <dl className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
                                     <div className="flex justify-between gap-2">
                                         <dt className="text-xs font-semibold text-slate-500">Size</dt>
-                                        <dd className="font-mono text-xs text-slate-800">{job.screenSize ? `${job.screenSize}"` : "Not recorded"}</dd>
+                                        <dd className="font-mono text-xs text-slate-800">{job.screenSize ? formatScreenSize(job.screenSize) : "Not recorded"}</dd>
                                     </div>
                                     <div className="flex justify-between gap-2">
                                         <dt className="text-xs font-semibold text-slate-500">Model</dt>

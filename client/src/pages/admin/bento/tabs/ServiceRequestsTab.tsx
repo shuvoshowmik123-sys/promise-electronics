@@ -140,6 +140,7 @@ import {
     MobileSegmentTabs,
 } from "../shared";
 import { toast } from "sonner";
+import { formatScreenSize } from "@shared/tv-options";
 
 type IntakeLane = 'all' | 'new_intake' | 'needs_call' | 'needs_reply' | 'quote_sent' | 'schedule_needed' | 'waiting_customer' | 'ready_to_receive' | 'converted_to_job' | 'rejected_closed';
 
@@ -1214,7 +1215,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         <div className="min-w-0 space-y-1">
                                             <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold text-slate-700">
                                                 <Tv className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                                                <span className="truncate"><HighlightMatch text={request.brand || "Unknown"} query={srSearchQuery} /> {request.screenSize ? `${request.screenSize}"` : ""}</span>
+                                                <span className="truncate"><HighlightMatch text={request.brand || "Unknown"} query={srSearchQuery} /> {request.screenSize ? formatScreenSize(request.screenSize) : ""}</span>
                                             </div>
                                             <div className="truncate text-[11px] font-medium text-slate-500"><HighlightMatch text={request.primaryIssue || "No issue noted"} query={srSearchQuery} /></div>
                                         </div>
@@ -1324,7 +1325,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                             </div>
                                         </div>
                                         <h4 className={cn("text-sm font-semibold truncate transition-colors", deskMuted ? "text-slate-500" : "text-slate-800 group-hover:text-blue-600")}><HighlightMatch text={request.customerName} query={srSearchQuery} /></h4>
-                                        <p className="text-xs text-slate-500 truncate"><HighlightMatch text={request.brand} query={srSearchQuery} /> {request.screenSize ? `${request.screenSize}"` : ""} — <HighlightMatch text={request.primaryIssue} query={srSearchQuery} /></p>
+                                        <p className="text-xs text-slate-500 truncate"><HighlightMatch text={request.brand} query={srSearchQuery} /> {request.screenSize ? formatScreenSize(request.screenSize) : ""} — <HighlightMatch text={request.primaryIssue} query={srSearchQuery} /></p>
                                         <p className="text-[11px] text-slate-400 pt-1">{format(new Date(request.createdAt), 'MMM d, yyyy')}</p>
                                     </div>
                                 </motion.div>
@@ -1370,7 +1371,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className="font-medium text-slate-800 py-4"><HighlightMatch text={request.customerName} query={srSearchQuery} /></TableCell>
-                                                    <TableCell className="text-sm text-slate-600 py-4"><HighlightMatch text={request.brand} query={srSearchQuery} /> {request.screenSize ? `${request.screenSize}"` : ""}</TableCell>
+                                                    <TableCell className="text-sm text-slate-600 py-4"><HighlightMatch text={request.brand} query={srSearchQuery} /> {request.screenSize ? formatScreenSize(request.screenSize) : ""}</TableCell>
                                                     <TableCell className="text-sm text-slate-500 max-w-[250px] truncate hidden md:table-cell py-4"><HighlightMatch text={request.primaryIssue} query={srSearchQuery} /></TableCell>
                                                     <TableCell className="py-4">
                                                         <Badge className={cn("font-semibold shadow-none border text-[10px] px-2 py-0.5", sc.badge)}>
@@ -1484,7 +1485,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         <div className="grid grid-cols-2 gap-2 text-sm">
                                             <div>
                                                 <p className="text-[10px] font-black uppercase text-slate-400">Device</p>
-                                                <p className="truncate font-black text-slate-900">{selectedRequest.brand || "Unknown"} {selectedRequest.screenSize ? `${selectedRequest.screenSize}"` : ""}</p>
+                                                <p className="truncate font-black text-slate-900">{selectedRequest.brand || "Unknown"} {formatScreenSize(selectedRequest.screenSize)}</p>
                                             </div>
                                             <div>
                                                 <p className="text-[10px] font-black uppercase text-slate-400">Model</p>
@@ -1719,7 +1720,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         <h3 className="font-semibold mb-2 flex items-center gap-2 text-sm"><Tv className="w-4 h-4" /> Device</h3>
                                         <div className="grid grid-cols-3 gap-3 bg-slate-50 p-3 rounded-xl text-sm">
                                             <div><Label className="text-muted-foreground text-xs">Brand</Label><p className="font-medium">{selectedRequest.brand}</p></div>
-                                            <div><Label className="text-muted-foreground text-xs">Size</Label><p className="font-medium">{selectedRequest.screenSize ? `${selectedRequest.screenSize}"` : "-"}</p></div>
+                                            <div><Label className="text-muted-foreground text-xs">Size</Label><p className="font-medium">{formatScreenSize(selectedRequest.screenSize) || "-"}</p></div>
                                             <div><Label className="text-muted-foreground text-xs">Model</Label><p className="font-medium">{selectedRequest.modelNumber || "-"}</p></div>
                                         </div>
                                     </div>
@@ -2218,7 +2219,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                 <div className="flex-none p-4 pb-3">
                                     <MobileBottomSheetHandle />
                                     <h3 className="mt-4 text-lg font-black text-slate-950">Confirm Device & Create Job</h3>
-                                    <p className="mt-1 text-xs font-semibold text-slate-500">#{requestToVerify.ticketNumber} · {requestToVerify.brand} {requestToVerify.screenSize ? `${requestToVerify.screenSize}"` : ""}</p>
+                                    <p className="mt-1 text-xs font-semibold text-slate-500">#{requestToVerify.ticketNumber} · {requestToVerify.brand} {formatScreenSize(requestToVerify.screenSize)}</p>
                                 </div>
                                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 space-y-3">
                                     <div className="grid grid-cols-4 gap-1">

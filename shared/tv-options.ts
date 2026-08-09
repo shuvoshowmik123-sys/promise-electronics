@@ -64,3 +64,20 @@ export const readTvBrands = (settings: SettingRow[]) =>
 
 export const readTvSizes = (settings: SettingRow[]) =>
   readTvOptionList(settings, TV_SIZES_KEY, TV_SIZES_LEGACY_KEY, DEFAULT_TV_SIZES);
+
+/**
+ * A screen size as it should be shown to a person.
+ *
+ * Sizes are stored the way Settings holds them — "55 inch", "75 inch+" — but
+ * several screens rendered `${screenSize}"`, which assumed a bare number and
+ * produced `55 inch"` and `75 inch+"`. The stray quote only became visible
+ * once sizes flowed end to end from the homepage into the ticket.
+ *
+ * Appends the inch mark only when the value does not already say it, so a
+ * bare "55" still reads 55" and a stored "75 inch+" is left alone.
+ */
+export function formatScreenSize(raw: unknown): string {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  return /inch|"|”|′|″/i.test(s) ? s : `${s}"`;
+}

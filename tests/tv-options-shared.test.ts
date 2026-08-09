@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  formatScreenSize,
   DEFAULT_TV_BRANDS,
   DEFAULT_TV_SIZES,
   readTvBrands,
@@ -34,6 +35,37 @@ const SCREENS: [string, string][] = [
 ];
 const HOME = read("client/src/pages/home.tsx");
 const WIZARD = read("client/src/components/mobile/MobileServiceWizard.tsx");
+
+describe("a screen size reads correctly wherever it is shown", () => {
+  /**
+   * Sizes are stored as Settings holds them — "55 inch", "75 inch+" — but five
+   * admin screens rendered `${screenSize}"`, which assumed a bare number and
+   * printed 55 inch" and 75 inch+". The stray quote only became visible once
+   * sizes flowed end to end from the homepage into the ticket.
+   */
+  it("never doubles the inch mark", () => {
+    expect(formatScreenSize("55 inch")).toBe("55 inch");
+    expect(formatScreenSize("75 inch+")).toBe("75 inch+");
+    expect(formatScreenSize('55"')).toBe('55"');
+  });
+
+  it("still adds it to a bare number", () => {
+    expect(formatScreenSize("55")).toBe('55"');
+    expect(formatScreenSize(55)).toBe('55"');
+  });
+
+  it("shows nothing rather than a lone quote mark", () => {
+    for (const empty of ["", "   ", null, undefined]) {
+      expect(formatScreenSize(empty), String(empty)).toBe("");
+    }
+  });
+
+  it("no screen appends the mark by hand any more", () => {
+    for (const [name, path] of SCREENS) {
+      expect(read(path), `${name} still appends a quote to a size`).not.toMatch(/screenSize\}"/);
+    }
+  });
+});
 
 describe("brand and size are defined in one place", () => {
   it("both screens read through the shared readers", () => {
