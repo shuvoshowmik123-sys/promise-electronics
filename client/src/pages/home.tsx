@@ -1343,39 +1343,43 @@ export default function HomePage() {
         customer to name their fault before anything happened, which is the
         problem this replaces.
       */}
-      <section className="hidden md:block py-20 bg-white">
+      <section className="hidden md:block bg-white py-14">
         <div className="container mx-auto px-4">
-          <div className="max-w-4xl mx-auto">
-            <motion.div
-              className="text-center mb-10"
-              initial={{ opacity: 0, y: 20 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6 }}
-            >
-              <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-4">
-                <Calculator className="h-4 w-4" />
-                {t("desktop.calc.badge")}
-              </div>
-              <h2 className="text-3xl font-heading font-bold text-slate-900 mb-3">{t("desktop.calc.title")}</h2>
-              <p className="text-slate-500 max-w-lg mx-auto">{t("desktop.calc.subtitle")}</p>
-            </motion.div>
+          <motion.div
+            className="mb-6 text-center"
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+          >
+            {/*
+              No badge, and a smaller heading than the old estimator carried.
+              "Instant Price Estimate" in a pill directly above a headline
+              saying the same thing spent 37px on repetition, and every pixel
+              above the tool is a pixel off the television inside it.
+            */}
+            <h2 className="mb-1.5 font-heading text-2xl font-bold text-slate-900">{t("desktop.calc.title")}</h2>
+            <p className="mx-auto max-w-3xl text-[13px] leading-relaxed text-slate-500">{t("desktop.calc.subtitle")}</p>
+          </motion.div>
 
-            <motion.div
-              className="mx-auto max-w-md"
-              initial={{ opacity: 0, y: 24 }}
-              whileInView={{ opacity: 1, y: 0 }}
-              viewport={{ once: true }}
-              transition={{ duration: 0.6, delay: 0.1 }}
-            >
-              <FaultSimulator
-                brands={CALC_BRANDS}
-                sizes={CALC_SIZES}
-                priceMatrix={PRICE_MATRIX}
-                sizeBucket={calcSizeBucket}
-              />
-            </motion.div>
-          </div>
+          {/*
+            No max-w wrapper. The desktop layout sets its own 1320px frame, and
+            an outer max-w-4xl would squeeze three columns back into one.
+          */}
+          <motion.div
+            initial={{ opacity: 0, y: 24 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            <FaultSimulator
+              brands={CALC_BRANDS}
+              sizes={CALC_SIZES}
+              priceMatrix={PRICE_MATRIX}
+              sizeBucket={calcSizeBucket}
+              variant="desktop"
+            />
+          </motion.div>
         </div>
       </section>
 

@@ -31,6 +31,12 @@ export interface FaultSimulatorProps {
     sizes: string[];
     priceMatrix: PriceMatrix;
     sizeBucket: (size: string) => Bucket;
+    /**
+     * Which layout to draw. Both are fed by the same state, so a fault, a
+     * price or a reminder cannot mean one thing on a phone and another on a
+     * desktop — the only thing that differs is the arrangement.
+     */
+    variant?: "mobile" | "desktop";
 }
 
 /**
@@ -185,7 +191,14 @@ const REFINE: Record<string, Refine> = {
 
 const money = (n: number) => `৳${n.toLocaleString("en-US")}`;
 
-export function FaultSimulator({ brands, sizes, priceMatrix, sizeBucket }: FaultSimulatorProps) {
+/**
+ * Everything the simulator knows, in one place.
+ *
+ * Extracted so the phone and the desktop are two arrangements of one machine
+ * rather than two machines. A second implementation would disagree with this
+ * one within a month, and the disagreement would reach service_requests.
+ */
+function useFaultSimulator({ brands, sizes, priceMatrix, sizeBucket }: Omit<FaultSimulatorProps, "variant">) {
     const { language } = useCustomerLanguage();
     const [, setLocation] = useLocation();
     const bn = language === "bn";
@@ -309,6 +322,28 @@ export function FaultSimulator({ brands, sizes, priceMatrix, sizeBucket }: Fault
 
     const filteredBrands = brands.filter((b) => b.toLowerCase().includes(query.toLowerCase()));
 
+    return {
+        bn, L, step, go, fault, setFault, answer, setAnswer, brand, setBrand, size, setSize,
+        model, setModel, searchOpen, setSearchOpen, query, setQuery, dismissed, setDismissed,
+        mismatch, sizeLabelFor, estimate, submit, filteredBrands, nudgeRef,
+        brands, sizes,
+    };
+}
+
+export function FaultSimulator(props: FaultSimulatorProps) {
+    const sim = useFaultSimulator(props);
+    return props.variant === "desktop" ? <DesktopLayout sim={sim} /> : <MobileLayout sim={sim} />;
+}
+
+type Sim = ReturnType<typeof useFaultSimulator>;
+
+/** The phone: three steps, one at a time, because there is no room for more. */
+function MobileLayout({ sim }: { sim: Sim }) {
+    const {
+        bn, L, step, go, fault, setFault, answer, setAnswer, brand, setBrand, size, setSize,
+        model, setModel, searchOpen, setSearchOpen, query, setQuery, setDismissed,
+        mismatch, sizeLabelFor, estimate, submit, filteredBrands, nudgeRef, brands, sizes,
+    } = sim;
     return (
         <div className="mb-8">
             <h3 className="text-lg font-bold text-slate-950 mb-1">{L("Find Your Fault", "সমস্যা খুঁজুন")}</h3>
@@ -594,40 +629,367 @@ export function FaultSimulator({ brands, sizes, priceMatrix, sizeBucket }: Fault
  * a still frame. Every fault is driven by one data attribute so a layer can
  * never be left switched on from a previous selection.
  */
+/**
+ * The television itself — one component, both layouts.
+ *
+ * The phone scales a fixed 238px set; the desktop sets a real panel width from
+ * the chosen inches. Everything else, and every fault layer, is shared, so a
+ * layer can never exist on one screen and be missing on the other.
+ *
+ * The picture drifts slowly because without motion there is no way to show a
+ * picture FREEZING — a still frame that stops is still a still frame.
+ */
+function FaultTv({ fault, panelWidth, scale }: { fault: Fault | null; panelWidth?: number; scale?: number }) {
+    const w = panelWidth ?? 238;
+    const h = panelWidth ? Math.round(panelWidth * 9 / 16) : 143;
+    const big = !!panelWidth;
+
+    return (
+        <div
+            data-fault={fault?.id ?? ""}
+            className={cn("fault-tv relative bg-slate-900 shadow-lg shadow-slate-900/25",
+                big ? "rounded-2xl p-2.5 pb-3" : "rounded-[9px] p-1.5 pb-2")}
+            style={scale != null
+                ? { transform: `scale(${scale})`, transformOrigin: "bottom center", transition: "transform .35s ease" }
+                : undefined}
+        >
+            <div
+                className={cn("relative overflow-hidden bg-black", big ? "rounded-md" : "rounded-[4px]")}
+                style={{ width: w, height: h, transition: "width .35s ease, height .35s ease" }}
+            >
+                <div className="fault-pic absolute inset-0 bg-gradient-to-br from-sky-900 via-teal-700 to-amber-500" />
+                <div className="fault-glow absolute inset-0" />
+                <div className="fault-v absolute inset-0" />
+                <div className="fault-h absolute inset-0" />
+                <div className="fault-crack absolute inset-0" />
+                <div className="fault-buffer absolute inset-0 grid place-items-center">
+                    <span className={cn("block rounded-full border-white/30 border-t-white/95",
+                        big ? "h-11 w-11 border-[3px]" : "h-6 w-6 border-[2.5px]")} />
+                </div>
+            </div>
+            <span className={cn("fault-led absolute left-1/2 -translate-x-1/2 rounded-full bg-emerald-500",
+                big ? "bottom-1 h-1.5 w-1.5" : "bottom-0.5 h-1 w-1")} />
+        </div>
+    );
+}
+
+/**
+ * Sound cannot be drawn, so the meter is deliberately uneven for a jitter and
+ * flat for a dead speaker. A steady bounce would read as "working".
+ */
+function FaultMeter({ fault }: { fault: Fault | null }) {
+    if (!fault?.audio) return null;
+    return (
+        <div className="mt-2.5 flex h-5 items-end gap-[3px]">
+            {Array.from({ length: 7 }).map((_, i) => (
+                <span key={i} className={cn("w-1 rounded-sm",
+                    fault.audio === "jitter" ? "fault-bar bg-amber-500" : "h-[3px] bg-slate-300")} />
+            ))}
+        </div>
+    );
+}
+
 function FaultScreen({ fault, caption, size }: { fault: Fault | null; caption: string; size: string }) {
     const inches = parseInt(size, 10);
     const scale = Number.isFinite(inches) ? Math.min(1.08, Math.max(0.88, 0.88 + (inches - 24) * 0.004)) : 1;
 
     return (
         <div className="flex flex-col items-center px-5 pt-4">
-            <div
-                data-fault={fault?.id ?? ""}
-                className="fault-tv relative rounded-[9px] bg-slate-900 p-1.5 pb-2 shadow-lg shadow-slate-900/20"
-                style={{ width: 238, height: 143, transform: `scale(${scale})`, transformOrigin: "bottom center", transition: "transform .35s ease" }}
-            >
-                <div className="relative h-full w-full overflow-hidden rounded-[4px] bg-black">
-                    <div className="fault-pic absolute inset-0 bg-gradient-to-br from-sky-900 via-teal-700 to-amber-500" />
-                    <div className="fault-glow absolute inset-0" />
-                    <div className="fault-v absolute inset-0" />
-                    <div className="fault-h absolute inset-0" />
-                    <div className="fault-crack absolute inset-0" />
-                    <div className="fault-buffer absolute inset-0 grid place-items-center">
-                        <span className="block h-6 w-6 rounded-full border-[2.5px] border-white/30 border-t-white/95" />
-                    </div>
-                </div>
-                <span className="fault-led absolute bottom-0.5 left-1/2 h-1 w-1 -translate-x-1/2 rounded-full bg-emerald-500" />
-            </div>
+            <FaultTv fault={fault} scale={scale} />
             <span className="h-2.5 w-3.5 bg-slate-800" />
             <span className="h-1.5 w-14 rounded-b-md bg-slate-800" />
-
-            {fault?.audio && (
-                <div className="mt-2.5 flex h-5 items-end gap-[3px]">
-                    {Array.from({ length: 7 }).map((_, i) => (
-                        <span key={i} className={cn("w-1 rounded-sm", fault.audio === "jitter" ? "fault-bar bg-amber-500" : "h-[3px] bg-slate-300")} />
-                    ))}
-                </div>
-            )}
+            <FaultMeter fault={fault} />
             <p className="mt-2.5 min-h-[16px] text-center text-[12px] font-bold text-emerald-700">{caption}</p>
         </div>
+    );
+}
+
+/**
+ * The desktop: everything at once, because the width exists.
+ *
+ * The three-step wizard is a consequence of a narrow screen, not of the task.
+ * Given room, the honest arrangement is three zones read left to right —
+ * choose it, watch it, price it — with no Next buttons at all: picking a fault
+ * changes the television and the price in the same instant.
+ *
+ * Brand and size sit in a full-width strip beneath rather than inside a
+ * column. Stacked in a 380px column those two pickers cost 157px of height;
+ * across the page they are one row each, and that reclaimed height is what
+ * pays for a television large enough to actually read the fault on.
+ */
+function DesktopLayout({ sim }: { sim: Sim }) {
+    const {
+        L, fault, setFault, answer, setAnswer, brand, setBrand, size, setSize,
+        model, setModel, setDismissed, mismatch, sizeLabelFor, estimate, submit, brands, sizes,
+    } = sim;
+
+    /**
+     * The ceiling is the stage height, not the column width: 441px is simply
+     * the widest 16:9 panel that fits 272px of stage once the bezel is taken
+     * off. The stage is a fixed height so choosing a size grows the set upward
+     * into space already reserved, rather than reflowing the column.
+     */
+    const inches = parseInt(size, 10);
+    const panelW = Number.isFinite(inches)
+        ? Math.round(324 + Math.min(51, Math.max(0, inches - 24)) * 2.294)
+        : 390;
+
+    return (
+        <div className="mx-auto max-w-[1320px]">
+            <div className="grid grid-cols-[330px_minmax(500px,1fr)_380px] items-start gap-7">
+
+                {/* choose it */}
+                <section className="rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm">
+                    <h3 className="mb-3.5 text-[13px] font-extrabold text-slate-900">
+                        {L("What do you see?", "কী দেখছেন?")}
+                    </h3>
+                    <div className="flex flex-col gap-1.5">
+                        {FAULTS.map((f) => {
+                            const on = fault?.id === f.id;
+                            return (
+                                <button
+                                    key={f.id} type="button"
+                                    onClick={() => { setFault(f); setAnswer(null); }}
+                                    className={cn(
+                                        "flex w-full items-center gap-3 rounded-xl border px-3 py-2 text-left transition-colors",
+                                        on ? "border-emerald-700 bg-emerald-50 shadow-sm"
+                                           : "border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/40",
+                                    )}
+                                >
+                                    <FaultThumb fault={f} selected={on} />
+                                    <span className={cn("text-[13.5px] leading-tight",
+                                        on ? "font-extrabold text-emerald-900" : "font-bold text-slate-700")}>
+                                        {L(f.en, f.bn)}
+                                    </span>
+                                </button>
+                            );
+                        })}
+                    </div>
+                </section>
+
+                {/* watch it */}
+                <section className="flex flex-col items-center rounded-3xl border border-emerald-100 bg-white px-6 pb-6 pt-7 shadow-sm">
+                    <div className="flex h-[272px] w-full items-end justify-center">
+                        <FaultTv fault={fault} panelWidth={panelW} />
+                    </div>
+                    <span className="h-5 w-[30px] bg-slate-800" />
+                    <span className="h-2.5 w-[140px] rounded-b-md bg-slate-800" />
+                    <FaultMeter fault={fault} />
+                    <p className="mt-3 min-h-[22px] text-center text-[16px] font-bold text-emerald-700">
+                        {fault
+                            ? L(fault.capEn, fault.capBn)
+                            : L("Your television, working normally", "আপনার টিভি স্বাভাবিক চলছে")}
+                    </p>
+
+                    {fault && REFINE[fault.id] && (
+                        <div className="mt-3.5 w-full rounded-2xl border border-emerald-100 bg-emerald-50/50 p-3.5">
+                            <p className="text-[14px] font-bold leading-snug text-slate-900">
+                                {L(REFINE[fault.id].qEn, REFINE[fault.id].qBn)}
+                            </p>
+                            <div className="mt-2.5 flex gap-2">
+                                {(["yes", "no"] as const).map((v) => (
+                                    <button
+                                        key={v} type="button" onClick={() => setAnswer(v)}
+                                        className={cn("flex-1 rounded-xl border py-2 text-[13px] font-bold transition-colors",
+                                            answer === v
+                                                ? "border-emerald-700 bg-emerald-700 text-white"
+                                                : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300")}
+                                    >
+                                        {v === "yes" ? L("Yes", "হ্যাঁ") : L("No", "না")}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+                </section>
+
+                {/* price it */}
+                <section className="rounded-3xl border border-emerald-100 bg-white p-5 shadow-sm">
+                    <h3 className="mb-3 text-[13px] font-extrabold text-slate-900">
+                        {L("Your television", "আপনার টিভি")}
+                    </h3>
+
+                    <p className="text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">
+                        {L("Model number", "মডেল নম্বর")}{" "}
+                        <span className="text-slate-300">· {L("optional", "ঐচ্ছিক")}</span>
+                    </p>
+                    <input
+                        value={model}
+                        onChange={(e) => { setModel(e.target.value); setDismissed(false); }}
+                        placeholder="UA55AU7700"
+                        autoCapitalize="characters" autoComplete="off" spellCheck={false}
+                        className="mt-2 h-11 w-full rounded-xl border border-emerald-100 bg-emerald-50/30 px-3.5 text-[15px] font-semibold uppercase text-slate-900 outline-none placeholder:font-medium placeholder:normal-case placeholder:text-slate-400 focus:border-emerald-400"
+                    />
+                    <p className="mt-1.5 text-[10.5px] leading-snug text-slate-400">
+                        {L("Usually on a sticker at the back. It helps us check parts before we collect.",
+                           "সাধারণত পেছনে স্টিকারে থাকে। এতে আগেই পার্টস দেখে রাখতে পারি।")}
+                    </p>
+
+                    {mismatch && (
+                        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                            <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+                                {L("Just checking", "একটু দেখে নিন")}
+                            </p>
+                            <p className="mt-1.5 text-[12px] font-semibold leading-snug text-amber-900">
+                                {L("Your model number looks like a ", "আপনার মডেল নম্বর দেখে ")}
+                                <b>{[mismatch.brand, mismatch.sizeInches ? sizeLabelFor(mismatch.sizeInches) : null].filter(Boolean).join(" ")}</b>
+                                {L(", but you selected ", " মনে হচ্ছে, কিন্তু আপনি বেছেছেন ")}
+                                <b>{[mismatch.bClash ? brand : null, mismatch.sClash ? size : null].filter(Boolean).join(" ")}</b>.
+                            </p>
+                            <div className="mt-2.5 flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (mismatch.brand && brands.includes(mismatch.brand)) setBrand(mismatch.brand);
+                                        if (mismatch.sizeInches) {
+                                            const match = sizes.find((s) => parseInt(s, 10) === mismatch.sizeInches);
+                                            if (match) setSize(match);
+                                        }
+                                        setDismissed(true);
+                                    }}
+                                    className="flex-1 rounded-xl bg-amber-500 py-2 text-[12px] font-bold text-white"
+                                >
+                                    {L("Use that", "সেটি ব্যবহার করুন")}
+                                </button>
+                                <button type="button" onClick={() => setDismissed(true)}
+                                    className="flex-1 rounded-xl border border-amber-300 bg-white py-2 text-[12px] font-bold text-amber-800">
+                                    {L("Mine is correct", "আমারটাই ঠিক")}
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {estimate && fault ? (
+                        <div className={cn("mt-3.5 rounded-2xl p-4 text-white shadow-lg",
+                            fault.hard ? "bg-gradient-to-br from-orange-700 to-orange-600 shadow-orange-200"
+                                       : "bg-gradient-to-br from-emerald-800 to-emerald-600 shadow-emerald-200")}>
+                            <p className={cn("text-[9px] font-bold uppercase tracking-widest",
+                                fault.hard ? "text-orange-200" : "text-emerald-200")}>
+                                {L("Likely cause", "সম্ভাব্য কারণ")}{brand ? ` · ${brand}` : ""} {size}
+                            </p>
+                            <p className="mt-1 text-[19px] font-black leading-tight">{L(fault.causeEn, fault.causeBn)}</p>
+                            <p className={cn("mt-1.5 text-[12.5px] leading-relaxed",
+                                fault.hard ? "text-orange-100" : "text-emerald-50/90")}>
+                                {L(fault.noteEn, fault.noteBn)}{estimate.extra}
+                            </p>
+                            <p className="mt-3 border-t border-white/20 pt-3 text-[31px] font-black leading-none tracking-tight">
+                                {`৳${estimate.lo.toLocaleString("en-US")} – ৳${estimate.hi.toLocaleString("en-US")}`}
+                            </p>
+                            <p className={cn("mt-1 text-[9.5px]", fault.hard ? "text-orange-200" : "text-emerald-200")}>
+                                {L("Confirmed after free inspection", "ফ্রি পরীক্ষার পর নিশ্চিত")} ·{" "}
+                                {estimate.confident
+                                    ? L("Confidence: High", "নিশ্চয়তা: বেশি")
+                                    : L("Confidence: Medium", "নিশ্চয়তা: মাঝারি")}
+                            </p>
+                            <div className="mt-3 flex gap-1.5">
+                                {[[fault.days, L("Days", "দিন")], ["3 mo", L("Warranty", "ওয়ারেন্টি")], ["100%", L("Genuine", "জেনুইন")]].map(([v, k]) => (
+                                    <div key={String(k)} className="flex-1 rounded-xl bg-white/10 px-1 py-2 text-center">
+                                        <p className="text-[13px] font-black">{v}</p>
+                                        <p className={cn("text-[9px]", fault.hard ? "text-orange-200" : "text-emerald-200")}>{k}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    ) : (
+                        <div className="mt-3.5 rounded-2xl border border-dashed border-emerald-100 px-4 py-7 text-center">
+                            <p className="text-[13px] font-semibold leading-relaxed text-slate-400">
+                                {L("Pick what your television is doing and the estimate appears here.",
+                                   "আপনার টিভি কী করছে বেছে নিন, এখানে খরচ দেখা যাবে।")}
+                            </p>
+                        </div>
+                    )}
+
+                    <button
+                        type="button" onClick={submit} disabled={!fault}
+                        className="mt-3.5 w-full rounded-2xl bg-emerald-700 py-3.5 text-[14.5px] font-bold text-white shadow-lg shadow-emerald-200 transition hover:bg-emerald-800 disabled:bg-slate-100 disabled:text-slate-400 disabled:shadow-none"
+                    >
+                        {L("Send a service request →", "সার্ভিস রিকোয়েস্ট পাঠান →")}
+                    </button>
+                    <p className="mt-2.5 text-center text-[10px] leading-relaxed text-slate-400">
+                        {L("This value may change when your TV reaches our store. After a full and final inspection you will receive your final quotation, and nothing is charged until you approve it.",
+                           "আপনার টিভি আমাদের দোকানে আসার পর এই দাম পরিবর্তন হতে পারে। সম্পূর্ণ পরীক্ষার পর চূড়ান্ত কোটেশন পাবেন, এবং আপনি রাজি না হলে কোনো খরচ নেই।")}
+                    </p>
+                </section>
+            </div>
+
+            {/* brand and size, across the page rather than down a column */}
+            <div className="mt-5 grid grid-cols-2 gap-7 rounded-3xl border border-emerald-100 bg-white px-5 pb-3.5 pt-4 shadow-sm">
+                <div>
+                    <p className="mb-2 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">
+                        {L("Brand", "ব্র্যান্ড")}{" "}
+                        {brand && <span className="tracking-normal text-emerald-700">· {brand}</span>}
+                    </p>
+                    <EdgeFadeRail>
+                        {brands.map((b) => (
+                            <button key={b} type="button" onClick={() => { setBrand(b); setDismissed(false); }}
+                                className={cn("shrink-0 rounded-full border px-3.5 py-2 text-[12.5px] font-bold transition-colors",
+                                    brand === b
+                                        ? "border-slate-900 bg-slate-900 text-white"
+                                        : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/40")}>
+                                {b}
+                            </button>
+                        ))}
+                    </EdgeFadeRail>
+                </div>
+                <div>
+                    <p className="mb-2 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">
+                        {L("Screen size", "স্ক্রিন সাইজ")}{" "}
+                        {size && <span className="tracking-normal text-emerald-700">· {size}</span>}
+                    </p>
+                    <EdgeFadeRail>
+                        {sizes.map((z) => {
+                            const n = parseInt(z, 10) || 32;
+                            const w = Math.round(Math.min(34, Math.max(16, 16 + (n - 24) * 0.36)));
+                            const on = size === z;
+                            return (
+                                <button key={z} type="button" onClick={() => { setSize(z); setDismissed(false); }}
+                                    className={cn("flex shrink-0 flex-col items-center gap-1 rounded-xl border px-2.5 py-2 transition-colors",
+                                        on ? "border-slate-900 bg-slate-900 text-white"
+                                           : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/40")}>
+                                    <span className="flex h-[26px] flex-col items-center justify-end">
+                                        <span className={cn("rounded-[2px] border-[1.5px]", on ? "border-white" : "border-slate-400")}
+                                              style={{ width: w, height: Math.round(w * 0.62) }} />
+                                        <span className={cn("h-[2.5px] w-2.5", on ? "bg-white" : "bg-slate-400")} />
+                                    </span>
+                                    <span className="text-[12px] font-bold">{z.replace(/\s*inch$/i, "”")}</span>
+                                </button>
+                            );
+                        })}
+                    </EdgeFadeRail>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+/**
+ * A horizontal rail whose right edge fades out.
+ *
+ * A brand cut off mid-word reads as a rendering bug rather than as "there is
+ * more this way", so the overflow is softened instead of chopped.
+ */
+function EdgeFadeRail({ children }: { children: React.ReactNode }) {
+    return (
+        <div className="relative">
+            <div className="scrollbar-hide flex gap-1.5 overflow-x-auto pb-1">{children}</div>
+            <span className="pointer-events-none absolute inset-y-0 right-0 w-8 bg-gradient-to-l from-white to-transparent" />
+        </div>
+    );
+}
+
+/** A miniature of one fault, over the same photograph the big screen uses. */
+function FaultThumb({ fault, selected }: { fault: Fault; selected: boolean }) {
+    return (
+        <span
+            data-fault={fault.id}
+            className={cn("fault-tv relative h-[27px] w-[44px] shrink-0 overflow-hidden rounded border bg-black",
+                selected ? "border-emerald-700" : "border-slate-300")}
+        >
+            <span className="fault-pic absolute inset-0 bg-gradient-to-br from-sky-900 via-teal-700 to-amber-500" />
+            <span className="fault-glow absolute inset-0" />
+            <span className="fault-v absolute inset-0" />
+            <span className="fault-h absolute inset-0" />
+            <span className="fault-crack absolute inset-0" />
+        </span>
     );
 }

@@ -180,6 +180,36 @@ describe("the homepage uses it in place of what it replaced", () => {
         expect(HOME).toContain("hidden md:block");
     });
 
+    it("both views are one component with two layouts, not two components", () => {
+        /**
+         * The state lives in a single hook and each layout is a rendering of
+         * it. Two independent implementations would disagree within a month,
+         * and the disagreement would reach service_requests as two
+         * vocabularies for the same fault.
+         */
+        expect(COMPONENT).toContain("function useFaultSimulator");
+        expect(COMPONENT).toMatch(/props\.variant === "desktop" \? <DesktopLayout/);
+        // One television, one meter, shared by both — a fault layer cannot
+        // exist on one screen and be missing from the other.
+        expect((COMPONENT.match(/<FaultTv /g) ?? []).length).toBeGreaterThanOrEqual(2);
+        expect((COMPONENT.match(/<FaultMeter /g) ?? []).length).toBeGreaterThanOrEqual(2);
+        // Neither layout may declare its own fault list or price logic.
+        expect((COMPONENT.match(/const FAULTS: Fault\[\]/g) ?? []).length).toBe(1);
+        expect((COMPONENT.match(/const REFINE: Record/g) ?? []).length).toBe(1);
+    });
+
+    it("the desktop mount is not squeezed by an outer max-width", () => {
+        // The desktop layout sets its own 1320px frame; an outer max-w-4xl
+        // would fold three columns back into one.
+        // Only the element that wraps the mount matters. A max-width on the
+        // subtitle paragraph is deliberate — that is prose, not the layout.
+        const section = HOME.slice(HOME.indexOf("hidden md:block bg-white"));
+        const mount = section.indexOf("<FaultSimulator");
+        const wrapper = section.slice(section.lastIndexOf("<motion.div", mount), mount);
+        expect(wrapper).not.toMatch(/max-w-/);
+        expect(HOME).toContain('variant="desktop"');
+    });
+
     it("the dropdown estimator it replaced is gone from both views", () => {
         // Leaving it would give a desktop customer two different answers to
         // the same question on one page.
