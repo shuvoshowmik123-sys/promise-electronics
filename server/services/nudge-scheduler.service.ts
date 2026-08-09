@@ -55,6 +55,7 @@ import * as schema from "../../shared/schema.js";
 import { isDbReady } from "./db-readiness.js";
 import { notifyStaffAssignment } from "./staff-assignment-notify.service.js";
 import { logBackgroundFailure } from "../utils/safe-error.js";
+import { sweepTvModelHarvest } from "./tv-model-harvest.service.js";
 
 const DHAKA_TZ = "Asia/Dhaka";
 const CHECK_INTERVAL_MS = 5 * 60 * 1000;
@@ -667,6 +668,17 @@ export async function runNudgeSweep(): Promise<void> {
             await sweepRetention();
         } catch {
             logBackgroundFailure("Nudges", "RETENTION_SWEEP_FAILED");
+        }
+        /**
+         * Teach the brain what yesterday's finished repairs proved about which
+         * models belong to which brand. Quiet hours because it reads a batch of
+         * completed jobs and writes a second database, and nobody is waiting
+         * for it — a model learned an hour later costs nothing.
+         */
+        try {
+            await sweepTvModelHarvest();
+        } catch {
+            logBackgroundFailure("Nudges", "MODEL_HARVEST_FAILED");
         }
     }
 }
