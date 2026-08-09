@@ -168,11 +168,24 @@ describe("the homepage uses it in place of what it replaced", () => {
         expect(HOME).not.toContain("Mobile Estimate Calculator");
     });
 
-    it("leaves the desktop calculator alone", () => {
-        // Only the mobile blocks were replaced; the desktop estimator still runs
-        // on the same state and must not have been collateral damage.
-        expect(HOME).toContain("estBrand");
-        expect(HOME).toContain("estIssue");
-        expect(HOME).toContain("desktop.calc.title");
+    it("desktop and mobile run the same component, not two of them", () => {
+        /**
+         * Two implementations of one promise would disagree within a month —
+         * different symptom names reaching the service request, different
+         * prices on screen, and eventually two vocabularies landing in
+         * service_requests for the same fault. One component cannot drift
+         * from itself.
+         */
+        expect((HOME.match(/<FaultSimulator/g) ?? []).length).toBe(2);
+        expect(HOME).toContain("hidden md:block");
     });
+
+    it("the dropdown estimator it replaced is gone from both views", () => {
+        // Leaving it would give a desktop customer two different answers to
+        // the same question on one page.
+        for (const dead of ["estBrand", "estIssue", "CALC_ISSUES", "SelectTrigger"]) {
+            expect(HOME, `${dead} is dead code now`).not.toContain(dead);
+        }
+    });
+
 });

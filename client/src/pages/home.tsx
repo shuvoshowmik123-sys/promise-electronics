@@ -2,7 +2,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowRight, CheckCircle2, Clock, ShieldCheck, Wrench, Package, Users, ChevronLeft, ChevronRight, ShoppingCart, MessageSquare, Calendar, Search, Truck, MapPin, Phone, Mail, Star, HelpCircle, Award, Zap, Heart, Power, MonitorOff, Maximize, VolumeX, WifiOff, AlignJustify, X, Calculator, type LucideIcon } from "lucide-react";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Link, useLocation } from "wouter";
 import { images } from "@/lib/app-config";
 import { lazy, Suspense, useState, useEffect, useMemo, useRef } from "react";
@@ -73,9 +72,6 @@ export default function HomePage() {
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
   const { addItem } = useCart();
   const [trackTicket, setTrackTicket] = useState("");
-  const [estBrand, setEstBrand] = useState("");
-  const [estSize, setEstSize] = useState("");
-  const [estIssue, setEstIssue] = useState("");
   const [, setLocation] = useLocation();
   const { customer } = useCustomerAuth();
   const { language, t } = useCustomerLanguage();
@@ -652,7 +648,6 @@ export default function HomePage() {
 
   // Shared calculator data — settings-driven with hardcoded fallbacks
   type CalcSizeBucket = "small" | "medium" | "large";
-  const CALC_ISSUES_DEFAULT = ["No Power", "No Display", "Lines on Screen", "Dim / No Backlight", "Broken Screen", "Sound Issue", "Software / Smart TV"];
   const parseCalcArray = (key: string, fallbackKey?: string, def: string[] = []): string[] => {
     const s = settings.find(x => x.key === key);
     if (s?.value) { try { const p = JSON.parse(s.value); if (Array.isArray(p) && p.length > 0) return p; } catch {} }
@@ -667,7 +662,6 @@ export default function HomePage() {
    */
   const CALC_BRANDS = readTvBrands(settings as any);
   const CALC_SIZES = readTvSizes(settings as any);
-  const CALC_ISSUES = parseCalcArray("common_symptoms", "common_issues", CALC_ISSUES_DEFAULT);
   const DEFAULT_PRICE_MATRIX: Record<string, Record<CalcSizeBucket, [number, number]>> = {
     "No Power":              { small: [800,  2000],  medium: [1000, 2500],  large: [1500, 4000]  },
     "No Display":            { small: [1500, 3000],  medium: [2000, 4500],  large: [3000, 7000]  },
@@ -1335,107 +1329,53 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Instant Estimate Calculator — desktop only */}
+      {/*
+        FIND YOUR FAULT — desktop.
+
+        The same component the phone uses, in a narrower column. A separate
+        desktop build would be two implementations of one promise, and they
+        would disagree within a month: different symptom names reaching the
+        service request, different prices on screen, and eventually two
+        vocabularies landing in service_requests for the same fault. One
+        component cannot drift from itself.
+
+        The three-dropdown estimator that stood here is gone. It asked the
+        customer to name their fault before anything happened, which is the
+        problem this replaces.
+      */}
       <section className="hidden md:block py-20 bg-white">
         <div className="container mx-auto px-4">
-          {(() => {
-            const bucket = estSize ? calcSizeBucket(estSize) : null;
-            const range = estIssue && bucket ? PRICE_MATRIX[estIssue]?.[bucket] : null;
-            const allSelected = estBrand && estSize && estIssue;
-            const bookUrl = allSelected
-              ? `/repair?brand=${encodeURIComponent(estBrand)}&size=${encodeURIComponent(estSize)}&issue=${encodeURIComponent(estIssue)}`
-              : "/repair";
-
-            return (
-              <div className="max-w-4xl mx-auto">
-                <motion.div
-                  className="text-center mb-10"
-                  initial={{ opacity: 0, y: 20 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6 }}
-                >
-                  <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-4">
-                    <Calculator className="h-4 w-4" />
-                    {t("desktop.calc.badge")}
-                  </div>
-                  <h2 className="text-3xl font-heading font-bold text-slate-900 mb-3">{t("desktop.calc.title")}</h2>
-                  <p className="text-slate-500 max-w-lg mx-auto">{t("desktop.calc.subtitle")}</p>
-                </motion.div>
-
-                <motion.div
-                  className="bg-slate-100 rounded-2xl shadow-neumorph p-8"
-                  initial={{ opacity: 0, y: 24 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ duration: 0.6, delay: 0.1 }}
-                >
-                  <div className="grid grid-cols-3 gap-6 mb-8">
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">{t("desktop.calc.labelBrand")}</label>
-                      <Select value={estBrand} onValueChange={setEstBrand}>
-                        <SelectTrigger className="bg-white shadow-neumorph-inset border-none rounded-xl h-12">
-                          <SelectValue placeholder="Select brand" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CALC_BRANDS.map(b => <SelectItem key={b} value={b}>{b}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">{t("desktop.calc.labelSize")}</label>
-                      <Select value={estSize} onValueChange={setEstSize}>
-                        <SelectTrigger className="bg-white shadow-neumorph-inset border-none rounded-xl h-12">
-                          <SelectValue placeholder="Select size" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CALC_SIZES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">{t("desktop.calc.labelProblem")}</label>
-                      <Select value={estIssue} onValueChange={setEstIssue}>
-                        <SelectTrigger className="bg-white shadow-neumorph-inset border-none rounded-xl h-12">
-                          <SelectValue placeholder="Select problem" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {CALC_ISSUES.map(i => <SelectItem key={i} value={i}>{i}</SelectItem>)}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-
-                  <div className={`rounded-xl p-6 flex items-center justify-between transition-all duration-300 ${allSelected ? "bg-white shadow-neumorph-inset" : "bg-slate-50 border-2 border-dashed border-slate-200"}`}>
-                    <div>
-                      {allSelected && range ? (
-                        <>
-                          <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">{t("desktop.calc.resultLabel")}</p>
-                          <p className="text-4xl font-black text-primary">
-                            ৳{range[0].toLocaleString()} – ৳{range[1].toLocaleString()}
-                          </p>
-                          <p className="text-xs text-slate-400 mt-2 leading-relaxed">{t("desktop.calc.disclaimer")}</p>
-                        </>
-                      ) : allSelected && !range ? (
-                        <>
-                          <p className="text-sm font-medium text-slate-600">{t("desktop.calc.noData")}</p>
-                          <p className="text-xs text-slate-400 mt-1">{t("desktop.calc.noDataSub")}</p>
-                        </>
-                      ) : (
-                        <p className="text-sm text-slate-400">{t("desktop.calc.idle")}</p>
-                      )}
-                    </div>
-                    <Link href={bookUrl}>
-                      <Button size="lg" className="ml-6 shrink-0 shadow-lg shadow-primary/20 h-12 px-6">
-                        {allSelected ? t("desktop.calc.bookThis") : t("desktop.calc.bookGeneral")}
-                        <ArrowRight className="ml-2 h-4 w-4" />
-                      </Button>
-                    </Link>
-                  </div>
-                </motion.div>
+          <div className="max-w-4xl mx-auto">
+            <motion.div
+              className="text-center mb-10"
+              initial={{ opacity: 0, y: 20 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6 }}
+            >
+              <div className="inline-flex items-center gap-2 bg-primary/10 text-primary px-4 py-2 rounded-full text-sm font-medium mb-4">
+                <Calculator className="h-4 w-4" />
+                {t("desktop.calc.badge")}
               </div>
-            );
-          })()}
+              <h2 className="text-3xl font-heading font-bold text-slate-900 mb-3">{t("desktop.calc.title")}</h2>
+              <p className="text-slate-500 max-w-lg mx-auto">{t("desktop.calc.subtitle")}</p>
+            </motion.div>
+
+            <motion.div
+              className="mx-auto max-w-md"
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.6, delay: 0.1 }}
+            >
+              <FaultSimulator
+                brands={CALC_BRANDS}
+                sizes={CALC_SIZES}
+                priceMatrix={PRICE_MATRIX}
+                sizeBucket={calcSizeBucket}
+              />
+            </motion.div>
+          </div>
         </div>
       </section>
 
