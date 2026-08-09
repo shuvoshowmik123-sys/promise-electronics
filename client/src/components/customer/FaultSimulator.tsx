@@ -246,10 +246,26 @@ export function FaultSimulator({ brands, sizes, priceMatrix, sizeBucket }: Fault
         return { bClash, sClash, brand: check.brand, sizeInches: check.sizeInches };
     }, [check, brand, size, dismissed]);
 
+    /**
+     * The reminder is worth nothing if it appears behind the bottom navigation.
+     * On a 393px screen step 2 is long enough that the amber box frequently
+     * lands under the fixed bar, so the customer sees a flash of colour and no
+     * message. Bring it into view when it first appears.
+     */
+    const nudgeRef = useRef<HTMLDivElement | null>(null);
     const sizeLabelFor = useCallback(
         (inches: number) => sizes.find((s) => parseInt(s, 10) === inches) ?? `${inches}"`,
         [sizes],
     );
+
+    useEffect(() => {
+        if (!mismatch || !nudgeRef.current) return;
+        // A frame's delay so the box has been laid out before it is scrolled to.
+        const id = requestAnimationFrame(() =>
+            nudgeRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
+        );
+        return () => cancelAnimationFrame(id);
+    }, [mismatch]);
 
     const estimate = useMemo(() => {
         if (!fault || !size) return null;
@@ -274,7 +290,17 @@ export function FaultSimulator({ brands, sizes, priceMatrix, sizeBucket }: Fault
 
     const submit = () => {
         if (!fault) return;
-        const params = new URLSearchParams({ issue: fault.en });
+        /**
+         * Hand over the symptom in the wizard's vocabulary, not ours.
+         *
+         * priceKey already names the row in Settings that the symptom list is
+         * built from, so sending it makes the right card arrive selected.
+         * fault.en is the finer label — "Horizontal Lines" rather than "Lines
+         * on Screen" — and goes along as detail so the distinction survives
+         * instead of being flattened on arrival.
+         */
+        const params = new URLSearchParams({ issue: fault.priceKey });
+        if (fault.en !== fault.priceKey) params.set("detail", fault.en);
         if (brand) params.set("brand", brand);
         if (size) params.set("size", size);
         if (model.trim()) params.set("model", model.trim().toUpperCase());
@@ -419,7 +445,7 @@ export function FaultSimulator({ brands, sizes, priceMatrix, sizeBucket }: Fault
 
                             {/* A reminder, never a correction. Nothing changes unless they tap. */}
                             {mismatch && (
-                                <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                                <div ref={nudgeRef} className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
                                     <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
                                         {L("Just checking", "একটু দেখে নিন")}
                                     </p>

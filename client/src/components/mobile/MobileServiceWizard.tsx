@@ -219,11 +219,20 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
     const qBrand = params.get("brand");
     const qSize  = params.get("size");
     const qIssue = params.get("issue");
+    const qModel = params.get("model");
+    const qDetail = params.get("detail");
     const qServiceMode = params.get("serviceMode");
     const qServiceAreaId = params.get("serviceAreaId");
     if (qBrand) setBrand(decodeURIComponent(qBrand));
     if (qSize)  setScreenSize(decodeURIComponent(qSize));
     if (qIssue) setPrimaryIssue(decodeURIComponent(qIssue));
+    if (qModel) setModelNumber(decodeURIComponent(qModel));
+    /**
+     * The homepage simulator separates vertical from horizontal lines, but the
+     * symptom list does not. Carrying the finer answer into the description
+     * keeps it for the technician instead of flattening it away on arrival.
+     */
+    if (qDetail) setDescription(decodeURIComponent(qDetail));
     if (qServiceMode === "pickup") setServicePreference("home_pickup");
     if (qServiceMode === "service_center") setServicePreference("service_center");
     if (qServiceAreaId) setServiceAreaId(qServiceAreaId);
@@ -322,7 +331,25 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
     });
   }, [settings]);
 
-  const selectedProblem = problemOptions.find((item) => item.id === primaryIssue);
+  /**
+   * A prefilled symptom must always appear chosen.
+   *
+   * problemOptions come from Settings, so an issue arriving on the URL can name
+   * something that list does not contain — the homepage simulator uses a finer
+   * vocabulary, and Settings can be edited at any time. Previously that meant
+   * the state was set, Continue worked, and step 1 showed nothing selected, so
+   * the customer had to answer a question they had already answered. Adding the
+   * unknown value as its own option keeps the choice visible instead.
+   */
+  const problemOptionsWithPrefill = useMemo(() => {
+    if (!primaryIssue || problemOptions.some((item) => item.id === primaryIssue)) return problemOptions;
+    return [
+      ...problemOptions,
+      { id: primaryIssue, bn: primaryIssue, en: primaryIssue, icon: Wrench, followUpTitle: null as string | null, followUps: [] as string[] },
+    ];
+  }, [problemOptions, primaryIssue]);
+
+  const selectedProblem = problemOptionsWithPrefill.find((item) => item.id === primaryIssue);
   const totalSteps = 6;
 
   const issueDescription = useMemo(() => {
@@ -712,7 +739,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
               <p className="mt-2 text-sm text-slate-600">{t("wizard.tapOption")}</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              {problemOptions.map((problem) => {
+              {problemOptionsWithPrefill.map((problem) => {
                 const Icon = problem.icon;
                 const selected = primaryIssue === problem.id;
                 return (

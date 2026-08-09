@@ -100,6 +100,49 @@ describe("every fault the customer can pick is actually drawn", () => {
     });
 });
 
+describe("what the simulator hands to the service request", () => {
+    const WIZARD = read("client/src/components/mobile/MobileServiceWizard.tsx");
+
+    it("sends the symptom in the wizard's vocabulary, not the simulator's", () => {
+        /**
+         * The wizard builds its symptom cards from Settings and selects by
+         * exact id. Sending "Vertical Lines" set the state but matched no card,
+         * so step 1 arrived looking unanswered and the customer had to answer
+         * a question they had already answered. priceKey names the Settings row.
+         */
+        expect(COMPONENT).toMatch(/new URLSearchParams\(\{ issue: fault\.priceKey \}\)/);
+    });
+
+    it("keeps the finer answer instead of flattening it", () => {
+        // Vertical and horizontal lines share one Settings row but are very
+        // different repairs; the distinction has to survive the handoff.
+        expect(COMPONENT).toMatch(/params\.set\("detail", fault\.en\)/);
+        expect(WIZARD).toMatch(/params\.get\("detail"\)/);
+        expect(WIZARD).toMatch(/setDescription\(decodeURIComponent\(qDetail\)\)/);
+    });
+
+    it("carries the model number across", () => {
+        expect(COMPONENT).toMatch(/params\.set\("model"/);
+        expect(WIZARD).toMatch(/params\.get\("model"\)/);
+        expect(WIZARD).toMatch(/setModelNumber\(decodeURIComponent\(qModel\)\)/);
+    });
+
+    it("a prefilled symptom the settings list does not contain still shows selected", () => {
+        /**
+         * Settings can be edited at any time, so the wizard must not silently
+         * drop an issue it does not recognise — it renders it as its own card.
+         */
+        expect(WIZARD).toContain("problemOptionsWithPrefill");
+        expect(WIZARD).toMatch(/problemOptionsWithPrefill\.map\(\(problem\)/);
+        expect(WIZARD).toMatch(/problemOptions\.some\(\(item\) => item\.id === primaryIssue\)/);
+    });
+
+    it("the reminder is scrolled clear of the fixed bottom navigation", () => {
+        expect(COMPONENT).toMatch(/scrollIntoView\(\{ behavior: "smooth", block: "center" \}\)/);
+        expect(COMPONENT).toMatch(/ref=\{nudgeRef\}/);
+    });
+});
+
 describe("the homepage uses it in place of what it replaced", () => {
     it("mounts the simulator with settings-driven data", () => {
         expect(HOME).toContain("<FaultSimulator");
