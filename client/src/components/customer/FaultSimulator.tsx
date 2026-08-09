@@ -317,6 +317,20 @@ function useFaultSimulator({ brands, sizes, priceMatrix, sizeBucket }: Omit<Faul
         if (brand) params.set("brand", brand);
         if (size) params.set("size", size);
         if (model.trim()) params.set("model", model.trim().toUpperCase());
+        /**
+         * The follow-up answer and the range the customer was shown.
+         *
+         * Both were being discarded at the door. The answer is the one piece of
+         * real diagnosis in this whole flow — it is what separates a re-flowed
+         * bond from a replaced panel — and the range is what the customer will
+         * quote back at the counter. Losing either means the form asks again
+         * and the till argues from memory.
+         */
+        if (answer) {
+            const r = REFINE[fault.id];
+            if (r) params.set("answer", answer === "yes" ? L(r.yesEn, r.yesBn) : L(r.noEn, r.noBn));
+        }
+        if (estimate) params.set("est", `${estimate.lo}-${estimate.hi}`);
         setLocation(`/repair?${params.toString()}`);
     };
 

@@ -25,6 +25,8 @@ import { getApiUrl } from "@/lib/config";
 import { getIKFolder } from "@/lib/imagekit-config";
 import { resolveSettingArray } from "@/lib/setting-array";
 import { readTvBrands, readTvSizes } from "@shared/tv-options";
+import { readCarriedAnswers, carriedAsSymptomLines, hasCarriedAnswers, EMPTY_CARRIED } from "@/lib/carried-answers";
+import { CarriedAnswersStrip } from "@/components/customer/CarriedAnswersStrip";
 import { samePhone } from "@/lib/phone";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
@@ -64,6 +66,7 @@ export default function RepairRequestPage() {
   const { isAuthenticated, customer, register, updateProfile, checkAuth } = useCustomerAuth();
 
   const [brand, setBrand] = useState("");
+  const [carried, setCarried] = useState(EMPTY_CARRIED);
   const [screenSize, setScreenSize] = useState("");
   const [modelNumber, setModelNumber] = useState("");
   const [primaryIssue, setPrimaryIssue] = useState("");
@@ -113,6 +116,9 @@ export default function RepairRequestPage() {
      */
     if (qModel) setModelNumber(decodeURIComponent(qModel));
     if (qDetail) setDescription(decodeURIComponent(qDetail));
+    // Kept separately from the form fields: the customer owns those and may
+    // edit them, but what they told us on the homepage must arrive intact.
+    setCarried(readCarriedAnswers(window.location.search));
     if (qServiceMode === "pickup") setServicePreference("home_pickup");
     if (qServiceMode === "service_center") setServicePreference("service_center");
     if (qServiceAreaId) setServiceAreaId(qServiceAreaId);
@@ -521,7 +527,12 @@ export default function RepairRequestPage() {
         screenSize: screenSize || undefined,
         modelNumber: modelNumber || undefined,
         primaryIssue,
-        symptoms: JSON.stringify(selectedSymptoms),
+        /**
+         * The symptoms the customer ticked, plus what came from the homepage.
+         * These live here rather than in the notes box because the notes box
+         * belongs to the customer and can be cleared.
+         */
+        symptoms: JSON.stringify([...selectedSymptoms, ...carriedAsSymptomLines(carried)]),
         description: description || undefined,
         mediaUrls: mediaData.length > 0 ? JSON.stringify(mediaData) : undefined,
         customerName,
@@ -625,6 +636,16 @@ export default function RepairRequestPage() {
                     <h2 className="text-2xl font-bold">Device Details</h2>
                     <p className="text-muted-foreground">Tell us about the TV you need repaired.</p>
                   </div>
+
+                  {/*
+                    Same strip the mobile wizard shows. A /repair link is
+                    shareable, so a customer can reach this page carrying
+                    answers from the homepage, and being asked again reads as
+                    the form having lost them.
+                  */}
+                  {hasCarriedAnswers(carried) && (
+                    <CarriedAnswersStrip carried={carried} onContinue={() => setStep(2)} />
+                  )}
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="space-y-2">

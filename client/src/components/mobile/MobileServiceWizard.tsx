@@ -28,6 +28,8 @@ import { PushMomentOfValue } from "@/components/notifications/PushMomentOfValue"
 import { CarouselSelector, ScreenSizeGlyph } from "@/components/mobile/CarouselSelector";
 import { SearchPickerOverlay } from "@/components/mobile/SearchPickerOverlay";
 import { readTvBrands, readTvSizes } from "@shared/tv-options";
+import { readCarriedAnswers, carriedAsSymptomLines, hasCarriedAnswers, EMPTY_CARRIED } from "@/lib/carried-answers";
+import { CarriedAnswersStrip } from "@/components/customer/CarriedAnswersStrip";
 import { mergePinAddress } from "@/lib/pickup-address";
 import { resolveServiceIcon } from "@/lib/service-icons";
 import { cn } from "@/lib/utils";
@@ -149,6 +151,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
 
   const [step, setStep] = useState(1);
   const [primaryIssue, setPrimaryIssue] = useState("");
+  const [carried, setCarried] = useState(EMPTY_CARRIED);
   const [smartAnswer, setSmartAnswer] = useState("");
   const [brand, setBrand] = useState("");
   const [tvType, setTvType] = useState("");
@@ -233,6 +236,14 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
      * keeps it for the technician instead of flattening it away on arrival.
      */
     if (qDetail) setDescription(decodeURIComponent(qDetail));
+    /**
+     * Kept as its own record, not merged into the form fields.
+     *
+     * The customer owns the fields and may edit any of them; these are what
+     * they told us on the homepage, and they have to reach the request intact
+     * even if the form is edited afterwards.
+     */
+    setCarried(readCarriedAnswers(window.location.search));
     if (qServiceMode === "pickup") setServicePreference("home_pickup");
     if (qServiceMode === "service_center") setServicePreference("service_center");
     if (qServiceAreaId) setServiceAreaId(qServiceAreaId);
@@ -564,7 +575,17 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
         screenSize: screenSize || undefined,
         modelNumber: modelNumber || undefined,
         primaryIssue,
-        symptoms: JSON.stringify(smartAnswer ? [smartAnswer] : []),
+        /**
+         * The customer's own follow-up answer plus everything carried from the
+         * homepage. These go here rather than into the notes box because the
+         * notes box belongs to the customer and can be cleared — and losing the
+         * detail line loses the vertical-versus-horizontal distinction, which
+         * is the difference between a T-Con repair and a new panel.
+         */
+        symptoms: JSON.stringify([
+          ...(smartAnswer ? [smartAnswer] : []),
+          ...carriedAsSymptomLines(carried),
+        ]),
         description: issueDescription || undefined,
         mediaUrls: files.length ? JSON.stringify(files.map((file) => ({
           url: file.objectUrl,
@@ -746,6 +767,24 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
               <h1 className="mt-2 text-2xl font-bold text-slate-950">{t("wizard.whatProblem")}</h1>
               <p className="mt-2 text-sm text-slate-600">{t("wizard.tapOption")}</p>
             </div>
+
+            {/*
+              Everything the simulator already collected, listed before the
+              customer is asked for anything. Autofill they cannot see is
+              indistinguishable from a form that lost their answers — and if a
+              value came across wrong, this is where they catch it, before a
+              van is sent rather than after.
+
+              Continue goes to step 3: steps 1 and 2 are already answered, and
+              photos are the first thing we genuinely do not have.
+            */}
+            {hasCarriedAnswers(carried) && (
+              <CarriedAnswersStrip
+                carried={carried}
+                bn={language === "bn"}
+                onContinue={() => setStep(3)}
+              />
+            )}
             <div className="grid grid-cols-2 gap-3">
               {problemOptionsWithPrefill.map((problem) => {
                 const Icon = problem.icon;
