@@ -123,6 +123,42 @@ const NEXT_ACTION: Record<string, { action: string; label: string } | null> = {
   final_testing: null,
 };
 
+/**
+ * The same milestone, said correctly for how the television will leave.
+ *
+ * JOB_TO_JOURNEY and FRIENDLY hold one string per status and know nothing
+ * about how the set arrived, so a customer who carried their television in
+ * themselves was told "we will arrange delivery" and then "your TV has been
+ * delivered". Nobody delivered anything: they are standing in the shop.
+ *
+ * Only the two stages that describe the television physically leaving need
+ * this. Everything before it — received, inspected, repairing — reads the same
+ * either way, and rewriting those would be churn.
+ *
+ * When the service mode is unknown, the wording stays as it was. A walk-in
+ * being told about delivery is wrong; a job with no service request being told
+ * something confidently specific would be a guess.
+ */
+function isDropOffMode(sr: { servicePreference?: string | null; serviceMode?: string | null } | null): boolean {
+  const v = `${sr?.servicePreference ?? ""} ${sr?.serviceMode ?? ""}`.toLowerCase();
+  return v.includes("service_center") || v.includes("drop_off") || v.includes("center");
+}
+
+const COLLECTION_COPY: Record<string, { title: string; message: string; friendly: string; next: { action: string; label: string } | null }> = {
+  repair_completed: {
+    title: "Ready to Collect",
+    message: "Your repair is finished. You can collect your television from our shop.",
+    friendly: "Your TV is ready. Please collect it from our shop.",
+    next: { action: "arrange_collection", label: "Collect from our shop" },
+  },
+  delivered: {
+    title: "Collected",
+    message: "You have collected your television. Thank you for choosing Promise Electronics!",
+    friendly: "You have collected your TV. Thank you for choosing Promise Electronics!",
+    next: null,
+  },
+};
+
 export function isCanonicalJobStatus(status: string): boolean {
   return JOB_STATUS_SET.has(status);
 }
@@ -347,8 +383,13 @@ async function projectSurfacesInTx(
       : JOB_TO_JOURNEY[job.status];
 
     if (mapping) {
-      const friendly = FRIENDLY[mapping.stage] || mapping.message;
-      const next = NEXT_ACTION[mapping.stage] || null;
+      // Say "collect" to somebody who walked in, and "deliver" to somebody a
+      // van is going back out to.
+      const collection = isDropOffMode(sr) ? COLLECTION_COPY[mapping.stage] : undefined;
+      const title = collection?.title ?? mapping.title;
+      const message = collection?.message ?? mapping.message;
+      const friendly = collection?.friendly ?? (FRIENDLY[mapping.stage] || mapping.message);
+      const next = collection ? collection.next : (NEXT_ACTION[mapping.stage] || null);
       await tx.execute(sql`
         UPDATE customer_repair_journeys
         SET current_stage = ${mapping.stage},
@@ -366,7 +407,7 @@ async function projectSurfacesInTx(
         INSERT INTO customer_repair_journey_events
           (id, journey_id, event_type, title, message, actor_type, actor_id, metadata, is_customer_visible, created_at)
         VALUES (
-          ${evId}, ${journeyId}, ${eventType}, ${mapping.title}, ${mapping.message},
+          ${evId}, ${journeyId}, ${eventType}, ${title}, ${message},
           'system', null, '{}'::jsonb, true, NOW()
         )
       `);

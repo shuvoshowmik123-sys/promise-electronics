@@ -383,6 +383,17 @@ const translations = {
   },
   "wizard.callFirst":      { en: "Call me first",             bn: "আগে আমাকে কল করুন" },
   "wizard.pickupAddress":  { en: "Pickup address",            bn: "পিকআপ ঠিকানা" },
+  /**
+   * The desktop form has asked for a visit date for service-centre bookings
+   * since long before the mobile wizard existed, and stores it. The wizard
+   * never asked, so half the drop-off customers arrive unannounced.
+   */
+  "wizard.visitDate":      { en: "When will you bring it in?", bn: "কবে নিয়ে আসবেন?" },
+  "wizard.visitDateHelp":  {
+    en: "So we can expect you and have a technician free.",
+    bn: "যাতে আমরা আপনার জন্য প্রস্তুত থাকি এবং একজন টেকনিশিয়ান ফ্রি রাখতে পারি।",
+  },
+  "wizard.visitDateNeeded": { en: "Please choose the day you will bring the TV.", bn: "কোন দিন টিভি আনবেন সেটি বেছে নিন।" },
   "wizard.finalStep":      { en: "Final step",                bn: "শেষ ধাপ" },
   "wizard.finalDesc":      { en: "We need only your name and phone number.", bn: "শুধু আপনার নাম ও ফোন নম্বর দিন।" },
   "wizard.name":           { en: "Name *",                    bn: "নাম *" },

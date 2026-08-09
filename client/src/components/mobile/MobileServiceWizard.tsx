@@ -161,6 +161,8 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [servicePreference, setServicePreference] = useState<ServicePreference>("home_pickup");
   const [serviceAreaId, setServiceAreaId] = useState("");
+  /** Service-centre bookings only: the day the customer says they will come in. */
+  const [visitDate, setVisitDate] = useState("");
   // PICKUP-MAP-PIN-01 — pin is optional; a typed address alone stays valid.
   const [pickupLatitude, setPickupLatitude] = useState<number | null>(null);
   const [pickupLongitude, setPickupLongitude] = useState<number | null>(null);
@@ -516,7 +518,13 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const canContinue = () => {
     if (step === 1) return Boolean(primaryIssue);
     if (step === 2) return Boolean(brand && (screenSize || tvType));
-    if (step === 4) return Boolean(servicePreference);
+    if (step === 4) {
+      // Desktop has required this for service-centre bookings since before the
+      // wizard existed. Mobile letting it through meant drop-off customers
+      // arrived unannounced, and the two forms disagreed about the same field.
+      if (servicePreference === "service_center") return Boolean(visitDate);
+      return Boolean(servicePreference);
+    }
     if (step === 5) return Boolean(customerName.trim() && phone.trim());
     return true;
   };
@@ -582,6 +590,9 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
          * detail line loses the vertical-versus-horizontal distinction, which
          * is the difference between a T-Con repair and a new panel.
          */
+        // Same field name desktop uses; the repository maps it to
+        // scheduledVisitDate on the request.
+        scheduledPickupDate: servicePreference === "service_center" && visitDate ? new Date(visitDate) : undefined,
         symptoms: JSON.stringify([
           ...(smartAnswer ? [smartAnswer] : []),
           ...carriedAsSymptomLines(carried),
@@ -1054,6 +1065,24 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                 );
               })}
             </div>
+            {servicePreference === "service_center" && (
+              <div className="space-y-2 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
+                <Label>{t("wizard.visitDate")}</Label>
+                <input
+                  type="date"
+                  value={visitDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(event) => setVisitDate(event.target.value)}
+                  /* 16px, or iOS zooms the page the moment this is focused. */
+                  className="h-12 w-full rounded-2xl border border-emerald-100 bg-emerald-50/30 px-4 text-[16px] font-semibold text-slate-900 outline-none focus:border-emerald-400"
+                />
+                <p className="text-[11px] leading-snug text-slate-500">{t("wizard.visitDateHelp")}</p>
+                {!visitDate && (
+                  <p className="text-[11px] font-semibold text-amber-700">{t("wizard.visitDateNeeded")}</p>
+                )}
+              </div>
+            )}
+
             {servicePreference === "home_pickup" && (
               <div className="space-y-2 rounded-3xl border border-emerald-100 bg-white p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-2">

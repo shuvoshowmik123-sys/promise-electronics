@@ -344,6 +344,17 @@ router.post('/api/service-requests', ...(process.env.NODE_ENV === 'production' ?
             mediaUrls: validated.mediaUrls || null,
             servicePreference: validated.servicePreference || null,
             serviceMode: validated.serviceMode || null,
+            /**
+             * The day a drop-off customer says they will bring the television in.
+             *
+             * The desktop form has asked for this for a long time and marks it
+             * required for service-centre bookings, insertServiceRequestSchema
+             * accepts it, and the column exists — but this insert never wrote
+             * it, so every one of those dates went in the bin. Staff had no
+             * idea who to expect, and the customer had been made to choose a
+             * date to get past the form.
+             */
+            scheduledPickupDate: (validated as any).scheduledPickupDate ?? null,
             requestIntent: validated.requestIntent || null,
             serviceId: (validated as any).serviceId || null,
             serviceAreaId: (validated as any).serviceAreaId || null,

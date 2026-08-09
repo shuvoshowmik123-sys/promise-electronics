@@ -66,6 +66,8 @@ export interface CanonicalIntakeInput {
     mediaUrls?: string | null;
     servicePreference?: string | null;
     serviceMode?: string | null;
+    /** Drop-off only: the day the customer says they will bring the set in. */
+    scheduledPickupDate?: Date | string | null;
     requestIntent?: string | null;
     serviceId?: string | null;
     serviceAreaId?: string | null;
