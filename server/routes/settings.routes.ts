@@ -164,6 +164,14 @@ const ALLOWED_SETTING_KEYS = [
      */
     'warranty.partsMonthOptions',
     'warranty.serviceMonthOptions',
+    // Collection and return pricing. Four keys rather than a schema change:
+    // service_areas has no zone column, and a MAIN migration is the thing that
+    // has taken this site down twice. If zones ever need to be first-class
+    // they can graduate to a column later.
+    'pickup_tier_prices',
+    'pickup_zone_bands',
+    'pickup_free_over',
+    'pickup_hold_days',
     'shop.restDays',
     'shop.holidays'
 ];
