@@ -21,6 +21,17 @@ import {
 } from "../shared/tv-options.js";
 
 const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+/**
+ * Every screen that offers a brand or a size. Checking only two of them is how
+ * the last fix looked complete while three more copies were still live.
+ */
+const SCREENS: [string, string][] = [
+  ["homepage", "client/src/pages/home.tsx"],
+  ["mobile wizard", "client/src/components/mobile/MobileServiceWizard.tsx"],
+  ["desktop repair form", "client/src/pages/repair-request.tsx"],
+  ["get a quote", "client/src/pages/get-quote.tsx"],
+  ["admin job tickets", "client/src/pages/admin/bento/tabs/JobTicketsTab.tsx"],
+];
 const HOME = read("client/src/pages/home.tsx");
 const WIZARD = read("client/src/components/mobile/MobileServiceWizard.tsx");
 
@@ -32,7 +43,24 @@ describe("brand and size are defined in one place", () => {
     }
   });
 
-  it("neither screen keeps its own copy of the lists any more", () => {
+  it("no screen anywhere keeps its own copy of the lists", () => {
+    /**
+     * There were four spellings of the size list in the codebase at once:
+     * the shared one ending "75 inch+", two ending "75 inch", and get-quote
+     * with a capital I — "24 Inch". Every one of those is a value a customer
+     * can choose on one screen and have silently dropped on the next, because
+     * all of them select by exact string.
+     */
+    for (const [name, path] of SCREENS) {
+      const src = read(path);
+      expect(src, `${name} still hardcodes a size list`).not.toMatch(/\["24 [Ii]nch",\s*"32 [Ii]nch"/);
+      expect(src, `${name} still hardcodes a brand list`).not.toMatch(/\["Sony",\s*"Samsung",\s*"LG"/);
+      expect(src, `${name} still reads tv_brands directly`).not.toMatch(/getSettingArray\("tv_brands"/);
+      expect(src, `${name} still reads tv_inches directly`).not.toMatch(/getSettingArray\("tv_inches"/);
+    }
+  });
+
+  it("neither homepage nor wizard keeps its own copy of the lists any more", () => {
     for (const [name, src] of [["home", HOME], ["wizard", WIZARD]] as const) {
       // A literal list of sizes or brands sitting in a screen is the drift.
       expect(src, `${name} still hardcodes sizes`).not.toMatch(/\["24 inch",\s*"32 inch"/);

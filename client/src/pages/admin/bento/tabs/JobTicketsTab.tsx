@@ -53,6 +53,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { MobileBottomSheetFrame, MobileBottomSheetHandle } from "@/components/ui/mobile-bottom-sheet";
 import { useLocation } from "wouter";
 import { buildNavigateAdminTabPath } from "@/lib/admin-workspace-routing";
+import { readTvSizes } from "@shared/tv-options";
 
 type JobGroupKey = "new" | "repairing" | "waiting-parts" | "decision" | "ready" | "delivered" | "all";
 
@@ -390,8 +391,15 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         }
         return defaultValue;
     };
-    const tvSizesFromSettings = getSettingArray("tv_sizes", []);
-    const tvInches = tvSizesFromSettings.length > 0 ? tvSizesFromSettings : getSettingArray("tv_inches", ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch"]);
+    /**
+     * The same reader the customer forms use.
+     *
+     * This list is what staff pick from when matching a ticket to what the
+     * customer chose, so a size the customer can select and staff cannot is a
+     * mismatch inside our own records. Its private fallback ended "75 inch"
+     * while the customer side ended "75 inch+".
+     */
+    const tvInches = readTvSizes(settings as any);
     const notificationTone = (settings.find(s => s.key === "notification_tone")?.value as NotificationTone) || "default";
     const selectedJobGroup = JOB_GROUPS.find((group) => group.key === jobGroupFilter);
 

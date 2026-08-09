@@ -24,6 +24,7 @@ import { usePageTitle } from "@/hooks/usePageTitle";
 import { getApiUrl } from "@/lib/config";
 import { getIKFolder } from "@/lib/imagekit-config";
 import { resolveSettingArray } from "@/lib/setting-array";
+import { readTvBrands, readTvSizes } from "@shared/tv-options";
 import { samePhone } from "@/lib/phone";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
@@ -183,9 +184,15 @@ export default function RepairRequestPage() {
   const getSettingArray = (key: string, defaultValue: string[]): string[] =>
     resolveSettingArray(settings, key, defaultValue);
 
-  const tvBrands = getSettingArray("tv_brands", ["Sony", "Samsung", "LG", "Walton", "Vision"]);
-  const tvSizesFromSettings = getSettingArray("tv_sizes", []);
-  const tvInches = tvSizesFromSettings.length > 0 ? tvSizesFromSettings : getSettingArray("tv_inches", ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch"]);
+  /**
+   * Through the shared readers, so this form offers exactly what the homepage
+   * simulator offers. Its own copy defaulted to five brands and a size list
+   * ending "75 inch" while the simulator ended "75 inch+" — a customer who
+   * chose the largest size on the homepage arrived here and had it dropped,
+   * because the form selects by exact string.
+   */
+  const tvBrands = readTvBrands(settings as any);
+  const tvInches = readTvSizes(settings as any);
   const commonSymptoms = getSettingArray("common_symptoms", ["Blinking Red Light", "Lines on Screen", "Dim Picture", "Wifi Not Connecting", "Remote Not Working", "Burning Smell"]);
 
   /**

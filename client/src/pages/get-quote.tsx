@@ -15,6 +15,7 @@ import { serviceCatalogApi, quoteRequestsApi, settingsApi } from "@/lib/api";
 import { materialIntakeKey, resolveIntakeIdempotencyKey } from "@/lib/intake-idempotency";
 import { CustomerAuthModal } from "@/components/auth/CustomerAuthModal";
 import { toast } from "sonner";
+import { readTvBrands, readTvSizes } from "@shared/tv-options";
 import { motion } from "framer-motion";
 import { Tv, ArrowLeft, ArrowRight, CheckCircle2, Clock, FileText, Loader2, Phone, MapPin, Truck } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -59,7 +60,6 @@ export default function GetQuotePage() {
     servicePreference?: boolean;
   }>({});
 
-  const screenSizes = ["24 Inch", "32 Inch", "40 Inch", "43 Inch", "50 Inch", "55 Inch", "65 Inch", "75 Inch", "Other"];
 
   // Normalize phone number: remove +880, 880, or leading 0, keep only last 10 digits
   const normalizePhone = (rawPhone: string): string => {
@@ -114,7 +114,15 @@ export default function GetQuotePage() {
 
   const serviceCenterContact = getSettingValue("service_center_contact", "01700-000000");
 
-  const tvBrands = getSettingArray("tv_brands", ["Sony", "Samsung", "LG", "Walton", "Vision"]);
+  /**
+   * Shared with the homepage simulator and the repair form. This page kept its
+   * own five-brand fallback, and its sizes were a hardcoded list in a third
+   * spelling entirely — "24 Inch" with a capital I, against "24 inch"
+   * everywhere else. Selecting by exact string, that is a value that can be
+   * chosen here and matched nowhere.
+   */
+  const tvBrands = readTvBrands(settings as any);
+  const screenSizes = readTvSizes(settings as any);
   const commonSymptomsFromSettings = getSettingArray("common_symptoms", []);
   const commonIssues = commonSymptomsFromSettings.length > 0 ? commonSymptomsFromSettings : getSettingArray("common_issues", [
     "No Power / Won't Turn On",
