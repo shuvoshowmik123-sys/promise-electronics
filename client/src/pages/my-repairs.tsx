@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { CalendarClock, ChevronRight, Clock3, Monitor, Wrench } from "lucide-react";
 import { customerRepairJourneysApi, type CustomerRepairJourneyEnriched } from "@/lib/api/customerApi";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
+import { useCustomerSSE } from "@/hooks/useCustomerSSE";
 import { PillButton, RefBadge, SectionEyebrow, SegmentedToggle, StatusChip, toneForStatus } from "@/components/customer/mobile-kit";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -95,6 +96,10 @@ export default function MyRepairsPage() {
     queryKey: ["customerRepairJourneys"],
     queryFn: customerRepairJourneysApi.getAll,
   });
+
+  // The list shows a status chip per repair; it should move for the same reason
+  // the detail page does.
+  useCustomerSSE();
 
   const journeys = useMemo(() => data.filter((journey) => filterJourney(journey, filter)), [data, filter]);
 

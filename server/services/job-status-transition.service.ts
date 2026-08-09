@@ -12,6 +12,7 @@ import { jobRepo, notificationRepo, settingsRepo } from "../repositories/index.j
 import { getProjectedRequestStatus, getProjectedTrackingStatus } from "./job.service.js";
 import { type JourneyStage } from "./customer-repair-journey.service.js";
 import { isNgProtectedStatus } from "./job-ng-protected.js";
+import { notifyCustomerUpdate } from "../routes/middleware/sse-broker.js";
 
 export class JobStatusTransitionError extends Error {
   status: number;
@@ -404,6 +405,43 @@ async function projectSurfacesInTx(
   return { srChanged, trackingStatus, requestStatus, serviceRequestId, journeyUpdated, journeyId };
 }
 
+/**
+ * Tell the customer's open page that their repair moved.
+ *
+ * Strictly after commit. Emitting inside the transaction would announce a
+ * status that a rollback then un-did, and a customer who watched their repair
+ * go forwards and then backwards trusts the tracker less than one who waited a
+ * second longer.
+ *
+ * Advisory only: this reaches a page that is currently open, nothing more. It
+ * is never the record, and a failure here must not affect the transition — the
+ * journey row is already written, so a refresh shows the same thing.
+ */
+function announceToCustomer(job: JobTicket, previousStatus?: string): void {
+    /**
+     * No equality guard on the status.
+     *
+     * Two of the three call sites arrive with previousStatus already equal to
+     * the new one — projectOnly and the external-write path both run after
+     * somebody else wrote the row — so comparing them silenced the
+     * announcement on exactly the paths that need it. The genuine no-change
+     * case already returns far above this.
+     */
+    const customerId = (job as any).customerId;
+    if (!customerId) return;
+    try {
+        notifyCustomerUpdate(String(customerId), {
+            type: "repair_status",
+            jobId: job.id,
+            status: job.status,
+            ...(previousStatus && previousStatus !== job.status ? { previousStatus } : {}),
+            at: new Date().toISOString(),
+        });
+    } catch (error: any) {
+        console.error("[JobStatusTransition] customer SSE failed:", (error as Error).message);
+    }
+}
+
 async function maybeReadyNotify(job: JobTicket, suppress?: boolean): Promise<boolean> {
   if (suppress || job.status !== "Ready") return false;
   try {
@@ -449,6 +487,7 @@ export async function transitionJobStatus(opts: TransitionOptions): Promise<Tran
     });
     const readyNotifyEligible = job.status === "Ready" && !opts.suppressReadyNotify;
     const readyNotified = readyNotifyEligible ? await maybeReadyNotify(job, opts.suppressReadyNotify) : false;
+    announceToCustomer(job, previousStatus);
     return {
       job,
       previousStatus,
@@ -684,6 +723,7 @@ export async function transitionJobStatus(opts: TransitionOptions): Promise<Tran
   const readyNotified = readyNotifyEligible
     ? await maybeReadyNotify(result.job, opts.suppressReadyNotify)
     : false;
+  announceToCustomer(result.job, previousStatus);
 
   return {
     job: result.job,
@@ -745,6 +785,7 @@ export async function projectJobStatusAfterExternalWrite(
 
   const readyNotifyEligible = job.status === "Ready" && !opts?.suppressReadyNotify;
   const readyNotified = readyNotifyEligible ? await maybeReadyNotify(job, opts?.suppressReadyNotify) : false;
+  announceToCustomer(job);
 
   return {
     job,

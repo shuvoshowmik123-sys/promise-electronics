@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, CalendarClock, CheckCircle2, Clock3, CreditCard, HelpCircle, MessageSquare, Truck, Wrench } from "lucide-react";
 import { customerRepairJourneysApi, type AcceptJourneyQuotePayload, type CustomerRepairSchedule, type JourneySchedulePayload } from "@/lib/api/customerApi";
 import { useCustomerLanguage, type CustomerLang } from "@/contexts/CustomerLanguageContext";
+import { useCustomerSSE } from "@/hooks/useCustomerSSE";
 import { PillButton, RefBadge, SectionEyebrow, StatusChip, toneForStatus } from "@/components/customer/mobile-kit";
 import { HandoverCodeCard } from "@/components/customer/HandoverCodeCard";
 import { NgExplanationCard } from "@/components/customer/NgExplanationCard";
@@ -255,6 +256,15 @@ export default function MyRepairDetailPage() {
     queryClient.invalidateQueries({ queryKey: ["customerRepairJourneys"] });
     queryClient.invalidateQueries({ queryKey: ["customerRepairJourney", id] });
   };
+
+  /**
+   * Track your repair, live.
+   *
+   * A customer sitting on this page while a technician moves the job forward
+   * saw nothing until they reloaded — the one screen whose whole purpose is
+   * telling them what is happening was the last to know.
+   */
+  useCustomerSSE();
 
   const acceptQuote = useMutation({
     mutationFn: (payload: AcceptJourneyQuotePayload) => customerRepairJourneysApi.acceptQuote(id, payload),
