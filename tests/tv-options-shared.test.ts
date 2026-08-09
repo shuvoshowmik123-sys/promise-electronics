@@ -1,0 +1,71 @@
+/**
+ * The homepage and the service wizard must offer the same brands and sizes.
+ *
+ * The simulator hands its answers to the wizard on the URL, and the wizard
+ * selects by exact string. Any list the two do not share is a value that can
+ * be chosen on one screen and silently dropped on the next.
+ *
+ * This had already happened: the wizard's sizes were a hardcoded array ending
+ * "75 inch" while the homepage read Settings and fell back to "75 inch+", so a
+ * customer who picked the largest size lost it in the handoff and was asked
+ * again.
+ */
+import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  DEFAULT_TV_BRANDS,
+  DEFAULT_TV_SIZES,
+  readTvBrands,
+  readTvSizes,
+} from "../shared/tv-options.js";
+
+const read = (p: string) => readFileSync(join(process.cwd(), p), "utf8");
+const HOME = read("client/src/pages/home.tsx");
+const WIZARD = read("client/src/components/mobile/MobileServiceWizard.tsx");
+
+describe("brand and size are defined in one place", () => {
+  it("both screens read through the shared readers", () => {
+    for (const src of [HOME, WIZARD]) {
+      expect(src).toMatch(/readTvBrands\(/);
+      expect(src).toMatch(/readTvSizes\(/);
+    }
+  });
+
+  it("neither screen keeps its own copy of the lists any more", () => {
+    for (const [name, src] of [["home", HOME], ["wizard", WIZARD]] as const) {
+      // A literal list of sizes or brands sitting in a screen is the drift.
+      expect(src, `${name} still hardcodes sizes`).not.toMatch(/\["24 inch",\s*"32 inch"/);
+      expect(src, `${name} still hardcodes brands`).not.toMatch(/\["Samsung",\s*"Sony",\s*"LG"/);
+    }
+    expect(HOME).not.toContain("CALC_SIZES_DEFAULT");
+    expect(HOME).not.toContain("CALC_BRANDS_DEFAULT");
+  });
+
+  it("the largest size is one value, not two spellings of one", () => {
+    // "75 inch" and "75 inch+" were the actual bug.
+    expect(DEFAULT_TV_SIZES.filter((s) => s.startsWith("75"))).toHaveLength(1);
+  });
+
+  it("falls back to the shared defaults when Settings is empty", () => {
+    expect(readTvBrands([])).toEqual([...DEFAULT_TV_BRANDS]);
+    expect(readTvSizes([])).toEqual([...DEFAULT_TV_SIZES]);
+  });
+
+  it("prefers Settings, and still reads the older tv_inches key", () => {
+    expect(readTvBrands([{ key: "tv_brands", value: '["Walton","Vision"]' }])).toEqual(["Walton", "Vision"]);
+    expect(readTvSizes([{ key: "tv_inches", value: '["32 inch"]' }])).toEqual(["32 inch"]);
+    // tv_sizes wins over the legacy key when both are present.
+    expect(readTvSizes([
+      { key: "tv_sizes", value: '["43 inch"]' },
+      { key: "tv_inches", value: '["32 inch"]' },
+    ])).toEqual(["43 inch"]);
+  });
+
+  it("treats an unusable stored value as absent rather than showing nothing", () => {
+    // An empty picker is worse than a default one.
+    for (const bad of ["", "not json", "{}", "[]"]) {
+      expect(readTvSizes([{ key: "tv_sizes", value: bad }]), bad).toEqual([...DEFAULT_TV_SIZES]);
+    }
+  });
+});

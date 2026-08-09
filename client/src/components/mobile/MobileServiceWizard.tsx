@@ -27,6 +27,7 @@ import { PickupLocationPicker } from "@/components/maps/PickupLocationPicker";
 import { PushMomentOfValue } from "@/components/notifications/PushMomentOfValue";
 import { CarouselSelector, ScreenSizeGlyph } from "@/components/mobile/CarouselSelector";
 import { SearchPickerOverlay } from "@/components/mobile/SearchPickerOverlay";
+import { readTvBrands, readTvSizes } from "@shared/tv-options";
 import { mergePinAddress } from "@/lib/pickup-address";
 import { resolveServiceIcon } from "@/lib/service-icons";
 import { cn } from "@/lib/utils";
@@ -120,7 +121,6 @@ const DEFAULT_PROBLEM_OPTIONS = [
 // NOT_SURE_SERVICE imported from @/lib/service-constants — shared with desktop Get Quote
 
 const tvTypes = ["LED", "Smart TV", "Android TV", "OLED/QLED", "Not sure"];
-const screenSizes = ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch"];
 
 function getSettingArray(settings: { key: string; value: string | null }[], key: string, fallback: string[]) {
   const setting = settings.find((item) => item.key === key);
@@ -308,7 +308,15 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
     }
   };
 
-  const tvBrands = getSettingArray(settings, "tv_brands", ["Samsung", "Sony", "LG", "Walton", "Vision", "Other"]);
+  /**
+   * Brand and size come from Settings through the shared readers, so this
+   * wizard offers exactly what the homepage simulator offers. They used to
+   * disagree: sizes here were a hardcoded array ending "75 inch" while the
+   * homepage fell back to "75 inch+", and a customer who chose the largest
+   * size had it silently dropped on arrival.
+   */
+  const tvBrands = readTvBrands(settings);
+  const screenSizes = readTvSizes(settings);
 
   // Build problem options from settings; map known issues to existing metadata
   const problemOptions = useMemo(() => {

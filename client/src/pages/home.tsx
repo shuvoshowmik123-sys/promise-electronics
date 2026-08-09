@@ -23,6 +23,7 @@ import { ScrollableList } from "@/components/ui/ScrollableList";
 import { MobileHero } from "@/components/mobile/MobileHero";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
 import { FaultSimulator } from "@/components/customer/FaultSimulator";
+import { readTvBrands, readTvSizes } from "@shared/tv-options";
 
 const CustomerDistanceExplorer = lazy(() => import("@/components/customer/CustomerDistanceExplorer"));
 
@@ -651,8 +652,6 @@ export default function HomePage() {
 
   // Shared calculator data — settings-driven with hardcoded fallbacks
   type CalcSizeBucket = "small" | "medium" | "large";
-  const CALC_BRANDS_DEFAULT = ["Sony", "Samsung", "LG", "Walton", "Vision", "Sharp", "Panasonic", "Haier", "Other"];
-  const CALC_SIZES_DEFAULT = ["24 inch", "32 inch", "40 inch", "43 inch", "50 inch", "55 inch", "65 inch", "75 inch+"];
   const CALC_ISSUES_DEFAULT = ["No Power", "No Display", "Lines on Screen", "Dim / No Backlight", "Broken Screen", "Sound Issue", "Software / Smart TV"];
   const parseCalcArray = (key: string, fallbackKey?: string, def: string[] = []): string[] => {
     const s = settings.find(x => x.key === key);
@@ -660,8 +659,14 @@ export default function HomePage() {
     if (fallbackKey) { const fb = settings.find(x => x.key === fallbackKey); if (fb?.value) { try { const p = JSON.parse(fb.value); if (Array.isArray(p) && p.length > 0) return p; } catch {} } }
     return def;
   };
-  const CALC_BRANDS = parseCalcArray("tv_brands", undefined, CALC_BRANDS_DEFAULT);
-  const CALC_SIZES = parseCalcArray("tv_sizes", "tv_inches", CALC_SIZES_DEFAULT);
+  /**
+   * Read through the shared readers so this page and the service wizard
+   * offer the same lists. They used to keep separate copies, and a size
+   * chosen here could name something the wizard did not have — which the
+   * wizard then silently dropped on arrival.
+   */
+  const CALC_BRANDS = readTvBrands(settings as any);
+  const CALC_SIZES = readTvSizes(settings as any);
   const CALC_ISSUES = parseCalcArray("common_symptoms", "common_issues", CALC_ISSUES_DEFAULT);
   const DEFAULT_PRICE_MATRIX: Record<string, Record<CalcSizeBucket, [number, number]>> = {
     "No Power":              { small: [800,  2000],  medium: [1000, 2500],  large: [1500, 4000]  },
