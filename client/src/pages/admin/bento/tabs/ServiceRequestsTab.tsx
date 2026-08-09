@@ -257,6 +257,19 @@ const normalizeTel = (phone?: string | null) => {
 };
 const getMediaUrls = (s: string | null): string[] => { if (!s) return []; try { const p = JSON.parse(s); return p.map((i: string | { url: string }) => typeof i === 'string' ? i : i.url); } catch { return []; } };
 const getSymptoms = (s: string | null): string[] => { if (!s) return []; try { return JSON.parse(s); } catch { return []; } };
+/**
+ * The range the customer was shown on the website, if any.
+ *
+ * The homepage fault simulator writes it into `symptoms` at intake. Whoever is
+ * about to type a quote needs to see it: the customer still has that number on
+ * their phone, and a quote that departs from it without anyone here knowing it
+ * existed is an argument at the counter that we lose from memory.
+ *
+ * It is an estimate made before anybody saw the television, so it is shown as
+ * context for the quote and never as a default for it.
+ */
+const getShownEstimate = (s: string | null): string | null =>
+    getSymptoms(s).find((line) => typeof line === "string" && line.startsWith("Estimate shown online:")) ?? null;
 const isImage = (u: string) => u.startsWith("data:image/") || /\.(jpg|jpeg|png|gif|webp)$/i.test(u);
 const isVideo = (u: string) => u.startsWith("data:video/") || /\.(mp4|webm|mov|avi)$/i.test(u);
 const getTrackingStatusFlow = (sp: string | null | undefined): readonly string[] => (sp === "service_center" || sp === "center") ? SERVICE_CENTER_STATUS_FLOW : PICKUP_STATUS_FLOW;
@@ -2171,6 +2184,13 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                 </div>
                                 <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-3 space-y-3">
                                     <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-800">Customer must approve before job creation.</div>
+                                    {getShownEstimate(selectedRequest.symptoms) && (
+                                        <div className="rounded-2xl border border-sky-200 bg-sky-50 p-3">
+                                            <p className="text-[10px] font-black uppercase tracking-wider text-sky-700">What the customer was already shown</p>
+                                            <p className="mt-1 text-xs font-bold text-sky-900">{getShownEstimate(selectedRequest.symptoms)}</p>
+                                            <p className="mt-1 text-[10px] font-semibold text-sky-700/80">Website estimate, made before anyone saw the TV. If your quote differs, say why in the notes.</p>
+                                        </div>
+                                    )}
                                     <div>
                                         <Label>Amount ({getCurrencySymbol()}) *</Label>
                                         <div className="relative mt-1">
@@ -2354,6 +2374,15 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                 <div className="flex justify-between"><span className="text-muted-foreground">Customer:</span><span>{selectedRequest.customerName}</span></div>
                                 <div className="flex justify-between"><span className="text-muted-foreground">Issue:</span><span>{selectedRequest.primaryIssue}</span></div>
                             </div>
+                            {/* Same context the mobile sheet shows. Whoever types a
+                                number here must see what the customer was already told. */}
+                            {getShownEstimate(selectedRequest.symptoms) && (
+                                <div className="rounded-xl border border-sky-200 bg-sky-50 p-3">
+                                    <p className="text-[10px] font-black uppercase tracking-wider text-sky-700">What the customer was already shown</p>
+                                    <p className="mt-1 text-xs font-bold text-sky-900">{getShownEstimate(selectedRequest.symptoms)}</p>
+                                    <p className="mt-1 text-[10px] font-semibold text-sky-700/80">Website estimate, made before anyone saw the TV. If your quote differs, say why in the notes.</p>
+                                </div>
+                            )}
                             <div className="space-y-1.5"><Label>Amount ({getCurrencySymbol()}) *</Label><div className="relative"><span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">{getCurrencySymbol()}</span><Input type="number" placeholder="Enter price" value={quoteAmount} onChange={(e) => setQuoteAmount(e.target.value)} className="pl-8 rounded-xl" /></div></div>
                             <div className="space-y-1.5"><Label>Notes (Optional)</Label><Textarea placeholder="Details about repair, parts..." value={quoteNotes} onChange={(e) => setQuoteNotes(e.target.value)} rows={3} className="rounded-xl" /></div>
                         </div>

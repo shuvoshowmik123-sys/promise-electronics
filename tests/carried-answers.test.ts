@@ -98,6 +98,23 @@ describe("the handoff is wired at both ends", () => {
     expect(STRIP).toMatch(/Change it on the step below/);
   });
 
+  it("the estimate reaches the person typing the quote", () => {
+    /**
+     * Storing it is not enough. The customer still has that number on their
+     * phone, so a quote that departs from it without anyone here knowing it
+     * existed is an argument at the counter we lose from memory.
+     *
+     * Both quote dialogs — the mobile sheet and the desktop one — must show it,
+     * and it must never prefill the amount: it was made before anybody saw the
+     * television.
+     */
+    const ADMIN = read("client/src/pages/admin/bento/tabs/ServiceRequestsTab.tsx");
+    expect((ADMIN.match(/getShownEstimate\(selectedRequest\.symptoms\)/g) ?? []).length).toBeGreaterThanOrEqual(4);
+    expect(ADMIN).toMatch(/What the customer was already shown/);
+    expect(ADMIN).toMatch(/If your quote differs, say why in the notes/);
+    expect(ADMIN).not.toMatch(/setQuoteAmount\(getShownEstimate/);
+  });
+
   it("says the estimate came before any inspection", () => {
     expect(STRIP).toMatch(/before inspection/);
     expect(carriedAsSymptomLines(readCarriedAnswers("?est=500-900"))[0]).toContain("before inspection");
