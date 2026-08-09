@@ -137,6 +137,18 @@ describe("what the simulator hands to the service request", () => {
         expect(WIZARD).toMatch(/problemOptions\.some\(\(item\) => item\.id === primaryIssue\)/);
     });
 
+    it("the desktop repair page reads the same two fields", () => {
+        /**
+         * A /repair link is shareable and survives a rotation to landscape, so
+         * the desktop form can receive answers the simulator already collected.
+         * Asking for them again reads as the form having lost them.
+         */
+        const DESKTOP = read("client/src/pages/repair-request.tsx");
+        expect(DESKTOP).toMatch(/params\.get\("model"\)/);
+        expect(DESKTOP).toMatch(/params\.get\("detail"\)/);
+        expect(DESKTOP).toMatch(/setModelNumber\(decodeURIComponent\(qModel\)\)/);
+    });
+
     it("the reminder is scrolled clear of the fixed bottom navigation", () => {
         expect(COMPONENT).toMatch(/scrollIntoView\(\{ behavior: "smooth", block: "center" \}\)/);
         expect(COMPONENT).toMatch(/ref=\{nudgeRef\}/);

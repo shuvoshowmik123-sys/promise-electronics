@@ -97,11 +97,21 @@ export default function RepairRequestPage() {
     const qBrand = params.get("brand");
     const qSize  = params.get("size");
     const qIssue = params.get("issue");
+    const qModel = params.get("model");
+    const qDetail = params.get("detail");
     const qServiceMode = params.get("serviceMode");
     const qServiceAreaId = params.get("serviceAreaId");
     if (qBrand) setBrand(decodeURIComponent(qBrand));
     if (qSize)  setScreenSize(decodeURIComponent(qSize));
     if (qIssue) setPrimaryIssue(decodeURIComponent(qIssue));
+    /**
+     * Same two fields the mobile wizard reads. A /repair link is shareable and
+     * survives a rotation to landscape, so a customer can arrive here carrying
+     * answers the homepage simulator already collected — and being asked for
+     * them twice reads as the form having lost them.
+     */
+    if (qModel) setModelNumber(decodeURIComponent(qModel));
+    if (qDetail) setDescription(decodeURIComponent(qDetail));
     if (qServiceMode === "pickup") setServicePreference("home_pickup");
     if (qServiceMode === "service_center") setServicePreference("service_center");
     if (qServiceAreaId) setServiceAreaId(qServiceAreaId);
