@@ -14,6 +14,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  sortTvSizes,
   formatScreenSize,
   DEFAULT_TV_BRANDS,
   DEFAULT_TV_SIZES,
@@ -35,6 +36,42 @@ const SCREENS: [string, string][] = [
 ];
 const HOME = read("client/src/pages/home.tsx");
 const WIZARD = read("client/src/components/mobile/MobileServiceWizard.tsx");
+
+describe("sizes come out smallest to largest, whatever Settings holds", () => {
+  /**
+   * Settings stores sizes as a free-form tag list, so their order is whatever
+   * order somebody typed them in. That is how a picker ends up reading
+   * 32, 24, 42, 39. Nobody should have to drag tags into order in an admin
+   * screen to make a customer-facing control make sense.
+   */
+  it("puts a jumbled list in order", () => {
+    expect(sortTvSizes(["32 inch", "24 inch", "42 inch", "39 inch", "86 inch", "55 inch"]))
+      .toEqual(["24 inch", "32 inch", "39 inch", "42 inch", "55 inch", "86 inch"]);
+  });
+
+  it("sorts by the number, not the text", () => {
+    // "100 inch" sorts after "9 inch"; a plain string sort would not.
+    expect(sortTvSizes(["100 inch", "9 inch", "24 inch"])).toEqual(["9 inch", "24 inch", "100 inch"]);
+  });
+
+  it("keeps the largest size last even with a suffix", () => {
+    expect(sortTvSizes(["75 inch+", "32 inch", "65 inch"])).toEqual(["32 inch", "65 inch", "75 inch+"]);
+  });
+
+  it("leaves entries without a number at the end", () => {
+    // "Other" belongs after the ladder, not sorted into the middle of it.
+    expect(sortTvSizes(["55 inch", "Other", "32 inch"])).toEqual(["32 inch", "55 inch", "Other"]);
+  });
+
+  it("drops a size somebody entered twice", () => {
+    expect(sortTvSizes(["55 inch", "55 INCH", " 55  inch ", "32 inch"])).toEqual(["32 inch", "55 inch"]);
+  });
+
+  it("the reader itself returns them ordered", () => {
+    const settings = [{ key: "tv_sizes", value: '["43 inch","24 inch","86 inch"]' }];
+    expect(readTvSizes(settings)).toEqual(["24 inch", "43 inch", "86 inch"]);
+  });
+});
 
 describe("a screen size reads correctly wherever it is shown", () => {
   /**

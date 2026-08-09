@@ -62,8 +62,45 @@ export function readTvOptionList(
 export const readTvBrands = (settings: SettingRow[]) =>
   readTvOptionList(settings, TV_BRANDS_KEY, null, DEFAULT_TV_BRANDS);
 
+/**
+ * Sizes, always smallest to largest.
+ *
+ * Settings holds them as a free-form tag list, so their order is whatever
+ * order somebody happened to type them in — which is how 24, 32, 39, 42 ends
+ * up reading 32, 24, 42, 39 on a picker. Nobody should have to drag tags into
+ * order in an admin screen to make a customer-facing control make sense, and
+ * anyone adding "86 inch" next year should not have to think about where it
+ * goes.
+ *
+ * Sorting on read rather than on save means it is right on every screen at
+ * once, including for values already stored, and it cannot be undone by an
+ * edit somewhere else.
+ */
+export function sortTvSizes(list: readonly string[]): string[] {
+  const seen = new Set<string>();
+  const unique = list.filter((raw) => {
+    const key = String(raw).trim().toLowerCase().replace(/\s+/g, " ");
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  return unique.sort((a, b) => {
+    const na = Number.parseInt(String(a), 10);
+    const nb = Number.parseInt(String(b), 10);
+    const aNum = Number.isFinite(na);
+    const bNum = Number.isFinite(nb);
+    // Anything without a number — "Other" — keeps its place at the end rather
+    // than being sorted into the middle of the ladder.
+    if (aNum && bNum) return na - nb;
+    if (aNum) return -1;
+    if (bNum) return 1;
+    return 0;
+  });
+}
+
 export const readTvSizes = (settings: SettingRow[]) =>
-  readTvOptionList(settings, TV_SIZES_KEY, TV_SIZES_LEGACY_KEY, DEFAULT_TV_SIZES);
+  sortTvSizes(readTvOptionList(settings, TV_SIZES_KEY, TV_SIZES_LEGACY_KEY, DEFAULT_TV_SIZES));
 
 /**
  * A screen size as it should be shown to a person.
