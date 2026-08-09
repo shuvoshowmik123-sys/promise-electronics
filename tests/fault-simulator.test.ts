@@ -198,6 +198,31 @@ describe("the homepage uses it in place of what it replaced", () => {
         expect((COMPONENT.match(/const REFINE: Record/g) ?? []).length).toBe(1);
     });
 
+    it("nothing on the desktop appears out of nothing", () => {
+        /**
+         * Three things used to materialise mid-interaction and shove the
+         * controls down the page: the estimate replacing its placeholder
+         * (59px), the follow-up question appearing (111px), and the audio
+         * meter on the two sound faults (30px). Each is now a slot that is
+         * always there, so the row height never changes and a picker never
+         * moves out from under the cursor that just clicked it.
+         */
+        expect(COMPONENT).toMatch(/min-h-\[248px\]/);   // estimate slot
+        expect(COMPONENT).toMatch(/min-h-\[104px\]/);   // question slot
+        expect(COMPONENT).toMatch(/h-\[248px\]/);       // placeholder matches the card
+        // the meter row renders even when the fault makes no sound
+        const meter = COMPONENT.slice(COMPONENT.indexOf("function FaultMeter"));
+        expect(meter.slice(0, 900)).not.toMatch(/if \(!fault\?\.audio\) return null/);
+    });
+
+    it("brand and size sit with the television, not in a distant strip", () => {
+        // 550px from the set they describe, and below the column that grew.
+        const desktop = COMPONENT.slice(COMPONENT.indexOf("function DesktopLayout"));
+        const tvZone = desktop.slice(desktop.indexOf("{/* watch it */}"), desktop.indexOf("{/* price it */}"));
+        expect(tvZone).toContain("EdgeFadeRail");
+        expect(tvZone).toMatch(/Screen size/);
+    });
+
     it("the desktop mount is not squeezed by an outer max-width", () => {
         // The desktop layout sets its own 1320px frame; an outer max-w-4xl
         // would fold three columns back into one.

@@ -678,10 +678,16 @@ function FaultTv({ fault, panelWidth, scale }: { fault: Fault | null; panelWidth
  * flat for a dead speaker. A steady bounce would read as "working".
  */
 function FaultMeter({ fault }: { fault: Fault | null }) {
-    if (!fault?.audio) return null;
+    /**
+     * The row is always present, even for the seven faults that make no sound.
+     *
+     * Rendering nothing meant the meter appeared out of thin air on the two
+     * audio faults and shoved the caption and everything under it down by 30px
+     * — including the size picker, mid-click.
+     */
     return (
-        <div className="mt-2.5 flex h-5 items-end gap-[3px]">
-            {Array.from({ length: 7 }).map((_, i) => (
+        <div className="mt-2.5 flex h-5 items-end gap-[3px]" aria-hidden={!fault?.audio}>
+            {fault?.audio && Array.from({ length: 7 }).map((_, i) => (
                 <span key={i} className={cn("w-1 rounded-sm",
                     fault.audio === "jitter" ? "fault-bar bg-amber-500" : "h-[3px] bg-slate-300")} />
             ))}
@@ -781,26 +787,99 @@ function DesktopLayout({ sim }: { sim: Sim }) {
                             : L("Your television, working normally", "আপনার টিভি স্বাভাবিক চলছে")}
                     </p>
 
-                    {fault && REFINE[fault.id] && (
-                        <div className="mt-3.5 w-full rounded-2xl border border-emerald-100 bg-emerald-50/50 p-3.5">
-                            <p className="text-[14px] font-bold leading-snug text-slate-900">
-                                {L(REFINE[fault.id].qEn, REFINE[fault.id].qBn)}
-                            </p>
-                            <div className="mt-2.5 flex gap-2">
-                                {(["yes", "no"] as const).map((v) => (
-                                    <button
-                                        key={v} type="button" onClick={() => setAnswer(v)}
-                                        className={cn("flex-1 rounded-xl border py-2 text-[13px] font-bold transition-colors",
-                                            answer === v
-                                                ? "border-emerald-700 bg-emerald-700 text-white"
-                                                : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300")}
-                                    >
-                                        {v === "yes" ? L("Yes", "হ্যাঁ") : L("No", "না")}
-                                    </button>
-                                ))}
+                    {/*
+                      The question slot is always here, never conjured.
+                      Appearing from nothing pushed the brand and size pickers
+                      111px down the moment a fault was chosen — the controls
+                      moved out from under the cursor that had just clicked.
+                      Reserving the space costs an idle box; that box earns its
+                      keep by saying what is about to happen.
+                    */}
+                    <div className="mt-3.5 flex min-h-[104px] w-full items-center rounded-2xl border border-emerald-100 bg-emerald-50/50 p-3.5">
+                        {fault && REFINE[fault.id] ? (
+                            <div className="w-full">
+                                <p className="text-[14px] font-bold leading-snug text-slate-900">
+                                    {L(REFINE[fault.id].qEn, REFINE[fault.id].qBn)}
+                                </p>
+                                <div className="mt-2.5 flex gap-2">
+                                    {(["yes", "no"] as const).map((v) => (
+                                        <button
+                                            key={v} type="button" onClick={() => setAnswer(v)}
+                                            className={cn("flex-1 rounded-xl border py-2 text-[13px] font-bold transition-colors",
+                                                answer === v
+                                                    ? "border-emerald-700 bg-emerald-700 text-white"
+                                                    : "border-slate-200 bg-white text-slate-600 hover:border-emerald-300")}
+                                        >
+                                            {v === "yes" ? L("Yes", "হ্যাঁ") : L("No", "না")}
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
+                        ) : (
+                            <p className="w-full text-center text-[12.5px] font-semibold leading-relaxed text-emerald-800/60">
+                                {fault
+                                    ? L("A cracked panel is unmistakable — no further questions needed.",
+                                        "ফাটা প্যানেল স্পষ্ট — আর কোনো প্রশ্ন নেই।")
+                                    : L("Choose a fault and we will ask one quick question to narrow the price.",
+                                        "একটি সমস্যা বেছে নিন, দাম নির্দিষ্ট করতে আমরা একটি প্রশ্ন করবো।")}
+                            </p>
+                        )}
+                    </div>
+                    {/*
+                      Brand and size sit under the television, not in a strip
+                      below everything. Down there they were 550px from the set
+                      the customer is looking at, and — because the price column
+                      was the tallest — choosing a size swapped the placeholder
+                      for the estimate card and shoved them a further 59px down
+                      the page. Here they are next to what they describe, and
+                      they make this column the tallest, which is what stops the
+                      row height changing at all.
+                    */}
+                    <div className="mt-4 w-full border-t border-emerald-50 pt-3.5">
+                        <div>
+                            <p className="mb-2 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">
+                        {L("Brand", "ব্র্যান্ড")}{" "}
+                        {brand && <span className="tracking-normal text-emerald-700">· {brand}</span>}
+                    </p>
+                            <EdgeFadeRail>
+                        {brands.map((b) => (
+                            <button key={b} type="button" onClick={() => { setBrand(b); setDismissed(false); }}
+                                className={cn("shrink-0 rounded-full border px-3.5 py-2 text-[12.5px] font-bold transition-colors",
+                                    brand === b
+                                        ? "border-slate-900 bg-slate-900 text-white"
+                                        : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/40")}>
+                                {b}
+                            </button>
+                        ))}
+                            </EdgeFadeRail>
                         </div>
-                    )}
+                        <div>
+                            <p className="mb-2 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">
+                        {L("Screen size", "স্ক্রিন সাইজ")}{" "}
+                        {size && <span className="tracking-normal text-emerald-700">· {size}</span>}
+                    </p>
+                            <EdgeFadeRail>
+                        {sizes.map((z) => {
+                            const n = parseInt(z, 10) || 32;
+                            const w = Math.round(Math.min(34, Math.max(16, 16 + (n - 24) * 0.36)));
+                            const on = size === z;
+                            return (
+                                <button key={z} type="button" onClick={() => { setSize(z); setDismissed(false); }}
+                                    className={cn("flex shrink-0 flex-col items-center gap-1 rounded-xl border px-2.5 py-2 transition-colors",
+                                        on ? "border-slate-900 bg-slate-900 text-white"
+                                           : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/40")}>
+                                    <span className="flex h-[26px] flex-col items-center justify-end">
+                                        <span className={cn("rounded-[2px] border-[1.5px]", on ? "border-white" : "border-slate-400")}
+                                              style={{ width: w, height: Math.round(w * 0.62) }} />
+                                        <span className={cn("h-[2.5px] w-2.5", on ? "bg-white" : "bg-slate-400")} />
+                                    </span>
+                                    <span className="text-[12px] font-bold">{z.replace(/\s*inch$/i, "”")}</span>
+                                </button>
+                            );
+                        })}
+                            </EdgeFadeRail>
+                        </div>
+                    </div>
                 </section>
 
                 {/* price it */}
@@ -859,8 +938,16 @@ function DesktopLayout({ sim }: { sim: Sim }) {
                         </div>
                     )}
 
+                    {/*
+                      One reserved slot for both states. The dashed placeholder
+                      and the estimate card are different heights, and swapping
+                      one for the other is what moved the page when a size was
+                      chosen. Reserving the space means the answer appears in
+                      place instead of pushing everything below it.
+                    */}
+                    <div className="mt-3.5 min-h-[248px]">
                     {estimate && fault ? (
-                        <div className={cn("mt-3.5 rounded-2xl p-4 text-white shadow-lg",
+                        <div className={cn("rounded-2xl p-4 text-white shadow-lg",
                             fault.hard ? "bg-gradient-to-br from-orange-700 to-orange-600 shadow-orange-200"
                                        : "bg-gradient-to-br from-emerald-800 to-emerald-600 shadow-emerald-200")}>
                             <p className={cn("text-[9px] font-bold uppercase tracking-widest",
@@ -891,13 +978,14 @@ function DesktopLayout({ sim }: { sim: Sim }) {
                             </div>
                         </div>
                     ) : (
-                        <div className="mt-3.5 rounded-2xl border border-dashed border-emerald-100 px-4 py-7 text-center">
+                        <div className="grid h-[248px] place-items-center rounded-2xl border border-dashed border-emerald-100 px-4 text-center">
                             <p className="text-[13px] font-semibold leading-relaxed text-slate-400">
                                 {L("Pick what your television is doing and the estimate appears here.",
                                    "আপনার টিভি কী করছে বেছে নিন, এখানে খরচ দেখা যাবে।")}
                             </p>
                         </div>
                     )}
+                    </div>
 
                     <button
                         type="button" onClick={submit} disabled={!fault}
@@ -912,52 +1000,6 @@ function DesktopLayout({ sim }: { sim: Sim }) {
                 </section>
             </div>
 
-            {/* brand and size, across the page rather than down a column */}
-            <div className="mt-5 grid grid-cols-2 gap-7 rounded-3xl border border-emerald-100 bg-white px-5 pb-3.5 pt-4 shadow-sm">
-                <div>
-                    <p className="mb-2 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">
-                        {L("Brand", "ব্র্যান্ড")}{" "}
-                        {brand && <span className="tracking-normal text-emerald-700">· {brand}</span>}
-                    </p>
-                    <EdgeFadeRail>
-                        {brands.map((b) => (
-                            <button key={b} type="button" onClick={() => { setBrand(b); setDismissed(false); }}
-                                className={cn("shrink-0 rounded-full border px-3.5 py-2 text-[12.5px] font-bold transition-colors",
-                                    brand === b
-                                        ? "border-slate-900 bg-slate-900 text-white"
-                                        : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/40")}>
-                                {b}
-                            </button>
-                        ))}
-                    </EdgeFadeRail>
-                </div>
-                <div>
-                    <p className="mb-2 text-[10.5px] font-extrabold uppercase tracking-wider text-slate-400">
-                        {L("Screen size", "স্ক্রিন সাইজ")}{" "}
-                        {size && <span className="tracking-normal text-emerald-700">· {size}</span>}
-                    </p>
-                    <EdgeFadeRail>
-                        {sizes.map((z) => {
-                            const n = parseInt(z, 10) || 32;
-                            const w = Math.round(Math.min(34, Math.max(16, 16 + (n - 24) * 0.36)));
-                            const on = size === z;
-                            return (
-                                <button key={z} type="button" onClick={() => { setSize(z); setDismissed(false); }}
-                                    className={cn("flex shrink-0 flex-col items-center gap-1 rounded-xl border px-2.5 py-2 transition-colors",
-                                        on ? "border-slate-900 bg-slate-900 text-white"
-                                           : "border-slate-200 bg-white text-slate-700 hover:border-emerald-300 hover:bg-emerald-50/40")}>
-                                    <span className="flex h-[26px] flex-col items-center justify-end">
-                                        <span className={cn("rounded-[2px] border-[1.5px]", on ? "border-white" : "border-slate-400")}
-                                              style={{ width: w, height: Math.round(w * 0.62) }} />
-                                        <span className={cn("h-[2.5px] w-2.5", on ? "bg-white" : "bg-slate-400")} />
-                                    </span>
-                                    <span className="text-[12px] font-bold">{z.replace(/\s*inch$/i, "”")}</span>
-                                </button>
-                            );
-                        })}
-                    </EdgeFadeRail>
-                </div>
-            </div>
         </div>
     );
 }
