@@ -442,7 +442,18 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     };
 
     // ── Customer ──
-    const handleSelectCustomer = (c: any) => { setCustomerName(c.name || ""); setCustomerPhone(c.phone || ""); setCustomerAddress(c.address || ""); setIsCustomerDialogOpen(false); toast.success("Customer details added"); };
+    /**
+     * The sheet can now hand back a bare { name } for a walk-in nobody has
+     * saved yet, so a blank field on the incoming record means "not known",
+     * not "clear what the counter already typed".
+     */
+    const handleSelectCustomer = (c: any) => {
+        setCustomerName(c.name || "");
+        if (c.phone) setCustomerPhone(c.phone);
+        if (c.address) setCustomerAddress(c.address);
+        setIsCustomerDialogOpen(false);
+        toast.success(c.id ? "Customer details added" : `Billing to ${c.name}`);
+    };
 
     // ── Barcode Scanner ──
     const handleProductSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1387,7 +1398,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                             </div>
 
                             <div className="flex-1 space-y-3 overflow-y-auto bg-slate-50 p-4 pb-5">
-                                {/* Mobile Cart Customer — with autocomplete */}
+                                {/* Mobile Cart Customer */}
                                 <div className="rounded-3xl border border-slate-100 bg-white p-3.5 shadow-sm">
                                     <div className="flex items-start justify-between gap-3">
                                         <div className="flex min-w-0 items-center gap-3">
@@ -1410,6 +1421,58 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                         </button>
                                     </div>
                                     <div className="mt-3 grid grid-cols-1 gap-2">
+                                        {/*
+                                          * The name, typed.
+                                          *
+                                          * Until now the only way to put a name on a
+                                          * mobile bill was to pick someone already
+                                          * saved — and "Choose Customer" has no way to
+                                          * add anybody. A walk-in who had never been
+                                          * here before could not be named at all,
+                                          * which also made a Due sale impossible on a
+                                          * phone: checkout refuses Due without one.
+                                          *
+                                          * The suggestion list under it is the
+                                          * autocomplete this file has always computed
+                                          * and never rendered.
+                                          */}
+                                        <div className="relative">
+                                            <input
+                                                type="text"
+                                                placeholder="Customer name"
+                                                className="h-11 w-full rounded-2xl border border-slate-200 bg-slate-50 px-3 text-sm font-semibold placeholder:text-slate-400 focus:border-blue-400 focus:outline-none focus:ring-4 focus:ring-blue-500/10"
+                                                value={customerName}
+                                                onChange={(e) => {
+                                                    setCustomerName(e.target.value);
+                                                    setCustomerSearchField("name");
+                                                    setShowCustomerAutocomplete(true);
+                                                }}
+                                                onFocus={() => { setCustomerSearchField("name"); setShowCustomerAutocomplete(true); }}
+                                                // A blur that fires before the tap lands would
+                                                // close the list out from under the finger.
+                                                onBlur={() => window.setTimeout(() => setShowCustomerAutocomplete(false), 150)}
+                                            />
+                                            {showCustomerAutocomplete && customerSuggestions.length > 0 && (
+                                                <div className="absolute inset-x-0 top-[calc(100%+0.25rem)] z-20 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+                                                    {customerSuggestions.map((c: any) => (
+                                                        <button
+                                                            key={c.id}
+                                                            type="button"
+                                                            onClick={() => handleSelectCustomerSuggestion(c)}
+                                                            className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2.5 text-left last:border-0 active:bg-blue-50"
+                                                        >
+                                                            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-xs font-black text-blue-700">
+                                                                {(c.name || "?")[0].toUpperCase()}
+                                                            </span>
+                                                            <span className="min-w-0 flex-1">
+                                                                <span className="block truncate text-[13px] font-bold text-slate-900">{c.name || "Unnamed"}</span>
+                                                                <span className="block truncate text-[11px] font-semibold text-slate-400">{c.phone || "No phone"}</span>
+                                                            </span>
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
                                         <input
                                             type="text"
                                             inputMode="tel"
@@ -1425,7 +1488,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                             value={customerAddress}
                                             onChange={(e) => setCustomerAddress(e.target.value)}
                                         />
-                                        <select value={serviceAreaId} onChange={(event) => setServiceAreaId(event.target.value)} disabled={linkedJobCharges.length > 0} className="h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 disabled:bg-slate-100">
+                                        <select value={serviceAreaId} onChange={(event) => setServiceAreaId(event.target.value)} disabled={linkedJobCharges.length > 0} className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 disabled:bg-slate-100">
                                             <option value="">{linkedJobCharges.length > 0 ? 'Area inherited from linked jobs' : 'Service area (optional)'}</option>
                                             {serviceAreas.map((area) => <option key={area.id} value={area.id}>{[area.blockOrSector, area.subareaName, area.areaName].filter(Boolean).join(', ')}</option>)}
                                         </select>

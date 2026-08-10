@@ -85,8 +85,41 @@ export function CustomerDialog({ open, onOpenChange, customers, customersLoading
                                         {customersLoading ? (
                                             <div className="flex justify-center py-12"><Loader2 className="h-7 w-7 animate-spin text-blue-500" /></div>
                                         ) : filtered.length === 0 ? (
-                                            <div className="rounded-3xl border border-dashed border-slate-200 bg-white px-4 py-10 text-center text-sm font-semibold text-slate-400">
-                                                No customers found
+                                            /*
+                                             * Never a dead end. This list only holds
+                                             * people who have been here before, and a
+                                             * counter serving a first-time walk-in used
+                                             * to have nowhere to go from here — no add
+                                             * button, and on mobile no name field behind
+                                             * the sheet either.
+                                             *
+                                             * This puts the typed name on the bill. It
+                                             * deliberately does not create a customer
+                                             * record: that belongs to the Customers
+                                             * screen with its own duplicate checking,
+                                             * not to a sale in progress.
+                                             */
+                                            <div className="rounded-3xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center">
+                                                <p className="text-sm font-bold text-slate-500">No saved customer matches</p>
+                                                {search.trim() ? (
+                                                    <>
+                                                        <p className="mt-1 text-[11px] font-semibold text-slate-400">
+                                                            Bill it to this name without saving them.
+                                                        </p>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { onSelect({ name: search.trim() }); setSearch(""); }}
+                                                            className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-blue-600 px-4 text-sm font-black text-white shadow-sm active:scale-[0.98]"
+                                                        >
+                                                            <UserPlus className="h-4 w-4" />
+                                                            Use &ldquo;{search.trim()}&rdquo;
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <p className="mt-1 text-[11px] font-semibold text-slate-400">
+                                                        Type a name to bill a walk-in.
+                                                    </p>
+                                                )}
                                             </div>
                                         ) : (
                                             <div className="space-y-2.5">
@@ -134,7 +167,15 @@ export function CustomerDialog({ open, onOpenChange, customers, customersLoading
                 {customersLoading ? (
                     <div className="flex items-center justify-center p-8"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>
                 ) : filtered.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground"><UserPlus className="h-12 w-12 mx-auto mb-3 opacity-20" /><p className="text-sm">No customers found</p></div>
+                    <div className="text-center py-8 text-muted-foreground">
+                        <UserPlus className="h-12 w-12 mx-auto mb-3 opacity-20" />
+                        <p className="text-sm">No saved customer matches</p>
+                        {search.trim() && (
+                            <Button className="mt-4" onClick={() => { onSelect({ name: search.trim() }); setSearch(""); }}>
+                                Use &ldquo;{search.trim()}&rdquo; without saving
+                            </Button>
+                        )}
+                    </div>
                 ) : (
                     <div className="border rounded-md max-h-[300px] overflow-y-auto">
                         <Table>
