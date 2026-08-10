@@ -1521,13 +1521,15 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                     );
                                 })}
                                 <LinkedJobsInCart />
-
-                                {/* Close Register Mobile Button */}
-                                <div className="pt-1">
-                                    <Button variant="outline" className="w-full rounded-2xl border-rose-200 bg-white text-rose-600 hover:bg-rose-50" onClick={() => setDrawerModalType('drop')}>
-                                        Close Register
-                                    </Button>
-                                </div>
+                                {/*
+                                  * Close Register used to sit here, under the
+                                  * items and above the checkout button. Ending a
+                                  * shift is not a step in taking a payment, and
+                                  * putting it in the checkout column meant the
+                                  * only way to reach it was to open a cart. It
+                                  * now lives on the register's own status bar at
+                                  * the top of this tab.
+                                  */}
                             </div>
 
                             {/* Mobile Sticky Footer */}
@@ -1724,11 +1726,24 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                         <span className={cn("font-black uppercase tracking-wide", isDrawerCounting ? "text-amber-800" : "text-emerald-800")}>
                             {isDrawerCounting ? "Under Review" : "Live"}
                         </span>
-                        <span className="text-slate-400 ml-auto">Opened by</span>
-                        <span className="font-bold text-slate-700">{activeDrawer.openedByName}</span>
-                        <span className="text-slate-400">
+                        <span className="ml-auto shrink-0 text-slate-400">by</span>
+                        <span className="min-w-0 truncate font-bold text-slate-700">{activeDrawer.openedByName}</span>
+                        <span className="shrink-0 text-slate-400">
                             {activeDrawer.openedAt ? new Date(activeDrawer.openedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—"}
                         </span>
+                        {/* Where a shift is ended: on the bar that says the
+                            shift is running, reachable without a cart. Hidden
+                            once a count is already in review — that submit is
+                            one-shot and must not look repeatable. */}
+                        {!isDrawerCounting && (
+                            <button
+                                type="button"
+                                onClick={() => setDrawerModalType('drop')}
+                                className="ml-1 flex h-8 shrink-0 items-center rounded-lg border border-rose-200 bg-white px-2.5 text-[11px] font-black text-rose-600 active:scale-[0.97]"
+                            >
+                                Close
+                            </button>
+                        )}
                     </div>
                 )}
                 <MobileProductPicker
