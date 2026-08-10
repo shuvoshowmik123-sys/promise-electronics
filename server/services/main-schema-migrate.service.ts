@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_11_expense_part_quantity";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_11_warranty_stickers";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2199,6 +2199,42 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       // The monthly parts summary groups on this and nothing else.
       await client.query(`CREATE INDEX IF NOT EXISTS idx_petty_cash_records_part_name
         ON petty_cash_records (part_name) WHERE part_name IS NOT NULL`);
+    },
+  },
+  {
+    id: "2026_08_11_warranty_stickers",
+    description:
+      "Proof that a repair is ours. A customer arriving with a television and claiming warranty work that was never done here, or done here on a different set, cannot be refused on memory alone. Two stickers go on every warranted repair - one visible on the back, one hidden beside the actual repair - carrying different unguessable codes that both point at the same job, so a sticker moved between televisions shows up the moment both are scanned. Scans are recorded including the ones that match nothing, because a forgery is only visible if the failures are kept. Two new tables, no existing table touched.",
+    up: async (client) => {
+      await client.query(`CREATE TABLE IF NOT EXISTS warranty_stickers (
+        id TEXT PRIMARY KEY,
+        code TEXT NOT NULL UNIQUE,
+        job_ticket_id TEXT NOT NULL,
+        placement TEXT NOT NULL,
+        issued_at TIMESTAMP NOT NULL DEFAULT now(),
+        issued_by TEXT,
+        issued_by_name TEXT,
+        voided_at TIMESTAMP,
+        voided_reason TEXT,
+        store_id TEXT
+      )`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_warranty_stickers_job
+        ON warranty_stickers (job_ticket_id)`);
+
+      await client.query(`CREATE TABLE IF NOT EXISTS warranty_sticker_scans (
+        id TEXT PRIMARY KEY,
+        scanned_code TEXT NOT NULL,
+        sticker_id TEXT,
+        job_ticket_id TEXT,
+        result TEXT NOT NULL,
+        scanned_at TIMESTAMP NOT NULL DEFAULT now(),
+        scanned_by TEXT,
+        scanned_by_name TEXT
+      )`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_warranty_sticker_scans_at
+        ON warranty_sticker_scans (scanned_at)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_warranty_sticker_scans_code
+        ON warranty_sticker_scans (scanned_code)`);
     },
   },
 ];

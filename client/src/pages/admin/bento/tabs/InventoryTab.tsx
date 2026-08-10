@@ -858,18 +858,20 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                             <Textarea placeholder="Detailed description..." value={formData.description || ""} onChange={(e) => setFormData({ ...formData, description: e.target.value })} rows={3} className="bg-slate-50 resize-none" />
                         </div>
 
-                        {formData.itemType === "product" && (
-                            <div className="flex items-center justify-between p-4 bg-indigo-50/50 rounded-xl border border-indigo-100">
-                                <div>
-                                    <Label className="text-base text-indigo-900 font-semibold flex items-center gap-2">
-                                        <Package className="h-4 w-4" />
-                                        Serial Number Tracking
-                                    </Label>
-                                    <p className="text-xs text-indigo-700/80 mt-1">Require technicians to scan individual serials during repair jobs.</p>
-                                </div>
-                                <Switch checked={formData.isSerialized} onCheckedChange={(val) => setFormData({ ...formData, isSerialized: val })} className="data-[state=checked]:bg-indigo-600" />
-                            </div>
-                        )}
+                        {/*
+                          * The "Serial Number Tracking" switch was here.
+                          *
+                          * It made a technician record a unique number for every
+                          * individual piece of a stock item on every job — for
+                          * generic panels and cables bought from a local market,
+                          * which carry no such number. The screen that read those
+                          * serials back had never worked either, so switching it on
+                          * created items the shop could not display.
+                          *
+                          * The need behind it was different and is now met properly:
+                          * proving a repair is ours. That is warranty stickers —
+                          * shared/warranty-sticker.ts — not per-part serials.
+                          */}
 
                         {/* Pricing & Stock (Product vs Service) */}
                         {formData.itemType === "product" ? (

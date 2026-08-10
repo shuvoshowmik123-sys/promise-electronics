@@ -2464,6 +2464,74 @@ export type InsertFraudBlocklist = z.infer<typeof insertFraudBlocklistSchema>;
 export type FraudBlocklist = typeof fraudBlocklist.$inferSelect;
 
 // Warranty Claims Table
+/**
+ * The sticker on a repaired television, and proof it is ours.
+ *
+ * Two rows per job: one for the sticker on the outside, one for the sticker
+ * hidden beside the repair. Different codes on purpose — see
+ * shared/warranty-sticker.ts for why.
+ */
+export const warrantyStickers = pgTable("warranty_stickers", {
+  id: text("id").primaryKey(),
+  /** The code printed on the sticker. Unique across the whole shop. */
+  code: text("code").notNull().unique(),
+  jobTicketId: text("job_ticket_id").notNull(),
+  /** outer | inner */
+  placement: text("placement").notNull(),
+  issuedAt: timestamp("issued_at").notNull().defaultNow(),
+  issuedBy: text("issued_by"),
+  issuedByName: text("issued_by_name"),
+  /**
+   * Set when a job is re-stickered — a damaged label replaced, say.
+   *
+   * The old row is never deleted: a voided code that turns up on a television
+   * is itself worth knowing about, and a code that simply vanished from the
+   * records would read as a forgery.
+   */
+  voidedAt: timestamp("voided_at"),
+  voidedReason: text("voided_reason"),
+  storeId: text("store_id"),
+}, (table) => {
+  return {
+    jobIdx: index("idx_warranty_stickers_job").on(table.jobTicketId),
+  };
+});
+
+export const insertWarrantyStickerSchema = createInsertSchema(warrantyStickers).omit({
+  id: true,
+  issuedAt: true,
+});
+export type InsertWarrantySticker = z.infer<typeof insertWarrantyStickerSchema>;
+export type WarrantySticker = typeof warrantyStickers.$inferSelect;
+
+/**
+ * Every scan, including the ones that found nothing.
+ *
+ * A forged sticker is only visible if the failures are kept. Recording just the
+ * successes would leave the shop unable to answer the one question worth
+ * asking: is somebody trying?
+ */
+export const warrantyStickerScans = pgTable("warranty_sticker_scans", {
+  id: text("id").primaryKey(),
+  /** Exactly what was scanned or typed, after normalising case and dashes. */
+  scannedCode: text("scanned_code").notNull(),
+  /** Null when the code matched nothing — that is the interesting case. */
+  stickerId: text("sticker_id"),
+  jobTicketId: text("job_ticket_id"),
+  /** genuine | unknown | voided */
+  result: text("result").notNull(),
+  scannedAt: timestamp("scanned_at").notNull().defaultNow(),
+  scannedBy: text("scanned_by"),
+  scannedByName: text("scanned_by_name"),
+}, (table) => {
+  return {
+    scannedAtIdx: index("idx_warranty_sticker_scans_at").on(table.scannedAt),
+    codeIdx: index("idx_warranty_sticker_scans_code").on(table.scannedCode),
+  };
+});
+
+export type WarrantyStickerScan = typeof warrantyStickerScans.$inferSelect;
+
 export const warrantyClaims = pgTable("warranty_claims", {
   id: text("id").primaryKey(),
 

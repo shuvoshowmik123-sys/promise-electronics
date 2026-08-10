@@ -53,6 +53,7 @@ import corporateSetupRoutes from './corporate-setup.routes.js';
 import corporateRoutes from './corporate.routes.js';
 import corporatePortalRoutes from './corporate-portal.routes.js';
 import warrantyRoutes from './warranty.routes.js';
+import warrantyStickerRoutes from './warranty-stickers.routes.js';
 import refundsRoutes from './refunds.routes.js';
 import approvalsRoutes from './approvals.routes.js';
 import { analyticsRoutes } from './analytics.routes.js';
@@ -273,6 +274,7 @@ export async function registerRoutes(
 
     // Warranty Claims
     app.use(warrantyRoutes);
+    app.use(warrantyStickerRoutes);
     routeLog('[Routes] ✓ Warranty claims routes registered');
 
     // Refunds Management

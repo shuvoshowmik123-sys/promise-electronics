@@ -13,6 +13,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { warrantyClaimsApi } from '@/lib/api';
 import { useAdminAuth } from '@/contexts/AdminAuthContext';
 import { OpenDisputeButton } from '@/components/admin/disputes/OpenDisputeButton';
+import { WarrantyStickerVerify } from '@/components/admin/WarrantyStickerVerify';
 import { useAdminMobileMode } from '@/hooks/useAdminMobileMode';
 import {
     MobileTabLayout, MobileTabHeader, MobileScrollContent, MobileSegmentTabs,
@@ -567,6 +568,15 @@ export default function WarrantyClaimsTab() {
                 </MobileTabHeader>
 
                 <MobileScrollContent className="pb-[calc(7.5rem+env(safe-area-inset-bottom))]">
+                    {/* Same order as the counter: prove the repair is ours,
+                        then deal with the claim. */}
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                        <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-slate-500">
+                            Check a warranty seal
+                        </p>
+                        <WarrantyStickerVerify />
+                    </div>
+
                     {isLoading ? (
                         <div className="flex items-center justify-center py-16">
                             <Loader2 className="h-6 w-6 animate-spin text-slate-300" />
@@ -646,6 +656,27 @@ export default function WarrantyClaimsTab() {
                 </div>
                 <ShieldCheck className="h-8 w-8 text-primary opacity-20" />
             </div>
+
+            {/*
+              * The seal check sits above the claims list on purpose.
+              *
+              * A claim is decided before it is recorded: somebody is at the
+              * counter with a television, and the first question is whether the
+              * repair is ours at all. Making that the first thing on the screen
+              * matches the order the work actually happens in.
+              */}
+            <Card className="border-border/40 shadow-sm bg-card/50 backdrop-blur-sm">
+                <CardHeader>
+                    <CardTitle>Check a warranty seal</CardTitle>
+                    <CardDescription>
+                        Scan the seal on the television, or type the code, to confirm the repair is ours
+                        and whether it is still covered.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    <WarrantyStickerVerify />
+                </CardContent>
+            </Card>
 
             <Card className="border-border/40 shadow-sm bg-card/50 backdrop-blur-sm">
                 <CardHeader>
