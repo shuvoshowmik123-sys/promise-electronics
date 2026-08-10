@@ -1407,7 +1407,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                             </div>
                                             <div className="min-w-0">
                                                 <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Customer</p>
-                                                <p className="truncate text-sm font-black text-slate-950">{customerName || "Guest Customer"}</p>
+                                                <p className="truncate text-sm font-black text-slate-950">{customerName || "Walk-in customer"}</p>
                                                 <p className="truncate text-xs font-semibold text-slate-400">{customerPhone || "No phone added"}</p>
                                             </div>
                                         </div>
@@ -1504,7 +1504,12 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                                 <div className="flex items-start gap-2">
                                                     <div className="min-w-0 flex-1">
                                                         <p className="line-clamp-2 text-[13px] font-black leading-snug text-slate-900">{item.name}</p>
-                                                        <p className="mt-0.5 text-[10px] font-semibold text-slate-400">Stock {stock}</p>
+                                                        {/* A sourced part was bought for this sale and
+                                                            was never stocked, so "Stock 0" reads as a
+                                                            warning about something that is not wrong. */}
+                                                        <p className="mt-0.5 text-[10px] font-semibold text-slate-400">
+                                                            {item.isSourced ? "Sourced for this sale" : `Stock ${stock}`}
+                                                        </p>
                                                     </div>
                                                     <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-full text-slate-300 hover:bg-red-50 hover:text-red-500" onClick={() => removeFromCart(item.id)}><Trash2 className="h-4 w-4" /></Button>
                                                 </div>
@@ -1539,8 +1544,10 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                     <span className="text-xl font-black tabular-nums text-slate-900">{getCurrencySymbol()}{total.toFixed(0)}</span>
                                 </div>
                                 {/* 2×2 brand-colour payment tiles */}
-                                <div className="-mx-1 overflow-x-auto px-1" style={{ scrollbarWidth: "none" }}>
-                                    <div className="flex min-w-max gap-2">
+                                {/* Wraps instead of scrolling: "Due" sat off the
+                                    right edge with nothing to say it was there. */}
+                                <div className="-mx-1 px-1">
+                                    <div className="flex flex-wrap gap-2">
                                     {PAYMENT_METHODS.map(m => {
                                         const isSel = paymentMethod === m.value;
                                         if (m.value === "bKash") return (
@@ -1883,7 +1890,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                             <div className="shrink-0 border-b border-white/70 bg-white/70 backdrop-blur-sm px-4 py-3">
                                 <div className="space-y-3">
                                     <div className="flex gap-2">
-                                        <Input placeholder="Guest Customer" className="h-10 bg-white border-slate-200 focus:border-indigo-400 focus:ring-indigo-100 rounded-xl text-sm" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
+                                        <Input placeholder="Walk-in customer" className="h-10 bg-white border-slate-200 focus:border-indigo-400 focus:ring-indigo-100 rounded-xl text-sm" value={customerName} onChange={(e) => setCustomerName(e.target.value)} />
                                         <Button size="icon" className="h-10 w-10 shrink-0 rounded-xl bg-slate-100 text-slate-500 hover:bg-indigo-50 hover:text-indigo-600 border border-slate-200 transition-colors shadow-sm" onClick={() => setIsCustomerDialogOpen(true)}>
                                             <UserPlus className="h-5 w-5" />
                                         </Button>
