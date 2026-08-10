@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_09_claim_evidence_urls";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_10_expense_attribution";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2154,6 +2154,38 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       "Photos or a short video a customer may attach to a warranty claim, so the technician can prepare before the television arrives and so repeated failures on one supplier's part are visible with pictures attached. Always optional: a claim must never depend on a camera, a network, or an image host being reachable, and refusing someone with a broken television over a failed upload would be the worst possible moment to be strict. Stored as an array of hosted URLs rather than image data, because base64 in a text column is how a claims table becomes gigabytes. Defaults to an empty array so every existing claim reads correctly. Additive only: one nullable jsonb column.",
     up: async (client) => {
       await client.query(`ALTER TABLE warranty_claims ADD COLUMN IF NOT EXISTS evidence_urls JSONB DEFAULT '[]'::jsonb`);
+    },
+  },
+  {
+    id: "2026_08_10_expense_attribution",
+    description:
+      "Who an expense belongs to, who entered it, what it was for, when the money actually left, and how it is undone. The petty-cash table recorded none of this: no person, so the one question the shop wants answered - what did each person spend - had no answer at all; and deletion removed the row while leaving the drawer's expected cash still reduced, so undoing a mistyped expense produced a phantom surplus at the next blind count on a shift where nothing had gone wrong. Reversal replaces deletion, keeping both the original and the entry that cancels it. occurred_at separates when money left the till from when finance staff typed it in, because small spends are recorded hours later and would otherwise land on the wrong day. Additive only: nullable columns and three indexes, no backfill, every existing row still reads.",
+    up: async (client) => {
+      await client.query(`ALTER TABLE petty_cash_records
+        ADD COLUMN IF NOT EXISTS spent_by TEXT,
+        ADD COLUMN IF NOT EXISTS spent_by_name TEXT,
+        ADD COLUMN IF NOT EXISTS entered_by TEXT,
+        ADD COLUMN IF NOT EXISTS entered_by_name TEXT,
+        ADD COLUMN IF NOT EXISTS purpose TEXT,
+        ADD COLUMN IF NOT EXISTS occurred_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS reversal_of TEXT,
+        ADD COLUMN IF NOT EXISTS reversed_at TIMESTAMP,
+        ADD COLUMN IF NOT EXISTS reversed_by TEXT,
+        ADD COLUMN IF NOT EXISTS reversed_by_name TEXT,
+        ADD COLUMN IF NOT EXISTS reversal_reason TEXT`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_petty_cash_records_spent_by
+        ON petty_cash_records (spent_by)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_petty_cash_records_occurred_at
+        ON petty_cash_records (occurred_at)`);
+      // Every historical row predates this and has no occurred_at. Reading
+      // COALESCE(occurred_at, created_at) everywhere would work but would put a
+      // function on the left of every date filter and lose the index, so the
+      // old rows are given the only honest value available: when they were
+      // entered. Not a data change in meaning - it is what those rows already
+      // implied - and it lets one column answer every date question.
+      await client.query(`UPDATE petty_cash_records
+        SET occurred_at = created_at
+        WHERE occurred_at IS NULL`);
     },
   },
 ];

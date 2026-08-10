@@ -120,9 +120,182 @@ export async function createPettyCashRecord(record: InsertPettyCashRecord): Prom
     return newRecord;
 }
 
-export async function deletePettyCashRecord(id: string): Promise<boolean> {
-    const result = await db.delete(schema.pettyCashRecords).where(eq(schema.pettyCashRecords.id, id));
-    return (result.rowCount ?? 0) > 0;
+/**
+ * The shape the shop actually wants to look at.
+ *
+ * A flat list of small spends is unreadable by design — that is the complaint
+ * this answers. The money is rolled up by month, then by day, and the
+ * individual entries are only fetched when a day is opened. Nothing is thrown
+ * away; it is just not all shown at once.
+ *
+ * Reversed entries and the rows that reversed them are both excluded, because
+ * counting either would misstate the total and counting both would cancel
+ * twice.
+ */
+export async function getExpenseRollup(filters: { from?: string; to?: string }): Promise<{
+    months: Array<{
+        month: string;
+        total: number;
+        count: number;
+        days: Array<{ day: string; total: number; count: number }>;
+    }>;
+    total: number;
+}> {
+    const rows = await db.execute(sql`
+        SELECT to_char(COALESCE(occurred_at, created_at), 'YYYY-MM')    AS month,
+               to_char(COALESCE(occurred_at, created_at), 'YYYY-MM-DD') AS day,
+               SUM(amount)::float8                                      AS total,
+               COUNT(*)::int                                            AS count
+        FROM petty_cash_records
+        WHERE type = 'Expense'
+          AND reversed_at IS NULL
+          AND reversal_of IS NULL
+          ${filters.from ? sql`AND COALESCE(occurred_at, created_at) >= ${new Date(filters.from)}` : sql``}
+          ${filters.to ? sql`AND COALESCE(occurred_at, created_at) <= ${new Date(filters.to)}` : sql``}
+        GROUP BY 1, 2
+        ORDER BY 1 DESC, 2 DESC
+    `);
+
+    type DayBucket = { day: string; total: number; count: number };
+    type MonthBucket = { month: string; total: number; count: number; days: DayBucket[] };
+    const months = new Map<string, MonthBucket>();
+    let total = 0;
+    for (const row of ((rows as any).rows ?? rows) as any[]) {
+        const bucket: MonthBucket = months.get(row.month) ?? { month: row.month, total: 0, count: 0, days: [] };
+        bucket.days.push({ day: row.day, total: Number(row.total), count: Number(row.count) });
+        bucket.total += Number(row.total);
+        bucket.count += Number(row.count);
+        months.set(row.month, bucket);
+        total += Number(row.total);
+    }
+    return { months: Array.from(months.values()), total };
+}
+
+/**
+ * What each person spent, split by what it was for.
+ *
+ * Rows with no person attached are grouped under a single unattributed bucket
+ * rather than dropped — every expense recorded before this feature existed has
+ * no owner, and hiding them would make the totals disagree with the ledger.
+ */
+export async function getExpenseByPerson(filters: { from?: string; to?: string }): Promise<Array<{
+    spentBy: string | null;
+    spentByName: string;
+    total: number;
+    count: number;
+    byCategory: Record<string, number>;
+    byPurpose: Record<string, number>;
+}>> {
+    const rows = await db.execute(sql`
+        SELECT spent_by                          AS "spentBy",
+               COALESCE(spent_by_name, 'Unattributed') AS "spentByName",
+               COALESCE(category, 'other')       AS category,
+               COALESCE(purpose, 'office')       AS purpose,
+               SUM(amount)::float8               AS total,
+               COUNT(*)::int                     AS count
+        FROM petty_cash_records
+        WHERE type = 'Expense'
+          AND reversed_at IS NULL
+          AND reversal_of IS NULL
+          ${filters.from ? sql`AND COALESCE(occurred_at, created_at) >= ${new Date(filters.from)}` : sql``}
+          ${filters.to ? sql`AND COALESCE(occurred_at, created_at) <= ${new Date(filters.to)}` : sql``}
+        GROUP BY 1, 2, 3, 4
+    `);
+
+    const people = new Map<string, any>();
+    for (const row of ((rows as any).rows ?? rows) as any[]) {
+        const key = row.spentBy ?? '__unattributed__';
+        const person = people.get(key) ?? {
+            spentBy: row.spentBy ?? null,
+            spentByName: row.spentByName,
+            total: 0,
+            count: 0,
+            byCategory: {} as Record<string, number>,
+            byPurpose: {} as Record<string, number>,
+        };
+        const amount = Number(row.total);
+        person.total += amount;
+        person.count += Number(row.count);
+        person.byCategory[row.category] = (person.byCategory[row.category] ?? 0) + amount;
+        person.byPurpose[row.purpose] = (person.byPurpose[row.purpose] ?? 0) + amount;
+        people.set(key, person);
+    }
+    return Array.from(people.values()).sort((a, b) => b.total - a.total);
+}
+
+export async function getPettyCashRecord(id: string): Promise<PettyCashRecord | undefined> {
+    const [record] = await db.select().from(schema.pettyCashRecords)
+        .where(eq(schema.pettyCashRecords.id, id));
+    return record;
+}
+
+/**
+ * Undo an expense without erasing it.
+ *
+ * The row that was entered stays exactly as it was and is stamped reversed; a
+ * second row is written that cancels it. Two rows rather than none because a
+ * spend that was recorded and then withdrawn is a thing that happened, and a
+ * ledger that can make entries disappear cannot answer the question it exists
+ * to answer.
+ *
+ * Returns null when the entry is already reversed, so a double-tap or a
+ * retried request cannot subtract the same money twice.
+ */
+export async function reversePettyCashRecord(
+    id: string,
+    actor: { id: string; name: string; reason?: string | null },
+): Promise<{ original: PettyCashRecord; reversal: PettyCashRecord } | null> {
+    return db.transaction(async (tx) => {
+        const [original] = await tx.select().from(schema.pettyCashRecords)
+            .where(eq(schema.pettyCashRecords.id, id))
+            .for("update");
+
+        if (!original) return null;
+        // Already reversed, or itself a reversal — either way there is nothing
+        // left to undo, and saying so beats writing a second cancelling row.
+        if (original.reversedAt || original.reversalOf) return null;
+
+        const now = new Date();
+
+        const [stamped] = await tx.update(schema.pettyCashRecords)
+            .set({
+                reversedAt: now,
+                reversedBy: actor.id,
+                reversedByName: actor.name,
+                reversalReason: actor.reason?.trim() || null,
+            })
+            .where(eq(schema.pettyCashRecords.id, id))
+            .returning();
+
+        const [reversal] = await tx.insert(schema.pettyCashRecords)
+            .values({
+                id: nanoid(),
+                description: `Reversal — ${original.description}`,
+                category: original.category,
+                amount: original.amount,
+                type: original.type,
+                purpose: original.purpose,
+                spentBy: original.spentBy,
+                spentByName: original.spentByName,
+                enteredBy: actor.id,
+                enteredByName: actor.name,
+                reversalOf: original.id,
+                reversalReason: actor.reason?.trim() || null,
+                /**
+                 * Dated today, not backdated to the original.
+                 *
+                 * If the original belongs to a shift that was already counted
+                 * and signed off, backdating would silently rewrite a closed
+                 * day's totals — the one thing a reconciled period must never
+                 * do. Today is also where the money physically came back.
+                 */
+                occurredAt: now,
+                drawerSessionId: original.drawerSessionId,
+            })
+            .returning();
+
+        return { original: stamped, reversal };
+    });
 }
 
 // ============================================

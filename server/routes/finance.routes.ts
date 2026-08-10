@@ -11,11 +11,33 @@ import { storage } from '../storage.js';
 import { financeRepo, notificationRepo, posRepo, serviceRequestRepo, userRepo } from '../repositories/index.js';
 import { insertManualPaymentSchema, insertPettyCashRecordSchema, manualPayments } from '../../shared/schema.js';
 import { requireAdminAuth, requirePermission, requireGranularPermission } from './middleware/auth.js';
+import { auditLogger } from '../utils/auditLogger.js';
+import { EXPENSE_CATEGORY_IDS, normaliseLegacyCategory, reversalNeedsReason } from '../../shared/expense-tracking.js';
 import { financeService } from '../services/finance.service.js';
 import { db } from '../db.js';
 import { notifyCustomerUpdate } from './middleware/sse-broker.js';
 
 const router = Router();
+
+/**
+ * Who is doing this, from the session rather than the request body.
+ *
+ * Admin auth is session-based, so req.user is not populated the way Passport
+ * routes expect. Attribution that a client could supply would be worthless on
+ * a ledger, so it is always looked up here.
+ */
+async function resolveActor(req: Request): Promise<{ id: string; name: string }> {
+    const id = (req as any).user?.id || req.session?.adminUserId || 'system';
+    let name = (req as any).user?.name || 'Admin';
+    if (id && id !== 'system') {
+        try {
+            const admin = await userRepo.getUser(id);
+            if (admin?.name) name = admin.name;
+        } catch { /* the ledger entry still gets an id */ }
+    }
+    return { id, name };
+}
+
 const MANUAL_PAYMENT_STATUSES = ['pending', 'staff_verified', 'rejected', 'applied_to_invoice'] as const;
 
 function canApplyManualPayment(payment: typeof manualPayments.$inferSelect) {
@@ -111,7 +133,22 @@ router.get('/api/petty-cash/summary', requireAdminAuth, requirePermission('finan
 router.post('/api/petty-cash', requireAdminAuth, requireGranularPermission('finance.createRecord'), async (req: Request, res: Response) => {
     try {
         const validated = insertPettyCashRecordSchema.parse(req.body);
-        const record = await financeRepo.createPettyCashRecord(validated);
+
+        // Finance staff enter on everybody's behalf, so who the money belongs
+        // to is a field on the form, while who typed it comes from the session
+        // and is never client-supplied.
+        const actor = await resolveActor(req);
+        const record = await financeRepo.createPettyCashRecord({
+            ...validated,
+            category: EXPENSE_CATEGORY_IDS.includes(validated.category as any)
+                ? validated.category
+                : normaliseLegacyCategory(validated.category),
+            enteredBy: actor.id,
+            enteredByName: actor.name,
+            // Absent means it was spent as it was entered, which is the common
+            // case; a backdated spend sends its own timestamp.
+            occurredAt: validated.occurredAt ? new Date(validated.occurredAt) : new Date(),
+        } as any);
 
         // If this is an Expense, subtract from active drawer expectedCash
         if (validated.type === 'Expense') {
@@ -123,23 +160,116 @@ router.post('/api/petty-cash', requireAdminAuth, requireGranularPermission('fina
 
         res.status(201).json(record);
     } catch (error) {
+        console.error('[PettyCash] Create failed:', error);
         res.status(400).json({ error: 'Invalid petty cash data' });
     }
 });
 
 /**
- * DELETE /api/petty-cash/:id - Delete petty cash record
- * Requires: Admin auth + finance permission
+ * GET /api/petty-cash/rollup — month, then day, then nothing else.
+ *
+ * The complaint this answers is that dozens of ৳40 entries are unreadable.
+ * They still all exist; this returns the shape you actually look at, and the
+ * individual entries stay behind the existing list endpoint for when a day is
+ * opened.
+ *
+ * Behind requirePermission('finance') like the rest of this file — the owner's
+ * personal spending is in this table, and it is not for general viewing.
  */
-router.delete('/api/petty-cash/:id', requireAdminAuth, requireGranularPermission('finance.deleteRecord'), async (req: Request, res: Response) => {
+router.get('/api/petty-cash/rollup', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
     try {
-        const success = await financeRepo.deletePettyCashRecord(req.params.id);
-        if (!success) {
+        const rollup = await financeRepo.getExpenseRollup({
+            from: req.query.from as string | undefined,
+            to: req.query.to as string | undefined,
+        });
+        res.json(rollup);
+    } catch (error) {
+        console.error('[PettyCash] Rollup failed:', error);
+        res.status(500).json({ error: 'Failed to build expense rollup' });
+    }
+});
+
+/**
+ * GET /api/petty-cash/by-person — what each person spent, and on what.
+ */
+router.get('/api/petty-cash/by-person', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+    try {
+        const people = await financeRepo.getExpenseByPerson({
+            from: req.query.from as string | undefined,
+            to: req.query.to as string | undefined,
+        });
+        res.json(people);
+    } catch (error) {
+        console.error('[PettyCash] Per-person breakdown failed:', error);
+        res.status(500).json({ error: 'Failed to build per-person breakdown' });
+    }
+});
+
+/**
+ * POST /api/petty-cash/:id/reverse — undo an expense without erasing it.
+ *
+ * This replaces DELETE, which had two faults. It removed the row outright, so
+ * a ledger meant to show what people spent could be made to forget. And it
+ * never gave the money back to the drawer: creating an expense subtracts from
+ * the session's expected cash, deleting it did not add back, so a mistyped and
+ * then deleted expense left the register expecting less cash than it held and
+ * the blind count reported a surplus on a shift where nothing had gone wrong.
+ *
+ * Reversing does both halves: the original is stamped, a cancelling row is
+ * written, and the drawer gets its money back.
+ */
+router.post('/api/petty-cash/:id/reverse', requireAdminAuth, requireGranularPermission('finance.deleteRecord'), async (req: Request, res: Response) => {
+    try {
+        const actor = await resolveActor(req);
+        const existing = await financeRepo.getPettyCashRecord(req.params.id);
+        if (!existing) {
             return res.status(404).json({ error: 'Record not found' });
         }
-        res.status(204).send();
+        if (existing.reversedAt || existing.reversalOf) {
+            return res.status(409).json({ error: 'This entry has already been reversed' });
+        }
+
+        const reason = typeof req.body?.reason === 'string' ? req.body.reason.trim() : '';
+        // Undoing your own entry is free; undoing somebody else's has to say
+        // why, or the ledger cannot explain where a spend went.
+        if (reversalNeedsReason({ entrySpentBy: existing.spentBy, entryEnteredBy: existing.enteredBy, actorId: actor.id }) && !reason) {
+            return res.status(400).json({
+                error: 'A reason is required to reverse an entry belonging to someone else',
+                code: 'REASON_REQUIRED',
+            });
+        }
+
+        const result = await financeRepo.reversePettyCashRecord(req.params.id, {
+            id: actor.id,
+            name: actor.name,
+            reason,
+        });
+        if (!result) {
+            return res.status(409).json({ error: 'This entry has already been reversed' });
+        }
+
+        // Give the drawer back what the original entry took from it. Only the
+        // open session can be adjusted — a closed one was already counted, and
+        // the cancelling row carries today's date for exactly that reason.
+        if (existing.type === 'Expense') {
+            const activeDrawer = await posRepo.getActiveDrawer();
+            if (activeDrawer) {
+                await posRepo.updateDrawerExpectedCash(activeDrawer.id, existing.amount);
+            }
+        }
+
+        await auditLogger.log({
+            userId: actor.id,
+            action: 'UPDATE',
+            entity: 'PETTY_CASH',
+            entityId: existing.id,
+            details: `Reversed ${existing.type} of ${existing.amount} (${existing.description})${reason ? ` — ${reason}` : ''}`,
+        });
+
+        res.json(result);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to delete record' });
+        console.error('[PettyCash] Reversal failed:', error);
+        res.status(500).json({ error: 'Failed to reverse record' });
     }
 });
 

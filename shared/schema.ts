@@ -797,16 +797,75 @@ export const pettyCashRecords = pgTable("petty_cash_records", {
   dueRecordId: text("due_record_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   drawerSessionId: text("drawer_session_id").references(() => drawerSessions.id), // Phase 7
+
+  /**
+   * Whose expense this is, and who typed it in — two different people.
+   *
+   * The table recorded neither, so "what did this person spend" had no answer
+   * at all. Finance staff enter on everybody's behalf, which is why the person
+   * the money belongs to cannot be inferred from the session that created the
+   * row. The names are snapshots on purpose: staff leave and get renamed, and a
+   * spend from March should still say who it was at the time.
+   */
+  spentBy: text("spent_by"),
+  spentByName: text("spent_by_name"),
+  enteredBy: text("entered_by"),
+  enteredByName: text("entered_by_name"),
+
+  /** office | complementary | personal — see shared/expense-tracking.ts. */
+  purpose: text("purpose"),
+
+  /**
+   * When the money actually left, as opposed to when it was typed in.
+   *
+   * Small spends are recorded hours later, often at the end of the day. Without
+   * this the daily totals attribute an 11am rickshaw fare to 6pm, and a spend
+   * made just before midnight lands on the wrong day entirely.
+   */
+  occurredAt: timestamp("occurred_at"),
+
+  /**
+   * Reversal, never deletion.
+   *
+   * Deleting used to remove the row outright while leaving the drawer's
+   * expected cash still reduced, so a deleted expense produced a phantom
+   * surplus at the blind count on a shift where nothing was wrong. Both rows
+   * are kept now: the original is stamped reversed, and the reversal points
+   * back at it through reversalOf.
+   */
+  reversalOf: text("reversal_of"),
+  reversedAt: timestamp("reversed_at"),
+  reversedBy: text("reversed_by"),
+  reversedByName: text("reversed_by_name"),
+  reversalReason: text("reversal_reason"),
 }, (table) => {
   return {
     createdAtIdx: index("idx_petty_cash_records_created_at").on(table.createdAt),
+    // The two questions this table is asked: what did this person spend, and
+    // what was spent on a given day.
+    spentByIdx: index("idx_petty_cash_records_spent_by").on(table.spentBy),
+    occurredAtIdx: index("idx_petty_cash_records_occurred_at").on(table.occurredAt),
   };
 });
 
-export const insertPettyCashRecordSchema = createInsertSchema(pettyCashRecords).omit({
-  id: true,
-  createdAt: true,
-});
+export const insertPettyCashRecordSchema = createInsertSchema(pettyCashRecords)
+  .omit({
+    id: true,
+    createdAt: true,
+    // Written from the session and from the reversal flow, never accepted from
+    // a client: attribution a caller can set is attribution worth nothing.
+    enteredBy: true,
+    enteredByName: true,
+    reversalOf: true,
+    reversedAt: true,
+    reversedBy: true,
+    reversedByName: true,
+    reversalReason: true,
+  })
+  .extend({
+    // JSON has no date type, so the form sends an ISO string.
+    occurredAt: z.coerce.date().optional().nullable(),
+  });
 export type InsertPettyCashRecord = z.infer<typeof insertPettyCashRecordSchema>;
 export type PettyCashRecord = typeof pettyCashRecords.$inferSelect;
 

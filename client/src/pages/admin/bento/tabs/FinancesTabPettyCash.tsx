@@ -16,19 +16,21 @@ import { InsertPettyCashRecord } from "@shared/schema";
 import { BentoCard, containerVariants, itemVariants } from "../shared";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { pettyCashApi } from "@/lib/api";
+import { pettyCashApi, usersApi } from "@/lib/api";
+import { EXPENSE_CATEGORIES, EXPENSE_PURPOSES } from "@shared/expense-tracking";
+import { ExpenseLedger } from "./FinancesTabExpenseLedger";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 
 export function PettyCashTab({
     getCurrencySymbol,
     createPettyCashMutation,
-    deletePettyCashMutation,
+    reversePettyCashMutation,
     exportToCSV,
     initialSearchQuery
 }: {
     getCurrencySymbol: () => string;
     createPettyCashMutation: any;
-    deletePettyCashMutation: any;
+    reversePettyCashMutation: any;
     exportToCSV: (data: any[], filename: string, columns: any[]) => void;
     initialSearchQuery?: string;
 }) {
@@ -46,9 +48,22 @@ export function PettyCashTab({
 
     const [form, setForm] = useState({
         description: "",
-        category: "",
+        category: "food",
         amount: "",
-        type: "Income",
+        type: "Expense",
+        // Whose expense this is. Finance staff record on everybody's behalf,
+        // so it cannot be inferred from who happens to be logged in.
+        spentBy: "",
+        purpose: "office",
+        // The day the money actually left, which is often not today when a
+        // handful of small spends are written up at the end of a shift.
+        occurredAt: new Date().toISOString().slice(0, 10),
+    });
+
+    const { data: staff = [] } = useQuery({
+        queryKey: ["users-for-expense"],
+        queryFn: usersApi.getAll,
+        staleTime: 5 * 60_000,
     });
 
     const isIncome = (type: string) => ["Income", "Cash", "Bank", "bKash", "Nagad"].includes(type);
@@ -111,14 +126,30 @@ export function PettyCashTab({
         totalPages: pettyCashData.pagination.pages
     } : undefined;
 
+    const resetForm = () => setForm({
+        description: "",
+        category: "food",
+        amount: "",
+        type: "Expense",
+        spentBy: "",
+        purpose: "office",
+        occurredAt: new Date().toISOString().slice(0, 10),
+    });
+
     const handleSubmit = () => {
+        const person = (staff as any[]).find((u) => u.id === form.spentBy);
         createPettyCashMutation.mutate({
             ...form,
-            amount: Number(form.amount) || 0
-        } as InsertPettyCashRecord, {
+            amount: Number(form.amount) || 0,
+            spentBy: form.spentBy || null,
+            // Snapshot the name: people leave and get renamed, and a spend from
+            // March should still say who it was at the time.
+            spentByName: person?.name ?? null,
+            occurredAt: form.occurredAt ? new Date(`${form.occurredAt}T12:00:00`).toISOString() : null,
+        } as unknown as InsertPettyCashRecord, {
             onSuccess: () => {
                 setIsDialogOpen(false);
-                setForm({ description: "", category: "", amount: "", type: "Income" });
+                resetForm();
             }
         });
     };
@@ -300,6 +331,18 @@ export function PettyCashTab({
                 </div>
             </div>
 
+            {/*
+              * The rolled-up ledger sits above the flat list on purpose.
+              *
+              * The list is still here — it is how you search and how a single
+              * entry gets opened — but it is not the thing to look at first.
+              * What a month cost, and what each person cost, is.
+              */}
+            <ExpenseLedger
+                getCurrencySymbol={getCurrencySymbol}
+                reversePettyCashMutation={reversePettyCashMutation}
+            />
+
             {/* Header & Add Button */}
             <div className="flex justify-between items-center">
                 <h2 className="text-lg font-bold">Transaction History</h2>
@@ -340,13 +383,57 @@ export function PettyCashTab({
                                 />
                             </div>
                             <div className="space-y-2">
+                                {/* Was a free-text box, which is why "tea", "Tea" and
+                                    "Snacks" were three different things to a SUM, and
+                                    why the shop could never answer what it spends on
+                                    what. */}
                                 <Label htmlFor="category">Category</Label>
+                                <Select value={form.category} onValueChange={(value) => setForm({ ...form, category: value })}>
+                                    <SelectTrigger id="category"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {EXPENSE_CATEGORIES.map((c) => (
+                                            <SelectItem key={c.id} value={c.id}>{c.label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="spentBy">Whose expense</Label>
+                                <Select value={form.spentBy || "none"} onValueChange={(value) => setForm({ ...form, spentBy: value === "none" ? "" : value })}>
+                                    <SelectTrigger id="spentBy"><SelectValue placeholder="Select a person" /></SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">Not attributed to a person</SelectItem>
+                                        {(staff as any[]).map((u) => (
+                                            <SelectItem key={u.id} value={u.id}>{u.name}{u.role ? ` \u2014 ${u.role}` : ""}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="purpose">Purpose</Label>
+                                <Select value={form.purpose} onValueChange={(value) => setForm({ ...form, purpose: value })}>
+                                    <SelectTrigger id="purpose"><SelectValue /></SelectTrigger>
+                                    <SelectContent>
+                                        {EXPENSE_PURPOSES.map((pp) => (
+                                            <SelectItem key={pp.id} value={pp.id}>{pp.label}</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-[11px] text-muted-foreground">
+                                    {EXPENSE_PURPOSES.find((pp) => pp.id === form.purpose)?.hint}
+                                </p>
+                            </div>
+                            <div className="space-y-2">
+                                <Label htmlFor="occurredAt">Date spent</Label>
                                 <Input
-                                    id="category"
-                                    placeholder="Service / Food / Transport"
-                                    value={form.category}
-                                    onChange={(e) => setForm({ ...form, category: e.target.value })}
+                                    id="occurredAt"
+                                    type="date"
+                                    value={form.occurredAt}
+                                    onChange={(e) => setForm({ ...form, occurredAt: e.target.value })}
                                 />
+                                <p className="text-[11px] text-muted-foreground">
+                                    When the money actually left, not when you are typing it in.
+                                </p>
                             </div>
                             <div className="space-y-2">
                                 <Label htmlFor="amount">Amount ({getCurrencySymbol()})</Label>
@@ -574,19 +661,47 @@ export function PettyCashTab({
                                     {selectedTransaction.type === "Income" ? "+" : "-"}{getCurrencySymbol()}{Number(selectedTransaction.amount).toLocaleString()}
                                 </p>
                             </div>
-                            <Button
-                                variant="destructive"
-                                className="w-full mt-4"
-                                onClick={() => {
-                                    if (confirm("Are you sure you want to delete this transaction?")) {
-                                        deletePettyCashMutation.mutate(selectedTransaction.id, {
-                                            onSuccess: () => setIsDetailDialogOpen(false)
-                                        });
-                                    }
-                                }}
-                            >
-                                Delete Transaction
-                            </Button>
+                            {selectedTransaction.spentByName && (
+                                <div>
+                                    <p className="text-xs text-muted-foreground">Whose expense</p>
+                                    <p className="font-medium mt-1">{selectedTransaction.spentByName}</p>
+                                </div>
+                            )}
+                            {/*
+                              * Reverse, not delete.
+                              *
+                              * Deleting removed the row while leaving the register still
+                              * expecting less cash, so a mistyped and deleted expense
+                              * turned into a surplus at the next blind count on a shift
+                              * where nothing had gone wrong. Reversing keeps both rows
+                              * and hands the money back.
+                              */}
+                            {selectedTransaction.reversedAt ? (
+                                <p className="mt-4 rounded-md bg-rose-50 p-3 text-sm font-semibold text-rose-700">
+                                    Reversed by {selectedTransaction.reversedByName || "someone"}
+                                    {selectedTransaction.reversalReason ? ` — ${selectedTransaction.reversalReason}` : ""}
+                                </p>
+                            ) : (
+                                <Button
+                                    variant="outline"
+                                    className="mt-4 w-full border-rose-200 text-rose-600 hover:bg-rose-50"
+                                    disabled={reversePettyCashMutation.isPending}
+                                    onClick={() => {
+                                        const reason = window.prompt(
+                                            "Reverse this entry?\n\nIt stays on the record and a cancelling entry is added. " +
+                                            "If it was paid from the register, the amount goes back.\n\n" +
+                                            "Reason (required when the entry is not yours):",
+                                        );
+                                        if (reason === null) return;
+                                        reversePettyCashMutation.mutate(
+                                            { id: selectedTransaction.id, reason },
+                                            { onSuccess: () => setIsDetailDialogOpen(false) },
+                                        );
+                                    }}
+                                >
+                                    Reverse Transaction
+                                </Button>
+                            )}
                         </div>
                     )}
                     <DialogFooter>

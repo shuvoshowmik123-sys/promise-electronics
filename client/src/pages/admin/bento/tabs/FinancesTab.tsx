@@ -142,15 +142,28 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
         },
     });
 
-    const deletePettyCashMutation = useMutation({
-        mutationFn: pettyCashApi.delete,
+    /**
+     * Reverse, not delete.
+     *
+     * The entry stays and a cancelling entry is written beside it, so the
+     * ledger can still say the spend was recorded and then withdrawn. It also
+     * returns the cash to the open drawer, which deleting never did — that gap
+     * made a mistyped and deleted expense show up as a surplus at the blind
+     * count on a shift where nothing had gone wrong.
+     */
+    const reversePettyCashMutation = useMutation({
+        mutationFn: ({ id, reason }: { id: string; reason?: string }) => pettyCashApi.reverse(id, reason),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["pettyCash"] });
+            queryClient.invalidateQueries({ queryKey: ["pettyCash-paginated"] });
             queryClient.invalidateQueries({ queryKey: ["petty-cash-summary-global"] });
-            toast.success("Transaction deleted successfully");
+            queryClient.invalidateQueries({ queryKey: ["petty-cash-rollup"] });
+            queryClient.invalidateQueries({ queryKey: ["petty-cash-by-person"] });
+            queryClient.invalidateQueries({ queryKey: ["drawer-active"] });
+            toast.success("Entry reversed — the amount has been returned to the register");
         },
         onError: (error: Error) => {
-            toast.error(`Failed to delete transaction: ${error.message}`);
+            toast.error(error.message || "Failed to reverse the entry");
         },
     });
 
@@ -595,7 +608,7 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
                             ))}
                         </div>
                         {moneyOutView === "expenses" && (
-                            <PettyCashTab getCurrencySymbol={getCurrencySymbol} createPettyCashMutation={createPettyCashMutation} deletePettyCashMutation={deletePettyCashMutation} exportToCSV={exportToCSV} initialSearchQuery={financeSearchQuery} />
+                            <PettyCashTab getCurrencySymbol={getCurrencySymbol} createPettyCashMutation={createPettyCashMutation} reversePettyCashMutation={reversePettyCashMutation} exportToCSV={exportToCSV} initialSearchQuery={financeSearchQuery} />
                         )}
                         {moneyOutView === "pending-costs" && (
                             <Suspense fallback={null}><PendingCostsView /></Suspense>

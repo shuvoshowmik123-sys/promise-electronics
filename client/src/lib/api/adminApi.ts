@@ -560,10 +560,49 @@ export const pettyCashApi = {
             method: "POST",
             body: JSON.stringify(data),
         }),
-    delete: (id: string) =>
-        fetchApi<void>(`/petty-cash/${id}`, {
-            method: "DELETE",
+    /**
+     * Undo, not delete. The row stays and a cancelling row is written, and the
+     * drawer gets back the cash the original entry took from it — which the
+     * old DELETE never did, leaving a phantom surplus at the blind count.
+     */
+    reverse: (id: string, reason?: string) =>
+        fetchApi<{ original: PettyCashRecord; reversal: PettyCashRecord }>(`/petty-cash/${id}/reverse`, {
+            method: "POST",
+            body: JSON.stringify({ reason: reason ?? "" }),
         }),
+    getRollup: (filters?: { from?: string; to?: string }) => {
+        const params = new URLSearchParams();
+        if (filters?.from) params.append('from', filters.from);
+        if (filters?.to) params.append('to', filters.to);
+        const query = params.toString();
+        return fetchApi<ExpenseRollup>(`/petty-cash/rollup${query ? `?${query}` : ''}`);
+    },
+    getByPerson: (filters?: { from?: string; to?: string }) => {
+        const params = new URLSearchParams();
+        if (filters?.from) params.append('from', filters.from);
+        if (filters?.to) params.append('to', filters.to);
+        const query = params.toString();
+        return fetchApi<ExpenseByPerson[]>(`/petty-cash/by-person${query ? `?${query}` : ''}`);
+    },
+};
+
+export type ExpenseRollup = {
+    total: number;
+    months: Array<{
+        month: string;
+        total: number;
+        count: number;
+        days: Array<{ day: string; total: number; count: number }>;
+    }>;
+};
+
+export type ExpenseByPerson = {
+    spentBy: string | null;
+    spentByName: string;
+    total: number;
+    count: number;
+    byCategory: Record<string, number>;
+    byPurpose: Record<string, number>;
 };
 
 // Due Records API
