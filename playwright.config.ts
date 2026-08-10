@@ -16,6 +16,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : 1,
   timeout: 30_000,
   expect: { timeout: 5_000 },
+  // A hung click must not eat the whole test budget before the next attempt.
 
   reporter: process.env.CI
     ? [['html', { open: 'never' }], ['github']]
@@ -23,6 +24,8 @@ export default defineConfig({
 
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:5083',
+    // A hung click must not eat the whole test budget before the retry.
+    actionTimeout: 10_000,
     headless: process.env.CI ? true : !HEADED,
     launchOptions: {
       slowMo: Number.isFinite(SLOW_MO) && SLOW_MO > 0 ? SLOW_MO : undefined,
@@ -85,10 +88,20 @@ export default defineConfig({
     },
   ],
 
-  webServer: {
-    command: 'npm run dev',
-    url: 'http://localhost:5083',
-    reuseExistingServer: true,
-    timeout: 60_000,
-  },
+  /**
+   * Only boot a local dev server when the tests are actually pointed at one.
+   *
+   * BASE_URL set to a remote host means the run is auditing a deployed build,
+   * and starting `npm run dev` then costs a minute of boot, floods the output
+   * with unrelated startup errors, and proves nothing about the site under
+   * test.
+   */
+  webServer: /^https?:\/\/(localhost|127\.0\.0\.1)/.test(process.env.BASE_URL || 'http://localhost:5083')
+    ? {
+      command: 'npm run dev',
+      url: 'http://localhost:5083',
+      reuseExistingServer: true,
+      timeout: 60_000,
+    }
+    : undefined,
 });

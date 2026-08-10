@@ -53,9 +53,18 @@ export function AdminPwaInstallPrompt() {
   };
 
   return (
-    /* Above the dock and inset on a phone, where 320px pinned to a corner is
-       most of the screen; the original corner card returns from sm up. */
-    <div className="fixed inset-x-3 bottom-[calc(env(safe-area-inset-bottom)+5.5rem)] z-50 animate-in slide-in-from-bottom-4 duration-300 sm:inset-x-auto sm:bottom-4 sm:right-4 sm:w-80">
+    /*
+     * Top of the screen on a phone, bottom-right from sm up.
+     *
+     * The bottom of a phone screen is contested space — the tab dock lives
+     * there, so does the POS cart bar, so does every sheet's action row. This
+     * banner was moved from the corner to just above the dock and immediately
+     * started intercepting taps on "View Cart", which is the same class of bug
+     * it had caused on the sourced-part form. Chasing it upward one bar at a
+     * time is a losing game; the top is the only part of a phone screen nothing
+     * else claims.
+     */
+    <div className="fixed inset-x-3 top-[calc(env(safe-area-inset-top)+0.75rem)] z-50 animate-in slide-in-from-top-4 duration-300 sm:inset-x-auto sm:top-auto sm:bottom-4 sm:right-4 sm:w-80">
       <div className="bg-white rounded-xl shadow-lg border border-slate-200 overflow-hidden">
         <div className="flex items-center gap-3 p-3 bg-slate-900 text-white">
           <div className="w-9 h-9 bg-white/10 rounded-lg flex items-center justify-center flex-shrink-0">
