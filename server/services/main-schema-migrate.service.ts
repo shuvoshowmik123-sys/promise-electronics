@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_10_expense_attribution";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_11_expense_part_quantity";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2186,6 +2186,19 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       await client.query(`UPDATE petty_cash_records
         SET occurred_at = created_at
         WHERE occurred_at IS NULL`);
+    },
+  },
+  {
+    id: "2026_08_11_expense_part_quantity",
+    description:
+      "The part bought and how many of it, as fields rather than words inside a description. A month of parts buying is a question the shop asks - ten LVDS cables, four panels - and no total can be built from sentences, so a description saying '10 LVDS cables' can be read by a person and by nothing else. Both columns stay null on every expense that is not a part, because a rickshaw fare has no quantity worth counting. Additive only: two nullable columns, no backfill, every existing row still reads.",
+    up: async (client) => {
+      await client.query(`ALTER TABLE petty_cash_records
+        ADD COLUMN IF NOT EXISTS part_name TEXT,
+        ADD COLUMN IF NOT EXISTS quantity INTEGER`);
+      // The monthly parts summary groups on this and nothing else.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_petty_cash_records_part_name
+        ON petty_cash_records (part_name) WHERE part_name IS NOT NULL`);
     },
   },
 ];

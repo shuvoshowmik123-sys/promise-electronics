@@ -17,7 +17,8 @@ import { BentoCard, containerVariants, itemVariants } from "../shared";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { pettyCashApi, usersApi } from "@/lib/api";
-import { EXPENSE_CATEGORIES, EXPENSE_PURPOSES } from "@shared/expense-tracking";
+import { CATEGORY_TAKES_QUANTITY, EXPENSE_CATEGORIES, EXPENSE_PURPOSES } from "@shared/expense-tracking";
+import { ExpenseSheet } from "./FinancesTabExpenseSheet";
 import { ExpenseLedger } from "./FinancesTabExpenseLedger";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 
@@ -48,9 +49,13 @@ export function PettyCashTab({
 
     const [form, setForm] = useState({
         description: "",
-        category: "food",
+        category: "parts",
         amount: "",
         type: "Expense",
+        // Only meaningful on a part. A rickshaw fare has no quantity worth
+        // counting, so these stay empty and are sent as null.
+        partName: "",
+        quantity: "1",
         // Whose expense this is. Finance staff record on everybody's behalf,
         // so it cannot be inferred from who happens to be logged in.
         spentBy: "",
@@ -128,13 +133,17 @@ export function PettyCashTab({
 
     const resetForm = () => setForm({
         description: "",
-        category: "food",
+        category: "parts",
         amount: "",
         type: "Expense",
+        partName: "",
+        quantity: "1",
         spentBy: "",
         purpose: "office",
         occurredAt: new Date().toISOString().slice(0, 10),
     });
+
+    const isPartsExpense = form.category === CATEGORY_TAKES_QUANTITY;
 
     const handleSubmit = () => {
         const person = (staff as any[]).find((u) => u.id === form.spentBy);
@@ -145,6 +154,10 @@ export function PettyCashTab({
             // Snapshot the name: people leave and get renamed, and a spend from
             // March should still say who it was at the time.
             spentByName: person?.name ?? null,
+            // A part carries its name and count as fields so a month can be
+            // added up; everything else sends null rather than a stray "1".
+            partName: isPartsExpense ? form.partName.trim() || null : null,
+            quantity: isPartsExpense ? Math.max(1, Number(form.quantity) || 1) : null,
             occurredAt: form.occurredAt ? new Date(`${form.occurredAt}T12:00:00`).toISOString() : null,
         } as unknown as InsertPettyCashRecord, {
             onSuccess: () => {
@@ -338,10 +351,11 @@ export function PettyCashTab({
               * entry gets opened — but it is not the thing to look at first.
               * What a month cost, and what each person cost, is.
               */}
-            <ExpenseLedger
+            <ExpenseSheet
                 getCurrencySymbol={getCurrencySymbol}
                 reversePettyCashMutation={reversePettyCashMutation}
             />
+            <ExpenseLedger getCurrencySymbol={getCurrencySymbol} />
 
             {/* Header & Add Button */}
             <div className="flex justify-between items-center">
@@ -397,6 +411,32 @@ export function PettyCashTab({
                                     </SelectContent>
                                 </Select>
                             </div>
+                            {/* Shown only for parts. Asking "how many?" about a
+                                rickshaw fare is noise, and a quantity nobody
+                                meant is worse than no quantity at all. */}
+                            {isPartsExpense && (
+                                <div className="grid grid-cols-[1fr_100px] gap-2">
+                                    <div className="space-y-2">
+                                        <Label htmlFor="partName">Part</Label>
+                                        <Input
+                                            id="partName"
+                                            placeholder="LVDS cable"
+                                            value={form.partName}
+                                            onChange={(e) => setForm({ ...form, partName: e.target.value })}
+                                        />
+                                    </div>
+                                    <div className="space-y-2">
+                                        <Label htmlFor="quantity">Qty</Label>
+                                        <Input
+                                            id="quantity"
+                                            type="number"
+                                            min={1}
+                                            value={form.quantity}
+                                            onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                                        />
+                                    </div>
+                                </div>
+                            )}
                             <div className="space-y-2">
                                 <Label htmlFor="spentBy">Whose expense</Label>
                                 <Select value={form.spentBy || "none"} onValueChange={(value) => setForm({ ...form, spentBy: value === "none" ? "" : value })}>

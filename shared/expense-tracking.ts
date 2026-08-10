@@ -21,15 +21,18 @@
  */
 
 export const EXPENSE_CATEGORIES = [
-  { id: "food", label: "Tea, food & refreshments" },
-  { id: "transport", label: "Transport & parts runs" },
-  { id: "communication", label: "Mobile recharge & internet" },
-  { id: "utilities", label: "Utilities & shop upkeep" },
-  { id: "other", label: "Other" },
+  { id: "parts", label: "Parts", hint: "Panels, boards, cables — anything bought for a repair.", dot: "bg-blue-500" },
+  { id: "conveyance", label: "Conveyance", hint: "Rickshaw, CNG, bus, fuel — including trips to collect a part.", dot: "bg-amber-500" },
+  { id: "food", label: "Food", hint: "Tea, snacks, staff lunch, refreshments for a waiting customer.", dot: "bg-emerald-500" },
+  { id: "official", label: "Official", hint: "Utilities, recharge, internet, courier, stationery, shop upkeep.", dot: "bg-violet-500" },
+  { id: "other", label: "Other", hint: "Anything that fits nowhere above. Say what it was.", dot: "bg-slate-400" },
 ] as const;
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number]["id"];
 export const EXPENSE_CATEGORY_IDS = EXPENSE_CATEGORIES.map((c) => c.id) as ExpenseCategory[];
+
+/** Only parts are counted by the piece; nothing else has a meaningful quantity. */
+export const CATEGORY_TAKES_QUANTITY: ExpenseCategory = "parts";
 
 export const EXPENSE_PURPOSES = [
   {
@@ -55,6 +58,9 @@ export const EXPENSE_PURPOSE_IDS = EXPENSE_PURPOSES.map((p) => p.id) as ExpenseP
 export const categoryLabel = (id: string): string =>
   EXPENSE_CATEGORIES.find((c) => c.id === id)?.label ?? id;
 
+export const categoryDot = (id: string): string =>
+  EXPENSE_CATEGORIES.find((c) => c.id === id)?.dot ?? "bg-slate-300";
+
 export const purposeLabel = (id: string): string =>
   EXPENSE_PURPOSES.find((p) => p.id === id)?.label ?? id;
 
@@ -66,10 +72,13 @@ export const purposeLabel = (id: string): string =>
 export function normaliseLegacyCategory(raw: unknown): ExpenseCategory {
   const s = String(raw ?? "").trim().toLowerCase();
   if (!s) return "other";
+  // Official is tested first because its words are longer and more specific.
+  // "electricity" contains "ic", and an unanchored "ic" in the parts pattern
+  // filed the power bill as a component.
+  if (/official|utility|electric|bill|clean|maintenance|rent|stationery|courier|recharge|mobile|phone|internet|wifi|data|sim|broadband/.test(s)) return "official";
+  if (/part|panel|board|lvds|cable|backlight|capacitor|screen|component|spare|(^|[^a-z])ic([^a-z]|$)/.test(s)) return "parts";
+  if (/transport|conveyance|rickshaw|cng|bus|fare|fuel|petrol|travel|trip|market/.test(s)) return "conveyance";
   if (/tea|food|snack|lunch|breakfast|dinner|refresh|water|biscuit/.test(s)) return "food";
-  if (/transport|rickshaw|cng|bus|fare|fuel|petrol|travel|trip|market/.test(s)) return "transport";
-  if (/recharge|mobile|phone|internet|wifi|data|sim|broadband/.test(s)) return "communication";
-  if (/utility|electric|bill|water bill|clean|maintenance|repair|rent|stationery|courier/.test(s)) return "utilities";
   return "other";
 }
 

@@ -20,6 +20,7 @@ export async function getAllPettyCashRecords(filters?: {
     from?: string;
     to?: string;
     type?: string;
+    category?: string;
 }): Promise<PaginationResult<PettyCashRecord>> {
     const page = filters?.page || 1;
     const limit = filters?.limit || 25;
@@ -34,17 +35,32 @@ export async function getAllPettyCashRecords(filters?: {
         ));
     }
 
+    // One tap on a chip is the whole interface, so this has to be a real
+    // query rather than the page filtering whatever happened to be fetched —
+    // otherwise "Parts" would show only the parts inside the current 25 rows.
+    if (filters?.category && filters.category !== 'all') {
+        conditions.push(eq(schema.pettyCashRecords.category, filters.category));
+    }
+
+    /**
+     * Dates run on when the money left, falling back to when it was typed.
+     *
+     * A spend made at 11am and written up at 6pm belongs to 11am, and one
+     * entered after midnight belongs to the day before. Older rows have no
+     * occurred_at, hence the fallback.
+     */
+    const spentAt = sql`COALESCE(${schema.pettyCashRecords.occurredAt}, ${schema.pettyCashRecords.createdAt})`;
+
     if (filters?.from) {
-        // Assume from is a date string YYYY-MM-DD
         const fromDate = new Date(filters.from);
         fromDate.setHours(0, 0, 0, 0);
-        conditions.push(gte(schema.pettyCashRecords.createdAt, fromDate));
+        conditions.push(sql`${spentAt} >= ${fromDate}`);
     }
 
     if (filters?.to) {
         const toDate = new Date(filters.to);
         toDate.setHours(23, 59, 59, 999);
-        conditions.push(lte(schema.pettyCashRecords.createdAt, toDate));
+        conditions.push(sql`${spentAt} <= ${toDate}`);
     }
 
     const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
@@ -58,7 +74,7 @@ export async function getAllPettyCashRecords(filters?: {
         .select()
         .from(schema.pettyCashRecords)
         .where(whereClause)
-        .orderBy(desc(schema.pettyCashRecords.createdAt))
+        .orderBy(desc(spentAt))
         .limit(limit)
         .offset(offset);
 
@@ -121,16 +137,95 @@ export async function createPettyCashRecord(record: InsertPettyCashRecord): Prom
 }
 
 /**
- * The shape the shop actually wants to look at.
+ * The number on each filter chip, and the total behind it.
+ *
+ * Computed in one pass over the same rows the sheet shows, so a chip can never
+ * disagree with the list it opens. Returned for every category including the
+ * empty ones — a chip that vanishes when it reaches zero makes the row of
+ * chips jump about as you filter.
+ */
+export async function getExpenseCategoryTotals(filters: { from?: string; to?: string }): Promise<{
+    all: { total: number; count: number };
+    byCategory: Record<string, { total: number; count: number }>;
+}> {
+    const rows = await db.execute(sql`
+        SELECT COALESCE(category, 'other') AS category,
+               SUM(amount)::float8         AS total,
+               COUNT(*)::int               AS count
+        FROM petty_cash_records
+        WHERE type = 'Expense'
+          AND reversed_at IS NULL
+          AND reversal_of IS NULL
+          ${filters.from ? sql`AND COALESCE(occurred_at, created_at) >= ${new Date(filters.from)}` : sql``}
+          ${filters.to ? sql`AND COALESCE(occurred_at, created_at) <= ${new Date(filters.to)}` : sql``}
+        GROUP BY 1
+    `);
+
+    const byCategory: Record<string, { total: number; count: number }> = {};
+    let total = 0;
+    let count = 0;
+    for (const row of ((rows as any).rows ?? rows) as any[]) {
+        byCategory[row.category] = { total: Number(row.total), count: Number(row.count) };
+        total += Number(row.total);
+        count += Number(row.count);
+    }
+    return { all: { total, count }, byCategory };
+}
+
+/**
+ * What parts were bought in a month, by the piece.
+ *
+ * "February: LVDS x10, Panel x4" is the question, and it cannot be answered
+ * from a description that happens to read "10 LVDS cables". Only rows in the
+ * parts category carry a part name, so only they appear here.
+ */
+export async function getPartsSummary(filters: { from?: string; to?: string }): Promise<Array<{
+    month: string;
+    total: number;
+    parts: Array<{ partName: string; quantity: number; total: number; buys: number }>;
+}>> {
+    const rows = await db.execute(sql`
+        SELECT to_char(COALESCE(occurred_at, created_at), 'YYYY-MM') AS month,
+               part_name                                             AS "partName",
+               SUM(COALESCE(quantity, 1))::int                       AS quantity,
+               SUM(amount)::float8                                   AS total,
+               COUNT(*)::int                                         AS buys
+        FROM petty_cash_records
+        WHERE type = 'Expense'
+          AND reversed_at IS NULL
+          AND reversal_of IS NULL
+          AND part_name IS NOT NULL
+          AND part_name <> ''
+          ${filters.from ? sql`AND COALESCE(occurred_at, created_at) >= ${new Date(filters.from)}` : sql``}
+          ${filters.to ? sql`AND COALESCE(occurred_at, created_at) <= ${new Date(filters.to)}` : sql``}
+        GROUP BY 1, 2
+        ORDER BY 1 DESC, 4 DESC
+    `);
+
+    type PartRow = { partName: string; quantity: number; total: number; buys: number };
+    type MonthRow = { month: string; total: number; parts: PartRow[] };
+    const months = new Map<string, MonthRow>();
+    for (const row of ((rows as any).rows ?? rows) as any[]) {
+        const bucket: MonthRow = months.get(row.month) ?? { month: row.month, total: 0, parts: [] };
+        bucket.parts.push({
+            partName: row.partName,
+            quantity: Number(row.quantity),
+            total: Number(row.total),
+            buys: Number(row.buys),
+        });
+        bucket.total += Number(row.total);
+        months.set(row.month, bucket);
+    }
+    return Array.from(months.values());
+}
+
+/**
+ * Month, then day, then nothing else.
  *
  * A flat list of small spends is unreadable by design — that is the complaint
- * this answers. The money is rolled up by month, then by day, and the
- * individual entries are only fetched when a day is opened. Nothing is thrown
- * away; it is just not all shown at once.
- *
- * Reversed entries and the rows that reversed them are both excluded, because
- * counting either would misstate the total and counting both would cancel
- * twice.
+ * this answers. Individual entries are only fetched when a day is opened, and
+ * reversed rows and the rows that reversed them are both excluded: counting
+ * either would misstate the total, counting both would cancel twice.
  */
 export async function getExpenseRollup(filters: { from?: string; to?: string }): Promise<{
     months: Array<{

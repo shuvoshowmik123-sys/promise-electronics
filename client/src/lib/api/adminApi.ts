@@ -537,7 +537,7 @@ export const challansApi = {
 
 // Petty Cash API
 export const pettyCashApi = {
-    getAll: (filters?: { page?: number; limit?: number; search?: string; from?: string; to?: string; type?: string }) => {
+    getAll: (filters?: { page?: number; limit?: number; search?: string; from?: string; to?: string; type?: string; category?: string }) => {
         const params = new URLSearchParams();
         if (filters?.page) params.append('page', filters.page.toString());
         if (filters?.limit) params.append('limit', filters.limit.toString());
@@ -545,6 +545,7 @@ export const pettyCashApi = {
         if (filters?.from) params.append('from', filters.from);
         if (filters?.to) params.append('to', filters.to);
         if (filters?.type) params.append('type', filters.type);
+        if (filters?.category && filters.category !== 'all') params.append('category', filters.category);
         const query = params.toString();
         return fetchApi<PaginationResult<PettyCashRecord>>(`/petty-cash${query ? `?${query}` : ''}`);
     },
@@ -570,6 +571,20 @@ export const pettyCashApi = {
             method: "POST",
             body: JSON.stringify({ reason: reason ?? "" }),
         }),
+    getCategoryTotals: (filters?: { from?: string; to?: string }) => {
+        const params = new URLSearchParams();
+        if (filters?.from) params.append('from', filters.from);
+        if (filters?.to) params.append('to', filters.to);
+        const query = params.toString();
+        return fetchApi<ExpenseCategoryTotals>(`/petty-cash/category-totals${query ? `?${query}` : ''}`);
+    },
+    getPartsSummary: (filters?: { from?: string; to?: string }) => {
+        const params = new URLSearchParams();
+        if (filters?.from) params.append('from', filters.from);
+        if (filters?.to) params.append('to', filters.to);
+        const query = params.toString();
+        return fetchApi<PartsSummaryMonth[]>(`/petty-cash/parts-summary${query ? `?${query}` : ''}`);
+    },
     getRollup: (filters?: { from?: string; to?: string }) => {
         const params = new URLSearchParams();
         if (filters?.from) params.append('from', filters.from);
@@ -584,6 +599,17 @@ export const pettyCashApi = {
         const query = params.toString();
         return fetchApi<ExpenseByPerson[]>(`/petty-cash/by-person${query ? `?${query}` : ''}`);
     },
+};
+
+export type ExpenseCategoryTotals = {
+    all: { total: number; count: number };
+    byCategory: Record<string, { total: number; count: number }>;
+};
+
+export type PartsSummaryMonth = {
+    month: string;
+    total: number;
+    parts: Array<{ partName: string; quantity: number; total: number; buys: number }>;
 };
 
 export type ExpenseRollup = {

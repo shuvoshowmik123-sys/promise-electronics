@@ -12,9 +12,11 @@ import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  CATEGORY_TAKES_QUANTITY,
   EXPENSE_CATEGORIES,
   EXPENSE_CATEGORY_IDS,
   EXPENSE_PURPOSE_IDS,
+  categoryDot,
   categoryLabel,
   isLiveExpense,
   normaliseLegacyCategory,
@@ -47,6 +49,15 @@ describe("an expense says whose it was", () => {
     }
   });
 
+  it("stores the part and how many, as fields not words", () => {
+    // "10 LVDS cables - 8500" typed into a description is a sentence, and no
+    // month total can be built from sentences.
+    expect(SCHEMA).toContain('partName: text("part_name")');
+    expect(SCHEMA).toContain('quantity: integer("quantity")');
+    expect(MIGRATIONS).toContain('id: "2026_08_11_expense_part_quantity"');
+    expect(MIGRATIONS).toContain("ADD COLUMN IF NOT EXISTS part_name TEXT");
+  });
+
   it("ships the migration that adds them", () => {
     // Assert the migration exists rather than pinning the required version —
     // pinning breaks on the next unrelated migration for no benefit.
@@ -60,7 +71,8 @@ describe("an expense says whose it was", () => {
 
 describe("categories can actually be summed", () => {
   it("is a fixed list, not a free-text box", () => {
-    expect(EXPENSE_CATEGORY_IDS).toEqual(["food", "transport", "communication", "utilities", "other"]);
+    // These five are the filter chips, in the order they appear.
+    expect(EXPENSE_CATEGORY_IDS).toEqual(["parts", "conveyance", "food", "official", "other"]);
     expect(EXPENSE_PURPOSE_IDS).toEqual(["office", "complementary", "personal"]);
     expect(new Set(EXPENSE_CATEGORY_IDS).size).toBe(EXPENSE_CATEGORIES.length);
   });
@@ -72,14 +84,30 @@ describe("categories can actually be summed", () => {
     expect(EXPENSE_PURPOSE_IDS).not.toContain("food");
   });
 
+  it("counts by the piece for parts and nothing else", () => {
+    // Asking "how many?" about a rickshaw fare is noise, and a quantity
+    // nobody meant is worse than no quantity at all.
+    expect(CATEGORY_TAKES_QUANTITY).toBe("parts");
+    expect(EXPENSE_CATEGORY_IDS).toContain(CATEGORY_TAKES_QUANTITY);
+  });
+
+  it("gives every category a dot, and no two the same", () => {
+    // Colour is the only decoration on the sheet, so it has to be distinct.
+    const dots = EXPENSE_CATEGORIES.map((c) => c.dot);
+    expect(new Set(dots).size).toBe(dots.length);
+    for (const id of EXPENSE_CATEGORY_IDS) expect(categoryDot(id)).toMatch(/^bg-/);
+  });
+
   it("buckets what people already typed instead of dropping it", () => {
     expect(normaliseLegacyCategory("Tea")).toBe("food");
     expect(normaliseLegacyCategory("tea")).toBe("food");
     expect(normaliseLegacyCategory("Snacks for staff")).toBe("food");
-    expect(normaliseLegacyCategory("CNG fare")).toBe("transport");
-    expect(normaliseLegacyCategory("Stadium Market trip")).toBe("transport");
-    expect(normaliseLegacyCategory("mobile recharge")).toBe("communication");
-    expect(normaliseLegacyCategory("Electricity bill")).toBe("utilities");
+    expect(normaliseLegacyCategory("CNG fare")).toBe("conveyance");
+    expect(normaliseLegacyCategory("Stadium Market trip")).toBe("conveyance");
+    expect(normaliseLegacyCategory("LVDS cable")).toBe("parts");
+    expect(normaliseLegacyCategory("32 inch panel")).toBe("parts");
+    expect(normaliseLegacyCategory("mobile recharge")).toBe("official");
+    expect(normaliseLegacyCategory("Electricity bill")).toBe("official");
     // A mis-bucketed historical row is a smaller lie than a total that omits it.
     for (const junk of ["", null, undefined, "qwerty"]) {
       expect(normaliseLegacyCategory(junk), String(junk)).toBe("other");
@@ -182,6 +210,22 @@ describe("totals", () => {
       expect(query, `${name} counts reversal rows`).toContain("reversal_of IS NULL");
       expect(query, `${name} counts income as spending`).toContain("type = 'Expense'");
     }
+  });
+
+  it("counts parts by the piece, and only parts", () => {
+    const fn = REPO.slice(REPO.indexOf("export async function getPartsSummary"));
+    const query = fn.slice(0, fn.indexOf("`);"));
+    expect(query).toContain("part_name IS NOT NULL");
+    // A part bought without a stated count is one of it, not zero.
+    expect(query).toContain("SUM(COALESCE(quantity, 1))");
+    expect(query).toContain("reversed_at IS NULL");
+  });
+
+  it("filters the whole ledger by chip, not just the page", () => {
+    // Otherwise "Parts" would show only the parts inside the rows already
+    // fetched, and the chip count would disagree with the list it opens.
+    expect(REPO).toContain("eq(schema.pettyCashRecords.category, filters.category)");
+    expect(ROUTES).toContain("category: category as string");
   });
 
   it("groups by when the money left, not when it was typed", () => {

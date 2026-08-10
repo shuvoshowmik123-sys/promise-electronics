@@ -816,6 +816,18 @@ export const pettyCashRecords = pgTable("petty_cash_records", {
   purpose: text("purpose"),
 
   /**
+   * The part, and how many of it.
+   *
+   * "10 LVDS cables — 8500" typed into a description is a sentence, and no
+   * total can be built from sentences. Held as their own fields so a month can
+   * answer "LVDS x10, Panel x4" instead of only "parts: 20,500". Both are null
+   * on anything that is not a part, because a rickshaw fare has no quantity
+   * worth counting.
+   */
+  partName: text("part_name"),
+  quantity: integer("quantity"),
+
+  /**
    * When the money actually left, as opposed to when it was typed in.
    *
    * Small spends are recorded hours later, often at the end of the day. Without

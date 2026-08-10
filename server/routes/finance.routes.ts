@@ -95,7 +95,7 @@ async function notifyCustomerPaymentDecision(payment: typeof manualPayments.$inf
  */
 router.get('/api/petty-cash', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
     try {
-        const { page, limit, search, from, to, type } = req.query;
+        const { page, limit, search, from, to, type, category } = req.query;
         const records = await financeRepo.getAllPettyCashRecords({
             page: page ? Number(page) : undefined,
             limit: limit ? Number(limit) : undefined,
@@ -103,6 +103,9 @@ router.get('/api/petty-cash', requireAdminAuth, requirePermission('finance'), as
             from: from as string,
             to: to as string,
             type: type as string,
+            // The filter chips run through here, so a chip filters the whole
+            // ledger rather than whichever 25 rows are on screen.
+            category: category as string,
         });
         res.json(records);
     } catch (error) {
@@ -162,6 +165,36 @@ router.post('/api/petty-cash', requireAdminAuth, requireGranularPermission('fina
     } catch (error) {
         console.error('[PettyCash] Create failed:', error);
         res.status(400).json({ error: 'Invalid petty cash data' });
+    }
+});
+
+/**
+ * GET /api/petty-cash/category-totals — the number on each filter chip.
+ */
+router.get('/api/petty-cash/category-totals', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+    try {
+        res.json(await financeRepo.getExpenseCategoryTotals({
+            from: req.query.from as string | undefined,
+            to: req.query.to as string | undefined,
+        }));
+    } catch (error) {
+        console.error('[PettyCash] Category totals failed:', error);
+        res.status(500).json({ error: 'Failed to build category totals' });
+    }
+});
+
+/**
+ * GET /api/petty-cash/parts-summary — LVDS x10, Panel x4, by month.
+ */
+router.get('/api/petty-cash/parts-summary', requireAdminAuth, requirePermission('finance'), async (req: Request, res: Response) => {
+    try {
+        res.json(await financeRepo.getPartsSummary({
+            from: req.query.from as string | undefined,
+            to: req.query.to as string | undefined,
+        }));
+    } catch (error) {
+        console.error('[PettyCash] Parts summary failed:', error);
+        res.status(500).json({ error: 'Failed to build parts summary' });
     }
 });
 
