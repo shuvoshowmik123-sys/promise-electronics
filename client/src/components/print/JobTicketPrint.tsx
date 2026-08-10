@@ -5,6 +5,8 @@
  */
 import { forwardRef } from "react";
 
+import { QrImage } from "./QrImage";
+
 interface JobTicketPrintProps {
     job: {
         id: string;
@@ -172,11 +174,11 @@ export const JobTicketPrint = forwardRef<HTMLDivElement, JobTicketPrintProps>(({
                     <div>Scan to open in app:</div>
                     <div style={{ wordBreak: "break-all", maxWidth: "90mm" }}>{techUrl}</div>
                 </div>
-                <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=${encodeURIComponent(techUrl)}`}
-                    alt="Job QR"
-                    style={{ width: "60px", height: "60px" }}
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+                {/* Was fetched from api.qrserver.com, which prints a blank
+                    square whenever the shop has no internet. Made locally now. */}
+                <QrImage
+                    value={techUrl}
+                    size={60}
                 />
             </div>
 

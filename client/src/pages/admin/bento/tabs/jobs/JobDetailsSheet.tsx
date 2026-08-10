@@ -9,6 +9,7 @@ import {
     MoreHorizontal, CircleDollarSign, Image as ImageIcon, Package,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { JobPrintDialog } from "@/components/admin/JobPrintDialog";
 import { Badge } from "@/components/ui/badge";
 import {
     DropdownMenu,
@@ -125,6 +126,7 @@ export function JobDetailsSheet({
 }: JobDetailsSheetProps) {
     const isMobile = useIsMobile();
     const [workSheetOpen, setWorkSheetOpen] = useState(false);
+    const [stickerOpen, setStickerOpen] = useState(false);
     const [holdBusy, setHoldBusy] = useState(false);
     const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
     const [mediaViewerIndex, setMediaViewerIndex] = useState(0);
@@ -806,6 +808,14 @@ export function JobDetailsSheet({
                                 </div>
                             )}
                         </MobileBottomSheetFrame>
+                        {stickerOpen && job && (
+                            <JobPrintDialog
+                                open={stickerOpen}
+                                onOpenChange={setStickerOpen}
+                                job={job}
+                                jobNumber={getSafeJobDisplayRef(job as any)}
+                            />
+                        )}
                         <MediaViewer
                             urls={jobMedia.map((media) => media.url)}
                             initialIndex={mediaViewerIndex}
@@ -1119,6 +1129,11 @@ export function JobDetailsSheet({
                                         )}
                                         <DropdownMenuItem className="gap-2 cursor-pointer" onSelect={() => onPrintTicket(job)}>
                                             <Printer className="w-4 h-4" /> Download / Print ticket
+                                        </DropdownMenuItem>
+                                        {/* The sticker that goes on the television, so a
+                                            technician can find the right set without a phone. */}
+                                        <DropdownMenuItem className="gap-2 cursor-pointer" onSelect={() => setStickerOpen(true)}>
+                                            <QrCode className="w-4 h-4" /> Print sticker for the TV
                                         </DropdownMenuItem>
                                     </DropdownMenuContent>
                                 </DropdownMenu>

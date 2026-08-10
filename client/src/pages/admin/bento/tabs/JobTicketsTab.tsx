@@ -861,7 +861,20 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         if (!printWindow) { toast.error("Please allow pop-ups to print the ticket"); return; }
         try {
             const trackingUrl = await resolveTrackingUrl(job);
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(trackingUrl)}`;
+            /**
+             * Made here rather than fetched from api.qrserver.com.
+             *
+             * The printed slip is what the customer walks out with, and a shop
+             * with no internet — or a bad day at a company nobody here has a
+             * contract with — was printing a blank square where the tracking
+             * code should be. A data URL needs nothing but this machine.
+             */
+            const { default: QRCode } = await import("qrcode");
+            const qrUrl = await QRCode.toDataURL(trackingUrl, {
+                width: 450,
+                margin: 1,
+                errorCorrectionLevel: "H",
+            });
 
             const printContent = generatePrintHtml(job, qrUrl, trackingUrl, getCurrencySymbol(), getLogoUrl());
             printWindow.document.write(printContent);
@@ -909,10 +922,12 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
             const margin = 42;
             const ticketNumber = getSafeJobDisplayRef(job as any);
             const trackingUrl = await resolveTrackingUrl(job);
-            const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(trackingUrl)}`;
+            // Same reason as the printed slip: the PDF a customer keeps must
+            // not depend on another company's website being reachable.
+            const { default: QRCode } = await import("qrcode");
             const [logoDataUrl, qrDataUrl] = await Promise.all([
                 readImageAsDataUrl(getLogoUrl() || "/logo.png"),
-                readImageAsDataUrl(qrUrl),
+                QRCode.toDataURL(trackingUrl, { width: 540, margin: 1, errorCorrectionLevel: "H" }),
             ]);
 
             doc.setFillColor(248, 250, 252);
@@ -1002,7 +1017,9 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
             if (qrDataUrl) {
                 doc.setFillColor(255, 255, 255);
                 doc.roundedRect(pageWidth - margin - 118, 448, 96, 96, 10, 10, "F");
-                doc.addImage(qrDataUrl.dataUrl, qrDataUrl.format, pageWidth - margin - 108, 458, 76, 76);
+                // QRCode.toDataURL returns a PNG data URL directly, where
+                // readImageAsDataUrl returned a { dataUrl, format } pair.
+                doc.addImage(qrDataUrl, "PNG", pageWidth - margin - 108, 458, 76, 76);
             }
 
             doc.setFillColor(255, 255, 255);

@@ -5,6 +5,8 @@
  */
 import { forwardRef } from "react";
 
+import { QrImage } from "./QrImage";
+
 interface JobReceiptProps {
     job: {
         id: string;
@@ -104,12 +106,9 @@ export const JobReceipt = forwardRef<HTMLDivElement, JobReceiptProps>(({ job, jo
             <div style={{ textAlign: "center", marginBottom: "6px" }}>
                 <div style={{ fontSize: "10px", color: "#555", marginBottom: "3px" }}>Scan to track your repair:</div>
                 {/* QR code rendered as an img using Google Charts API at print time */}
-                <img
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=${encodeURIComponent(trackingUrl)}`}
-                    alt="Tracking QR"
-                    style={{ width: "80px", height: "80px", display: "block", margin: "0 auto" }}
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-                />
+                {/* Was fetched from api.qrserver.com, so no internet meant a blank
+                    square on the customer's receipt. Made locally now. */}
+                <QrImage value={trackingUrl} size={100} />
                 <div style={{ fontSize: "9px", color: "#777", marginTop: "2px", wordBreak: "break-all" }}>
                     {trackingUrl}
                 </div>

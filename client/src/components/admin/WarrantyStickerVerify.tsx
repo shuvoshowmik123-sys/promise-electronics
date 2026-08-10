@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { AlertTriangle, CheckCircle2, Loader2, ScanLine, ShieldOff, XCircle } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Loader2, ScanLine, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchApi } from "@/lib/api/httpClient";
@@ -94,11 +94,26 @@ export function WarrantyStickerVerify() {
 function Result({ outcome }: { outcome: Outcome }) {
     if (outcome.result === "unknown") {
         return (
-            <div className="rounded-2xl border-2 border-rose-500 bg-rose-50 p-5 text-center">
-                <XCircle className="mx-auto h-10 w-10 text-rose-600" />
-                <p className="mt-2 text-xl font-black text-rose-800">Not a Promise Electronics seal</p>
+            /*
+             * A verdict, not a crash.
+             *
+             * This said "not genuine" using the visual language of a system
+             * failure — a solid red panel and an X-in-a-circle, which
+             * everywhere else in software means something went wrong. The
+             * owner looked at it during testing and thought the app had
+             * broken. A staff member at the counter has no chance, and if a
+             * real error ever appears on this screen the two must be tellable
+             * apart at a glance.
+             *
+             * Still red, still serious: bordered rather than filled, a shield
+             * struck through rather than an error mark, and the plain sentence
+             * first.
+             */
+            <div className="rounded-2xl border-2 border-rose-400 bg-white p-5 text-center">
+                <ShieldOff className="mx-auto h-10 w-10 text-rose-600" />
+                <p className="mt-2 text-xl font-black text-rose-800">We did not repair this television</p>
                 <p className="mt-1 text-sm font-semibold text-rose-700">
-                    This code has never been issued by us.
+                    This seal was never issued by Promise Electronics.
                 </p>
                 <p className="mt-3 font-mono text-sm text-rose-900/70">{formatCode(outcome.scannedCode) || "—"}</p>
                 {/* Said plainly so nobody reads a misprint as a forgery. */}
