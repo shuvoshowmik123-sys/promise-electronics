@@ -1203,19 +1203,30 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                 </div>
             )}
             {isDrawerCounting && activeDrawer && drawerResultMeta && (
-                <div className="absolute inset-0 z-50 bg-slate-100/80 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
-                    <div className="bg-white p-8 rounded-3xl shadow-xl max-w-2xl w-full border border-slate-200 space-y-6">
-                        <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-amber-100 mb-2">
-                            <AlertTriangle className="h-10 w-10 text-amber-600" />
+                /*
+                 * This screen is the only way out of a counted drawer.
+                 *
+                 * The blind count is already saved by the time it appears, and
+                 * the whole POS tab is locked behind it, so its "Close for Day"
+                 * button is the sole route back to trading. It used to centre
+                 * an un-scrollable card taller than a phone, which put that
+                 * button off the bottom of the screen with no way to reach it —
+                 * a register that could be counted but never closed. It scrolls
+                 * now, and it is sized for a phone first.
+                 */
+                <div className="absolute inset-0 z-50 flex flex-col overflow-y-auto bg-slate-100/80 p-4 text-center backdrop-blur-md sm:p-6 md:items-center md:justify-center">
+                    <div className="my-auto w-full max-w-2xl space-y-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-xl sm:p-8 sm:space-y-6">
+                        <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 sm:h-20 sm:w-20">
+                            <AlertTriangle className="h-7 w-7 text-amber-600 sm:h-10 sm:w-10" />
                         </div>
                         <div className="space-y-2">
-                            <h2 className="text-2xl font-bold text-slate-900">Drawer Under Review</h2>
+                            <h2 className="text-xl font-bold text-slate-900 sm:text-2xl">Drawer Under Review</h2>
                             <p className="text-slate-500">
                                 Blind drop is complete. This register is waiting for Super Admin review before normal cash activity resumes.
                             </p>
                         </div>
 
-                        <div className={`rounded-3xl border bg-gradient-to-r ${drawerResultMeta.cardClass} p-6 text-left shadow-sm`}>
+                        <div className={`rounded-3xl border bg-gradient-to-r ${drawerResultMeta.cardClass} p-4 text-left shadow-sm sm:p-6`}>
                             <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
                                 <div className="flex items-start gap-4">
                                     <div className={`flex h-14 w-14 items-center justify-center rounded-2xl ${drawerResultMeta.iconWrapClass}`}>
@@ -1245,7 +1256,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                             </div>
 
                             {canViewDrawerDiscrepancy ? (
-                                <div className="mt-5 grid gap-3 md:grid-cols-3">
+                                <div className="mt-5 grid gap-3 sm:grid-cols-3">
                                     <div className="rounded-2xl border border-white/70 bg-white/85 p-4 shadow-sm">
                                         <div className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">System Expected</div>
                                         <div className="mt-2 text-2xl font-black tabular-nums text-slate-900">{getCurrencySymbol()}{expectedCash.toFixed(2)}</div>
@@ -1270,7 +1281,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                             {canViewDrawerDiscrepancy && (
                                 <div className="mt-5 flex justify-end">
                                     <Button
-                                        className={`${discrepancyAmount === 0 ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'} text-white font-semibold`}
+                                        className={`h-12 w-full rounded-xl text-base font-bold text-white sm:w-auto ${discrepancyAmount === 0 ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-amber-600 hover:bg-amber-700'}`}
                                         onClick={() => finalizeCloseMutation.mutate()}
                                         disabled={finalizeCloseMutation.isPending}
                                     >

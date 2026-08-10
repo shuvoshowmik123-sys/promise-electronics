@@ -478,12 +478,24 @@ export function DrawerModals({ type, onClose, drawerSessionId, currentUser, curr
                     <Button
                         type="button"
                         variant="outline"
-                        className="w-full h-10 rounded-xl"
+                        className="w-full h-11 rounded-xl"
                         onClick={handleClose}
                         disabled={closeDayMutation.isPending}
                     >
-                        Cancel
+                        Not now
                     </Button>
+                    {/*
+                      * Not "Cancel". By the time this card is on screen the
+                      * count is already saved and the admins are already
+                      * notified — there is nothing left to cancel. All this
+                      * button does is postpone the closing, and the register
+                      * stays locked until somebody comes back and finishes it.
+                      * Saying "Cancel" invites the counter to walk away
+                      * believing they backed out of something.
+                      */}
+                    <p className="text-center text-[11px] font-medium text-slate-500">
+                        Your count is already saved. The register stays locked until it is closed.
+                    </p>
                 </div>
             </motion.div>
         );
