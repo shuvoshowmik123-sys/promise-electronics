@@ -119,6 +119,20 @@ function CatalogueRow({ item, onPress }: { item: MobilePickerItem; onPress: (ite
     );
 }
 
+/** A way into sourcing that does not require a search to fail first. */
+function SourceAPartButton({ onPress }: { onPress: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onPress}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl border border-violet-200 bg-violet-50 px-4 text-sm font-bold text-violet-700 shadow-sm active:scale-[0.98]"
+        >
+            <PackagePlus className="h-5 w-5 shrink-0" />
+            Source a part from a vendor
+        </button>
+    );
+}
+
 export function MobileProductPicker({
     items,
     recentItemIds,
@@ -195,9 +209,26 @@ export function MobileProductPicker({
         searchRef.current?.focus();
     };
 
-    const openSourcedForm = () => {
-        const suggestion = sourcedPartSuggestion?.(trimmedQuery);
-        setPartName(trimmedQuery);
+    /**
+     * While the form is open the shell chrome stands down.
+     *
+     * The form's action row is pinned to the bottom of the screen, which is
+     * also where the tab dock and the PWA install banner live. Rather than
+     * stack three fixed things and hope the arithmetic holds on every handset,
+     * the two that are not being used get out of the way — the same signal the
+     * cart sheet and every POS dialog already send.
+     */
+    useEffect(() => {
+        if (!sourcedOpen || typeof window === "undefined" || window.innerWidth >= 768) return;
+        window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: true } }));
+        return () => {
+            window.dispatchEvent(new CustomEvent("admin:mobile-chrome", { detail: { hidden: false } }));
+        };
+    }, [sourcedOpen]);
+
+    const openSourcedForm = (seed = trimmedQuery) => {
+        const suggestion = sourcedPartSuggestion?.(seed);
+        setPartName(seed);
         setSupplierName(suggestion?.supplierName ?? "");
         setCostPrice(suggestion?.costPrice != null ? String(suggestion.costPrice) : "");
         setSellingPrice(suggestion?.sellingPrice != null ? String(suggestion.sellingPrice) : "");
@@ -228,13 +259,105 @@ export function MobileProductPicker({
         searchRef.current?.focus();
     };
 
+    // 44px, not 36 — these are tapped with a thumb across a counter.
     const inputClass =
-        "h-9 w-full rounded-xl border border-slate-200 bg-white px-2.5 text-[13px] font-bold text-slate-950 placeholder:font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400";
+        "h-11 w-full rounded-xl border border-slate-200 bg-white px-2.5 text-[13px] font-bold text-slate-950 placeholder:font-medium placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400";
     const labelClass = "text-[9px] font-bold uppercase tracking-wide text-slate-500";
+
+    /**
+     * One form, reached from two dead ends: a search that matched nothing, and
+     * a catalogue with nothing in it. Defining it once means the two entrances
+     * can never drift apart.
+     */
+    const sourcedForm = (
+<div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-3">
+                <span
+                    className={cn(
+                        "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border",
+                        toneClasses.violet,
+                    )}
+                >
+                    <Store className="h-5 w-5" />
+                </span>
+                <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-950">Sourced part</p>
+                    <p className="text-[11px] font-medium text-slate-500">
+                        Bought from a local vendor for this job
+                    </p>
+                </div>
+            </div>
+            <div className="mt-3 space-y-2.5">
+                <label className="block">
+                    <span className={labelClass}>Part name</span>
+                    <input
+                        type="text"
+                        value={partName}
+                        onChange={(e) => setPartName(e.target.value)}
+                        className={cn(inputClass, "mt-1")}
+                    />
+                </label>
+                <label className="block">
+                    <span className={labelClass}>Supplier</span>
+                    <input
+                        type="text"
+                        value={supplierName}
+                        onChange={(e) => setSupplierName(e.target.value)}
+                        placeholder="e.g. Stadium Market vendor"
+                        className={cn(inputClass, "mt-1")}
+                    />
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                    <label className="block">
+                        <span className={labelClass}>Cost price</span>
+                        <input
+                            type="text"
+                            inputMode="decimal"
+                            value={costPrice}
+                            onChange={(e) => setCostPrice(e.target.value)}
+                            placeholder="0"
+                            className={cn(inputClass, "mt-1")}
+                        />
+                    </label>
+                    <label className="block">
+                        <span className={labelClass}>Selling price</span>
+                        <input
+                            type="text"
+                            inputMode="decimal"
+                            value={sellingPrice}
+                            onChange={(e) => setSellingPrice(e.target.value)}
+                            placeholder="0"
+                            className={cn(inputClass, "mt-1")}
+                        />
+                    </label>
+                </div>
+                <label className="block">
+                    <span className={labelClass}>Warranty (days)</span>
+                    <input
+                        type="text"
+                        inputMode="numeric"
+                        value={warrantyDays}
+                        onChange={(e) => setWarrantyDays(e.target.value)}
+                        placeholder="e.g. 90 — empty means no warranty"
+                        className={cn(inputClass, "mt-1")}
+                    />
+                </label>
+            </div>
+            {/* Cancel and Add are NOT here. They live in a
+                pinned bar below, because inside the scroller
+                they sat under the dock at one scroll
+                position and under the install banner at
+                another — unreachable either way. */}
+        </div>
+    );
 
     return (
         <MobileTabLayout className="md:overflow-auto">
-            <MobileTabHeader className="border-b border-slate-100/80 pt-1">
+            {/* The search box is hidden while the form is open. It is wired to
+                close the form on every keystroke, so leaving it there next to a
+                half-filled form is an invitation to lose the entry — and the
+                form has its own Part name field anyway. */}
+            <MobileTabHeader className={cn("border-b border-slate-100/80 pt-1", sourcedOpen && "hidden md:block")}>
                 <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
@@ -253,7 +376,7 @@ export function MobileProductPicker({
                             type="button"
                             aria-label="Clear search"
                             onClick={() => handleQueryChange("")}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400"
+                            className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center text-slate-400"
                         >
                             <X className="h-4 w-4" />
                         </button>
@@ -287,17 +410,33 @@ export function MobileProductPicker({
             <MobileScrollContent
                 className={cn(
                     "md:hidden space-y-2",
-                    // House dock clearance; extra room when the floating cart bar
-                    // sits above the dock so sourced-part Cancel/Add stay tappable.
-                    cartBarVisible
-                        ? "pb-[calc(11.5rem+env(safe-area-inset-bottom))]"
-                        : "pb-[calc(5.5rem+env(safe-area-inset-bottom))]",
+                    // Clearance for whatever is pinned over the bottom of the
+                    // screen: the dock, the cart bar above it, or — while the
+                    // sourced form is open — that form's own action bar.
+                    sourcedOpen
+                        ? "pb-[calc(6rem+env(safe-area-inset-bottom))]"
+                        : cartBarVisible
+                            ? "pb-[calc(11.5rem+env(safe-area-inset-bottom))]"
+                            : "pb-[calc(5.5rem+env(safe-area-inset-bottom))]",
                 )}
             >
                 {isLoading ? (
                     <div className="flex items-center justify-center py-16">
                         <Loader2 className="h-8 w-8 animate-spin text-slate-300" />
                     </div>
+                ) : sourcedOpen ? (
+                    /* The form owns the screen while it is open, wherever it
+                       was opened from. Leaving the list or the empty-state
+                       illustration above it was what pushed the fields below
+                       the fold in the first place. */
+                    <>
+                        {trimmedQuery && filteredItems.length === 0 && (
+                            <p className="px-1 pt-1 text-[11px] font-medium text-slate-500">
+                                Nothing stocked named &ldquo;{trimmedQuery}&rdquo; — sourcing it instead.
+                            </p>
+                        )}
+                        {sourcedForm}
+                    </>
                 ) : trimmedQuery && filteredItems.length === 0 ? (
                     <>
                         <div className="flex flex-col items-center gap-2 px-3 py-8 text-center">
@@ -309,125 +448,36 @@ export function MobileProductPicker({
                                 Nothing stocked named &ldquo;{trimmedQuery}&rdquo;. Source it ad-hoc instead.
                             </p>
                         </div>
-                        {sourcedOpen ? (
-                            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                                <div className="flex items-center gap-3">
-                                    <span
-                                        className={cn(
-                                            "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border",
-                                            toneClasses.violet,
-                                        )}
-                                    >
-                                        <Store className="h-5 w-5" />
-                                    </span>
-                                    <div className="min-w-0">
-                                        <p className="text-sm font-bold text-slate-950">Sourced part</p>
-                                        <p className="text-[11px] font-medium text-slate-500">
-                                            Bought from a local vendor for this job
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="mt-3 space-y-2.5">
-                                    <label className="block">
-                                        <span className={labelClass}>Part name</span>
-                                        <input
-                                            type="text"
-                                            value={partName}
-                                            onChange={(e) => setPartName(e.target.value)}
-                                            className={cn(inputClass, "mt-1")}
-                                        />
-                                    </label>
-                                    <label className="block">
-                                        <span className={labelClass}>Supplier</span>
-                                        <input
-                                            type="text"
-                                            value={supplierName}
-                                            onChange={(e) => setSupplierName(e.target.value)}
-                                            placeholder="e.g. Stadium Market vendor"
-                                            className={cn(inputClass, "mt-1")}
-                                        />
-                                    </label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        <label className="block">
-                                            <span className={labelClass}>Cost price</span>
-                                            <input
-                                                type="text"
-                                                inputMode="decimal"
-                                                value={costPrice}
-                                                onChange={(e) => setCostPrice(e.target.value)}
-                                                placeholder="0"
-                                                className={cn(inputClass, "mt-1")}
-                                            />
-                                        </label>
-                                        <label className="block">
-                                            <span className={labelClass}>Selling price</span>
-                                            <input
-                                                type="text"
-                                                inputMode="decimal"
-                                                value={sellingPrice}
-                                                onChange={(e) => setSellingPrice(e.target.value)}
-                                                placeholder="0"
-                                                className={cn(inputClass, "mt-1")}
-                                            />
-                                        </label>
-                                    </div>
-                                    <label className="block">
-                                        <span className={labelClass}>Warranty (days)</span>
-                                        <input
-                                            type="text"
-                                            inputMode="numeric"
-                                            value={warrantyDays}
-                                            onChange={(e) => setWarrantyDays(e.target.value)}
-                                            placeholder="e.g. 90 — empty means no warranty"
-                                            className={cn(inputClass, "mt-1")}
-                                        />
-                                    </label>
-                                </div>
-                                <div className="mt-3 grid grid-cols-2 gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setSourcedOpen(false)}
-                                        className="h-11 rounded-xl border border-slate-200 bg-white text-[12px] font-bold text-slate-500 active:scale-[0.98]"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="button"
-                                        disabled={!canSubmitSourced}
-                                        onClick={submitSourced}
-                                        className="flex h-11 items-center justify-center gap-1.5 rounded-xl bg-violet-600 text-[12px] font-bold text-white shadow-sm active:scale-[0.98] disabled:opacity-40"
-                                    >
-                                        <Plus className="h-4 w-4" />
-                                        Add to sale
-                                    </button>
-                                </div>
-                            </div>
-                        ) : (
-                            <button
-                                type="button"
-                                onClick={openSourcedForm}
-                                className="flex w-full items-center justify-between gap-3 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3.5 text-left shadow-sm active:scale-[0.98]"
-                            >
-                                <span className="flex min-w-0 items-center gap-2.5">
-                                    <PackagePlus className="h-5 w-5 shrink-0 text-violet-700" />
-                                    <span className="line-clamp-2 text-sm font-bold text-violet-700">
-                                        Add &ldquo;{trimmedQuery}&rdquo; as a sourced part
-                                    </span>
+                        <button
+                            type="button"
+                            onClick={() => openSourcedForm()}
+                            className="flex w-full items-center justify-between gap-3 rounded-2xl border border-violet-100 bg-violet-50 px-4 py-3.5 text-left shadow-sm active:scale-[0.98]"
+                        >
+                            <span className="flex min-w-0 items-center gap-2.5">
+                                <PackagePlus className="h-5 w-5 shrink-0 text-violet-700" />
+                                <span className="line-clamp-2 text-sm font-bold text-violet-700">
+                                    Add &ldquo;{trimmedQuery}&rdquo; as a sourced part
                                 </span>
-                                <ArrowRight className="h-4 w-4 shrink-0 text-violet-700" />
-                            </button>
-                        )}
+                            </span>
+                            <ArrowRight className="h-4 w-4 shrink-0 text-violet-700" />
+                        </button>
                     </>
                 ) : !trimmedQuery && items.length === 0 ? (
-                    <div className="flex flex-col items-center gap-2 px-3 py-16 text-center">
-                        <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
-                            <Package className="h-5 w-5 text-slate-400" />
-                        </span>
-                        <p className="text-sm font-bold text-slate-950">Catalogue is empty</p>
-                        <p className="text-[11px] font-medium text-slate-500">
-                            Stocked items will appear here. Type a name above to source a part instead.
-                        </p>
-                    </div>
+                    (
+                        <div className="flex flex-col items-center gap-3 px-3 py-12 text-center">
+                            <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-100">
+                                <Package className="h-5 w-5 text-slate-400" />
+                            </span>
+                            <p className="text-sm font-bold text-slate-950">Catalogue is empty</p>
+                            <p className="text-[11px] font-medium text-slate-500">
+                                Stocked items will appear here.
+                            </p>
+                            {/* With nothing stocked, sourcing is the only way to
+                                sell anything — so it gets a button rather than
+                                being the consolation prize for a failed search. */}
+                            <SourceAPartButton onPress={() => openSourcedForm("")} />
+                        </div>
+                    )
                 ) : (
                     <>
                         {recentItems.length > 0 && (
@@ -453,9 +503,54 @@ export function MobileProductPicker({
                                 ))}
                             </div>
                         </section>
+                        {/* Sourcing is a daily job, not an error path. Anyone
+                            who has not already learnt that a failed search
+                            reveals it would otherwise never find it. */}
+                        <div className="pt-1">
+                            <SourceAPartButton onPress={() => openSourcedForm("")} />
+                        </div>
                     </>
                 )}
             </MobileScrollContent>
+
+            {/*
+              * The form's action row, pinned rather than scrolled.
+              *
+              * Inside the scroll area these two buttons were unreachable: at
+              * one scroll position the tab dock covered them, at the bottom of
+              * the list the PWA install banner did. Pinning them removes the
+              * arithmetic entirely — they are the last thing on screen and
+              * nothing else is competing for that space, because opening this
+              * form stands the shell chrome down.
+              */}
+            {sourcedOpen && (
+                <div
+                    className="fixed inset-x-3 z-[45] grid grid-cols-[auto,1fr] gap-2 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-[0_-2px_20px_rgba(15,23,42,0.12)] backdrop-blur md:hidden"
+                    style={{
+                        // Clear the cart bar when a sale is already running.
+                        bottom: cartBarVisible
+                            ? "calc(env(safe-area-inset-bottom) + 9rem)"
+                            : "calc(env(safe-area-inset-bottom) + 0.75rem)",
+                    }}
+                >
+                    <button
+                        type="button"
+                        onClick={() => setSourcedOpen(false)}
+                        className="h-12 rounded-xl border border-slate-200 bg-white px-5 text-[13px] font-bold text-slate-500 active:scale-[0.98]"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        disabled={!canSubmitSourced}
+                        onClick={submitSourced}
+                        className="flex h-12 items-center justify-center gap-1.5 rounded-xl bg-violet-600 text-[13px] font-bold text-white shadow-sm active:scale-[0.98] disabled:opacity-40"
+                    >
+                        <Plus className="h-4 w-4" />
+                        {canSubmitSourced ? "Add to sale" : "Enter a selling price"}
+                    </button>
+                </div>
+            )}
         </MobileTabLayout>
     );
 }
