@@ -167,8 +167,12 @@ export interface IStorage {
   updatePurchaseOrderStatus(id: string, status: string): Promise<PurchaseOrder | undefined>;
 
   // Local Purchases (Phase 4.4)
-  createLocalPurchase(purchase: InsertLocalPurchase): Promise<LocalPurchase>;
-  getLocalPurchases(jobTicketId?: string): Promise<LocalPurchase[]>;
+  //
+  // Both live on InventoryService, not on a repository, so neither is reachable
+  // through the `storage` proxy — it only forwards names it found on a repo.
+  // Declaring them here made `storage.getLocalPurchases(...)` typecheck while
+  // resolving to undefined at runtime, which is exactly how that route came to
+  // 500 on every call without anybody noticing. Call inventoryService directly.
 
   // Wastage Logs (Phase 4.5)
   createWastageLog(log: InsertWastageLog & { reportedBy: string; storeId?: string | null }, originalStock?: number): Promise<WastageLog>;

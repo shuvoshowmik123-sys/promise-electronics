@@ -70,6 +70,33 @@ export class InventoryService {
     }
 
     /**
+     * Reads local purchases back, newest first.
+     *
+     * This never existed. `getLocalPurchases` was declared on the storage
+     * interface and implemented nowhere, so the GET route called a property
+     * that resolved to undefined and every request ended as a 500 — silently,
+     * because the handler caught the TypeError and returned a generic message
+     * without logging it. The petty-cash ledger has therefore been write-only
+     * since it was built: receipts went in and nothing could read them out.
+     *
+     * Newest first because the questions asked of this table are "what did we
+     * buy for this job" and "what did we pay last time", both of which want
+     * the most recent rows at the top.
+     */
+    async getLocalPurchases(jobTicketId?: string): Promise<schema.LocalPurchase[]> {
+        const query = db.select().from(schema.localPurchases);
+        // An absent filter means every purchase; it must not become a filter
+        // on the string "undefined", which is what arrives from a query
+        // string that was never set.
+        if (jobTicketId && jobTicketId !== 'undefined') {
+            return query
+                .where(eq(schema.localPurchases.jobTicketId, jobTicketId))
+                .orderBy(desc(schema.localPurchases.createdAt));
+        }
+        return query.orderBy(desc(schema.localPurchases.createdAt));
+    }
+
+    /**
      * Creates a Wastage Log, decrements stock, and updates serial status if applicable.
      */
     async createWastageLog(log: schema.InsertWastageLog & { reportedBy: string; storeId?: string | null }): Promise<schema.WastageLog> {

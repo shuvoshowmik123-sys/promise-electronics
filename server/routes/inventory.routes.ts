@@ -97,9 +97,15 @@ router.get('/api/inventory/wastage', requireAdminAuth, requireGranularPermission
  */
 router.get('/api/inventory/local-purchases', requireAdminAuth, requireGranularPermission('inventory.view'), async (req: Request, res: Response) => {
     try {
-        const purchases = await storage.getLocalPurchases(req.query.jobTicketId as string);
+        // This used to go through the storage proxy, which no repository backs
+        // for local purchases, so the property resolved to undefined and threw
+        // on every call. The service is where the logic actually lives.
+        const purchases = await inventoryService.getLocalPurchases(req.query.jobTicketId as string | undefined);
         res.json(purchases);
     } catch (error) {
+        // The old handler swallowed this, which is why a route that had never
+        // once succeeded looked like an intermittent server problem.
+        console.error('[LocalPurchase] Failed to fetch local purchases:', error);
         res.status(500).json({ error: 'Failed to fetch local purchases' });
     }
 });
