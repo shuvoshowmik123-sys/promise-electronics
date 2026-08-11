@@ -641,3 +641,52 @@ export async function searchJobTickets(query: string): Promise<JobTicket[]> {
         return haystacks.some((value) => value.includes(searchPattern));
     }).slice(0, 20);
 }
+
+/**
+ * How busy each technician is, for the screen that spreads work between them.
+ *
+ * This was declared on the storage interface and implemented nowhere, so the
+ * endpoint behind the bulk-assign screen threw on every request — the one
+ * screen whose entire purpose is showing who is already loaded before you hand
+ * out more work.
+ *
+ * Counted from job_tickets.technician, which holds a NAME rather than an id,
+ * because that is what the assignment writes. Both are returned so the caller
+ * can match on either: names get edited, and a technician renamed mid-week
+ * would otherwise silently show zero jobs and be handed everything.
+ *
+ * "Active" means not in a terminal state — the same list the technician queue
+ * uses, so the two screens cannot disagree about who is busy.
+ */
+export async function getTechnicianWorkload(): Promise<Array<{
+    technicianId: string;
+    technicianName: string;
+    activeJobs: number;
+    completedToday: number;
+}>> {
+    const rows = await db.execute(sql`
+        SELECT j.technician                                   AS "technicianName",
+               MAX(u.id)                                      AS "technicianId",
+               COUNT(*) FILTER (
+                   WHERE j.status NOT IN (
+                       'Completed', 'Delivered', 'Cancelled', 'Abandoned',
+                       'Forfeited', 'Closed', 'Not OK'
+                   )
+               )::int                                         AS "activeJobs",
+               COUNT(*) FILTER (
+                   WHERE j.status IN ('Completed', 'Delivered')
+                     AND j.completed_at >= date_trunc('day', now())
+               )::int                                         AS "completedToday"
+        FROM job_tickets j
+        LEFT JOIN users u ON u.name = j.technician
+        WHERE j.technician IS NOT NULL AND j.technician <> ''
+        GROUP BY j.technician
+    `);
+
+    return ((rows as any).rows ?? rows).map((row: any) => ({
+        technicianId: row.technicianId ?? '',
+        technicianName: row.technicianName ?? '',
+        activeJobs: Number(row.activeJobs) || 0,
+        completedToday: Number(row.completedToday) || 0,
+    }));
+}

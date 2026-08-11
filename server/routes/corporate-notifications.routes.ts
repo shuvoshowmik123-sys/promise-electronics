@@ -79,7 +79,14 @@ router.patch('/notifications/:id/read', requireCorporateAuth, async (req: Reques
             return res.status(403).json({ error: 'Invalid corporate session' });
         }
 
-        const updated = await storage.markCorporateNotificationAsRead(req.params.id, user.corporateClientId);
+        // Was storage.markCorporateNotificationAsRead, which no repository
+        // backs — it resolved to undefined and threw on every call, so these
+        // alerts could never be cleared. The service is where the sibling that
+        // marks them all already lives.
+        const updated = await corporateNotificationService.markCorporateNotificationAsRead(
+            req.params.id,
+            user.corporateClientId,
+        );
         if (!updated) {
             return res.status(404).json({ error: 'Notification not found' });
         }

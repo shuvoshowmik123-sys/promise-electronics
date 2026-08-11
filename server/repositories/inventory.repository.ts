@@ -205,3 +205,74 @@ export async function updatePurchaseOrder(id: string, updates: Partial<InsertPur
     const [updated] = await db.update(schema.purchaseOrders).set(updates).where(eq(schema.purchaseOrders.id, id)).returning();
     return updated;
 }
+
+// ============================================
+// Inventory Serials
+// ============================================
+
+/**
+ * Individually tracked units of a stock item.
+ *
+ * Declared on the storage interface and implemented nowhere, so both the read
+ * and the write threw on every call — and the write threw first, because it
+ * reads the existing serials to reject duplicates before inserting. Serial
+ * tracking could therefore neither be used nor inspected.
+ *
+ * Newest first: the question asked of this table is almost always "what did we
+ * just take in", not "what came in a year ago".
+ */
+export async function getInventorySerials(inventoryItemId: string): Promise<schema.InventorySerial[]> {
+    return db.select().from(schema.inventorySerials)
+        .where(eq(schema.inventorySerials.inventoryItemId, inventoryItemId))
+        .orderBy(desc(schema.inventorySerials.receivedAt));
+}
+
+/**
+ * Add units to an item.
+ *
+ * Inserted in one statement so a batch either lands whole or not at all — a
+ * half-added batch would leave the stock count and the serial list disagreeing,
+ * and the count is what the shop sells against.
+ */
+export async function createInventorySerials(
+    inventoryItemId: string,
+    serials: string[],
+    storeId?: string,
+): Promise<schema.InventorySerial[]> {
+    const rows = serials
+        .map((serial) => String(serial).trim())
+        .filter(Boolean)
+        .map((serialNumber) => ({
+            id: nanoid(),
+            inventoryItemId,
+            serialNumber,
+            status: 'In Stock',
+            storeId: storeId ?? null,
+        }));
+    if (rows.length === 0) return [];
+    return db.insert(schema.inventorySerials).values(rows).returning();
+}
+
+/**
+ * Move one unit through its life: reserved, consumed on a job, written off.
+ *
+ * consumedAt is stamped only when the unit actually leaves stock, so a serial
+ * marked Defective while still on the shelf does not read as having been fitted
+ * to something.
+ */
+export async function updateInventorySerialStatus(
+    id: string,
+    status: string,
+    jobTicketId?: string,
+): Promise<schema.InventorySerial | undefined> {
+    const leavesStock = status === 'Consumed' || status === 'Wasted';
+    const [updated] = await db.update(schema.inventorySerials)
+        .set({
+            status,
+            jobTicketId: jobTicketId ?? null,
+            consumedAt: leavesStock ? new Date() : null,
+        })
+        .where(eq(schema.inventorySerials.id, id))
+        .returning();
+    return updated;
+}

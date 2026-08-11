@@ -81,19 +81,18 @@ function repositoryMethods(): Set<string> {
  */
 const KNOWN_UNIMPLEMENTED = [
   // LIVE — endpoint is broken in production
-  "getInventorySerials",            // GET /api/inventory/:id/serials
-  "createInventorySerials",         // POST /api/inventory/:id/serials
+  //
+  // Fixed and removed from this list on 2026-08-11: inventory serials (read,
+  // create and status), technician workload, and the corporate
+  // mark-notification-read. Purchase orders left with the tab that used them.
   "getWorkflowKPIs",                // GET workflow KPIs
-  "getTechnicianWorkload",          // GET technician workload
   "deleteAllBusinessData",          // POST settings data wipe
-  "markCorporateNotificationAsRead",// PATCH corporate notification read
   // Declared, unimplemented, and no longer reachable: the Purchasing tab and
   // its routes were deleted on 2026-08-11, so these two now describe nothing.
   "getPurchaseOrderItems",
   "updatePurchaseOrderStatus",
   // Dead declaration — logic lives on a service, nothing calls the proxy
   "syncJobParts",
-  "updateInventorySerialStatus",
   "createWastageLog",
   "getJobTicketsByCustomerId",
   "verifyAndConvertServiceRequest",

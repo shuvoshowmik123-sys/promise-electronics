@@ -379,7 +379,10 @@ export interface IStorage {
   getNotifications(userId: string): Promise<Notification[]>;
   createNotification(notification: InsertNotification): Promise<Notification>;
   markNotificationAsRead(id: string): Promise<Notification | undefined>;
-  markCorporateNotificationAsRead(id: string, corporateClientId: string): Promise<Notification | undefined>;
+  // markCorporateNotificationAsRead lives on corporateNotificationService, not
+  // on a repository, so the storage proxy could never deliver it — the
+  // declaration only made the call typecheck before throwing. Callers use the
+  // service directly.
   markAllNotificationsAsRead(userId: string): Promise<void>;
 
   // Customer Aliases

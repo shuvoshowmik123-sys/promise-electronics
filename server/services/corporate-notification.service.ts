@@ -161,6 +161,28 @@ export const corporateNotificationService = {
     },
 
     /**
+     * Mark one corporate notification as read.
+     *
+     * The sibling that marks them all has always worked; this one called a
+     * storage method no repository implements, so it threw on every request
+     * and a corporate customer's alerts piled up with no way to clear them.
+     *
+     * The client id is checked before the write, not after. A notification id
+     * is guessable enough that letting one company mark another's alert as
+     * read — or learn that it exists by the shape of the error — is not worth
+     * the line it saves.
+     */
+    async markCorporateNotificationAsRead(notificationId: string, corporateClientId: string) {
+        const notification = await notificationRepo.getNotification(notificationId);
+        if (!notification) return undefined;
+
+        const owner = await userRepo.getUser(notification.userId);
+        if (!owner || owner.corporateClientId !== corporateClientId) return undefined;
+
+        return notificationRepo.markNotificationAsRead(notificationId);
+    },
+
+    /**
      * Mark all corporate notifications as read for a specific corporate client
      */
     async markAllCorporateNotificationsAsRead(corporateClientId: string) {
