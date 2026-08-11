@@ -91,7 +91,6 @@ const QuotationsTab = lazy(() => import("./bento/tabs/QuotationsTab"));
 const InquiriesTab = lazy(() => import("./bento/tabs/InquiriesTab"));
 const UnifiedB2BTab = lazy(() => import("./bento/tabs/UnifiedB2BTab"));
 const CorporateMessagesAdminTab = lazy(() => import("./bento/tabs/CorporateMessagesTab"));
-const PurchasingTab = lazy(() => import("./bento/tabs/PurchasingTab"));
 const WarrantyClaimsTab = lazy(() => import("./bento/tabs/WarrantyClaimsTab"));
 const DisputesTab = lazy(() => import("./bento/tabs/DisputesTab"));
 const WastageTab = lazy(() => import('./bento/tabs/WastageTab'));
@@ -158,7 +157,6 @@ const ADMIN_SIDEBAR_NAV_GROUPS: SidebarGroup[] = [
         title: "Warehouse",
         items: [
             { label: "Stock Manager", id: "inventory", icon: Package, color: "amber", layout: "fixed" },
-            { label: "Purchasing (POs)", id: "purchasing", icon: ShoppingCart, color: "pink", layout: "scroll" },
             { label: "Warranty Claims", id: "warranty", icon: ShieldCheck, color: "green", layout: "fixed" },
             { label: "Refunds", id: "refunds", icon: RotateCcw, color: "rose", layout: "fixed" },
             { label: "Disputes", id: "disputes", icon: Scale, color: "violet", layout: "fixed" },
@@ -423,7 +421,6 @@ export default function DesignConcept() {
         'technician': 'technician_view',
         'orders': 'orders',
         'warranty': 'warranty_claims',
-        'purchasing': 'purchasing',
         'wastage': 'wastage',
         'quality': 'quality_analytics',
         'system-health': 'system_health',
@@ -466,7 +463,6 @@ export default function DesignConcept() {
         'refunds': ['pos', 'finance', 'refunds'],   // pos.refund = granular key; finance staff audit refunds; refunds = legacy
         'inquiries': 'inquiries',
         'quotations': 'pos',          // quotations are sales-adjacent
-        'purchasing': 'purchasing',
         'wastage': 'wastage',
         'quality': 'quality',
         'system-health': ['settings', 'systemHealth'], // settings.manage = only granular key for system health
@@ -530,9 +526,8 @@ export default function DesignConcept() {
         'users': 'User Management', 'settings': 'System Settings',
         'reports': 'Reports', 'quality': 'Quality Analytics', 'attendance': 'Staff Attendance', 'shift': shiftNavLabel,
         'customers': 'Customers', 'inquiries': 'Inquiries', 'quotations': 'Quotations',
-        'workflow-demo': 'Workflow Design Demo',
         'salary': 'Salary & HR', 'cashier': 'Cashier Dashboard', 'technician': 'Technician View',
-        'purchasing': 'Purchasing (POs)', 'warranty': 'Warranty Claims', 'refunds': 'Refunds', 'disputes': 'Disputes', 'wastage': 'Wastage',
+        'warranty': 'Warranty Claims', 'refunds': 'Refunds', 'disputes': 'Disputes', 'wastage': 'Wastage',
         'shipments': 'Shipments', 'procurement': 'Procurement', 'stock-manager': 'Stock Manager',
         'audit-logs': 'Audit Logs', 'brain': 'AI Brain',
         'account': 'My Account'
@@ -1111,7 +1106,17 @@ export default function DesignConcept() {
                                                     initialItemId={selectedInventoryItemId ?? undefined}
                                                     onSearchConsumed={() => setGlobalSearchQuery('')}
                                                 />}
-                                                {tabId === 'purchasing' && <PurchasingTab />}
+                                                {/*
+                                                  * "Purchasing (POs)" was removed on 2026-08-11.
+                                                  *
+                                                  * It ordered parts from a supplier in advance and
+                                                  * received them into stock later. This shop pays
+                                                  * first and collects the part the same day, so the
+                                                  * tab described a way of buying it does not use —
+                                                  * and two of the methods behind it were never
+                                                  * implemented, so opening a purchase order or
+                                                  * receiving one answered 500 either way.
+                                                  */}
                                                 {tabId === 'warranty' && <WarrantyClaimsTab />}
                                                 {tabId === 'refunds' && <FinancesTab defaultTab="refunds" />}
                                                 {tabId === 'disputes' && <DisputesTab />}
@@ -1136,10 +1141,10 @@ export default function DesignConcept() {
                                                 {tabId === 'account' && <AccountSettingsPage />}
 
                                                 {/* Fallback */}
-                                                {tabId === 'workflow-demo' && <Suspense fallback={<DashboardSkeleton />}><PlaceholderTab tabName={tabId} /></Suspense>}
+                                                {/* "Workflow Design Demo" was a development placeholder that rendered nothing. */}
                                                 {tabId === 'audit-logs' && <Suspense fallback={<DashboardSkeleton />}><AuditLogsTab /></Suspense>}
 
-                                                {!['dashboard', 'overview', 'area-intelligence', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'shift', 'customers', 'quotations', 'inquiries', 'workflow-demo', 'salary', 'cashier', 'technician', 'purchasing', 'warranty', 'refunds', 'disputes', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain', 'account'].includes(tabId) && (
+                                                {!['dashboard', 'overview', 'area-intelligence', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'shift', 'customers', 'quotations', 'inquiries', 'salary', 'cashier', 'technician', 'warranty', 'refunds', 'disputes', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain', 'account'].includes(tabId) && (
                                                     <Suspense fallback={<DashboardSkeleton />}>
                                                         <PlaceholderTab tabName={tabId} />
                                                     </Suspense>

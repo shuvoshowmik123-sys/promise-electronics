@@ -502,21 +502,14 @@ export const inventoryApi = {
 };
 
 // Purchase Orders API
-export const purchaseOrdersApi = {
-    getAll: () => fetchApi<PurchaseOrder[]>("/purchase-orders"),
-    getById: (id: string) => fetchApi<PurchaseOrder>(`/purchase-orders/${id}`),
-    getItems: (id: string) => fetchApi<PurchaseOrderItem[]>(`/purchase-orders/${id}/items`),
-    create: (data: { order: InsertPurchaseOrder; items: InsertPurchaseOrderItem[] }) =>
-        fetchApi<PurchaseOrder>("/purchase-orders", {
-            method: "POST",
-            body: JSON.stringify(data),
-        }),
-    updateStatus: (id: string, status: string) =>
-        fetchApi<PurchaseOrder>(`/purchase-orders/${id}/status`, {
-            method: "PATCH",
-            body: JSON.stringify({ status }),
-        }),
-};
+/*
+ * purchaseOrdersApi was removed on 2026-08-11 with the Purchasing tab.
+ *
+ * The shop pays for a part and collects it the same day, so ordering in
+ * advance and receiving into stock later described a way of buying it does
+ * not use. Two of the methods behind it had never been implemented either,
+ * so opening a purchase order and marking one received both answered 500.
+ */
 
 // Challans API
 export const challansApi = {

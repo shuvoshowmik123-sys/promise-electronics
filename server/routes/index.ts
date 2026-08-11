@@ -45,7 +45,6 @@ import technicianRoutes from './technician.routes.js';
 import auditRoutes from './audit.routes.js';
 import adminNotificationsRoutes from './admin-notifications.routes.js';
 import searchRoutes from './search.routes.js';
-import purchaseOrdersRoutes from './purchase-orders.routes.js';
 import quotationRoutes from './quotation.routes.js';
 
 import corporateAuthRoutes from './corporate-auth.routes.js';
@@ -329,7 +328,6 @@ export async function registerRoutes(
 
     routeLog('[Routes] ✓ Spare parts routes registered');
 
-    app.use(purchaseOrdersRoutes);
     routeLog('[Routes] ✓ Purchase Orders routes registered');
 
     app.use('/api/messenger', messengerRoutes);

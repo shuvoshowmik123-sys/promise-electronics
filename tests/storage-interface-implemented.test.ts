@@ -83,12 +83,14 @@ const KNOWN_UNIMPLEMENTED = [
   // LIVE — endpoint is broken in production
   "getInventorySerials",            // GET /api/inventory/:id/serials
   "createInventorySerials",         // POST /api/inventory/:id/serials
-  "getPurchaseOrderItems",          // GET /api/purchase-orders/:id
-  "updatePurchaseOrderStatus",      // PATCH /api/purchase-orders/:id/status
   "getWorkflowKPIs",                // GET workflow KPIs
   "getTechnicianWorkload",          // GET technician workload
   "deleteAllBusinessData",          // POST settings data wipe
   "markCorporateNotificationAsRead",// PATCH corporate notification read
+  // Declared, unimplemented, and no longer reachable: the Purchasing tab and
+  // its routes were deleted on 2026-08-11, so these two now describe nothing.
+  "getPurchaseOrderItems",
+  "updatePurchaseOrderStatus",
   // Dead declaration — logic lives on a service, nothing calls the proxy
   "syncJobParts",
   "updateInventorySerialStatus",
