@@ -234,6 +234,53 @@ async function recordScan(opts: {
     }
 }
 
+/**
+ * Void the seals on a job and issue a fresh pair.
+ *
+ * Stickers fall off hot panels, get printed crooked, smear, and get peeled by
+ * children. Without this the only options are a television carrying a seal
+ * nobody can read, or a second seal on the same set with a different code —
+ * which is precisely the pattern the pair check exists to flag as fraud.
+ *
+ * The old rows are kept and marked voided rather than deleted. A voided code
+ * turning up on a television is worth knowing about: it means an old sticker
+ * is still out there, which is a different situation from a forgery, and a
+ * code that had simply vanished from the records would read as the latter.
+ */
+export async function reissueStickersForJob(
+    jobTicketId: string,
+    actor: { id: string; name: string },
+    reason: string,
+): Promise<schema.WarrantySticker[]> {
+    const trimmed = reason.trim();
+    if (!trimmed) {
+        throw new StickerError(400, "REASON_REQUIRED", "Say why the seals are being replaced");
+    }
+
+    await db.update(schema.warrantyStickers)
+        .set({ voidedAt: new Date(), voidedReason: `${trimmed} — replaced by ${actor.name}` })
+        .where(and(
+            eq(schema.warrantyStickers.jobTicketId, jobTicketId),
+            isNull(schema.warrantyStickers.voidedAt),
+        ));
+
+    return ensureStickersForJob(jobTicketId, actor);
+}
+
+/**
+ * The seals on a job, without scanning anything.
+ *
+ * The fallback is not an edge case. A seal ends up under a wall mount, behind
+ * grease, or peeled off entirely, and a shop that can only honour a warranty it
+ * can scan will refuse genuine customers over its own adhesive. The cover lives
+ * on the job record; the seal is only the fastest way to reach it.
+ */
+export async function stickersForJob(jobTicketId: string): Promise<schema.WarrantySticker[]> {
+    return db.select().from(schema.warrantyStickers)
+        .where(eq(schema.warrantyStickers.jobTicketId, jobTicketId))
+        .orderBy(desc(schema.warrantyStickers.issuedAt));
+}
+
 /** Recent scans, newest first — mostly read to see whether fakes are appearing. */
 export async function recentScans(limit = 50): Promise<schema.WarrantyStickerScan[]> {
     return db.select().from(schema.warrantyStickerScans)

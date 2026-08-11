@@ -9,7 +9,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { AlertTriangle, CheckCircle2, Loader2, ScanLine, ShieldOff } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FilePlus2, Loader2, ScanLine, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { fetchApi } from "@/lib/api/httpClient";
@@ -38,7 +38,7 @@ type Outcome = {
 
 const when = (v: string | null | undefined) => (v ? format(new Date(v), "d MMM yyyy") : "—");
 
-export function WarrantyStickerVerify() {
+export function WarrantyStickerVerify({ onStartClaim }: { onStartClaim?: (job: NonNullable<Outcome["job"]>) => void } = {}) {
     const [code, setCode] = useState("");
     const [outcome, setOutcome] = useState<Outcome | null>(null);
 
@@ -80,18 +80,31 @@ export function WarrantyStickerVerify() {
                 </Button>
             </form>
 
+            {/*
+              * Not an edge case.
+              *
+              * A seal ends up under a wall mount, behind grease, or peeled off
+              * entirely. A shop that can only honour a warranty it can scan
+              * refuses genuine customers over its own adhesive — so the way in
+              * without a seal sits here in plain sight, not behind a link.
+              */}
+            <p className="text-[11px] leading-5 text-slate-500">
+                No seal, or it will not scan? The cover is on the repair record, not the sticker —
+                search the customer's phone number in the claims list below and pick their repair.
+            </p>
+
             {check.isError && (
                 <p className="rounded-xl bg-rose-50 p-3 text-sm font-semibold text-rose-700">
                     Could not check that code. Try again.
                 </p>
             )}
 
-            {outcome && <Result outcome={outcome} />}
+            {outcome && <Result outcome={outcome} onStartClaim={onStartClaim} />}
         </div>
     );
 }
 
-function Result({ outcome }: { outcome: Outcome }) {
+function Result({ outcome, onStartClaim }: { outcome: Outcome; onStartClaim?: (job: NonNullable<Outcome["job"]>) => void }) {
     if (outcome.result === "unknown") {
         return (
             /*
@@ -171,6 +184,32 @@ function Result({ outcome }: { outcome: Outcome }) {
                     value={job?.partsUntil ? `${job.partsValid ? "Valid" : "Expired"} · until ${when(job.partsUntil)}` : "None"}
                 />
             </div>
+
+            {/*
+              * The point of scanning.
+              *
+              * Everything above is evidence; this is the thing the counter
+              * actually wants to do next. Without it the staff member reads a
+              * verdict and then goes hunting for the same job by hand, which
+              * is the work the seal was supposed to remove.
+              *
+              * A claim can still be started on expired cover — the shop may
+              * choose to honour it, and that is a decision for a person, not
+              * a disabled button.
+              */}
+            {onStartClaim && outcome.job && !voided && (
+                <button
+                    type="button"
+                    onClick={() => onStartClaim(outcome.job!)}
+                    className={cn(
+                        "flex h-12 w-full items-center justify-center gap-2 rounded-2xl text-sm font-black shadow-sm active:scale-[0.99]",
+                        covered ? "bg-emerald-600 text-white" : "border border-slate-300 bg-white text-slate-700",
+                    )}
+                >
+                    <FilePlus2 className="h-4 w-4" />
+                    {covered ? "Start warranty claim" : "Start claim anyway (cover expired)"}
+                </button>
+            )}
 
             {/* The pair check. Open the set, scan the hidden seal, and confirm
                 it names this same repair. */}

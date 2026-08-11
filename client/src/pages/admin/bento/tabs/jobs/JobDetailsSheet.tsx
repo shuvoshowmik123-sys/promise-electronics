@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { JobPrintDialog } from "@/components/admin/JobPrintDialog";
+import { WarrantySealDialog } from "@/components/admin/WarrantySealDialog";
 import { Badge } from "@/components/ui/badge";
 import {
     DropdownMenu,
@@ -127,6 +128,14 @@ export function JobDetailsSheet({
     const isMobile = useIsMobile();
     const [workSheetOpen, setWorkSheetOpen] = useState(false);
     const [stickerOpen, setStickerOpen] = useState(false);
+    const [sealOpen, setSealOpen] = useState(false);
+    /**
+     * The seal proves a repair happened, so it is offered once the repair has.
+     * Printing one for a job still on the bench would be proof of something
+     * that has not occurred yet.
+     */
+    const repairIsDone = ["Completed", "Delivered", "Closed", "Ready for Delivery", "Ready for Collection"]
+        .includes(String(job?.status ?? ""));
     const [holdBusy, setHoldBusy] = useState(false);
     const [mediaViewerOpen, setMediaViewerOpen] = useState(false);
     const [mediaViewerIndex, setMediaViewerIndex] = useState(0);
@@ -808,6 +817,14 @@ export function JobDetailsSheet({
                                 </div>
                             )}
                         </MobileBottomSheetFrame>
+                        {sealOpen && job && (
+                            <WarrantySealDialog
+                                open={sealOpen}
+                                onOpenChange={setSealOpen}
+                                jobId={job.id}
+                                jobNumber={getSafeJobDisplayRef(job as any)}
+                            />
+                        )}
                         {stickerOpen && job && (
                             <JobPrintDialog
                                 open={stickerOpen}
@@ -1135,6 +1152,11 @@ export function JobDetailsSheet({
                                         <DropdownMenuItem className="gap-2 cursor-pointer" onSelect={() => setStickerOpen(true)}>
                                             <QrCode className="w-4 h-4" /> Print sticker for the TV
                                         </DropdownMenuItem>
+                                        {repairIsDone && (
+                                            <DropdownMenuItem className="gap-2 cursor-pointer" onSelect={() => setSealOpen(true)}>
+                                                <ShieldCheck className="w-4 h-4" /> Print warranty seals
+                                            </DropdownMenuItem>
+                                        )}
                                     </DropdownMenuContent>
                                 </DropdownMenu>
                             </div>

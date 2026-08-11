@@ -20,6 +20,10 @@ import {
     warrantyStanding,
 } from "../shared/warranty-sticker.js";
 
+/** The closing brace of a top-level function, kept out of string literals. */
+const NEWLINE = String.fromCharCode(10);
+const END_OF_FN = NEWLINE + "}";
+
 const ROOT = process.cwd();
 const SERVICE = readFileSync(join(ROOT, "server/services/warranty-sticker.service.ts"), "utf8");
 const ROUTES = readFileSync(join(ROOT, "server/routes/warranty-stickers.routes.ts"), "utf8");
@@ -165,6 +169,63 @@ describe("the failures are kept", () => {
         // when it turns up on a television.
         expect(SCHEMA).toContain('voidedAt: timestamp("voided_at")');
         expect(SERVICE).toContain('"voided"');
+    });
+});
+
+describe("a seal proves, it does not authorise", () => {
+    const VERIFY = readFileSync(join(ROOT, "client/src/components/admin/WarrantyStickerVerify.tsx"), "utf8");
+
+    it("offers the way in without a seal, in plain sight", () => {
+        /**
+         * The fallback is not an edge case. A seal ends up under a wall mount,
+         * behind grease, or peeled off entirely, and a shop that can only
+         * honour a warranty it can scan refuses genuine customers over its own
+         * adhesive. Cover lives on the repair record; the seal only finds it.
+         */
+        expect(VERIFY).toContain("No seal, or it will not scan?");
+        expect(VERIFY).toContain("not the sticker");
+    });
+
+    it("still lets a claim be started when cover has expired", () => {
+        // Whether to honour a lapsed warranty is a decision for a person, not
+        // a disabled button.
+        expect(VERIFY).toContain("Start claim anyway (cover expired)");
+    });
+
+    it("leads straight into the claim instead of stopping at a verdict", () => {
+        // Without this the counter reads an answer and then hunts for the same
+        // job by hand — the work the seal was supposed to remove.
+        expect(VERIFY).toContain("onStartClaim");
+        expect(VERIFY).toContain("Start warranty claim");
+    });
+});
+
+describe("replacing a damaged seal", () => {
+    it("voids the old pair rather than deleting it", () => {
+        // An old seal turning up on a television is worth knowing about: it
+        // means a sticker is still out there, which is a different situation
+        // from a forgery.
+        const fn = SERVICE.slice(SERVICE.indexOf("export async function reissueStickersForJob"));
+        const body = fn.slice(0, fn.indexOf(END_OF_FN));
+        expect(body).toContain("voidedAt: new Date()");
+        expect(body).toContain("isNull(schema.warrantyStickers.voidedAt)");
+        expect(body).toContain("ensureStickersForJob");
+    });
+
+    it("demands a reason, and carries it on the voided code", () => {
+        const fn = SERVICE.slice(SERVICE.indexOf("export async function reissueStickersForJob"));
+        const body = fn.slice(0, fn.indexOf(END_OF_FN));
+        expect(body).toContain("REASON_REQUIRED");
+        expect(body).toContain("voidedReason");
+    });
+
+    it("is behind a staff login and an edit permission", () => {
+        // The doc comment above the route mentions the same path, so match the
+        // registration itself rather than the first line that names it.
+        const line = ROUTES.split(NEWLINE).find((l) => l.trimStart().startsWith("router.") && l.includes("warranty-stickers/reissue"));
+        expect(line, "reissue route is not registered").toBeTruthy();
+        expect(line).toContain("requireAdminAuth");
+        expect(line).toContain("requireGranularPermission");
     });
 });
 

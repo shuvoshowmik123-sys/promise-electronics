@@ -15,6 +15,7 @@ import {
     StickerError,
     ensureStickersForJob,
     recentScans,
+    reissueStickersForJob,
     verifySticker,
 } from "../services/warranty-sticker.service.js";
 
@@ -69,6 +70,34 @@ router.get("/api/jobs/:id/warranty-stickers", requireAdminAuth, requireGranularP
         }
         console.error("[WarrantySticker] Issue failed:", error);
         res.status(500).json({ error: "Could not prepare the warranty stickers" });
+    }
+});
+
+/**
+ * POST /api/jobs/:id/warranty-stickers/reissue — replace a damaged pair.
+ *
+ * Needs a reason, which then travels with the voided code. If an old seal is
+ * ever scanned the counter learns "replaced because it was printed crooked"
+ * rather than being left to guess between a forgery and a reprint.
+ */
+router.post("/api/jobs/:id/warranty-stickers/reissue", requireAdminAuth, requireGranularPermission("jobs.edit"), async (req: Request, res: Response) => {
+    try {
+        const actor = await resolveActor(req);
+        const stickers = await reissueStickersForJob(req.params.id, actor, String(req.body?.reason ?? ""));
+        await auditLogger.log({
+            userId: actor.id,
+            action: "UPDATE",
+            entity: "WARRANTY_STICKER",
+            entityId: req.params.id,
+            details: `Reissued warranty seals — ${String(req.body?.reason ?? "").trim()}`,
+        });
+        res.json(stickers);
+    } catch (error) {
+        if (error instanceof StickerError) {
+            return res.status(error.status).json({ error: error.message, code: error.code });
+        }
+        console.error("[WarrantySticker] Reissue failed:", error);
+        res.status(500).json({ error: "Could not reissue the warranty seals" });
     }
 });
 

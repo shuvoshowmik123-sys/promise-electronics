@@ -438,6 +438,44 @@ export default function WarrantyClaimsTab() {
         [data],
     );
 
+    /**
+     * Start a claim straight from a scanned seal.
+     *
+     * The seal has already proved which repair this is, so asking the counter
+     * to find the same job again by hand is exactly the work the seal removed.
+     * The reason is asked for because a claim without one cannot be triaged,
+     * and it is the customer's own words that matter here.
+     */
+    const startClaimFromSeal = useMutation({
+        mutationFn: (input: { jobId: string; reason: string; claimType: string }) =>
+            warrantyClaimsApi.create({
+                originalJobId: input.jobId,
+                claimType: input.claimType,
+                claimReason: input.reason,
+                notes: 'Opened from a scanned warranty seal.',
+            }),
+        onSuccess: () => {
+            queryClient.invalidateQueries({ queryKey: ['warranty-claims'] });
+            toast.success('Claim opened. Approve it to create the repair job.');
+        },
+        onError: (error: Error) => toast.error(error.message || 'Could not open the claim'),
+    });
+
+    const handleStartClaimFromSeal = (job: { id: string; serviceValid: boolean; partsValid: boolean }) => {
+        const reason = window.prompt(
+            [
+                "What has gone wrong?",
+                "",
+                "In the customer's own words — it is what the technician reads first.",
+            ].join("\n"),
+        );
+        if (!reason?.trim()) return;
+        // Parts cover and service cover expire separately; claim against the
+        // one that is actually live so the clock check judges it correctly.
+        const claimType = job.partsValid && !job.serviceValid ? 'parts' : 'service';
+        startClaimFromSeal.mutate({ jobId: job.id, reason: reason.trim(), claimType });
+    };
+
     const approveMutation = useMutation({
         mutationFn: async (id: string) => {
             await warrantyClaimsApi.approve(id, {
@@ -574,7 +612,7 @@ export default function WarrantyClaimsTab() {
                         <p className="mb-2 text-[11px] font-black uppercase tracking-wide text-slate-500">
                             Check a warranty seal
                         </p>
-                        <WarrantyStickerVerify />
+                        <WarrantyStickerVerify onStartClaim={handleStartClaimFromSeal} />
                     </div>
 
                     {isLoading ? (
@@ -674,7 +712,7 @@ export default function WarrantyClaimsTab() {
                     </CardDescription>
                 </CardHeader>
                 <CardContent>
-                    <WarrantyStickerVerify />
+                    <WarrantyStickerVerify onStartClaim={handleStartClaimFromSeal} />
                 </CardContent>
             </Card>
 
