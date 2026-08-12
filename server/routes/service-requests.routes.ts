@@ -864,6 +864,24 @@ router.post('/api/admin/service-requests/:id/custody-otp/send', requireAdminAuth
 router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminAuth, requireAnyGranularPermission(['pickup.confirmHandover', 'serviceRequests.confirmCounterCustody']), async (req: Request, res: Response) => {
     try {
         const { action, code } = req.body;
+        /**
+         * The condition photo, on the ordinary handover as well as the
+         * exception one.
+         *
+         * A photograph existed only on the no-code path, where it is evidence
+         * that a handover happened at all. It is worth just as much on a
+         * successful one, for a different reason: it records what the
+         * television looked like as it changed hands. That single fact settles
+         * "this crack was not there when I gave it to you" for both sides, and
+         * a repair shop holding other people's panels carries that risk daily.
+         *
+         * Optional here rather than required. A driver at a gate with no signal
+         * must still be able to complete a verified handover — refusing custody
+         * over a failed upload would be a worse failure than a missing photo.
+         */
+        const conditionPhotoUrl = typeof req.body?.proofPhotoUrl === "string"
+            ? req.body.proofPhotoUrl.trim()
+            : "";
         if (action !== "receive" && action !== "delivery") {
             return res.status(400).json({ error: 'Invalid custody action' });
         }
@@ -1222,6 +1240,7 @@ router.post('/api/admin/service-requests/:id/custody-otp/confirm', requireAdminA
                     actorName: actor,
                     actorUserId: req.session.adminUserId!,
                     actorRole: adminUser?.role || "Driver",
+                    proofPhotoUrl: conditionPhotoUrl || undefined,
                 });
 
                 /**

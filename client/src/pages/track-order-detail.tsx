@@ -1053,6 +1053,40 @@ function ServiceRequestTimeline({ order, events, warranty }: { order: ServiceReq
       }
     }
 
+    /**
+     * The photograph taken as the television was collected.
+     *
+     * The customer is shown the same picture the shop holds, at the time it is
+     * taken rather than produced against them in an argument later. That is
+     * what makes it fair — and also what makes it persuasive, because a record
+     * both sides have already seen is far harder to dispute than one that
+     * appears only when it is needed.
+     */
+    if ((order as any)?.collection?.photoUrl) {
+      const collection = (order as any).collection;
+      dateCards.push(
+        <div key="collection" className="p-3 md:p-4 bg-slate-50 border border-slate-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <img
+              src={collection.photoUrl}
+              alt="Your television as it was collected"
+              className="h-20 w-20 shrink-0 rounded-lg border border-slate-200 object-cover"
+            />
+            <div className="min-w-0">
+              <p className="font-semibold text-slate-900">Condition when collected</p>
+              <p className="text-sm text-slate-600">
+                Taken by our driver as your TV changed hands
+                {collection.collectedAt ? ` on ${format(new Date(collection.collectedAt), "d MMMM yyyy")}` : ""}.
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Kept so both you and we know exactly how it looked. Tell us straight away if this does not match.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     if (dateCards.length === 0) return null;
 
     return (

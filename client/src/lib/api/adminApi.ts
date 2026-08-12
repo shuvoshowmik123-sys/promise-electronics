@@ -1437,7 +1437,7 @@ export const adminStageApi = {
             method: "POST",
             body: JSON.stringify(data),
         }),
-    confirmCustodyOtp: (id: string, data: { action: "receive" | "delivery"; code: string }) =>
+    confirmCustodyOtp: (id: string, data: { action: "receive" | "delivery"; code: string; proofPhotoUrl?: string }) =>
         fetchApi<any>(`/admin/service-requests/${id}/custody-otp/confirm`, {
             method: "POST",
             body: JSON.stringify(data),

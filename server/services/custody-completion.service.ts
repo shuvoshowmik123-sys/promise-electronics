@@ -182,6 +182,10 @@ export async function completeCustody(input: CustodyCompletionInput): Promise<Cu
         await pickupRepo.updatePickupSchedule(pickup.id, {
             status: "PickedUp",
             pickedUpAt: new Date(),
+            // The column has existed since the table was written and nothing
+            // ever wrote to it. This is the record the customer is shown, and
+            // the shop's answer to a damage claim.
+            ...(input.proofPhotoUrl ? { pickupProofUrl: input.proofPhotoUrl } : {}),
         } as any);
     }
 

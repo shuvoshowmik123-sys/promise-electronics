@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { PhotoCapture } from "@/components/admin/PhotoCapture";
 
 export type HandoverTarget = {
     serviceRequestId: string;
@@ -56,6 +57,14 @@ export function HandoverSheet({
     const [codMethod, setCodMethod] = useState<"Cash" | "bKash" | "Nagad" | "Bank">("Cash");
     const [noCodeReason, setNoCodeReason] = useState("");
     const [noCodePhotoUrl, setNoCodePhotoUrl] = useState("");
+    /**
+     * The condition photo on a normal, verified handover.
+     *
+     * Optional on purpose. A driver at a gate with no signal must still be
+     * able to complete a verified handover — refusing custody over a failed
+     * upload would be a worse failure than a missing photograph.
+     */
+    const [conditionPhotoUrl, setConditionPhotoUrl] = useState("");
     const inputsRef = useRef<(HTMLInputElement | null)[]>([]);
 
     const open = !!target;
@@ -79,6 +88,7 @@ export function HandoverSheet({
         setCodMethod("Cash");
         setNoCodeReason("");
         setNoCodePhotoUrl("");
+        setConditionPhotoUrl("");
     }, [target?.serviceRequestId, target?.mode]);
 
     const collectMutation = useMutation({
@@ -117,7 +127,11 @@ export function HandoverSheet({
     });
 
     const confirmMutation = useMutation({
-        mutationFn: (code: string) => adminStageApi.confirmCustodyOtp(target!.serviceRequestId, { action: mode, code }),
+        mutationFn: (code: string) => adminStageApi.confirmCustodyOtp(target!.serviceRequestId, {
+            action: mode,
+            code,
+            proofPhotoUrl: conditionPhotoUrl.trim() || undefined,
+        }),
         onSuccess: async () => {
             /**
              * No second mutation. The server completes the handover.
@@ -300,19 +314,21 @@ export function HandoverSheet({
                                             placeholder="Why the code path could not be used (min 8 characters)"
                                         />
                                     </div>
-                                    <div>
-                                        <label className="text-xs font-bold uppercase text-slate-500">Photo proof URL (required)</label>
-                                        <Input
-                                            value={noCodePhotoUrl}
-                                            onChange={(e) => setNoCodePhotoUrl(e.target.value)}
-                                            className="mt-1 h-12 rounded-2xl"
-                                            placeholder="https://… device + customer photo"
-                                            inputMode="url"
-                                        />
-                                        <p className="mt-1 text-[11px] text-slate-400 flex items-center gap-1">
-                                            <Camera className="h-3 w-3" /> Paste image URL from upload
-                                        </p>
-                                    </div>
+                                    {/*
+                                      * Was a text box asking for an image URL, on a
+                                      * phone, at a customer's gate. A required field
+                                      * that cannot be filled where it is asked is not
+                                      * a control — it is a reason to give up on this
+                                      * path or to invent something. The camera the
+                                      * driver is already holding fills it now.
+                                      */}
+                                    <PhotoCapture
+                                        label="Photo proof (required)"
+                                        hint="The device and the customer together, so the handover is evidenced."
+                                        fileNamePrefix="handover-nocode"
+                                        value={noCodePhotoUrl}
+                                        onChange={setNoCodePhotoUrl}
+                                    />
                                     <button
                                         type="button"
                                         onClick={() => sendMutation.mutate()}
@@ -381,6 +397,23 @@ export function HandoverSheet({
                                         {sendMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
                                         Resend code
                                     </button>
+                                    {/*
+                                      * Offered on the ordinary handover, not only the
+                                      * exception one. The code proves the handover
+                                      * happened; this records what the television
+                                      * looked like while it did — which is what
+                                      * settles a damage argument later, for whichever
+                                      * side is telling the truth.
+                                      */}
+                                    <PhotoCapture
+                                        className="mt-5 w-full text-left"
+                                        label="Condition photo (optional)"
+                                        hint="The screen and any existing marks. Protects the customer and the shop."
+                                        fileNamePrefix={`handover-${mode}`}
+                                        value={conditionPhotoUrl}
+                                        onChange={setConditionPhotoUrl}
+                                    />
+
                                     <button
                                         type="button"
                                         onClick={() => setStep("no_code")}

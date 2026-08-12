@@ -986,7 +986,34 @@ router.get('/api/customer/service-requests/:id', requireCustomerAuth, async (req
         const payments = await getServiceRequestPayments(order.id, order.convertedJobId);
         const paymentState = await deriveServiceRequestPaymentState(order);
         const safeOrder = applyCustomerSafePaymentState(order, paymentState);
-        res.json({ ...safeOrder, timeline: events, paymentSubmissions: payments });
+
+        /**
+         * The photograph taken as the television changed hands.
+         *
+         * Shown to the customer deliberately. It is the shop's evidence
+         * against a damage claim, but it is only fair — and only persuasive —
+         * if the customer can see the same picture at the time, rather than
+         * having it produced against them in an argument weeks later. A record
+         * both sides hold is worth more to both sides than one held by the
+         * shop alone.
+         *
+         * Only the photo and the moment. Nothing else from the pickup record
+         * belongs on a customer's screen.
+         */
+        let collection: { photoUrl: string; collectedAt: string | null } | null = null;
+        try {
+            const pickup = await storage.getPickupScheduleByServiceRequestId(order.id);
+            if (pickup?.pickupProofUrl) {
+                collection = {
+                    photoUrl: pickup.pickupProofUrl,
+                    collectedAt: pickup.pickedUpAt ? new Date(pickup.pickedUpAt).toISOString() : null,
+                };
+            }
+        } catch {
+            // A missing photo must never fail the page the customer came to read.
+        }
+
+        res.json({ ...safeOrder, timeline: events, paymentSubmissions: payments, collection });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch service request details' });
     }
