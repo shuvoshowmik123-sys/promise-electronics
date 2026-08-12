@@ -1498,6 +1498,8 @@ export const adminPickupsApi = {
             taskId?: string | null;
             /** True when the task exists but nobody was assigned automatically. */
             driverChoiceRequired?: boolean;
+            /** Why no driver was assigned, when none was: a sync fault, or no driver exists. */
+            driverBlocker?: "no_task" | "no_driver" | null;
         }>(`/admin/service-requests/${serviceRequestId}/transfer-to-pickup`, {
             method: "POST",
             body: JSON.stringify(data || {}),

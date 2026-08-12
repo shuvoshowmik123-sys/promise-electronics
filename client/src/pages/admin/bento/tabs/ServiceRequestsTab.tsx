@@ -631,6 +631,29 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                 return;
             }
 
+            /**
+             * A transfer that assigned nobody is not a success worth a green tick.
+             *
+             * This used to report plain success in every remaining case, so a
+             * request with no driver looked identical to one with a driver —
+             * which is what "the send-to-driver button does not assign anyone"
+             * looks like from the counter.
+             */
+            if (res.driverBlocker === "no_driver") {
+                toast.warning("Moved to Pickup & Delivery, but nobody is assigned", {
+                    description: "There is no active user with the Driver role. Add one in Users, then assign this task.",
+                    duration: 8000,
+                });
+                return;
+            }
+            if (res.driverBlocker === "no_task") {
+                toast.error("Moved, but no pickup task was created", {
+                    description: "There is nothing for a driver to pick up. Open Pickup & Delivery and check this request.",
+                    duration: 8000,
+                });
+                return;
+            }
+
             toast.success(res.alreadyExisted ? "Already in Pickup & Delivery" : "Transferred to Pickup & Delivery");
         },
         onError: (e: Error) => toast.error(e.message || "Failed to transfer to pickup"),
@@ -1486,11 +1509,38 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                         {repairCase?.intake?.callSummary?.callAttemptCount > 0 && (
                                             <span className="text-[10px] font-bold text-slate-500">{repairCase.intake.callSummary.callAttemptCount} call{repairCase.intake.callSummary.callAttemptCount > 1 ? 's' : ''}{repairCase.intake.callSummary.lastCallOutcome ? ` · ${repairCase.intake.callSummary.lastCallOutcome.replace(/_/g, ' ')}` : ''}</span>
                                         )}
-                                        {canLogCall && (
-                                            <Button variant="outline" size="sm" className="ml-auto h-7 rounded-lg text-[10px] font-bold gap-1" onClick={() => setShowCallLogDialog(true)}>
-                                                <Phone className="h-3 w-3" /> Log Call
-                                            </Button>
-                                        )}
+                                        {/*
+                                          * A phone icon must dial the phone.
+                                          *
+                                          * This button carried a handset and opened a
+                                          * five-field form instead, which is what
+                                          * anybody reaching for it actually wants least:
+                                          * the customer is on the other end of a number,
+                                          * not of a questionnaire. Dialling is now the
+                                          * button; logging is the small optional one
+                                          * beside it, for the times somebody wants a
+                                          * record afterwards.
+                                          *
+                                          * An <a href="tel:"> rather than a scripted
+                                          * location change, so Android hands it to the
+                                          * dialler the way every other link on the phone
+                                          * behaves.
+                                          */}
+                                        <div className="ml-auto flex items-center gap-1.5">
+                                            {normalizeTel(selectedRequest?.phone) && (
+                                                <a
+                                                    href={`tel:${normalizeTel(selectedRequest?.phone)}`}
+                                                    className="inline-flex h-7 items-center gap-1 rounded-lg bg-emerald-600 px-2.5 text-[10px] font-bold text-white shadow-sm active:scale-[0.97]"
+                                                >
+                                                    <Phone className="h-3 w-3" /> Call
+                                                </a>
+                                            )}
+                                            {canLogCall && (
+                                                <Button variant="ghost" size="sm" className="h-7 rounded-lg px-2 text-[10px] font-bold text-slate-500" onClick={() => setShowCallLogDialog(true)}>
+                                                    Log
+                                                </Button>
+                                            )}
+                                        </div>
                                     </div>
                                     {repairCase?.intake?.needsStaffAction && (
                                         <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">

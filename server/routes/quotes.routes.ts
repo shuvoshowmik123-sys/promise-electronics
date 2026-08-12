@@ -496,6 +496,8 @@ async function finishPickupTransfer(
     taskId?: string | null;
     /** True when the task exists but no driver was assigned automatically. */
     driverChoiceRequired?: boolean;
+    /** Why no driver was assigned, when none was. */
+    driverBlocker?: "no_task" | "no_driver" | null;
 }> {
     let stage: string | undefined;
     let autoAssignedDriver: string | null = null;
@@ -522,11 +524,38 @@ async function finishPickupTransfer(
         console.error('[Pickup] Auto-assign step failed:', (err as Error).message);
     }
 
+    /**
+     * Say what actually happened, including when nothing did.
+     *
+     * driverChoiceRequired was Boolean(taskId) && !autoAssignedDriver, so a
+     * missing task — no logistics row for the schedule — produced neither an
+     * assignment nor a prompt, and the caller then showed a plain
+     * "Transferred to Pickup & Delivery" success. The request sat with no
+     * driver and nothing anywhere said a driver was still owed, which is
+     * exactly what "the button does not assign the driver" looks like from
+     * the counter.
+     *
+     * The two failures are also different problems and must not read the
+     * same. No task is a sync fault in this system; no driver is a staffing
+     * fact only the shop can fix.
+     */
+    let driverBlocker: "no_task" | "no_driver" | null = null;
+    if (!taskId) {
+        driverBlocker = "no_task";
+    } else if (!autoAssignedDriver) {
+        const { rows } = await db.execute(sql`
+            SELECT count(*)::int AS n FROM users WHERE role = 'Driver' AND status = 'Active'
+        `);
+        if (Number((rows[0] as any)?.n ?? 0) === 0) driverBlocker = "no_driver";
+    }
+
     return {
         stage,
         autoAssignedDriver,
         taskId,
-        driverChoiceRequired: Boolean(taskId) && !autoAssignedDriver,
+        driverBlocker,
+        // Only ask for a choice when there is genuinely a choice to make.
+        driverChoiceRequired: Boolean(taskId) && !autoAssignedDriver && driverBlocker === null,
     };
 }
 
@@ -565,6 +594,7 @@ router.post('/api/admin/service-requests/:id/transfer-to-pickup', requireAdminAu
                 autoAssignedDriver: outcome.autoAssignedDriver ?? null,
                 taskId: outcome.taskId ?? null,
                 driverChoiceRequired: outcome.driverChoiceRequired ?? false,
+                driverBlocker: outcome.driverBlocker ?? null,
             });
         }
 
