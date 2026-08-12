@@ -1,4 +1,6 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
     pickupTransferPending,
     resolveCustodyOwner,
@@ -72,5 +74,43 @@ describe("pickupTransferPending", () => {
 
     it("never applies to a drop-off request", () => {
         expect(pickupTransferPending({ serviceMode: "service_center", stage: "intake" })).toBe(false);
+    });
+});
+
+/**
+ * The rule has to hold on EVERY door, not just the one somebody remembered.
+ *
+ * resolveCustodyOwner was written on 2026-08-05 precisely because a pickup
+ * request was offering "Receive Pickup OTP" at a desk. The guard was then
+ * applied to the wizard button and to nothing else, so the stage dropdown on
+ * every row of the Service Requests list went on offering it — and the server
+ * went on refusing it, which reads at the counter like a broken system rather
+ * than a handover that belongs to somebody else.
+ *
+ * These are source assertions, which cannot prove the screen behaves. They can
+ * prove nobody has quietly removed the guard from a path that had it.
+ */
+describe("the custody rule reaches every door in Service Requests", () => {
+    const TAB = readFileSync(join(process.cwd(), "client/src/pages/admin/bento/tabs/ServiceRequestsTab.tsx"), "utf8");
+
+    it("gates the stage selector, not only the wizard button", () => {
+        const fn = TAB.slice(TAB.indexOf("const handleStageSelect"));
+        const body = fn.slice(0, fn.indexOf("stageTransitionMutation.mutate({ id, stage });"));
+        expect(body).toContain("serviceDeskMayCollectCustodyCode");
+        // And it must refuse rather than fire the request anyway.
+        expect(body).toContain("This handover belongs to the driver");
+    });
+
+    it("does not even offer a custody stage this desk cannot complete", () => {
+        // A control that always fails is worse than a control that is absent.
+        const list = TAB.slice(TAB.indexOf("validNextStages"));
+        expect(list).toContain("getCustodyActionForStage(stage)");
+        expect(list).toContain("serviceDeskMayCollectCustodyCode");
+    });
+
+    it("points the staff member at the surface that owns it", () => {
+        // Refusing without saying where the work lives is how a correct rule
+        // still wastes somebody's afternoon.
+        expect(TAB).toContain("Open Pickup & Delivery");
     });
 });

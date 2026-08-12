@@ -122,7 +122,7 @@ function getStatusChangeWarning(type: 'internal' | 'tracking', from: string, to:
     };
 }
 import { serviceRequestsApi, adminQuotesApi, adminStageApi, jobTicketsApi, settingsApi, adminPickupsApi, adminLogisticsApi, repairCaseApi, callAttemptsApi, intakeSummaryApi } from "@/lib/api";
-import { resolveCustodyOwner } from "@/lib/custody-owner";
+import { resolveCustodyOwner, serviceDeskMayCollectCustodyCode } from "@/lib/custody-owner";
 import { useRollback } from "@/contexts/RollbackContext";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { cn } from "@/lib/utils";
@@ -761,6 +761,42 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
     const handleStageSelect = (id: string, stage: string) => {
         const custodyAction = getCustodyActionForStage(stage);
         if (custodyAction) {
+            /**
+             * Whose handover is this?
+             *
+             * resolveCustodyOwner has said since it was written that a pickup
+             * request's handover happens at the customer's door and therefore
+             * belongs to the driver, while a drop-off happens at the counter
+             * and belongs to this desk. That rule was applied to the wizard
+             * button and to nothing else — so the stage dropdown on every row
+             * of the list still offered "receive" on a pickup request.
+             *
+             * The server has always refused those: resolveCustodyAuthority
+             * throws unless the actor IS the assigned driver. So the button
+             * could never succeed; it just failed with a message about
+             * permissions, which reads like a broken system rather than a
+             * handover that belongs to somebody else.
+             */
+            const row = (srData?.items ?? []).find((r: any) => r.id === id)
+                ?? (selectedRequest?.id === id ? selectedRequest : null);
+            const custodyIsOurs = serviceDeskMayCollectCustodyCode({
+                serviceMode: row?.serviceMode ?? null,
+                stage: row?.stage ?? null,
+                convertedJobId: row?.convertedJobId ?? null,
+            });
+
+            if (!custodyIsOurs) {
+                toast.info("This handover belongs to the driver", {
+                    description: "The customer's code is read at their door, in Pickup & Delivery — not from this desk.",
+                    action: {
+                        label: "Open Pickup & Delivery",
+                        onClick: () => setLocation(buildNavigateAdminTabPath("pickup")),
+                    },
+                    duration: 8000,
+                });
+                return;
+            }
+
             sendCustodyOtpMutation.mutate({ id, action: custodyAction });
             return;
         }
@@ -1857,7 +1893,22 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                                         <Label className="text-[10px] text-muted-foreground">Move to next stage:</Label>
                                                         <Select onValueChange={(v) => handleStageSelect(sr.id, v)} disabled={stageTransitionMutation.isPending || sendCustodyOtpMutation.isPending}>
                                                             <SelectTrigger className="w-full h-8 text-xs rounded-lg"><SelectValue placeholder="Select next stage..." /></SelectTrigger>
-                                                            <SelectContent>{nextStagesData?.validNextStages?.map((s: string) => <SelectItem key={s} value={s}>{formatStageName(s)}</SelectItem>)}</SelectContent>
+                                                            {/*
+                                                              * A stage this desk cannot complete is not offered.
+                                                              *
+                                                              * The custody stages on a pickup request belong to the
+                                                              * driver at the customer's door, and the server refuses
+                                                              * them here — so listing them only produced a permission
+                                                              * error that read like a broken system. The stage still
+                                                              * happens; it happens in Pickup & Delivery.
+                                                              */}
+                                                            <SelectContent>{nextStagesData?.validNextStages
+                                                                ?.filter((stage: string) => !getCustodyActionForStage(stage) || serviceDeskMayCollectCustodyCode({
+                                                                    serviceMode: sr.serviceMode,
+                                                                    stage: sr.stage,
+                                                                    convertedJobId: sr.convertedJobId,
+                                                                }))
+                                                                .map((s: string) => <SelectItem key={s} value={s}>{formatStageName(s)}</SelectItem>)}</SelectContent>
                                                         </Select>
                                                     </div>
                                                 )}
