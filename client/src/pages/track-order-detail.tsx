@@ -957,7 +957,16 @@ function PaymentSubmissionCard({ order }: { order: ServiceRequest }) {
   );
 }
 
-function ServiceRequestTimeline({ order, events, warranty }: { order: ServiceRequest; events: ServiceRequestEvent[]; warranty?: WarrantyInfo }) {
+function ServiceRequestTimeline({ order, events, warranty }: { order: ServiceRequest; events: ServiceRequestEvent[]; warranty?: WarrantyInfo }) {
+  /**
+   * The shop's own number, for the "call us back" button. Same query key as
+   * elsewhere on this page, so React Query serves it from cache.
+   */
+  const { data: settings = [] } = useQuery({
+    queryKey: ["public-settings"],
+    queryFn: publicSettingsApi.getAll,
+    staleTime: 5 * 60 * 1000,
+  });
   const isCancelled = order.trackingStatus === "Cancelled" || order.stage === "closed";
   const isClosed = order.stage === "closed";
 
@@ -1081,6 +1090,85 @@ function ServiceRequestTimeline({ order, events, warranty }: { order: ServiceReq
               <p className="mt-1 text-xs text-slate-500">
                 Kept so both you and we know exactly how it looked. Tell us straight away if this does not match.
               </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /**
+     * The photograph taken as the television was collected.
+     *
+     * The customer is shown the same picture the shop holds, at the time it
+     * is taken rather than produced against them in an argument later. That
+     * is what makes it fair — and also what makes it persuasive, because a
+     * record both sides have already seen is far harder to dispute.
+     */
+    if ((order as any)?.collection?.photoUrl) {
+      const collection = (order as any).collection;
+      dateCards.push(
+        <div key="collection" className="p-3 md:p-4 bg-slate-50 border border-slate-200 rounded-lg">
+          <div className="flex items-start gap-3">
+            <img
+              src={collection.photoUrl}
+              alt="Your television as it was collected"
+              className="h-20 w-20 shrink-0 rounded-lg border border-slate-200 object-cover"
+            />
+            <div className="min-w-0">
+              <p className="font-semibold text-slate-900">Condition when collected</p>
+              <p className="text-sm text-slate-600">
+                Taken by our driver as your TV changed hands
+                {collection.collectedAt ? ` on ${format(new Date(collection.collectedAt), "d MMMM yyyy")}` : ""}.
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Kept so both you and we know exactly how it looked. Tell us straight away if this does not match.
+              </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    /**
+     * "We have been trying to reach you."
+     *
+     * The shop counts unanswered calls and, after three, quietly parks the
+     * request in a waiting-on-customer lane. From the customer's side the
+     * repair simply went silent — so they wait, while the shop keeps dialling
+     * somebody who does not know they are being called. Both sides lose days
+     * to a fact neither of them can see.
+     *
+     * First in the list, because it is the only card here that asks the
+     * customer to do something.
+     */
+    if ((order as any)?.weTriedToCall?.attempts > 0) {
+      const tried = (order as any).weTriedToCall;
+      const shopPhone = settings.find((setting: any) => setting.key === "support_phone")?.value || "";
+      const shopPhoneHref = String(shopPhone).replace(/[^\d+]/g, "");
+      dateCards.unshift(
+        <div key="we-tried" className="p-3 md:p-4 bg-amber-50 border border-amber-300 rounded-lg">
+          <div className="flex items-start gap-3">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
+              <Phone className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-semibold text-amber-900">
+                We tried to reach you {tried.attempts === 1 ? "once" : `${tried.attempts} times`}
+              </p>
+              <p className="text-sm text-amber-800">
+                {tried.callbackAt
+                  ? `We will try again around ${format(new Date(tried.callbackAt), "d MMM, h:mm a")}.`
+                  : "Your repair is waiting on this call, so it cannot move forward until we speak."}
+                {tried.lastTriedAt ? ` Last tried ${format(new Date(tried.lastTriedAt), "d MMM, h:mm a")}.` : ""}
+              </p>
+              {shopPhoneHref && (
+                <a
+                  href={`tel:${shopPhoneHref}`}
+                  className="mt-2 inline-flex h-10 items-center gap-2 rounded-xl bg-amber-600 px-4 text-sm font-bold text-white"
+                >
+                  <Phone className="h-4 w-4" /> Call us back
+                </a>
+              )}
             </div>
           </div>
         </div>

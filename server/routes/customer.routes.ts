@@ -1013,7 +1013,45 @@ router.get('/api/customer/service-requests/:id', requireCustomerAuth, async (req
             // A missing photo must never fail the page the customer came to read.
         }
 
-        res.json({ ...safeOrder, timeline: events, paymentSubmissions: payments, collection });
+        /**
+         * "We have been trying to reach you."
+         *
+         * The shop already counts unanswered calls, and three in a row moves
+         * the request into a waiting-on-customer lane — where it sits until
+         * somebody remembers it. The customer is told none of this. From their
+         * side the repair has simply gone quiet, so they wait, and the shop
+         * keeps redialling a person who does not know they are being called.
+         *
+         * Only three facts cross: how many times, when last, and whether a
+         * callback was agreed. Not who called, not the outcome wording, not
+         * the notes — those are the shop's working record and describing a
+         * customer as "phone off" back to them helps nobody.
+         *
+         * Shown only while the calls are actually unanswered. A connected call
+         * ends the streak, and with it this message.
+         */
+        let weTriedToCall: { attempts: number; lastTriedAt: string | null; callbackAt: string | null } | null = null;
+        try {
+            const { getCallSummary } = await import('../services/call-attempt.service.js');
+            const summary = await getCallSummary(order.id);
+            if (summary.noAnswerStreak > 0) {
+                const rows = await db.execute(sql`
+                    SELECT called_at FROM service_request_call_attempts
+                    WHERE service_request_id = ${order.id}
+                    ORDER BY created_at DESC LIMIT 1
+                `);
+                const lastTriedAt = (rows.rows[0] as any)?.called_at ?? null;
+                weTriedToCall = {
+                    attempts: summary.noAnswerStreak,
+                    lastTriedAt: lastTriedAt ? new Date(lastTriedAt).toISOString() : null,
+                    callbackAt: summary.nextCallbackAt,
+                };
+            }
+        } catch {
+            // Never fail the page the customer came to read over a nicety.
+        }
+
+        res.json({ ...safeOrder, timeline: events, paymentSubmissions: payments, collection, weTriedToCall });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch service request details' });
     }
