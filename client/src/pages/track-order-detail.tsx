@@ -1,4 +1,5 @@
-﻿import React, { useState } from "react";
+﻿import { QUOTE_VALID_DAYS, quoteExpiryFrom, quoteValidityLabel, isQuoteExpired as isQuoteExpiredPolicy } from "@shared/quote-policy";
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
@@ -266,13 +267,21 @@ function QuoteDetailView({
   const showOnlyPickup = order.servicePreference === "home_pickup";
   const showOnlyServiceCenter = order.servicePreference === "service_center";
 
-  const isQuoteExpired = () => {
-    if (!order.quotedAt) return false;
-    const quotedDate = new Date(order.quotedAt);
-    const now = new Date();
-    const diffDays = Math.floor((now.getTime() - quotedDate.getTime()) / (1000 * 60 * 60 * 24));
-    return diffDays >= 30;
-  };
+  /**
+   * Expiry is whatever the server stamped on the quote, never a second guess.
+   *
+   * This page computed its own — thirty days from the quote date — while the
+   * server stored an expiry of seven and refused anything later. Between
+   * those two numbers the customer saw a live quote with an Accept button
+   * that could not work: they pressed it and were told it had expired, on a
+   * screen still promising thirty days.
+   *
+   * The fallback covers quotes written before the expiry column was filled,
+   * and agrees with the server by construction: both read one constant.
+   */
+  const quoteExpiresAt = (order as any).quoteExpiresAt
+    ?? (order.quotedAt ? quoteExpiryFrom(new Date(order.quotedAt)) : null);
+  const isQuoteExpired = () => isQuoteExpiredPolicy(quoteExpiresAt);
 
   const quoteExpired = isQuoteExpired();
 
@@ -372,8 +381,10 @@ function QuoteDetailView({
                 <p className="text-xs text-muted-foreground mt-2">
                   Quoted on: {order.quotedAt ? format(new Date(order.quotedAt), "MMM d, yyyy h:mm a") : "N/A"}
                 </p>
+                {/* One number, from shared/quote-policy.ts, so this can
+                    never again promise longer than the system honours. */}
                 <p className="text-xs text-amber-600 mt-1">
-                  Valid for 30 days from quote date
+                  Valid for {QUOTE_VALID_DAYS} days from the quote date — {quoteValidityLabel(quoteExpiresAt).toLowerCase()}
                 </p>
               </div>
             </div>
@@ -414,11 +425,12 @@ function QuoteDetailView({
               <div className="flex-1">
                 <p className="font-medium text-orange-800">Quote Expired</p>
                 <p className="text-sm text-orange-700 mt-1">
-                  Sorry, this quote has expired. Quotes are valid for 30 days from the date issued.
-                  Parts prices and availability may have changed.
+                  This quote was valid for {QUOTE_VALID_DAYS} days from the date it was issued.
+                  Panel and part prices move week to week, so we cannot hold the old figure —
+                  it may now be higher or lower.
                 </p>
                 <p className="text-sm text-orange-700 mt-2">
-                  Please submit a new service request to receive an updated quote.
+                  Ask us for a re-quote and we will price it again at today's rates.
                 </p>
                 <Button
                   className="mt-3"

@@ -3,6 +3,7 @@
  * Storage: service_requests only. Formal quotations table is out of scope.
  */
 
+import { QUOTE_VALID_DAYS } from "../../shared/quote-policy.js";
 import { db } from "../db.js";
 import { eq, sql } from "drizzle-orm";
 import * as schema from "../../shared/schema.js";
@@ -305,8 +306,15 @@ export async function sendOrPriceQuote(
   req?: unknown,
 ): Promise<{ serviceRequest: ServiceRequest; canonicalQuoteStatus: CanonicalQuoteState; revised: boolean; idempotent: boolean }> {
   const amount = assertPositiveAmount(input.quoteAmount);
-  const validDays = Number(input.quoteValidDays);
-  const days = Number.isFinite(validDays) && validDays > 0 ? Math.min(365, Math.floor(validDays)) : 7;
+  /**
+   * Validity is the shop's policy, not the caller's choice.
+   *
+   * quoteValidDays came in from whichever screen sent the quote and defaulted
+   * to seven, so the same shop could promise seven days on one path and thirty
+   * on another — and the customer honours whichever number they were shown.
+   * One rule, one number, from shared/quote-policy.ts.
+   */
+  const days = QUOTE_VALID_DAYS;
   const notes = input.quoteNotes != null ? String(input.quoteNotes) : null;
 
   const result = await db.transaction(async (tx) => {

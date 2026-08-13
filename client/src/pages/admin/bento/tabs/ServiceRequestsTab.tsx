@@ -994,7 +994,21 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
     const isServiceCenter = sr?.servicePreference === "service_center" || sr?.servicePreference === "center";
     const isClosedState = sr?.status === "Closed";
     const isConverted = sr?.status === "Work Order";
-    const quoteBlocked = Boolean(sr?.isQuote) && !["Quoted", "Accepted", "Converted"].includes(sr?.quoteStatus || "");
+    /**
+     * A quote that has been sent but not answered blocks the work.
+     *
+     * "Quoted" — sent, awaiting the customer — used to be on the allowed list,
+     * so a repair could begin on a price nobody had agreed to, while the
+     * tooltip beside the button promised "Sent quotes must be accepted or
+     * declined". The screen made a promise the code did not keep, and the case
+     * it let through is exactly the one that becomes an argument at billing.
+     *
+     * Only quote requests are gated at all. A customer who simply wants their
+     * television fixed is never held up waiting for a price nobody asked for —
+     * quoting here is something either side may start, not a step in every
+     * repair.
+     */
+    const quoteBlocked = Boolean(sr?.isQuote) && !["Accepted", "Converted"].includes(sr?.quoteStatus || "");
     const effectiveTracking = pendingChanges?.trackingStatus || sr?.trackingStatus || "";
     const trackingFlow = getTrackingStatusFlow(sr?.servicePreference);
     const threshold = isServiceCenter ? "Device Received" : "Device Collected";
