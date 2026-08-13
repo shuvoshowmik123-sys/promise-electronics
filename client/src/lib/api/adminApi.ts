@@ -1078,9 +1078,21 @@ export const adminRepairJourneysApi = {
         fetchApi<{ found: boolean; userId?: string; name?: string; customerAccountState?: string; lastLogin?: string | null; linkedRepairCount?: number; phoneTail?: string }>(
             `/admin/customer-repair-journeys/account-by-phone?phone=${encodeURIComponent(phone)}`
         ),
+    /**
+     * A six-digit code for a customer whose account intake created and who
+     * therefore has no password to be wrong.
+     *
+     * Read it to the customer on the phone or at the counter. It never leaves
+     * this system — admin panel to customer portal — and it is returned once,
+     * because only its hash is stored.
+     */
+    issueAccountSetupCode: (id: string) =>
+        fetchApi<{ code: string; expiresAt: string }>(`/admin/customers/${id}/account-setup-code`, {
+            method: "POST",
+        }),
     generateResetLink: (
         userId: string,
-        opts?: { deliver?: "sms"; inquiryId?: string },
+        opts?: { inquiryId?: string },
     ) =>
         fetchApi<{
             url: string;
@@ -1089,7 +1101,6 @@ export const adminRepairJourneysApi = {
             customerName: string;
             customerPhoneTail: string;
             message: string;
-            delivery?: { channel: "sms"; status: "sent" | "failed" | "skipped"; error?: string } | null;
         }>(`/admin/customers/${userId}/reset-link`, {
             method: "POST",
             body: JSON.stringify(opts ?? {}),
@@ -1352,9 +1363,21 @@ export const adminCustomersApi = {
         fetchApi<void>(`/admin/customers/${id}`, {
             method: "DELETE",
         }),
+    /**
+     * A six-digit code for a customer whose account intake created and who
+     * therefore has no password to be wrong.
+     *
+     * Read it to the customer on the phone or at the counter. It never leaves
+     * this system — admin panel to customer portal — and it is returned once,
+     * because only its hash is stored.
+     */
+    issueAccountSetupCode: (id: string) =>
+        fetchApi<{ code: string; expiresAt: string }>(`/admin/customers/${id}/account-setup-code`, {
+            method: "POST",
+        }),
     generateResetLink: (
         id: string,
-        opts?: { deliver?: "sms"; inquiryId?: string },
+        opts?: { inquiryId?: string },
     ) =>
         fetchApi<{
             url: string;
@@ -1363,7 +1386,6 @@ export const adminCustomersApi = {
             customerName: string;
             customerPhoneTail: string;
             message: string;
-            delivery?: { channel: "sms"; status: "sent" | "failed" | "skipped"; error?: string } | null;
         }>(`/admin/customers/${id}/reset-link`, {
             method: "POST",
             body: JSON.stringify(opts ?? {}),

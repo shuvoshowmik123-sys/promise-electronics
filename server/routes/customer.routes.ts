@@ -171,8 +171,12 @@ router.post('/api/customer/register', registrationLimiter, async (req: Request, 
                     return claimed;
                 }
 
+                // Was a dead end: "contact support", with no channel and no
+                // way through. The customer then tried to log in, was told
+                // their password was wrong — there is no password — and gave
+                // up. The code is the way through.
                 return res.status(400).json({
-                    error: 'This phone is already linked to a repair record. Please contact support to activate online access.',
+                    error: 'Your number is already on one of our repairs. Call the shop and we will give you a setup code for your password.',
                     code: 'ACCOUNT_SETUP_REQUIRED',
                 });
             }
@@ -474,6 +478,65 @@ const recoveryRequestSchema = z.object({
 const changePasswordSchema = z.object({
     currentPassword: z.string().min(1),
     newPassword: z.string().min(6),
+});
+
+/*
+ * There is no customer-initiated "send me a code" endpoint, on purpose.
+ *
+ * A code is issued by a staff member from the admin panel and given to the
+ * customer they are already speaking to. Nothing here can be asked "does this
+ * number have an account", because nothing here is asked anything at all.
+ */
+
+/**
+ * POST /api/customer/account-setup/complete — spend the code, set the password.
+ *
+ * Signs them straight in on success. A customer who has just proved the number
+ * and chosen a password should not be returned to a login form to type it
+ * again — that is the screen they were already stuck on.
+ */
+router.post('/api/customer/account-setup/complete', accountRecoveryLimiter, async (req: Request, res: Response) => {
+    try {
+        const phone = String(req.body?.phone ?? '').trim();
+        const code = String(req.body?.code ?? '').trim();
+        const password = String(req.body?.password ?? '');
+        const name = req.body?.name ? String(req.body.name) : null;
+
+        if (!phone || !code) return res.status(400).json({ error: 'Enter your number and the setup code from the shop' });
+        if (password.length < 6) return res.status(400).json({ error: 'Choose a password of at least 6 characters' });
+
+        const { completeActivation } = await import('../services/account-activation.service.js');
+        const result = await completeActivation({ phone, code, password, name });
+
+        if (!result.ok) {
+            const message = result.reason === 'too_many_attempts'
+                ? 'Too many wrong codes. Ask the shop for a new code.'
+                : result.reason === 'invalid_code'
+                    ? 'That code is not right. Check it and try again.'
+                    : 'That code has expired. Ask the shop for a new one.';
+            return res.status(400).json({ error: message, code: result.reason.toUpperCase() });
+        }
+
+        const user = await userRepo.getUser(result.userId);
+        if (!user) return res.status(500).json({ error: 'Account could not be opened. Please try again.' });
+
+        await regenerateSession(req);
+        const { csrfToken } = await establishCustomerSession(req, res, {
+            customerId: user.id,
+            authMethod: 'phone',
+        });
+
+        // Repairs booked under this number before the account existed belong to
+        // it now, or the customer signs in to an empty history.
+        if (user.phone) {
+            await customerService.linkServiceRequestsByPhone(user.phone, user.id);
+        }
+
+        res.json({ ...toCustomerSessionView(user), csrfToken });
+    } catch (error) {
+        console.error('[AccountSetup] Complete failed:', (error as Error).message);
+        res.status(500).json({ error: 'Something went wrong. Please try again.' });
+    }
 });
 
 /**

@@ -1240,6 +1240,59 @@ router.delete('/api/admin/customers/:id', requireAdminAuth, requireGranularPermi
 
 
 /**
+ * POST /api/admin/customers/:id/account-setup-code
+ *
+ * A six-digit code for a customer whose account the shop created at intake and
+ * who therefore has no password to be wrong. Staff read it to the customer they
+ * are already speaking to; the customer spends it in the portal.
+ *
+ * The code never leaves this system — admin panel to customer portal, the same
+ * rule the custody handover code follows. It is returned once, in this
+ * response, and stored only as a hash.
+ *
+ * Not restricted to Super Admin, unlike the reset link beside it. That link
+ * changes the password on a LIVE account and deserves the narrower gate; this
+ * one only opens an account that was never opened, and the counter staff
+ * talking to the customer are the people who need it.
+ */
+router.post('/api/admin/customers/:id/account-setup-code', requireAdminAuth, requireGranularPermission('customers.edit'), async (req: Request, res: Response) => {
+    try {
+        const adminId = req.session.adminUserId!;
+        const admin = await userRepo.getUser(adminId);
+
+        const { issueSetupCode } = await import('../services/account-activation.service.js');
+        const issued = await issueSetupCode(req.params.id, {
+            id: adminId,
+            name: admin?.name || 'Admin',
+        });
+
+        if (!issued) {
+            // Either no such customer, or one who already has a password. Said
+            // plainly: this is the admin panel, where staff can already see the
+            // record, so there is nothing to protect by being vague.
+            return res.status(409).json({
+                error: 'This customer already has a working login, or has no phone number on record.',
+                code: 'NOT_CLAIMABLE',
+            });
+        }
+
+        await auditLogger.log({
+            userId: adminId,
+            action: 'CREATE',
+            entity: 'CustomerSetupCode',
+            entityId: req.params.id,
+            details: `Account setup code issued for customer ${req.params.id}`,
+            req,
+        });
+
+        res.json({ code: issued.code, expiresAt: issued.expiresAt.toISOString() });
+    } catch (error) {
+        console.error('[AccountSetup] Could not issue code:', (error as Error).message);
+        res.status(500).json({ error: 'Could not create a setup code' });
+    }
+});
+
+/**
  * POST /api/admin/customers/:id/reset-link - Generate a one-time password reset link
  *
  * Super Admin only. Staff verify the customer's identity out of band, hand over
@@ -1267,7 +1320,10 @@ router.post('/api/admin/customers/:id/reset-link', requireAdminAuth, requireSupe
         }
 
         const body = (req.body && typeof req.body === 'object') ? req.body as Record<string, unknown> : {};
-        const deliver = body.deliver === 'sms' ? 'sms' as const : undefined;
+        // A 'deliver: sms' option used to live here. The shop sends no SMS —
+        // the link is read or shown to the customer staff are already dealing
+        // with — and with no provider configured it only ever reported failure
+        // while the staff copied the link by hand anyway.
         const inquiryId = typeof body.inquiryId === 'string' && body.inquiryId.trim()
             ? body.inquiryId.trim()
             : undefined;
@@ -1338,54 +1394,14 @@ router.post('/api/admin/customers/:id/reset-link', requireAdminAuth, requireSupe
         // request line and cannot land in access logs, Referer headers, or proxies.
         const url = `${origin}/reset#t=${token}`;
 
-        // ITEM 2 — opt-in SMS only; always use phone on the customer record (never body).
-        let delivery: {
-            channel: 'sms';
-            status: 'sent' | 'failed' | 'skipped';
-            error?: string;
-        } | undefined;
-
-        if (deliver === 'sms') {
-            const recordPhone = customer.phone;
-            if (!recordPhone) {
-                delivery = {
-                    channel: 'sms',
-                    status: 'failed',
-                    error: 'Customer has no phone number on file',
-                };
-            } else {
-                const { smsService } = await import('../services/sms.service.js');
-                const smsResult = await smsService.sendSms({
-                    to: recordPhone,
-                    message:
-                        `Promise Electronics: Use this one-time link to set your password (expires in 24h): ${url}`,
-                });
-                // Do not log message/url/token
-                if (smsResult.success) {
-                    delivery = { channel: 'sms', status: 'sent' };
-                    console.log(`[ResetLink] SMS delivery reported success for customer ${customer.id}`);
-                } else {
-                    delivery = {
-                        channel: 'sms',
-                        status: 'failed',
-                        error: smsResult.error || 'SMS delivery failed',
-                    };
-                    console.log(`[ResetLink] SMS delivery failed for customer ${customer.id}`);
-                }
-            }
-        }
-
         // ITEM 3 — mark recovery inquiry Replied with internal note (no token/URL).
         if (inquiryId) {
             const noteParts = [
                 '[RESET_LINK_ISSUED]',
                 `by:${adminId}`,
                 `at:${new Date().toISOString()}`,
-                `delivery:${delivery?.status ?? 'none'}`,
+                'delivery:by_hand',
             ];
-            if (delivery?.error) {
-                noteParts.push(`deliveryError:${delivery.error.slice(0, 80)}`);
-            }
             await storage.updateInquiry(inquiryId, {
                 status: 'Replied',
                 reply: noteParts.join(' '),
@@ -1399,7 +1415,6 @@ router.post('/api/admin/customers/:id/reset-link', requireAdminAuth, requireSupe
             customerName: customer.name,
             customerPhoneTail: (customer.phone || '').replace(/\D/g, '').slice(-4),
             message: 'Give this link to the verified customer. It works once and expires in 24 hours. It will not be shown again.',
-            delivery: delivery ?? null,
         });
     } catch (error: any) {
         console.error('[ResetLink] Failed to create reset link:', (error as Error).message);

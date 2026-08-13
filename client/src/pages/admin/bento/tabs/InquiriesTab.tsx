@@ -136,7 +136,6 @@ export default function InquiriesTab() {
         customerName: string;
         customerPhoneTail: string;
         expiresInHours: number;
-        delivery?: { channel: "sms"; status: string; error?: string } | null;
     } | null>(null);
 
     const { data: inquiries = [], isLoading } = useQuery({
@@ -194,7 +193,6 @@ export default function InquiriesTab() {
                 return;
             }
             const result = await adminCustomersApi.generateResetLink(account.userId, {
-                deliver: "sms",
                 inquiryId: inq.id,
             });
             setResetLinkResult({
@@ -202,16 +200,11 @@ export default function InquiriesTab() {
                 customerName: result.customerName,
                 customerPhoneTail: result.customerPhoneTail,
                 expiresInHours: result.expiresInHours,
-                delivery: result.delivery,
             });
             queryClient.invalidateQueries({ queryKey: ["inquiries"] });
-            if (result.delivery?.status === "sent") {
-                toast.success("Reset link created and SMS sent to the phone on file");
-            } else if (result.delivery?.status === "failed") {
-                toast.message("Reset link created — SMS failed; copy the link for manual delivery");
-            } else {
-                toast.success("Reset link created");
-            }
+            // Nothing is sent anywhere: the link is on screen and staff read or
+            // pass it to the customer they are already dealing with.
+            toast.success("Reset link created — copy it and give it to the customer");
         } catch (error: any) {
             toast.error(error?.message || "Failed to issue reset link (Super Admin only)");
         } finally {
@@ -550,8 +543,7 @@ export default function InquiriesTab() {
                         <DialogTitle>Reset link ready</DialogTitle>
                         <DialogDescription>
                             Super Admin only. Link works once and expires in {resetLinkResult?.expiresInHours ?? 24} hours.
-                            {resetLinkResult?.delivery?.status === "sent" && " SMS was sent to the phone on the customer record."}
-                            {resetLinkResult?.delivery?.status === "failed" && ` SMS failed (${resetLinkResult.delivery.error || "unknown"}). Copy the link for manual delivery.`}
+                            Nothing was sent to the customer — copy the link below and give it to them.
                         </DialogDescription>
                     </DialogHeader>
                     <div className="rounded-lg bg-slate-50 p-3 text-xs font-mono break-all select-all" data-testid="reset-link-url">

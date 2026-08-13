@@ -148,6 +148,19 @@ export const customerAuthApi = {
             method: "POST",
             body: JSON.stringify(data),
         }),
+    /**
+     * Set a password on an account the shop created at intake.
+     *
+     * There is deliberately no start call beside this one. The setup code is
+     * issued by a staff member in the admin panel and read to the customer;
+     * a customer-facing "send me a code" endpoint would have to answer
+     * "does this number have an account", and nothing here needs to.
+     */
+    completeAccountSetup: (data: { phone: string; code: string; password: string; name?: string }) =>
+        fetchApi<CustomerSession>("/customer/account-setup/complete", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
     requestRecovery: (data: { phone?: string; ticketNumber?: string; name?: string; message?: string }) =>
         fetchApi<{ message: string }>("/customer/account-recovery/request", {
             method: "POST",

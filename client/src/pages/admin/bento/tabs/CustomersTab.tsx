@@ -7,7 +7,7 @@ import {
     Users, Search, Plus, Phone, Mail,
     Loader2, Trash2, Activity, ShoppingBag,
     Wrench, CheckCircle, Clock, ExternalLink, RefreshCw,
-    LayoutGrid, List, FileText, SlidersHorizontal, Copy, ShieldAlert
+    LayoutGrid, List, FileText, SlidersHorizontal, Copy, ShieldAlert, KeyRound
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
@@ -60,6 +60,14 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
         customerName: string;
         customerPhoneTail: string;
     } | null>(null);
+    /**
+     * The customer whose account has never been opened, and the code once it
+     * exists. Separate from the reset link beside it: that one changes the
+     * password on a live account and is Super Admin only; this one opens an
+     * account nobody has ever used, which is counter-staff work.
+     */
+    const [setupCodeTarget, setSetupCodeTarget] = useState<any | null>(null);
+    const [setupCodeResult, setSetupCodeResult] = useState<{ code: string; expiresAt: string; customerName: string } | null>(null);
     const isSuperAdmin = currentUser?.role === "Super Admin";
 
     const { data: customers = [], isLoading } = useQuery({
@@ -90,6 +98,17 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["customers"] });
             toast.success("Customer deleted");
+        },
+    });
+
+    const setupCodeMutation = useMutation({
+        mutationFn: (customer: any) => adminCustomersApi.issueAccountSetupCode(customer.id),
+        onSuccess: (result, customer) => {
+            setSetupCodeResult({ ...result, customerName: customer?.name || "the customer" });
+            setSetupCodeTarget(null);
+        },
+        onError: (error: any) => {
+            toast.error(error.message || "Could not create a setup code");
         },
     });
 
@@ -234,6 +253,11 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
     const openResetLinkDialog = (customer: any) => {
         setActivitySheet({ open: false, customer: null });
         setTimeout(() => setResetLinkTarget(customer), 100);
+    };
+
+    const openSetupCodeDialog = (customer: any) => {
+        setActivitySheet({ open: false, customer: null });
+        setTimeout(() => setSetupCodeTarget(customer), 100);
     };
 
     return (
@@ -765,6 +789,15 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                                 <FileText className="h-4 w-4 mr-2" />
                                                 Create Quotation
                                             </Button>
+                                            <Button
+                                                variant="outline"
+                                                className="border-emerald-200 bg-emerald-50 font-semibold text-emerald-700 hover:bg-emerald-100"
+                                                onClick={() => openSetupCodeDialog(activitySheet.customer)}
+                                                data-testid="button-account-setup-code"
+                                            >
+                                                <KeyRound className="mr-2 h-4 w-4" />
+                                                Give Account Setup Code
+                                            </Button>
                                             {isSuperAdmin && (
                                                 <Button
                                                     variant="outline"
@@ -853,6 +886,67 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                 )}
             </AnimatePresence>
             </motion.div>
+
+            {/* Confirm: issue a setup code for an account that was never opened */}
+            <Dialog open={!!setupCodeTarget} onOpenChange={(open) => !open && setSetupCodeTarget(null)}>
+                <DialogContent className="rounded-2xl border-emerald-100 sm:max-w-md">
+                    <DialogHeader>
+                        <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-50 text-emerald-700">
+                            <KeyRound className="h-6 w-6" />
+                        </div>
+                        <DialogTitle>Give an account setup code?</DialogTitle>
+                        <DialogDescription>
+                            For a customer who cannot log in because we opened their account for them at
+                            the counter, so it has no password. Read them the code; they set their own
+                            password in the customer portal.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                        <div className="text-sm font-black text-slate-900">{setupCodeTarget?.name}</div>
+                        <div className="mt-1 text-xs font-semibold text-slate-500">{formatBdPhone(setupCodeTarget?.phone)}</div>
+                    </div>
+                    <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-3 text-xs font-semibold leading-5 text-emerald-900">
+                        Nothing is sent anywhere - no SMS, no email. The code is shown to you once, lasts
+                        10 minutes, and any code issued earlier stops working.
+                    </div>
+                    <DialogFooter className="gap-2 sm:gap-2">
+                        <Button variant="outline" onClick={() => setSetupCodeTarget(null)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            className="bg-emerald-600 text-white hover:bg-emerald-700"
+                            disabled={!setupCodeTarget || setupCodeMutation.isPending}
+                            onClick={() => setupCodeTarget && setupCodeMutation.mutate(setupCodeTarget)}
+                        >
+                            {setupCodeMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                            Create Code
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Result: the code, shown once and large enough to read aloud */}
+            <Dialog open={!!setupCodeResult} onOpenChange={(open) => !open && setSetupCodeResult(null)}>
+                <DialogContent className="rounded-2xl border-emerald-100 sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Setup code for {setupCodeResult?.customerName}</DialogTitle>
+                        <DialogDescription>
+                            Read this to the customer. It is not stored anywhere you can look it up again.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 py-5 text-center font-mono text-4xl font-black tracking-[0.35em] text-emerald-900" data-testid="account-setup-code">
+                        {setupCodeResult?.code}
+                    </div>
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+                        Tell them to open the customer portal, choose Set up your account, and enter their
+                        phone number with this code. It expires at{" "}
+                        {setupCodeResult?.expiresAt ? new Date(setupCodeResult.expiresAt).toLocaleTimeString() : "-"}.
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setSetupCodeResult(null)}>Done</Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Confirm: generate one-time account setup link */}
             <Dialog open={!!resetLinkTarget} onOpenChange={(open) => !open && setResetLinkTarget(null)}>
@@ -1128,6 +1222,15 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                                 Requests
                                             </button>
                                         </div>
+                                        <button
+                                            type="button"
+                                            onClick={() => openSetupCodeDialog(activitySheet.customer)}
+                                            className="flex h-9 w-full items-center justify-center gap-1.5 rounded-xl border border-emerald-300/30 bg-emerald-400/15 px-3 text-xs font-black text-emerald-100"
+                                            data-testid="button-mobile-account-setup-code"
+                                        >
+                                            <KeyRound className="h-3.5 w-3.5" />
+                                            Give Account Setup Code
+                                        </button>
                                         {isSuperAdmin && (
                                             <button
                                                 type="button"

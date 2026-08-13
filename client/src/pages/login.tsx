@@ -1,3 +1,4 @@
+import { AccountSetupPanel } from "@/components/customer/AccountSetupPanel";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { variants } from "@/lib/motion";
@@ -72,12 +73,28 @@ function RecoveryHelpPanel({ compact = false }: { compact?: boolean }) {
         <div className="min-w-0">
           <h3 className="text-sm font-black text-slate-950">{t("login.recoveryTitle")}</h3>
           <p className="mt-1 text-xs leading-5 text-slate-600">
-            Tell us how to find you. Our team will send a one-time setup link you can use to choose your own password.
+            If we have repaired something for you before, your account already exists — set a password below.
           </p>
         </div>
       </div>
 
-      <form onSubmit={submitRequest} className="mt-3 space-y-2" data-testid="form-recovery-request">
+      {/*
+        * The self-serve door comes first.
+        *
+        * Below this, the form raises a support request that a staff member has
+        * to notice, find the customer, issue a one-time link for, and send by
+        * WhatsApp. That is the path every locked-out customer was on: it works
+        * only while somebody is watching, and until they do the customer sees
+        * "invalid phone number or password" on an account that has no password
+        * at all. Setting one with a code needs nobody awake.
+        */}
+      <AccountSetupPanel compact={compact} initialPhone={rPhone} />
+
+      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        Still stuck? Ask us to help
+      </p>
+
+      <form onSubmit={submitRequest} className="mt-2 space-y-2" data-testid="form-recovery-request">
         <div className="relative">
           <Phone className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
           <Input

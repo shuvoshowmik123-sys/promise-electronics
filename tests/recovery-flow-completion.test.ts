@@ -133,7 +133,15 @@ describe("POST /api/admin/customers/:id/reset-link delivery + inquiry close-loop
     return { app, sendSms, updateInquiry, getInquiry, getUser };
   }
 
-  it("deliver:sms sends only to phone on the customer record (never body phone)", async () => {
+  /**
+   * The link used to be textable: deliver:"sms" and the server handed it to a
+   * provider. The shop sends no SMS — there is no configured provider, staff
+   * copied the link by hand anyway, and a password-setting link sitting in
+   * somebody else's message logs is a worse deal than reading it out.
+   *
+   * These two tests replace the ones that asserted the sending worked.
+   */
+  it("never sends the link anywhere, whatever the caller asks for", async () => {
     const { app, sendSms } = await mountResetRoute({
       customer: {
         id: "cust-1",
@@ -148,42 +156,31 @@ describe("POST /api/admin/customers/:id/reset-link delivery + inquiry close-loop
       .post("/api/admin/customers/cust-1/reset-link")
       .send({
         deliver: "sms",
-        phone: "01999998888", // attacker-supplied — must be ignored
+        phone: "01999998888", // attacker-supplied — must go nowhere
         to: "01999998888",
       });
 
     expect(res.status).toBe(200);
     expect(res.body.url).toMatch(/^https:\/\/app\.example\.test\/reset#t=/);
-    expect(res.body.delivery?.status).toBe("sent");
-    expect(sendSms).toHaveBeenCalledTimes(1);
-    const arg = sendSms.mock.calls[0][0];
-    expect(arg.to).toBe("01711112222");
-    expect(arg.to).not.toBe("01999998888");
-    // Response must not leak token outside url (url is intentional once-only return)
-    const blob = JSON.stringify(res.body);
-    expect(blob).not.toMatch(/tokenHash|token_hash/);
+    expect(sendSms).not.toHaveBeenCalled();
+    expect(res.body.delivery).toBeUndefined();
   });
 
-  it("SMS failure still returns url and reports delivery failed", async () => {
-    const { app, sendSms } = await mountResetRoute({
+  it("returns the link once and leaks nothing beside it", async () => {
+    const { app } = await mountResetRoute({
       customer: { id: "cust-1", role: "Customer", name: "Rina", phone: "01711112222" },
-      smsResult: { success: false, error: "gateway down" },
     });
 
     const res = await request(app)
       .post("/api/admin/customers/cust-1/reset-link")
-      .send({ deliver: "sms" });
+      .send({});
 
     expect(res.status).toBe(200);
     expect(res.body.url).toBeTruthy();
-    expect(res.body.delivery).toEqual({
-      channel: "sms",
-      status: "failed",
-      error: "gateway down",
-    });
-    expect(sendSms).toHaveBeenCalled();
+    // The url is the intentional once-only return; the stored hash is not.
+    const blob = JSON.stringify(res.body);
+    expect(blob).not.toMatch(/tokenHash|token_hash/);
   });
-
   it("inquiryId on recovery inquiry marks Replied with internal note (no token)", async () => {
     const { app, updateInquiry } = await mountResetRoute({
       customer: { id: "cust-1", role: "Customer", name: "Rina", phone: "01711112222" },

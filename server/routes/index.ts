@@ -32,7 +32,6 @@ import mobileRoutes from './mobile.routes.js';
 import notificationsRoutes from './notifications.routes.js';
 import quotesRoutes from './quotes.routes.js';
 import reviewsRoutes from './reviews.routes.js';
-import otpRoutes from './otp.routes.js';
 import uploadRoutes from './upload.routes.js';
 import tvModelRoutes from './tv-model.routes.js';
 import aiRoutes from './ai.routes.js';
@@ -306,9 +305,10 @@ export async function registerRoutes(
     app.use(reviewsRoutes);
     routeLog('[Routes] ✓ Reviews routes registered');
 
-    // OTP Routes (Phone Verification)
-    app.use(otpRoutes);
-    routeLog('[Routes] ✓ OTP routes registered');
+    // Phone verification by SMS used to be registered here. It sent a code
+    // to an outside provider, no screen in this system ever called it, and
+    // the shop does not use SMS: codes travel admin panel to customer portal
+    // and nowhere else. Removed with server/routes/otp.routes.ts.
 
     // File upload routes (should be near the end)
     // app.use(uploadRoutes);
