@@ -540,6 +540,63 @@ router.post('/api/customer/account-setup/complete', accountRecoveryLimiter, asyn
 });
 
 /**
+ * POST /api/customer/account-link/complete
+ *
+ * Fold the duplicate the customer is signed into back where it belongs.
+ *
+ * Two proofs are required and neither is enough alone. The session proves
+ * which account is being merged away — they are sitting in it. The code, read
+ * to them by the shop, proves the account they are merging into is theirs.
+ * Without the code this endpoint would let anybody who signs in with Google
+ * claim any phone number and walk off with that customer's repair history.
+ *
+ * On success their session moves to the real account, so they are left looking
+ * at their own repairs rather than at a login screen.
+ */
+router.post('/api/customer/account-link/complete', requireCustomerAuth, accountRecoveryLimiter, async (req: Request, res: Response) => {
+    try {
+        const sessionUserId = req.session.customerId!;
+        const phone = String(req.body?.phone ?? '').trim();
+        const code = String(req.body?.code ?? '').trim();
+
+        if (!phone || !code) {
+            return res.status(400).json({ error: 'Enter your number and the code from the shop' });
+        }
+
+        const { completeAccountLink } = await import('../services/account-activation.service.js');
+        const result = await completeAccountLink({ sessionUserId, phone, code });
+
+        if (!result.ok) {
+            const message = result.reason === 'too_many_attempts'
+                ? 'Too many wrong codes. Ask the shop for a new code.'
+                : result.reason === 'invalid_code'
+                    ? 'That code is not right. Check it and try again.'
+                    : result.reason === 'no_such_account'
+                        ? 'We have no account on that number.'
+                        : result.reason === 'not_mergeable'
+                            ? 'These accounts cannot be joined. Please ask the shop for help.'
+                            : 'That code has expired. Ask the shop for a new one.';
+            return res.status(400).json({ error: message, code: result.reason.toUpperCase() });
+        }
+
+        const user = await userRepo.getUser(result.targetUserId);
+        if (!user) return res.status(500).json({ error: 'Something went wrong. Please try again.' });
+
+        // The session belonged to a row that no longer accepts logins.
+        await regenerateSession(req);
+        const { csrfToken } = await establishCustomerSession(req, res, {
+            customerId: user.id,
+            authMethod: 'phone',
+        });
+
+        res.json({ ...toCustomerSessionView(user), csrfToken, movedRows: result.movedRows });
+    } catch (error) {
+        console.error('[AccountLink] Complete failed:', (error as Error).message);
+        res.status(500).json({ error: 'Something went wrong. Please try again.' });
+    }
+});
+
+/**
  * POST /api/customer/account-recovery/request
  * Submits a support-assisted recovery request via the inquiries system.
  */

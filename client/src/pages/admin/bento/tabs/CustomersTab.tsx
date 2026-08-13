@@ -67,7 +67,8 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
      * account nobody has ever used, which is counter-staff work.
      */
     const [setupCodeTarget, setSetupCodeTarget] = useState<any | null>(null);
-    const [setupCodeResult, setSetupCodeResult] = useState<{ code: string; expiresAt: string; customerName: string } | null>(null);
+    const [setupCodeResult, setSetupCodeResult] = useState<{ code: string; expiresAt: string; customerName: string; kind: "setup" | "link" } | null>(null);
+    const [linkCodeTarget, setLinkCodeTarget] = useState<any | null>(null);
     const isSuperAdmin = currentUser?.role === "Super Admin";
 
     const { data: customers = [], isLoading } = useQuery({
@@ -104,11 +105,27 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
     const setupCodeMutation = useMutation({
         mutationFn: (customer: any) => adminCustomersApi.issueAccountSetupCode(customer.id),
         onSuccess: (result, customer) => {
-            setSetupCodeResult({ ...result, customerName: customer?.name || "the customer" });
+            setSetupCodeResult({ ...result, customerName: customer?.name || "the customer", kind: "setup" });
             setSetupCodeTarget(null);
         },
         onError: (error: any) => {
             toast.error(error.message || "Could not create a setup code");
+        },
+    });
+
+    /**
+     * For a customer stranded in a duplicate account after signing in with
+     * Google. Super Admin only: this attaches a new way of signing in to a live
+     * account, which is the reset link power, not the setup code one.
+     */
+    const linkCodeMutation = useMutation({
+        mutationFn: (customer: any) => adminCustomersApi.issueAccountLinkCode(customer.id),
+        onSuccess: (result, customer) => {
+            setSetupCodeResult({ ...result, customerName: customer?.name || "the customer", kind: "link" });
+            setLinkCodeTarget(null);
+        },
+        onError: (error: any) => {
+            toast.error(error.message || "Could not create a link code");
         },
     });
 
@@ -258,6 +275,11 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
     const openSetupCodeDialog = (customer: any) => {
         setActivitySheet({ open: false, customer: null });
         setTimeout(() => setSetupCodeTarget(customer), 100);
+    };
+
+    const openLinkCodeDialog = (customer: any) => {
+        setActivitySheet({ open: false, customer: null });
+        setTimeout(() => setLinkCodeTarget(customer), 100);
     };
 
     return (
@@ -801,6 +823,17 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                                             {isSuperAdmin && (
                                                 <Button
                                                     variant="outline"
+                                                    className="border-violet-200 bg-violet-50 font-semibold text-violet-700 hover:bg-violet-100"
+                                                    onClick={() => openLinkCodeDialog(activitySheet.customer)}
+                                                    data-testid="button-account-link-code"
+                                                >
+                                                    <KeyRound className="mr-2 h-4 w-4" />
+                                                    Join Google Account
+                                                </Button>
+                                            )}
+                                            {isSuperAdmin && (
+                                                <Button
+                                                    variant="outline"
                                                     className="border-blue-200 bg-blue-50 font-semibold text-blue-700 hover:bg-blue-100"
                                                     onClick={() => openResetLinkDialog(activitySheet.customer)}
                                                 >
@@ -887,6 +920,42 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
             </AnimatePresence>
             </motion.div>
 
+            {/* Confirm: issue a code that joins a stray Google account to this one */}
+            <Dialog open={!!linkCodeTarget} onOpenChange={(open) => !open && setLinkCodeTarget(null)}>
+                <DialogContent className="rounded-2xl border-violet-100 sm:max-w-md">
+                    <DialogHeader>
+                        <div className="mb-2 flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-50 text-violet-700">
+                            <KeyRound className="h-6 w-6" />
+                        </div>
+                        <DialogTitle>Join a Google sign-in to this account?</DialogTitle>
+                        <DialogDescription>
+                            For a customer who signed in with Google and ended up in a second, empty
+                            account. The code joins that one into this one, so their repairs come back
+                            and the stray account is retired.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                        <div className="text-sm font-black text-slate-900">{linkCodeTarget?.name}</div>
+                        <div className="mt-1 text-xs font-semibold text-slate-500">{formatBdPhone(linkCodeTarget?.phone)}</div>
+                    </div>
+                    <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
+                        Make sure you know who you are talking to. This lets whoever holds that Google
+                        account sign in as this customer from now on.
+                    </div>
+                    <DialogFooter className="gap-2 sm:gap-2">
+                        <Button variant="outline" onClick={() => setLinkCodeTarget(null)}>Cancel</Button>
+                        <Button
+                            className="bg-violet-600 text-white hover:bg-violet-700"
+                            disabled={!linkCodeTarget || linkCodeMutation.isPending}
+                            onClick={() => linkCodeTarget && linkCodeMutation.mutate(linkCodeTarget)}
+                        >
+                            {linkCodeMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <KeyRound className="mr-2 h-4 w-4" />}
+                            Create Code
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Confirm: issue a setup code for an account that was never opened */}
             <Dialog open={!!setupCodeTarget} onOpenChange={(open) => !open && setSetupCodeTarget(null)}>
                 <DialogContent className="rounded-2xl border-emerald-100 sm:max-w-md">
@@ -929,7 +998,9 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
             <Dialog open={!!setupCodeResult} onOpenChange={(open) => !open && setSetupCodeResult(null)}>
                 <DialogContent className="rounded-2xl border-emerald-100 sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Setup code for {setupCodeResult?.customerName}</DialogTitle>
+                        <DialogTitle>
+                            {setupCodeResult?.kind === "link" ? "Join code" : "Setup code"} for {setupCodeResult?.customerName}
+                        </DialogTitle>
                         <DialogDescription>
                             Read this to the customer. It is not stored anywhere you can look it up again.
                         </DialogDescription>
@@ -938,8 +1009,10 @@ export default function CustomersTab({ initialSearchQuery, initialCustomerId, on
                         {setupCodeResult?.code}
                     </div>
                     <div className="rounded-2xl border border-amber-100 bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">
-                        Tell them to open the customer portal, choose Set up your account, and enter their
-                        phone number with this code. It expires at{" "}
+                        {setupCodeResult?.kind === "link"
+                            ? "They enter this where the portal asked for their phone number, on the account they are stuck in."
+                            : "Tell them to open the customer portal, choose Set up your account, and enter their phone number with this code."}
+                        {" "}It expires at{" "}
                         {setupCodeResult?.expiresAt ? new Date(setupCodeResult.expiresAt).toLocaleTimeString() : "-"}.
                     </div>
                     <DialogFooter>

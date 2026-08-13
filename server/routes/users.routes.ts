@@ -1293,6 +1293,61 @@ router.post('/api/admin/customers/:id/account-setup-code', requireAdminAuth, req
 });
 
 /**
+ * POST /api/admin/customers/:id/account-link-code
+ *
+ * A six-digit code for a customer who is stranded in a duplicate account.
+ *
+ * How they get there: they have a phone account with us, they tap "Continue
+ * with Google", nothing matches — registration does not require an email, so
+ * there was nothing to match on — and they land in a brand-new empty account.
+ * It then asks for their phone number, which their real account already holds,
+ * so they cannot go forward or back.
+ *
+ * They read this code into the stranded account. Spending it folds the
+ * duplicate into their real one: repairs, orders and all, with the Google
+ * sign-in attached so it never happens again.
+ *
+ * Super Admin, unlike the setup code. That one opens an account nobody has
+ * ever used; this one attaches a new way of signing in to a LIVE account,
+ * which is the same power as the reset link below it and deserves the same
+ * gate. Verify who you are talking to before you read it out.
+ */
+router.post('/api/admin/customers/:id/account-link-code', requireAdminAuth, requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+        const adminId = req.session.adminUserId!;
+        const admin = await userRepo.getUser(adminId);
+
+        const { issueLinkCode } = await import('../services/account-activation.service.js');
+        const issued = await issueLinkCode(req.params.id, {
+            id: adminId,
+            name: admin?.name || 'Admin',
+        });
+
+        if (!issued) {
+            return res.status(409).json({
+                error: 'This customer has no phone number on record, or the account has already been merged.',
+                code: 'NOT_LINKABLE',
+            });
+        }
+
+        await auditLogger.log({
+            userId: adminId,
+            action: 'CREATE',
+            entity: 'CustomerLinkCode',
+            entityId: req.params.id,
+            details: `Account link code issued for customer ${req.params.id}`,
+            severity: 'warning',
+            req,
+        });
+
+        res.json({ code: issued.code, expiresAt: issued.expiresAt.toISOString() });
+    } catch (error) {
+        console.error('[AccountLink] Could not issue code:', (error as Error).message);
+        res.status(500).json({ error: 'Could not create a link code' });
+    }
+});
+
+/**
  * POST /api/admin/customers/:id/reset-link - Generate a one-time password reset link
  *
  * Super Admin only. Staff verify the customer's identity out of band, hand over

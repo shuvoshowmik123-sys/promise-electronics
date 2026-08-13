@@ -161,6 +161,15 @@ export const customerAuthApi = {
             method: "POST",
             body: JSON.stringify(data),
         }),
+    /**
+     * Fold the duplicate account this session is signed into back into the
+     * customer's real one, using a code the shop read to them.
+     */
+    completeAccountLink: (data: { phone: string; code: string }) =>
+        fetchApi<CustomerSession & { movedRows: number }>("/customer/account-link/complete", {
+            method: "POST",
+            body: JSON.stringify(data),
+        }),
     requestRecovery: (data: { phone?: string; ticketNumber?: string; name?: string; message?: string }) =>
         fetchApi<{ message: string }>("/customer/account-recovery/request", {
             method: "POST",

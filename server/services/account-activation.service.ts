@@ -45,6 +45,18 @@ import { isPlaceholderPassword } from "./customer-password.js";
 /** Distinct from the intake verification codes, so one cannot be spent on the other. */
 export const ACTIVATION_PURPOSE = "account_setup";
 
+/**
+ * Proving to an account that already exists that you are its owner.
+ *
+ * Different from the setup code above, and deliberately not the same value.
+ * ACTIVATION_PURPOSE opens an account that was never opened and therefore has
+ * nothing to steal. This one attaches a new way of signing in to a LIVE
+ * account, which is the same power as a password reset — so it is issued under
+ * the same restriction, and a code minted for one purpose can never be spent
+ * on the other.
+ */
+export const LINK_PURPOSE = "account_link";
+
 const CODE_TTL_MINUTES = 10;
 const MAX_ATTEMPTS = 3;
 
@@ -126,6 +138,146 @@ export async function issueSetupCode(
     return { code, expiresAt };
 }
 
+/**
+ * Mint a code for an account that already exists, so its owner can attach a
+ * new sign-in method to it.
+ *
+ * The case this exists for: a customer with a phone account taps "Continue
+ * with Google", lands in a fresh empty account because nothing matched, and
+ * then cannot give it their phone number because their real account already
+ * holds it. They are stranded in a duplicate. This code is how the shop says
+ * "yes, that is the same person", and spending it folds the duplicate away.
+ *
+ * Unlike the setup code, the target here may be a working account with a real
+ * password, which is why the route that calls this asks for more authority.
+ */
+export async function issueLinkCode(
+    userId: string,
+    issuedBy: { id: string; name: string },
+): Promise<IssuedCode | null> {
+    const user = await userRepo.getUser(userId);
+    if (!user || user.role !== "Customer" || !user.phone) return null;
+    // A merged row is a tombstone: it owns nothing and can never be signed
+    // into, so a code for it would attach a Google account to nothing.
+    if ((user as any).customerAccountState === "merged") return null;
+
+    const normalized = normalizePhone(user.phone);
+    if (!normalized) return null;
+
+    const code = generateCode();
+    const expiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60_000);
+
+    await db.update(otpCodes)
+        .set({ verifiedAt: new Date() })
+        .where(and(
+            eq(otpCodes.phone, normalized),
+            eq(otpCodes.purpose, LINK_PURPOSE),
+            isNull(otpCodes.verifiedAt),
+        ));
+
+    await db.insert(otpCodes).values({
+        id: crypto.randomUUID(),
+        phone: normalized,
+        codeHash: hashCode(code),
+        purpose: LINK_PURPOSE,
+        maxAttempts: MAX_ATTEMPTS,
+        expiresAt,
+        ipAddress: `issued_by:${issuedBy.id}`,
+    });
+
+    return { code, expiresAt };
+}
+
+export type SpendResult =
+    | { ok: true; phone: string }
+    | { ok: false; reason: "invalid_code" | "expired" | "too_many_attempts" };
+
+/**
+ * Check a code and spend it, or say why not.
+ *
+ * One implementation for both purposes. Two copies of this would eventually
+ * disagree about attempt counting or about what "expired" means, and the
+ * disagreement would be the way in.
+ *
+ * The update that marks it verified also requires it to be unverified, so two
+ * requests racing on one code cannot both win — the second updates no rows.
+ */
+async function spendCode(phone: string, code: string, purpose: string): Promise<SpendResult> {
+    const normalized = normalizePhone(phone);
+    if (!normalized) return { ok: false, reason: "expired" };
+
+    const [record] = await db
+        .select()
+        .from(otpCodes)
+        .where(and(
+            eq(otpCodes.phone, normalized),
+            eq(otpCodes.purpose, purpose),
+            gt(otpCodes.expiresAt, new Date()),
+        ))
+        .orderBy(desc(otpCodes.createdAt))
+        .limit(1);
+
+    if (!record) return { ok: false, reason: "expired" };
+    if (record.verifiedAt) return { ok: false, reason: "expired" };
+    if (record.attempts >= record.maxAttempts) return { ok: false, reason: "too_many_attempts" };
+
+    if (hashCode(String(code).trim()) !== record.codeHash) {
+        await db.update(otpCodes)
+            .set({ attempts: record.attempts + 1 })
+            .where(eq(otpCodes.id, record.id));
+        return { ok: false, reason: "invalid_code" };
+    }
+
+    const spent = await db.update(otpCodes)
+        .set({ verifiedAt: new Date() })
+        .where(and(eq(otpCodes.id, record.id), isNull(otpCodes.verifiedAt)))
+        .returning();
+    if (spent.length === 0) return { ok: false, reason: "expired" };
+
+    return { ok: true, phone: normalized };
+}
+
+export type LinkResult =
+    | { ok: true; targetUserId: string; movedRows: number }
+    | { ok: false; reason: "invalid_code" | "expired" | "too_many_attempts" | "no_such_account" | "not_mergeable" };
+
+/**
+ * Spend a link code and fold the duplicate into the real account.
+ *
+ * The caller is signed in as the duplicate — that is the whole situation — so
+ * the account being merged away is proved by the session, and the account being
+ * merged into is proved by the code. Neither alone is enough.
+ */
+export async function completeAccountLink(input: {
+    sessionUserId: string;
+    phone: string;
+    code: string;
+}): Promise<LinkResult> {
+    const spent = await spendCode(input.phone, input.code, LINK_PURPOSE);
+    if (!spent.ok) return { ok: false, reason: spent.reason };
+
+    const target = await userRepo.getUserByPhoneNormalized(spent.phone);
+    if (!target || target.role !== "Customer") return { ok: false, reason: "no_such_account" };
+    if (target.id === input.sessionUserId) return { ok: false, reason: "not_mergeable" };
+
+    const { mergeCustomerAccounts } = await import("./account-merge.service.js");
+    const merged = await mergeCustomerAccounts({
+        sourceId: input.sessionUserId,
+        targetId: target.id,
+        // The customer did this, holding a code the shop read to them. Recorded
+        // against the account they proved, not against a staff member who was
+        // not present when the button was pressed.
+        actorId: target.id,
+        reason: "Customer linked a Google sign-in to their existing account with a staff-issued code.",
+    });
+
+    if (!("ok" in merged) || merged.ok !== true) {
+        return { ok: false, reason: "not_mergeable" };
+    }
+
+    return { ok: true, targetUserId: target.id, movedRows: merged.plan.totalRows };
+}
+
 export type ActivationResult =
     | { ok: true; userId: string }
     | { ok: false; reason: "invalid_code" | "expired" | "too_many_attempts" | "not_claimable" };
@@ -142,42 +294,12 @@ export async function completeActivation(input: {
     password: string;
     name?: string | null;
 }): Promise<ActivationResult> {
-    const normalized = normalizePhone(input.phone);
-    if (!normalized) return { ok: false, reason: "not_claimable" };
-
-    const [record] = await db
-        .select()
-        .from(otpCodes)
-        .where(and(
-            eq(otpCodes.phone, normalized),
-            eq(otpCodes.purpose, ACTIVATION_PURPOSE),
-            gt(otpCodes.expiresAt, new Date()),
-        ))
-        .orderBy(desc(otpCodes.createdAt))
-        .limit(1);
-
-    if (!record) return { ok: false, reason: "expired" };
-    if (record.verifiedAt) return { ok: false, reason: "expired" };
-    if (record.attempts >= record.maxAttempts) return { ok: false, reason: "too_many_attempts" };
-
-    if (hashCode(String(input.code).trim()) !== record.codeHash) {
-        await db.update(otpCodes)
-            .set({ attempts: record.attempts + 1 })
-            .where(eq(otpCodes.id, record.id));
-        return { ok: false, reason: "invalid_code" };
-    }
-
-    // Claim the code first. A failure after this point costs the customer one
-    // code, which is recoverable; letting a spent code stay live is not.
-    const spent = await db.update(otpCodes)
-        .set({ verifiedAt: new Date() })
-        .where(and(eq(otpCodes.id, record.id), isNull(otpCodes.verifiedAt)))
-        .returning();
-    if (spent.length === 0) return { ok: false, reason: "expired" };
+    const spent = await spendCode(input.phone, input.code, ACTIVATION_PURPOSE);
+    if (!spent.ok) return { ok: false, reason: spent.reason };
 
     const user = await findUnclaimed(input.phone);
     // Re-checked after the code is spent: the account may have been activated
-    // by another route between sending and completing.
+    // by another route between the code being issued and being used.
     if (!user) return { ok: false, reason: "not_claimable" };
 
     const hashed = await bcrypt.hash(input.password, 12);
@@ -188,9 +310,8 @@ export async function completeActivation(input: {
             ...(input.name?.trim() ? { name: input.name.trim() } : {}),
             // Backfilled so the indexed lookup finds this row from now on
             // rather than the slower legacy scan.
-            phoneNormalized: normalizePhone(input.phone) || undefined,
+            phoneNormalized: spent.phone,
         } as any)
         .where(eq(users.id, user.id));
-
     return { ok: true, userId: user.id };
 }

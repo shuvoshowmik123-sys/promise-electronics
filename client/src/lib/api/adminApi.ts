@@ -1090,6 +1090,17 @@ export const adminRepairJourneysApi = {
         fetchApi<{ code: string; expiresAt: string }>(`/admin/customers/${id}/account-setup-code`, {
             method: "POST",
         }),
+    /**
+     * A code for a customer stranded in a duplicate account after signing in
+     * with Google. Spending it merges the duplicate into this one.
+     *
+     * Super Admin: unlike the setup code, this attaches a new way of signing in
+     * to a live account, which is the same power as the reset link.
+     */
+    issueAccountLinkCode: (id: string) =>
+        fetchApi<{ code: string; expiresAt: string }>(`/admin/customers/${id}/account-link-code`, {
+            method: "POST",
+        }),
     generateResetLink: (
         userId: string,
         opts?: { inquiryId?: string },
@@ -1373,6 +1384,17 @@ export const adminCustomersApi = {
      */
     issueAccountSetupCode: (id: string) =>
         fetchApi<{ code: string; expiresAt: string }>(`/admin/customers/${id}/account-setup-code`, {
+            method: "POST",
+        }),
+    /**
+     * A code for a customer stranded in a duplicate account after signing in
+     * with Google. Spending it merges the duplicate into this one.
+     *
+     * Super Admin: unlike the setup code, this attaches a new way of signing in
+     * to a live account, which is the same power as the reset link.
+     */
+    issueAccountLinkCode: (id: string) =>
+        fetchApi<{ code: string; expiresAt: string }>(`/admin/customers/${id}/account-link-code`, {
             method: "POST",
         }),
     generateResetLink: (

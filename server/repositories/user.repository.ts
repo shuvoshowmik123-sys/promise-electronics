@@ -8,6 +8,7 @@
 import { db, nanoid, eq, desc, schema, type User, type InsertUser, type UpsertCustomerFromGoogle } from './base.js';
 import { count, sql, or, isNull, asc } from 'drizzle-orm';
 import { normalizePhone } from '../utils/phone.js';
+import { NO_CUSTOMER_PASSWORD } from '../services/customer-password.js';
 
 function isMissingDefaultWorkLocationColumn(error: unknown): boolean {
     const message = error instanceof Error ? error.message : String(error ?? '');
@@ -236,7 +237,14 @@ export async function upsertUserFromGoogle(data: UpsertCustomerFromGoogle): Prom
             profileImageUrl: data.profileImageUrl,
             isVerified: true,
             role: "Customer",
-            password: nanoid(), // Random password for Google users
+            /**
+             * Was nanoid(): a plain random string in the password column, which
+             * bcrypt can never match. It read as "this account has a password"
+             * to every check in the system while being one nobody could use, so
+             * the customer could neither sign in with it nor be given a real
+             * one. The marker says plainly that there is no password.
+             */
+            password: NO_CUSTOMER_PASSWORD,
             status: "Active",
             permissions: "{}",
         })

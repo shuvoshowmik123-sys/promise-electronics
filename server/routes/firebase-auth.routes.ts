@@ -2,7 +2,7 @@ import { Router, Request, Response } from "express";
 import { verifyFirebaseToken } from "../services/firebase.js";
 import { db } from "../db.js";
 import { users } from "../../shared/schema.js";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { randomUUID } from "crypto";
 import {
     enforceCustomerLoginPolicy,
@@ -10,6 +10,7 @@ import {
     CustomerAccountNotActivatedError,
 } from "../services/customer-session.service.js";
 import { toCustomerSessionView } from "../services/customer-session-view.js";
+import { NO_CUSTOMER_PASSWORD } from "../services/customer-password.js";
 
 const router = Router();
 
@@ -37,8 +38,20 @@ router.post("/api/auth/firebase", async (req: Request, res: Response) => {
 
         if (!user) {
             if (firebaseUser.email) {
+                /**
+                 * Customers only. This matched any row with the address,
+                 * so a staff member whose personal Gmail was on their user
+                 * record could be signed into by whoever held that Google
+                 * account — no password, no phone check. It does not hand out
+                 * an admin session, but it does bind a stranger's Google
+                 * identity to a staff row and open the portal as them.
+                 *
+                 * The address is also not unique in this table, so two rows
+                 * sharing one email made this a coin toss. Matching one role
+                 * narrows it; the phone remains the identity that decides.
+                 */
                 user = await db.query.users.findFirst({
-                    where: eq(users.email, firebaseUser.email),
+                    where: and(eq(users.email, firebaseUser.email), eq(users.role, "Customer")),
                 }).catch(() => null);
 
                 if (user) {
@@ -65,7 +78,14 @@ router.post("/api/auth/firebase", async (req: Request, res: Response) => {
                 id: newId,
                 name: firebaseUser.name ?? firebaseUser.email ?? "Customer",
                 email: firebaseUser.email ?? undefined,
-                password: "",
+                /**
+                 * The shop's own "this account has no password" marker, not an
+                 * empty string. Both are refused at login, but only the marker
+                 * is recognised by isPlaceholderPassword — so with "" the
+                 * account looked to the rest of the system like it had a real
+                 * password, and could never be given one.
+                 */
+                password: NO_CUSTOMER_PASSWORD,
                 role: "Customer",
                 firebaseUid: firebaseUser.uid,
                 profileImageUrl: firebaseUser.picture ?? undefined,

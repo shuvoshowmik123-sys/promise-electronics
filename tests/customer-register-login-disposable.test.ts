@@ -142,6 +142,17 @@ describe.skipIf(!LOCAL_PG_AVAILABLE)("register then log in, against real Postgre
 
     afterAll(async () => {
         if (!LOCAL_PG_AVAILABLE) return;
+        /**
+         * Drain the app's own pool before the database goes away.
+         *
+         * DROP DATABASE ... WITH (FORCE) terminates whatever is still connected,
+         * and the pooled clients this test opened belong to the shared module
+         * pool. Killing them under it surfaces as "terminating connection due to
+         * administrator command" in whichever test runs next in this worker —
+         * a failure with nothing to do with the code under test.
+         */
+        const { resetDbPool } = await import("../server/db.js");
+        await resetDbPool("disposable test teardown").catch(() => { });
         await db?.end().catch(() => { });
         await admin?.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`).catch(() => { });
         await admin?.end().catch(() => { });

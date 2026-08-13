@@ -183,9 +183,28 @@ describe("only an unclaimed account can be claimed", () => {
         // The account may have been activated by another route between the code
         // being issued and being used.
         const complete = SERVICE.slice(SERVICE.indexOf("export async function completeActivation"));
-        const afterSpend = complete.slice(complete.indexOf("spent.length === 0"));
+        const afterSpend = complete.slice(complete.indexOf("await spendCode("));
         expect(afterSpend).toContain("findUnclaimed");
         expect(afterSpend).toContain("not_claimable");
+    });
+
+    it("spends a code through one implementation, whatever it is for", () => {
+        /**
+         * Setup codes and link codes share spendCode. Two copies would
+         * eventually disagree about attempt counting or about what "expired"
+         * means, and the disagreement would be the way in.
+         *
+         * isNull, not eq(col, null): the latter renders "= NULL", matches
+         * nothing, and would make every code fail at the last step.
+         */
+        const spend = SERVICE.slice(SERVICE.indexOf("async function spendCode"));
+        const body = spend.slice(0, spend.indexOf("\n}\n"));
+        expect(body).toContain("isNull(otpCodes.verifiedAt)");
+        expect(body).toContain("if (spent.length === 0)");
+        expect(body).toContain("attempts: record.attempts + 1");
+        // The purpose is a parameter, so a setup code can never open the link
+        // path or the other way round.
+        expect(body).toContain("eq(otpCodes.purpose, purpose)");
     });
 });
 
