@@ -8,6 +8,7 @@ import { createProfileDismissHandler } from "@/lib/profile-completion-dismiss";
 import { toast } from "sonner";
 import { Loader2, Phone, MapPin, User, Sparkles, CheckCircle2, KeyRound } from "lucide-react";
 import { customerAuthApi } from "@/lib/api";
+import { PhoneInput } from "@/components/ui/phone-input";
 
 interface ProfileCompletionModalProps {
   open: boolean;
@@ -132,9 +133,8 @@ export function ProfileCompletionModal({
           <form onSubmit={handleLink} className="space-y-4 pt-2">
             <div className="space-y-2">
               <Label htmlFor="link-phone">Your phone number</Label>
-              <Input
+              <PhoneInput
                 id="link-phone"
-                type="tel"
                 value={linkPhone}
                 onChange={(ev) => setLinkPhone(ev.target.value)}
                 data-testid="input-link-phone"
@@ -214,19 +214,13 @@ export function ProfileCompletionModal({
 
           <div className="space-y-2">
             <Label htmlFor="profile-phone">Phone Number *</Label>
-            <div className="relative">
-              <Phone className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-              <Input
-                id="profile-phone"
-                type="tel"
-                placeholder="01XXXXXXXXX"
-                value={phone}
-                onChange={(e) => setPhone(e.target.value)}
-                className="pl-10"
-                data-testid="input-profile-phone"
-                required
-              />
-            </div>
+            <PhoneInput
+              id="profile-phone"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              data-testid="input-profile-phone"
+              required
+            />
             <p className="text-xs text-muted-foreground">
               Required for order delivery and service updates
             </p>

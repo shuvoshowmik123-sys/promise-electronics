@@ -9,16 +9,18 @@ import { db } from '../db.js';
 import * as schema from '../../shared/schema.js';
 import { sql, SQL, eq, or, isNull } from 'drizzle-orm';
 import { noConflictingJourneyOwner } from './journey-ownership.js';
+import { normalizePhone } from '../utils/phone.js';
 
+/**
+ * Last ten digits, from the one implementation that owns this rule.
+ *
+ * This was a private copy with identical intent. Copies of a normaliser do not
+ * stay identical: the moment one learns about a prefix and the other does not,
+ * the same customer resolves to two different people depending on which code
+ * path asked.
+ */
 function normalizeToDigits(p: string): string {
-    let digits = p.replace(/\D/g, '');
-    if (digits.startsWith('880')) {
-        digits = digits.slice(3);
-    }
-    if (digits.startsWith('0')) {
-        digits = digits.slice(1);
-    }
-    return digits.slice(-10); // Last 10 digits
+    return normalizePhone(p) || '';
 }
 
 // Empty id lists become IN (NULL) — valid SQL that matches nothing.

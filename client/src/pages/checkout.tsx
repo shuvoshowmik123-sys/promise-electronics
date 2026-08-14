@@ -1,4 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PhoneInput, toLocalPhoneDigits } from "@/components/ui/phone-input";
+import { toE164Bd } from "@/lib/phone";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -27,7 +29,12 @@ export default function CheckoutPage() {
   const { t } = useCustomerLanguage();
   const [, setLocation] = useLocation();
   
-  const [phone, setPhone] = useState(customer?.phone || "");
+  /**
+   * The local ten digits, because that is what the field shows beside its +880.
+   * The account stores "+8801812345678", so it is converted on the way in and
+   * back again on the way out — the customer never sees the country code twice.
+   */
+  const [phone, setPhone] = useState(toLocalPhoneDigits(customer?.phone || ""));
   const [address, setAddress] = useState(customer?.address || "");
   const [notes, setNotes] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -36,7 +43,7 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (customer?.phone && !phone) {
-      setPhone(customer.phone);
+      setPhone(toLocalPhoneDigits(customer.phone));
     }
     if (customer?.address && !address) {
       setAddress(customer.address);
@@ -53,7 +60,8 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (!phone || phone.trim().length < 10) {
+    const phoneE164 = toE164Bd(phone);
+    if (!phoneE164 || phone.length !== 10) {
       toast.error("Please enter a valid phone number");
       return;
     }
@@ -79,7 +87,7 @@ export default function CheckoutPage() {
 
       const order = await shopOrdersApi.create({
         items: orderItems,
-        phone: phone.trim(),
+        phone: phoneE164,
         address: address.trim(),
         notes: notes.trim() || undefined,
       });
@@ -409,17 +417,12 @@ export default function CheckoutPage() {
               <div className="mt-4 space-y-4">
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">{t("checkout.phone")}</Label>
-                  <div className="relative">
-                    <Phone className="absolute left-3.5 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-300" />
-                    <Input
-                      type="tel"
-                      placeholder="01XXXXXXXXX"
-                      className="h-12 rounded-xl border-slate-200 bg-blue-50/40 pl-11 font-medium"
-                      value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
-                      data-testid="mobile-input-phone"
-                    />
-                  </div>
+                  <PhoneInput
+                    className="h-12 rounded-xl border-slate-200 bg-blue-50/40 font-medium"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                    data-testid="mobile-input-phone"
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-bold uppercase tracking-wider text-slate-500">{t("checkout.address")}</Label>
@@ -597,18 +600,13 @@ export default function CheckoutPage() {
                 <CardContent className="space-y-4">
                       <div className="space-y-2">
                         <Label htmlFor="phone">{t("checkout.phone")} *</Label>
-                        <div className="relative">
-                          <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 z-10" />
-                          <Input
-                            id="phone"
-                            type="tel"
-                            placeholder="01XXXXXXXXX"
-                            className="pl-10 bg-white shadow-neumorph-inset border-none"
-                            value={phone}
-                            onChange={(e) => setPhone(e.target.value)}
-                            data-testid="input-phone"
-                          />
-                        </div>
+                        <PhoneInput
+                          id="phone"
+                          className="bg-white shadow-neumorph-inset border-none"
+                          value={phone}
+                          onChange={(e) => setPhone(e.target.value)}
+                          data-testid="input-phone"
+                        />
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="address">{t("checkout.address")} *</Label>

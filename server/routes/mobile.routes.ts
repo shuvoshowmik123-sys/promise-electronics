@@ -7,6 +7,7 @@
 
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
+import { normalizePhone as canonicalPhone } from '../utils/phone.js';
 import { eq } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
 import { db } from '../db.js';
@@ -194,19 +195,15 @@ function requireAnyRole(user: schema.User, roles: string[], res: Response): bool
     return false;
 }
 
+/**
+ * Last ten digits, from the one implementation that owns this rule.
+ *
+ * Search on this screen compares a typed number against stored ones, so it has
+ * to agree with the normaliser that wrote them. A private copy agreed by
+ * coincidence rather than by construction.
+ */
 function normalizePhone(value: string | null | undefined): string {
-    if (!value) {
-        return '';
-    }
-
-    let digits = value.replace(/\D/g, '');
-    if (digits.startsWith('880')) {
-        digits = digits.slice(3);
-    }
-    if (digits.startsWith('0')) {
-        digits = digits.slice(1);
-    }
-    return digits.slice(-10);
+    return canonicalPhone(value) || '';
 }
 
 function buildNotificationDeepLinkTarget(notification: schema.Notification): string {

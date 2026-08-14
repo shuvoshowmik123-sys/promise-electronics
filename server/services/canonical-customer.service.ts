@@ -12,9 +12,18 @@ import { db } from '../db.js';
 import { customers } from '../../shared/schema.js';
 import { eq, sql } from 'drizzle-orm';
 import { nanoid } from 'nanoid';
+import { normalizePhone as canonicalPhone } from '../utils/phone.js';
 
+/**
+ * Last ten digits, from the one implementation that owns this rule.
+ *
+ * The previous version took the last ten digits without removing the country
+ * code first. For a well-formed Bangladeshi number the two agree, which is
+ * exactly why a copy like this survives: it is right until somebody enters a
+ * number that is short, foreign, or half-typed.
+ */
 export function normalizePhone(phone: string): string {
-    return phone.replace(/\D/g, '').slice(-10);
+    return canonicalPhone(phone) || '';
 }
 
 export async function findCustomerByPhone(phone: string) {

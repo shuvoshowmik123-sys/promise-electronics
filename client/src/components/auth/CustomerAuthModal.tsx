@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PhoneInput } from "@/components/ui/phone-input";
 import { Label } from "@/components/ui/label";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { useCustomerLanguage } from "@/contexts/CustomerLanguageContext";
@@ -243,19 +244,10 @@ export function CustomerAuthModal({
               <div className="space-y-2">
                 <Label htmlFor="login-phone">Phone Number</Label>
                 <div className="relative flex items-center">
-                  <div className="absolute inset-y-0 left-3 flex items-center gap-1.5 text-muted-foreground pointer-events-none">
-                    <Phone className="h-4.5 w-4.5" />
-                    <span className="text-base font-medium select-none text-foreground">+880</span>
-                  </div>
-                  <Input
+                  <PhoneInput
                     id="login-phone"
-                    type="tel"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    placeholder="1XXXXXXXXX"
                     value={loginPhone}
-                    onChange={(e) => setLoginPhone(e.target.value.replace(/\D/g, '').replace(/^0+/, ''))}
-                    maxLength={10}
+                    onChange={(e) => setLoginPhone(e.target.value)}
                     className={phoneFieldClass}
                     autoComplete="username"
                     data-testid="input-login-phone"
@@ -315,19 +307,10 @@ export function CustomerAuthModal({
               <div className="space-y-2">
                 <Label htmlFor="register-phone">Phone Number *</Label>
                 <div className="relative flex items-center">
-                  <div className="absolute inset-y-0 left-3 flex items-center gap-1.5 text-muted-foreground pointer-events-none">
-                    <Phone className="h-4.5 w-4.5" />
-                    <span className="text-base font-medium select-none text-foreground">+880</span>
-                  </div>
-                  <Input
+                  <PhoneInput
                     id="register-phone"
-                    type="tel"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    placeholder="1XXXXXXXXX"
                     value={registerPhone}
-                    onChange={(e) => setRegisterPhone(e.target.value.replace(/\D/g, '').replace(/^0+/, ''))}
-                    maxLength={10}
+                    onChange={(e) => setRegisterPhone(e.target.value)}
                     className={phoneFieldClass}
                     autoComplete="username"
                     data-testid="input-register-phone"

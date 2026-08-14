@@ -9,6 +9,8 @@ import { Loader2, Eye, EyeOff, CheckCircle2, XCircle, ShieldCheck } from "lucide
 import { useToast } from "@/hooks/use-toast";
 import { useCustomerAuth } from "@/contexts/CustomerAuthContext";
 import { customerAuthApi } from "@/lib/api";
+import { PhoneInput } from "@/components/ui/phone-input";
+import { toE164Bd } from "@/lib/phone";
 
 type Stage = "loading" | "invalid" | "form" | "success";
 
@@ -62,13 +64,17 @@ export default function ResetPage() {
 
         setBusy(true);
         try {
-            // Normalize phone: strip non-digits, prepend +880 if missing country code
-            const digits = phone.replace(/\D/g, "");
-            const normalized = digits.startsWith("880")
-                ? `+${digits}`
-                : digits.startsWith("0")
-                ? `+880${digits.slice(1)}`
-                : `+880${digits}`;
+            /**
+             * The field hands back the ten local digits, so there is nothing left
+             * to guess about. This used to re-implement the country-code rules
+             * inline — a fourth copy of a rule that belongs in one place.
+             */
+            const normalized = toE164Bd(phone);
+            if (!normalized) {
+                toast({ title: "Enter your mobile number", variant: "destructive" });
+                setBusy(false);
+                return;
+            }
 
             await completeResetLink({ token, phone: normalized, password, confirmPassword });
             setStage("success");
@@ -138,12 +144,10 @@ export default function ResetPage() {
                             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
                                 <div className="flex flex-col gap-1.5">
                                     <Label htmlFor="reset-phone">Phone number</Label>
-                                    <Input
+                                    <PhoneInput
                                         id="reset-phone"
                                         name="phone"
-                                        type="tel"
                                         autoComplete="username"
-                                        placeholder="01XXXXXXXXX"
                                         value={phone}
                                         onChange={e => setPhone(e.target.value)}
                                         disabled={busy}
