@@ -642,7 +642,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const isSubmitting = repairMutation.isPending || quoteMutation.isPending;
 
   /**
-   * Ask staff to verify this customer and issue a one-time setup link.
+   * Ask staff to verify this customer and read them a setup code.
    *
    * Deliberately does NOT create, activate, or authenticate anything: an
    * anonymous browser submitting a repair request is not proof that it owns the
@@ -696,7 +696,7 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
               * has an owner. Registering against it is refused (correctly — an
               * anonymous browser is not proof of phone ownership), which left the
               * customer with no route to an account at all. This asks staff to
-              * verify and send a one-time setup link.
+              * call and verify them, then read them a setup code.
               *
               * It never activates anything, never takes a password, and never
               * reveals whether an account already exists. Tracking above keeps
@@ -705,14 +705,14 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
               <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 text-left">
                 {setupRequestState === "sent" ? (
                   <p className="text-sm leading-6 text-slate-700" data-testid="setup-access-sent">
-                    Request sent. Our team will call you to verify your identity and send a
-                    one-time account setup link.
+                    Request sent. Our team will call you to check it is you, then give you a
+                    6-digit code to set your password.
                   </p>
                 ) : (
                   <>
                     <p className="text-sm font-semibold text-slate-900">Want to track this online?</p>
                     <p className="mt-1 text-xs leading-5 text-slate-600">
-                      We will call you to confirm it is you, then send a one-time setup link.
+                      We will call you to confirm it is you, then give you a 6-digit setup code.
                     </p>
                     {setupRequestState === "error" && (
                       <p className="mt-2 text-xs font-medium text-amber-700" data-testid="setup-access-error">

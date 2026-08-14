@@ -233,6 +233,82 @@ export function generatePrintHtml(
             word-break: break-word;
           }
 
+          /**
+           * On a screen, this is a preview — not a sheet of A4.
+           *
+           * The rules above size the slip for paper: a fixed 190mm page, a
+           * 245px-wide meta box, two- and three-column grids, a 170px QR
+           * column. On a 390px phone that renders 718px wide and 328px of it —
+           * the customer's phone number, the screen size, the serial — hangs
+           * off the right edge where nobody scrolls to look.
+           *
+           * Staff open this on the shop phone, so the preview has to fit the
+           * phone. Paper is unaffected: everything here is inside a screen
+           * media query, and the print block below restates the paper geometry
+           * so the two can never drift apart.
+           */
+          @media screen {
+            /* A desk. The slip sits on it like a sheet of paper, so what is on
+               screen looks like what comes out of the printer. */
+            body {
+              padding: 28px 16px;
+              background: #eef2f7;
+            }
+
+            .page {
+              /* Still the full A4 content width on a desktop — max-width, not
+                 width, so only a narrow screen ever shrinks it. The 7mm padding
+                 from the paper rule above is deliberately left alone here: it
+                 is what makes the sheet look substantial rather than cramped. */
+              width: 100%;
+              max-width: 190mm;
+              background: #ffffff;
+              box-shadow: 0 12px 32px rgba(15, 23, 42, 0.14);
+            }
+          }
+
+          @media screen and (max-width: 620px) {
+            /* Phone only. Everything here is a concession to a 390px screen and
+               none of it reaches the printer. */
+            body {
+              padding: 8px;
+              background: #ffffff;
+            }
+
+            .page {
+              padding: 12px;
+              box-shadow: none;
+            }
+
+            /* One column. Two 12px-wide halves side by side are not a layout. */
+            .grid-2,
+            .grid-3,
+            .footer-row {
+              grid-template-columns: 1fr;
+            }
+
+            .header {
+              flex-direction: column;
+              gap: 12px;
+            }
+
+            /* The meta box holds the job number — it must never be the thing
+               that forces the page wider than the screen. */
+            .meta {
+              min-width: 0;
+              width: 100%;
+            }
+
+            .signature-block,
+            .signature-date {
+              width: 100%;
+            }
+
+            .qr-panel {
+              max-width: 220px;
+            }
+          }
+
           @media print {
             .page {
               width: auto;
@@ -352,7 +428,20 @@ export function generatePrintHtml(
           <div class="section section-box">
             <div class="label">Terms and Conditions</div>
             <ul class="terms-list">
-              <li>Please keep this receipt and present it when collecting your device.</li>
+              <!--
+                Worded for both service modes, because this slip cannot tell
+                them apart: job_tickets has no service-mode column, so the
+                template is handed no way to know whether the customer is
+                collecting the television or having it brought back.
+
+                It used to say only "present it when collecting your device",
+                which is right for a drop-off customer and wrong for the one
+                who paid for home delivery — that customer was being told to
+                come and fetch the television the shop had agreed to deliver.
+                Until the mode reaches this template, saying both is the only
+                honest option.
+              -->
+              <li>Please keep this receipt. You will need it when you collect your device, or when our driver returns it to you.</li>
               <li>Only the accessories listed on this receipt are treated as received by Promise Electronics.</li>
               <li>Estimated cost and delivery time are subject to inspection and diagnosis.</li>
               <li>If the device remains unclaimed for more than 90 days after notice, storage responsibility will be limited to the extent permitted by applicable practice and policy.</li>

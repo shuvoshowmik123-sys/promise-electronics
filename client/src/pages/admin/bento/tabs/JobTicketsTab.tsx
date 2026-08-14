@@ -876,7 +876,17 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                 errorCorrectionLevel: "H",
             });
 
-            const printContent = generatePrintHtml(job, qrUrl, trackingUrl, getCurrencySymbol(), getLogoUrl());
+            /**
+             * `|| "/logo.png"` for the same reason the PDF below does it.
+             *
+             * getLogoUrl() returns "" until somebody sets the logo_url setting,
+             * and the template treats "" as "no logo" and prints a bordered box
+             * with the words "Promise Electronics" in it. The PDF path already
+             * fell back to the bundled file and showed the real mark, so the
+             * same job printed from the same screen came out branded as a PDF
+             * and unbranded on the slip handed to the customer.
+             */
+            const printContent = generatePrintHtml(job, qrUrl, trackingUrl, getCurrencySymbol(), getLogoUrl() || "/logo.png");
             printWindow.document.write(printContent);
             printWindow.document.close();
             waitForPrintAssets(printWindow).then(() => {
