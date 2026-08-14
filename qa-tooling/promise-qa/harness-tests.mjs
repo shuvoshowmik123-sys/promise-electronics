@@ -14,6 +14,8 @@ import { comparePngPixels, comparePanZoomEvidence, encodeSolidPng, encodeRgbaPng
 import { isPathInside, safeResolveEvidence } from "./lib/paths.mjs";
 import { createChallenge, validateMcpProof, buildProofTemplate } from "./lib/mcp-proof.mjs";
 import { createCleanupTracker } from "./lib/cleanup.mjs";
+import { ConsoleLedger, laneFor } from "./lib/console-ledger.mjs";
+import { Explorer, DESTRUCTIVE_LABEL } from "./lib/explorer.mjs";
 
 const results = [];
 const temps = [];
@@ -679,6 +681,195 @@ for (const d of temps) {
     /* */
   }
 }
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Console lanes
+// ─────────────────────────────────────────────────────────────────────────────
+
+test("lane-red-carries-anything-that-blocks", () => {
+  if (laneFor("BLOCKING", { blocksPass: true }) !== "red") throw new Error("blocking is not red");
+  if (laneFor("PRODUCT ERROR") !== "red") throw new Error("product error is not red");
+  if (laneFor("SECURITY") !== "red") throw new Error("security is not red");
+  // A classifier that mislabels something as noise must still not demote it if
+  // it blocks: blocksPass wins over the label.
+  if (laneFor("DEVELOPMENT NOISE", { blocksPass: true }) !== "red") throw new Error("blocksPass ignored");
+});
+
+test("lane-green-is-quarantined-not-deleted", () => {
+  const ledger = new ConsoleLedger({ session: "t" });
+  for (let i = 0; i < 5; i++) {
+    ledger.record({ lane: "green", kind: "console", text: `noise ${i}`, reason: "devtools-or-extension" });
+  }
+  if (ledger.counts.green !== 5) throw new Error("green not counted");
+  // Counted and summarisable, but never carried in the digest body — the old
+  // code dropped these at classification time, so nobody could audit them.
+  const digest = ledger.digest();
+  if (!digest.greenTop.includes("devtools-or-extension×5")) throw new Error("green not summarised");
+  if (JSON.stringify(digest).includes("noise 3")) throw new Error("green text leaked into digest");
+});
+
+test("red-keeps-a-real-stack-not-300-characters", () => {
+  const ledger = new ConsoleLedger({ session: "t" });
+  const stack = Array.from({ length: 30 }, (_, i) => `    at frame${i} (/app/src/file${i}.tsx:${i}:1)`).join("\n");
+  const row = ledger.pageError(Object.assign(new Error("Cannot read properties of undefined"), { stack }));
+  if (row.lane !== "red") throw new Error("uncaught exception is not red");
+  // The frame that names your own file is usually not in the first 300 chars.
+  if (!row.stack.includes("frame20")) throw new Error("stack truncated too early");
+});
+
+test("red-records-the-action-that-preceded-it", () => {
+  const ledger = new ConsoleLedger({ session: "t" });
+  ledger.noteAction({ action: "press", target: "Close Register" });
+  const row = ledger.pageError(new Error("boom"));
+  if (row.afterAction?.target !== "Close Register") throw new Error("preceding action not attached");
+  const digest = ledger.digest();
+  if (digest.red[0].afterAction !== "press Close Register") throw new Error("digest lost the action");
+});
+
+test("aborted-requests-are-noise-not-failures", () => {
+  const ledger = new ConsoleLedger({ session: "t" });
+  const aborted = ledger.requestFailed({
+    method: () => "GET",
+    url: () => "http://127.0.0.1:5083/api/x",
+    failure: () => ({ errorText: "net::ERR_ABORTED" }),
+  });
+  const dead = ledger.requestFailed({
+    method: () => "GET",
+    url: () => "http://127.0.0.1:5083/api/y",
+    failure: () => ({ errorText: "net::ERR_CONNECTION_REFUSED" }),
+  });
+  // Navigating away cancels in-flight requests; that is the harness, not a bug.
+  if (aborted.lane !== "green") throw new Error("aborted request treated as a failure");
+  if (dead.lane !== "red") throw new Error("refused connection not treated as a failure");
+});
+
+test("ledger-memory-is-bounded-but-disk-is-not-consulted", () => {
+  const ledger = new ConsoleLedger({ session: "t" });
+  for (let i = 0; i < 500; i++) {
+    ledger.record({ lane: "amber", kind: "console", text: `warn ${i}`, reason: "r" });
+  }
+  if (ledger.counts.amber !== 500) throw new Error("count must be complete");
+  if (ledger.rows.amber.length > 200) throw new Error("memory not bounded");
+  // Newest kept, not oldest: the last thing that happened is the useful one.
+  if (!ledger.rows.amber.at(-1).text.includes("warn 499")) throw new Error("kept the wrong end");
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Autonomous walk
+// ─────────────────────────────────────────────────────────────────────────────
+
+function stubExplorer(options = {}) {
+  const session = { name: "s", page: { url: () => "http://127.0.0.1:5083/admin" }, issues: [] };
+  const explorer = new Explorer({ driver: { sequence: 0 }, session }, options);
+  explorer.hostname = "127.0.0.1";
+  return explorer;
+}
+
+test("destructive-labels-are-never-pressed-by-default", () => {
+  const explorer = stubExplorer();
+  // Every one of these exists in this admin panel and every one of them does
+  // something to real data.
+  for (const name of [
+    "Delete", "Close Register", "Send", "Refund", "Sign out", "Approve",
+    "Blacklist", "Issue reset link", "Complete Job", "Merge",
+  ]) {
+    const reason = explorer.shouldAvoid({ role: "button", name });
+    if (reason !== "destructive-label") throw new Error(`${name} would have been pressed (${reason})`);
+  }
+});
+
+test("harmless-controls-are-still-pressed", () => {
+  const explorer = stubExplorer();
+  for (const name of ["Customers", "Search", "Filter", "Next page", "Open details"]) {
+    if (explorer.shouldAvoid({ role: "button", name })) throw new Error(`${name} was wrongly skipped`);
+  }
+});
+
+test("destructive-permission-needs-two-locks", () => {
+  // The flag alone does nothing: the server environment must agree. One lock
+  // is one accident away from closing the till.
+  const explorer = stubExplorer({ allowDestructive: true });
+  if (explorer.shouldAvoid({ role: "button", name: "Delete" })) {
+    throw new Error("flag did not widen the walk");
+  }
+  const guarded = stubExplorer();
+  if (!guarded.shouldAvoid({ role: "button", name: "Delete" })) {
+    throw new Error("default did not protect");
+  }
+});
+
+test("scope-keeps-the-walk-inside-the-app-area", () => {
+  const explorer = stubExplorer({ scope: ["/admin"] });
+  if (!explorer.inScope("/admin/customers")) throw new Error("in-scope path rejected");
+  if (explorer.inScope("/customer/portal")) throw new Error("out-of-scope path accepted");
+});
+
+test("the-same-screen-twice-is-one-state", () => {
+  const explorer = stubExplorer();
+  const elements = [
+    { role: "button", name: "Save" },
+    { role: "button", name: "Cancel" },
+  ];
+  const survey = { pathname: "/admin/jobs", textLength: 100, elements };
+  const first = explorer.pickNext(survey, "sig-a");
+  const second = explorer.pickNext(survey, "sig-a");
+  if (first?.name !== "Save") throw new Error("did not pick the first pressable control");
+  // Cancel is destructive-adjacent? No — it is pressable, so the walk moves on
+  // to it rather than pressing Save twice.
+  if (second?.name !== "Cancel") throw new Error("pressed the same control twice");
+  if (explorer.pickNext(survey, "sig-a") !== null) throw new Error("state did not exhaust");
+});
+
+test("findings-are-grouped-not-repeated", () => {
+  const explorer = stubExplorer();
+  // One overflowing table hit on forty screens is one bug, not forty lines.
+  for (let i = 0; i < 40; i++) {
+    explorer.steps.push({
+      step: i + 1,
+      pathname: `/admin/tab${i % 3}`,
+      target: `btn-${i}`,
+      findings: [{ code: "HORIZONTAL_OVERFLOW", target: "document", severity: "HIGH" }],
+    });
+  }
+  const summary = explorer.summarise();
+  if (summary.findings.length !== 1) throw new Error(`grouped to ${summary.findings.length}`);
+  if (summary.findings[0].occurrences !== 40) throw new Error("occurrence count lost");
+  if (summary.findings[0].paths.length > 6) throw new Error("path list unbounded");
+});
+
+test("skipped-controls-are-reported-so-coverage-is-honest", () => {
+  const explorer = stubExplorer();
+  const survey = {
+    pathname: "/admin",
+    textLength: 10,
+    elements: [{ role: "button", name: "Delete" }, { role: "button", name: "Refresh" }],
+  };
+  const picked = explorer.pickNext(survey, "sig-b");
+  if (picked?.name !== "Refresh") throw new Error("skipped the wrong control");
+  const summary = explorer.summarise();
+  if (summary.skipped["destructive-label"] !== 1) throw new Error("skip not reported");
+});
+
+test("budget-is-enforced-on-both-steps-and-time", () => {
+  const explorer = stubExplorer({ maxSteps: 2, maxMs: 5000 });
+  explorer.startedAt = Date.now();
+  if (!explorer.budgetLeft()) throw new Error("fresh walk has no budget");
+  explorer.steps.push({}, {});
+  if (explorer.budgetLeft()) throw new Error("step budget not enforced");
+
+  const timed = stubExplorer({ maxSteps: 100, maxMs: 5000 });
+  timed.startedAt = Date.now() - 6000;
+  if (timed.budgetLeft()) throw new Error("time budget not enforced");
+});
+
+test("destructive-pattern-matches-whole-words-in-context", () => {
+  // Matched against the visible label, because the button that wipes the day's
+  // takings is identified by the word on it and not by its class name.
+  if (!DESTRUCTIVE_LABEL.test("Close Register & Print")) throw new Error("compound label missed");
+  if (!DESTRUCTIVE_LABEL.test("DELETE CUSTOMER")) throw new Error("case sensitivity");
+  if (DESTRUCTIVE_LABEL.test("Customers")) throw new Error("false positive on a nav item");
+});
 
 // ensure no leftover _harness_ under mcp-02 from this process
 const base = path.join("mobile-qa", "grok-playwright-mcp-02");
