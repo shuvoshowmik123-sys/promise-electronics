@@ -74,7 +74,9 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
             queryClient.invalidateQueries({ queryKey: ["settings-pickup-fares"] });
             toast.success("Fares updated");
         },
-        onError: () => toast.error("Could not save the fares"),
+        // The server says which field and why; repeating "could not save"
+        // over the top of that would throw away the only useful part.
+        onError: (error: any) => toast.error(error?.message || "Could not save the fares"),
     });
 
     const saveArea = () => {
@@ -162,7 +164,18 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
                                 key={k} label={label} value={String(tierExtras[k])} canManage={canManage} pending={save.isPending}
                                 onSave={(v) => save.mutate([{
                                     key: PICKUP_TIER_EXTRAS_KEY,
-                                    value: JSON.stringify({ ...tierExtras, [k]: parse(v) ?? 0 }),
+                                    /**
+                                     * What was typed, not what was salvageable.
+                                     *
+                                     * This read `parse(v) ?? 0`, so -25 and a
+                                     * cleared box both became 0 HERE, in the
+                                     * browser, before the server could object.
+                                     * The save then succeeded honestly and the
+                                     * shop's same-day extra was free. Sending
+                                     * the raw value lets the one validator
+                                     * refuse it and say why.
+                                     */
+                                    value: JSON.stringify({ ...tierExtras, [k]: v.trim() === "" ? "" : Number(v) }),
                                 }])}
                             />
                         ))}

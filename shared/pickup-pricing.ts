@@ -72,6 +72,87 @@ function money(n: unknown): number | null {
   return Number.isFinite(v) && v >= 0 && v <= 100_000 ? Math.round(v) : null;
 }
 
+/**
+ * Why a fare must be refused when it is saved, not quietly mended when it is read.
+ *
+ * `money()` above turns anything it dislikes into null, and the tier extras then
+ * fall back to zero. Zero is not "unset" — it is a price, and it says collection
+ * is free. So typing -25 into the Same-day extra, or clearing the box, produced
+ * a cheerful "Fares updated" and a same-day pickup that costs the customer
+ * nothing and the shop a driver. The screen said one thing and the till did
+ * another, which is the worst way for money to go missing: silently, and with a
+ * success message on top.
+ *
+ * This is the same rule the reader already applies, moved to the moment somebody
+ * presses Save, so that what is stored is what was meant.
+ */
+export type FareValidationError = { key: string; field: string; reason: string };
+
+const FARE_LIMIT = 100_000;
+
+function badMoney(value: unknown, field: string, key: string): FareValidationError | null {
+  if (value === null || value === undefined || value === "") {
+    return { key, field, reason: "A fare cannot be left blank. Enter 0 if it is genuinely free." };
+  }
+  const n = Number(value);
+  if (!Number.isFinite(n)) return { key, field, reason: "That is not a number." };
+  if (n < 0) return { key, field, reason: "A fare cannot be negative — that would pay the customer to have their television collected." };
+  if (n > FARE_LIMIT) return { key, field, reason: `A fare above ${FARE_LIMIT} is almost certainly a typing slip.` };
+  return null;
+}
+
+export const PICKUP_SETTING_KEYS: string[] = [
+  PICKUP_AREA_FARES_KEY,
+  PICKUP_TIER_EXTRAS_KEY,
+  PICKUP_ANYWHERE_ELSE_KEY,
+  PICKUP_FREE_OVER_KEY,
+];
+
+/**
+ * Check one of the pickup settings before it is written.
+ *
+ * Returns every problem found rather than the first, so somebody correcting a
+ * form is told all of it at once instead of one field per attempt.
+ */
+export function validatePickupSetting(key: string, rawValue: string | null): FareValidationError[] {
+  if (!PICKUP_SETTING_KEYS.includes(key)) return [];
+
+  let parsed: unknown;
+  try {
+    parsed = rawValue === null || rawValue === "" ? null : JSON.parse(rawValue);
+  } catch {
+    return [{ key, field: key, reason: "The saved value is not readable." }];
+  }
+
+  if (key === PICKUP_TIER_EXTRAS_KEY) {
+    const raw = (parsed ?? {}) as Record<string, unknown>;
+    return PICKUP_TIERS
+      .map((tier) => badMoney(raw[tier], tier, key))
+      .filter((e): e is FareValidationError => e !== null);
+  }
+
+  if (key === PICKUP_AREA_FARES_KEY) {
+    const raw = (parsed ?? {}) as Record<string, unknown>;
+    const errors: FareValidationError[] = [];
+    for (const [areaId, value] of Object.entries(raw)) {
+      const v = value as Partial<PickupAreaFare>;
+      const bad = badMoney(v?.fare, `${areaId}.fare`, key);
+      if (bad) errors.push(bad);
+      const radius = Number(v?.radiusKm);
+      if (!Number.isFinite(radius) || radius <= 0) {
+        errors.push({ key, field: `${areaId}.radiusKm`, reason: "A rated area needs a radius greater than zero." });
+      }
+    }
+    return errors;
+  }
+
+  // The single-number settings. Null is allowed: "not set" is a real answer for
+  // a free-over threshold or an anywhere-else fare, and is not the same as free.
+  if (parsed === null) return [];
+  const bad = badMoney(parsed, key, key);
+  return bad ? [bad] : [];
+}
+
 export function readTierExtras(settings: SettingRow[]): PickupTierExtras {
   const raw = readJson<Partial<Record<PickupTier, unknown>>>(settings, PICKUP_TIER_EXTRAS_KEY, {});
   return {

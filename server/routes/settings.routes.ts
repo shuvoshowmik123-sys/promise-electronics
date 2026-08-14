@@ -14,6 +14,7 @@ import {
     insertProductVariantSchema
 } from '../../shared/schema.js';
 import { requireAdminAuth, requirePermission, requireSuperAdmin } from './middleware/auth.js';
+import { validatePickupSetting } from '../../shared/pickup-pricing.js';
 import { auditLogger } from '../utils/auditLogger.js';
 import { AUDIT_ACTIONS } from '../../shared/constants.js';
 import { detectConflicts, applyResolutions } from '../services/settings-conflict.service.js';
@@ -295,6 +296,25 @@ router.post('/api/settings', requireAdminAuth, requirePermission('settings'), as
         if (!ALLOWED_SETTING_KEYS.includes(validated.key)) {
             console.error(`[Settings API] Attempt to write unknown key rejected: ${validated.key}`);
             return res.status(400).json({ error: `Setting key '${validated.key}' is not allowed.` });
+        }
+
+        /**
+         * Fares are checked before they are stored, because the reader mends
+         * what it dislikes into zero — and zero is not "unset", it is a price
+         * that says collection is free.
+         *
+         * Found in QA: typing -25 into the Same-day extra, or clearing the box,
+         * returned "Fares updated" and left same-day pickup costing the customer
+         * nothing and the shop a driver. The screen said one thing and the till
+         * did another.
+         */
+        const fareErrors = validatePickupSetting(validated.key, validated.value ?? null);
+        if (fareErrors.length > 0) {
+            return res.status(400).json({
+                error: fareErrors.map((e) => `${e.field}: ${e.reason}`).join(" "),
+                code: 'INVALID_FARE',
+                fields: fareErrors,
+            });
         }
 
         const setting = await storage.upsertSetting(validated);
