@@ -152,13 +152,26 @@ describe.skipIf(!LOCAL_PG_AVAILABLE)("register then log in, against real Postgre
          * a failure with nothing to do with the code under test.
          */
         const { resetDbPool } = await import("../server/db.js");
-        await resetDbPool("disposable test teardown").catch(() => { });
+        /**
+         * Bounded, because resetDbPool races its own ten-second drain timeout
+         * and this hook does not have ten seconds to give it. Under full-suite
+         * parallelism the drain is the slowest thing here, and a teardown that
+         * overruns fails the file with every one of its tests already green —
+         * which reads as a broken test rather than a slow socket.
+         *
+         * Three seconds is enough for an idle pool. If it is not, the database
+         * is dropped from under it a moment later anyway.
+         */
+        await Promise.race([
+            resetDbPool("disposable test teardown").catch(() => { }),
+            new Promise((resolve) => setTimeout(resolve, 3000)),
+        ]);
         await db?.end().catch(() => { });
         await admin?.query(`DROP DATABASE IF EXISTS ${DB_NAME} WITH (FORCE)`).catch(() => { });
         await admin?.end().catch(() => { });
         if (originalEnv.DATABASE_URL === undefined) delete process.env.DATABASE_URL;
         else process.env.DATABASE_URL = originalEnv.DATABASE_URL;
-    });
+    }, 60_000);
 
     it("signs in with the password just chosen at registration", async () => {
         const agent = request.agent(app);

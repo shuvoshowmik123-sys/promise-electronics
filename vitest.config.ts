@@ -35,10 +35,13 @@ export default defineConfig({
          * hang still fails, just later. Do not lower without re-measuring; do not raise to
          * hide a newly slow test.
          *
-         * hookTimeout is deliberately left at the 5000ms default. The suite has exactly one
-         * beforeAll (tests/auth-boundaries.test.ts, which boots the app via
-         * TestFactory.createClient); it was measured to pass at --hookTimeout=500, so its
-         * cost is import-phase, not hook-phase. No hook in this suite needs extra budget.
+         * hookTimeout is deliberately left at the 5000ms default, so that a hook which
+         * becomes slow fails loudly instead of being absorbed by a generous global.
+         *
+         * The files that genuinely need longer — the disposable-PostgreSQL tests, which
+         * CREATE and DROP a database around each run — pass their own timeout as the last
+         * argument to beforeAll and afterAll. That keeps the extra budget attached to the
+         * hook that earned it and visible in the file that needs it.
          */
         testTimeout: 30000,
         coverage: {
