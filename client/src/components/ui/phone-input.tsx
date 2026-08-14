@@ -45,6 +45,33 @@ export function toLocalPhoneDigits(raw: string): string {
     return digits.slice(0, 10);
 }
 
+/**
+ * Whether the box itself has to be rewritten, and to what.
+ *
+ * A controlled field re-renders from the caller's state, so cleaning it here
+ * and handing the result to onChange is enough. An UNCONTROLLED field has no
+ * such state: React never writes to it, so a cleaned value that is only passed
+ * to a callback is computed and then thrown away, and the digits the customer
+ * typed stay exactly as typed.
+ *
+ * That is not hypothetical. The login and support forms read their phone with
+ * FormData on submit and pass no value or onChange, so for as long as this
+ * component has existed those two screens never stripped anything: 018… stayed
+ * 018…, which is eleven digits, and sign-in refused it for being the wrong
+ * length. The field looked identical to the ones that worked.
+ *
+ * Returns null when nothing needs rewriting, so the caret is only ever
+ * disturbed on the keystrokes that actually change something.
+ */
+export function uncontrolledRewrite(
+    typed: string,
+    { isControlled }: { isControlled: boolean },
+): string | null {
+    if (isControlled) return null;
+    const cleaned = toLocalPhoneDigits(typed);
+    return cleaned === typed ? null : cleaned;
+}
+
 export interface PhoneInputProps
     extends React.InputHTMLAttributes<HTMLInputElement> {
     value?: string
@@ -53,15 +80,31 @@ export interface PhoneInputProps
 
 const PhoneInput = React.forwardRef<HTMLInputElement, PhoneInputProps>(
     ({ className, value, onChange, ...props }, ref) => {
+        const isControlled = value !== undefined;
 
         const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-            const cleaned = toLocalPhoneDigits(e.target.value);
+            const element = e.target;
+            const cleaned = toLocalPhoneDigits(element.value);
+
+            const rewrite = uncontrolledRewrite(element.value, { isControlled });
+            if (rewrite !== null) {
+                // Nothing else will write this back, so the DOM node is set
+                // directly. The caret goes to the end, which is where it
+                // belongs: digits are removed from the front, and the customer
+                // is typing left to right.
+                element.value = rewrite;
+                try {
+                    element.setSelectionRange(rewrite.length, rewrite.length);
+                } catch {
+                    /* Some browsers refuse this on type=tel; the value still took. */
+                }
+            }
 
             // A synthetic event so callers keep their ordinary onChange handler
             // and never see anything but the ten local digits.
             const event = {
                 ...e,
-                target: { ...e.target, value: cleaned },
+                target: { ...element, value: cleaned },
             } as React.ChangeEvent<HTMLInputElement>;
 
             onChange?.(event);

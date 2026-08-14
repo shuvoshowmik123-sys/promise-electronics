@@ -21,7 +21,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
-import { toLocalPhoneDigits } from "../client/src/components/ui/phone-input";
+import { toLocalPhoneDigits, uncontrolledRewrite } from "../client/src/components/ui/phone-input";
 import { normalizeLocalPhone, toE164Bd } from "../client/src/lib/phone";
 import { normalizePhone } from "../server/utils/phone";
 
@@ -70,6 +70,38 @@ describe("the leading zero disappears as you type", () => {
 
     it("never returns more than the ten local digits", () => {
         expect(toLocalPhoneDigits("018123456789999")).toHaveLength(10);
+    });
+});
+
+describe("a field nobody is holding state for still cleans itself", () => {
+    /**
+     * The bug QA found, and the hole in the test above it.
+     *
+     * login.tsx and support.tsx render <PhoneInput name="phone" /> and read the
+     * value with FormData on submit. They pass no value and no onChange, so the
+     * cleaned digits were computed, handed to an onChange that did not exist,
+     * and discarded. 018... stayed 018... — eleven digits — and sign-in refused
+     * it for being the wrong length.
+     *
+     * The test that was supposed to catch this asserted the file CONTAINED the
+     * string "PhoneInput". It proved the import and nothing else, which is
+     * exactly the kind of test that reads green while the screen is broken.
+     */
+    it("rewrites the box when nothing else will", () => {
+        expect(uncontrolledRewrite("01812345678", { isControlled: false })).toBe("1812345678");
+        expect(uncontrolledRewrite("+8801812345678", { isControlled: false })).toBe("1812345678");
+        expect(uncontrolledRewrite("018", { isControlled: false })).toBe("18");
+    });
+
+    it("leaves a controlled field alone, because its owner re-renders it", () => {
+        expect(uncontrolledRewrite("01812345678", { isControlled: true })).toBeNull();
+    });
+
+    it("does not touch the caret on keystrokes that change nothing", () => {
+        // Returning a value here would move the cursor to the end mid-edit.
+        expect(uncontrolledRewrite("1812345678", { isControlled: false })).toBeNull();
+        expect(uncontrolledRewrite("", { isControlled: false })).toBeNull();
+        expect(uncontrolledRewrite("880", { isControlled: false })).toBeNull();
     });
 });
 

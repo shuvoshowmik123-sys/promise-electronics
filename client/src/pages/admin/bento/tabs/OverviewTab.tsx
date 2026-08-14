@@ -468,12 +468,10 @@ function DesktopOverviewLayout({ stats, technicianWorkloads, dueToday, readyForD
                                 </div>
                                 <span className="font-bold tracking-wide text-xs">New Job</span>
                             </Button>
-                            <Button variant="outline" className="h-full flex flex-col items-center justify-center gap-3 bg-white/10 border-white/20 hover:bg-white/20 text-white hover:text-white hover:border-white/40 transition-all shadow-lg bc-hover bc-rise relative z-10 hover:z-20 rounded-2xl group border-2">
-                                <div className="p-3 bg-white/20 text-white rounded-full group-hover:scale-110 transition-transform duration-300 ring-1 ring-white/30">
-                                    <MessageSquare size={20} />
-                                </div>
-                                <span className="font-bold tracking-wide text-xs">Send SMS</span>
-                            </Button>
+                            {/* A "Send SMS" tile stood here. The shop sends no SMS — there is no
+                                provider and the codes that matter deliberately never leave this
+                                system — and the tile had no handler either, so it advertised a
+                                capability that did not exist and could not have run if it did. */}
                             <Button variant="outline" className="h-full flex flex-col items-center justify-center gap-3 bg-white/10 border-white/20 hover:bg-white/20 text-white hover:text-white hover:border-white/40 transition-all shadow-lg bc-hover bc-rise relative z-10 hover:z-20 rounded-2xl group border-2">
                                 <div className="p-3 bg-white/20 text-white rounded-full group-hover:scale-110 transition-transform duration-300 ring-1 ring-white/30">
                                     <Truck size={20} />

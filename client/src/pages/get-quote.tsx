@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { QUOTE_VALID_DAYS } from "@shared/quote-policy";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -684,7 +685,7 @@ export default function GetQuotePage() {
                         <h4 className="font-medium text-blue-900">What happens next?</h4>
                         <ul className="text-sm text-blue-800 mt-2 space-y-1">
                           <li>1. Our team will review your request</li>
-                          <li>2. You'll receive a quote via phone/SMS</li>
+                          <li>2. We will call you with the quote</li>
                           <li>3. Accept the quote to schedule pickup</li>
                         </ul>
                       </div>
@@ -694,10 +695,10 @@ export default function GetQuotePage() {
                   <div className="bg-amber-50/50 shadow-neumorph-inset rounded-xl p-4 mb-6 text-left max-w-md mx-auto">
                     <h4 className="font-medium text-amber-900 mb-2">Terms & Conditions</h4>
                     <ul className="text-xs text-amber-800 space-y-1.5">
-                      <li>• This quote is valid for <strong>30 days</strong> from the date it is issued.</li>
-                      <li>• Prices are based on current parts availability and may vary.</li>
+                      <li>• This quote is valid for <strong>{QUOTE_VALID_DAYS} days</strong> from the date it is issued.</li>
+                      <li>• Panel and part prices move week to week, so we cannot hold an older figure.</li>
                       <li>• If parts become unavailable, you may need to request a new quote.</li>
-                      <li>• After 30 days, you will need to re-submit your service request.</li>
+                      <li>• After {QUOTE_VALID_DAYS} days, ask us for a re-quote and we will price it again at today's rates.</li>
                     </ul>
                   </div>
 

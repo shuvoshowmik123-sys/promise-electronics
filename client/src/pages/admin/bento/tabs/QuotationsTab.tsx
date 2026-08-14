@@ -779,7 +779,7 @@ export default function QuotationsTab() {
                                     <Label className="text-xs text-slate-500 font-semibold mb-1.5 block">Terms & Notes for Customer</Label>
                                     <Textarea
                                         {...form.register("notes")}
-                                        placeholder="Warranty applies to parts only. Prices valid for 14 days..."
+                                        placeholder="Warranty applies to parts only. Prices valid for 15 days..."
                                         className="h-20 bg-white border-slate-200 resize-none rounded-xl"
                                     />
                                 </div>
