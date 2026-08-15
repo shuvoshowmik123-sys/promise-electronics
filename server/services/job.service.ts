@@ -496,10 +496,39 @@ export class JobService {
             const corporateChallanId: string | null = raw.corporate_challan_id ?? raw.corporateChallanId ?? null;
             const serviceAreaId: string | null = raw.service_area_id ?? raw.serviceAreaId ?? null;
 
+            /**
+             * The collection fare travels with the job.
+             *
+             * It was quoted to the customer, recomputed on the server and stored
+             * on the request at intake — and then it stopped there. The job knew
+             * nothing about it, so the till had nothing to charge and the fare
+             * reached the counter as zero.
+             *
+             * Carried as a charge rather than a new column: `charges` already
+             * holds `{id, description, amount, type}` and is already summed into
+             * the job total, already read by corporate billing and the NG report.
+             * Local part purchases append to it exactly this way. So a fare added
+             * here needs no migration and shows up wherever charges already show.
+             *
+             * Only for a collection. A drop-off has no journey to bill, and the
+             * intake service leaves `pickup_cost` null for one.
+             */
+            const pickupCost = Number(raw.pickup_cost ?? raw.pickupCost ?? 0);
+            const pickupCharges =
+                Number.isFinite(pickupCost) && pickupCost > 0
+                    ? [{
+                        id: nanoid(8),
+                        description: "Pickup & drop",
+                        amount: pickupCost,
+                        type: "pickup",
+                    }]
+                    : [];
+
             const [jobTicket] = await tx
                 .insert(schema.jobTickets)
                 .values({
                     id: jobId,
+                    charges: pickupCharges.length > 0 ? pickupCharges : undefined,
                     customer: customerName,
                     customerPhone: phone,
                     customerPhoneNormalized: normalizePhone(phone),
