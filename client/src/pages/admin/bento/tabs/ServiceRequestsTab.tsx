@@ -1932,6 +1932,36 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                             <div><Label className="text-muted-foreground text-xs">Name</Label><p className="font-medium">{selectedRequest.customerName}</p></div>
                                             <div><Label className="text-muted-foreground text-xs">Phone</Label><p className="font-medium">{selectedRequest.phone}</p></div>
                                             {selectedRequest.address && <div className="col-span-2"><Label className="text-muted-foreground text-xs flex items-center gap-1"><MapPin className="w-3 h-3" /> Address</Label><p>{selectedRequest.address}</p></div>}
+                                            {/*
+                                              * What the customer was quoted for collection.
+                                              *
+                                              * Shown before "Transfer to Pickup", because that is the
+                                              * moment it becomes the driver's fare: the transfer copies
+                                              * this figure onto the pickup schedule. Staff should be able
+                                              * to see the number they are about to commit to.
+                                              *
+                                              * Priced at booking and not re-quoted since — it is what the
+                                              * customer agreed to, which stands even if the fares moved.
+                                              */}
+                                            {(selectedRequest as any).pickupCost != null && (
+                                                <div className="col-span-2">
+                                                    <Label className="text-muted-foreground text-xs">Pickup &amp; drop charge</Label>
+                                                    <p className="font-black text-emerald-700">
+                                                        ৳{(selectedRequest as any).pickupCost}
+                                                        <span className="ml-2 text-[11px] font-semibold text-slate-400">quoted at booking</span>
+                                                    </p>
+                                                </div>
+                                            )}
+                                            {(selectedRequest as any).pickupCost == null
+                                                && (selectedRequest.servicePreference === "pickup" || selectedRequest.servicePreference === "home_pickup") && (
+                                                <div className="col-span-2">
+                                                    <Label className="text-muted-foreground text-xs">Pickup &amp; drop charge</Label>
+                                                    {/* Said plainly rather than shown as ৳0, which would read as free. */}
+                                                    <p className="text-xs font-semibold text-amber-700">
+                                                        Not priced — no area was captured for this address.
+                                                    </p>
+                                                </div>
+                                            )}
                                             {/* PICKUP-MAP-PIN-01 — deep link opens the exact pin in the rider's map app. */}
                                             {selectedRequest.pickupLatitude != null && selectedRequest.pickupLongitude != null && (
                                                 <div className="col-span-2">

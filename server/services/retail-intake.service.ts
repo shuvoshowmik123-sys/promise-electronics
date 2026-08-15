@@ -8,6 +8,7 @@ import { NO_CUSTOMER_PASSWORD } from "./customer-password.js";
 import { getInventoryItem } from "../repositories/inventory.repository.js";
 import { isSelectableCustomerService } from "../utils/service-visibility.js";
 import type { ServiceRequest } from "../../shared/schema.js";
+import { getPickupQuote } from "./pickup-quote.service.js";
 
 const DUPLICATE_WINDOW_MS = 10 * 60 * 1000;
 const BD_MOBILE_RE = /^1\d{9}$/;
@@ -614,6 +615,50 @@ export async function createRetailServiceRequest(
             if (!isNaN(seq)) maxSequence = seq;
         }
 
+        /**
+         * What collection will cost, worked out here rather than believed.
+         *
+         * The customer is shown a fare while filling the form, but that number
+         * arrives from `/api/public/pickup-quote`, which is unauthenticated by
+         * design — it is the first screen an anonymous visitor meets. Accepting
+         * the figure back from the browser would let anyone post their own
+         * price. So the quote is recomputed on the server from the coordinates
+         * that were actually submitted, and only that result is stored.
+         *
+         * Recorded, not charged. It is what the customer agreed to at booking,
+         * which is the number staff should honour later even if the fares move
+         * in between. `pickup_schedules.tier_cost` already falls back to this
+         * column when a pickup is scheduled, so filling it in is what makes the
+         * rest of the chain carry a real figure instead of zero.
+         *
+         * Only for a collection. A drop-off has nothing to collect, and pricing
+         * one would charge for a journey nobody is making.
+         */
+        let pickupCost: number | null = null;
+        if (
+            input.servicePreference === "home_pickup" &&
+            input.pickupLatitude != null &&
+            input.pickupLongitude != null
+        ) {
+            try {
+                const quote = await getPickupQuote({
+                    // The base tier. Intake does not ask the customer to choose a
+                    // collection speed, and quoting the cheapest band is the honest
+                    // default: any tier chosen later can only add to it.
+                    tier: "flexible",
+                    point: { lat: Number(input.pickupLatitude), lng: Number(input.pickupLongitude) },
+                });
+                if (quote.configured) pickupCost = quote.amount;
+            } catch (error) {
+                // A booking must not fail because pricing did. An unpriced
+                // request is recoverable at the counter; a lost repair is not.
+                console.error(
+                    "[RetailIntake] pickup quote failed; request saved without a fare:",
+                    (error as Error).message,
+                );
+            }
+        }
+
         for (let attempt = 0; attempt < 5; attempt++) {
             const sequence = (maxSequence + 1 + attempt).toString().padStart(4, "0");
             const candidate = `SRV-${datePrefix}-${sequence}`;
@@ -646,6 +691,7 @@ export async function createRetailServiceRequest(
                         pickupLocationSource: input.pickupLocationSource || null,
                         pickupLocationCapturedAt:
                             input.pickupLatitude != null && input.pickupLongitude != null ? now : null,
+                        pickupCost,
                         status: "Pending",
                         trackingStatus: trackingStatus,
                         isQuote: input.isQuote || false,

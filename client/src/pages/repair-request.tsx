@@ -7,6 +7,9 @@ import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { DhakaPlaceSearchInput } from "@/components/customer/DhakaPlaceSearchInput";
+import { mergePinAddress } from "@/lib/pickup-address";
+import type { DhakaPlaceSuggestion } from "@/lib/api/mapApi";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useState, useRef, useEffect, lazy, Suspense } from "react";
 import { Upload, CheckCircle, Loader2, X, Film, Image, UserPlus, Calendar } from "lucide-react";
@@ -76,6 +79,18 @@ export default function RepairRequestPage() {
   const [customerName, setCustomerName] = useState("");
   const [phone, setPhone] = useState("");
   const [address, setAddress] = useState("");
+  /**
+   * The area chosen from the suggestion list, and the point it carries.
+   *
+   * Held apart from the free-text address because it is the half that can be
+   * priced: the fare is decided by which band the address falls in, and a line
+   * of text falls in none of them.
+   */
+  const [pickupPlace, setPickupPlace] = useState<DhakaPlaceSuggestion | null>(null);
+  const [pickupLatitude, setPickupLatitude] = useState<number | null>(null);
+  const [pickupLongitude, setPickupLongitude] = useState<number | null>(null);
+  /** So choosing a second area replaces the first line rather than stacking. */
+  const lastPlaceRef = useRef<string | null>(null);
   const [servicePreference, setServicePreference] = useState("home_pickup");
   const [serviceAreaId, setServiceAreaId] = useState("");
   const [password, setPassword] = useState("");
@@ -135,6 +150,26 @@ export default function RepairRequestPage() {
       setAddress(customer.address || "");
     }
   }, [isAuthenticated, customer]);
+
+  /**
+   * The collection fare for the chosen area.
+   *
+   * Only asked for once there is a point to price: without coordinates the
+   * quote would fall back to the "anywhere else" band and show the most
+   * expensive figure to somebody who may live next door.
+   */
+  const { data: pickupQuote } = useQuery({
+    queryKey: ["public-pickup-quote", pickupLatitude, pickupLongitude],
+    queryFn: () =>
+      publicAreaMapApi.quotePickup({
+        tier: "flexible",
+        latitude: pickupLatitude,
+        longitude: pickupLongitude,
+      }),
+    enabled: servicePreference === "home_pickup" && pickupLatitude != null && pickupLongitude != null,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
 
   const { data: settings = [], isLoading: settingsLoading, isError: settingsError } = useQuery({
     queryKey: ["public-settings"],
@@ -539,6 +574,11 @@ export default function RepairRequestPage() {
         phone: "+880" + phone,
         address: address || undefined,
         servicePreference,
+        // Sent so the server can work out the fare. The number the customer was
+        // shown is never posted — the server recomputes it from these.
+        pickupLatitude: servicePreference === "home_pickup" ? pickupLatitude ?? undefined : undefined,
+        pickupLongitude: servicePreference === "home_pickup" ? pickupLongitude ?? undefined : undefined,
+        pickupLocationSource: servicePreference === "home_pickup" && pickupLatitude != null ? "place_search" : undefined,
         scheduledPickupDate: scheduledVisitDate || undefined,
         status: "Pending",
         requestIntent: "repair",
@@ -967,6 +1007,31 @@ export default function RepairRequestPage() {
                   {servicePreference === "home_pickup" && (
                     <div className="space-y-2">
                       <Label>Pickup Address *</Label>
+                      {/*
+                        * The area picker, same as the phone wizard has.
+                        *
+                        * This form only ever collected a line of text, so a booking
+                        * made on a laptop had no coordinates — and the collection
+                        * fare is decided by where the address falls, so those
+                        * bookings could not be priced at all, not merely go
+                        * unquoted. Picking an area yields the point that prices it.
+                        */}
+                      <DhakaPlaceSearchInput
+                        selected={pickupPlace}
+                        onClear={() => {
+                          setPickupPlace(null);
+                          setPickupLatitude(null);
+                          setPickupLongitude(null);
+                        }}
+                        onSelect={(place) => {
+                          setPickupPlace(place);
+                          setPickupLatitude(place.latitude);
+                          setPickupLongitude(place.longitude);
+                          setAddress((current) => mergePinAddress(current, place.label, lastPlaceRef.current));
+                          lastPlaceRef.current = place.label;
+                          clearError('address');
+                        }}
+                      />
                       <Textarea
                         placeholder="House No, Road No, Area, District"
                         value={address}
@@ -975,6 +1040,18 @@ export default function RepairRequestPage() {
                         data-testid="input-address"
                       />
                       <p className="text-xs text-muted-foreground">We'll collect your device from this address.</p>
+                      {/* The charge, before they commit to collection rather than after. */}
+                      {pickupQuote?.configured && (
+                        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm">
+                          {pickupQuote.waived ? (
+                            <p className="font-medium text-emerald-800">Pickup &amp; drop is free for this repair.</p>
+                          ) : (
+                            <p className="font-medium text-emerald-800">
+                              Pickup &amp; drop charge: ৳{pickupQuote.amount}
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   )}
 
