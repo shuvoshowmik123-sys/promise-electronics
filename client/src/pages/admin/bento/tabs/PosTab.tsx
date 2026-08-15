@@ -1842,7 +1842,20 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                     ) : filteredProducts.length === 0 ? (
                         <div className="flex-1 flex items-center justify-center flex-col gap-3"><div className="p-4 bg-slate-50 rounded-full"><Package className="h-8 w-8 text-slate-300" /></div><p className="text-slate-400 text-sm font-medium">No products found</p></div>
                     ) : (
-                        <motion.div variants={containerVariants} className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 overflow-y-auto flex-1 min-h-0 pb-4 pr-1 custom-scrollbar">
+                        // Columns sized by the space this grid actually has, not by the
+                        // width of the window. `xl:grid-cols-6` fired on a 1280px+
+                        // *viewport*, but the cart panel beside this list is a fixed
+                        // ~460px, so on a 1440px screen the product pane is only ~620px
+                        // — six columns of 95px. A card needs 89px of content and got a
+                        // 62px row, and because the card clips its own overflow, every
+                        // product name and price was cut off mid-word. auto-fill/minmax
+                        // measures the container instead, so the count falls to whatever
+                        // fits and each card keeps a usable 150px floor. auto-rows-min +
+                        // content-start stop the rows being stretched to share the
+                        // container's height — with a definite height and eight rows to
+                        // place, the grid was compressing every row to fit rather than
+                        // overflowing into the scroll this container already provides.
+                        <motion.div variants={containerVariants} className="grid [grid-template-columns:repeat(auto-fill,minmax(150px,1fr))] auto-rows-min content-start gap-3 overflow-y-auto flex-1 min-h-0 pb-4 pr-1 custom-scrollbar">
                             {filteredProducts.map((product: any, idx: number) => {
                                 const imgs = parseImages(product.images); const imgUrl = imgs[0] || "";
                                 return (

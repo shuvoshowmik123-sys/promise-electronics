@@ -1170,3 +1170,26 @@ input:-webkit-autofill:active {
   .fault-tv[data-fault="no_display"] .fault-led { animation: none !important; }
   .fault-pic { transform: scale(1.10); }
 }
+
+/* ── Service Requests: page-change progress bar ──
+   An indeterminate sweep, because the server does not report progress — it
+   answers when it answers. A bar that pretended to know a percentage would be
+   inventing one. */
+@keyframes srPageBar {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+
+/* ── Service Requests table rows: selectable, not animated ──
+   An inset shadow rather than a left border, because a border on a <tr> takes
+   its width out of the fixed-width first column and wraps the ticket number.
+   Written here rather than as a Tailwind arbitrary value: `#` inside
+   shadow-[...] does not reliably survive class generation. */
+.sr-row:hover {
+  box-shadow: inset 3px 0 0 0 #3b82f6;
+}
+
+.sr-row-selected,
+.sr-row-selected:hover {
+  box-shadow: inset 3px 0 0 0 #2563eb;
+}

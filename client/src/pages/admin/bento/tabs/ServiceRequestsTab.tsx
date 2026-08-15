@@ -369,7 +369,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
         setSrPage(1);
     }, [debouncedSrSearch, srStatusFilter]);
 
-    const { data: srData, isLoading, isError, error: srError, isFetching, refetch: refetchRequests } = useQuery({
+    const { data: srData, isLoading, isError, error: srError, isFetching, isPlaceholderData, refetch: refetchRequests } = useQuery({
         queryKey: ["serviceRequests", srPage, srPageSize, debouncedSrSearch, srStatusFilter],
         queryFn: () =>
             serviceRequestsApi.getAll({
@@ -979,6 +979,20 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
 
     // Server applied search + status. Full page shown; lane filter not applied (would be wrong cross-page).
     const paginated = serviceRequests;
+    /**
+     * A page change that has been asked for but not yet answered.
+     *
+     * `placeholderData` deliberately keeps the previous page on screen while the
+     * next one loads, so the table does not collapse and re-expand. Without a
+     * cue that is indistinguishable from nothing happening: the request takes a
+     * second or two, the rows do not move, and the only thing that changes is
+     * the "Viewing 13–24" line — which is computed locally and updates at once.
+     * So the page looked broken and people pressed Next again.
+     *
+     * `isPlaceholderData` is exactly this state, and distinguishes it from a
+     * background refresh of the page already shown.
+     */
+    const pageChanging = isPlaceholderData;
     const totalFromServer = Number(srData?.total ?? serviceRequests.length);
     const totalPages = Math.max(1, Number(srData?.totalPages ?? (Math.ceil(totalFromServer / srPageSize) || 1)));
 
@@ -1236,7 +1250,13 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
 
     return (
         <motion.div variants={containerVariants} initial="hidden" animate="visible" className="flex flex-col h-full w-full overflow-hidden md:overflow-auto md:gap-6">
-            <MobileTabHeader>
+            {/*
+              * md:hidden — this is the mobile header, and without the guard it
+              * also rendered on desktop, putting a second "Service Requests"
+              * title and a second search box above the desktop toolbar that
+              * already has one.
+              */}
+            <MobileTabHeader className="md:hidden">
                 <div className="flex items-center justify-between gap-2 pt-1">
                     <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -1396,7 +1416,22 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             </motion.div>
 
             {/* View Area */}
-            <div className="hidden md:block min-h-0 pb-6">
+            {/*
+              * shrink-0, and no min-h-0.
+              *
+              * This is a flex column child, so it shrank to whatever height was
+              * left (413px) while the table card inside kept its natural 693px.
+              * The wrapper does not clip — overflow is visible — so the card
+              * spilled 280px past its own box and painted straight over the
+              * pagination row below it, which is why "Viewing 1-12 of 283" and
+              * the Prev/Next buttons appeared on top of the last table rows.
+              * `min-h-0` was what permitted the shrink in the first place.
+              *
+              * The page itself is the scrolling surface here (the root is
+              * md:overflow-auto), so the list should keep its full height and
+              * let the root scroll, rather than be squeezed and overflow.
+              */}
+            <div className="hidden md:block shrink-0 pb-6">
                 {paginated.length === 0 ? (
                     <div className="flex flex-col items-center justify-center h-64 bg-slate-50 rounded-3xl border border-dashed border-slate-200 text-slate-500">
                         <MessageSquare className="h-10 w-10 opacity-20 mb-3" />
@@ -1442,12 +1477,32 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                         })}
                     </div>
                 ) : (
-                    <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[500px]">
-                        <div className="overflow-x-auto">
+                    <div className="relative bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden min-h-[500px]">
+                        {/*
+                          * The page is loading. Say so.
+                          *
+                          * A moving bar across the top rather than a spinner in the
+                          * middle: the old rows stay readable underneath, and the
+                          * bar sits where the eye already is after pressing Next.
+                          */}
+                        {pageChanging && (
+                            <div className="absolute inset-x-0 top-0 z-20 h-0.5 overflow-hidden bg-blue-100">
+                                <div className="h-full w-1/3 animate-[srPageBar_1s_ease-in-out_infinite] rounded-full bg-blue-600" />
+                            </div>
+                        )}
+                        <div
+                            className={cn(
+                                "overflow-x-auto transition-opacity duration-200",
+                                // Faded and inert, so a row cannot be clicked while the
+                                // list underneath is about to be replaced.
+                                pageChanging && "pointer-events-none opacity-50",
+                            )}
+                            aria-busy={pageChanging}
+                        >
                             <Table className="table-fixed w-full min-w-[800px]">
                                 <TableHeader className="bg-slate-50/80 border-b border-slate-100">
                                     <TableRow className="hover:bg-transparent">
-                                        <TableHead className="w-[120px] font-semibold text-slate-600 tracking-wide">Ticket</TableHead>
+                                        <TableHead className="w-[180px] font-semibold text-slate-600 tracking-wide">Ticket</TableHead>
                                         <TableHead className="w-[200px] font-semibold text-slate-600 tracking-wide">Customer</TableHead>
                                         <TableHead className="w-[180px] font-semibold text-slate-600 tracking-wide">Device</TableHead>
                                         <TableHead className="font-semibold text-slate-600 tracking-wide hidden md:table-cell">Issue</TableHead>
@@ -1465,8 +1520,58 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                                 <TableRow
                                                     key={request.id}
                                                     onClick={() => handleViewDetails(request, index)}
+                                                    /*
+                                                     * Selectable with the keyboard, and visibly so.
+                                                     *
+                                                     * The row was a click target with no way to reach or
+                                                     * mark it otherwise: nothing showed which request was
+                                                     * open, so after the drawer closed there was no trace
+                                                     * of where you had been in a list of twelve near
+                                                     * identical lines.
+                                                     */
+                                                    tabIndex={0}
+                                                    role="button"
+                                                    aria-selected={selectedRequest?.id === request.id}
+                                                    onKeyDown={(event) => {
+                                                        if (event.key === "Enter" || event.key === " ") {
+                                                            event.preventDefault();
+                                                            handleViewDetails(request, index);
+                                                        }
+                                                    }}
                                                     className={cn(
-                                                        "cursor-pointer hover:bg-blue-50/50 transition-colors group bc-hover bc-rise border-b border-slate-100 last:border-0",
+                                                        /*
+                                                         * A row highlights; it does not perform.
+                                                         *
+                                                         * This carried bc-hover and bc-rise, which are card
+                                                         * effects: bc-rise lifts and tilts in 3D, which on a
+                                                         * <tr> pulls the row out of the table and over its
+                                                         * neighbours, and bc-hover sweeps a white gradient
+                                                         * across it that washes the text out — the row looked
+                                                         * like it was disappearing under the cursor. A table
+                                                         * row only has to say "you can click me", so it gets a
+                                                         * background tint and a left marker and nothing that
+                                                         * moves.
+                                                         */
+                                                        "cursor-pointer select-none border-b border-slate-100 last:border-0 group",
+                                                        "transition-colors duration-150 hover:bg-blue-50",
+                                                        /*
+                                                         * The left marker is an inset shadow, not a border.
+                                                         *
+                                                         * A 2px left border on a <tr> takes its width out of
+                                                         * the fixed-width Ticket column, and "#SRV-20260809-0007"
+                                                         * then wrapped onto three lines the moment the rule was
+                                                         * added. A shadow paints inside the row and costs no
+                                                         * layout at all.
+                                                         */
+                                                        "sr-row",
+                                                        // Focus ring inset for the same reason: an outline would
+                                                        // sit outside the row and nudge its neighbours.
+                                                        "outline-none focus-visible:bg-blue-50",
+                                                        "focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500/50",
+                                                        // The open row stays marked while the drawer covers it,
+                                                        // and still reads as where you were once it closes.
+                                                        selectedRequest?.id === request.id &&
+                                                            "sr-row-selected bg-blue-50/80 hover:bg-blue-50",
                                                         tblMuted ? "opacity-60" : "",
                                                         !request.adminInteracted && !tblMuted && "bg-rose-50/20"
                                                     )}
@@ -1476,7 +1581,7 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
                                                             {!request.adminInteracted && (
                                                                 <span className="h-2.5 w-2.5 rounded-full bg-rose-500 shrink-0" aria-label="Unread service request" />
                                                             )}
-                                                            <span>#<HighlightMatch text={request.ticketNumber} query={srSearchQuery} /></span>
+                                                            <span className="whitespace-nowrap">#<HighlightMatch text={request.ticketNumber} query={srSearchQuery} /></span>
                                                         </div>
                                                     </TableCell>
                                                     <TableCell className="font-medium text-slate-800 py-4"><HighlightMatch text={request.customerName} query={srSearchQuery} /></TableCell>
@@ -1505,11 +1610,13 @@ export default function ServiceRequestsTab({ initialSearchQuery, initialRequestI
             {totalPages > 1 && (
                 <div className="hidden md:flex items-center justify-between px-2 pt-2 pb-6">
                     <div className="text-sm text-slate-500">
-                        Viewing {((srPage - 1) * srPageSize) + 1}-{Math.min(srPage * srPageSize, totalFromServer)} of {totalFromServer}
+                        {pageChanging
+                            ? `Loading page ${srPage} of ${totalPages}…`
+                            : `Viewing ${((srPage - 1) * srPageSize) + 1}-${Math.min(srPage * srPageSize, totalFromServer)} of ${totalFromServer}`}
                     </div>
                     <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" disabled={srPage === 1} onClick={() => setSrPage(p => Math.max(1, p - 1))}><ChevronLeft className="h-4 w-4 mr-1" /> Prev</Button>
-                        <Button variant="outline" size="sm" disabled={srPage === totalPages} onClick={() => setSrPage(p => Math.min(totalPages, p + 1))}>Next <ChevronRight className="h-4 w-4 ml-1" /></Button>
+                        <Button variant="outline" size="sm" disabled={srPage === 1 || pageChanging} onClick={() => setSrPage(p => Math.max(1, p - 1))}><ChevronLeft className="h-4 w-4 mr-1" /> Prev</Button>
+                        <Button variant="outline" size="sm" disabled={srPage === totalPages || pageChanging} onClick={() => setSrPage(p => Math.min(totalPages, p + 1))}>{pageChanging ? <Loader2 className="h-4 w-4 animate-spin" /> : <>Next <ChevronRight className="h-4 w-4 ml-1" /></>}</Button>
                     </div>
                 </div>
             )}

@@ -33,7 +33,8 @@ import {
     Phone,
     Hash,
     ArrowLeft,
-    Sparkles
+    Sparkles,
+    LayoutGrid
 } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { searchApi } from "@/lib/api";
@@ -56,11 +57,71 @@ import {
     CommandShortcut,
 } from "@/components/ui/command";
 
+/** One page of the admin panel, as the palette needs to know it. */
+export interface SearchablePage {
+    id: string;
+    label: string;
+    /** Sidebar group it lives under — shown so two similar names are tellable apart. */
+    section: string;
+}
+
 interface GlobalSearchProps {
     open?: boolean;
     onOpenChange?: (open: boolean) => void;
     onNavigate: (tab: string, searchQuery?: string, payload?: SearchNavigationPayload) => void;
+    /**
+     * Every page this user may open, already permission-filtered by the caller.
+     *
+     * Passed in rather than imported so the palette cannot advertise a page the
+     * signed-in user would be refused, and so the list stays the same one the
+     * sidebar draws.
+     */
+    pages?: SearchablePage[];
 }
+
+/**
+ * Words people type that are not the page's name.
+ *
+ * Staff search for the thing they are doing, not for our label: "salary" for
+ * Salary & HR is obvious, but nobody types "Stock Manager" when they mean
+ * stock, and "refund" is what somebody says out loud while Refunds sits under
+ * Warehouse. Keyed by tab id so it survives a label being reworded.
+ */
+const PAGE_SEARCH_ALIASES: Record<string, string> = {
+    dashboard: "home main summary",
+    overview: "live ops activity pulse",
+    "area-intelligence": "map areas coverage zones fare",
+    reports: "analytics export statistics",
+    quality: "qc rework failure",
+    "system-health": "status uptime diagnostics monitoring",
+    "service-requests": "intake enquiry new request tickets",
+    "repair-journeys": "journey progress stages tracking",
+    jobs: "job ticket repair work order",
+    pickup: "pickups collection delivery driver rider",
+    challans: "challan delivery note gate pass",
+    pos: "point of sale till counter checkout invoice billing",
+    orders: "order sales",
+    finance: "money accounts cash expenses petty income",
+    quotations: "quote estimate proposal",
+    customers: "client customer contacts phone",
+    inquiries: "inquiry question lead",
+    b2b: "corporate business client workspace",
+    "corp-msg": "corporate messages chat thread",
+    inventory: "stock parts spare items warehouse products",
+    warranty: "warranty claim guarantee",
+    refunds: "refund return money back",
+    disputes: "dispute complaint escalation",
+    wastage: "waste damaged scrap loss",
+    users: "staff employee accounts roles permissions team",
+    attendance: "attendance present absent roster",
+    shift: "shift clock in out my shift",
+    salary: "salary payroll hr wages pay",
+    cashier: "cashier till counter",
+    technician: "technician engineer workload skills",
+    settings: "settings configuration preferences setup admin",
+    "audit-logs": "audit log history trail activity",
+    brain: "ai brain assistant knowledge",
+};
 
 export interface SearchNavigationPayload {
     targetId?: string;
@@ -405,11 +466,42 @@ function ViewAllRow({ count, displayed, label, tab, query, onNavigate, runComman
     );
 }
 
-export function GlobalSearch({ open: externalOpen, onOpenChange, onNavigate }: GlobalSearchProps) {
+export function GlobalSearch({ open: externalOpen, onOpenChange, onNavigate, pages = [] }: GlobalSearchProps) {
     const [open, setOpen] = React.useState(false);
     const [searchQuery, setSearchQuery] = React.useState("");
     const prefersReducedMotion = useReducedMotion();
     const { hasPermission } = useAdminAuth();
+
+    /**
+     * Pages whose name the query matches.
+     *
+     * Filtered here rather than by cmdk because this palette runs with
+     * `shouldFilter={false}` — the record results come from the server already
+     * matched, so cmdk's own filter is switched off and anything static has to
+     * do its own.
+     *
+     * A page matches when every word typed appears somewhere in its name,
+     * section or aliases. Requiring all the words lets "salary hr" narrow
+     * rather than widen, and matching on substrings means "attend" finds
+     * Staff Attendance before it has been fully typed. Prefix matches on the
+     * label sort first, so typing "ref" puts Refunds above pages that merely
+     * mention the word.
+     */
+    const pageMatches = React.useMemo(() => {
+        const q = searchQuery.trim().toLowerCase();
+        if (!q) return [];
+        const words = q.split(/\s+/).filter(Boolean);
+        return pages
+            .map((page) => {
+                const label = page.label.toLowerCase();
+                const haystack = `${label} ${page.id.replace(/-/g, " ")} ${page.section.toLowerCase()} ${PAGE_SEARCH_ALIASES[page.id] || ""}`;
+                if (!words.every((w) => haystack.includes(w))) return null;
+                return { page, rank: label.startsWith(q) ? 0 : label.includes(q) ? 1 : 2 };
+            })
+            .filter((m): m is { page: SearchablePage; rank: number } => m !== null)
+            .sort((a, b) => a.rank - b.rank || a.page.label.localeCompare(b.page.label))
+            .slice(0, 6);
+    }, [searchQuery, pages]);
 
     // Handle internal state if not controlled
     const isControlled = externalOpen !== undefined;
@@ -567,6 +659,36 @@ export function GlobalSearch({ open: externalOpen, onOpenChange, onNavigate }: G
                                     </div>
                                 </div>
                             </CommandEmpty>
+
+                            {/*
+                              * Pages, above the record results.
+                              *
+                              * Somebody typing "refunds" wants the Refunds screen, not a
+                              * refund record; if they wanted a specific one they would type
+                              * its number or the customer's name, and those still match the
+                              * record groups below.
+                              */}
+                            {searchQuery && pageMatches.length > 0 && (
+                                <CommandGroup heading="Pages" className="mx-1 mb-2 mt-3 rounded-[1.25rem] border border-border/40 bg-white/70 pb-1 shadow-sm dark:bg-zinc-900/40">
+                                    {pageMatches.map(({ page }) => (
+                                        <CommandItem
+                                            key={`page-${page.id}`}
+                                            value={`page-${page.id}`}
+                                            onSelect={() => runCommand(() => onNavigate(page.id))}
+                                            className="group cursor-pointer"
+                                        >
+                                            <div className="mr-3 rounded-lg bg-primary/10 p-2 transition-colors group-data-[selected=true]:bg-primary/20">
+                                                <LayoutGrid className="text-primary transition-transform group-data-[selected=true]:scale-110" />
+                                            </div>
+                                            <div className="min-w-0 flex-1">
+                                                <div className="text-sm font-black text-slate-900 dark:text-slate-100">{page.label}</div>
+                                                <div className="truncate text-xs font-semibold text-slate-500">{page.section}</div>
+                                            </div>
+                                            <ChevronRight className="h-4 w-4 shrink-0 text-primary/50" />
+                                        </CommandItem>
+                                    ))}
+                                </CommandGroup>
+                            )}
 
                             {searchQuery && bestMatches.length > 0 && (
                                 <CommandGroup heading="Best Match" className="mx-1 mb-2 mt-3 rounded-[1.25rem] border border-amber-200 bg-gradient-to-br from-amber-50/90 to-orange-50/70 pb-1 shadow-sm">

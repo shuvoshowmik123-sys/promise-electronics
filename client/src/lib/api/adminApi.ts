@@ -897,7 +897,25 @@ export const posTransactionsApi = {
 
 // Users API
 export const usersApi = {
-    getAll: () => fetchApi<User[]>("/users"),
+    /**
+     * Every staff user, as an array.
+     *
+     * `GET /api/users` answers with `{items, pagination}`, not a list, and this
+     * was typed as `User[]` anyway. TypeScript therefore blessed `staff.map(...)`
+     * in callers while the value was an object, and Petty Cash crashed with
+     * "staff.map is not a function" — taking the whole admin panel down through
+     * the error boundary, over an optional "who spent it" dropdown.
+     * TechnicianTab had already met this and worked around it locally with an
+     * `Array.isArray(...)` check; unwrapping here fixes it for every caller
+     * instead of asking each one to remember.
+     *
+     * The explicit limit matters just as much: the route defaults to 50, so a
+     * function named `getAll` was quietly returning the first page. With 103
+     * staff on this system, half the roster was invisible to the technician
+     * picker and nothing looked wrong.
+     */
+    getAll: () =>
+        fetchApi<{ items: User[] }>("/users?limit=1000").then((r) => r.items ?? []),
     getOne: (id: string) => fetchApi<User>(`/users/${id}`),
     create: (data: InsertUser) =>
         fetchApi<User>("/users", {

@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense, useEffect, useRef, useCallback, type CSSProperties, type UIEvent } from "react";
+import { useState, lazy, Suspense, useEffect, useRef, useCallback, useMemo, type CSSProperties, type UIEvent } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { motion } from "framer-motion";
@@ -113,7 +113,15 @@ const TAB_PRELOADERS: Record<string, () => Promise<unknown>> = {
     finance: () => import("./bento/tabs/FinancesTab"),
 };
 
-const ADMIN_SIDEBAR_NAV_GROUPS: SidebarGroup[] = [
+/**
+ * Exported so the command palette can list pages from the same array the
+ * sidebar renders. It used to keep its own hand-written copy, which drifted:
+ * of 34 tabs only 13 appeared there, and Refunds, Disputes, Attendance,
+ * Warranty Claims and sixteen others could not be found by name at all.
+ * One array means a tab added here shows up in search without anyone
+ * remembering to add it twice.
+ */
+export const ADMIN_SIDEBAR_NAV_GROUPS: SidebarGroup[] = [
     {
         title: "Overview",
         items: [
@@ -548,6 +556,28 @@ export default function DesignConcept() {
                       : item,
             ),
     })).filter(g => g.items.length > 0);
+
+    /**
+     * The pages the command palette may offer, taken from the sidebar the user
+     * can actually see.
+     *
+     * Derived from `filteredSidebarGroups` rather than the raw array on purpose:
+     * that list has already been through `isTabEnabled`, so the palette can
+     * never suggest a screen this user would be refused, and it carries the
+     * role-aware labels (the shift tab renames itself) so search matches what is
+     * written in the sidebar.
+     *
+     * "menu" is dropped — it opens the More sheet rather than being a place.
+     */
+    const searchablePages = useMemo(
+        () =>
+            filteredSidebarGroups.flatMap(group =>
+                group.items
+                    .filter(item => item.id !== "menu")
+                    .map(item => ({ id: item.id, label: item.label, section: group.title })),
+            ),
+        [filteredSidebarGroups],
+    );
 
     // Dock stays short "Shift"; full role label appears in More menu / sidebar / breadcrumb.
     const mobileNavItems = (() => {
@@ -1161,6 +1191,7 @@ export default function DesignConcept() {
                 <GlobalSearch
                     open={searchOpen}
                     onOpenChange={setSearchOpen}
+                    pages={searchablePages}
                     onNavigate={(tab, query, payload) => {
                         const nextTab = normalizeTab(tab);
                         if (nextTab === "corp-msg") {
