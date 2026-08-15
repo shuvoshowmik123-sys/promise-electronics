@@ -957,7 +957,27 @@ router.post(
             // Never cache: the answer depends on coordinates in the body, and
             // the fares behind it change whenever staff edit them.
             res.setHeader('Cache-Control', 'private, no-store');
-            res.json(quote);
+
+            /**
+             * The customer is told the price, and nothing else.
+             *
+             * The full quote carries how the price was reached — which ring or
+             * area claimed the address, its radius, the measured distance from
+             * the shop, and the fare/tier split. This endpoint is public and
+             * unauthenticated, so returning all of that let anyone walk the
+             * coordinates of Dhaka and read back the entire pricing structure:
+             * every band, every boundary, every rate. It also told each caller
+             * exactly how far they live from the shop, which is ours to know
+             * and not theirs to be handed.
+             *
+             * A customer needs one number and whether it was waived. Everything
+             * else stays server-side, where the admin screens read it directly.
+             */
+            res.json(
+                quote.configured
+                    ? { configured: true, amount: quote.amount, waived: quote.waived, waivedOver: quote.waivedOver }
+                    : { configured: false },
+            );
         } catch (error) {
             logRouteError('pickup-quote', req, error);
             // Same reasoning as the place search: a missing price must not stop
@@ -997,7 +1017,18 @@ router.post(
 
             const area = await resolveServiceArea({ lat, lng });
             res.setHeader('Cache-Control', 'private, no-store');
-            res.json({ area });
+            /**
+             * Name the area, not the measurement.
+             *
+             * The resolver also returns how far the address sits from the area
+             * centre. The customer has no use for that number and it is ours,
+             * not theirs — the same reason the quote no longer returns which
+             * ring claimed them. `confidence` stays because the form has to say
+             * whether this is a decision or a guess it should let them correct.
+             */
+            res.json({
+                area: area && { id: area.id, label: area.label, confidence: area.confidence },
+            });
         } catch (error) {
             logRouteError('resolve-service-area', req, error);
             // A failed lookup must not block a repair booking. The caller falls

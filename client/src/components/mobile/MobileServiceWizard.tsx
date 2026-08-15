@@ -1252,11 +1252,6 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                         {t("pickupFare.label")}: ৳{pickupQuote.amount}
                       </p>
                     )}
-                    {pickupQuote.outsideAllAreas && !pickupQuote.waived && (
-                      <p className="mt-0.5 text-xs text-emerald-700">
-                        {t("pickupFare.outsideArea")}
-                      </p>
-                    )}
                   </div>
                 )}
               </div>

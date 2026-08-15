@@ -114,11 +114,8 @@ export type PickupQuoteResponse =
     | { configured: false }
     | {
           configured: true;
+          /** What the customer pays. The only figure they are given. */
           amount: number;
-          areaFare: number;
-          tierExtra: number;
-          areaId: string | null;
-          outsideAllAreas: boolean;
           waived: boolean;
           waivedOver: number | null;
       };
@@ -133,7 +130,6 @@ export interface ResolvedServiceArea {
     id: string;
     label: string;
     confidence: 'boundary' | 'circle' | 'nearest';
-    distanceKm: number | null;
 }
 
 export interface MapBoundaryCandidate {
