@@ -13,7 +13,7 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { CircleDollarSign, Loader2, MapPin, TriangleAlert } from "lucide-react";
+import { ChevronDown, CircleDollarSign, Loader2, MapPin, Radius, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -21,8 +21,9 @@ import { settingsApi } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
-    readAreaFares, readTierExtras, readAnywhereElseFare, readFreeOverAmount, readHoldDays,
-    PICKUP_AREA_FARES_KEY, PICKUP_TIER_EXTRAS_KEY, PICKUP_ANYWHERE_ELSE_KEY,
+    ringColor,
+    readAreaFares, readRingSlots, readTierExtras, readAnywhereElseFare, readFreeOverAmount, readHoldDays,
+    PICKUP_AREA_FARES_KEY, PICKUP_RING_FARES_KEY, PICKUP_TIER_EXTRAS_KEY, PICKUP_ANYWHERE_ELSE_KEY,
     PICKUP_FREE_OVER_KEY, PICKUP_HOLD_DAYS_KEY,
     type PickupAreaFare,
 } from "@shared/pickup-pricing";
@@ -92,11 +93,161 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
         save.mutate([{ key: PICKUP_AREA_FARES_KEY, value: JSON.stringify(next) }]);
     };
 
+    /**
+     * The five bands, held as text while being edited.
+     *
+     * Text rather than numbers so a half-typed "1" on the way to "12" is not
+     * read as a one-kilometre ring, and so clearing a box stays cleared instead
+     * of snapping to 0 — which would read as a free collection.
+     *
+     * There are always exactly five and they cannot be added to or removed; the
+     * count is a fact about the city, not a preference. Only the distance and
+     * the fare are the shop's to set.
+     */
+    const savedRings = useMemo(() => readRingSlots(settings), [settings]);
+    const [ringDrafts, setRingDrafts] = useState<Array<{ radiusKm: string; fare: string }>>([]);
+    const [openRing, setOpenRing] = useState<number | null>(null);
+
+    // Reload from the server's answer whenever it changes, so a save elsewhere
+    // is not silently overwritten by a stale draft.
+    useEffect(() => {
+        setRingDrafts(savedRings.map((r) => ({
+            radiusKm: String(r.radiusKm),
+            fare: r.fare === null ? "" : String(r.fare),
+        })));
+    }, [savedRings]);
+
+    const rings = ringDrafts;
+    const ringDraft = (i: number, field: "radiusKm" | "fare") => ringDrafts[i]?.[field] ?? "";
+    const setRingDraft = (i: number, field: "radiusKm" | "fare", value: string) =>
+        setRingDrafts((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
+
+    /**
+     * Send what was typed, not what could be salvaged.
+     *
+     * The tier extras learned this the hard way: coercing a bad value to 0 in
+     * the browser produced a cheerful "saved" and a free same-day collection.
+     * The one validator on the server must get the raw text so it can refuse it
+     * and say which field was wrong.
+     */
+    const saveRings = () =>
+        save.mutate([{
+            key: PICKUP_RING_FARES_KEY,
+            value: JSON.stringify(ringDrafts.map((d) => ({
+                radiusKm: d.radiusKm.trim() === "" ? "" : Number(d.radiusKm),
+                fare: d.fare.trim() === "" ? "" : Number(d.fare),
+            }))),
+        }]);
+
     const rated = Object.keys(areaFares).length;
     const ladderInverted = tierExtras.sameDay > 0 && tierExtras.sameDay < tierExtras.chooseDay;
 
     return (
         <div className={cn("space-y-3", className)}>
+            {/* ── the rings: the primary way collection is priced ─────────── */}
+            <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
+                <div className="flex items-center gap-2">
+                    <Radius className="h-4 w-4 text-blue-600" />
+                    <p className="text-[11px] font-black uppercase tracking-wide text-blue-600">Distance rings</p>
+                </div>
+                <p className="mt-1 text-[11px] leading-snug text-slate-500">
+                    Measured from the shop. An address pays the first ring that reaches it.
+                </p>
+
+                <div className="mt-3 space-y-2">
+                        {rings.map((ring, index) => {
+                            // Blank while being typed reads as an em dash, never as 0 —
+                            // a ring showing "৳0" would say collection is free.
+                            const outerKm = ring.radiusKm.trim() === "" ? "—" : ring.radiusKm;
+                            const inner = index === 0 ? "0" : (rings[index - 1].radiusKm.trim() || "—");
+                            const fareNum = ring.fare.trim() === "" ? null : Number(ring.fare);
+                            const isOpen = openRing === index;
+                            return (
+                                <div key={index} className={cn(
+                                    "rounded-xl border transition-colors",
+                                    isOpen ? "border-blue-300 bg-blue-50/40" : "border-slate-200 bg-white",
+                                )}>
+                                    {/*
+                                      * Collapsed shows only the basic fare. The three timings
+                                      * were previously always on screen, which meant four
+                                      * numbers competing for attention when the question being
+                                      * asked is almost always just "what does this ring cost".
+                                      */}
+                                    <button type="button" onClick={() => setOpenRing(isOpen ? null : index)}
+                                        className="flex w-full items-center justify-between gap-2 px-3 py-2.5 text-left">
+                                        {/* Same colour as the circle on the map — the only thing
+                                            tying a row to the band it prices. */}
+                                        <span className="h-8 w-1.5 shrink-0 rounded-full"
+                                            style={{ backgroundColor: ringColor(index) }} />
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-xs font-black text-slate-900">Ring {index + 1}</p>
+                                            <p className="text-[11px] font-semibold text-slate-500">{inner}–{outerKm} km</p>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-sm font-black text-blue-700">
+                                                {fareNum === null ? "Not set" : `${currency}${fareNum}`}
+                                            </span>
+                                            <ChevronDown className={cn("h-4 w-4 text-slate-400 transition-transform", isOpen && "rotate-180")} />
+                                        </div>
+                                    </button>
+
+                                    {isOpen && (
+                                        <div className="border-t border-blue-100 px-3 py-3">
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <div className="space-y-1">
+                                                    <Label className="text-[11px] font-bold text-slate-600">Basic fare ({currency})</Label>
+                                                    <Input inputMode="numeric" value={ringDraft(index, "fare")} disabled={!canManage}
+                                                        onChange={(e) => setRingDraft(index, "fare", e.target.value)}
+                                                        className="h-9 rounded-lg text-sm" />
+                                                </div>
+                                                <div className="space-y-1">
+                                                    <Label className="text-[11px] font-bold text-slate-600">Reaches (km)</Label>
+                                                    <Input inputMode="decimal" value={ringDraft(index, "radiusKm")} disabled={!canManage}
+                                                        onChange={(e) => setRingDraft(index, "radiusKm", e.target.value)}
+                                                        className="h-9 rounded-lg text-sm" />
+                                                </div>
+                                            </div>
+
+                                            {/*
+                                              * What the customer actually pays, per timing.
+                                              *
+                                              * The extras are one shop-wide set, not per ring, so
+                                              * showing them alone would repeat the same three
+                                              * numbers under every ring. Adding them to this
+                                              * ring's fare answers the question staff are really
+                                              * asking at the counter.
+                                              */}
+                                            <div className="mt-3 rounded-lg bg-white/70 p-2">
+                                                <p className="text-[10px] font-black uppercase tracking-wide text-slate-500">Customer pays</p>
+                                                <div className="mt-1 space-y-1">
+                                                    {([["flexible", "We choose the day"], ["chooseDay", "Customer chooses"], ["sameDay", "Same day"]] as const).map(([k, label]) => (
+                                                        <div key={k} className="flex items-center justify-between text-[11px]">
+                                                            <span className="font-semibold text-slate-600">{label}</span>
+                                                            <span className="font-black text-slate-900">
+                                                                {fareNum === null ? "—" : `${currency}${fareNum + (tierExtras[k] ?? 0)}`}
+                                                                {fareNum !== null && tierExtras[k] > 0 && (
+                                                                    <span className="ml-1 font-semibold text-slate-400">(+{tierExtras[k]})</span>
+                                                                )}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+
+                                            {canManage && (
+                                                <Button size="sm" className="mt-3 h-8 w-full rounded-lg text-[11px]"
+                                                    onClick={saveRings} disabled={save.isPending}>
+                                                    {save.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Save rings"}
+                                                </Button>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })}
+                    </div>
+            </div>
+
             {/* ── the selected place ─────────────────────────────────────── */}
             <div className="rounded-2xl border border-blue-100 bg-white p-4 shadow-sm">
                 <div className="flex items-center gap-2">

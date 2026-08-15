@@ -92,6 +92,50 @@ export interface MapPlaceSuggestion {
     type: string;
 }
 
+/** One row from the shop's local Dhaka table. */
+export interface DhakaPlaceSuggestion {
+    id: string;
+    /** What to show: the local name, plus its neighbourhood when it is a road. */
+    label: string;
+    /** The other-language name, shown underneath only when it differs. */
+    secondary: string | null;
+    kind: 'area' | 'road';
+    latitude: number;
+    longitude: number;
+}
+
+/**
+ * A collection fare, or the admission that none has been set.
+ *
+ * `configured: false` is a real answer and must render as nothing at all —
+ * showing ৳0 would tell the customer collection is free.
+ */
+export type PickupQuoteResponse =
+    | { configured: false }
+    | {
+          configured: true;
+          amount: number;
+          areaFare: number;
+          tierExtra: number;
+          areaId: string | null;
+          outsideAllAreas: boolean;
+          waived: boolean;
+          waivedOver: number | null;
+      };
+
+/**
+ * A service area worked out from an address.
+ *
+ * `confidence` matters to the UI: 'boundary' and 'circle' are decisions, so the
+ * area is stated. 'nearest' is a guess and must be shown as one.
+ */
+export interface ResolvedServiceArea {
+    id: string;
+    label: string;
+    confidence: 'boundary' | 'circle' | 'nearest';
+    distanceKm: number | null;
+}
+
 export interface MapBoundaryCandidate {
     id: string;
     label: string;
@@ -171,6 +215,45 @@ export const publicAreaMapApi = {
             `/public/map-place-search?q=${encodeURIComponent(query)}`,
             publicAreaFetchInit,
         ),
+    /**
+     * Dhaka areas and roads from the shop's own copy of OpenStreetMap.
+     *
+     * Separate from `searchPlaces`, which asks Photon and covers the world.
+     * This one answers from a local table, so it is fast enough to run per
+     * keystroke and understands Bangla spellings of Dhaka's neighbourhoods.
+     */
+    searchDhakaPlaces: (query: string) =>
+        fetchApi<{ results: DhakaPlaceSuggestion[] }>(
+            `/public/dhaka-place-search?q=${encodeURIComponent(query)}`,
+            publicAreaFetchInit,
+        ),
+    /** Which service area an address falls in. `area: null` = outside all of them. */
+    resolveServiceArea: (payload: { latitude: number; longitude: number }) =>
+        fetchApi<{ area: ResolvedServiceArea | null }>('/public/resolve-service-area', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+            headers: {
+                'Cache-Control': 'no-store',
+                Pragma: 'no-cache',
+            },
+            cache: 'no-store' as RequestCache,
+        }),
+    /** What collection costs for one address. POST: coords stay out of the URL. */
+    quotePickup: (payload: {
+        tier: string;
+        latitude?: number | null;
+        longitude?: number | null;
+        repairEstimate?: number | null;
+    }) =>
+        fetchApi<PickupQuoteResponse>('/public/pickup-quote', {
+            method: 'POST',
+            body: JSON.stringify(payload),
+            headers: {
+                'Cache-Control': 'no-store',
+                Pragma: 'no-cache',
+            },
+            cache: 'no-store' as RequestCache,
+        }),
 };
 
 export const adminAreaMapApi = {

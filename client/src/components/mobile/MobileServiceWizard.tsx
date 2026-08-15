@@ -31,6 +31,8 @@ import { readTvBrands, readTvSizes } from "@shared/tv-options";
 import { readCarriedAnswers, carriedAsSymptomLines, hasCarriedAnswers, EMPTY_CARRIED } from "@/lib/carried-answers";
 import { CarriedAnswersStrip } from "@/components/customer/CarriedAnswersStrip";
 import { mergePinAddress } from "@/lib/pickup-address";
+import { DhakaPlaceSearchInput } from "@/components/customer/DhakaPlaceSearchInput";
+import type { DhakaPlaceSuggestion } from "@/lib/api/mapApi";
 import { resolveServiceIcon } from "@/lib/service-icons";
 import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
@@ -166,7 +168,18 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   // PICKUP-MAP-PIN-01 — pin is optional; a typed address alone stays valid.
   const [pickupLatitude, setPickupLatitude] = useState<number | null>(null);
   const [pickupLongitude, setPickupLongitude] = useState<number | null>(null);
-  const [pickupLocationSource, setPickupLocationSource] = useState<"map_pin" | "gps" | null>(null);
+  const [pickupLocationSource, setPickupLocationSource] = useState<
+    "map_pin" | "gps" | "place_search" | null
+  >(null);
+  /**
+   * The neighbourhood or road chosen from the suggestion list.
+   *
+   * Held separately from the free-text address because it is the half that
+   * carries coordinates, and the coordinates are what decide the collection
+   * fare. A typed address alone still submits — it just prices at the default
+   * band, exactly as it did before.
+   */
+  const [pickupPlace, setPickupPlace] = useState<DhakaPlaceSuggestion | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [brandSearchOpen, setBrandSearchOpen] = useState(false);
   /**
@@ -181,6 +194,8 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
   const [serviceSearchOpen, setServiceSearchOpen] = useState(false);
   /** Address line contributed by the last pin, so re-pinning replaces it instead of stacking. */
   const lastPinAddressRef = useRef<string | null>(null);
+  /** Same idea for the place picker: choosing a second area replaces the first. */
+  const lastPlaceAddressRef = useRef<string | null>(null);
   const [customerName, setCustomerName] = useState(customer?.name || "");
   const [phone, setPhone] = useState(normalizePhone(customer?.phone || ""));
   const [address, setAddress] = useState(customer?.address || "");
@@ -309,6 +324,81 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
     refetchOnMount: "always",
   });
   const selectedServiceArea = serviceAreas.find((area) => area.id === serviceAreaId);
+
+  /**
+   * The collection fare for wherever the customer has said they are.
+   *
+   * Runs only for a pickup with coordinates: without a point there is no area
+   * to price, and quoting the "anywhere else" fare against an address we cannot
+   * place would show the most expensive band to somebody who may live next door.
+   *
+   * The tier is `flexible` — the base — because this wizard does not ask the
+   * customer to choose a collection speed. Quoting the cheapest band is the
+   * honest default: any tier they later pick can only add to it.
+   */
+  /**
+   * The service area worked out from the address, rather than asked for.
+   *
+   * This runs for any mode, not just pickup: `serviceAreaId` drives job records,
+   * POS billing allocation and revenue-by-area reporting, so a drop-off booking
+   * needs it just as much as a collection does. It only needs coordinates,
+   * which arrive when the customer picks their area from the suggestion list.
+   */
+  const { data: resolvedAreaData } = useQuery({
+    queryKey: ["public-resolve-service-area", pickupLatitude, pickupLongitude],
+    queryFn: () =>
+      publicAreaMapApi.resolveServiceArea({
+        latitude: pickupLatitude as number,
+        longitude: pickupLongitude as number,
+      }),
+    enabled: pickupLatitude != null && pickupLongitude != null,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+  const resolvedArea = resolvedAreaData?.area ?? null;
+
+  /**
+   * Whether to show the picker instead of the derived answer.
+   *
+   * Chosen by the customer pressing "Change", or forced when there is nothing
+   * to derive from — no coordinates, or an address outside every drawn area.
+   * The manual list is never removed, only moved out of the way: a derived
+   * value that cannot be corrected turns a wrong guess into a silent one.
+   */
+  const [areaOverride, setAreaOverride] = useState(false);
+  const showAreaPicker = areaOverride || resolvedArea == null;
+
+  /**
+   * Adopt the derived area, unless the customer has taken manual control.
+   *
+   * Writing it into the same `serviceAreaId` the form already submits is the
+   * point of the exercise: the area that is billed and the area that is
+   * attributed become one value instead of two that happen to agree.
+   */
+  useEffect(() => {
+    if (areaOverride) return;
+    // Only speak when there is something to derive from. Without this guard the
+    // effect fires on first render with no coordinates yet, and clears the area
+    // a `?serviceAreaId=` link had just pre-filled.
+    if (pickupLatitude == null || pickupLongitude == null) return;
+    setServiceAreaId(resolvedArea?.id ?? "");
+  }, [resolvedArea, areaOverride, pickupLatitude, pickupLongitude]);
+
+  const { data: pickupQuote } = useQuery({
+    queryKey: ["public-pickup-quote", pickupLatitude, pickupLongitude],
+    queryFn: () =>
+      publicAreaMapApi.quotePickup({
+        tier: "flexible",
+        latitude: pickupLatitude,
+        longitude: pickupLongitude,
+      }),
+    enabled:
+      servicePreference === "home_pickup" &&
+      pickupLatitude != null &&
+      pickupLongitude != null,
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
 
   const getTvTypeLabel = (type: string) => {
     switch (type) {
@@ -1098,29 +1188,132 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                     {t("pickupPin.open")}
                   </Button>
                 </div>
-                <Textarea value={address} onChange={(event) => { contactTouched.current = true; setAddress(event.target.value); }} className="min-h-24 rounded-2xl border-emerald-100" placeholder="Area, road, house..." />
+                {/*
+                  * The area comes first because it is the part that has to be
+                  * right: it carries the coordinates that set the collection
+                  * fare. The box underneath is for the house and flat, which no
+                  * gazetteer knows.
+                  */}
+                <DhakaPlaceSearchInput
+                  selected={pickupPlace}
+                  helpText={t("placeSearch.help")}
+                  placeholder={t("placeSearch.placeholder")}
+                  noMatchText={t("placeSearch.noMatch")}
+                  onClear={() => {
+                    setPickupPlace(null);
+                    // Only drop coordinates this field contributed. A map pin is
+                    // the more precise source and must survive an edit here.
+                    if (pickupLocationSource === "place_search") {
+                      setPickupLatitude(null);
+                      setPickupLongitude(null);
+                      setPickupLocationSource(null);
+                    }
+                  }}
+                  onSelect={(place) => {
+                    setPickupPlace(place);
+                    // A dropped pin is a doorstep; this is a neighbourhood
+                    // centre. Never downgrade coordinates the customer already
+                    // placed more precisely.
+                    if (pickupLocationSource !== "map_pin" && pickupLocationSource !== "gps") {
+                      setPickupLatitude(place.latitude);
+                      setPickupLongitude(place.longitude);
+                      setPickupLocationSource("place_search");
+                    }
+                    contactTouched.current = true;
+                    setAddress((current) =>
+                      mergePinAddress(current, place.label, lastPlaceAddressRef.current),
+                    );
+                    lastPlaceAddressRef.current = place.label;
+                  }}
+                />
+                <Textarea value={address} onChange={(event) => { contactTouched.current = true; setAddress(event.target.value); }} className="min-h-24 rounded-2xl border-emerald-100" placeholder={t("placeSearch.addressPlaceholder")} />
                 {pickupLatitude != null && pickupLongitude != null && (
                   <p className="flex items-center gap-1.5 text-xs font-medium text-emerald-700">
                     <MapPin className="h-3.5 w-3.5" />
                     {t("pickupPin.pinned")} ({pickupLatitude.toFixed(5)}, {pickupLongitude.toFixed(5)})
                   </p>
                 )}
+                {/*
+                  * The fare, as soon as the address can produce one.
+                  *
+                  * Shown here rather than at the end because this is where the
+                  * customer decides between collection and bringing it in — a
+                  * charge revealed after that choice is a charge they never
+                  * agreed to. Nothing renders until a fare has been configured.
+                  */}
+                {pickupQuote?.configured && (
+                  <div className="rounded-2xl bg-emerald-50/70 px-3 py-2.5 text-sm">
+                    {pickupQuote.waived ? (
+                      <p className="font-medium text-emerald-800">
+                        {t("pickupFare.waived")}
+                      </p>
+                    ) : (
+                      <p className="font-medium text-emerald-800">
+                        {t("pickupFare.label")}: ৳{pickupQuote.amount}
+                      </p>
+                    )}
+                    {pickupQuote.outsideAllAreas && !pickupQuote.waived && (
+                      <p className="mt-0.5 text-xs text-emerald-700">
+                        {t("pickupFare.outsideArea")}
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
             )}
+            {/*
+              * The service area, derived rather than asked for.
+              *
+              * "Which service area are you in?" is a question about the shop's
+              * internal map, and the customer cannot answer it reliably — they
+              * know their address, not our partition of Dhaka. So when the
+              * address gives us a point we state the area and offer to change
+              * it; the list only comes back when there is nothing to derive, or
+              * when the customer asks for it.
+              */}
             <div className="space-y-2 rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
               <Label>{t("wizard.serviceArea")}</Label>
-              <Select value={serviceAreaId || "none"} onValueChange={(value) => setServiceAreaId(value === "none" ? "" : value)}>
-                <SelectTrigger className="h-12 rounded-xl border-emerald-100"><SelectValue placeholder={t("wizard.serviceArea")} /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">{t("wizard.noServiceArea")}</SelectItem>
-                  {serviceAreas.map((area) => (
-                    <SelectItem key={area.id} value={area.id}>
-                      {[area.blockOrSector, area.subareaName, area.areaName, area.city].filter(Boolean).join(", ")}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <p className="text-xs leading-relaxed text-slate-500">{t("wizard.serviceAreaHint")}</p>
+
+              {!showAreaPicker && resolvedArea && (
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-slate-800">{resolvedArea.label}</p>
+                    <p className="text-xs text-slate-500">
+                      {resolvedArea.confidence === "nearest"
+                        ? t("serviceArea.guessed")
+                        : t("serviceArea.fromAddress")}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setAreaOverride(true)}
+                    className="shrink-0 text-xs font-semibold text-emerald-700 underline underline-offset-2"
+                  >
+                    {t("serviceArea.change")}
+                  </button>
+                </div>
+              )}
+
+              {showAreaPicker && (
+                <>
+                  <Select value={serviceAreaId || "none"} onValueChange={(value) => setServiceAreaId(value === "none" ? "" : value)}>
+                    <SelectTrigger className="h-12 rounded-xl border-emerald-100"><SelectValue placeholder={t("wizard.serviceArea")} /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">{t("wizard.noServiceArea")}</SelectItem>
+                      {serviceAreas.map((area) => (
+                        <SelectItem key={area.id} value={area.id}>
+                          {[area.blockOrSector, area.subareaName, area.areaName, area.city].filter(Boolean).join(", ")}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs leading-relaxed text-slate-500">
+                    {pickupLatitude != null && pickupLongitude != null && resolvedArea == null
+                      ? t("serviceArea.outside")
+                      : t("wizard.serviceAreaHint")}
+                  </p>
+                </>
+              )}
             </div>
           </motion.div>
         )}

@@ -4,6 +4,7 @@ import type { GeoJSONSource, Map as MapLibreMap, Marker as MapLibreMarker } from
 import 'maplibre-gl/dist/maplibre-gl.css';
 import type { ServiceAreaMapItem } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { ringColor } from '@shared/pickup-pricing';
 
 export type AreaMapMetric = 'requests' | 'jobs' | 'completed' | 'completion' | 'revenue' | 'collected' | 'warranty' | 'pickupFare';
 
@@ -59,6 +60,15 @@ interface AreaMapCanvasProps {
     onSelectArea?: (area: ServiceAreaMapItem) => void;
     serviceCenter?: Coordinates | null;
     serviceCenterDraggable?: boolean;
+    /**
+     * Fare rings to draw around the service centre.
+     *
+     * Only supplied while the map is showing pickup fares — the rings are a
+     * pricing tool, and drawing them over the demand or revenue views would put
+     * three large circles on top of the thing being read.
+     */
+    pickupRings?: Array<{ radiusKm: number; fare: number | null }>;
+    currencySymbol?: string;
     onServiceCenterMove?: (coordinates: Coordinates) => void;
     searchLocation?: SearchLocation | null;
     customerLocation?: Coordinates | null;
@@ -96,6 +106,82 @@ const AREA_SELECTED_GLOW = 'promise-service-areas-selected-glow';
 const AREA_SELECTED_EXTRUSION = 'promise-service-areas-selected-extrusion';
 const AREA_SELECTED_TOP = 'promise-service-areas-selected-top';
 const AREA_LABEL_SOURCE = 'promise-service-area-labels';
+const RING_SOURCE = 'promise-pickup-rings';
+const RING_FILL = 'promise-pickup-rings-fill';
+const RING_LINE = 'promise-pickup-rings-line';
+const RING_LABEL = 'promise-pickup-rings-label';
+
+/**
+ * The fare rings, as circles on the ground.
+ *
+ * Drawn as many-sided polygons rather than with a circle layer because a
+ * `circle` in MapLibre is sized in screen pixels — it would keep its size as
+ * you zoom, which is exactly wrong for something that means "five kilometres".
+ * These are real distances on the map and grow and shrink with it.
+ *
+ * The latitude correction matters at Dhaka: a degree of longitude is about 92%
+ * of a degree of latitude here, so without it the rings would draw as visible
+ * ellipses and a fare boundary would sit in the wrong place east–west.
+ */
+function buildRingFeatures(
+    centre: Coordinates | null | undefined,
+    rings: Array<{ radiusKm: number; fare: number | null }>,
+    currency: string,
+): GeoJSON.FeatureCollection {
+    if (!centre || rings.length === 0) return { type: 'FeatureCollection', features: [] };
+    const STEPS = 96;
+    const kmPerDegLat = 110.574;
+    const kmPerDegLon = 111.320 * Math.cos((centre.latitude * Math.PI) / 180);
+
+    // Nearest first, so the colour ramp follows distance rather than the order
+    // somebody happened to type the rings in.
+    const ordered = [...rings].sort((a, b) => a.radiusKm - b.radiusKm);
+
+    const features = ordered
+        // Colour is taken before anything is dropped, so a band keeps its own
+        // place in the ramp. Filtering first would slide the next ring up into
+        // the missing colour and repaint the map every time a fare was typed.
+        .map((ring, index) => ({ ring, color: ringColor(index) }))
+        /**
+         * A band with no fare is not drawn.
+         *
+         * An unpriced ring prices nothing — an address inside it falls through
+         * to the next priced band outward. Drawing it would claim a coverage and
+         * a price that do not exist yet, and the circle is the one thing on this
+         * screen that is supposed to mean "this is what we charge here". The row
+         * stays in the panel, which is where the fare gets typed in.
+         */
+        .filter(({ ring }) => ring.fare !== null)
+        .map(({ ring, color }) => {
+            const ringCoords: [number, number][] = [];
+            for (let i = 0; i <= STEPS; i += 1) {
+                const angle = (i / STEPS) * 2 * Math.PI;
+                ringCoords.push([
+                    centre.longitude + (ring.radiusKm / kmPerDegLon) * Math.cos(angle),
+                    centre.latitude + (ring.radiusKm / kmPerDegLat) * Math.sin(angle),
+                ]);
+            }
+            return {
+                type: 'Feature' as const,
+                properties: {
+                    label: `${ring.radiusKm} km · ${currency}${ring.fare}`,
+                    radiusKm: ring.radiusKm,
+                    color,
+                },
+                geometry: { type: 'Polygon' as const, coordinates: [ringCoords] },
+            };
+        });
+
+    /**
+     * Drawn widest first.
+     *
+     * The circles are nested discs, not annuli, so paint order is what makes
+     * them read as separate bands: the largest goes down first and each smaller
+     * one covers its middle, leaving only its own band showing. Reversed, a
+     * single big disc would bury every ring inside it.
+     */
+    return { type: 'FeatureCollection', features: features.reverse() };
+}
 const AREA_LABELS = 'promise-service-area-labels';
 const ROUTE_SOURCE = 'promise-route';
 const ROUTE_CASING = 'promise-route-casing';
@@ -248,6 +334,8 @@ export function AreaMapCanvas({
     onSelectArea,
     serviceCenter,
     serviceCenterDraggable = false,
+    pickupRings,
+    currencySymbol = '৳',
     onServiceCenterMove,
     searchLocation,
     customerLocation,
@@ -284,8 +372,13 @@ export function AreaMapCanvas({
     const [mapEpoch, setMapEpoch] = useState(0);
     const features = useMemo(() => areaFeatures(areas, metric, pickupFares), [areas, metric, pickupFares]);
     const labels = useMemo(() => labelFeatures(areas), [areas]);
+    const ringFeatures = useMemo(
+        () => buildRingFeatures(serviceCenter, pickupRings ?? [], currencySymbol),
+        [serviceCenter, pickupRings, currencySymbol],
+    );
     const featuresRef = useRef(features);
     const labelsRef = useRef(labels);
+    const ringFeaturesRef = useRef(ringFeatures);
     const selectedAreaIdRef = useRef(selectedAreaId);
     const routeGeometryRef = useRef(routeGeometry);
     const routeMethodRef = useRef(routeMethod);
@@ -515,6 +608,7 @@ export function AreaMapCanvas({
     useEffect(() => { areasRef.current = areas; }, [areas]);
     useEffect(() => { featuresRef.current = features; }, [features]);
     useEffect(() => { labelsRef.current = labels; }, [labels]);
+    useEffect(() => { ringFeaturesRef.current = ringFeatures; }, [ringFeatures]);
     useEffect(() => { selectedAreaIdRef.current = selectedAreaId; }, [selectedAreaId]);
     useEffect(() => { routeGeometryRef.current = routeGeometry; }, [routeGeometry]);
     useEffect(() => { routeMethodRef.current = routeMethod; }, [routeMethod]);
@@ -734,6 +828,46 @@ export function AreaMapCanvas({
                     },
                     paint: { 'text-color': '#0f172a', 'text-halo-color': '#ffffff', 'text-halo-width': 1.5 },
                 });
+                // Rings sit above the area fills but below labels and the pin,
+                // so they read as an overlay rather than hiding what is under them.
+                map.addSource(RING_SOURCE, { type: 'geojson', data: ringFeaturesRef.current });
+                // Faint fill: enough to tell one band from the next, light enough
+                // that the streets and area names underneath stay readable.
+                map.addLayer({
+                    id: RING_FILL,
+                    type: 'fill',
+                    source: RING_SOURCE,
+                    paint: {
+                        'fill-color': ['get', 'color'],
+                        'fill-opacity': 0.1,
+                    },
+                });
+                map.addLayer({
+                    id: RING_LINE,
+                    type: 'line',
+                    source: RING_SOURCE,
+                    paint: {
+                        'line-color': ['get', 'color'],
+                        'line-width': 2.5,
+                        'line-opacity': 0.9,
+                        'line-dasharray': [2, 1.5],
+                    },
+                });
+                map.addLayer({
+                    id: RING_LABEL,
+                    type: 'symbol',
+                    source: RING_SOURCE,
+                    layout: {
+                        'text-field': ['get', 'label'],
+                        'text-size': 12,
+                        'text-font': ['Noto Sans Regular'],
+                        // On the line itself, so the fare sits on the boundary it
+                        // describes rather than floating in the middle of a band.
+                        'symbol-placement': 'line',
+                        'text-allow-overlap': false,
+                    },
+                    paint: { 'text-color': ['get', 'color'] as any, 'text-halo-color': '#ffffff', 'text-halo-width': 2 },
+                });
                 map.addSource(ROUTE_SOURCE, {
                     type: 'geojson',
                     data: routeGeometryRef.current
@@ -931,7 +1065,12 @@ export function AreaMapCanvas({
         if (!map?.isStyleLoaded()) return;
         (map.getSource(AREA_SOURCE) as GeoJSONSource | undefined)?.setData(features);
         (map.getSource(AREA_LABEL_SOURCE) as GeoJSONSource | undefined)?.setData(labels);
-    }, [features, labels]);
+        (map.getSource(RING_SOURCE) as GeoJSONSource | undefined)?.setData(ringFeatures);
+        // ringFeatures belongs in here: the fares arrive from their own query,
+        // so they routinely change when the areas have not. Without it the rings
+        // only redrew when something else happened to move, which made them look
+        // intermittent — present after switching metric, gone on a fresh load.
+    }, [features, labels, ringFeatures]);
 
     useEffect(() => {
         const map = mapRef.current;

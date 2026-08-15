@@ -8,6 +8,10 @@ import { estimateRoute } from '../services/route-estimate.service.js';
 import { routeEstimateLimiter, mapPlaceSearchLimiter, publicMapSearchLimiter } from './middleware/rate-limit.js';
 import { settingsRepo } from '../repositories/index.js';
 import { isWithinBangladesh, normalizePlaceQuery, reverseGeocodePin, searchMapBoundaries, searchMapPlaces } from '../services/map-place-search.service.js';
+import { searchDhakaPlaces, MIN_QUERY_LENGTH } from '../services/dhaka-place-search.service.js';
+import { getPickupQuote } from '../services/pickup-quote.service.js';
+import { resolveServiceArea } from '../services/service-area-resolve.service.js';
+import { toPickupTier } from '../../shared/pickup-pricing.js';
 import {
     readCanonicalServiceCenterLocation,
     updateServiceCenterLocationAtomic,
@@ -868,6 +872,140 @@ router.get(
 
 const PLACE_QUERY_MIN = 3;
 const PLACE_QUERY_MAX = 120;
+
+/**
+ * GET /api/public/dhaka-place-search — suggestions from the shop's own copy of Dhaka.
+ *
+ * Sits beside the Photon-backed search below rather than replacing it, and is
+ * what the repair wizard's address box uses.
+ *
+ * Two reasons it is local. Bangla: the Photon call sends `lang: 'en'`, and with
+ * that parameter a query typed in Bangla returns nothing at all — verified
+ * against the live provider. And fair use: autocomplete is one request per
+ * keystroke per customer, which Nominatim's policy names as a prohibited use
+ * and Photon's public instance asks self-hosters to take off their servers. A
+ * ban would also take the admin's map search down, since it is the same host.
+ *
+ * Deliberately unauthenticated: this is the first screen an anonymous customer
+ * meets. It reads one table of public place names, returns at most eight rows,
+ * writes nothing, and logs neither the query nor the coordinates.
+ */
+router.get(
+    '/api/public/dhaka-place-search',
+    publicMapSearchLimiter,
+    async (req: Request, res: Response) => {
+        try {
+            const raw = typeof req.query.q === 'string' ? req.query.q : '';
+            const trimmed = raw.trim();
+            if (trimmed.length < MIN_QUERY_LENGTH || trimmed.length > PLACE_QUERY_MAX) {
+                return res.json({ results: [] });
+            }
+
+            const results = await searchDhakaPlaces(trimmed);
+            res.setHeader('Cache-Control', 'private, no-store');
+            res.json({ results });
+        } catch (error) {
+            /**
+             * An empty list, not a 503.
+             *
+             * Before the import has been run — or on a database where the
+             * migration has not been applied — this table is empty or absent.
+             * The address box must still work: the customer can type freely and
+             * submit. Failing loudly here would block a repair booking over a
+             * missing convenience.
+             */
+            logRouteError('dhaka-place-search', req, error);
+            res.json({ results: [] });
+        }
+    },
+);
+
+/**
+ * What collection costs for one address.
+ *
+ * The portal has told customers "an extra charge applies" without ever naming a
+ * figure, because nothing called the fare calculator. This names it, at the
+ * moment the customer picks their area and before they commit to anything.
+ *
+ * POST rather than GET because the body carries the customer's coordinates, and
+ * coordinates do not belong in a URL that lands in access logs and history.
+ *
+ * When no fare has been configured the reply is `{configured: false}` and the
+ * customer is shown nothing — an unpriced shop must say nothing rather than
+ * quote a number this code invented.
+ */
+router.post(
+    '/api/public/pickup-quote',
+    publicMapSearchLimiter,
+    async (req: Request, res: Response) => {
+        try {
+            const body = (req.body ?? {}) as Record<string, unknown>;
+            const lat = Number(body.latitude);
+            const lng = Number(body.longitude);
+            const hasPoint =
+                Number.isFinite(lat) && Number.isFinite(lng) &&
+                lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+
+            const estimate = Number(body.repairEstimate);
+
+            const quote = await getPickupQuote({
+                tier: toPickupTier(body.tier),
+                point: hasPoint ? { lat, lng } : null,
+                repairEstimate: Number.isFinite(estimate) ? estimate : null,
+            });
+
+            // Never cache: the answer depends on coordinates in the body, and
+            // the fares behind it change whenever staff edit them.
+            res.setHeader('Cache-Control', 'private, no-store');
+            res.json(quote);
+        } catch (error) {
+            logRouteError('pickup-quote', req, error);
+            // Same reasoning as the place search: a missing price must not stop
+            // somebody booking a repair.
+            res.json({ configured: false });
+        }
+    },
+);
+
+/**
+ * Which service area an address falls in.
+ *
+ * Replaces a dropdown that asked the customer to pick their own service area —
+ * a question about the shop's internal map that only staff can answer, where a
+ * wrong answer was recorded silently and then drove billing and revenue
+ * reporting.
+ *
+ * POST for the same reason as the quote: coordinates do not belong in a URL
+ * that lands in access logs.
+ *
+ * `{area: null}` is a normal answer, not a failure. It means the address is
+ * outside every area the shop has drawn, which the caller shows as "outside our
+ * areas" rather than as an error.
+ */
+router.post(
+    '/api/public/resolve-service-area',
+    publicMapSearchLimiter,
+    async (req: Request, res: Response) => {
+        try {
+            const body = (req.body ?? {}) as Record<string, unknown>;
+            const lat = Number(body.latitude);
+            const lng = Number(body.longitude);
+            const valid =
+                Number.isFinite(lat) && Number.isFinite(lng) &&
+                lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+            if (!valid) return res.json({ area: null });
+
+            const area = await resolveServiceArea({ lat, lng });
+            res.setHeader('Cache-Control', 'private, no-store');
+            res.json({ area });
+        } catch (error) {
+            logRouteError('resolve-service-area', req, error);
+            // A failed lookup must not block a repair booking. The caller falls
+            // back to letting the customer choose by hand.
+            res.json({ area: null });
+        }
+    },
+);
 
 router.get(
     '/api/public/map-place-search',

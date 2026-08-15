@@ -24,6 +24,7 @@
  * at all rather than a number this file invented.
  */
 
+export const PICKUP_RING_FARES_KEY = "pickup_ring_fares";
 export const PICKUP_AREA_FARES_KEY = "pickup_area_fares";
 export const PICKUP_TIER_EXTRAS_KEY = "pickup_tier_extras";
 export const PICKUP_ANYWHERE_ELSE_KEY = "pickup_anywhere_else";
@@ -42,6 +43,50 @@ export type PickupAreaFare = {
   /** How far the circle reaches, in kilometres. */
   radiusKm: number;
 };
+
+/**
+ * One band of distance out from the shop, and what collection costs inside it.
+ *
+ * `radiusKm` is the band's OUTER edge; the inner edge is the previous ring, so
+ * the bands nest rather than overlap and every address has exactly one answer.
+ *
+ * Rings exist because per-area pricing could not cover a city. Each area had to
+ * be created and priced by hand, and anything missed fell through to the
+ * "anywhere else" fare — the most expensive one — so the failure mode of
+ * forgetting a neighbourhood was silently overcharging the customer who lived
+ * there. Measured against the shop at Paltan, five rings at 5/10/14/20/30 km
+ * reach 99.5% of greater Dhaka, which is five numbers instead of eight hundred.
+ */
+export type PickupRingFare = {
+  /** Outer edge of this band, in kilometres from the shop. */
+  radiusKm: number;
+  /** What collection costs anywhere inside this band, before any tier extra. */
+  fare: number;
+};
+
+/**
+ * The colour of each ring, near to far.
+ *
+ * Green through red, because the thing being read off the map is how expensive
+ * a place is to reach — a ramp that runs cheap-to-dear says that without a
+ * legend. Shared between the map and the fare panel so a ring is the same
+ * colour in both; a swatch that disagreed with the circle would be worse than
+ * no swatch at all.
+ *
+ * Anything past the fifth ring repeats the last colour rather than wrapping
+ * back to green, which would paint the farthest band as the cheapest.
+ */
+export const PICKUP_RING_COLORS = [
+  "#10b981", // emerald — nearest
+  "#3b82f6", // blue
+  "#f59e0b", // amber
+  "#f97316", // orange
+  "#ef4444", // red — farthest
+] as const;
+
+export function ringColor(index: number): string {
+  return PICKUP_RING_COLORS[Math.min(index, PICKUP_RING_COLORS.length - 1)];
+}
 
 /** One month, as agreed — how long a decided-against television is kept. */
 export const DEFAULT_HOLD_DAYS = 30;
@@ -102,6 +147,7 @@ function badMoney(value: unknown, field: string, key: string): FareValidationErr
 }
 
 export const PICKUP_SETTING_KEYS: string[] = [
+  PICKUP_RING_FARES_KEY,
   PICKUP_AREA_FARES_KEY,
   PICKUP_TIER_EXTRAS_KEY,
   PICKUP_ANYWHERE_ELSE_KEY,
@@ -129,6 +175,32 @@ export function validatePickupSetting(key: string, rawValue: string | null): Far
     return PICKUP_TIERS
       .map((tier) => badMoney(raw[tier], tier, key))
       .filter((e): e is FareValidationError => e !== null);
+  }
+
+  if (key === PICKUP_RING_FARES_KEY) {
+    if (!Array.isArray(parsed)) {
+      return [{ key, field: key, reason: "Rings must be a list." }];
+    }
+    const errors: FareValidationError[] = [];
+    const radii: number[] = [];
+    parsed.forEach((entry, i) => {
+      const v = (entry ?? {}) as Partial<PickupRingFare>;
+      const bad = badMoney(v?.fare, `ring${i + 1}.fare`, key);
+      if (bad) errors.push(bad);
+      const radius = Number(v?.radiusKm);
+      if (!Number.isFinite(radius) || radius <= 0) {
+        errors.push({ key, field: `ring${i + 1}.radiusKm`, reason: "A ring needs a distance greater than zero." });
+      } else {
+        radii.push(radius);
+      }
+    });
+    // Two rings ending at the same distance make the inner one unreachable, and
+    // which fare applied would depend on stored order rather than on the map.
+    const duplicate = radii.find((r, i) => radii.indexOf(r) !== i);
+    if (duplicate !== undefined) {
+      errors.push({ key, field: "radiusKm", reason: `Two rings both end at ${duplicate} km. Each ring needs its own distance.` });
+    }
+    return errors;
   }
 
   if (key === PICKUP_AREA_FARES_KEY) {
@@ -160,6 +232,67 @@ export function readTierExtras(settings: SettingRow[]): PickupTierExtras {
     chooseDay: money(raw.chooseDay) ?? 0,
     sameDay: money(raw.sameDay) ?? 0,
   };
+}
+
+/**
+ * Always five bands, never more, never fewer.
+ *
+ * Fixed rather than a list the shop grows, because the count is a fact about
+ * the city rather than a preference: measured from Paltan against 865 places,
+ * five bands at these distances reach 99.5% of greater Dhaka, and the gaps
+ * between them fall where Dhaka is genuinely thin on the ground — the 12–14km
+ * stretch across the cantonment and airport, where a boundary crosses fewest
+ * doorsteps and so causes fewest arguments about which fare applies.
+ *
+ * The radii here are only the starting point; both distance and fare are edited
+ * in Area Intelligence. What cannot change is that there are five.
+ */
+export const PICKUP_RING_COUNT = 5;
+export const DEFAULT_RING_RADII_KM = [5, 10, 14, 20, 30] as const;
+
+/**
+ * One editable band. `fare` is null until somebody prices it — not zero, which
+ * would say collection is free.
+ */
+export type PickupRingSlot = { radiusKm: number; fare: number | null };
+
+/**
+ * The five bands as the editor and the map need them: every slot present,
+ * whether priced or not.
+ *
+ * An unpriced ring still has to be drawn and still has to have a row, otherwise
+ * there is nowhere to type the fare in — the reason a ring is missing a price is
+ * usually that nobody has got to it yet.
+ */
+export function readRingSlots(settings: SettingRow[]): PickupRingSlot[] {
+  const raw = readJson<unknown>(settings, PICKUP_RING_FARES_KEY, []);
+  const stored = Array.isArray(raw) ? raw : [];
+  return DEFAULT_RING_RADII_KM.map((fallbackRadius, index) => {
+    const v = (stored[index] ?? {}) as Partial<PickupRingFare>;
+    const radius = Number(v?.radiusKm);
+    return {
+      radiusKm: Number.isFinite(radius) && radius > 0 ? radius : fallbackRadius,
+      fare: money(v?.fare),
+    };
+  });
+}
+
+/**
+ * The bands that can actually price a collection, smallest first.
+ *
+ * Sorted rather than trusted in stored order, because resolution walks outward
+ * and takes the first band that contains the address — an unsorted list would
+ * quietly charge a far ring's fare to a near address.
+ *
+ * A band with no fare is dropped rather than mended. An address inside an
+ * unpriced ring therefore falls through to the next priced ring outward, which
+ * charges more than it should rather than nothing at all: the wrong direction to
+ * be wrong in, but the safe one.
+ */
+export function readRingFares(settings: SettingRow[]): PickupRingFare[] {
+  return readRingSlots(settings)
+    .filter((slot): slot is PickupRingFare => slot.fare !== null)
+    .sort((a, b) => a.radiusKm - b.radiusKm);
 }
 
 export function readAreaFares(settings: SettingRow[]): Record<string, PickupAreaFare> {
@@ -213,6 +346,12 @@ export type PickupQuote =
       outsideAllAreas: boolean;
       waived: boolean;
       waivedOver: number | null;
+      /** Which rule set the fare, so staff can explain the number. */
+      source: "area" | "ring" | "anywhere-else";
+      /** Outer edge of the ring that claimed it, when `source` is "ring". */
+      ringRadiusKm: number | null;
+      /** Straight-line km from the shop, when an origin was supplied. */
+      distanceKm: number | null;
     };
 
 /**
@@ -236,18 +375,32 @@ export function quotePickup(opts: {
   point?: { lat: number; lng: number } | null;
   /** Rated circles: area id → centre. Fares come from settings. */
   areaCentres?: Record<string, { lat: number; lng: number }>;
+  /** The shop. Rings are measured from here; without it no ring can apply. */
+  origin?: { lat: number; lng: number } | null;
   /** Low end of the repair estimate; the waiver never uses the optimistic end. */
   repairEstimate?: number | null;
   settings: SettingRow[];
 }): PickupQuote {
   const fares = readAreaFares(opts.settings);
+  const rings = readRingFares(opts.settings);
   const extras = readTierExtras(opts.settings);
   const anywhereElse = readAnywhereElseFare(opts.settings);
 
   let areaId: string | null = null;
   let areaFare: number | null = null;
+  let source: "area" | "ring" | "anywhere-else" = "anywhere-else";
+  let ringRadiusKm: number | null = null;
   let bestRadius = Infinity;
 
+  /**
+   * A hand-priced area beats the ring it sits in.
+   *
+   * This is where knowledge of the city overrules the geometry. Keraniganj is
+   * 4.7km from the shop — the innermost, cheapest ring — but it is across the
+   * Buriganga, so the drive costs far more than the distance suggests. Rings
+   * make sure nothing is unpriced; overrides make sure distance never gets the
+   * last word where it is simply wrong.
+   */
   if (opts.point && opts.areaCentres) {
     for (const [id, centre] of Object.entries(opts.areaCentres)) {
       const rated = fares[id];
@@ -257,12 +410,32 @@ export function quotePickup(opts: {
         bestRadius = rated.radiusKm;
         areaId = id;
         areaFare = rated.fare;
+        source = "area";
+      }
+    }
+  }
+
+  // The rings, walked outward: the first band that reaches this address owns it.
+  let distanceFromShop: number | null = null;
+  if (opts.point && opts.origin) {
+    distanceFromShop = distanceKm(opts.point, opts.origin);
+    if (areaFare === null) {
+      for (const ring of rings) {
+        if (distanceFromShop <= ring.radiusKm) {
+          areaFare = ring.fare;
+          ringRadiusKm = ring.radiusKm;
+          source = "ring";
+          break;
+        }
       }
     }
   }
 
   const outsideAllAreas = areaFare === null;
-  if (outsideAllAreas) areaFare = anywhereElse;
+  if (outsideAllAreas) {
+    areaFare = anywhereElse;
+    source = "anywhere-else";
+  }
 
   // Nothing has been priced yet. Say nothing rather than invent a number.
   if (areaFare === null) return { configured: false };
@@ -281,6 +454,9 @@ export function quotePickup(opts: {
     outsideAllAreas,
     waived,
     waivedOver: waived ? freeOver : null,
+    source,
+    ringRadiusKm,
+    distanceKm: distanceFromShop,
   };
 }
 
@@ -293,6 +469,10 @@ export function quotePickup(opts: {
  */
 export function minimumFare(settings: SettingRow[]): number | null {
   const fares = Object.values(readAreaFares(settings)).map((f) => f.fare);
+  // Rings count too: with rings configured the innermost is usually the real
+  // cheapest, and omitting them would advertise a "from" price higher than
+  // what most customers are actually charged.
+  for (const ring of readRingFares(settings)) fares.push(ring.fare);
   const anywhereElse = readAnywhereElseFare(settings);
   if (anywhereElse !== null) fares.push(anywhereElse);
   if (fares.length === 0) return null;

@@ -50,7 +50,7 @@ import { cn } from '@/lib/utils';
 import { MobileScrollContent, MobileTabHeader, MobileTabLayout } from '../shared';
 import { settingsApi } from '@/lib/api';
 import { PickupFaresPanel } from '@/components/admin/PickupFaresPanel';
-import { readAreaFares } from '@shared/pickup-pricing';
+import { readAreaFares, readRingSlots } from '@shared/pickup-pricing';
 
 const METRICS: Array<{ id: AreaMapMetric; label: string; icon: typeof BarChart3 }> = [
     { id: 'requests', label: 'Requests', icon: BarChart3 },
@@ -671,6 +671,16 @@ export default function AreaIntelligenceTab() {
         enabled: canManage,
     });
     const areaFares = useMemo(() => readAreaFares(allSettings as any), [allSettings]);
+    /**
+     * Rings are drawn only while the pickup-fare view is on.
+     *
+     * They are a pricing tool. Laid over the demand or revenue views they would
+     * put three large circles on top of the thing being read.
+     */
+    const pickupRings = useMemo(
+        () => (metric === 'pickupFare' ? readRingSlots(allSettings as any) : []),
+        [allSettings, metric],
+    );
     const fareByArea = useMemo(
         () => Object.fromEntries(Object.entries(areaFares).map(([id, f]) => [id, f.fare])),
         [areaFares],
@@ -790,6 +800,7 @@ export default function AreaIntelligenceTab() {
             onSelectArea={selectArea}
             metric={metric}
             pickupFares={fareByArea}
+            pickupRings={pickupRings}
             threeDimensional={!isMobile && threeDimensional}
             serviceCenter={serviceCenterMapLocation}
             searchLocation={searchLocation}
@@ -922,6 +933,7 @@ export default function AreaIntelligenceTab() {
                                 selectedAreaId={selectedId}
                                 metric={metric}
                                                 pickupFares={fareByArea}
+                                                pickupRings={pickupRings}
                                 threeDimensional={false}
                                 interactive={false}
                                 cooperativeGestures
@@ -1142,6 +1154,7 @@ export default function AreaIntelligenceTab() {
                                                 }}
                                                 metric={metric}
                                                 pickupFares={fareByArea}
+                                                pickupRings={pickupRings}
                                                 threeDimensional={false}
                                                 interactive
                                                 cooperativeGestures={false}

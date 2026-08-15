@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_11_warranty_stickers";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_15_dhaka_places";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2235,6 +2235,54 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
         ON warranty_sticker_scans (scanned_at)`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_warranty_sticker_scans_code
         ON warranty_sticker_scans (scanned_code)`);
+    },
+  },
+  {
+    id: "2026_08_15_dhaka_places",
+    description:
+      "Somewhere for the customer's own address to come from. Today the pickup address is a free-text box: nothing checks it, nothing suggests anything, and a misspelling is invisible until a driver cannot find the house. It also decides money - the collection fare is chosen by which rated circle the address falls inside, so an address with no coordinates silently falls through to the most expensive 'anywhere else' rate. Suggestions have to come from somewhere, and it cannot be a public geocoder: Nominatim's usage policy names autocomplete as a prohibited use that earns a ban, and Photon's public instance asks anyone with real traffic to self-host. So Dhaka is held locally - roughly six thousand areas and named roads, each with whatever Bangla and English names OpenStreetMap carries - and searched here. One new table, nothing existing touched, and empty until the import is run.",
+    up: async (client) => {
+      await client.query(`CREATE TABLE IF NOT EXISTS dhaka_places (
+        id TEXT PRIMARY KEY,
+        osm_type TEXT NOT NULL,
+        osm_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        name_bn TEXT,
+        name_en TEXT,
+        kind TEXT NOT NULL,
+        osm_value TEXT,
+        context_name TEXT,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        search_text TEXT NOT NULL,
+        imported_at TIMESTAMP NOT NULL DEFAULT now()
+      )`);
+
+      /**
+       * Re-import updates in place instead of duplicating the city.
+       */
+      await client.query(`CREATE UNIQUE INDEX IF NOT EXISTS uidx_dhaka_places_osm
+        ON dhaka_places (osm_type, osm_id)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_dhaka_places_kind
+        ON dhaka_places (kind)`);
+
+      /**
+       * pg_trgm is what makes a typo survivable.
+       *
+       * Measured against the live providers: one wrong letter in one word is
+       * recoverable, but two wrong words returned a confidently wrong place —
+       * a mosque nearly two kilometres from the shop. So the customer must pick
+       * from suggestions rather than have text corrected underneath them, and
+       * trigram similarity is what puts the right suggestion in front of them
+       * while they are still typing.
+       *
+       * Created without CONCURRENTLY on purpose: the migration runner wraps
+       * each step in a transaction, and CONCURRENTLY cannot run inside one.
+       * The table is empty at this point, so the build is instant.
+       */
+      await client.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_dhaka_places_search_trgm
+        ON dhaka_places USING gin (search_text gin_trgm_ops)`);
     },
   },
 ];

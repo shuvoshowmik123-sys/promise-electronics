@@ -169,6 +169,10 @@ const ALLOWED_SETTING_KEYS = [
     // service_areas has no zone column, and a MAIN migration is the thing that
     // has taken this site down twice. If zones ever need to be first-class
     // they can graduate to a column later.
+    // Distance bands out from the shop — the primary way collection is priced.
+    // Areas below stay, but as overrides for the places where distance lies
+    // (Keraniganj is 4.7km away and across a river).
+    'pickup_ring_fares',
     'pickup_area_fares',
     'pickup_tier_extras',
     'pickup_anywhere_else',

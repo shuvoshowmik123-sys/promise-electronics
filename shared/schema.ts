@@ -1508,7 +1508,13 @@ export const serviceRequests = pgTable("service_requests", {
   // of error at Dhaka's latitude. Matches work_locations / service_areas.
   pickupLatitude: doublePrecision("pickup_latitude"),
   pickupLongitude: doublePrecision("pickup_longitude"),
-  /** 'map_pin' | 'gps' | 'manual_address' — tells the rider how much to trust the coords. */
+  /**
+   * 'map_pin' | 'gps' | 'manual_address' | 'place_search' — tells the rider how
+   * much to trust the coords. 'place_search' is the centre of a neighbourhood or
+   * road the customer picked from the suggestion list: reliable for choosing the
+   * fare band, but a street away from the doorstep, so the rider still reads the
+   * address line.
+   */
   pickupLocationSource: text("pickup_location_source"),
   pickupLocationCapturedAt: timestamp("pickup_location_captured_at"),
   adminInteracted: boolean("admin_interacted").default(false),
@@ -3813,6 +3819,79 @@ export const insertServiceAreaSchema = createInsertSchema(serviceAreas).omit({
 });
 export type InsertServiceArea = z.infer<typeof insertServiceAreaSchema>;
 export type ServiceArea = typeof serviceAreas.$inferSelect;
+
+/**
+ * Every place in Dhaka a customer might live, held locally so the shop can
+ * offer suggestions as they type.
+ *
+ * Why a table and not somebody's geocoding API: the two obvious providers both
+ * forbid exactly this. Nominatim's usage policy names autocomplete as a
+ * prohibited use that earns a ban, and Photon's public instance asks anyone
+ * with real traffic to self-host. Autocomplete means one request per keystroke
+ * per customer, which is the pattern they are protecting themselves from — and
+ * a ban would take the admin's map search down with it, since it calls the same
+ * host.
+ *
+ * The shop serves one city. Six thousand rows fit in a table, answer in
+ * milliseconds, cost nothing per search, and keep working when the shop's line
+ * is down. The providers stay where they are legitimate: an occasional one-off
+ * lookup by staff.
+ *
+ * Both name columns exist because Dhaka's data is genuinely mixed. Measured on
+ * a live extract: only 32% of named features carry an explicit `name:bn`, and
+ * the primary `name` is itself Bangla for most neighbourhoods (পল্টন, উত্তরা)
+ * but English for most roads (Culvert Road, Park Road). Searching one column
+ * would lose half the city in one language or the other.
+ */
+export const dhakaPlaces = pgTable("dhaka_places", {
+  id: text("id").primaryKey(),
+  /** OSM element, kept so a re-import updates rather than duplicates. */
+  osmType: text("osm_type").notNull(),
+  osmId: text("osm_id").notNull(),
+  /** The primary OSM name — Bangla for most areas, English for most roads. */
+  name: text("name").notNull(),
+  /** Explicit name:bn where OSM has one. Present on about a third of rows. */
+  nameBn: text("name_bn"),
+  /**
+   * Explicit name:en. Measured at 100% of sampled Dhaka areas.
+   *
+   * Without this the table is unusable in English for exactly the places
+   * customers name most: ধানমন্ডি carries no Latin text, so an English speaker
+   * typing "Dhanmondi" matched the roads inside the neighbourhood but never the
+   * neighbourhood itself.
+   */
+  nameEn: text("name_en"),
+  /**
+   * What the customer is choosing: 'area' (suburb, quarter, neighbourhood) or
+   * 'road'. Areas rank above roads, because somebody typing "Dhanmondi" wants
+   * the neighbourhood, not the twelfth road inside it.
+   */
+  kind: text("kind").notNull(),
+  /** suburb / quarter / residential / tertiary — the raw OSM value, for tuning. */
+  osmValue: text("osm_value"),
+  /**
+   * The enclosing area, resolved at import.
+   *
+   * Dhaka has a "Road 5" in Dhanmondi, another in Gulshan, another in Uttara.
+   * Without this the customer picks blind between identical labels, so the
+   * dropdown always shows it and the search matches against it.
+   */
+  contextName: text("context_name"),
+  latitude: real("latitude").notNull(),
+  longitude: real("longitude").notNull(),
+  /**
+   * Lowercased name + nameBn + context, joined. One column to match against,
+   * so a trigram index can serve both languages and tolerate a typo without
+   * the query fanning out across three columns.
+   */
+  searchText: text("search_text").notNull(),
+  importedAt: timestamp("imported_at").notNull().defaultNow(),
+}, (table) => ({
+  osmUidx: uniqueIndex("uidx_dhaka_places_osm").on(table.osmType, table.osmId),
+  kindIdx: index("idx_dhaka_places_kind").on(table.kind),
+}));
+
+export type DhakaPlace = typeof dhakaPlaces.$inferSelect;
 
 export const posTransactionAreaAllocations = pgTable("pos_transaction_area_allocations", {
   id: text("id").primaryKey(),

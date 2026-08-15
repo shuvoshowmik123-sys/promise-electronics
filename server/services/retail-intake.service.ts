@@ -292,7 +292,9 @@ export function validateCanonicalIntakePayload(input: CanonicalIntakeInput): voi
         if (lat < -90 || lat > 90 || lon < -180 || lon > 180) rejectPayload("Invalid request data.");
     }
     if (input.pickupLocationSource != null && input.pickupLocationSource !== "") {
-        const ok = ["map_pin", "gps", "manual_address"].includes(String(input.pickupLocationSource));
+        const ok = ["map_pin", "gps", "manual_address", "place_search"].includes(
+            String(input.pickupLocationSource),
+        );
         if (!ok) rejectPayload("Invalid request data.");
     }
 

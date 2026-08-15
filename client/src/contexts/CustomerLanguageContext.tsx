@@ -359,6 +359,29 @@ const translations = {
   "pickupPin.gpsUnavailable":  { en: "Location is not supported on this device", bn: "এই ডিভাইসে লোকেশন সাপোর্ট করে না" },
   "pickupPin.gpsDenied":       { en: "Could not get your location. Please allow location access.", bn: "আপনার অবস্থান পাওয়া যায়নি। লোকেশন অনুমতি দিন।" },
   "pickupPin.pinned":          { en: "Location pinned",         bn: "অবস্থান পিন করা হয়েছে" },
+  /**
+   * The area picker.
+   *
+   * The placeholder shows one example in each script on purpose: it is the
+   * shortest way to tell somebody that typing Bangla will work, without a
+   * sentence claiming so.
+   */
+  "placeSearch.placeholder":   { en: "Search area or road — e.g. Dhanmondi, ধানমন্ডি", bn: "এলাকা বা রোড খুঁজুন — যেমন ধানমন্ডি, Dhanmondi" },
+  "placeSearch.help":          { en: "Pick your area from the list so we can quote the right pickup charge.", bn: "তালিকা থেকে আপনার এলাকা বেছে নিন, যাতে সঠিক পিকআপ চার্জ জানাতে পারি।" },
+  "placeSearch.noMatch":       { en: "No matching place found. Check the spelling, or just type your address below.", bn: "কোনো মিল পাওয়া যায়নি। বানান দেখে নিন, অথবা নিচে ঠিকানা লিখে দিন।" },
+  "placeSearch.addressPlaceholder": { en: "House / flat / landmark", bn: "বাসা / ফ্ল্যাট / ল্যান্ডমার্ক" },
+  /**
+   * The derived service area. "Guessed" is worded as a guess on purpose — it
+   * comes from the nearest centre, not from a boundary, and telling the
+   * customer that is what makes the "Change" link worth pressing.
+   */
+  "serviceArea.fromAddress":   { en: "From your address",        bn: "আপনার ঠিকানা অনুযায়ী" },
+  "serviceArea.guessed":       { en: "Closest to your address — change it if this is wrong", bn: "আপনার ঠিকানার সবচেয়ে কাছের — ভুল হলে পরিবর্তন করুন" },
+  "serviceArea.change":        { en: "Change",                   bn: "পরিবর্তন" },
+  "serviceArea.outside":       { en: "Your address is outside our service areas. Pick the closest one, or leave it blank.", bn: "আপনার ঠিকানা আমাদের সার্ভিস এলাকার বাইরে। কাছেরটি বেছে নিন, বা খালি রাখুন।" },
+  "pickupFare.label":          { en: "Pickup & drop charge",      bn: "পিকআপ ও ড্রপ চার্জ" },
+  "pickupFare.waived":         { en: "Pickup & drop is free for this repair.", bn: "এই মেরামতের জন্য পিকআপ ও ড্রপ ফ্রি।" },
+  "pickupFare.outsideArea":    { en: "Outside our usual areas — this is the standard rate.", bn: "আমাদের নিয়মিত এলাকার বাইরে — এটি সাধারণ রেট।" },
   "wizard.dropOff":        { en: "Drop-off",                  bn: "শপে নিয়ে আসব" },
   /**
    * What each choice actually means, in plain words.
