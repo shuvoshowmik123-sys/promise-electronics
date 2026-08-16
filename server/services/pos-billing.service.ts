@@ -353,6 +353,8 @@ export async function createPosSaleAtomic(input: CreatePosSaleInput): Promise<Cr
 
   // Stock check before txn (read-only)
   for (const item of input.cartItems) {
+    // The collection fare is a journey, not a part. There is no shelf to check.
+    if (item?.isPickupFare) continue;
     if (item?.id && item?.quantity) {
       const inv = await inventoryRepo.getInventoryItem(item.id);
       if (inv && inv.itemType !== "service" && item.quantity > (inv.stock ?? 0)) {
@@ -631,6 +633,8 @@ export async function createPosSaleAtomic(input: CreatePosSaleInput): Promise<Cr
     for (const item of input.cartItems) {
       if (!item?.id || !item?.quantity) continue;
       if (item?.isSourced) continue;
+      // Nothing left the building; a driver did.
+      if (item?.isPickupFare) continue;
 
       let unitsToDeduct = Number(item.quantity);
       if (stockJobId) {

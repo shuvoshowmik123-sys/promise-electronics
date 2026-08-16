@@ -287,10 +287,41 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     const removeFromCart = (id: string) => setCartItems(prev => prev.filter(i => i.id !== id));
     const updateCartItemQuantity = (id: string, qty: number) => { if (qty <= 0) { removeFromCart(id); return; } setCartItems(prev => prev.map(i => i.id === id ? { ...i, quantity: qty } : i)); };
 
+    /**
+     * Put the collection fare on the bill when its job is linked.
+     *
+     * The fare was quoted to the customer at booking, recomputed on the server,
+     * stored on the request and carried onto the job as a charge — and then the
+     * till ignored it, so every collection was made for nothing. It is added
+     * here rather than folded into the repair amount because that amount is
+     * validated against a service item's price range, and because a customer is
+     * entitled to see what the journey cost as its own line.
+     *
+     * Added once. Linking a second job, or re-linking the same one, must not
+     * charge the journey twice.
+     */
+    const addPickupFareForJob = (job: any) => {
+        const charges = Array.isArray(job?.charges) ? job.charges : [];
+        const fare = charges.find((c: any) => c?.type === "pickup" && Number(c?.amount) > 0);
+        if (!fare) return;
+        const lineId = `pickup-${job.id}`;
+        setCartItems((prev) => {
+            if (prev.some((item) => item.id === lineId)) return prev;
+            return [...prev, {
+                id: lineId,
+                name: "Pickup & drop",
+                price: String(Number(fare.amount)),
+                quantity: 1,
+                isPickupFare: true,
+            }];
+        });
+    };
+
     // ── Job Linking ──
     const handleJobSelection = (jobId: string, checked: boolean) => {
         if (checked) {
             const job = billableJobs.find((j: any) => j.id === jobId);
+            addPickupFareForJob(job);
             setLinkedJobCharges(prev => [...prev, {
                 jobId, serviceItemId: null, serviceItemName: null, minPrice: 0, maxPrice: 0, billedAmount: 0, isValid: false,
                 customerName: job?.customer || null, customerPhone: job?.customerPhone || null,
@@ -298,6 +329,8 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
             }]);
         } else {
             setLinkedJobCharges(prev => prev.filter(j => j.jobId !== jobId));
+            // Unlinking the job takes its journey off the bill with it.
+            setCartItems(prev => prev.filter(item => item.id !== `pickup-${jobId}`));
         }
     };
 
@@ -367,6 +400,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
         setLinkedJobCharges((prev) => {
             if (prev.some((j) => j.jobId === jobId)) return prev;
             const job = billableJobs.find((j: any) => j.id === jobId) as any;
+            addPickupFareForJob(job);
             toast.success(`Job ${getSafeJobDisplayRef(job) || jobId} linked`, {
                 description: "Add the parts used and the warranty to finish billing.",
             });

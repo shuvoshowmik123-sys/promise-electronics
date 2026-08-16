@@ -13,6 +13,16 @@ export type CartItem = {
      * survive checkout rather than being shown in a toast and dropped.
      */
     isSourced?: boolean;
+    /**
+     * The collection fare, carried onto the bill from the job.
+     *
+     * Its own marker rather than reusing `isSourced`. A sourced part with no
+     * cost price raises a pending-cost row and nudges whoever billed it at
+     * 19:00 to enter what they paid — correct for a part bought from a vendor,
+     * nonsense for a journey the shop's own driver made. Reusing that flag
+     * would have manufactured a false chore on every collection billed.
+     */
+    isPickupFare?: boolean;
     sourcedCostPrice?: number | null;
     sourcedWarrantyDays?: number | null;
 };
