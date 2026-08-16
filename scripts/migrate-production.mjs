@@ -27,14 +27,17 @@ import path from "node:path";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
+/** Ctrl-C and backspace, by code point rather than as literal control bytes. */
+const CTRL_C = String.fromCharCode(3);
+const BACKSPACE = String.fromCharCode(127);
+
 /**
- * Two ways in, because the interactive one cannot be tested.
+ * Two ways in, because the interactive one cannot be tested from a script.
  *
  * A terminal keeps stdin open between questions; a pipe does not — it reaches
- * end-of-file after the first line, so the confirmation never resolves and the
- * script hangs having done nothing. Rather than ship a path nobody had run, the
- * non-TTY case reads its answers up front. That is what makes it possible to
- * exercise the whole thing, connection and all, before handing it over.
+ * end-of-file after the first line. Rather than ship a path nobody had run, the
+ * non-TTY case reads its answers up front, so the whole thing — connection,
+ * migration, exit code — can be exercised before it is handed over.
  *
  * You will always get the TTY path. Piping is for proving it works.
  */
@@ -47,31 +50,91 @@ if (!interactive) {
   piped = Buffer.concat(chunks).toString("utf8").split(/\r?\n/);
 }
 
-const rl = interactive
-  ? readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true })
-  : null;
+let pipedIndex = 0;
+const nextPiped = () => String(piped[pipedIndex++] ?? "").trim();
 
-let muted = false;
-if (rl) {
-  const write = rl._writeToOutput.bind(rl);
-  rl._writeToOutput = (chunk) => {
-    // While muted, the prompt is printed and everything typed after it is not.
-    if (!muted) write(chunk);
-  };
+/**
+ * Hidden input, read one character at a time.
+ *
+ * The first version used readline with a muted output hook, which is the usual
+ * recipe and is wrong here. On a real terminal readline REDRAWS the line when it
+ * takes over, wiping the prompt written a moment earlier — so the script printed
+ * the npm banner and then nothing at all, and sat waiting for a paste with
+ * nothing on screen to say so. It looked exactly like a hang.
+ *
+ * Raw mode avoids the redraw entirely: we print the prompt once, the terminal
+ * stops echoing, and keystrokes are collected without anything being drawn back.
+ * A pasted URL arrives as a single chunk and is handled the same as typing.
+ */
+function askHidden(question) {
+  if (!interactive) {
+    process.stdout.write(question + "\n");
+    return Promise.resolve(nextPiped());
+  }
+
+  return new Promise((resolve, reject) => {
+    const stdin = process.stdin;
+
+    // Without raw mode there is no way to stop the terminal echoing the paste.
+    // Refusing is better than quietly printing the production password.
+    if (typeof stdin.setRawMode !== "function") {
+      reject(new Error("this terminal cannot hide what you type"));
+      return;
+    }
+
+    process.stdout.write(question);
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+
+    let value = "";
+    const finish = (done) => {
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdin.removeListener("data", onData);
+      process.stdout.write("\n");
+      done();
+    };
+
+    const onData = (chunk) => {
+      for (const char of String(chunk)) {
+        if (char === "\r" || char === "\n") {
+          finish(() => resolve(value.trim()));
+          return;
+        }
+        if (char === CTRL_C) {
+          // Leave the terminal usable rather than dying while still in raw mode.
+          finish(() => {
+            console.log("Cancelled. Nothing was contacted.");
+            process.exit(130);
+          });
+          return;
+        }
+        if (char === BACKSPACE || char === "\b") {
+          value = value.slice(0, -1);
+          continue;
+        }
+        // Ignore the escape sequences arrow keys and the like produce, so a
+        // stray keypress cannot end up inside the URL.
+        if (char < " ") continue;
+        value += char;
+      }
+    };
+
+    stdin.on("data", onData);
+  });
 }
 
-let pipedIndex = 0;
-function ask(question, hidden = false) {
-  if (!rl) {
-    process.stdout.write(question + (hidden ? "\n" : "\n"));
-    return Promise.resolve(String(piped[pipedIndex++] ?? "").trim());
+/** A visible question, for answers that are not secret. */
+function ask(question) {
+  if (!interactive) {
+    process.stdout.write(question + "\n");
+    return Promise.resolve(nextPiped());
   }
   return new Promise((resolve) => {
-    rl.output.write(question);
-    muted = hidden;
-    rl.question("", (answer) => {
-      muted = false;
-      if (hidden) process.stdout.write("\n");
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(question, (answer) => {
+      rl.close();
       resolve(String(answer).trim());
     });
   });
@@ -90,7 +153,14 @@ function forceNoVerifySsl(rawUrl) {
   return url.toString();
 }
 
-const raw = await ask("Paste the production DATABASE_URL, then press Enter (input is hidden): ", true);
+let raw;
+try {
+  raw = await askHidden("Paste the production DATABASE_URL, then press Enter (nothing will appear): ");
+} catch (error) {
+  console.error(`\nCannot read the URL safely: ${error.message}`);
+  console.error("Run this from a normal terminal window rather than through another tool.");
+  process.exit(1);
+}
 
 if (!raw) {
   console.error("\nNothing pasted. Stopping — no database was contacted.");
@@ -127,7 +197,6 @@ console.log("  It does not change, delete or move any of your data.");
 console.log("");
 
 const confirm = await ask("  Type MIGRATE to continue, or press Enter to cancel: ");
-rl?.close();
 if (confirm !== "MIGRATE") {
   console.log("\nCancelled. Nothing was changed.");
   process.exit(0);
