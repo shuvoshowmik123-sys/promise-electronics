@@ -1242,16 +1242,34 @@ export function MobileServiceWizard({ mode }: MobileServiceWizardProps) {
                   * agreed to. Nothing renders until a fare has been configured.
                   */}
                 {pickupQuote?.configured && (
-                  <div className="rounded-2xl bg-emerald-50/70 px-3 py-2.5 text-sm">
-                    {pickupQuote.waived ? (
-                      <p className="font-medium text-emerald-800">
-                        {t("pickupFare.waived")}
-                      </p>
-                    ) : (
-                      <p className="font-medium text-emerald-800">
-                        {t("pickupFare.label")}: ৳{pickupQuote.amount}
+                  <div className="space-y-1.5 rounded-2xl bg-emerald-50/70 px-3 py-2.5 text-sm">
+                    {/* The fare keeps its own line even when all of it is given
+                        away. Zero on its own says the journey had no value. */}
+                    <div className="flex items-center justify-between font-medium text-emerald-800">
+                      <span>{t("pickupFare.label")}</span>
+                      <span>৳{pickupQuote.fare}</span>
+                    </div>
+                    {pickupQuote.discount > 0 && (
+                      <>
+                        <div className="flex items-center justify-between font-medium text-emerald-700">
+                          <span>{t("pickupFare.discount")}</span>
+                          <span>−৳{pickupQuote.discount}</span>
+                        </div>
+                        <div className="flex items-center justify-between border-t border-emerald-200 pt-1.5 font-bold text-emerald-900">
+                          <span>{t("pickupFare.youPay")}</span>
+                          <span>৳{pickupQuote.amount}</span>
+                        </div>
+                      </>
+                    )}
+                    {pickupQuote.discount === 0 && pickupQuote.discountOver !== null && (
+                      <p className="text-xs text-emerald-700">
+                        {t("pickupFare.discountOverPre")}{pickupQuote.discountOver}{t("pickupFare.discountOverPost")}
                       </p>
                     )}
+                    {/* Stated before the choice, not discovered at the counter. */}
+                    <p className="border-t border-emerald-200 pt-1.5 text-xs text-emerald-700">
+                      {t("pickupFare.declinedNote")}
+                    </p>
                   </div>
                 )}
               </div>

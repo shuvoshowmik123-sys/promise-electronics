@@ -15,6 +15,8 @@ import { claimStockDeduction, releaseStockDeductions } from './job-stock-deducti
 import type { JobTicket, ServiceRequest } from '../../shared/schema.js';
 import { repairJourneyService } from './customer-repair-journey.service.js';
 import { normalizePhone } from '../utils/phone.js';
+import { getPickupQuote } from './pickup-quote.service.js';
+import { toPickupTier } from '../../shared/pickup-pricing.js';
 
 class ConversionError extends Error {
     status: number;
@@ -514,6 +516,37 @@ export class JobService {
              * intake service leaves `pickup_cost` null for one.
              */
             const pickupCost = Number(raw.pickup_cost ?? raw.pickupCost ?? 0);
+
+            /**
+             * The discount threshold is frozen onto the job, not looked up later.
+             *
+             * The counter needs to know the bill at which this collection's fare
+             * comes off, and that figure lives in the ring settings — which the
+             * shop can edit at any time. Reading it at billing would mean a
+             * customer quoted one promise in the portal is judged against a
+             * different one when they arrive, and the change would be invisible
+             * to everybody involved. What was true when the job was taken in is
+             * what the customer was told, so that is what is kept.
+             *
+             * Failure here is not fatal. Without a threshold the fare is simply
+             * charged in full, which is the state everything was in before
+             * discounts existed — the customer is never overcharged by it.
+             */
+            let pickupDiscountOver: number | null = null;
+            const pickupLat = Number(raw.pickup_latitude ?? raw.pickupLatitude);
+            const pickupLng = Number(raw.pickup_longitude ?? raw.pickupLongitude);
+            if (Number.isFinite(pickupCost) && pickupCost > 0 && Number.isFinite(pickupLat) && Number.isFinite(pickupLng)) {
+                try {
+                    const quote = await getPickupQuote({
+                        tier: toPickupTier(raw.pickup_tier ?? raw.pickupTier),
+                        point: { lat: pickupLat, lng: pickupLng },
+                    });
+                    if (quote.configured) pickupDiscountOver = quote.discountOver;
+                } catch (error) {
+                    console.error("[JobService] could not read the pickup discount threshold; the fare will be charged in full:", error);
+                }
+            }
+
             const pickupCharges =
                 Number.isFinite(pickupCost) && pickupCost > 0
                     ? [{
@@ -521,6 +554,8 @@ export class JobService {
                         description: "Pickup & drop",
                         amount: pickupCost,
                         type: "pickup",
+                        // Null means no discount was on offer for this address.
+                        discountOver: pickupDiscountOver,
                     }]
                     : [];
 

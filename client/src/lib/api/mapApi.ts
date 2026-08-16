@@ -114,10 +114,21 @@ export type PickupQuoteResponse =
     | { configured: false }
     | {
           configured: true;
-          /** What the customer pays. The only figure they are given. */
+          /** The full fare. Always shown, even when all of it is discounted. */
+          fare: number;
+          /** What comes off the fare. Zero, or the whole thing. */
+          discount: number;
+          /** What is left to pay: `fare - discount`. */
           amount: number;
-          waived: boolean;
-          waivedOver: number | null;
+          /**
+           * The bill at which this collection's fare is discounted in full,
+           * or null when this address has no discount available.
+           *
+           * Present whether or not it has been reached — at booking there is no
+           * bill yet, and the customer still needs to be told the promise
+           * exists before they choose between collection and coming in.
+           */
+          discountOver: number | null;
       };
 
 /**

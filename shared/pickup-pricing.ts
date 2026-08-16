@@ -62,6 +62,18 @@ export type PickupRingFare = {
   radiusKm: number;
   /** What collection costs anywhere inside this band, before any tier extra. */
   fare: number;
+  /**
+   * The repair bill at which this ring's fare is discounted in full.
+   *
+   * Per ring rather than one figure for the city, because the two ends of Dhaka
+   * are not the same journey. A customer five kilometres away is worth
+   * collecting from on a modest repair; thirty kilometres out, the same repair
+   * does not cover the driver's day. One shop-wide threshold has to be set for
+   * one of those cases and is then wrong for the other.
+   *
+   * Null means this ring has no discount at all — not that everything qualifies.
+   */
+  discountOver: number | null;
 };
 
 /**
@@ -193,6 +205,29 @@ export function validatePickupSetting(key: string, rawValue: string | null): Far
       } else {
         radii.push(radius);
       }
+      /**
+       * The discount threshold, unlike the fare, may genuinely be left blank —
+       * a ring the shop does not want to discount is a real decision. So blank
+       * passes and only a typed value is checked.
+       *
+       * Zero is refused rather than accepted as "always". A threshold of zero
+       * discounts every collection in that ring, including the ৳0 one, and it
+       * is far more likely to be a slip than a policy. Somebody who really
+       * means it can type 1.
+       */
+      // Unknown, not number: what arrives here is raw JSON from the editor, and
+      // an empty box sends "". Typing it as a number would hide that case.
+      const threshold: unknown = v?.discountOver;
+      if (threshold !== null && threshold !== undefined && threshold !== "") {
+        const n = Number(threshold);
+        if (!Number.isFinite(n)) {
+          errors.push({ key, field: `ring${i + 1}.discountOver`, reason: "That is not a number." });
+        } else if (n <= 0) {
+          errors.push({ key, field: `ring${i + 1}.discountOver`, reason: "Leave it blank for no discount. Zero would discount every collection in this ring." });
+        } else if (n > FARE_LIMIT) {
+          errors.push({ key, field: `ring${i + 1}.discountOver`, reason: `A threshold above ${FARE_LIMIT} is almost certainly a typing slip.` });
+        }
+      }
     });
     // Two rings ending at the same distance make the inner one unreachable, and
     // which fare applied would depend on stored order rather than on the map.
@@ -254,7 +289,7 @@ export const DEFAULT_RING_RADII_KM = [5, 10, 14, 20, 30] as const;
  * One editable band. `fare` is null until somebody prices it — not zero, which
  * would say collection is free.
  */
-export type PickupRingSlot = { radiusKm: number; fare: number | null };
+export type PickupRingSlot = { radiusKm: number; fare: number | null; discountOver: number | null };
 
 /**
  * The five bands as the editor and the map need them: every slot present,
@@ -273,6 +308,9 @@ export function readRingSlots(settings: SettingRow[]): PickupRingSlot[] {
     return {
       radiusKm: Number.isFinite(radius) && radius > 0 ? radius : fallbackRadius,
       fare: money(v?.fare),
+      // Absent in every ring saved before discounts existed, and null is the
+      // right reading of that: no threshold was set, so nothing qualifies.
+      discountOver: money(v?.discountOver),
     };
   });
 }
@@ -336,15 +374,38 @@ export type PickupQuote =
   | { configured: false }
   | {
       configured: true;
-      /** What to charge, after any waiver. */
+      /** What to charge, after any discount. Never negative. */
       amount: number;
+      /** The full fare before the discount — the line the customer is shown. */
+      fare: number;
+      /** What comes off it. Always either zero or the whole fare. */
+      discount: number;
+      /**
+       * The bill this collection's fare is discounted over, whether or not it
+       * has been reached yet.
+       *
+       * Carried even when nothing qualifies, because the booking screen has no
+       * bill to judge against and still has to tell the customer the promise
+       * exists. Null means this address has no discount available at all.
+       */
+      discountOver: number | null;
       areaFare: number;
       tierExtra: number;
       /** The area whose circle claimed this address, or null for "anywhere else". */
       areaId: string | null;
       /** True when this address fell outside every rated circle. */
       outsideAllAreas: boolean;
+      /**
+       * @deprecated Read `discount` and `fare`.
+       *
+       * Kept because the money is identical and removing it would break callers
+       * silently. But the word is wrong and must not reach a customer: "waived"
+       * and "free" both say the journey had no value, when what happened is
+       * that the shop gave away something it could have charged for. The
+       * customer is shown the fare, the discount against it, and the total.
+       */
       waived: boolean;
+      /** @deprecated Read `discountOver`. */
       waivedOver: number | null;
       /** Which rule set the fare, so staff can explain the number. */
       source: "area" | "ring" | "anywhere-else";
@@ -390,6 +451,7 @@ export function quotePickup(opts: {
   let areaFare: number | null = null;
   let source: "area" | "ring" | "anywhere-else" = "anywhere-else";
   let ringRadiusKm: number | null = null;
+  let ringDiscountOver: number | null = null;
   let bestRadius = Infinity;
 
   /**
@@ -424,6 +486,7 @@ export function quotePickup(opts: {
         if (distanceFromShop <= ring.radiusKm) {
           areaFare = ring.fare;
           ringRadiusKm = ring.radiusKm;
+          ringDiscountOver = ring.discountOver;
           source = "ring";
           break;
         }
@@ -441,19 +504,50 @@ export function quotePickup(opts: {
   if (areaFare === null) return { configured: false };
 
   const tierExtra = extras[opts.tier] ?? 0;
-  const freeOver = readFreeOverAmount(opts.settings);
+  const fare = areaFare + tierExtra;
+
+  /**
+   * Which threshold this address is judged against.
+   *
+   * The ring's own comes first — that is the whole point of setting it per ring.
+   * The shop-wide `pickup_free_over` is the fallback, and covers the two cases a
+   * ring cannot: a hand-priced area override, and an address outside every ring
+   * paying the anywhere-else fare. Neither has a threshold of its own, and
+   * dropping the discount entirely for them would quietly withdraw a promise the
+   * shop has been making on the homepage.
+   */
+  const discountOver = ringDiscountOver ?? readFreeOverAmount(opts.settings);
+
+  /**
+   * The estimate, not the final bill.
+   *
+   * At booking there is no bill — the set has not been opened — so nothing
+   * qualifies here and the customer is quoted the full fare. That is deliberate:
+   * quoting a discount off an estimate and then charging the fare because the
+   * repair came in cheaper is how a price stops being trusted. The discount
+   * resolves at the counter, against the real total.
+   */
   const estimate = Number(opts.repairEstimate);
-  const waived = freeOver !== null && freeOver > 0 && Number.isFinite(estimate) && estimate >= freeOver;
+  const qualifies =
+    discountOver !== null && discountOver > 0 &&
+    Number.isFinite(estimate) && estimate >= discountOver;
+
+  // All of it or none of it. No percentages: a part-discount is a number the
+  // counter has to explain, and nobody at the counter set it.
+  const discount = qualifies ? fare : 0;
 
   return {
     configured: true,
-    amount: waived ? 0 : areaFare + tierExtra,
+    amount: fare - discount,
+    fare,
+    discount,
+    discountOver,
     areaFare,
     tierExtra,
     areaId,
     outsideAllAreas,
-    waived,
-    waivedOver: waived ? freeOver : null,
+    waived: qualifies,
+    waivedOver: qualifies ? discountOver : null,
     source,
     ringRadiusKm,
     distanceKm: distanceFromShop,

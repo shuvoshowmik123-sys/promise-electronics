@@ -23,6 +23,15 @@ export type CartItem = {
      * would have manufactured a false chore on every collection billed.
      */
     isPickupFare?: boolean;
+    /**
+     * The repair bill at which this collection's fare comes off in full.
+     *
+     * Frozen onto the job when it was created, so what the customer was promised
+     * in the portal is what the counter honours — not whatever the ring settings
+     * happen to say today. Null means no discount was on offer for that address,
+     * and the fare is charged in full.
+     */
+    pickupDiscountOver?: number | null;
     sourcedCostPrice?: number | null;
     sourcedWarrantyDays?: number | null;
 };

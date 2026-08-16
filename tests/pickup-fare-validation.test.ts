@@ -23,6 +23,7 @@ import {
     PICKUP_AREA_FARES_KEY,
     PICKUP_ANYWHERE_ELSE_KEY,
     PICKUP_TIER_EXTRAS_KEY,
+    PICKUP_RING_FARES_KEY,
     readTierExtras,
     validatePickupSetting,
 } from "../shared/pickup-pricing.js";
@@ -112,6 +113,35 @@ describe("not set is still allowed to mean not set", () => {
 
     it("ignores settings that are not fares", () => {
         expect(validatePickupSetting("site_name", "Promise Electronics")).toEqual([]);
+    });
+});
+
+describe("a ring's discount threshold", () => {
+    const ring = (discountOver: unknown) =>
+        JSON.stringify([{ radiusKm: 5, fare: 150, discountOver }]);
+
+    it("may be left blank, because no discount is a real decision", () => {
+        expect(validatePickupSetting(PICKUP_RING_FARES_KEY, ring(null))).toEqual([]);
+        expect(validatePickupSetting(PICKUP_RING_FARES_KEY, ring(""))).toEqual([]);
+        expect(validatePickupSetting(PICKUP_RING_FARES_KEY, JSON.stringify([{ radiusKm: 5, fare: 150 }]))).toEqual([]);
+    });
+
+    it("refuses zero, which would discount every collection in the ring", () => {
+        /**
+         * Zero reads as "always" and is far more likely to be a slip — a half
+         * typed number, a cleared box that snapped back. Somebody who genuinely
+         * means every repair qualifies can type 1.
+         */
+        const errors = validatePickupSetting(PICKUP_RING_FARES_KEY, ring(0));
+        expect(errors.some((e) => e.field === "ring1.discountOver")).toBe(true);
+    });
+
+    it("refuses a negative one", () => {
+        expect(validatePickupSetting(PICKUP_RING_FARES_KEY, ring(-500))).toHaveLength(1);
+    });
+
+    it("accepts a real threshold", () => {
+        expect(validatePickupSetting(PICKUP_RING_FARES_KEY, ring(3000))).toEqual([]);
     });
 });
 

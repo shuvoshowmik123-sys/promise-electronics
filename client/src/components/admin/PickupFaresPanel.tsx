@@ -105,7 +105,7 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
      * the fare are the shop's to set.
      */
     const savedRings = useMemo(() => readRingSlots(settings), [settings]);
-    const [ringDrafts, setRingDrafts] = useState<Array<{ radiusKm: string; fare: string }>>([]);
+    const [ringDrafts, setRingDrafts] = useState<Array<{ radiusKm: string; fare: string; discountOver: string }>>([]);
     const [openRing, setOpenRing] = useState<number | null>(null);
 
     // Reload from the server's answer whenever it changes, so a save elsewhere
@@ -114,12 +114,14 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
         setRingDrafts(savedRings.map((r) => ({
             radiusKm: String(r.radiusKm),
             fare: r.fare === null ? "" : String(r.fare),
+            discountOver: r.discountOver === null ? "" : String(r.discountOver),
         })));
     }, [savedRings]);
 
+    type RingField = "radiusKm" | "fare" | "discountOver";
     const rings = ringDrafts;
-    const ringDraft = (i: number, field: "radiusKm" | "fare") => ringDrafts[i]?.[field] ?? "";
-    const setRingDraft = (i: number, field: "radiusKm" | "fare", value: string) =>
+    const ringDraft = (i: number, field: RingField) => ringDrafts[i]?.[field] ?? "";
+    const setRingDraft = (i: number, field: RingField, value: string) =>
         setRingDrafts((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
 
     /**
@@ -136,6 +138,10 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
             value: JSON.stringify(ringDrafts.map((d) => ({
                 radiusKm: d.radiusKm.trim() === "" ? "" : Number(d.radiusKm),
                 fare: d.fare.trim() === "" ? "" : Number(d.fare),
+                // Blank is a real answer here, unlike the fare: it means this
+                // ring gives no discount. Sent as null so the reader does not
+                // have to guess whether "" meant unset or zero.
+                discountOver: d.discountOver.trim() === "" ? null : Number(d.discountOver),
             }))),
         }]);
 
@@ -206,6 +212,36 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
                                                         onChange={(e) => setRingDraft(index, "radiusKm", e.target.value)}
                                                         className="h-9 rounded-lg text-sm" />
                                                 </div>
+                                            </div>
+
+                                            {/*
+                                              * The discount threshold, set per ring rather than
+                                              * once for the city.
+                                              *
+                                              * The two ends of Dhaka are not the same journey. A
+                                              * customer five kilometres out is worth collecting
+                                              * from on a modest repair; thirty kilometres out the
+                                              * same repair does not cover the driver's day. One
+                                              * shop-wide figure has to be right for one of those
+                                              * and is then wrong for the other.
+                                              */}
+                                            <div className="mt-3 space-y-1">
+                                                <Label className="text-[11px] font-bold text-slate-600">
+                                                    Discount the fare on repairs over ({currency})
+                                                </Label>
+                                                <Input inputMode="numeric" placeholder="No discount in this ring"
+                                                    value={ringDraft(index, "discountOver")} disabled={!canManage}
+                                                    onChange={(e) => setRingDraft(index, "discountOver", e.target.value)}
+                                                    className="h-9 rounded-lg text-sm" />
+                                                <p className="text-[11px] leading-snug text-slate-500">
+                                                    {ringDraft(index, "discountOver").trim() === ""
+                                                        ? "Leave blank and this ring's fare is always charged in full."
+                                                        : fareNum === null
+                                                            ? `Once this ring has a fare, a repair over ${currency}${ringDraft(index, "discountOver")} takes all of it off.`
+                                                            /* Written as the customer will see it, so the
+                                                               shop is setting a sentence, not a number. */
+                                                            : `A repair over ${currency}${ringDraft(index, "discountOver")} shows ${currency}${fareNum} for pickup & drop, then −${currency}${fareNum} discount. Never "free".`}
+                                                </p>
                                             </div>
 
                                             {/*
@@ -345,13 +381,17 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
 
             {/* ── the promise, kept apart from the costs ─────────────────── */}
             <div className="rounded-2xl border border-emerald-100 bg-emerald-50/50 p-4">
-                <p className="text-[11px] font-black uppercase tracking-wide text-emerald-700">Free collection</p>
+                <p className="text-[11px] font-black uppercase tracking-wide text-emerald-700">Fallback discount</p>
                 <p className="mt-1 text-[11px] leading-snug text-emerald-800/80">
                     {/* Its own block on purpose: the fares above are cost recovery,
-                        this is a promise the customer will read and hold us to. */}
+                        this is a promise the customer will read and hold us to.
+
+                        Used only where a ring cannot answer — a hand-priced area,
+                        or an address outside every ring paying the anywhere-else
+                        fare. Each ring's own threshold always wins. */}
                     {freeOver
-                        ? `Customers are told: free collection and return on repairs over ${currency}${freeOver}.`
-                        : "Not set — no free-collection promise is shown to customers."}
+                        ? `Where no ring applies, a repair over ${currency}${freeOver} takes the whole collection fare off the bill. Shown as fare, discount and total — never as "free".`
+                        : "Not set — outside the rings, the collection fare is always charged in full."}
                 </p>
                 <FieldRow
                     label={`Repairs over (${currency})`} value={show(freeOver)} canManage={canManage} pending={save.isPending}

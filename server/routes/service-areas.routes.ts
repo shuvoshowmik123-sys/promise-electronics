@@ -970,12 +970,23 @@ router.post(
              * exactly how far they live from the shop, which is ours to know
              * and not theirs to be handed.
              *
-             * A customer needs one number and whether it was waived. Everything
-             * else stays server-side, where the admin screens read it directly.
+             * A customer needs the fare, what comes off it, what is left, and
+             * the bill that would earn the discount. Everything else stays
+             * server-side, where the admin screens read it directly.
+             *
+             * `discountOver` is the one structural number deliberately handed
+             * out: it is a promise the shop makes in public, and a promise the
+             * customer cannot see is not one they can act on.
              */
             res.json(
                 quote.configured
-                    ? { configured: true, amount: quote.amount, waived: quote.waived, waivedOver: quote.waivedOver }
+                    ? {
+                          configured: true,
+                          fare: quote.fare,
+                          discount: quote.discount,
+                          amount: quote.amount,
+                          discountOver: quote.discountOver,
+                      }
                     : { configured: false },
             );
         } catch (error) {

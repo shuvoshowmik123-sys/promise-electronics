@@ -313,6 +313,10 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                 price: String(Number(fare.amount)),
                 quantity: 1,
                 isPickupFare: true,
+                pickupDiscountOver:
+                    fare.discountOver === null || fare.discountOver === undefined
+                        ? null
+                        : Number(fare.discountOver),
             }];
         });
     };
@@ -532,7 +536,37 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
         return taxableCart + linkedJobCharges.reduce((s, j) => s + (j.billedAmount || 0), 0);
     };
     const calculateTax = () => calculateTaxableSubtotal() * (getVatPercentage() / 100);
-    const calculateTotal = () => calculateSubtotal() + calculateTax() - discount;
+
+    /**
+     * The collection discount, resolved here because here is the first moment
+     * the bill exists.
+     *
+     * At booking the set has not been opened, so the customer was quoted the
+     * full fare and told what would earn the discount. This is where that
+     * promise is kept — automatically, because leaving it to whoever is at the
+     * till is how it silently never happens.
+     *
+     * Judged against the repair, not the whole bill. `calculateTaxableSubtotal`
+     * is already everything except transport, which is exactly the figure the
+     * threshold was written about: a Tk350 fare must not help pay for itself.
+     *
+     * All of the fare or none of it. The line stays on the bill either way —
+     * the customer is shown what the journey was worth and then shown it being
+     * given to them. It is never called free.
+     */
+    const calculatePickupDiscount = () => {
+        const repairTotal = calculateTaxableSubtotal();
+        return cartItems.reduce((sum, item) => {
+            if (!item.isPickupFare) return sum;
+            const threshold = item.pickupDiscountOver;
+            if (threshold === null || threshold === undefined || threshold <= 0) return sum;
+            if (repairTotal < threshold) return sum;
+            return sum + parseFloat(String(item.price).replace(/[^0-9.-]+/g, "")) * item.quantity;
+        }, 0);
+    };
+
+    const calculateTotal = () =>
+        calculateSubtotal() + calculateTax() - calculatePickupDiscount() - discount;
 
     // ── Checkout ──
     const openRegisterMutation = useMutation({
@@ -603,7 +637,18 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
             items: JSON.stringify(cartItems), linkedJobs: linkedJobCharges.length > 0 ? JSON.stringify(linkedJobsData) : null,
             serviceAreaId: linkedJobCharges.length === 0 && serviceAreaId ? serviceAreaId : null,
             subtotal: parseFloat(subtotal.toFixed(2)), tax: parseFloat(tax.toFixed(2)), taxRate: parseFloat(vatRate.toFixed(2)),
-            discount: parseFloat(discount.toFixed(2)), total: parseFloat(total.toFixed(2)), paymentMethod, paymentStatus: paymentMethod === "Due" ? "Due" : "Paid",
+            /**
+             * Stored as one discount, deliberately.
+             *
+             * The ledger has a single column and one invariant — total equals
+             * subtotal plus tax minus discount. Recording only the hand-typed
+             * discount would leave the collection discount unexplained and every
+             * such row failing that check, which is exactly the kind of drift
+             * nobody finds until a month-end reconciliation. The two are still
+             * separate on screen and on the receipt, where the customer is the
+             * one who needs to see which is which.
+             */
+            discount: parseFloat((discount + calculatePickupDiscount()).toFixed(2)), total: parseFloat(total.toFixed(2)), paymentMethod, paymentStatus: paymentMethod === "Due" ? "Due" : "Paid",
         });
     };
 
@@ -807,6 +852,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     };
 
     const subtotal = calculateSubtotal(); const tax = calculateTax(); const total = calculateTotal();
+    const pickupDiscount = calculatePickupDiscount();
     const cartCount = cartItems.length + linkedJobCharges.length;
     const isCartEmpty = cartItems.length === 0 && linkedJobCharges.length === 0;
     const companyInfo = getCompanyInfo();
@@ -1738,6 +1784,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                     <div className="space-y-2 text-sm">
                                         <div className="flex justify-between text-slate-300"><span>Subtotal</span><span>{getCurrencySymbol()}{subtotal.toFixed(0)}</span></div>
                                         <div className="flex justify-between text-slate-300"><span>VAT</span><span>{getCurrencySymbol()}{tax.toFixed(0)}</span></div>
+                                        {pickupDiscount > 0 && <div className="flex justify-between text-emerald-200"><span>Pickup &amp; drop discount</span><span>-{getCurrencySymbol()}{pickupDiscount.toFixed(0)}</span></div>}
                                         {discount > 0 && <div className="flex justify-between text-rose-200"><span>Discount</span><span>-{getCurrencySymbol()}{discount.toFixed(0)}</span></div>}
                                     </div>
                                     <div className="mt-3 flex items-end justify-between border-t border-white/10 pt-3">
@@ -2105,6 +2152,19 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                                 <span>VAT ({getVatPercentage()}%)</span>
                                                 <span className="font-medium text-slate-700 tabular-nums">{getCurrencySymbol()}{tax.toFixed(2)}</span>
                                             </div>
+                                            {/*
+                                              * Its own line, above the hand-typed discount.
+                                              *
+                                              * Whoever is at the till has to be able to see that
+                                              * the collection was discounted and why, or the
+                                              * customer asks and there is no answer on the screen.
+                                              */}
+                                            {pickupDiscount > 0 && (
+                                                <div className="flex justify-between text-xs text-emerald-600">
+                                                    <span>Pickup &amp; drop discount</span>
+                                                    <span className="font-medium tabular-nums">-{getCurrencySymbol()}{pickupDiscount.toFixed(2)}</span>
+                                                </div>
+                                            )}
                                             <div className="flex justify-between items-center text-xs text-slate-500 pt-1">
                                                 <span>Discount</span>
                                                 <div className="flex items-center gap-1">

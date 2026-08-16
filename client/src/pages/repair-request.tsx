@@ -1042,14 +1042,51 @@ export default function RepairRequestPage() {
                       <p className="text-xs text-muted-foreground">We'll collect your device from this address.</p>
                       {/* The charge, before they commit to collection rather than after. */}
                       {pickupQuote?.configured && (
-                        <div className="rounded-lg bg-emerald-50 px-3 py-2 text-sm">
-                          {pickupQuote.waived ? (
-                            <p className="font-medium text-emerald-800">Pickup &amp; drop is free for this repair.</p>
-                          ) : (
-                            <p className="font-medium text-emerald-800">
-                              Pickup &amp; drop charge: ৳{pickupQuote.amount}
+                        <div className="space-y-1.5 rounded-lg bg-emerald-50 px-3 py-2.5 text-sm">
+                          {/*
+                            * The fare is always a line of its own, even when all
+                            * of it is discounted.
+                            *
+                            * The word "free" is not used anywhere here. It tells
+                            * a customer the journey had no value, and the driver
+                            * who made it twice would disagree. Showing the fare
+                            * and then giving it away says the same thing about
+                            * the money and something better about the shop.
+                            */}
+                          <div className="flex items-center justify-between font-medium text-emerald-800">
+                            <span>Pickup &amp; drop</span>
+                            <span>৳{pickupQuote.fare}</span>
+                          </div>
+                          {pickupQuote.discount > 0 && (
+                            <>
+                              <div className="flex items-center justify-between font-medium text-emerald-700">
+                                <span>Discount</span>
+                                <span>−৳{pickupQuote.discount}</span>
+                              </div>
+                              <div className="flex items-center justify-between border-t border-emerald-200 pt-1.5 font-bold text-emerald-900">
+                                <span>You pay</span>
+                                <span>৳{pickupQuote.amount}</span>
+                              </div>
+                            </>
+                          )}
+                          {pickupQuote.discount === 0 && pickupQuote.discountOver !== null && (
+                            /* The bill is unknown until the set is opened, so this
+                               is a promise rather than a figure on this booking. */
+                            <p className="text-xs text-emerald-700">
+                              On repairs over ৳{pickupQuote.discountOver}, this charge is discounted in full.
                             </p>
                           )}
+                          {/*
+                            * Said before they choose, not discovered at the counter.
+                            *
+                            * Stated up front it is fair — we travelled twice and
+                            * charged for the travel. Found out afterwards it reads
+                            * as a penalty for declining a quote.
+                            */}
+                          <p className="border-t border-emerald-200 pt-1.5 text-xs text-emerald-700">
+                            If the repair turns out not to be possible, or you decide against it,
+                            only this transport charge applies. There is nothing to pay for the inspection.
+                          </p>
                         </div>
                       )}
                     </div>

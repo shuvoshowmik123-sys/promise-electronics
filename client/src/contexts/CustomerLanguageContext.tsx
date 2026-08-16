@@ -380,7 +380,26 @@ const translations = {
   "serviceArea.change":        { en: "Change",                   bn: "পরিবর্তন" },
   "serviceArea.outside":       { en: "Your address is outside our service areas. Pick the closest one, or leave it blank.", bn: "আপনার ঠিকানা আমাদের সার্ভিস এলাকার বাইরে। কাছেরটি বেছে নিন, বা খালি রাখুন।" },
   "pickupFare.label":          { en: "Pickup & drop charge",      bn: "পিকআপ ও ড্রপ চার্জ" },
-  "pickupFare.waived":         { en: "Pickup & drop is free for this repair.", bn: "এই মেরামতের জন্য পিকআপ ও ড্রপ ফ্রি।" },
+  /*
+   * There is no "free" key here, and there was one.
+   *
+   * "Pickup & drop is free for this repair" was replaced by a fare line, a
+   * discount line and a total. The customer pays the same either way; what
+   * changes is that the shop is seen giving something away rather than
+   * pretending the journey cost nothing.
+   *
+   * The threshold sentence is split around the number because Bangla puts the
+   * amount first and English puts it in the middle. One key with the figure
+   * baked in would force one of the two languages to read badly.
+   */
+  "pickupFare.discount":       { en: "Discount",                  bn: "ছাড়" },
+  "pickupFare.youPay":         { en: "You pay",                   bn: "আপনি দেবেন" },
+  "pickupFare.discountOverPre":  { en: "On repairs over ৳",       bn: "৳" },
+  "pickupFare.discountOverPost": { en: ", this charge is discounted in full.", bn: " এর বেশি মেরামতে এই চার্জ সম্পূর্ণ ছাড় দেওয়া হয়।" },
+  "pickupFare.declinedNote":   {
+    en: "If the repair turns out not to be possible, or you decide against it, only this transport charge applies. There is nothing to pay for the inspection.",
+    bn: "মেরামত সম্ভব না হলে, বা আপনি না করালে, শুধু এই পরিবহন চার্জ প্রযোজ্য। পরীক্ষার জন্য কোনো টাকা দিতে হবে না।",
+  },
   "pickupFare.outsideArea":    { en: "Outside our usual areas — this is the standard rate.", bn: "আমাদের নিয়মিত এলাকার বাইরে — এটি সাধারণ রেট।" },
   "wizard.dropOff":        { en: "Drop-off",                  bn: "শপে নিয়ে আসব" },
   /**

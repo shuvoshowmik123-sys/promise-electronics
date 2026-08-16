@@ -152,6 +152,113 @@ describe("free over a threshold", () => {
   });
 });
 
+/**
+ * The discount, set per ring.
+ *
+ * One threshold for the whole city has to be right for one end of Dhaka and is
+ * then wrong for the other: a customer 5km away is worth collecting from on a
+ * modest repair, while the same repair 30km out does not cover the driver's day.
+ */
+describe("each ring carries its own discount threshold", () => {
+  const SHOP = { lat: 23.7333, lng: 90.4167 };
+  // ~7.8km from the shop: inside ring 2, outside ring 1.
+  const RING_TWO = { lat: 23.8036, lng: 90.4167 };
+
+  const settings = S({
+    pickup_ring_fares: [
+      { radiusKm: 5, fare: 150, discountOver: 2000 },
+      { radiusKm: 10, fare: 250, discountOver: 5000 },
+      { radiusKm: 14, fare: 350, discountOver: null },
+      { radiusKm: 20, fare: 450 },
+      { radiusKm: 30, fare: 600 },
+    ],
+  });
+
+  const quote = (repairEstimate: number | null, point = RING_TWO) =>
+    quotePickup({ tier: "flexible", point, origin: SHOP, repairEstimate, settings }) as any;
+
+  it("judges the address against its own ring, not the one next door", () => {
+    // 4000 clears ring 1's threshold and misses ring 2's. An address in ring 2
+    // must be judged by ring 2, or the near threshold leaks outward.
+    const q = quote(4000);
+    expect(q.discountOver).toBe(5000);
+    expect(q.discount).toBe(0);
+    expect(q.amount).toBe(250);
+  });
+
+  it("takes the whole fare off once its own threshold is reached", () => {
+    const q = quote(5000);
+    expect(q.fare).toBe(250);
+    expect(q.discount).toBe(250);
+    expect(q.amount).toBe(0);
+  });
+
+  it("keeps the fare on the quote even when all of it is discounted", () => {
+    /**
+     * The reason this is asserted rather than assumed: a zero amount on its own
+     * says the journey had no value. The customer must be shown what collection
+     * was worth and then shown it being given to them.
+     */
+    const q = quote(9000);
+    expect(q.fare).toBeGreaterThan(0);
+    expect(q.amount).toBe(q.fare - q.discount);
+  });
+
+  it("charges in full where the shop set no threshold", () => {
+    // ~12km out: ring 3, which is deliberately left with no discount.
+    const q = quote(100000, { lat: 23.8413, lng: 90.4167 });
+    expect(q.discountOver).toBeNull();
+    expect(q.discount).toBe(0);
+    expect(q.amount).toBe(350);
+  });
+
+  it("quotes the full fare at booking, when there is no bill yet", () => {
+    /**
+     * The set has not been opened. Quoting a discount off an estimate and then
+     * charging the fare because the repair came in cheaper is how a price stops
+     * being believed — so the promise is stated and the fare is charged.
+     */
+    const q = quote(null);
+    expect(q.amount).toBe(250);
+    expect(q.discount).toBe(0);
+    expect(q.discountOver).toBe(5000);
+  });
+
+  it("falls back to the shop-wide threshold where no ring applies", () => {
+    /**
+     * A hand-priced area override has no threshold of its own. Dropping the
+     * discount for those addresses would quietly withdraw a promise the shop
+     * still makes on the homepage.
+     */
+    const withArea = S({
+      pickup_area_fares: { banani: { fare: 1000, radiusKm: 3 } },
+      pickup_free_over: 3500,
+    });
+    const q = quotePickup({
+      tier: "flexible", point: NEARBY, areaCentres: CENTRES, repairEstimate: 4000, settings: withArea,
+    }) as any;
+    expect(q.source).toBe("area");
+    expect(q.discountOver).toBe(3500);
+    expect(q.discount).toBe(1000);
+    expect(q.amount).toBe(0);
+  });
+
+  it("discounts the tier extra along with the fare", () => {
+    // The extra is part of what the customer was quoted for the journey, so a
+    // part-discounted collection would be a third number nobody agreed to.
+    const withExtra = S({
+      pickup_ring_fares: [{ radiusKm: 10, fare: 250, discountOver: 1000 }],
+      pickup_tier_extras: { flexible: 0, chooseDay: 100, sameDay: 300 },
+    });
+    const q = quotePickup({
+      tier: "sameDay", point: RING_TWO, origin: SHOP, repairEstimate: 1000, settings: withExtra,
+    }) as any;
+    expect(q.fare).toBe(550);
+    expect(q.discount).toBe(550);
+    expect(q.amount).toBe(0);
+  });
+});
+
 describe("the from-price shown before an address is known", () => {
   it("is the cheapest fare anywhere", () => {
     const settings = S({
