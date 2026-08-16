@@ -1983,8 +1983,18 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                             const price = parseFloat(String(item.price).replace(/[^0-9.-]+/g, ""));
                                             const inv = inventoryItems?.find((i: any) => i.id === item.id);
                                             const stock = inv?.stock || 0;
-                                            const isLow = stock <= 5 && stock > 0;
-                                            const isOut = stock < item.quantity;
+                                            /**
+                                             * A journey has no shelf.
+                                             *
+                                             * The pickup fare has no inventory row, so `stock` resolved
+                                             * to 0 and `isOut` to true — and the cart drew the transport
+                                             * line red with a destructive "Stock: 0" badge on every
+                                             * collection billed. It charged correctly and looked broken,
+                                             * which is the kind of thing a cashier learns to distrust.
+                                             */
+                                            const isStockTracked = !item.isPickupFare;
+                                            const isLow = isStockTracked && stock <= 5 && stock > 0;
+                                            const isOut = isStockTracked && stock < item.quantity;
                                             return (
                                                 <div key={item.id} className={`group flex gap-3 items-start p-2.5 rounded-xl border transition-all ${isOut ? 'bg-red-50 border-red-100' : 'bg-white border-slate-100 hover:border-indigo-100 hover:shadow-sm'}`}>
                                                     <div className="w-12 h-12 bg-slate-50 rounded-lg border border-slate-100 overflow-hidden shrink-0 flex items-center justify-center">
