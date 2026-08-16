@@ -72,6 +72,21 @@ describe("no VAT rate is invented by a fallback", () => {
     expect(source).toMatch(/taxRate:\s*0\b/);
   });
 
+  it("the column default was moved to zero too, by migration", () => {
+    /**
+     * The seventh fallback, and the only one outside the code: the DB column
+     * default. Unreachable while every write path passes a rate explicitly, but
+     * that is a property of today's callers rather than of the schema.
+     *
+     * The migration id is asserted, not the required version. Pinning the
+     * version here makes every later migration fail this test for no reason.
+     */
+    expect(read("server/services/main-schema-migrate.service.ts"))
+      .toContain("2026_08_16_pos_tax_rate_default_zero");
+    expect(codeOnly(read("shared/schema.ts")))
+      .toMatch(/taxRate:\s*real\(["']tax_rate["']\)\.default\(0\)/);
+  });
+
   it("the receipt and invoice hide the VAT line when nothing was taxed", () => {
     /**
      * Not merely zero-rated. A permanent "VAT (0%): ৳0" row on every receipt is

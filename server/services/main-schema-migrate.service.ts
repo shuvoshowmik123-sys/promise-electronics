@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_15_dhaka_places";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_16_pos_tax_rate_default_zero";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2283,6 +2283,29 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       await client.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
       await client.query(`CREATE INDEX IF NOT EXISTS idx_dhaka_places_search_trgm
         ON dhaka_places USING gin (search_text gin_trgm_ops)`);
+    },
+  },
+  {
+    id: "2026_08_16_pos_tax_rate_default_zero",
+    description:
+      "pos_transactions.tax_rate defaults to 0, not 5 — no VAT until the shop sets one in System Settings",
+    up: async (client) => {
+      /**
+       * The last place that could invent a tax rate.
+       *
+       * Six application fallbacks defaulted to 5% and were removed; this column
+       * default was the seventh, and the only one outside the code. It is
+       * currently unreachable — every write path passes a rate explicitly — but
+       * "unreachable" is a property of today's callers, not of the schema. A
+       * future insert that omits the column would silently levy 5% VAT on a
+       * shop that charges none, and nothing in the application would show why.
+       *
+       * Existing rows are deliberately left alone. Their stored rate is what
+       * those customers were actually charged and what their receipts say;
+       * rewriting history to match current policy would make the ledger
+       * disagree with paper that is already in people's hands.
+       */
+      await client.query(`ALTER TABLE pos_transactions ALTER COLUMN tax_rate SET DEFAULT 0`);
     },
   },
 ];

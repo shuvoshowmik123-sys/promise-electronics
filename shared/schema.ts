@@ -1365,7 +1365,9 @@ export const posTransactions = pgTable("pos_transactions", {
   linkedJobs: text("linked_jobs"), // JSON string
   subtotal: real("subtotal").notNull(),
   tax: real("tax").notNull(),
-  taxRate: real("tax_rate").default(5),
+  // No VAT until the shop sets a rate in System Settings. This defaulted to 5,
+  // which is a tax nobody chose. Migration: 2026_08_16_pos_tax_rate_default_zero.
+  taxRate: real("tax_rate").default(0),
   discount: real("discount").default(0),
   total: real("total").notNull(),
   paymentMethod: text("payment_method").notNull(),
