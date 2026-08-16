@@ -513,8 +513,26 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
         const cart = cartItems.reduce((s, i) => s + parseFloat(String(i.price).replace(/[^0-9.-]+/g, "")) * i.quantity, 0);
         return cart + linkedJobCharges.reduce((s, j) => s + (j.billedAmount || 0), 0);
     };
-    const calculateTax = (sub: number) => sub * (getVatPercentage() / 100);
-    const calculateTotal = () => { const s = calculateSubtotal(); return s + calculateTax(s) - discount; };
+    /**
+     * VAT is charged on the repair, not on the journey.
+     *
+     * Transport was previously taxed with everything else because it sits in
+     * the same cart: a Tk350 collection added Tk17.50 of VAT the shop had never
+     * decided to charge. Excluded here by the shop's decision.
+     *
+     * Only the taxed BASE changes. The subtotal on screen still shows the full
+     * amount including transport, because that is what the customer is paying
+     * before tax — hiding the fare from the subtotal would misstate the bill to
+     * fix the tax on it.
+     */
+    const calculateTaxableSubtotal = () => {
+        const taxableCart = cartItems
+            .filter((i) => !i.isPickupFare)
+            .reduce((s, i) => s + parseFloat(String(i.price).replace(/[^0-9.-]+/g, "")) * i.quantity, 0);
+        return taxableCart + linkedJobCharges.reduce((s, j) => s + (j.billedAmount || 0), 0);
+    };
+    const calculateTax = () => calculateTaxableSubtotal() * (getVatPercentage() / 100);
+    const calculateTotal = () => calculateSubtotal() + calculateTax() - discount;
 
     // ── Checkout ──
     const openRegisterMutation = useMutation({
@@ -577,7 +595,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     };
 
     const submitCheckout = () => {
-        const subtotal = calculateSubtotal(); const tax = calculateTax(subtotal); const total = calculateTotal(); const vatRate = getVatPercentage();
+        const subtotal = calculateSubtotal(); const tax = calculateTax(); const total = calculateTotal(); const vatRate = getVatPercentage();
         const linkedJobsData = linkedJobCharges.map(j => ({ jobId: j.jobId, serviceItemId: j.serviceItemId, serviceItemName: j.serviceItemName, minPrice: j.minPrice, maxPrice: j.maxPrice, billedAmount: j.billedAmount, customerName: j.customerName, customerPhone: j.customerPhone, customerAddress: j.customerAddress, assistedByNames: j.assistedByNames, serviceWarrantyMonths: j.serviceWarrantyMonths ?? null, partsWarrantyMonths: j.partsWarrantyMonths ?? null }));
 
         checkoutMutation.mutate({
@@ -788,7 +806,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
         });
     };
 
-    const subtotal = calculateSubtotal(); const tax = calculateTax(subtotal); const total = calculateTotal();
+    const subtotal = calculateSubtotal(); const tax = calculateTax(); const total = calculateTotal();
     const cartCount = cartItems.length + linkedJobCharges.length;
     const isCartEmpty = cartItems.length === 0 && linkedJobCharges.length === 0;
     const companyInfo = getCompanyInfo();
