@@ -34,6 +34,7 @@
     "qa:show-trace": "playwright show-trace",
     "db:push": "drizzle-kit push",
     "db:migrate:main": "tsx server/db-migrate-main.ts",
+    "db:migrate:prod": "node scripts/migrate-production.mjs",
     "schema:audit:ledger": "tsx scripts/ledger-reconciliation-audit.ts",
     "schema:adoption:proof": "tsx scripts/disposable-baseline-adoption-proof.ts",
     "schema:adoption:emit-frozen-identity": "tsx scripts/emit-frozen-source-identity.ts",
