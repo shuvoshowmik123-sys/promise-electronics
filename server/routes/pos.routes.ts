@@ -77,7 +77,14 @@ router.post(
   async (req: Request, res: Response) => {
     try {
       const body = {
-        taxRate: 5,
+        /**
+         * A caller that names no tax rate is not taxed at 5%.
+         *
+         * This defaulted to 5, so any client that omitted the field — and the
+         * settlement and quote paths all send 0 explicitly, precisely because
+         * of this — had a rate applied that nobody at the shop had chosen.
+         */
+        taxRate: 0,
         discount: 0,
         paymentStatus: "Paid",
         ...req.body,

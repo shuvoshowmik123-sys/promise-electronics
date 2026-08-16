@@ -146,7 +146,17 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     // ── Helpers ──
     const getCurrencySymbol = () => { const s = settings?.find((s: any) => s.key === "currency_symbol"); return s?.value || "৳"; };
     const getSettingValue = (key: string, def: string) => { const s = settings?.find((s: any) => s.key === key); return s?.value || def; };
-    const getVatPercentage = () => parseFloat(getSettingValue("vat_percentage", "5"));
+    /**
+     * No VAT unless the shop has explicitly set a rate.
+     *
+     * The fallback here was "5", so a shop that had never touched the VAT box
+     * charged 5% on every sale — a tax nobody decided on, invented by a default.
+     * The settings screen has always defaulted its own field to 0, so the two
+     * disagreed and the till won silently.
+     *
+     * Zero is the honest default: a rate that has not been set is not a rate.
+     */
+    const getVatPercentage = () => parseFloat(getSettingValue("vat_percentage", "0")) || 0;
     const getCompanyInfo = () => ({
         name: getSettingValue("site_name", "PROMISE ELECTRONICS"), logo: getSettingValue("logo_url", ""),
         address: getSettingValue("company_address", "Dhaka, Bangladesh"), phone: getSettingValue("support_phone", "+880 1700-000000"),
@@ -596,7 +606,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                 customerPhone: response.customerPhone, customerAddress: response.customerAddress,
                 items: typeof response.items === "string" ? JSON.parse(response.items) : response.items || [],
                 linkedJobs: response.linkedJobs ? (typeof response.linkedJobs === "string" ? JSON.parse(response.linkedJobs) : response.linkedJobs) : [],
-                subtotal: String(response.subtotal), tax: String(response.tax), taxRate: String(response.taxRate || "5"),
+                subtotal: String(response.subtotal), tax: String(response.tax), taxRate: String(response.taxRate || "0"),
                 discount: String(response.discount || "0"), total: String(response.total), paymentMethod: response.paymentMethod,
                 paymentStatus: response.paymentStatus || (response.paymentMethod === "Due" ? "Due" : "Paid"), createdAt: String(response.createdAt),
             };
@@ -1783,7 +1793,7 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                 <div className="rounded-3xl bg-slate-950 p-4 text-white">
                                     <div className="space-y-2 text-sm">
                                         <div className="flex justify-between text-slate-300"><span>Subtotal</span><span>{getCurrencySymbol()}{subtotal.toFixed(0)}</span></div>
-                                        <div className="flex justify-between text-slate-300"><span>VAT</span><span>{getCurrencySymbol()}{tax.toFixed(0)}</span></div>
+                                        {tax > 0 && <div className="flex justify-between text-slate-300"><span>VAT</span><span>{getCurrencySymbol()}{tax.toFixed(0)}</span></div>}
                                         {pickupDiscount > 0 && <div className="flex justify-between text-emerald-200"><span>Pickup &amp; drop discount</span><span>-{getCurrencySymbol()}{pickupDiscount.toFixed(0)}</span></div>}
                                         {discount > 0 && <div className="flex justify-between text-rose-200"><span>Discount</span><span>-{getCurrencySymbol()}{discount.toFixed(0)}</span></div>}
                                     </div>
@@ -2148,10 +2158,14 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
                                                 <span>Subtotal</span>
                                                 <span className="font-medium text-slate-700 tabular-nums">{getCurrencySymbol()}{subtotal.toFixed(2)}</span>
                                             </div>
-                                            <div className="flex justify-between text-xs text-slate-500">
-                                                <span>VAT ({getVatPercentage()}%)</span>
-                                                <span className="font-medium text-slate-700 tabular-nums">{getCurrencySymbol()}{tax.toFixed(2)}</span>
-                                            </div>
+                                            {/* Hidden entirely when the shop charges no VAT,
+                                                rather than a permanent "VAT (0%): ৳0" row. */}
+                                            {tax > 0 && (
+                                                <div className="flex justify-between text-xs text-slate-500">
+                                                    <span>VAT ({getVatPercentage()}%)</span>
+                                                    <span className="font-medium text-slate-700 tabular-nums">{getCurrencySymbol()}{tax.toFixed(2)}</span>
+                                                </div>
+                                            )}
                                             {/*
                                               * Its own line, above the hand-typed discount.
                                               *

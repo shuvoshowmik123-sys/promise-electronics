@@ -132,10 +132,21 @@ export const Receipt = forwardRef<HTMLDivElement, ReceiptProps>(({ data, company
           <span>Subtotal:</span>
           <span data-testid="receipt-subtotal">৳{parseFloat(data.subtotal).toFixed(0)}</span>
         </div>
-        <div className="flex justify-between">
-          <span>VAT ({data.taxRate || "5"}%):</span>
-          <span data-testid="receipt-tax">৳{parseFloat(data.tax).toFixed(0)}</span>
-        </div>
+        {/*
+          * No VAT line unless VAT was actually charged.
+          *
+          * This read `data.taxRate || "5"`, so a transaction that stored no rate
+          * printed "VAT (5%)" on the customer's receipt — a tax rate invented by
+          * a fallback, on a shop that does not charge VAT. A zero-rated line
+          * saying "VAT (0%): ৳0" would be honest but is still noise on every
+          * receipt, so the row is simply absent when there is no tax.
+          */}
+        {parseFloat(data.tax) > 0 && (
+          <div className="flex justify-between">
+            <span>VAT ({data.taxRate || "0"}%):</span>
+            <span data-testid="receipt-tax">৳{parseFloat(data.tax).toFixed(0)}</span>
+          </div>
+        )}
         {parseFloat(data.discount) > 0 && (
           <div className="flex justify-between">
             <span>Discount:</span>

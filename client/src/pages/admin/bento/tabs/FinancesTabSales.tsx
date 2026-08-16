@@ -624,7 +624,9 @@ export function SalesTab({
                                 </div>
                                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-1.5">
                                     <div className="flex justify-between text-xs text-slate-600"><span>Subtotal</span><span>৳{parseFloat(tx.subtotal).toLocaleString()}</span></div>
-                                    <div className="flex justify-between text-xs text-slate-600"><span>VAT ({tx.taxRate || "5"}%)</span><span>৳{parseFloat(tx.tax).toLocaleString()}</span></div>
+                                    {/* Only when tax was actually charged. A "5%" fallback
+                                        here reported VAT on sales that never had any. */}
+                                    {parseFloat(tx.tax) > 0 && <div className="flex justify-between text-xs text-slate-600"><span>VAT ({tx.taxRate || "0"}%)</span><span>৳{parseFloat(tx.tax).toLocaleString()}</span></div>}
                                     {parseFloat(tx.discount) > 0 && <div className="flex justify-between text-xs text-emerald-600"><span>Discount</span><span>-৳{parseFloat(tx.discount).toLocaleString()}</span></div>}
                                     <div className="flex justify-between text-base font-black text-slate-900 border-t border-slate-200 pt-1.5"><span>Total</span><span>৳{parseFloat(tx.total).toLocaleString()}</span></div>
                                 </div>

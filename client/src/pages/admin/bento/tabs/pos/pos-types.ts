@@ -138,7 +138,9 @@ export const parseTransactionForReprint = (transaction: any): TransactionData =>
         customer: transaction.customer, customerPhone: transaction.customerPhone || null,
         customerAddress: transaction.customerAddress || null, items: parsedItems,
         linkedJobs: parsedLinkedJobs, subtotal: transaction.subtotal,
-        tax: transaction.tax, taxRate: transaction.taxRate || "5",
+        // Never fall back to a rate. A stored transaction with no rate was not
+        // taxed at 5% — it was not taxed.
+        tax: transaction.tax, taxRate: transaction.taxRate || "0",
         discount: transaction.discount || "0", total: transaction.total,
         paymentMethod: transaction.paymentMethod,
         paymentStatus: transaction.paymentStatus || (transaction.paymentMethod === "Due" ? "Due" : "Paid"),

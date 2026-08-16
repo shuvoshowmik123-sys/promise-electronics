@@ -233,10 +233,14 @@ export const Invoice = forwardRef<HTMLDivElement, InvoiceProps>(({ data, company
             <span className="text-gray-600">Subtotal</span>
             <span data-testid="invoice-subtotal">৳{parseFloat(data.subtotal).toFixed(2)}</span>
           </div>
-          <div className="flex justify-between py-2 text-sm">
-            <span className="text-gray-600">VAT ({data.taxRate || "5"}%)</span>
-            <span data-testid="invoice-tax">৳{parseFloat(data.tax).toFixed(2)}</span>
-          </div>
+          {/* Absent unless VAT was actually charged — see Receipt.tsx. A
+              fallback rate must never print a tax the shop did not levy. */}
+          {parseFloat(data.tax) > 0 && (
+            <div className="flex justify-between py-2 text-sm">
+              <span className="text-gray-600">VAT ({data.taxRate || "0"}%)</span>
+              <span data-testid="invoice-tax">৳{parseFloat(data.tax).toFixed(2)}</span>
+            </div>
+          )}
           {parseFloat(data.discount) > 0 && (
             <div className="flex justify-between py-2 text-sm text-green-600">
               <span>Discount</span>
