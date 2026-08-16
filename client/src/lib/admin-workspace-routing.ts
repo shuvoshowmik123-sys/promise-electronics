@@ -254,6 +254,8 @@ export function parseAdminNotificationLink(
   if (raw.startsWith("/admin/")) {
     const rest = raw.slice("/admin/".length);
     const pathOnly = rest.split("?")[0] || "";
+    const restQuery = rest.includes("?") ? rest.slice(rest.indexOf("?") + 1) : "";
+    const restTarget = new URLSearchParams(restQuery).get("target") || undefined;
     const first = pathOnly.split("/").filter(Boolean)[0] || "dashboard";
     if (first === "workbench") {
       return { kind: "standalone", path: "/admin/workbench" };
@@ -265,12 +267,24 @@ export function parseAdminNotificationLink(
       kind: "workspace",
       tabId: normalizeAdminTabId(first),
       search: linkId || undefined,
+      target: restTarget || undefined,
     };
   }
 
-  // Plain tab id (service-requests, attendance, jobs, salary, …)
+  // Plain tab id (service-requests, attendance, jobs, salary, …), optionally
+  // carrying a query — "finance?target=pending-costs".
+  //
+  // That shape is not hypothetical: NotificationPanel strips the "/admin/"
+  // prefix before this parser ever runs, so a link written as
+  // /admin/finance?target=pending-costs arrives here already reduced. The
+  // query was then discarded by split("?"), which is why the 19:00 buying-price
+  // nudge landed on Finance's default tab instead of the one screen it was
+  // asking the person to fill in — the exact "reminder that opens a home page"
+  // that screen's own comment warns about.
   if (!raw.includes("/") && !raw.includes("://")) {
     const tabPart = raw.split("?")[0];
+    const query = raw.includes("?") ? raw.slice(raw.indexOf("?") + 1) : "";
+    const targetParam = new URLSearchParams(query).get("target") || undefined;
     const tabId = normalizeAdminTabId(tabPart);
     if (tabId === "corp-msg") {
       return {
@@ -284,6 +298,7 @@ export function parseAdminNotificationLink(
       kind: "workspace",
       tabId,
       search: linkId || undefined,
+      target: targetParam || undefined,
     };
   }
 
