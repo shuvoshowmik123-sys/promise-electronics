@@ -52,7 +52,8 @@ function getServiceFeatures(service: ServiceCatalog): string[] {
   return [
     "Free diagnosis and inspection",
     "90-day service warranty",
-    "Free pickup & delivery in Dhaka",
+    // Not "free" — collection is priced by distance and quoted before booking.
+    "Pickup & delivery across Dhaka",
     "Expert certified technicians"
   ];
 }

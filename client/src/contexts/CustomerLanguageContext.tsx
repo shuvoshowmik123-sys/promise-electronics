@@ -541,7 +541,15 @@ const translations = {
   "services.title":      { en: "Expert TV & Electronics", bn: "দক্ষ TV ও ইলেকট্রনিক্স" },
   "services.titleAccent": { en: "Repair Services",     bn: "রিপেয়ার সার্ভিস" },
   "services.subtitle":   { en: "Get transparent pricing with no hidden fees. Request a free quote and we'll inspect your device before providing a final price.", bn: "লুকানো খরচ ছাড়া স্বচ্ছ দাম পান। ফ্রি কোটেশন নিন, আমরা চূড়ান্ত দামের আগে ডিভাইস পরীক্ষা করব।" },
-  "services.freePickup": { en: "Free Pickup Available", bn: "ফ্রি পিকআপ আছে" },
+  /*
+   * Was "Free Pickup Available" / "ফ্রি পিকআপ আছে".
+   *
+   * The shop now charges for collection — ৳250 to Gulshan — so this was not a
+   * wording problem, it was the site promising one thing while the till asked
+   * for another. A customer who read it has a fair argument for refusing to
+   * pay, and they would be right.
+   */
+  "services.freePickup": { en: "Pickup & Drop Available", bn: "পিকআপ ও ড্রপ সুবিধা আছে" },
   "services.warranty":   { en: "90-Day Warranty",      bn: "৯০ দিনের ওয়ারেন্টি" },
   "services.technicians": { en: "Expert Technicians",  bn: "দক্ষ টেকনিশিয়ান" },
   "services.search":     { en: "Search services...",   bn: "সার্ভিস খুঁজুন..." },
