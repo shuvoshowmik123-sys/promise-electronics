@@ -18,6 +18,55 @@ import { normalizePhone } from '../utils/phone.js';
 import { getPickupQuote } from './pickup-quote.service.js';
 import { toPickupTier } from '../../shared/pickup-pricing.js';
 
+/**
+ * The repair bill at which this request's collection fare comes off in full.
+ *
+ * Read outside any transaction, deliberately — see the caller. Returns null
+ * when there is genuinely no discount on offer for the address, and ALSO when
+ * the lookup fails, because a job must never be blocked by a pricing question.
+ * The difference is that a failure is now logged as a failure, loudly, instead
+ * of being indistinguishable from "no discount configured".
+ */
+async function resolvePickupDiscountThreshold(serviceRequestId: string): Promise<number | null> {
+    try {
+        const res = await db.execute(
+            sql`SELECT pickup_cost, pickup_latitude, pickup_longitude, pickup_tier
+                FROM service_requests WHERE id = ${serviceRequestId}`,
+        );
+        const row = ((res as any).rows ?? res)?.[0];
+        if (!row) return null;
+
+        const cost = Number(row.pickup_cost);
+        const lat = Number(row.pickup_latitude);
+        const lng = Number(row.pickup_longitude);
+        // A drop-off has no journey to discount, and an address with no
+        // coordinates cannot be placed in a ring.
+        if (!Number.isFinite(cost) || cost <= 0) return null;
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+
+        const quote = await getPickupQuote({
+            tier: toPickupTier(row.pickup_tier),
+            point: { lat, lng },
+        });
+        if (!quote.configured) {
+            console.warn(
+                `[JobService] pickup discount threshold unavailable for ${serviceRequestId}: no fare is configured. ` +
+                `The collection will be charged in full.`,
+            );
+            return null;
+        }
+        return quote.discountOver;
+    } catch (error) {
+        console.error(
+            `[JobService] FAILED to resolve the pickup discount threshold for ${serviceRequestId}. ` +
+            `The job will be created and the collection charged in full, so no customer is overcharged — ` +
+            `but every discount is silently off until this is fixed.`,
+            error,
+        );
+        return null;
+    }
+}
+
 class ConversionError extends Error {
     status: number;
     code: string;
@@ -408,6 +457,21 @@ export class JobService {
     ): Promise<{ serviceRequest: ServiceRequest; jobTicket: JobTicket; idempotent: boolean }> {
         const { isRetailQuoteRow } = await import("./retail-quote.service.js");
 
+        /**
+         * The discount threshold is resolved BEFORE the transaction opens.
+         *
+         * It used to be resolved inside it, and that silently destroyed the
+         * feature. `getPickupQuote` runs three of its own queries; asking for
+         * those while a transaction already holds a connection stalls under a
+         * small pool, the call fails, and the catch below wrote `null` — so
+         * every job was created with no threshold and no discount ever fired.
+         * QA read the ৳0 discount as "threshold not reached" and passed it.
+         *
+         * The lesson is not only about pool size: a fallback that hides a total
+         * failure is worse than no fallback. This one now shouts.
+         */
+        const pickupDiscountOver = await resolvePickupDiscountThreshold(id);
+
         const result = await db.transaction(async (tx) => {
             // 1. Lock the service request row
             const lockRes = await tx.execute(
@@ -532,21 +596,6 @@ export class JobService {
              * charged in full, which is the state everything was in before
              * discounts existed — the customer is never overcharged by it.
              */
-            let pickupDiscountOver: number | null = null;
-            const pickupLat = Number(raw.pickup_latitude ?? raw.pickupLatitude);
-            const pickupLng = Number(raw.pickup_longitude ?? raw.pickupLongitude);
-            if (Number.isFinite(pickupCost) && pickupCost > 0 && Number.isFinite(pickupLat) && Number.isFinite(pickupLng)) {
-                try {
-                    const quote = await getPickupQuote({
-                        tier: toPickupTier(raw.pickup_tier ?? raw.pickupTier),
-                        point: { lat: pickupLat, lng: pickupLng },
-                    });
-                    if (quote.configured) pickupDiscountOver = quote.discountOver;
-                } catch (error) {
-                    console.error("[JobService] could not read the pickup discount threshold; the fare will be charged in full:", error);
-                }
-            }
-
             const pickupCharges =
                 Number.isFinite(pickupCost) && pickupCost > 0
                     ? [{

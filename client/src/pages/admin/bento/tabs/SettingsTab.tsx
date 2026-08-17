@@ -97,6 +97,11 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     const [businessHours, setBusinessHours] = useState("");
     const [currencySymbol, setCurrencySymbol] = useState("৳");
     const [vatPercentage, setVatPercentage] = useState("0");
+    /**
+     * Off until the shop turns it on. The rate is kept either way, so switching
+     * VAT off does not lose the figure and switching it back on needs no memory.
+     */
+    const [vatEnabled, setVatEnabled] = useState(false);
     const [timezone, setTimezone] = useState("asia-dhaka");
     const [logoUrl, setLogoUrl] = useState("");
     // Business Identity extended fields
@@ -336,6 +341,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         case "service_center_google_place_id": setServiceCenterGooglePlaceId(val); break;
                         case "currency_symbol": setCurrencySymbol(val); break;
                         case "vat_percentage": setVatPercentage(val); break;
+                        case "vat_enabled": setVatEnabled(val === "true"); break;
                         case "timezone": setTimezone(val); break;
                         case "logo_url": setLogoUrl(val); break;
                         case "bkash_send_money_number": setBkashSendMoney(typeof val === "string" ? val : ""); break;
@@ -437,6 +443,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                 service_center_google_place_id: serviceCenterGooglePlaceId.trim(),
                 currency_symbol: currencySymbol,
                 vat_percentage: vatPercentage,
+                vat_enabled: String(vatEnabled),
                 timezone: timezone,
                 logo_url: logoUrl,
                 bkash_send_money_number: bkashSendMoney,
@@ -1682,9 +1689,27 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     <Input placeholder="$" value={currencySymbol} onChange={(e) => setCurrencySymbol(e.target.value)} className="bg-slate-50 focus:bg-white font-mono text-lg transition-colors" />
                                 </div>
                                 <div className="space-y-2">
+                                    {/*
+                                      * The switch, then the rate — in that order, because
+                                      * "do we charge VAT at all" is the question staff
+                                      * actually ask, and the rate is meaningless until it
+                                      * is answered. The rate stays editable while off so
+                                      * the figure is not lost when VAT is switched back on.
+                                      */}
+                                    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                        <div className="min-w-0 pr-3">
+                                            <label className="text-sm font-semibold text-slate-700">Charge VAT</label>
+                                            <p className="text-xs text-slate-500 mt-0.5">
+                                                {vatEnabled
+                                                    ? `On — ${vatPercentage || 0}% is added to repairs and parts. Transport is never taxed.`
+                                                    : "Off — no VAT is calculated, and no VAT line appears on any bill or receipt."}
+                                            </p>
+                                        </div>
+                                        <Switch checked={vatEnabled} onCheckedChange={setVatEnabled} />
+                                    </div>
                                     <label className="text-sm font-semibold text-slate-700">VAT / Tax Percentage</label>
                                     <div className="relative">
-                                        <Input type="number" step="0.1" placeholder="0" value={vatPercentage} onChange={(e) => setVatPercentage(e.target.value)} className="bg-slate-50 focus:bg-white pr-8 transition-colors" />
+                                        <Input type="number" step="0.1" placeholder="0" value={vatPercentage} disabled={!vatEnabled} onChange={(e) => setVatPercentage(e.target.value)} className="bg-slate-50 focus:bg-white pr-8 transition-colors disabled:opacity-60" />
                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
                                     </div>
                                 </div>
@@ -1739,9 +1764,27 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                     <Input placeholder="$" value={currencySymbol} onChange={(e) => setCurrencySymbol(e.target.value)} className="bg-slate-50 focus:bg-white font-mono text-lg transition-colors" />
                                 </div>
                                 <div className="space-y-2">
+                                    {/*
+                                      * The switch, then the rate — in that order, because
+                                      * "do we charge VAT at all" is the question staff
+                                      * actually ask, and the rate is meaningless until it
+                                      * is answered. The rate stays editable while off so
+                                      * the figure is not lost when VAT is switched back on.
+                                      */}
+                                    <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5">
+                                        <div className="min-w-0 pr-3">
+                                            <label className="text-sm font-semibold text-slate-700">Charge VAT</label>
+                                            <p className="text-xs text-slate-500 mt-0.5">
+                                                {vatEnabled
+                                                    ? `On — ${vatPercentage || 0}% is added to repairs and parts. Transport is never taxed.`
+                                                    : "Off — no VAT is calculated, and no VAT line appears on any bill or receipt."}
+                                            </p>
+                                        </div>
+                                        <Switch checked={vatEnabled} onCheckedChange={setVatEnabled} />
+                                    </div>
                                     <label className="text-sm font-semibold text-slate-700">VAT / Tax Percentage</label>
                                     <div className="relative">
-                                        <Input type="number" step="0.1" placeholder="0" value={vatPercentage} onChange={(e) => setVatPercentage(e.target.value)} className="bg-slate-50 focus:bg-white pr-8 transition-colors" />
+                                        <Input type="number" step="0.1" placeholder="0" value={vatPercentage} disabled={!vatEnabled} onChange={(e) => setVatPercentage(e.target.value)} className="bg-slate-50 focus:bg-white pr-8 transition-colors disabled:opacity-60" />
                                         <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-bold">%</span>
                                     </div>
                                 </div>

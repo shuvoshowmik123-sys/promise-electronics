@@ -147,16 +147,21 @@ export default function PosTab({ initialSearchQuery, initialTransactionId, onSea
     const getCurrencySymbol = () => { const s = settings?.find((s: any) => s.key === "currency_symbol"); return s?.value || "৳"; };
     const getSettingValue = (key: string, def: string) => { const s = settings?.find((s: any) => s.key === key); return s?.value || def; };
     /**
-     * No VAT unless the shop has explicitly set a rate.
+     * VAT applies only when the shop has switched it on AND set a rate.
      *
-     * The fallback here was "5", so a shop that had never touched the VAT box
-     * charged 5% on every sale — a tax nobody decided on, invented by a default.
-     * The settings screen has always defaulted its own field to 0, so the two
-     * disagreed and the till won silently.
+     * Two separate questions, deliberately. The rate answers "how much"; the
+     * toggle answers "at all". Collapsing them into one number means switching
+     * VAT off destroys the rate, and switching it back on means somebody has to
+     * remember what it used to be.
      *
-     * Zero is the honest default: a rate that has not been set is not a rate.
+     * The toggle defaults to OFF. A shop that has never opened the VAT screen
+     * has not decided to charge tax, and the till must not decide for it — this
+     * is the same mistake the old hardcoded 5% made, and it charged customers
+     * a tax nobody had chosen.
      */
-    const getVatPercentage = () => parseFloat(getSettingValue("vat_percentage", "0")) || 0;
+    const isVatEnabled = () => getSettingValue("vat_enabled", "false") === "true";
+    const getVatPercentage = () =>
+        isVatEnabled() ? parseFloat(getSettingValue("vat_percentage", "0")) || 0 : 0;
     const getCompanyInfo = () => ({
         name: getSettingValue("site_name", "PROMISE ELECTRONICS"), logo: getSettingValue("logo_url", ""),
         address: getSettingValue("company_address", "Dhaka, Bangladesh"), phone: getSettingValue("support_phone", "+880 1700-000000"),

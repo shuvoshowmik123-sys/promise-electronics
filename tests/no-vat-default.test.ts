@@ -87,6 +87,20 @@ describe("no VAT rate is invented by a fallback", () => {
       .toMatch(/taxRate:\s*real\(["']tax_rate["']\)\.default\(0\)/);
   });
 
+  it("VAT is gated behind an explicit switch, defaulting to off", () => {
+    /**
+     * The rate alone is not enough. Switching VAT off by typing 0 loses the
+     * rate the shop configured, so a toggle carries the "at all" decision while
+     * the rate carries the "how much" — and a shop that has never opened the
+     * screen charges nothing, because it has decided nothing.
+     */
+    const pos = codeOnly(read("client/src/pages/admin/bento/tabs/PosTab.tsx"));
+    expect(pos).toMatch(/getSettingValue\(["']vat_enabled["'],\s*["']false["']\)/);
+    // The rate must be reachable only through the toggle.
+    expect(pos).toMatch(/isVatEnabled\(\)\s*\?\s*parseFloat/);
+    expect(codeOnly(read("server/routes/settings.routes.ts"))).toContain("vat_enabled");
+  });
+
   it("the receipt and invoice hide the VAT line when nothing was taxed", () => {
     /**
      * Not merely zero-rated. A permanent "VAT (0%): ৳0" row on every receipt is

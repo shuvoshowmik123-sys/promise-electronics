@@ -40,6 +40,16 @@ const ALLOWED_SETTING_KEYS = [
     'business_hours',
     'currency_symbol',
     'vat_percentage',
+    /**
+     * The master switch for VAT.
+     *
+     * Separate from the rate on purpose. Turning VAT off by typing 0 into the
+     * rate loses the rate the shop had configured, so switching it back on
+     * means remembering what it used to be. A toggle keeps the rate intact
+     * while the mechanism is off — and makes "we do not charge VAT" a stated
+     * decision rather than something inferred from a zero.
+     */
+    'vat_enabled',
     'timezone',
     'hero_slides',
     'banner_enabled',
