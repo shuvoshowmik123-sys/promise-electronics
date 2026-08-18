@@ -65,6 +65,31 @@ export const serviceRequestLimiter = rateLimit({
 });
 
 /**
+ * Rate limiter for the public part-request form.
+ *
+ * This endpoint is unauthenticated and writes to the table the shop reads to
+ * decide what stock to import. Poisoning it is not a data breach — it is
+ * worse in a quiet way: a few hundred fake requests for one part and the shop
+ * spends real money importing something nobody wants, having been told by its
+ * own system that seventeen people were waiting.
+ *
+ * Twelve an hour per IP. A household with several broken televisions stays
+ * comfortably under it; a script does not.
+ */
+export const partRequestLimiter = rateLimit({
+    windowMs: 60 * 60 * 1000, // 1 hour
+    max: 12,
+    message: {
+        error: 'Too many part requests',
+        message: 'You can send up to 12 part requests per hour. Please try again later, or call us.',
+        retryAfter: 3600,
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: () => process.env.NODE_ENV === 'test',
+});
+
+/**
  * Rate limiter for file uploads
  * Prevents storage abuse
  * Allows 20 uploads per hour per IP

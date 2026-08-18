@@ -28,6 +28,7 @@ const canViewDemand = requireGranularPermission("partsDemand.view");
 const canManageDemand = requireGranularPermission("partsDemand.manage");
 import { normalizePhone } from "../utils/phone.js";
 import { logRouteError } from "../utils/route-error.js";
+import { partRequestLimiter } from "./middleware/rate-limit.js";
 
 const router = Router();
 
@@ -37,7 +38,7 @@ function text(value: unknown, max: number): string | null {
     return s ? s.slice(0, max) : null;
 }
 
-router.post("/api/public/part-requests", async (req: Request, res: Response) => {
+router.post("/api/public/part-requests", partRequestLimiter, async (req: Request, res: Response) => {
     try {
         const body = (req.body ?? {}) as Record<string, unknown>;
 
