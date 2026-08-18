@@ -1898,6 +1898,86 @@ export const insertSparePartOrderSchema = createInsertSchema(sparePartOrders).om
 export type InsertSparePartOrder = z.infer<typeof insertSparePartOrderSchema>;
 export type SparePartOrder = typeof sparePartOrders.$inferSelect;
 
+/**
+ * A part a customer wants that the shop does not stock.
+ *
+ * This is a demand sensor, not a wishlist. The shop's whole problem is knowing
+ * what to import before spending money on it, and the honest answer has always
+ * been a guess. Seventeen people asking for the same 43-inch Samsung panel is
+ * not a guess.
+ *
+ * Brand, size and part are chosen from lists rather than typed, which is the
+ * entire reason this works. A customer who picks "Display" can never be counted
+ * separately from one who would have written "screen", "panel" or "স্ক্রিন", so
+ * the grouping is exact without any matching, fuzzy logic or AI. The free-text
+ * model number is extra detail for the person making the call, never the thing
+ * the counting depends on.
+ *
+ * Nothing here is sent to the customer automatically. Staff read the group and
+ * ring them. That is deliberate — a shop that promises an automatic alert and
+ * fails to send it has done worse than never offering.
+ */
+export const partRequests = pgTable("part_requests", {
+  id: text("id").primaryKey(),
+
+  // The three fields the demand board groups on. All chosen from a list.
+  brand: text("brand").notNull(),
+  screenSize: text("screen_size").notNull(),
+  partName: text("part_name").notNull(),
+
+  /** Model number as typed. Detail for the call, never used for grouping. */
+  modelNumber: text("model_number"),
+  /** Panel model printed on the panel itself — only experts know this. */
+  panelModel: text("panel_model"),
+  /** A photo of the label or the fault identifies a part better than words. */
+  photoUrl: text("photo_url"),
+  note: text("note"),
+
+  customerName: text("customer_name"),
+  /** How staff reach them. The whole point of collecting the request. */
+  phone: text("phone").notNull(),
+  phoneNormalized: text("phone_normalized"),
+  whatsapp: text("whatsapp"),
+
+  /**
+   * Where the shop is with this person.
+   *
+   * new      nobody has looked yet
+   * contacted staff has spoken to them
+   * sourcing we decided to bring it in
+   * fulfilled they bought it
+   * closed    they no longer want it, or we cannot get it
+   */
+  status: text("status").notNull().default("new"),
+  staffNote: text("staff_note"),
+  contactedAt: timestamp("contacted_at"),
+  contactedBy: text("contacted_by"),
+
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  // The demand board reads by group, and the group is these three columns.
+  demandIdx: index("idx_part_requests_demand").on(table.brand, table.screenSize, table.partName),
+  statusIdx: index("idx_part_requests_status").on(table.status),
+  createdIdx: index("idx_part_requests_created").on(table.createdAt),
+  // One person asking twice in a week is one demand signal, not two.
+  phoneIdx: index("idx_part_requests_phone").on(table.phoneNormalized),
+}));
+
+export const insertPartRequestSchema = createInsertSchema(partRequests).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  status: true,
+  staffNote: true,
+  contactedAt: true,
+  contactedBy: true,
+  phoneNormalized: true,
+});
+export type InsertPartRequest = z.infer<typeof insertPartRequestSchema>;
+export type PartRequest = typeof partRequests.$inferSelect;
+
+
 // Policies Table
 export const policies = pgTable("policies", {
   id: text("id").primaryKey(),

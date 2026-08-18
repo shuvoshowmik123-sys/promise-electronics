@@ -139,6 +139,8 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
     const [serviceCategories, setServiceCategories] = useState<string[]>([]);
     const [shopCategories, setShopCategories] = useState<string[]>([]);
     const [tvBrands, setTvBrands] = useState<string[]>([]);
+    /** Parts a customer may ask us to source. Shop-edited, never hardcoded. */
+    const [tvParts, setTvParts] = useState<string[]>([]);
     const [tvInches, setTvInches] = useState<string[]>([]); // Renamed from tvSizes to match prop
     const [commonSymptoms, setCommonSymptoms] = useState<string[]>([]);
     const [serviceFilterCategories, setServiceFilterCategories] = useState<string[]>([]);
@@ -358,6 +360,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         case "service_categories": setServiceCategories(parse(val, [])); break;
                         case "shop_categories": setShopCategories(parse(val, [])); break;
                         case "tv_brands": setTvBrands(parse(val, [])); break;
+                        case "tv_parts": setTvParts(parse(val, [])); break;
 
                         case "tv_sizes": setTvInches(parse(val, [])); break;
 
@@ -461,6 +464,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                 service_categories: JSON.stringify(serviceCategories),
                 shop_categories: JSON.stringify(shopCategories),
                 tv_brands: JSON.stringify(tvBrands),
+                tv_parts: JSON.stringify(tvParts),
 
                 tv_sizes: JSON.stringify(tvInches),
 
@@ -640,6 +644,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
         { label: "Service", count: serviceCategories.length, icon: Wrench, color: "text-blue-500", bg: "bg-blue-50" },
         { label: "Shop", count: shopCategories.length, icon: ShoppingBag, color: "text-emerald-500", bg: "bg-emerald-50" },
         { label: "Brands", count: tvBrands.length, icon: Tv, color: "text-purple-500", bg: "bg-purple-50" },
+        { label: "Parts", count: tvParts.length, icon: Wrench, color: "text-orange-500", bg: "bg-orange-50" },
         { label: "Sizes", count: tvInches.length, icon: Ruler, color: "text-amber-500", bg: "bg-amber-50" },
         { label: "Symptoms", count: commonSymptoms.length, icon: AlertCircle, color: "text-rose-500", bg: "bg-rose-50" },
         { label: "Filters", count: serviceFilterCategories.length, icon: Filter, color: "text-cyan-500", bg: "bg-cyan-50" },
@@ -1990,6 +1995,7 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                         { value: "service", label: "Service" },
                                         { value: "shop", label: "Shop" },
                                         { value: "brands", label: "Brands" },
+                                        { value: "parts", label: "Parts" },
                                         { value: "sizes", label: "Sizes" },
                                         { value: "symptoms", label: "Symptoms" },
                                         { value: "filters", label: "Filters" },
@@ -2021,6 +2027,9 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                                 )}
                                 {mobileCatalogTab === "brands" && (
                                     <TagListCard title="TV Brands" icon={<Tv className="w-5 h-5 text-purple-500" />} items={tvBrands} setItems={setTvBrands} placeholder="e.g. Samsung, LG, Sony" accentColor="purple" />
+                                )}
+                                {mobileCatalogTab === "parts" && (
+                                    <TagListCard title="TV Parts" icon={<Wrench className="w-5 h-5 text-orange-500" />} items={tvParts} setItems={setTvParts} placeholder="e.g. Display, Backlight, Power board" accentColor="amber" />
                                 )}
                                 {mobileCatalogTab === "sizes" && (
                                     <TagListCard title="TV Sizes (Inches)" icon={<Ruler className="w-5 h-5 text-amber-500" />} items={tvInches} setItems={setTvInches} placeholder="e.g. 32, 43, 55" accentColor="amber" />

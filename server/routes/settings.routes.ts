@@ -89,6 +89,16 @@ const ALLOWED_SETTING_KEYS = [
     'tv_sizes',
     'common_symptoms',
     'service_filter_categories',
+    /**
+     * The parts a customer can ask us to source.
+     *
+     * A shop-edited list rather than a constant, so the options follow what
+     * the shop actually stocks. It is also what makes the demand board work:
+     * a customer who picks 'Display' from a list can never be counted apart
+     * from one who would have typed 'screen'. The grouping problem is solved
+     * before it starts.
+     */
+    'tv_parts',
     'repair_price_matrix',
 
     // CMS / Home
@@ -206,6 +216,8 @@ const PUBLIC_SETTING_KEYS = [
     // Service Catalogs (needed by repair form)
     'tv_brands', 'tv_sizes', 'common_symptoms', 'service_categories',
     'service_filter_categories', 'shop_categories', 'repair_price_matrix',
+    // Needed by the public part-request form.
+    'tv_parts',
     // CMS / Home
     'info_boxes', 'homepage_stats', 'faq_items', 'homepage_contact_info',
     'service_areas', 'homepage_brands', 'home_problems_list',

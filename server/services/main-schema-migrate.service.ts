@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_16_pos_tax_rate_default_zero";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_19_part_requests";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2306,6 +2306,52 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
        * disagree with paper that is already in people's hands.
        */
       await client.query(`ALTER TABLE pos_transactions ALTER COLUMN tax_rate SET DEFAULT 0`);
+    },
+  },
+  {
+    id: "2026_08_19_part_requests",
+    description:
+      "part_requests — customer demand for parts the shop does not stock, grouped by brand, size and part",
+    up: async (client) => {
+      /**
+       * A demand sensor for buying decisions.
+       *
+       * brand, screen_size and part_name are chosen from shop-edited lists in
+       * the customer form, never typed. That is what makes the grouping exact
+       * without fuzzy matching: "Display" and "screen" cannot become two rows,
+       * because "screen" was never an option to begin with.
+       */
+      await client.query(`CREATE TABLE IF NOT EXISTS part_requests (
+        id TEXT PRIMARY KEY,
+        brand TEXT NOT NULL,
+        screen_size TEXT NOT NULL,
+        part_name TEXT NOT NULL,
+        model_number TEXT,
+        panel_model TEXT,
+        photo_url TEXT,
+        note TEXT,
+        customer_name TEXT,
+        phone TEXT NOT NULL,
+        phone_normalized TEXT,
+        whatsapp TEXT,
+        status TEXT NOT NULL DEFAULT 'new',
+        staff_note TEXT,
+        contacted_at TIMESTAMP,
+        contacted_by TEXT,
+        created_at TIMESTAMP NOT NULL DEFAULT now(),
+        updated_at TIMESTAMP NOT NULL DEFAULT now()
+      )`);
+
+      // The board reads by group, so the group is the index.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_part_requests_demand
+        ON part_requests (brand, screen_size, part_name)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_part_requests_status
+        ON part_requests (status)`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_part_requests_created
+        ON part_requests (created_at)`);
+      // One person asking twice in a week is one signal, not two.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_part_requests_phone
+        ON part_requests (phone_normalized)`);
     },
   },
 ];
