@@ -246,13 +246,19 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
                                                     <Label className="text-[11px] font-bold text-slate-600">Basic fare ({currency})</Label>
                                                     <Input inputMode="numeric" value={ringDraft(index, "fare")} disabled={!canManage}
                                                         onChange={(e) => setRingDraft(index, "fare", e.target.value)}
-                                                        className="h-9 rounded-lg text-sm" />
+                                                        className={cn("h-9 rounded-lg text-sm", errorClass(index, "fare"))} />
+                                                    {ringError(index, "fare") && (
+                                                        <p className="text-[11px] font-semibold text-red-600" data-testid={`ring-error-${index + 1}-fare`}>{ringError(index, "fare")}</p>
+                                                    )}
                                                 </div>
                                                 <div className="space-y-1">
                                                     <Label className="text-[11px] font-bold text-slate-600">Reaches (km)</Label>
                                                     <Input inputMode="decimal" value={ringDraft(index, "radiusKm")} disabled={!canManage}
                                                         onChange={(e) => setRingDraft(index, "radiusKm", e.target.value)}
-                                                        className="h-9 rounded-lg text-sm" />
+                                                        className={cn("h-9 rounded-lg text-sm", errorClass(index, "radiusKm"))} />
+                                                    {ringError(index, "radiusKm") && (
+                                                        <p className="text-[11px] font-semibold text-red-600" data-testid={`ring-error-${index + 1}-radiusKm`}>{ringError(index, "radiusKm")}</p>
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -273,9 +279,11 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
                                                 </Label>
                                                 <Input inputMode="numeric" placeholder="No discount in this ring"
                                                     value={ringDraft(index, "discountOver")} disabled={!canManage}
-                                                    onChange={(e) => setRingDraft(index, "discountOver", e.target.value)}
-                                                    data-error={ringError(index, "discountOver") ? "true" : undefined}
-                                                    className="h-9 rounded-lg text-sm" />
+                                                    onChange={(e) => setRingDraft(index, "discountOver", e.target.value)}
+                                                    className={cn("h-9 rounded-lg text-sm", errorClass(index, "discountOver"))} />
+                                                {ringError(index, "discountOver") && (
+                                                    <p className="text-[11px] font-semibold text-red-600" data-testid={`ring-error-${index + 1}-discountOver`}>{ringError(index, "discountOver")}</p>
+                                                )}
                                                 <p className="text-[11px] leading-snug text-slate-500">
                                                     {ringDraft(index, "discountOver").trim() === ""
                                                         ? "Leave blank and this ring's fare is always charged in full."

@@ -848,7 +848,10 @@ router.post("/bills/generate", requireAdminAuth, corpBillsCreate, async (req, re
         const bill = await storage.generateCorporateBill(data);
         res.status(201).json(bill);
     } catch (error) {
-        res.status(500).json({ message: (error as Error).message });
+        // A refusal carries its own status; only a genuine fault is a 500.
+        const status = (error as any)?.status ?? 500;
+        const code = (error as any)?.code;
+        res.status(status).json({ message: (error as Error).message, ...(code ? { code } : {}) });
     }
 });
 

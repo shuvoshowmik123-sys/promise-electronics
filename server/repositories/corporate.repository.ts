@@ -360,7 +360,20 @@ export class CorporateRepository {
         // cannot be billed to the client twice.
         const jobs = allJobs.filter(j => j.billingStatus !== 'billed' && !j.corporateBillId);
         if (jobs.length === 0) {
-            throw new Error("No unbilled jobs to bill — all selected jobs are already billed.");
+            /**
+             * A refusal, not a crash.
+             *
+             * This threw a bare Error, so the route's catch turned "you have
+             * already billed these jobs" into HTTP 500. That is wrong twice
+             * over: the caller cannot tell a rule from an outage, and every
+             * duplicate click raises a server-error alert as though something
+             * had broken. The retail till answers the same situation with 409
+             * JOB_ALREADY_FULLY_BILLED; corporate now matches it.
+             */
+            const alreadyBilled: any = new Error("No unbilled jobs to bill — all selected jobs are already billed.");
+            alreadyBilled.status = 409;
+            alreadyBilled.code = "JOBS_ALREADY_BILLED";
+            throw alreadyBilled;
         }
 
         let subtotal = 0;
