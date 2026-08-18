@@ -135,9 +135,21 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
     const saveRings = () =>
         save.mutate([{
             key: PICKUP_RING_FARES_KEY,
+            /**
+             * The raw text, not Number() of it.
+             *
+             * This claimed to send what was typed and then called Number() on
+             * it, which is the same salvaging it was written to avoid — just
+             * quieter. Number("1.5.5") is NaN, JSON.stringify turns NaN into
+             * null, and the server then reported "A fare cannot be left blank"
+             * for a box that plainly had 1.5.5 in it. The refusal was right and
+             * the explanation was nonsense, which is worse than either alone.
+             *
+             * Sending the text lets the one validator see 1.5.5 and say so.
+             */
             value: JSON.stringify(ringDrafts.map((d) => ({
-                radiusKm: d.radiusKm.trim() === "" ? "" : Number(d.radiusKm),
-                fare: d.fare.trim() === "" ? "" : Number(d.fare),
+                radiusKm: d.radiusKm.trim(),
+                fare: d.fare.trim(),
                 // Blank is a real answer here, unlike the fare: it means this
                 // ring gives no discount. Sent as null so the reader does not
                 // have to guess whether "" meant unset or zero.

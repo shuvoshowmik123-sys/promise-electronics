@@ -194,16 +194,30 @@ export function validatePickupSetting(key: string, rawValue: string | null): Far
       return [{ key, field: key, reason: "Rings must be a list." }];
     }
     const errors: FareValidationError[] = [];
-    const radii: number[] = [];
+    // Ring number carried alongside, so a clash can name both culprits.
+    const radii: Array<{ ring: number; radius: number }> = [];
     parsed.forEach((entry, i) => {
       const v = (entry ?? {}) as Partial<PickupRingFare>;
       const bad = badMoney(v?.fare, `ring${i + 1}.fare`, key);
       if (bad) errors.push(bad);
-      const radius = Number(v?.radiusKm);
-      if (!Number.isFinite(radius) || radius <= 0) {
+      /**
+       * "abc" and "-3" are different mistakes and deserve different sentences.
+       *
+       * Both used to produce "A ring needs a distance greater than zero", which
+       * is true of -3 and baffling for abc — the shop worker reads it, looks at
+       * a box containing letters, and learns nothing about what to do.
+       */
+      // Unknown, not number: the editor posts raw text, and "" must stay visible.
+      const rawRadius: unknown = v?.radiusKm;
+      const radius = Number(rawRadius);
+      if (rawRadius === null || rawRadius === undefined || rawRadius === "") {
+        errors.push({ key, field: `ring${i + 1}.radiusKm`, reason: "A ring needs a distance. Leave no ring blank." });
+      } else if (!Number.isFinite(radius)) {
+        errors.push({ key, field: `ring${i + 1}.radiusKm`, reason: "That is not a number." });
+      } else if (radius <= 0) {
         errors.push({ key, field: `ring${i + 1}.radiusKm`, reason: "A ring needs a distance greater than zero." });
       } else {
-        radii.push(radius);
+        radii.push({ ring: i + 1, radius });
       }
       /**
        * The discount threshold, unlike the fare, may genuinely be left blank —
@@ -231,9 +245,21 @@ export function validatePickupSetting(key: string, rawValue: string | null): Far
     });
     // Two rings ending at the same distance make the inner one unreachable, and
     // which fare applied would depend on stored order rather than on the map.
-    const duplicate = radii.find((r, i) => radii.indexOf(r) !== i);
-    if (duplicate !== undefined) {
-      errors.push({ key, field: "radiusKm", reason: `Two rings both end at ${duplicate} km. Each ring needs its own distance.` });
+    /**
+     * Name both rings, not just the distance.
+     *
+     * "Two rings both end at 10 km" is true and useless on a five-row form —
+     * the shop worker still has to find which two. Every other message here
+     * names its ring; this one was the only orphan, and QA noticed.
+     */
+    const clash = radii.find((entry, i) => radii.findIndex((o) => o.radius === entry.radius) !== i);
+    if (clash) {
+      const first = radii.find((o) => o.radius === clash.radius)!;
+      errors.push({
+        key,
+        field: `ring${clash.ring}.radiusKm`,
+        reason: `Ring ${first.ring} and ring ${clash.ring} both end at ${clash.radius} km. Each ring needs its own distance.`,
+      });
     }
     return errors;
   }

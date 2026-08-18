@@ -145,6 +145,56 @@ describe("a ring's discount threshold", () => {
     });
 });
 
+/**
+ * The message has to tell somebody what to fix.
+ *
+ * QA typed 1.5.5 into a fare and was told "A fare cannot be left blank" —
+ * looking at a box that plainly had 1.5.5 in it. The refusal was correct and
+ * the explanation was nonsense, which is worse than either alone: the shop
+ * worker now distrusts the message AND still does not know what to do.
+ *
+ * The cause was the editor calling Number() before sending. Number("1.5.5") is
+ * NaN, JSON.stringify writes NaN as null, and null means blank. So the one
+ * validator never saw what was typed.
+ */
+describe("a rejected ring says what is actually wrong", () => {
+    const rings = (over: Record<string, unknown>) => JSON.stringify([
+        { radiusKm: "5", fare: "150", discountOver: null },
+        { radiusKm: "10", fare: "250", discountOver: null },
+        { ...{ radiusKm: "14", fare: "350", discountOver: null }, ...over },
+    ]);
+    const reasonFor = (over: Record<string, unknown>, field: string) =>
+        validatePickupSetting(PICKUP_RING_FARES_KEY, rings(over))
+            .find((e) => e.field === field)?.reason;
+
+    it("calls a malformed fare a malformed number, not a blank one", () => {
+        expect(reasonFor({ fare: "1.5.5" }, "ring3.fare")).toBe("That is not a number.");
+    });
+
+    it("calls letters in a distance box what they are", () => {
+        expect(reasonFor({ radiusKm: "abc" }, "ring3.radiusKm")).toBe("That is not a number.");
+    });
+
+    it("still calls a genuinely blank fare blank", () => {
+        expect(reasonFor({ fare: "" }, "ring3.fare"))
+            .toContain("cannot be left blank");
+    });
+
+    it("names BOTH rings when two share a distance", () => {
+        // "Two rings both end at 10 km" is true and useless on a five-row form.
+        const errors = validatePickupSetting(PICKUP_RING_FARES_KEY, rings({ radiusKm: "10" }));
+        const clash = errors.find((e) => e.reason.includes("both end at"));
+        expect(clash?.reason).toBe("Ring 2 and ring 3 both end at 10 km. Each ring needs its own distance.");
+        // And it must be attributed to a ring, so the form can mark the row.
+        expect(clash?.field).toBe("ring3.radiusKm");
+    });
+
+    it("accepts the numbers the editor sends as text", () => {
+        // The editor now posts raw strings; valid ones must still pass.
+        expect(validatePickupSetting(PICKUP_RING_FARES_KEY, rings({}))).toEqual([]);
+    });
+});
+
 describe("the reader is why this matters", () => {
     it("would have turned the refused value into free", () => {
         /**
