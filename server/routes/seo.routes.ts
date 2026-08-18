@@ -15,6 +15,7 @@ import { db } from "../db.js";
 import { serviceCatalog, inventoryItems } from "../../shared/schema.js";
 import { eq } from "drizzle-orm";
 import { slugify } from "../lib/publicPageMeta.js";
+import { getPublicServices, getPublicProducts } from "../lib/publicCatalogCache.js";
 import { logRouteError } from "../utils/route-error.js";
 import { requireAdminAuth } from "./middleware/auth.js";
 
@@ -50,18 +51,12 @@ router.get("/sitemap.xml", async (req: Request, res: Response) => {
         const base = origin();
         const entries: Entry[] = [...STATIC_PAGES];
 
-        const services = await db
-            .select({ name: serviceCatalog.name })
-            .from(serviceCatalog)
-            .where(eq(serviceCatalog.isActive, true));
+        const services = await getPublicServices();
         for (const s of services) {
             entries.push({ loc: `/service/${slugify(s.name)}`, changefreq: "weekly", priority: "0.9" });
         }
 
-        const products = await db
-            .select({ name: inventoryItems.name })
-            .from(inventoryItems)
-            .where(eq(inventoryItems.showOnWebsite, true));
+        const products = await getPublicProducts();
         for (const p of products) {
             entries.push({ loc: `/product/${slugify(p.name)}`, changefreq: "weekly", priority: "0.7" });
         }
@@ -113,10 +108,7 @@ router.get("/sitemap.xml", async (req: Request, res: Response) => {
 router.get("/product-feed.xml", async (req: Request, res: Response) => {
     try {
         const base = origin();
-        const items = await db
-            .select()
-            .from(inventoryItems)
-            .where(eq(inventoryItems.showOnWebsite, true));
+        const items = await getPublicProducts();
 
         const entries: string[] = [];
         let skipped = 0;

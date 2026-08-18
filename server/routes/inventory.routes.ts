@@ -10,7 +10,7 @@
  * Putting /:id first causes it to swallow every named sub-resource.
  */
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { storage } from '../storage.js';
 import { inventoryRepo, financeRepo } from '../repositories/index.js';
 import { insertInventoryItemSchema, insertProductSchema, insertLocalPurchaseSchema, insertWastageLogSchema, localPurchases, inventorySerials, purchaseOrderItems } from '../../shared/schema.js';
@@ -19,8 +19,28 @@ import { auditLogger } from '../utils/auditLogger.js';
 import { inventoryService } from '../services/inventory.service.js';
 import { db } from '../db.js';
 import { gte, lte, and, eq, isNull, count, sql } from 'drizzle-orm';
+import { invalidatePublicCatalog } from "../lib/publicCatalogCache.js";
 
 const router = Router();
+
+/**
+ * Drop the cached public catalogue whenever an item is written.
+ *
+ * The sitemap, the product feed and every service or product page read the
+ * catalogue from a five-minute cache so a crawler cannot exhaust the
+ * connection pool. Without this, a corrected price would stay wrong in public
+ * for five minutes after somebody fixed it — and the person who fixed it
+ * would reload, see the old number, and fix it again.
+ *
+ * Runs before the handler rather than after: a write that fails costs one
+ * needless re-read, while a write that succeeds must never leave stale public
+ * data behind.
+ */
+const dropPublicCatalogCache = (_req: Request, _res: Response, next: NextFunction) => {
+    invalidatePublicCatalog();
+    next();
+};
+
 
 // ============================================
 // Inventory API
@@ -310,7 +330,7 @@ router.get('/api/inventory/:id', requireAdminAuth, requireGranularPermission('in
 /**
  * POST /api/inventory - Create inventory item
  */
-router.post('/api/inventory', requireAdminAuth, requireGranularPermission('inventory.addItem'), async (req: Request, res: Response) => {
+router.post('/api/inventory', requireAdminAuth, dropPublicCatalogCache, requireGranularPermission('inventory.addItem'), async (req: Request, res: Response) => {
     try {
         const validated = insertInventoryItemSchema.parse(req.body);
         const item = await inventoryRepo.createInventoryItem(validated);
@@ -336,7 +356,7 @@ router.post('/api/inventory', requireAdminAuth, requireGranularPermission('inven
 /**
  * PATCH /api/inventory/:id - Update inventory item
  */
-router.patch('/api/inventory/:id', requireAdminAuth, requireGranularPermission('inventory.editItem'), async (req: Request, res: Response) => {
+router.patch('/api/inventory/:id', requireAdminAuth, dropPublicCatalogCache, requireGranularPermission('inventory.editItem'), async (req: Request, res: Response) => {
     try {
         const existingItem = await inventoryRepo.getInventoryItem(req.params.id);
         // Validate + whitelist fields. Raw req.body let callers set arbitrary
@@ -374,7 +394,7 @@ router.patch('/api/inventory/:id', requireAdminAuth, requireGranularPermission('
 /**
  * PATCH /api/inventory/:id/stock - Update inventory stock quantity
  */
-router.patch('/api/inventory/:id/stock', requireAdminAuth, requireGranularPermission('inventory.adjustStock'), async (req: Request, res: Response) => {
+router.patch('/api/inventory/:id/stock', requireAdminAuth, dropPublicCatalogCache, requireGranularPermission('inventory.adjustStock'), async (req: Request, res: Response) => {
     try {
         const { quantity } = req.body;
         if (typeof quantity !== 'number') {
@@ -409,7 +429,7 @@ router.patch('/api/inventory/:id/stock', requireAdminAuth, requireGranularPermis
 /**
  * DELETE /api/inventory/:id - Delete inventory item
  */
-router.delete('/api/inventory/:id', requireAdminAuth, requireGranularPermission('inventory.deleteItem'), async (req: Request, res: Response) => {
+router.delete('/api/inventory/:id', requireAdminAuth, dropPublicCatalogCache, requireGranularPermission('inventory.deleteItem'), async (req: Request, res: Response) => {
     try {
         const existingItem = await inventoryRepo.getInventoryItem(req.params.id);
         if (!existingItem) {

@@ -18,9 +18,7 @@
  * renaming a service changes its URL; the alternative was a column that drifts
  * from the name the moment anybody edits one.
  */
-import { db } from "../db.js";
-import { serviceCatalog, inventoryItems } from "../../shared/schema.js";
-import { eq } from "drizzle-orm";
+import { getPublicServices, getPublicProducts } from "./publicCatalogCache.js";
 
 export type PublicPageMeta = {
     title: string;
@@ -88,8 +86,8 @@ function serviceDescription(s: {
 }
 
 async function serviceMeta(slug: string): Promise<PublicPageMeta | null> {
-    const rows = await db.select().from(serviceCatalog).where(eq(serviceCatalog.isActive, true));
-    const match = rows.find((r) => slugify(r.name) === slug);
+    const rows = await getPublicServices();
+    const match = rows.find((r: { name: string }) => slugify(r.name) === slug);
     if (!match) return null;
 
     const url = `${siteOrigin()}/service/${slug}`;
@@ -127,8 +125,8 @@ async function serviceMeta(slug: string): Promise<PublicPageMeta | null> {
 }
 
 async function productMeta(slug: string): Promise<PublicPageMeta | null> {
-    const rows = await db.select().from(inventoryItems).where(eq(inventoryItems.showOnWebsite, true));
-    const match = rows.find((r) => slugify(r.name) === slug);
+    const rows = await getPublicProducts();
+    const match = rows.find((r: { name: string }) => slugify(r.name) === slug);
     if (!match) return null;
 
     const url = `${siteOrigin()}/product/${slug}`;
