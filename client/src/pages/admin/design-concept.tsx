@@ -415,7 +415,7 @@ export default function DesignConcept() {
         'repair-journeys': 'service_requests',
         'pos': 'pos',
         'inventory': 'inventory',
-        'parts-demand': 'inventory',
+        'parts-demand': 'partsDemand',
         'customers': 'customers',
         'users': 'users',
         'settings': 'settings',

@@ -15,7 +15,17 @@ import { db } from "../db.js";
 import { partRequests } from "../../shared/schema.js";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
-import { requireAdminAuth } from "./middleware/auth.js";
+import { requireAdminAuth, requireGranularPermission } from "./middleware/auth.js";
+
+/**
+ * Hiding the tab hides a link, not the data.
+ *
+ * Whoever can read this endpoint can read the shop's buying strategy and a
+ * list of customers waiting to spend money. That has to be refused at the
+ * server, per person, rather than merely left off somebody's menu.
+ */
+const canViewDemand = requireGranularPermission("partsDemand.view");
+const canManageDemand = requireGranularPermission("partsDemand.manage");
 import { normalizePhone } from "../utils/phone.js";
 import { logRouteError } from "../utils/route-error.js";
 
@@ -116,7 +126,7 @@ router.post("/api/public/part-requests", async (req: Request, res: Response) => 
  * the count, and shipping every row to compute it would get slower exactly as
  * the feature starts working.
  */
-router.get("/api/admin/part-requests/demand", requireAdminAuth, async (req: Request, res: Response) => {
+router.get("/api/admin/part-requests/demand", requireAdminAuth, canViewDemand, async (req: Request, res: Response) => {
     try {
         const days = Math.min(Math.max(parseInt(String(req.query.days ?? "30"), 10) || 30, 1), 365);
         const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
@@ -145,7 +155,7 @@ router.get("/api/admin/part-requests/demand", requireAdminAuth, async (req: Requ
 });
 
 /** Everybody inside one group, so staff can work down the list and call them. */
-router.get("/api/admin/part-requests", requireAdminAuth, async (req: Request, res: Response) => {
+router.get("/api/admin/part-requests", requireAdminAuth, canViewDemand, async (req: Request, res: Response) => {
     try {
         const { brand, screenSize, partName } = req.query as Record<string, string | undefined>;
         const filters = [
@@ -169,7 +179,7 @@ router.get("/api/admin/part-requests", requireAdminAuth, async (req: Request, re
 });
 
 /** Mark where the shop has got to with one person. */
-router.patch("/api/admin/part-requests/:id", requireAdminAuth, async (req: Request, res: Response) => {
+router.patch("/api/admin/part-requests/:id", requireAdminAuth, canManageDemand, async (req: Request, res: Response) => {
     try {
         const ALLOWED = ["new", "contacted", "sourcing", "fulfilled", "closed"];
         const status = String((req.body ?? {}).status ?? "");

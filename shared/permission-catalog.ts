@@ -115,6 +115,19 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   { key: "inventory.deleteItem", label: "Delete inventory item", module: "inventory", action: "deleteItem", risk: "critical", description: "Remove a product from the catalog.", consequence: "Data loss; affects linked jobs and POS.", suggestedRoles: ["Super Admin"], coverageCritical: false },
   { key: "inventory.export", label: "Export inventory", module: "inventory", action: "export", risk: "medium", description: "Download inventory reports.", consequence: "Business data leaves the system.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
 
+  // ── Parts Demand ──
+  //
+  // Deliberately in NO role preset. This is the shop's buying strategy and a
+  // list of customers waiting to spend money — the two things a competitor
+  // would most like to read, and the two a departing employee could most
+  // easily take. It must be granted deliberately, per person, by a Super
+  // Admin, rather than arriving as a side effect of holding a job title.
+  //
+  // Kept apart from `inventory` for the same reason: seeing what stock exists
+  // and seeing what the shop is about to buy are different levels of trust.
+  { key: "partsDemand.view", label: "View parts demand", module: "partsDemand", action: "view", risk: "high", description: "See which parts customers asked for that the shop does not stock, and the customers waiting for each.", consequence: "Exposes buying strategy and a list of waiting customers with phone numbers.", suggestedRoles: ["Super Admin"], coverageCritical: false },
+  { key: "partsDemand.manage", label: "Manage parts demand", module: "partsDemand", action: "manage", risk: "medium", description: "Mark a waiting customer as called, sourcing, sold or closed.", consequence: "Changes the shop's record of who has been contacted about a part.", suggestedRoles: ["Super Admin"], coverageCritical: false },
+
   // ── Warranty ──
   { key: "warranty.view", label: "View warranty claims", module: "warranty", action: "view", risk: "low", description: "See warranty claim list and details.", consequence: "Read-only.", suggestedRoles: ["Manager", "Technician", "Super Admin"], coverageCritical: false },
   { key: "warranty.create", label: "Create warranty claim", module: "warranty", action: "create", risk: "high", description: "File a new warranty claim.", consequence: "Financial commitment; may require manufacturer follow-up.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
@@ -203,6 +216,7 @@ export const LEGACY_TO_GRANULAR: Record<string, string[]> = {
     "challans.assignDriver",
   ],
   inventory: ["inventory.view", "inventory.addItem", "inventory.editItem", "inventory.adjustStock", "inventory.deleteItem"],
+  partsDemand: ["partsDemand.view", "partsDemand.manage"],
   users: ["users.viewStaff", "users.inviteStaff", "customers.edit"],
   settings: ["settings.manage"],
   attendance: ["attendance.view", "attendance.checkIn", "attendance.manageCorrections"],
