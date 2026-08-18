@@ -42,6 +42,8 @@ const STATIC_PAGES: Entry[] = [
     { loc: "/about", changefreq: "monthly", priority: "0.4" },
     { loc: "/contact", changefreq: "monthly", priority: "0.5" },
     { loc: "/warranty-policy", changefreq: "yearly", priority: "0.3" },
+    // Google requires a reachable return policy before it will list products.
+    { loc: "/return-policy", changefreq: "yearly", priority: "0.3" },
     { loc: "/terms", changefreq: "yearly", priority: "0.2" },
     { loc: "/privacy", changefreq: "yearly", priority: "0.2" },
 ];

@@ -15,6 +15,7 @@ const NotFound = lazy(() => import("@/pages/not-found"));
 const HomePage = lazy(() => import("@/pages/home"));
 const ShopPage = lazy(() => import("@/pages/shop"));
 const RequestPartPage = lazy(() => import("@/pages/request-part"));
+const ReturnPolicyPage = lazy(() => import("@/pages/return-policy"));
 const CartPage = lazy(() => import("@/pages/cart"));
 const CheckoutPage = lazy(() => import("@/pages/checkout"));
 const RepairRequestPage = lazy(() => import("@/pages/repair-request"));
@@ -212,6 +213,7 @@ export function CustomerRouter() {
                                 </Route>
                                 <Route path="/privacy-policy" component={PrivacyPolicyPage} />
                                 <Route path="/warranty-policy" component={WarrantyPolicyPage} />
+                                <Route path="/return-policy" component={ReturnPolicyPage} />
                                 <Route path="/terms-and-conditions" component={TermsAndConditionsPage} />
                                 <Route path="/login" component={LoginPage} />
                 <Route path="/reset">
