@@ -16,6 +16,26 @@
             "destination": "https://promise-electronics-5r25.onrender.com/ready"
         },
         {
+            "source": "/sitemap.xml",
+            "destination": "https://promise-electronics-5r25.onrender.com/sitemap.xml"
+        },
+        {
+            "source": "/robots.txt",
+            "destination": "https://promise-electronics-5r25.onrender.com/robots.txt"
+        },
+        {
+            "source": "/product-feed.xml",
+            "destination": "https://promise-electronics-5r25.onrender.com/product-feed.xml"
+        },
+        {
+            "source": "/service/:slug",
+            "destination": "https://promise-electronics-5r25.onrender.com/service/:slug"
+        },
+        {
+            "source": "/product/:slug",
+            "destination": "https://promise-electronics-5r25.onrender.com/product/:slug"
+        },
+        {
             "source": "/((?!assets/).*)",
             "destination": "/index.html"
         }
