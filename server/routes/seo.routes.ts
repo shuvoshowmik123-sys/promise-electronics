@@ -36,6 +36,7 @@ const STATIC_PAGES: Entry[] = [
     { loc: "/services", changefreq: "weekly", priority: "0.9" },
     { loc: "/shop", changefreq: "weekly", priority: "0.8" },
     { loc: "/repair-request", changefreq: "monthly", priority: "0.8" },
+    { loc: "/request-part", changefreq: "monthly", priority: "0.7" },
     { loc: "/track-order", changefreq: "monthly", priority: "0.5" },
     { loc: "/about", changefreq: "monthly", priority: "0.4" },
     { loc: "/contact", changefreq: "monthly", priority: "0.5" },
@@ -88,6 +89,99 @@ router.get("/sitemap.xml", async (req: Request, res: Response) => {
             .join("\n");
         res.setHeader("Content-Type", "application/xml; charset=utf-8");
         res.send(`<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>`);
+    }
+});
+
+/**
+ * A product feed Google reads by itself.
+ *
+ * The Business Profile has a Products section, and filling it in by hand is a
+ * job that is done once and then rots — a price changes in the admin panel and
+ * the listing quietly lies until somebody remembers. Merchant Center solves it
+ * the other way round: Google is given one URL, fetches it daily, and the
+ * listing follows whatever the shop actually sells.
+ *
+ * RSS 2.0 with the g: namespace, which is Merchant Center's oldest and least
+ * fussy format. id, title, description, link, image_link, availability, price
+ * and condition are required; an item missing any of them is rejected on
+ * ingest rather than shown wrong, so incomplete rows are skipped here instead.
+ *
+ * Products only. A repair service is not a product in Merchant Center's sense
+ * and would be refused; services belong in the Business Profile's own Services
+ * section, which has no feed and is filled in by hand.
+ */
+router.get("/product-feed.xml", async (req: Request, res: Response) => {
+    try {
+        const base = origin();
+        const items = await db
+            .select()
+            .from(inventoryItems)
+            .where(eq(inventoryItems.showOnWebsite, true));
+
+        const entries: string[] = [];
+        let skipped = 0;
+
+        for (const item of items) {
+            let image: string | null = null;
+            try {
+                const parsed = item.images ? JSON.parse(String(item.images)) : null;
+                if (Array.isArray(parsed) && parsed[0]) image = String(parsed[0]);
+            } catch { /* a bad image list should not poison the whole feed */ }
+
+            /**
+             * Skipped rather than guessed at. Merchant Center rejects an item
+             * with a missing required field anyway, and a placeholder image or
+             * an invented price would be worse than an absent listing.
+             */
+            const price = Number(item.price);
+            if (!item.name || !image || !Number.isFinite(price) || price <= 0) {
+                skipped++;
+                continue;
+            }
+
+            const description = (item.description || item.name)
+                .replace(/\s+/g, " ")
+                .slice(0, 5000);
+
+            entries.push([
+                "    <item>",
+                `      <g:id>${xmlEscape(item.id)}</g:id>`,
+                `      <title>${xmlEscape(item.name.slice(0, 150))}</title>`,
+                `      <description>${xmlEscape(description)}</description>`,
+                `      <link>${xmlEscape(`${base}/product/${slugify(item.name)}`)}</link>`,
+                `      <g:image_link>${xmlEscape(image)}</g:image_link>`,
+                "      <g:condition>new</g:condition>",
+                `      <g:availability>${(item.stock ?? 0) > 0 ? "in stock" : "out of stock"}</g:availability>`,
+                `      <g:price>${Math.round(price)} BDT</g:price>`,
+                `      <g:brand>${xmlEscape("Promise Electronics")}</g:brand>`,
+                `      <g:mpn>${xmlEscape(item.id)}</g:mpn>`,
+                item.category ? `      <g:product_type>${xmlEscape(item.category)}</g:product_type>` : "",
+                "    </item>",
+            ].filter(Boolean).join(String.fromCharCode(10)));
+        }
+
+        if (skipped > 0) {
+            // Said out loud, because a silently short feed is the failure mode
+            // that gets noticed months later as "Google only shows six things".
+            console.warn(`[product-feed] ${skipped} product(s) skipped: missing name, image or price.`);
+        }
+
+        res.setHeader("Content-Type", "application/xml; charset=utf-8");
+        res.setHeader("Cache-Control", "public, max-age=3600");
+        res.send(
+            `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:g="http://base.google.com/ns/1.0">
+  <channel>
+    <title>Promise Electronics</title>
+    <link>${xmlEscape(base)}</link>
+    <description>TV parts and spares, Dhaka</description>
+${entries.join(String.fromCharCode(10))}
+  </channel>
+</rss>`,
+        );
+    } catch (error) {
+        logRouteError("product-feed", req, error);
+        res.status(500).send("<?xml version=\"1.0\"?><rss version=\"2.0\"><channel></channel></rss>");
     }
 });
 

@@ -14,6 +14,7 @@ import { AlertCircle } from "lucide-react";
 const NotFound = lazy(() => import("@/pages/not-found"));
 const HomePage = lazy(() => import("@/pages/home"));
 const ShopPage = lazy(() => import("@/pages/shop"));
+const RequestPartPage = lazy(() => import("@/pages/request-part"));
 const CartPage = lazy(() => import("@/pages/cart"));
 const CheckoutPage = lazy(() => import("@/pages/checkout"));
 const RepairRequestPage = lazy(() => import("@/pages/repair-request"));
@@ -158,6 +159,9 @@ export function CustomerRouter() {
                                 </Route>
                                 <Route path="/services/:id">
                                     <CustomerErrorBoundary fallbackTitle="Service Details Error"><ServiceDetailsPage /></CustomerErrorBoundary>
+                                </Route>
+                                <Route path="/request-part">
+                                    <CustomerErrorBoundary fallbackTitle="Part Request Error"><RequestPartPage /></CustomerErrorBoundary>
                                 </Route>
                                 <Route path="/get-quote">
                                     <CustomerErrorBoundary fallbackTitle="Quote Request Error"><GetQuotePage /></CustomerErrorBoundary>
