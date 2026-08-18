@@ -11,7 +11,7 @@ import {
     Banknote, UserCheck, UserCog, HardHat, Building2,
     FileText, HelpCircle, Settings, Bell, Search, User, Zap,
     PieChart, Users, LineChart, Menu, LogOut,
-    ShieldCheck, RotateCcw, FileWarning, Brain, WifiOff, Wrench, MapPinned, Clock, Scale
+    ShieldCheck, RotateCcw, FileWarning, Brain, WifiOff, Wrench, MapPinned, Clock, Scale, TrendingUp
 } from "lucide-react";
 import { canViewDisputes } from "@/lib/disputes-capabilities";
 
@@ -84,6 +84,7 @@ const BrainTab = lazy(() => import("./bento/tabs/BrainTab"));
 // New Tabs
 const ReportsTab = lazy(() => import("./bento/tabs/ReportsTab"));
 const AreaIntelligenceTab = lazy(() => import("./bento/tabs/AreaIntelligenceTab"));
+const PartsDemandTab = lazy(() => import("./bento/tabs/PartsDemandTab"));
 const QualityAnalyticsTab = lazy(() => import("./bento/tabs/QualityAnalyticsTab"));
 const AttendanceTab = lazy(() => import("./bento/tabs/AttendanceTab"));
 const CustomersTab = lazy(() => import("./bento/tabs/CustomersTab"));
@@ -165,6 +166,7 @@ export const ADMIN_SIDEBAR_NAV_GROUPS: SidebarGroup[] = [
         title: "Warehouse",
         items: [
             { label: "Stock Manager", id: "inventory", icon: Package, color: "amber", layout: "fixed" },
+            { label: "Parts Demand", id: "parts-demand", icon: TrendingUp, color: "orange", layout: "fixed" },
             { label: "Warranty Claims", id: "warranty", icon: ShieldCheck, color: "green", layout: "fixed" },
             { label: "Refunds", id: "refunds", icon: RotateCcw, color: "rose", layout: "fixed" },
             { label: "Disputes", id: "disputes", icon: Scale, color: "violet", layout: "fixed" },
@@ -413,6 +415,7 @@ export default function DesignConcept() {
         'repair-journeys': 'service_requests',
         'pos': 'pos',
         'inventory': 'inventory',
+        'parts-demand': 'inventory',
         'customers': 'customers',
         'users': 'users',
         'settings': 'settings',
@@ -526,7 +529,7 @@ export default function DesignConcept() {
     // Display names for breadcrumb — Super Admin shift surface is team monitor, not personal check-in.
     const shiftNavLabel = user?.role === "Super Admin" ? "Shift Monitor" : "My Shift";
     const TAB_DISPLAY_NAMES: Record<string, string> = {
-        'dashboard': 'Dashboard', 'overview': 'Overview', 'area-intelligence': 'Area Intelligence',
+        'dashboard': 'Dashboard', 'overview': 'Overview', 'area-intelligence': 'Area Intelligence', 'parts-demand': 'Parts Demand',
         'system-health': 'System Health', 'service-requests': 'Service Requests', 'repair-journeys': 'Repair Journeys',
         'jobs': 'Job Tickets', 'pickup': 'Pickups', 'challans': 'Challans',
         'pos': 'Point of Sale', 'orders': 'Orders', 'inventory': 'Inventory',
@@ -1053,6 +1056,7 @@ export default function DesignConcept() {
                                                 {/* Overview Group */}
                                                 {tabId === 'overview' && <OverviewTab />}
                                                 {tabId === 'area-intelligence' && <AreaIntelligenceTab />}
+                                                {tabId === 'parts-demand' && <PartsDemandTab />}
                                                 {tabId === 'reports' && <ReportsTab />}
                                                 {tabId === 'quality' && <QualityAnalyticsTab />}
                                                 {tabId === 'system-health' && <SystemHealthTab onNavigate={(tab: string, searchQuery?: string, clientId?: string) => {
@@ -1174,7 +1178,7 @@ export default function DesignConcept() {
                                                 {/* "Workflow Design Demo" was a development placeholder that rendered nothing. */}
                                                 {tabId === 'audit-logs' && <Suspense fallback={<DashboardSkeleton />}><AuditLogsTab /></Suspense>}
 
-                                                {!['dashboard', 'overview', 'area-intelligence', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'shift', 'customers', 'quotations', 'inquiries', 'salary', 'cashier', 'technician', 'warranty', 'refunds', 'disputes', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain', 'account'].includes(tabId) && (
+                                                {!['dashboard', 'overview', 'area-intelligence', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'shift', 'customers', 'quotations', 'inquiries', 'salary', 'cashier', 'technician', 'warranty', 'refunds', 'disputes', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain', 'account', 'parts-demand'].includes(tabId) && (
                                                     <Suspense fallback={<DashboardSkeleton />}>
                                                         <PlaceholderTab tabName={tabId} />
                                                     </Suspense>
