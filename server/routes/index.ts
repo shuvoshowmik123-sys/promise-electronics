@@ -75,6 +75,7 @@ import logisticsTasksRoutes from './logistics-tasks.routes.js';
 import catalogImportRoutes from './catalog-import.routes.js'; // Phase 35A: Bulk Import Center
 import serviceAreasRoutes from './service-areas.routes.js'; // Phase Map-01: Service Area Analytics
 import seoRoutes from './seo.routes.js'; // sitemap.xml + robots.txt, generated from the catalogue
+import partRequestRoutes from './part-requests.routes.js'; // demand capture: what customers ask for that we do not stock
 import systemIncidentsRoutes from './system-incidents.routes.js';
 import serviceFeedbackRoutes from './service-feedback.routes.js';
 import externalIntakePartiesRoutes from './external-intake-parties.routes.js';
@@ -349,6 +350,7 @@ export async function registerRoutes(
     // Phase Map-01: Service Area Analytics
     app.use(serviceAreasRoutes);
     app.use(seoRoutes);
+    app.use(partRequestRoutes);
     routeLog('[Routes] ✓ Service areas routes registered');
 
     routeLog('[Routes] All route modules registered successfully!');
