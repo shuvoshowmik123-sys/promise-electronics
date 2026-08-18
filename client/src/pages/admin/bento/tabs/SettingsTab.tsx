@@ -13,6 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
+import { ShareLinksPanel } from "@/components/admin/ShareLinksPanel";
 import { useToast } from "@/hooks/use-toast";
 import { drawerApi, settingsApi } from "@/lib/api";
 import type { SettingConflictGroup, SettingResolutionItem } from "@/lib/api/adminApi";
@@ -846,6 +847,14 @@ export default function SettingsTab({ initialSearchQuery, onSearchConsumed }: Se
                         ))}
                     </div>
                 )}
+
+                {/* Share Links — the addresses to paste under a post */}
+                <MobileSectionTitle>Share Links</MobileSectionTitle>
+                <MobilePanel>
+                    <div className="p-3">
+                        <ShareLinksPanel />
+                    </div>
+                </MobilePanel>
 
                 {/* Service Catalogs */}
                 <MobileSectionTitle>Service Catalogs</MobileSectionTitle>

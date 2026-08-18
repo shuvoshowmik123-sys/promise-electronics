@@ -16,6 +16,7 @@ import { serviceCatalog, inventoryItems } from "../../shared/schema.js";
 import { eq } from "drizzle-orm";
 import { slugify } from "../lib/publicPageMeta.js";
 import { logRouteError } from "../utils/route-error.js";
+import { requireAdminAuth } from "./middleware/auth.js";
 
 const router = Router();
 
@@ -113,6 +114,54 @@ router.get("/robots.txt", (_req: Request, res: Response) => {
             "",
         ].join("\n"),
     );
+});
+
+/**
+ * Every public link the shop can share, in one list it can copy from.
+ *
+ * The pages and their share cards existed before this did, which made them
+ * useless: a service page is only worth having if somebody can paste it under
+ * a video. Services are loaded by CSV import and have no per-row editor, so
+ * there was no screen anywhere that could show a link beside a service name.
+ *
+ * Read-only and admin-only. It exposes nothing the public pages do not already
+ * show, but the full catalogue in one response is a convenience for the shop
+ * rather than for a scraper.
+ */
+router.get("/api/admin/public-links", requireAdminAuth, async (req: Request, res: Response) => {
+    try {
+        const base = origin();
+
+        const services = await db
+            .select({ name: serviceCatalog.name, category: serviceCatalog.category })
+            .from(serviceCatalog)
+            .where(eq(serviceCatalog.isActive, true));
+
+        const products = await db
+            .select({ name: inventoryItems.name, category: inventoryItems.category })
+            .from(inventoryItems)
+            .where(eq(inventoryItems.showOnWebsite, true));
+
+        res.json({
+            links: [
+                ...services.map((s) => ({
+                    type: "service" as const,
+                    name: s.name,
+                    category: s.category,
+                    url: `${base}/service/${slugify(s.name)}`,
+                })),
+                ...products.map((p) => ({
+                    type: "product" as const,
+                    name: p.name,
+                    category: p.category,
+                    url: `${base}/product/${slugify(p.name)}`,
+                })),
+            ],
+        });
+    } catch (error) {
+        logRouteError("public-links", req, error);
+        res.status(500).json({ error: "Could not build the link list" });
+    }
 });
 
 export default router;
