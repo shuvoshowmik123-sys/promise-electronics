@@ -67,8 +67,13 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
         setRadius(show(current?.radiusKm));
     }, [area?.id, current?.fare, current?.radiusKm]);
 
+    /** Field path ("ring1.fare") -> why the server refused it. */
+    const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
     const save = useMutation({
         mutationFn: async (entries: Array<{ key: string; value: string }>) => {
+            // Clear first, so a mark from the last attempt never outlives it.
+            setFieldErrors({});
             for (const entry of entries) await settingsApi.upsert(entry);
         },
         onSuccess: () => {
@@ -77,7 +82,26 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
         },
         // The server says which field and why; repeating "could not save"
         // over the top of that would throw away the only useful part.
-        onError: (error: any) => toast.error(error?.message || "Could not save the fares"),
+        /**
+         * The server names the field. Keep it.
+         *
+         * The 400 body carries { fields: [{ field: "ring1.fare", reason }] }
+         * and this threw all of it away, showing one sentence and leaving the
+         * operator to find the row on a five-ring form. Two QA runs in a row
+         * reported the same thing: the message was clear, the input was not
+         * marked, and the class attribute was byte-identical before and after.
+         */
+        onError: (error: any) => {
+            const fields = error?.data?.fields;
+            if (Array.isArray(fields)) {
+                const next: Record<string, string> = {};
+                for (const f of fields) {
+                    if (f?.field && f?.reason) next[String(f.field)] = String(f.reason);
+                }
+                setFieldErrors(next);
+            }
+            toast.error(error?.message || "Could not save the fares");
+        },
     });
 
     const saveArea = () => {
@@ -121,6 +145,12 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
     type RingField = "radiusKm" | "fare" | "discountOver";
     const rings = ringDrafts;
     const ringDraft = (i: number, field: RingField) => ringDrafts[i]?.[field] ?? "";
+    /** The server's complaint about one ring field, if it made one. */
+    const ringError = (i: number, field: RingField) => fieldErrors[`ring${i + 1}.${field}`];
+    /** Red only when this exact field was refused — never a blanket alarm. */
+    const errorClass = (i: number, field: RingField) =>
+        ringError(i, field) ? " border-red-500 focus-visible:ring-red-500 bg-red-50" : "";
+
     const setRingDraft = (i: number, field: RingField, value: string) =>
         setRingDrafts((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: value } : r)));
 
@@ -244,6 +274,7 @@ export function PickupFaresPanel({ settings, area, canManage, currency, classNam
                                                 <Input inputMode="numeric" placeholder="No discount in this ring"
                                                     value={ringDraft(index, "discountOver")} disabled={!canManage}
                                                     onChange={(e) => setRingDraft(index, "discountOver", e.target.value)}
+                                                    data-error={ringError(index, "discountOver") ? "true" : undefined}
                                                     className="h-9 rounded-lg text-sm" />
                                                 <p className="text-[11px] leading-snug text-slate-500">
                                                     {ringDraft(index, "discountOver").trim() === ""
