@@ -196,7 +196,26 @@ export function applyPublicPageMeta(html: string, meta: PublicPageMeta): string 
         out = out.replace(/(<meta\s+property="og:image"\s+content=")[^"]*(")/i, `$1${attr(meta.image)}$2`);
     }
 
-    const extra: string[] = [`<link rel="canonical" href="${u}" />`];
+    /**
+     * Replace the existing canonical, do not add a second one.
+     *
+     * index.html already carries a canonical pointing at the home page. This
+     * appended another, so every service page shipped TWO — one saying it is
+     * the home page and one saying it is itself. Two canonicals is not twice
+     * the signal; it is none. Google either picks one at random or discards
+     * both, and the page competes with the home page for its own ranking.
+     *
+     * The same mistake this file warns about for og:title, made two lines
+     * further down.
+     */
+    const CANONICAL = /<link[^>]*rel=["']canonical["'][^>]*>/i;
+    const canonicalTag = `<link rel="canonical" href="${u}" />`;
+    const extra: string[] = [];
+    if (CANONICAL.test(out)) {
+        out = out.replace(CANONICAL, canonicalTag);
+    } else {
+        extra.push(canonicalTag);
+    }
     if (meta.jsonLd) {
         // A literal </script> inside the JSON would close this tag early.
         const json = JSON.stringify(meta.jsonLd).replace(/</g, "\\u003c");

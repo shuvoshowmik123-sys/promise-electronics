@@ -98,6 +98,27 @@ describe("the head handed to a crawler", () => {
         expect(html).toContain('<link rel="canonical" href="https://www.promiseelectronics.com/service/32-inch-tv-panel-repair" />');
     });
 
+    it("replaces an existing canonical rather than adding a second", () => {
+        /**
+         * index.html ships its own canonical pointing at the home page. Appending
+         * another gave every service page two: one claiming to be the home page
+         * and one claiming to be itself. Two canonicals is not twice the signal,
+         * it is none — Google picks one arbitrarily or discards both, and the
+         * page ends up competing with the home page for its own ranking.
+         *
+         * The same mistake this file already guards against for og:title, made
+         * two lines further down in the same function.
+         */
+        const withCanonical = HEAD.replace(
+            "</head>",
+            '<link rel="canonical" href="https://promiseelectronics.com/" /></head>',
+        );
+        const html = applyPublicPageMeta(withCanonical, meta());
+        expect(html.match(/rel="canonical"/g)).toHaveLength(1);
+        expect(html).toContain('href="https://www.promiseelectronics.com/service/32-inch-tv-panel-repair"');
+        expect(html).not.toContain('href="https://promiseelectronics.com/"');
+    });
+
     it("embeds structured data inside the head", () => {
         const html = applyPublicPageMeta(HEAD, meta());
         expect(html).toContain('<script type="application/ld+json">');
