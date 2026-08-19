@@ -1193,3 +1193,29 @@ input:-webkit-autofill:active {
 .sr-row-selected:hover {
   box-shadow: inset 3px 0 0 0 #2563eb;
 }
+
+/**
+ * Room for the floating bottom navigation.
+ *
+ * The nav is fixed, so it takes no space in the flow — the page has to reserve
+ * it. It was reserving pb-20 (80px) while the nav actually stands
+ *
+ *     58px  the button row
+ *   +  8px  its own bottom padding
+ *   + 34px  the home-indicator inset on an iPhone
+ *   = 100px
+ *
+ * so the last twenty pixels of every page sat underneath it. On the home page
+ * that was the "Support" and "Shop Parts" links: visible, and impossible to
+ * tap, because the nav was on top catching the touch.
+ *
+ * Written as a calc of the real parts rather than a rounder number, so that
+ * changing the nav's height changes this too, and anybody reading it can see
+ * where the figure comes from. The last 12px is breathing room — content
+ * touching the nav looks like a mistake even when it is reachable.
+ */
+@media (max-width: 767px) {
+  .pb-bottom-nav {
+    padding-bottom: calc(58px + 8px + env(safe-area-inset-bottom, 0px) + 12px);
+  }
+}

@@ -302,7 +302,7 @@ export function PublicLayout({ children }: { children: React.ReactNode }) {
         </div>
       </header>
 
-      <main className={`flex-1 ${currentPath === "/login" ? "pb-0" : isImmersiveMobileRoute ? "pb-28 md:pb-0" : "pb-20 md:pb-0"}`}>
+      <main className={`flex-1 ${currentPath === "/login" ? "pb-0" : isImmersiveMobileRoute ? "pb-28 md:pb-0" : "pb-bottom-nav md:pb-0"}`}>
         {children}
       </main>
 
