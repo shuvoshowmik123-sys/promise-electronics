@@ -24,6 +24,7 @@ import { getReadinessState, isDbReady } from "./services/db-readiness.js";
 import { requireAdminAuth, requireSuperAdmin } from "./routes/middleware/auth.js";
 import { failClosedReadinessMiddleware } from "./middleware/main-schema-readiness.js";
 import { attendanceCheckInGateMiddleware } from "./middleware/attendance-check-in-gate.js";
+import { adminSessionRevocationMiddleware } from "./middleware/admin-session-revocation.js";
 import { buildAdminSystemStatus } from "./services/admin-system-status.service.js";
 
 // Load environment variables early - required for local dev and module-level repository evaluation
@@ -323,6 +324,14 @@ export async function createApp(): Promise<Express> {
     // Skips authenticated admin sessions (see rate-limit.ts skip logic)
     app.use('/api/', apiLimiter);
     app.use(coldStartCacheMiddleware);
+
+    // ─── 8a. Admin session revocation — BEFORE the attendance gate.
+    // A password change must end every older session, and it has to be checked
+    // here rather than inside one route guard: /api/admin/me has no guard, and
+    // the five permission guards each read the session for themselves. It also
+    // has to precede the attendance gate, which answers 412 before identity is
+    // settled and so told a revoked technician to check in, not to sign in.
+    app.use(adminSessionRevocationMiddleware);
 
     // ─── 8b. Daily attendance gate (WORKFORCE-UX-01) — after session identity;
     // blocks protected staff ops until check-in. No scheduler. Super Admin exempt.

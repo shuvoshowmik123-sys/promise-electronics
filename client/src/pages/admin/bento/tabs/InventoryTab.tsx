@@ -731,7 +731,18 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                             const isLowStock = item.stock <= (item.lowStockThreshold || 5) && !outOfStock;
                             return (
                                 <div key={item.id} className="p-4 bg-white/60 backdrop-blur-md rounded-2xl border border-white/40 shadow-sm hover:shadow-lg transition-all flex flex-col justify-between h-[180px] group relative overflow-hidden">
-                                    <div className="absolute top-2 right-2 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {/*
+                                      * Always visible below md, hover-revealed above it.
+                                      *
+                                      * Plain `opacity-0 group-hover:opacity-100` hides this
+                                      * menu on every touch device, where there is no hover to
+                                      * reveal it with — the only way in is a first tap that
+                                      * triggers the browser's sticky-hover emulation, and QA
+                                      * could not open the product editor at all because of it.
+                                      * This is the single entry to editing a product, so on a
+                                      * phone the tab was read-only without anything saying so.
+                                      */}
+                                    <div className="absolute top-2 right-2 z-10 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                                         <DropdownMenu>
                                             <DropdownMenuTrigger asChild>
                                                 <Button variant="ghost" size="icon" className="h-8 w-8 bg-white/80 backdrop-blur shadow-sm rounded-full">

@@ -122,8 +122,19 @@ export async function requireAdminAuth(req: Request, res: Response, next: NextFu
         return res.status(401).json({ error: 'Admin authentication required' });
     }
 
-    // Load the user from database and attach to req
-    const user = await storage.getUser(req.session.adminUserId);
+    /**
+     * Reuse the user adminSessionRevocationMiddleware already loaded. It runs
+     * on every request with an admin session and reads the same row, so
+     * querying again would double this route's database cost for nothing —
+     * which the pool, capped at DB_POOL_MAX=5, notices under load.
+     *
+     * The stamp comparison below stays even though that middleware has already
+     * made it. It is cheap once the row is in hand, and it keeps this guard
+     * correct on its own should it ever be mounted somewhere the middleware
+     * does not cover.
+     */
+    const user = (req as any).adminSessionUser
+        ?? await storage.getUser(req.session.adminUserId);
 
     if (!user) {
         return res.status(401).json({ error: 'Admin user not found' });
