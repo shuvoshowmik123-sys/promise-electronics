@@ -790,7 +790,18 @@ router.delete('/api/admin/products/:productId/variants', requireAdminAuth, requi
 // Policies API
 // ============================================
 
-const validPolicySlugs = ['privacy', 'warranty', 'terms'] as const;
+/**
+ * Which policies the public may read.
+ *
+ * "returns" was missing, so /return-policy — the page Google requires before it
+ * will list any product — answered 400 and rendered its error card. The row
+ * existed in the database the whole time; nothing would serve it.
+ *
+ * The lesson is in how it happened: the policy was written, inserted and linked
+ * without anyone loading the page. A row in a table is not a page a customer
+ * can read.
+ */
+const validPolicySlugs = ['privacy', 'warranty', 'terms', 'returns'] as const;
 
 /**
  * GET /api/policies/:slug - Get published policy (public)
@@ -799,7 +810,7 @@ router.get('/api/policies/:slug', async (req: Request, res: Response) => {
     try {
         const { slug } = req.params;
         if (!validPolicySlugs.includes(slug as any)) {
-            return res.status(400).json({ error: 'Invalid policy slug. Must be one of: privacy, warranty, terms' });
+            return res.status(400).json({ error: `Invalid policy slug. Must be one of: ${validPolicySlugs.join(', ')}` });
         }
         const policy = await storage.getPolicyBySlug(slug);
         if (!policy || !policy.isPublished) {
@@ -818,7 +829,7 @@ router.get('/api/mobile/policies/:slug', async (req: Request, res: Response) => 
     try {
         const { slug } = req.params;
         if (!validPolicySlugs.includes(slug as any)) {
-            return res.status(400).json({ error: 'Invalid policy slug. Must be one of: privacy, warranty, terms' });
+            return res.status(400).json({ error: `Invalid policy slug. Must be one of: ${validPolicySlugs.join(', ')}` });
         }
         const policy = await storage.getPolicyBySlug(slug);
         if (!policy || !policy.isPublishedApp) {
@@ -849,7 +860,7 @@ router.get('/api/admin/policies/:slug', requireAdminAuth, async (req: Request, r
     try {
         const { slug } = req.params;
         if (!validPolicySlugs.includes(slug as any)) {
-            return res.status(400).json({ error: 'Invalid policy slug. Must be one of: privacy, warranty, terms' });
+            return res.status(400).json({ error: `Invalid policy slug. Must be one of: ${validPolicySlugs.join(', ')}` });
         }
         const policy = await storage.getPolicyBySlug(slug);
         if (!policy) {
@@ -868,7 +879,7 @@ router.post('/api/admin/policies', requireAdminAuth, requirePermission('settings
     try {
         const { slug, title, content, isPublished, isPublishedApp } = req.body;
         if (!slug || !validPolicySlugs.includes(slug)) {
-            return res.status(400).json({ error: 'Invalid policy slug. Must be one of: privacy, warranty, terms' });
+            return res.status(400).json({ error: `Invalid policy slug. Must be one of: ${validPolicySlugs.join(', ')}` });
         }
         if (!title || typeof title !== 'string') {
             return res.status(400).json({ error: 'Title is required' });
@@ -896,7 +907,7 @@ router.delete('/api/admin/policies/:slug', requireAdminAuth, requirePermission('
     try {
         const { slug } = req.params;
         if (!validPolicySlugs.includes(slug as any)) {
-            return res.status(400).json({ error: 'Invalid policy slug. Must be one of: privacy, warranty, terms' });
+            return res.status(400).json({ error: `Invalid policy slug. Must be one of: ${validPolicySlugs.join(', ')}` });
         }
         const success = await storage.deletePolicy(slug);
         if (!success) {
