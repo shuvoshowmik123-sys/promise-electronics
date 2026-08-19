@@ -94,12 +94,13 @@ router.post(
              */
             await auditLogger.log({
                 userId: actor?.id || "system",
-                userName: actor?.name || actor?.username || "unknown",
                 action: "STAFF_PASSWORD_RESET_LINK_ISSUED",
-                entityType: "user",
+                entity: "User",
                 entityId: target.id,
-                details: `Issued a ${LINK_MINUTES}-minute password reset link for ${target.username}`,
-            } as any);
+                details: `${actor?.name || actor?.username || "A Super Admin"} issued a ${LINK_MINUTES}-minute password reset link for ${target.username}`,
+                severity: "critical",
+                req,
+            }).catch(() => {});
 
             res.status(201).json({
                 // Shown once. It is not stored and cannot be retrieved again.
@@ -183,8 +184,19 @@ router.post("/api/admin/reset-link/complete", resetLinkLimiter, async (req: Requ
             const link = (((linkRows as any).rows ?? linkRows) as Array<{ id: string; user_id: string }>)[0];
             if (!link) return { ok: false as const };
 
+            /**
+             * password_changed_at is not bookkeeping.
+             *
+             * middleware/auth.ts snapshots it at login and compares it on every
+             * request, so setting it signs out every existing session for this
+             * account. Without it a reset would change the password and leave
+             * whoever was already signed in exactly where they were — which is
+             * the opposite of what somebody asking for a reset wants.
+             */
             await tx.execute(sql`
-                UPDATE users SET password = ${hash} WHERE id = ${link.user_id}
+                UPDATE users
+                SET password = ${hash}, password_changed_at = NOW()
+                WHERE id = ${link.user_id}
             `);
             await tx.execute(sql`
                 UPDATE staff_reset_links SET consumed_at = NOW() WHERE id = ${link.id}
@@ -194,14 +206,20 @@ router.post("/api/admin/reset-link/complete", resetLinkLimiter, async (req: Requ
 
         if (!outcome.ok) return res.status(400).json(genericFail);
 
+        /**
+         * Critical severity on purpose. A password changing is the single event
+         * somebody investigating a compromised account looks for first, and it
+         * should not be filed beside a settings tweak.
+         */
         await auditLogger.log({
             userId: outcome.userId,
-            userName: "self (reset link)",
-            action: "STAFF_PASSWORD_RESET_COMPLETED",
-            entityType: "user",
+            action: "PASSWORD_CHANGED",
+            entity: "User",
             entityId: outcome.userId,
-            details: "Password set using a reset link",
-        } as any);
+            details: "Password changed using a reset link issued by a Super Admin",
+            severity: "critical",
+            req,
+        }).catch(() => {});
 
         res.json({ ok: true, message: "Your password has been changed. You can sign in now." });
     } catch (error) {

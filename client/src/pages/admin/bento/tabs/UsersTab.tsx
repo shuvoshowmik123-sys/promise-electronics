@@ -420,6 +420,18 @@ export default function UsersTab() {
                                             </TableCell>
                                             <TableCell className="text-slate-400 text-sm font-medium">
                                                 {user.lastLogin ? format(new Date(user.lastLogin), "MMM d, h:mm a") : "Never"}
+                                                {/*
+                                                  * Shown beside the last login on purpose. When an
+                                                  * account is questioned these are the two dates
+                                                  * anybody wants, and hunting through audit logs for
+                                                  * the second one is how it goes unchecked.
+                                                  */}
+                                                {(user as any).passwordChangedAt && (
+                                                    <div className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-amber-600">
+                                                        <KeyRound className="h-3 w-3" />
+                                                        Password changed {format(new Date((user as any).passwordChangedAt), "MMM d")}
+                                                    </div>
+                                                )}
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <DropdownMenu>
@@ -495,6 +507,12 @@ export default function UsersTab() {
                                         <span className="text-slate-400 uppercase font-black tracking-tight">Active</span>
                                         <span className="text-slate-600">{user.lastLogin ? format(new Date(user.lastLogin), "MMM d") : "Never"}</span>
                                     </div>
+                                    {(user as any).passwordChangedAt && (
+                                        <div className="p-2 rounded-xl bg-amber-50/70 border border-amber-100 flex flex-col gap-1">
+                                            <span className="text-amber-500 uppercase font-black tracking-tight">Password</span>
+                                            <span className="text-amber-700">changed {format(new Date((user as any).passwordChangedAt), "MMM d")}</span>
+                                        </div>
+                                    )}
                                 </div>
 
                                 <div className="flex items-center gap-2 pt-2">

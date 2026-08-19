@@ -57,6 +57,18 @@ export const users = pgTable("users", {
 
   joinedAt: timestamp("joined_at").notNull().defaultNow(),
   lastLogin: timestamp("last_login"),
+  /**
+   * When this account's password last changed.
+   *
+   * The column already existed and was written by raw SQL in three places,
+   * but was never declared here — so Drizzle could not read it and no screen
+   * could show it. A password changing is the first thing anybody looks for
+   * when an account is questioned, and it was invisible.
+   *
+   * It is also load-bearing: middleware/auth.ts snapshots it at login and
+   * compares it on every request, so changing it signs out existing sessions.
+   */
+  passwordChangedAt: timestamp("password_changed_at"),
   // Customer specific fields
   googleSub: text("google_sub").unique(),
   firebaseUid: text("firebase_uid").unique(),
