@@ -38,7 +38,8 @@
     "schema:audit:ledger": "tsx scripts/ledger-reconciliation-audit.ts",
     "schema:adoption:proof": "tsx scripts/disposable-baseline-adoption-proof.ts",
     "schema:adoption:emit-frozen-identity": "tsx scripts/emit-frozen-source-identity.ts",
-    "schema:check:prod": "tsx scripts/check-production-schema.ts"
+    "schema:check:prod": "tsx scripts/check-production-schema.ts",
+    "seed:return-policy": "node scripts/seed-return-policy.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.988.0",
