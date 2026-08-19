@@ -103,6 +103,47 @@ export const customerResetLinks = pgTable("customer_reset_links", {
   };
 });
 
+/**
+ * A one-time link that lets a staff member set a new password.
+ *
+ * Customers and corporate users have had this for a long time; staff never did.
+ * So a shop with one Super Admin who forgot their password was locked out of
+ * its own system permanently, and any staff member who forgot theirs simply had
+ * a dead account nobody could revive.
+ *
+ * Deliberately the same shape as customer_reset_links: the token is stored
+ * HASHED, so a leaked database does not hand over working links, and the row
+ * carries its own expiry, consumption and invalidation rather than relying on
+ * a cleanup job that might not run.
+ *
+ * Issued by a Super Admin, never self-service. There is no email or SMS on the
+ * staff side, so the link is handed over in person or by whatever channel the
+ * shop already trusts — which is also why it lives for thirty minutes and not
+ * a day.
+ */
+export const staffResetLinks = pgTable("staff_reset_links", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  /** sha256 of the token. The plaintext is shown once and never stored. */
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  consumedAt: timestamp("consumed_at", { withTimezone: true }),
+  invalidatedAt: timestamp("invalidated_at", { withTimezone: true }),
+  invalidatedReason: text("invalidated_reason"),
+  /** Who issued it. A password reset must never be anonymous. */
+  createdBy: text("created_by").notNull(),
+  createdByName: text("created_by_name"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+}, (table) => {
+  return {
+    userIdIdx: index("idx_staff_reset_links_user_id").on(table.userId),
+    expiresIdx: index("idx_staff_reset_links_expires").on(table.expiresAt),
+  };
+});
+
+export type StaffResetLink = typeof staffResetLinks.$inferSelect;
+
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true,
   joinedAt: true,

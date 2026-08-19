@@ -1,7 +1,7 @@
 import { useState, useEffect, type UIEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-    Search, MoreHorizontal, Shield, Mail, Loader2,
+    Search, MoreHorizontal, Shield, Mail, Loader2, KeyRound,
     Trash2, Edit, Users, UserCheck, UserCog, HardHat,
     Activity, Truck, Link, Copy, RefreshCw, X, Clock, CheckCircle
 } from "lucide-react";
@@ -9,6 +9,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { adminUsersApi, staffInvitesApi, type SafeUser, type StaffInvite } from "@/lib/api";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
 import { toast } from "sonner";
+import { fetchApi } from "@/lib/api/httpClient";
 import { format } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -72,6 +73,29 @@ export default function UsersTab() {
     const [searchTerm, setSearchTerm] = useState("");
     const [isEditOpen, setIsEditOpen] = useState(false);
     const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+    /**
+     * The issued link, held only in memory and shown once.
+     *
+     * The server returns the plaintext token in this one response and never
+     * stores it — only its hash. So if this dialog is dismissed before the
+     * link is copied, it genuinely cannot be recovered and a new one must be
+     * issued. The dialog says so rather than letting somebody find out.
+     */
+    const [resetLink, setResetLink] = useState<{ url: string; username: string; name: string; expiresInMinutes: number } | null>(null);
+    const [issuingFor, setIssuingFor] = useState<string | null>(null);
+
+    const issueResetLink = async (user: any) => {
+        setIssuingFor(user.id);
+        try {
+            const data = await fetchApi<any>(`/admin/users/${user.id}/reset-link`, { method: "POST" });
+            setResetLink(data);
+        } catch (e: any) {
+            toast.error(e?.message || "Could not create the reset link");
+        } finally {
+            setIssuingFor(null);
+        }
+    };
+
     const [selectedUser, setSelectedUser] = useState<SafeUser | null>(null);
     const [isInviteOpen, setIsInviteOpen] = useState(false);
     const [showLinkDialog, setShowLinkDialog] = useState(false);
@@ -416,6 +440,12 @@ export default function UsersTab() {
                                                                 <UserCog className="w-4 h-4 text-blue-500" /> Edit Access
                                                             </DropdownMenuItem>
                                                         )}
+                                                        {/* Super Admin only: a reset link hands an account to whoever holds it. */}
+                                                        {isSuperAdmin && (
+                                                            <DropdownMenuItem onClick={() => issueResetLink(user)} className="rounded-xl flex items-center gap-2 py-2.5 px-3 cursor-pointer">
+                                                                <KeyRound className="w-4 h-4 text-blue-500" /> Reset Password
+                                                            </DropdownMenuItem>
+                                                        )}
                                                         {(isSuperAdmin || hasPermission("canEdit")) && (
                                                             <DropdownMenuItem onClick={() => handleToggleStatus(user)} className="rounded-xl flex items-center gap-2 py-2.5 px-3 cursor-pointer text-amber-600">
                                                                 <Activity className="w-4 h-4" /> {user.status === "Active" ? "Deactivate" : "Activate"}
@@ -565,6 +595,55 @@ export default function UsersTab() {
             </Dialog>
 
             {/* DELETE ALERT */}
+            {/*
+              * The link, shown once.
+              *
+              * The server returns the plaintext token in that one response and
+              * stores only its hash, so closing this without copying means the
+              * link is genuinely gone. Said plainly on the dialog rather than
+              * left for somebody to discover.
+              */}
+            <AlertDialog open={!!resetLink} onOpenChange={(open) => { if (!open) setResetLink(null); }}>
+                <AlertDialogContent className="rounded-2xl">
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Reset link for {resetLink?.name || resetLink?.username}</AlertDialogTitle>
+                        <AlertDialogDescription asChild>
+                            <div className="space-y-3">
+                                <p className="text-sm text-slate-600">
+                                    Give this link to {resetLink?.name || "them"}. It works once and
+                                    expires in {resetLink?.expiresInMinutes ?? 30} minutes.
+                                </p>
+                                <p className="break-all rounded-lg bg-slate-50 px-3 py-2 font-mono text-[11px] text-slate-700">
+                                    {resetLink?.url}
+                                </p>
+                                <p className="text-[11px] font-semibold text-amber-700">
+                                    Copy it now. This is the only time it can be seen — closing this
+                                    window means issuing a new one.
+                                </p>
+                            </div>
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel className="rounded-xl">Close</AlertDialogCancel>
+                        <AlertDialogAction
+                            className="rounded-xl"
+                            onClick={(e) => {
+                                // Kept open after copying: closing on copy would
+                                // hide the link from somebody whose clipboard
+                                // silently failed over plain http.
+                                e.preventDefault();
+                                navigator.clipboard?.writeText(resetLink?.url || "")
+                                    .then(() => toast.success("Link copied"))
+                                    .catch(() => toast.error("Could not copy. Select the text above."));
+                            }}
+                        >
+                            Copy link
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+
+
             <AlertDialog open={isDeleteOpen} onOpenChange={setIsDeleteOpen}>
                 <AlertDialogContent className="rounded-[2rem] border-none shadow-2xl p-8">
                     <AlertDialogHeader>

@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_19_part_requests";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_19_staff_reset_links";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2352,6 +2352,43 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       // One person asking twice in a week is one signal, not two.
       await client.query(`CREATE INDEX IF NOT EXISTS idx_part_requests_phone
         ON part_requests (phone_normalized)`);
+    },
+  },
+  {
+    id: "2026_08_19_staff_reset_links",
+    description:
+      "staff_reset_links — one-time password reset links a Super Admin issues to a staff member",
+    up: async (client) => {
+      /**
+       * Staff had no way back in.
+       *
+       * Customers and corporate users have had reset links for a long time.
+       * Staff never did, so one Super Admin forgetting a password locked the
+       * shop out of its own system with no documented recovery, and any staff
+       * member who forgot theirs had an account nobody could revive.
+       *
+       * Same shape as customer_reset_links, including the hashed token: a
+       * leaked database must not hand over working links.
+       */
+      await client.query(`CREATE TABLE IF NOT EXISTS staff_reset_links (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        consumed_at TIMESTAMPTZ,
+        invalidated_at TIMESTAMPTZ,
+        invalidated_reason TEXT,
+        created_by TEXT NOT NULL,
+        created_by_name TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )`);
+
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_staff_reset_links_user_id
+        ON staff_reset_links (user_id)`);
+      // Expiry is read on every verify, and swept when a new link supersedes
+      // an old one for the same person.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_staff_reset_links_expires
+        ON staff_reset_links (expires_at)`);
     },
   },
 ];

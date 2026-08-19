@@ -12,6 +12,7 @@ const DesignConcept = lazy(() => import("@/pages/admin/design-concept"));
 
 // Admin Login
 const AdminLoginPage = lazy(() => import("@/pages/admin/login"));
+const AdminResetPasswordPage = lazy(() => import("@/pages/admin/reset-password"));
 
 // Staff Setup (public — no auth required)
 const StaffSetupPage = lazy(() => import("@/pages/admin/staff-setup"));
@@ -76,6 +77,17 @@ export function AdminRouter() {
             <div className="min-h-screen flex items-center justify-center bg-slate-100">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
             </div>
+        );
+    }
+
+    // Reset links work while signed OUT — that is the point of them. Checked
+    // before the auth gate, or the person holding a valid link is bounced to
+    // the login page they cannot get past.
+    if (location.startsWith("/admin/reset-password")) {
+        return (
+            <Suspense fallback={<AdminContentSkeleton />}>
+                <AdminResetPasswordPage />
+            </Suspense>
         );
     }
 
