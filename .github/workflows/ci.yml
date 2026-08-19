@@ -32,5 +32,13 @@ jobs:
     - name: Run TypeScript Compiler Check
       run: npm run check
 
+    # The suite was never run by CI — 1,333 tests that only executed when
+    # somebody typed `npm test` locally. So a fixed bug could return and the
+    # pipeline would still go green, which is the failure mode CI exists to
+    # prevent. Placed before the build: a build that succeeds on broken logic
+    # looks like progress.
+    - name: Run Tests
+      run: npm test -- --run
+
     - name: Build Application
       run: npm run build

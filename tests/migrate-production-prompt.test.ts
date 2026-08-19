@@ -85,6 +85,28 @@ describe("the production migration prompt", () => {
     for (const undo of restore.reverse()) undo();
   });
 
+  /**
+   * Waits for text to appear rather than sleeping a fixed span and hoping.
+   *
+   * This test drives a script that prints on module load, so "has it printed
+   * yet" is a race against the event loop. A flat 20ms won it on an idle
+   * machine and lost it inside the full suite, where the assertion saw an
+   * empty stdout — a failure that says nothing about the script. Polling ends
+   * as soon as the text lands, so the common path is faster than the sleep it
+   * replaces, and only a real hang spends the whole budget.
+   */
+  async function waitForOutput(text: string, budgetMs = 5_000): Promise<void> {
+    const deadline = Date.now() + budgetMs;
+    while (!stdout.includes(text)) {
+      if (Date.now() > deadline) {
+        throw new Error(
+          `waited ${budgetMs}ms for ${JSON.stringify(text)}; stdout was: ${JSON.stringify(stdout)}`,
+        );
+      }
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
+
   it("shows the prompt, hides the paste, and cancels without contacting anything", async () => {
     const stdin = process.stdin as any;
 
@@ -93,12 +115,8 @@ describe("the production migration prompt", () => {
       if (!(error instanceof Error) || error.message !== "__exit__") throw error;
     });
 
-    // Give the script a tick to print the prompt before anything is typed.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-
-    expect(stdout, "the prompt must be on screen before the user pastes").toContain(
-      "Paste the production DATABASE_URL",
-    );
+    // The prompt must be on screen before anything is typed.
+    await waitForOutput("Paste the production DATABASE_URL");
 
     stdin.write(URL_UNDER_TEST + "\r");
     await new Promise((resolve) => setTimeout(resolve, 20));

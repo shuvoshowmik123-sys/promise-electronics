@@ -199,7 +199,12 @@ describe.skipIf(!LOCAL_PG_AVAILABLE)("same-session account claim (real app, disp
     app = await createApp();
     const dbModule = await import("../server/db.js");
     resetDbPool = dbModule.resetDbPool;
-  }, 60_000);
+  // 120s, matching account-merge and customer-register-login, which build the
+  // same disposable database the same way. 60s was enough when this was written
+  // and is not any more: the hook CREATEs a database and then emits DDL for every
+  // table in the schema, so its cost grows with the schema and it began timing out
+  // here while the identical hooks next door passed.
+  }, 120_000);
 
   afterAll(async () => {
     if (!LOCAL_PG_AVAILABLE) return;
