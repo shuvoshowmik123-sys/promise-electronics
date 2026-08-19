@@ -20,10 +20,6 @@
             "destination": "https://promise-electronics-5r25.onrender.com/sitemap.xml"
         },
         {
-            "source": "/robots.txt",
-            "destination": "https://promise-electronics-5r25.onrender.com/robots.txt"
-        },
-        {
             "source": "/product-feed.xml",
             "destination": "https://promise-electronics-5r25.onrender.com/product-feed.xml"
         },

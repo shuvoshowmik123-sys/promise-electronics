@@ -31,6 +31,11 @@ Disallow: /my-profile
 # TO REVERT: delete the two Allow lines below.
 Allow: /api/policies/privacy
 Allow: /api/policies/terms
+# /return-policy has the same shape and the same problem: Google will not list
+# a product without a readable return policy, and that page loads its text from
+# this endpoint at runtime. Blocked, the policy exists and is invisible.
+Allow: /api/policies/returns
+Allow: /api/policies/warranty
 
 # Block development/utility pages
 Disallow: /*.json$
@@ -40,7 +45,7 @@ Disallow: /*?*
 Crawl-delay: 1
 
 # Sitemap location
-Sitemap: https://www.promiseelectronics.com/sitemap.xml
+Sitemap: https://promiseelectronics.com/sitemap.xml
 
 # Google specific
 User-agent: Googlebot

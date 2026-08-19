@@ -180,30 +180,17 @@ ${entries.join(String.fromCharCode(10))}
     }
 });
 
-router.get("/robots.txt", (_req: Request, res: Response) => {
-    /**
-     * The admin panel and the customer's own pages are disallowed — not as
-     * security (anyone can read robots.txt and it enforces nothing), but so a
-     * crawler does not waste its budget on pages it can never render, and so a
-     * customer's tracking link never turns up in somebody else's search.
-     */
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.send(
-        [
-            "User-agent: *",
-            "Allow: /",
-            "Disallow: /admin",
-            "Disallow: /tech",
-            "Disallow: /corporate",
-            "Disallow: /my-repairs",
-            "Disallow: /track-order?",
-            "Disallow: /api/",
-            "",
-            `Sitemap: ${origin()}/sitemap.xml`,
-            "",
-        ].join("\n"),
-    );
-});
+/**
+ * robots.txt is NOT served here.
+ *
+ * client/public/robots.txt is a hand-tuned file with per-crawler rules and
+ * specific allowances for the policy endpoints Google must read. Vercel
+ * serves static files before it applies rewrites, so a route here would never
+ * run on the live domain — it would only answer on the Render origin, giving
+ * two robots.txt files that disagree and one of them unreachable.
+ *
+ * One file, in client/public, where the rules can be read and reviewed.
+ */
 
 /**
  * Every public link the shop can share, in one list it can copy from.
