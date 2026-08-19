@@ -179,6 +179,21 @@ router.post('/api/admin/login', authLimiter, validate(adminLoginSchema), async (
         req.session.adminUserId = result.user.id;
         req.session.adminUserRole = result.user.role;
         req.session.adminUserPermissions = result.user.permissions ?? null;
+        /**
+         * When this account's password last changed, recorded at sign-in.
+         *
+         * requireAdminAuth compares it against the live column on every
+         * request, so a password change elsewhere signs this session out. The
+         * customer side has worked this way for a long time; the admin side
+         * did not, and a staff password reset left the old session working —
+         * including for whoever the reset was meant to lock out.
+         *
+         * Zero when the column is null, so "never changed" is a real value
+         * rather than an absent one.
+         */
+        req.session.passwordChangedAtStamp = (result.user as any).passwordChangedAt
+            ? new Date((result.user as any).passwordChangedAt).getTime()
+            : 0;
 
         // Clear any co-resident customer identity (Customer → Admin coexistence fix).
         req.session.customerId = undefined;

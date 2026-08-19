@@ -129,6 +129,39 @@ export async function requireAdminAuth(req: Request, res: Response, next: NextFu
         return res.status(401).json({ error: 'Admin user not found' });
     }
 
+    /**
+     * A password change ends every session that predates it.
+     *
+     * Without this, resetting a password changed nothing for anybody already
+     * signed in — so the very case a reset exists for, somebody else knowing
+     * the old password, left that person exactly where they were. QA found
+     * it: GET /api/admin/me still answered 200 after a completed reset.
+     *
+     * A session with NO stamp predates this check entirely. Those are asked
+     * to sign in again rather than trusted, which logs everybody out once, on
+     * the deploy that adds this. That is the correct cost — the alternative
+     * is honouring sessions whose password history is unknown.
+     */
+    const liveStamp = (user as any).passwordChangedAt
+        ? new Date((user as any).passwordChangedAt).getTime()
+        : 0;
+    const sessionStamp = req.session?.passwordChangedAtStamp;
+
+    if (sessionStamp === undefined) {
+        req.session.adminUserId = undefined;
+        return res.status(401).json({
+            error: 'Please sign in again.',
+            code: 'SESSION_REAUTH_REQUIRED',
+        });
+    }
+    if (sessionStamp !== liveStamp) {
+        req.session.adminUserId = undefined;
+        return res.status(401).json({
+            error: 'Your password was changed. Please sign in again.',
+            code: 'SESSION_REVOKED',
+        });
+    }
+
     // Attach user to request
     (req as any).user = user;
 
