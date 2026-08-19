@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_19_staff_reset_links";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_20_staff_devices";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2389,6 +2389,64 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       // an old one for the same person.
       await client.query(`CREATE INDEX IF NOT EXISTS idx_staff_reset_links_expires
         ON staff_reset_links (expires_at)`);
+    },
+  },
+  {
+    id: "2026_08_20_staff_devices",
+    description:
+      "staff_devices — long-lived per-device tokens so a native app logs in once",
+    up: async (client) => {
+      /**
+       * A phone cannot hold a browser session.
+       *
+       * The admin API authenticates with a session cookie plus a CSRF header,
+       * which is browser-shaped: it assumes a cookie jar, an origin, and a tab
+       * that closes. A native app has none of those and must not hold the
+       * user's password to make up the difference — a stored password opens the
+       * web panel too, survives a Revoke, and cannot be withdrawn from one
+       * phone without changing it for every place that person signs in.
+       *
+       * So each install gets its own secret instead. Same shape as
+       * trusted_corporate_devices, which has carried this pattern for corporate
+       * users already: the token is stored only as a SHA-256 hash, so a leaked
+       * database hands over nothing usable.
+       *
+       * password_stamp is what makes a password change end every install at
+       * once. It records password_changed_at as it stood when the token was
+       * issued; the value is compared on each use, so a reset revokes every
+       * phone on that account's next request without needing to find them.
+       * Deliberately the same mechanism as the admin session check rather than
+       * a second one that could disagree with it.
+       *
+       * expires_at exists because an uninstall is invisible to the server. A
+       * lost phone, a resignation, a handset sold on — none of them tell us
+       * anything, so a token that only ended at uninstall would never end at
+       * all. It is renewed on use, so a person still working never notices.
+       */
+      await client.query(`CREATE TABLE IF NOT EXISTS staff_devices (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token_hash TEXT NOT NULL UNIQUE,
+        device_label TEXT,
+        platform TEXT NOT NULL DEFAULT 'android',
+        app_version TEXT,
+        password_stamp BIGINT NOT NULL DEFAULT 0,
+        expires_at TIMESTAMPTZ NOT NULL,
+        revoked_at TIMESTAMPTZ,
+        revoked_reason TEXT,
+        revoked_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        last_used_ip TEXT
+      )`);
+
+      // Every authenticated request from a phone is a lookup by token hash.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_staff_devices_token_hash
+        ON staff_devices (token_hash)`);
+      // Drives the per-user device list in the admin UI, and the sweep that
+      // revokes every device for one person.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_staff_devices_user_live
+        ON staff_devices (user_id, revoked_at, expires_at)`);
     },
   },
 ];

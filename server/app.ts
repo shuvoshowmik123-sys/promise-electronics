@@ -25,6 +25,7 @@ import { requireAdminAuth, requireSuperAdmin } from "./routes/middleware/auth.js
 import { failClosedReadinessMiddleware } from "./middleware/main-schema-readiness.js";
 import { attendanceCheckInGateMiddleware } from "./middleware/attendance-check-in-gate.js";
 import { adminSessionRevocationMiddleware } from "./middleware/admin-session-revocation.js";
+import { staffDeviceAuthMiddleware } from "./middleware/staff-device-auth.js";
 import { buildAdminSystemStatus } from "./services/admin-system-status.service.js";
 
 // Load environment variables early - required for local dev and module-level repository evaluation
@@ -221,7 +222,23 @@ export async function createApp(): Promise<Express> {
         console.log('[Session] Using memory session store (test/opt-out)');
     }
 
-    app.use(session(sessionConfig));
+    /**
+     * Device tokens are resolved BEFORE express-session, and a request they
+     * satisfy skips it entirely.
+     *
+     * The store is connect-pg-simple. Letting express-session see calls from
+     * the native app would mean a PostgreSQL write per request per phone,
+     * against a pool capped at DB_POOL_MAX=5 — and to record a fact that
+     * staff_devices already holds durably. The middleware installs a plain
+     * session-shaped object instead, so the 199 places that read
+     * session.adminUserId are untouched.
+     */
+    const sessionMiddleware = session(sessionConfig);
+    app.use(staffDeviceAuthMiddleware);
+    app.use((req, res, next) => {
+        if ((req as any).deviceAuth) return next();
+        sessionMiddleware(req, res, next);
+    });
     app.use(cookieParser());
     app.use(setCsrfToken);
 

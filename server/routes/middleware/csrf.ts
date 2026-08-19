@@ -47,7 +47,16 @@ export function setCsrfToken(req: Request, res: Response, next: NextFunction) {
  * Should be applied in authentication guards to protect state-changing requests.
  */
 export function requireCsrf(req: Request, res: Response, next: NextFunction) {
-    // Only check state-changing methods
+    /**
+     * Device-token requests carry no cookie, so there is nothing for CSRF to
+     * protect. The attack it exists to stop is a browser attaching credentials
+     * to a request the user never intended; nothing attaches an Authorization
+     * header by accident, and the native app is not a browsing context an
+     * attacker can navigate. Requiring a token the app has no way to obtain
+     * would simply break every write it makes.
+     */
+    if ((req as any).deviceAuth) return next();
+
     const safeMethods = ['GET', 'HEAD', 'OPTIONS', 'TRACE'];
     if (safeMethods.includes(req.method)) {
         return next();

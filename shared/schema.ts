@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, boolean, timestamp, date, jsonb, real, doublePrecision, index, uniqueIndex, check } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, bigint, boolean, timestamp, date, jsonb, real, doublePrecision, index, uniqueIndex, check } from "drizzle-orm/pg-core";
 import { relations, sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -154,6 +154,53 @@ export const staffResetLinks = pgTable("staff_reset_links", {
 });
 
 export type StaffResetLink = typeof staffResetLinks.$inferSelect;
+
+/**
+ * One row per phone that has signed in to the native app.
+ *
+ * The admin API authenticates with a session cookie and a CSRF header, which a
+ * native app cannot hold. The alternative it must not use is storing the user's
+ * password: that opens the web panel as well, survives a Revoke, and cannot be
+ * withdrawn from one handset without changing it everywhere the person signs in.
+ * So each install carries its own secret, hashed here exactly as
+ * [staffResetLinks] and trustedCorporateDevices hash theirs.
+ */
+export const staffDevices = pgTable("staff_devices", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  /** SHA-256 of the token. The plaintext is returned once and never stored. */
+  tokenHash: text("token_hash").notNull().unique(),
+  /** For a human reading the revoke list — "Samsung A12", not an identifier. */
+  deviceLabel: text("device_label"),
+  platform: text("platform").notNull().default("android"),
+  appVersion: text("app_version"),
+  /**
+   * password_changed_at as it stood when this token was issued, compared on
+   * every use. A reset therefore ends every install on that account at its next
+   * request, using the same mechanism as the admin session check rather than a
+   * second one that could drift away from it.
+   */
+  passwordStamp: bigint("password_stamp", { mode: "number" }).notNull().default(0),
+  /**
+   * An uninstall is invisible to the server, so a token that ended only at
+   * uninstall would never end. Renewed on use; a person still working never
+   * reaches it.
+   */
+  expiresAt: timestamp("expires_at").notNull(),
+  revokedAt: timestamp("revoked_at"),
+  revokedReason: text("revoked_reason"),
+  revokedBy: text("revoked_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  lastUsedAt: timestamp("last_used_at").notNull().defaultNow(),
+  lastUsedIp: text("last_used_ip"),
+}, (table) => ({
+  tokenHashIdx: index("idx_staff_devices_token_hash").on(table.tokenHash),
+  userLiveIdx: index("idx_staff_devices_user_live").on(
+    table.userId, table.revokedAt, table.expiresAt,
+  ),
+}));
+
+export type StaffDevice = typeof staffDevices.$inferSelect;
 
 
 export const insertUserSchema = createInsertSchema(users).omit({
