@@ -16,14 +16,15 @@ import { serviceCatalog, inventoryItems } from "../../shared/schema.js";
 import { eq } from "drizzle-orm";
 import { slugify } from "../lib/publicPageMeta.js";
 import { getPublicServices, getPublicProducts } from "../lib/publicCatalogCache.js";
+import { siteOrigin } from "../lib/siteOrigin.js";
 import { logRouteError } from "../utils/route-error.js";
 import { requireAdminAuth } from "./middleware/auth.js";
 
 const router = Router();
 
-function origin(): string {
-    return (process.env.FRONTEND_URL || "https://www.promiseelectronics.com").replace(/\/$/, "");
-}
+// One origin for anything a crawler reads. FRONTEND_URL may hold several,
+// because CORS treats it as a list — see siteOrigin.ts.
+const origin = siteOrigin;
 
 function xmlEscape(s: string): string {
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");

@@ -19,6 +19,7 @@
  * from the name the moment anybody edits one.
  */
 import { getPublicServices, getPublicProducts } from "./publicCatalogCache.js";
+import { siteOrigin } from "./siteOrigin.js";
 
 export type PublicPageMeta = {
     title: string;
@@ -53,9 +54,8 @@ function attr(value: string): string {
         .replace(/>/g, "&gt;");
 }
 
-function siteOrigin(): string {
-    return (process.env.FRONTEND_URL || "https://www.promiseelectronics.com").replace(/\/$/, "");
-}
+// One origin for anything a crawler reads. FRONTEND_URL may hold several,
+// because CORS treats it as a list — see siteOrigin.ts.
 
 /**
  * Titled the way somebody searches, not the way a catalogue is filed.
