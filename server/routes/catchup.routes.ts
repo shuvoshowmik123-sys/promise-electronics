@@ -57,6 +57,12 @@ const catchupSchema = z.object({
     warrantyMonths: z.number().int().min(0).max(120).optional(),
     technicianName: z.string().max(120).optional(),
     note: z.string().max(500).optional(),
+
+    /**
+     * Set only after the person has been shown the duplicate warning and said
+     * it really is a second job. Never sent on a first attempt.
+     */
+    allowDuplicate: z.boolean().optional(),
 });
 
 /**
@@ -92,6 +98,40 @@ router.post(
             }
             if (input.amountPaid > input.amountCharged) {
                 return res.status(400).json({ error: "Paid cannot be more than charged." });
+            }
+
+            /**
+             * The same bill twice is the mistake this screen invites.
+             *
+             * Somebody working through a pile of paper loses their place, or
+             * presses Record twice being careful. QA did exactly that and it
+             * went straight through — the customer then owed 16,000 twice, and
+             * nothing on any screen said which of the two was real.
+             *
+             * Refused rather than merged, because only the person holding the
+             * paper knows whether it is a mistake or genuinely two identical
+             * repairs on two identical sets. They can say so with
+             * `allowDuplicate`.
+             */
+            if (!input.allowDuplicate) {
+                const clash = await db.execute(sql`
+                    SELECT id FROM job_tickets
+                    WHERE entered_as_catchup = true
+                      AND customer_phone = ${input.customerPhone}
+                      AND device = ${input.device}
+                      AND estimated_cost = ${input.amountCharged}
+                      AND created_at = ${jobDate}
+                    LIMIT 1
+                `);
+                const existing = (clash as unknown as { rows: Array<{ id: string }> }).rows?.[0];
+                if (existing) {
+                    return res.status(409).json({
+                        error: "This looks like a bill you have already entered.",
+                        code: "POSSIBLE_DUPLICATE",
+                        existingJobId: existing.id,
+                        hint: "Same customer, same set, same amount, same date. Save again to confirm it is a second job.",
+                    });
+                }
             }
 
             const due = Math.round((input.amountCharged - input.amountPaid) * 100) / 100;
@@ -139,6 +179,13 @@ router.post(
              *
              * `source` marks where it came from, so a catch-up due can always be
              * told from one raised by the till.
+             *
+             * `amount` is what was BILLED and `paid_amount` what has been paid,
+             * so the dues screen's `amount - paidAmount` lands on what is still
+             * owed. Writing the outstanding figure into `amount` as well
+             * subtracted the payment twice: a 26,000 job with 10,000 paid read
+             * as 6,000 outstanding instead of 16,000, and a half-paid 28,000
+             * read as settled. This is the convention the till already uses.
              */
             if (due > 0) {
                 await db.execute(sql`
@@ -148,7 +195,7 @@ router.post(
                         note, created_by, created_at, due_date
                     ) VALUES (
                         ${nanoid(16)}, ${input.customerName}, ${input.customerPhone},
-                        ${due}, ${input.amountPaid},
+                        ${input.amountCharged}, ${input.amountPaid},
                         'Pending', ${jobId}, ${input.device}, 'catch_up', ${jobId},
                         ${input.note ?? "Entered from a paper bill"}, ${actorName},
                         ${jobDate}, ${jobDate}

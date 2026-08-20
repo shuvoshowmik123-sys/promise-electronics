@@ -49,7 +49,11 @@ const EMPTY = {
 export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () => string }) {
     const [form, setForm] = useState({ ...EMPTY });
     const queryClient = useQueryClient();
-    const set = (k: keyof typeof EMPTY, v: string) => setForm((f) => ({ ...f, [k]: v }));
+    const set = (k: keyof typeof EMPTY, v: string) => {
+        setForm((f) => ({ ...f, [k]: v }));
+        // Changing anything means this is no longer the bill that was queried.
+        setConfirmDuplicate(false);
+    };
 
     const { data: recent } = useQuery({
         queryKey: ["catch-up-entries"],
@@ -61,6 +65,9 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
     const due = Math.max(0, charged - paid);
     /** The server refuses this, so the screen must not let it be sent. */
     const overpaid = paid > charged;
+
+    /** Set only after the server has warned about a duplicate and the person agreed. */
+    const [confirmDuplicate, setConfirmDuplicate] = useState(false);
 
     const save = useMutation({
         mutationFn: () => fetchApi<{ jobId: string; message: string }>("/admin/catch-up-job", {
@@ -79,6 +86,7 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                 warrantyMonths: form.warrantyMonths ? Number(form.warrantyMonths) : undefined,
                 technicianName: form.technicianName.trim() || undefined,
                 note: form.note.trim() || undefined,
+                allowDuplicate: confirmDuplicate || undefined,
             }),
         }),
         onSuccess: (r) => {
@@ -93,10 +101,25 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                 customerAddress: f.customerAddress,
                 jobDate: f.jobDate,
             }));
+            setConfirmDuplicate(false);
             queryClient.invalidateQueries({ queryKey: ["catch-up-entries"] });
             queryClient.invalidateQueries({ queryKey: ["jobs"] });
+            queryClient.invalidateQueries({ queryKey: ["due-records"] });
         },
-        onError: (e: Error) => toast.error(e.message || "Could not save this entry"),
+        onError: (e: Error) => {
+            /**
+             * A refused duplicate is not an error to shrug at — it is a
+             * question. The button becomes "Yes, save it anyway" so the answer
+             * is a deliberate second press rather than a retry that looks
+             * identical to the first.
+             */
+            if (/already entered/i.test(e.message)) {
+                setConfirmDuplicate(true);
+                toast.warning("You have already entered this bill. Press again only if it really is a second job.");
+                return;
+            }
+            toast.error(e.message || "Could not save this entry");
+        },
     });
 
     const ready = form.customerName.trim() && form.customerPhone.trim()
@@ -273,12 +296,15 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
                             <Button variant="ghost" className="h-12 rounded-xl"
                                 onClick={() => setForm({ ...EMPTY })}>Clear</Button>
-                            <Button className="h-12 rounded-xl px-8 bg-slate-900 hover:bg-slate-800"
+                            <Button className={cn("h-12 rounded-xl px-8",
+                                confirmDuplicate ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-900 hover:bg-slate-800")}
                                 disabled={!ready || save.isPending}
                                 onClick={() => save.mutate()}>
                                 {save.isPending
                                     ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>
-                                    : <><Check className="mr-2 h-4 w-4" /> Record this job</>}
+                                    : confirmDuplicate
+                                        ? <><AlertCircle className="mr-2 h-4 w-4" /> Yes, save it anyway</>
+                                        : <><Check className="mr-2 h-4 w-4" /> Record this job</>}
                             </Button>
                         </div>
                     </div>
