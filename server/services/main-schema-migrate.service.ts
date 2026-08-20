@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_20_inventory_cost_price";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_21_catchup_entry";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2491,6 +2491,52 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       // this table serves.
       await client.query(`CREATE INDEX IF NOT EXISTS idx_stock_receipts_item
         ON inventory_stock_receipts (item_id, created_at DESC)`);
+    },
+  },
+  {
+    id: "2026_08_21_catchup_entry",
+    description:
+      "job_tickets catch-up stamp — records work that happened before the system, marked as such forever",
+    up: async (client) => {
+      /**
+       * The shop existed before the software did.
+       *
+       * Every path into job_tickets assumes work starts here: create a job,
+       * add a warranty, record the labour, raise a bill, then the due. That
+       * order is deliberate and it is what keeps the money honest for real
+       * new work.
+       *
+       * It also makes it impossible to record what already happened. There are
+       * televisions on the shelf that arrived before this system, customers who
+       * took a set home and still owe for it, and warranties promised by
+       * handshake. Walking a six-step intake to log something that finished
+       * three weeks ago is work nobody will do, so it does not get done, and the
+       * system stays empty while the shop stays full.
+       *
+       * These columns are the price of the shortcut. An entry made this way is
+       * marked permanently: who typed it, when they typed it, and why. A year
+       * from now the difference between "recorded as it happened" and "typed in
+       * later from a paper" is still visible, which is exactly what an auditor,
+       * or a suspicious owner, needs to be able to see.
+       *
+       * Deliberately NOT a soft flag that can be cleared. Nothing in the
+       * application unsets these.
+       */
+      await client.query(`ALTER TABLE job_tickets
+        ADD COLUMN IF NOT EXISTS entered_as_catchup BOOLEAN NOT NULL DEFAULT false`);
+      await client.query(`ALTER TABLE job_tickets
+        ADD COLUMN IF NOT EXISTS catchup_entered_by TEXT`);
+      await client.query(`ALTER TABLE job_tickets
+        ADD COLUMN IF NOT EXISTS catchup_entered_at TIMESTAMPTZ`);
+      await client.query(`ALTER TABLE job_tickets
+        ADD COLUMN IF NOT EXISTS catchup_note TEXT`);
+      // The amount still owed, when a catch-up job was only part paid.
+      await client.query(`ALTER TABLE job_tickets
+        ADD COLUMN IF NOT EXISTS catchup_amount_due REAL`);
+
+      // Every report of "which records were typed in later" filters on this.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_job_tickets_catchup
+        ON job_tickets (entered_as_catchup, created_at DESC)`);
     },
   },
 ];

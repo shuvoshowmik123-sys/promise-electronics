@@ -79,6 +79,7 @@ const PosTab = lazy(() => import("./bento/tabs/PosTab"));
 const OrdersTab = lazy(() => import("./bento/tabs/OrdersTab"));
 const PlaceholderTab = lazy(() => import("./bento/tabs/PlaceholderTab"));
 const AuditLogsTab = lazy(() => import("./bento/tabs/AuditLogsTab"));
+const CatchUpEntryTab = lazy(() => import("./bento/tabs/CatchUpEntryTab").then(m => ({ default: m.CatchUpEntryTab })));
 const BrainTab = lazy(() => import("./bento/tabs/BrainTab"));
 
 // New Tabs
@@ -189,6 +190,7 @@ export const ADMIN_SIDEBAR_NAV_GROUPS: SidebarGroup[] = [
         items: [
             { label: "System Settings", id: "settings", icon: Settings, color: "slate", layout: "fixed" },
             { label: "Audit Logs", id: "audit-logs", icon: ShieldAlert, color: "rose", layout: "fixed" },
+            { label: "Catch-Up Entry", id: "catch-up", icon: ScrollText, color: "amber", layout: "fixed" },
             { label: "AI Brain", id: "brain", icon: Brain, color: "fuchsia", layout: "scroll" },
         ]
     }
@@ -486,6 +488,8 @@ export default function DesignConcept() {
         'quality': 'quality',
         'system-health': ['settings', 'systemHealth'], // settings.manage = only granular key for system health
         'audit-logs': ['settings', 'auditLogs'],       // settings.manage = only granular key for audit logs
+        // Can write any amount against any past date — Super Admin only, like resets.
+        'catch-up': ['settings', 'catchUpEntry'],
         'brain': ['aiBrain', 'brain'], // aiBrain.* = catalog module; brain = legacy key name
     };
 
@@ -548,7 +552,7 @@ export default function DesignConcept() {
         'salary': 'Salary & HR', 'cashier': 'Cashier Dashboard', 'technician': 'Technician View',
         'warranty': 'Warranty Claims', 'refunds': 'Refunds', 'disputes': 'Disputes', 'wastage': 'Wastage',
         'shipments': 'Shipments', 'procurement': 'Procurement', 'stock-manager': 'Stock Manager',
-        'audit-logs': 'Audit Logs', 'brain': 'AI Brain',
+        'audit-logs': 'Audit Logs', 'catch-up': 'Catch-Up Entry', 'brain': 'AI Brain',
         'account': 'My Account'
     };
 
@@ -1219,8 +1223,9 @@ export default function DesignConcept() {
                                                 {/* Fallback */}
                                                 {/* "Workflow Design Demo" was a development placeholder that rendered nothing. */}
                                                 {tabId === 'audit-logs' && <Suspense fallback={<DashboardSkeleton />}><AuditLogsTab /></Suspense>}
+                                                {tabId === 'catch-up' && <Suspense fallback={<DashboardSkeleton />}><CatchUpEntryTab getCurrencySymbol={() => '৳'} /></Suspense>}
 
-                                                {!['dashboard', 'overview', 'area-intelligence', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'shift', 'customers', 'quotations', 'inquiries', 'salary', 'cashier', 'technician', 'warranty', 'refunds', 'disputes', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'brain', 'account', 'parts-demand'].includes(tabId) && (
+                                                {!['dashboard', 'overview', 'area-intelligence', 'jobs', 'users', 'finance', 'settings', 'system-health', 'pos', 'b2b', 'corp-msg', 'inventory', 'service-requests', 'repair-journeys', 'orders', 'pickup', 'challans', 'reports', 'quality', 'attendance', 'shift', 'customers', 'quotations', 'inquiries', 'salary', 'cashier', 'technician', 'warranty', 'refunds', 'disputes', 'wastage', 'shipments', 'procurement', 'stock-manager', 'audit-logs', 'catch-up', 'brain', 'account', 'parts-demand'].includes(tabId) && (
                                                     <Suspense fallback={<DashboardSkeleton />}>
                                                         <PlaceholderTab tabName={tabId} />
                                                     </Suspense>

@@ -361,6 +361,19 @@ export const jobTickets = pgTable("job_tickets", {
   invoicePrintCount: integer("invoice_print_count").default(0),
 
   writeOffReason: text("write_off_reason"),
+
+  /**
+   * Marks a job typed in after the fact, from paper, rather than recorded as
+   * it happened. Permanent: nothing in the application clears it. The
+   * difference between a live record and a catch-up one has to stay visible
+   * to anyone auditing the books later.
+   */
+  enteredAsCatchup: boolean("entered_as_catchup").notNull().default(false),
+  catchupEnteredBy: text("catchup_entered_by"),
+  catchupEnteredAt: timestamp("catchup_entered_at"),
+  catchupNote: text("catchup_note"),
+  /** What the customer still owes on a catch-up job that was only part paid. */
+  catchupAmountDue: real("catchup_amount_due"),
   writeOffBy: text("write_off_by"),
   writeOffAt: timestamp("write_off_at"),
 
