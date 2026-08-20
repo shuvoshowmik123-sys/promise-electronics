@@ -144,6 +144,58 @@ export function ProfitTab({ getCurrencySymbol }: { getCurrencySymbol: () => stri
                         </motion.div>
                     )}
 
+                    {/*
+                      * Repairs and retail, side by side.
+                      *
+                      * They are different businesses and one blended percentage
+                      * hides both. Retail margin is the gap between a part's
+                      * shelf price and its cost. Repair margin is what was
+                      * billed minus the parts consumed — BEFORE wages, because a
+                      * technician is salaried rather than paid per job, so
+                      * charging their time here would double-count it against
+                      * the wage bill. The caption says so; without it this reads
+                      * as money in your pocket.
+                      */}
+                    <motion.div variants={itemVariants} className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <BentoCard className="bg-white" disableHover>
+                            <div className="flex items-baseline justify-between">
+                                <h3 className="text-sm font-black text-slate-900">Repairs</h3>
+                                <span className="text-[11px] text-slate-400">{summary?.repairs.jobs ?? 0} jobs</span>
+                            </div>
+                            <div className="mt-2 flex items-baseline gap-2">
+                                <span className={cn("text-xl font-black", (summary?.repairs.profit ?? 0) < 0 ? "text-rose-600" : "text-emerald-600")}>
+                                    {money(summary?.repairs.profit ?? 0)}
+                                </span>
+                                <span className="text-[11px] font-semibold text-slate-400">
+                                    {summary?.repairs.marginPercent ?? 0}%
+                                </span>
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-500">
+                                {money(summary?.repairs.revenue ?? 0)} billed · {money(summary?.repairs.cost ?? 0)} parts
+                            </div>
+                            <div className="mt-2 text-[10px] text-slate-400">Before wages — staff time is not counted here</div>
+                        </BentoCard>
+
+                        <BentoCard className="bg-white" disableHover>
+                            <div className="flex items-baseline justify-between">
+                                <h3 className="text-sm font-black text-slate-900">Retail</h3>
+                                <span className="text-[11px] text-slate-400">over the counter</span>
+                            </div>
+                            <div className="mt-2 flex items-baseline gap-2">
+                                <span className={cn("text-xl font-black", (summary?.retail.profit ?? 0) < 0 ? "text-rose-600" : "text-emerald-600")}>
+                                    {money(summary?.retail.profit ?? 0)}
+                                </span>
+                                <span className="text-[11px] font-semibold text-slate-400">
+                                    {summary?.retail.marginPercent ?? 0}%
+                                </span>
+                            </div>
+                            <div className="mt-1 text-[11px] text-slate-500">
+                                {money(summary?.retail.revenue ?? 0)} sold · {money(summary?.retail.cost ?? 0)} cost
+                            </div>
+                            <div className="mt-2 text-[10px] text-slate-400">Parts and products sold directly</div>
+                        </BentoCard>
+                    </motion.div>
+
                     <motion.div variants={itemVariants}>
                         <BentoCard className="bg-white" disableHover>
                             <div className="mb-3">

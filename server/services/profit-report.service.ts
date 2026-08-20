@@ -19,6 +19,7 @@ import {
     sumMargins,
     type MarginResult,
 } from "../../shared/inventory-costing.js";
+import { summariseRepairs, type RepairTotals } from "./job-profit.service.js";
 
 export interface ProfitSummary {
     from: string;
@@ -34,6 +35,17 @@ export interface ProfitSummary {
     /** How much of the period's revenue profit could be calculated for, 0–100. */
     coveragePercent: number;
     transactions: number;
+    /**
+     * The two halves of the shop, kept apart because they behave differently.
+     *
+     * Retail margin is the gap between a part's shelf price and what it cost.
+     * Repair margin is what was billed minus the parts consumed, before wages —
+     * a technician is paid by salary, not per job, so charging their time
+     * against each repair would double-count it against the wage bill. One
+     * blended percentage would hide both facts.
+     */
+    retail: { revenue: number; cost: number; profit: number; marginPercent: number };
+    repairs: RepairTotals;
 }
 
 export interface ItemProfitRow {
@@ -52,6 +64,10 @@ interface CartLine {
     name?: string | null;
     quantity?: number | null;
     price?: number | null;
+}
+
+function round2(n: number): number {
+    return Math.round((n + Number.EPSILON) * 100) / 100;
 }
 
 function parseCart(raw: string | null): CartLine[] {
@@ -76,7 +92,7 @@ function parseCart(raw: string | null): CartLine[] {
  */
 async function loadPeriod(from: Date, to: Date) {
     const txns = await db.execute(sql`
-        SELECT id, items, discount, refunded_amount, total, created_at
+        SELECT id, items, linked_jobs, discount, refunded_amount, total, created_at
         FROM pos_transactions
         WHERE created_at >= ${from} AND created_at < ${to}
           AND payment_status <> 'Cancelled'
@@ -133,25 +149,50 @@ export async function getProfitSummary(from: Date, to: Date): Promise<ProfitSumm
 
     const totals = sumMargins(margins);
 
+    /**
+     * Repairs are billed as linkedJobs, not as cart lines, so they are absent
+     * from `margins` entirely — the first version of this report simply did not
+     * count them, which left most of the shop out of its own profit figure.
+     */
+    const repairs = await summariseRepairs(rows.map((r) => ({
+        linkedJobs: (r.linked_jobs as string | null) ?? null,
+        total: Number(r.total ?? 0),
+        refundedAmount: Number(r.refunded_amount ?? 0),
+    })));
+
+    const revenue = round2(totals.revenue + repairs.revenue);
+    const costedRevenue = round2(
+        totals.costedRevenue + (repairs.revenue - repairs.unknownCostRevenue),
+    );
+    const cost = round2(totals.cost + repairs.cost);
+    const profit = round2(costedRevenue - cost);
+
     return {
         from: from.toISOString(),
         to: to.toISOString(),
-        revenue: totals.revenue,
-        costedRevenue: totals.costedRevenue,
-        cost: totals.cost,
-        profit: totals.profit,
-        marginPercent: totals.marginPercent,
-        unknownCostLines: totals.unknownCostLines,
-        unknownCostRevenue: totals.unknownCostRevenue,
+        revenue,
+        costedRevenue,
+        cost,
+        profit,
+        marginPercent: costedRevenue > 0 ? round2((profit / costedRevenue) * 100) : 0,
+        unknownCostLines: totals.unknownCostLines + repairs.unknownCostJobs,
+        unknownCostRevenue: round2(totals.unknownCostRevenue + repairs.unknownCostRevenue),
         /**
          * The number that stops the rest being misread. At 40% coverage a
          * profit figure describes less than half the period, and the screen has
          * to be able to say so.
          */
-        coveragePercent: totals.revenue > 0
-            ? Math.round((totals.costedRevenue / totals.revenue) * 1000) / 10
+        coveragePercent: revenue > 0
+            ? Math.round((costedRevenue / revenue) * 1000) / 10
             : 0,
         transactions: rows.length,
+        retail: {
+            revenue: totals.revenue,
+            cost: totals.cost,
+            profit: totals.profit,
+            marginPercent: totals.marginPercent,
+        },
+        repairs,
     };
 }
 

@@ -2010,6 +2010,11 @@ export const profitReportApi = {
             profit: number; marginPercent: number;
             unknownCostLines: number; unknownCostRevenue: number;
             coveragePercent: number; transactions: number;
+            retail: { revenue: number; cost: number; profit: number; marginPercent: number };
+            repairs: {
+                revenue: number; cost: number; profit: number; marginPercent: number;
+                jobs: number; unknownCostJobs: number; unknownCostRevenue: number;
+            };
         }>(`/reports/profit${query ? `?${query}` : ""}`);
     },
     items: (from?: string, to?: string, limit = 20) => {
