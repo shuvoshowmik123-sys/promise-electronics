@@ -663,6 +663,15 @@ export const inventoryItems = pgTable("inventory_items", {
   stock: integer("stock").notNull().default(0),
   price: real("price").notNull(),
   minPrice: real("min_price"),
+  /**
+   * Weighted average paid per unit, or NULL when it was never recorded.
+   *
+   * NULL is a real answer and must not be read as free. Stock held before cost
+   * tracking has no purchase price, and counting that as zero would make every
+   * historical item look like pure profit. Reports exclude unknown-cost lines
+   * rather than valuing them; see shared/inventory-costing.ts.
+   */
+  avgCostPrice: real("avg_cost_price"),
   maxPrice: real("max_price"),
   status: text("status").notNull().default("In Stock"),
   lowStockThreshold: integer("low_stock_threshold").default(5),
@@ -769,6 +778,29 @@ export type InsertPurchaseOrderItem = z.infer<typeof insertPurchaseOrderItemSche
 export type PurchaseOrderItem = typeof purchaseOrderItems.$inferSelect;
 
 // Local Purchases Table (Phase 4.4)
+/**
+ * One delivery of stock, and what it cost.
+ *
+ * The running average on [inventoryItems] cannot be audited or corrected on its
+ * own. Ten at 450 and ten more at 500 average 475, and when somebody asks why,
+ * the answer has to be the two purchases rather than the arithmetic — and if one
+ * cost was typed wrongly, the average has to be rebuildable from these rows.
+ */
+export const inventoryStockReceipts = pgTable("inventory_stock_receipts", {
+  id: text("id").primaryKey(),
+  itemId: text("item_id").notNull(),
+  quantity: integer("quantity").notNull(),
+  unitCost: real("unit_cost").notNull(),
+  supplierName: text("supplier_name"),
+  note: text("note"),
+  receivedBy: text("received_by"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  itemHistoryIdx: index("idx_stock_receipts_item").on(table.itemId, table.createdAt),
+}));
+
+export type InventoryStockReceipt = typeof inventoryStockReceipts.$inferSelect;
+
 export const localPurchases = pgTable("local_purchases", {
   id: text("id").primaryKey(),
   jobTicketId: text("job_ticket_id").notNull(),

@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_20_staff_devices";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_20_inventory_cost_price";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2447,6 +2447,50 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       // revokes every device for one person.
       await client.query(`CREATE INDEX IF NOT EXISTS idx_staff_devices_user_live
         ON staff_devices (user_id, revoked_at, expires_at)`);
+    },
+  },
+  {
+    id: "2026_08_20_inventory_cost_price",
+    description:
+      "inventory_items.avg_cost_price and inventory_stock_receipts — what stock cost, so margin is a fact",
+    up: async (client) => {
+      /**
+       * The system knew what everything sold for and nothing about what it
+       * cost, so every profit figure in the reports was a guess. local_purchases
+       * carries a cost, but only for parts bought ad hoc against one job;
+       * ordinary catalogue stock had nowhere to record it.
+       *
+       * avg_cost_price is deliberately NULLABLE and stock already on the shelf
+       * is left NULL. The temptation is to backfill zero, and zero is the one
+       * value that must never be used: it makes old stock look like pure profit
+       * and would overstate margin on every historical sale. NULL means "not
+       * recorded", reports exclude it, and the number shrinks honestly as real
+       * costs arrive.
+       *
+       * The receipts table exists because an average alone cannot be audited or
+       * corrected. Buying ten at 450 and ten more at 500 gives 475, and when
+       * somebody asks why, the answer has to be the two purchases rather than
+       * the arithmetic. It also allows the average to be recomputed if a cost
+       * is entered wrongly, which a single running column cannot survive.
+       */
+      await client.query(`ALTER TABLE inventory_items
+        ADD COLUMN IF NOT EXISTS avg_cost_price REAL`);
+
+      await client.query(`CREATE TABLE IF NOT EXISTS inventory_stock_receipts (
+        id TEXT PRIMARY KEY,
+        item_id TEXT NOT NULL,
+        quantity INTEGER NOT NULL,
+        unit_cost REAL NOT NULL,
+        supplier_name TEXT,
+        note TEXT,
+        received_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )`);
+
+      // Reading one item's purchase history, newest first, is the only query
+      // this table serves.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_stock_receipts_item
+        ON inventory_stock_receipts (item_id, created_at DESC)`);
     },
   },
 ];

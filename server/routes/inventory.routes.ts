@@ -20,6 +20,8 @@ import { inventoryService } from '../services/inventory.service.js';
 import { db } from '../db.js';
 import { gte, lte, and, eq, isNull, count, sql } from 'drizzle-orm';
 import { invalidatePublicCatalog } from "../lib/publicCatalogCache.js";
+import { nanoid } from 'nanoid';
+import { nextWeightedAverage } from '../../shared/inventory-costing.js';
 
 const router = Router();
 
@@ -396,7 +398,7 @@ router.patch('/api/inventory/:id', requireAdminAuth, dropPublicCatalogCache, req
  */
 router.patch('/api/inventory/:id/stock', requireAdminAuth, dropPublicCatalogCache, requireGranularPermission('inventory.adjustStock'), async (req: Request, res: Response) => {
     try {
-        const { quantity } = req.body;
+        const { quantity, unitCost, supplierName, note } = req.body;
         if (typeof quantity !== 'number') {
             return res.status(400).json({ error: 'Quantity must be a number' });
         }
@@ -404,6 +406,36 @@ router.patch('/api/inventory/:id/stock', requireAdminAuth, dropPublicCatalogCach
         const item = await storage.updateInventoryStock(req.params.id, quantity);
         if (!item) {
             return res.status(404).json({ error: 'Inventory item not found' });
+        }
+
+        /**
+         * Record what this delivery cost, when a cost was given.
+         *
+         * Optional on purpose. Stock is adjusted for corrections and stock-takes
+         * as well as purchases, and forcing a price onto a correction would
+         * invent one. A cost is recorded only when somebody supplies it, so the
+         * average is built from real purchases and stays NULL — meaning 'not
+         * recorded' — until one arrives.
+         */
+        const cost = Number(unitCost);
+        if (quantity > 0 && Number.isFinite(cost) && cost >= 0) {
+            const priorQty = Math.max(0, (existingItem?.stock ?? 0));
+            const nextAvg = nextWeightedAverage(
+                { quantity: priorQty, avgCostPrice: (existingItem as any)?.avgCostPrice ?? null },
+                { quantity, unitCost: cost },
+            );
+
+            await db.execute(sql`
+                INSERT INTO inventory_stock_receipts
+                    (id, item_id, quantity, unit_cost, supplier_name, note, received_by)
+                VALUES (${nanoid(16)}, ${item.id}, ${quantity}, ${cost},
+                        ${supplierName ?? null}, ${note ?? null},
+                        ${req.session?.adminUserId ?? null})
+            `);
+            await db.execute(sql`
+                UPDATE inventory_items SET avg_cost_price = ${nextAvg} WHERE id = ${item.id}
+            `);
+            (item as any).avgCostPrice = nextAvg;
         }
 
         // Audit Log
