@@ -5,8 +5,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
     Banknote, AlertCircle, ShoppingCart, Package, Plus, Search, Filter,
     MoreHorizontal, Download, Globe, Tv, Monitor, Smartphone, LayoutGrid, Cpu, Zap, Volume2, Gamepad2, Wrench, Image as ImageIcon, Eye, ChevronLeft, ChevronRight, X, Link, AlertTriangle, AlertOctagon,
-    SlidersHorizontal, MapPin, ArrowUpDown
+    SlidersHorizontal, MapPin, ArrowUpDown, Wallet
 } from "lucide-react";
+import { computeLineMargin, nextWeightedAverage } from "@shared/inventory-costing";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -67,6 +68,15 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
     const [previewIndex, setPreviewIndex] = useState(0);
     const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null);
     const [stockAdjustment, setStockAdjustment] = useState<number>(0);
+    /**
+     * Kept as strings so the fields can be genuinely empty.
+     *
+     * A numeric 0 would render as "0" and read as "this delivery was free",
+     * which is the one value that must never be recorded by accident — an
+     * unrecorded cost and a zero cost mean opposite things in every report.
+     */
+    const [unitCostInput, setUnitCostInput] = useState<string>("");
+    const [supplierInput, setSupplierInput] = useState<string>("");
     const [serialsInput, setSerialsInput] = useState<string>("");
     const [imageUrls, setImageUrls] = useState<string[]>([]);
     const [featuresList, setFeaturesList] = useState<string[]>([]);
@@ -301,14 +311,17 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
     });
 
     const stockMutation = useMutation({
-        mutationFn: ({ id, quantity }: { id: string; quantity: number }) =>
-            inventoryApi.updateStock(id, quantity),
+        mutationFn: ({ id, quantity, unitCost, supplierName }: {
+            id: string; quantity: number; unitCost?: number; supplierName?: string;
+        }) => inventoryApi.updateStock(id, quantity, { unitCost, supplierName }),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["inventory"] });
             toast.success("Stock adjusted successfully");
             setIsStockDialogOpen(false);
             setSelectedItem(null);
             setStockAdjustment(0);
+            setUnitCostInput("");
+            setSupplierInput("");
         },
         onError: (error: Error) => toast.error(error.message || "Failed to adjust stock"),
     });
@@ -437,6 +450,8 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
         setSelectedItem(item);
         setStockAdjustment(0);
         setSerialsInput("");
+        setUnitCostInput("");
+        setSupplierInput("");
         setIsStockDialogOpen(true);
     };
 
@@ -792,6 +807,32 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                                         <div className="flex flex-col">
                                             <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Price</span>
                                             <span className="text-lg font-bold text-slate-700">{getCurrencySymbol()} {Number(item.price).toLocaleString()}</span>
+                                            {(() => {
+                                                const m = computeLineMargin({
+                                                    unitPrice: Number(item.price || 0),
+                                                    quantity: 1,
+                                                    avgCostPrice: item.avgCostPrice ?? null,
+                                                });
+                                                if (!m.known) {
+                                                    // Amber, not grey: an unrecorded cost is a gap to
+                                                    // fill, and greying it out would read as "nothing
+                                                    // here" — which is how it stays unfilled forever.
+                                                    return (
+                                                        <span className="text-[10px] font-bold text-amber-600 mt-0.5">
+                                                            Cost not recorded
+                                                        </span>
+                                                    );
+                                                }
+                                                return (
+                                                    <span className={cn(
+                                                        "text-[10px] font-bold mt-0.5",
+                                                        m.profit < 0 ? "text-rose-600" : "text-emerald-600",
+                                                    )}>
+                                                        {m.profit < 0 ? "Loss" : "Profit"} {getCurrencySymbol()} {Math.abs(m.profit).toLocaleString()}
+                                                        <span className="opacity-60 ml-1">({m.marginPercent}%)</span>
+                                                    </span>
+                                                );
+                                            })()}
                                         </div>
                                         <div className="flex flex-col items-end">
                                             <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider mb-1">Stock</span>
@@ -1017,6 +1058,95 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                                 <p className="text-xs text-slate-500 text-right mt-1">
                                     New Total: <strong className="text-indigo-600 text-sm">{(Number(selectedItem?.stock || 0) + stockAdjustment)}</strong>
                                 </p>
+                                {/*
+                                  * Cost only appears when stock is going UP.
+                                  *
+                                  * Removing stock is a stock-take or a wastage, never a
+                                  * purchase, so asking what it cost would invite a number
+                                  * that means nothing. Optional even when adding, because a
+                                  * correction upward is not a delivery either.
+                                  */}
+                                {stockAdjustment > 0 && (
+                                    <div className="mt-5 rounded-2xl border border-emerald-100 bg-emerald-50/60 p-4 space-y-4">
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div>
+                                                <p className="text-sm font-semibold text-emerald-900">What did this cost?</p>
+                                                <p className="text-xs text-emerald-700/80 mt-0.5">
+                                                    Optional — leave blank if this is a correction, not a purchase.
+                                                </p>
+                                            </div>
+                                            <Wallet className="h-5 w-5 text-emerald-600 shrink-0 mt-0.5" />
+                                        </div>
+
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                            <div className="space-y-1.5">
+                                                <Label className="text-xs font-medium text-emerald-900">Cost per piece</Label>
+                                                <div className="relative">
+                                                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-700 font-semibold">৳</span>
+                                                    {/*
+                                                      * inputMode="decimal" gives a phone the number pad with a
+                                                      * decimal point instead of the full keyboard, and h-12 keeps
+                                                      * the target comfortably above the 44px a thumb needs.
+                                                      */}
+                                                    <Input
+                                                        type="number"
+                                                        inputMode="decimal"
+                                                        min="0"
+                                                        step="0.01"
+                                                        placeholder="450"
+                                                        className="pl-8 h-12 text-lg font-mono bg-white border-emerald-200 focus-visible:ring-emerald-500"
+                                                        value={unitCostInput}
+                                                        onChange={(e) => setUnitCostInput(e.target.value)}
+                                                    />
+                                                </div>
+                                            </div>
+
+                                            <div className="space-y-1.5">
+                                                <Label className="text-xs font-medium text-emerald-900">Supplier <span className="text-emerald-600/70 font-normal">(optional)</span></Label>
+                                                <Input
+                                                    placeholder="e.g. Nabila Traders"
+                                                    className="h-12 bg-white border-emerald-200 focus-visible:ring-emerald-500"
+                                                    value={supplierInput}
+                                                    onChange={(e) => setSupplierInput(e.target.value)}
+                                                />
+                                            </div>
+                                        </div>
+
+                                        {/*
+                                          * Shows the effect before saving. The weighted average
+                                          * surprises people — ten at 450 plus one at 900 is 491,
+                                          * not 675 — so it is better seen than explained after
+                                          * the fact.
+                                          */}
+                                        {(() => {
+                                            const typed = Number(unitCostInput);
+                                            if (!unitCostInput.trim() || !Number.isFinite(typed) || typed < 0) {
+                                                return (
+                                                    <p className="text-xs text-emerald-800/70">
+                                                        {selectedItem?.avgCostPrice != null
+                                                            ? <>Average cost stays <strong className="font-mono">৳{Number(selectedItem.avgCostPrice).toFixed(2)}</strong></>
+                                                            : <>No cost recorded for this item yet — profit will show as unknown.</>}
+                                                    </p>
+                                                );
+                                            }
+                                            const next = nextWeightedAverage(
+                                                { quantity: Number(selectedItem?.stock || 0), avgCostPrice: selectedItem?.avgCostPrice ?? null },
+                                                { quantity: stockAdjustment, unitCost: typed },
+                                            );
+                                            return (
+                                                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-white/80 px-3 py-2.5 border border-emerald-100">
+                                                    <span className="text-xs text-emerald-800">
+                                                        Total paid <strong className="font-mono">৳{(typed * stockAdjustment).toFixed(2)}</strong>
+                                                    </span>
+                                                    <span className="text-xs text-emerald-900">
+                                                        New average cost{" "}
+                                                        <strong className="font-mono text-sm text-emerald-700">৳{Number(next ?? typed).toFixed(2)}</strong>
+                                                    </span>
+                                                </div>
+                                            );
+                                        })()}
+                                    </div>
+                                )}
                             </div>
                         )}
 
@@ -1041,7 +1171,20 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                             ) : (
                                 <Button
                                     className="rounded-xl px-8 shadow-md bg-indigo-600 hover:bg-indigo-700"
-                                    onClick={() => stockMutation.mutate({ id: selectedItem?.id || "", quantity: stockAdjustment })}
+                                    onClick={() => {
+                                        const typed = Number(unitCostInput);
+                                        // Blank stays blank. Sending 0 would record the
+                                        // delivery as free rather than as unpriced.
+                                        const unitCost = unitCostInput.trim() && Number.isFinite(typed) && typed >= 0
+                                            ? typed
+                                            : undefined;
+                                        stockMutation.mutate({
+                                            id: selectedItem?.id || "",
+                                            quantity: stockAdjustment,
+                                            unitCost,
+                                            supplierName: supplierInput.trim() || undefined,
+                                        });
+                                    }}
                                     disabled={stockMutation.isPending}
                                 >
                                     {stockMutation.isPending ? "Updating..." : "Update Stock"}
@@ -1248,6 +1391,46 @@ export default function InventoryTab({ initialSearchQuery, initialItemId, onSear
                                         <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                                             <div className="text-[10px] font-black uppercase text-slate-500">Type</div>
                                             <div className="mt-1 text-base font-black text-slate-950">{selectedMobileItem.itemType === "service" ? "Service" : "Product"}</div>
+                                        </div>
+                                    </div>
+                                    {/*
+                                      * Cost and margin, side by side with the selling price.
+                                      *
+                                      * "Not recorded" is printed rather than a dash or a zero.
+                                      * A dash reads as nothing to see; a zero reads as free,
+                                      * which would make this item look like pure profit. The
+                                      * wording is the same one the reports use so the two
+                                      * cannot be read as different states.
+                                      */}
+                                    <div className="mt-3 grid grid-cols-2 gap-2">
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                            <div className="text-[10px] font-black uppercase text-slate-500">Cost Price</div>
+                                            {selectedMobileItem.avgCostPrice != null ? (
+                                                <div className="mt-1 text-base font-black text-slate-950">
+                                                    {getCurrencySymbol()} {Number(selectedMobileItem.avgCostPrice).toLocaleString()}
+                                                </div>
+                                            ) : (
+                                                <div className="mt-1 text-xs font-bold text-amber-600">Not recorded</div>
+                                            )}
+                                        </div>
+                                        <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                                            <div className="text-[10px] font-black uppercase text-slate-500">Profit / piece</div>
+                                            {(() => {
+                                                const m = computeLineMargin({
+                                                    unitPrice: Number(selectedMobileItem.price || 0),
+                                                    quantity: 1,
+                                                    avgCostPrice: selectedMobileItem.avgCostPrice ?? null,
+                                                });
+                                                if (!m.known) {
+                                                    return <div className="mt-1 text-xs font-bold text-amber-600">Unknown</div>;
+                                                }
+                                                return (
+                                                    <div className={`mt-1 text-base font-black ${m.profit < 0 ? "text-rose-600" : "text-emerald-600"}`}>
+                                                        {getCurrencySymbol()} {m.profit.toLocaleString()}
+                                                        <span className="ml-1 text-[10px] font-bold opacity-70">{m.marginPercent}%</span>
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
 

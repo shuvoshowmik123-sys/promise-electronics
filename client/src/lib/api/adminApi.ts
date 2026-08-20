@@ -478,10 +478,20 @@ export const inventoryApi = {
             method: "PATCH",
             body: JSON.stringify(data),
         }),
-    updateStock: (id: string, quantity: number) =>
+    /**
+     * `unitCost` is optional because stock is adjusted for stock-takes and
+     * corrections as well as purchases, and a correction has no price. Sent only
+     * when somebody actually typed one, so the running average is built from
+     * real deliveries and stays "not recorded" until then.
+     */
+    updateStock: (
+        id: string,
+        quantity: number,
+        purchase?: { unitCost?: number; supplierName?: string; note?: string },
+    ) =>
         fetchApi<InventoryItem>(`/inventory/${id}/stock`, {
             method: "PATCH",
-            body: JSON.stringify({ quantity }),
+            body: JSON.stringify({ quantity, ...(purchase ?? {}) }),
         }),
     delete: (id: string) =>
         fetchApi<void>(`/inventory/${id}`, {
