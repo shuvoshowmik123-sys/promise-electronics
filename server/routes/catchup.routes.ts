@@ -130,6 +130,33 @@ router.post(
             `);
 
             /**
+             * Money owed has to reach the dues list, not just this screen.
+             *
+             * QA put it plainly: the 16,000 showed on the catch-up tab and
+             * nowhere else — not Finance, not dues. Knowing who owes you is the
+             * entire reason for typing old paper in, so a figure visible only on
+             * the screen that created it is half a feature.
+             *
+             * `source` marks where it came from, so a catch-up due can always be
+             * told from one raised by the till.
+             */
+            if (due > 0) {
+                await db.execute(sql`
+                    INSERT INTO due_records (
+                        id, customer, customer_phone, amount, paid_amount,
+                        status, invoice, device_name, source, old_reference,
+                        note, created_by, created_at, due_date
+                    ) VALUES (
+                        ${nanoid(16)}, ${input.customerName}, ${input.customerPhone},
+                        ${due}, ${input.amountPaid},
+                        'Pending', ${jobId}, ${input.device}, 'catch_up', ${jobId},
+                        ${input.note ?? "Entered from a paper bill"}, ${actorName},
+                        ${jobDate}, ${jobDate}
+                    )
+                `);
+            }
+
+            /**
              * Logged as critical. This endpoint can write any amount against any
              * past date, so every use of it belongs in the trail whether or not
              * anything went wrong.

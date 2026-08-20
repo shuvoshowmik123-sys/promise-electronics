@@ -59,6 +59,8 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
     const charged = Number(form.amountCharged) || 0;
     const paid = Number(form.amountPaid) || 0;
     const due = Math.max(0, charged - paid);
+    /** The server refuses this, so the screen must not let it be sent. */
+    const overpaid = paid > charged;
 
     const save = useMutation({
         mutationFn: () => fetchApi<{ jobId: string; message: string }>("/admin/catch-up-job", {
@@ -98,7 +100,8 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
     });
 
     const ready = form.customerName.trim() && form.customerPhone.trim()
-        && form.device.trim() && form.workDone.trim() && charged >= 0 && form.amountCharged !== "";
+        && form.device.trim() && form.workDone.trim() && charged >= 0
+        && form.amountCharged !== "" && !overpaid;
     const money = (n: number) => `${getCurrencySymbol()} ${n.toLocaleString()}`;
 
     /** Every field is h-12 — a thumb needs 44px and these get typed on a phone. */
@@ -129,12 +132,12 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                                 <div className="space-y-1.5">
                                     <Label className="text-xs">Name</Label>
                                     <Input className={field} value={form.customerName}
-                                        onChange={(e) => set("customerName", e.target.value)} placeholder="Rahim Uddin" />
+                                        onChange={(e) => set("customerName", e.target.value)} placeholder="e.g. Rahim Uddin" />
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-xs">Phone</Label>
                                     <Input className={field} inputMode="tel" value={form.customerPhone}
-                                        onChange={(e) => set("customerPhone", e.target.value)} placeholder="01711223344" />
+                                        onChange={(e) => set("customerPhone", e.target.value)} placeholder="e.g. 01711223344" />
                                 </div>
                             </div>
                             <div className="space-y-1.5">
@@ -150,7 +153,7 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                                 <div className="space-y-1.5 sm:col-span-1">
                                     <Label className="text-xs">Brand / device</Label>
                                     <Input className={field} value={form.device}
-                                        onChange={(e) => set("device", e.target.value)} placeholder="Sony TV" />
+                                        onChange={(e) => set("device", e.target.value)} placeholder="e.g. Sony TV" />
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-xs">Model <span className="font-normal text-slate-400">(optional)</span></Label>
@@ -160,14 +163,14 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                                 <div className="space-y-1.5">
                                     <Label className="text-xs">Size <span className="font-normal text-slate-400">(optional)</span></Label>
                                     <Input className={field} value={form.screenSize}
-                                        onChange={(e) => set("screenSize", e.target.value)} placeholder="55" />
+                                        onChange={(e) => set("screenSize", e.target.value)} placeholder="e.g. 55" />
                                 </div>
                             </div>
                             <div className="space-y-1.5">
                                 <Label className="text-xs">What was done</Label>
                                 <Textarea className="min-h-[88px] bg-white" value={form.workDone}
                                     onChange={(e) => set("workDone", e.target.value)}
-                                    placeholder="Panel replaced, 55 inch. New LVDS cable fitted." />
+                                    placeholder="e.g. Panel replaced, 55 inch. New LVDS cable fitted." />
                                 <p className="text-[11px] text-slate-400">Write it as you would on the paper bill.</p>
                             </div>
                         </section>
@@ -181,7 +184,7 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                                         <span className="absolute left-3 top-1/2 -translate-y-1/2 font-semibold text-slate-500">৳</span>
                                         <Input className={cn(field, "pl-8 text-lg font-mono")} type="number" inputMode="decimal"
                                             min="0" value={form.amountCharged}
-                                            onChange={(e) => set("amountCharged", e.target.value)} placeholder="26000" />
+                                            onChange={(e) => set("amountCharged", e.target.value)} placeholder="e.g. 26000" />
                                     </div>
                                     {/*
                                       * No catalogue check. The same 55-inch panel leaves at
@@ -202,12 +205,24 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                                 </div>
                             </div>
 
+                            {/*
+                              * Paid above charged is refused by the server, and the screen
+                              * used to answer "Fully paid ৳0" and leave the button live — so
+                              * the only way to discover the mistake was to press save and
+                              * read an error. The screen now says the same thing the server
+                              * would.
+                              */}
                             <div className={cn(
                                 "flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold",
-                                due > 0 ? "bg-rose-50 text-rose-800" : "bg-emerald-50 text-emerald-800",
+                                overpaid ? "bg-amber-50 text-amber-900"
+                                    : due > 0 ? "bg-rose-50 text-rose-800"
+                                    : "bg-emerald-50 text-emerald-800",
                             )}>
-                                <span>{due > 0 ? "Customer still owes" : "Fully paid"}</span>
-                                <span className="font-mono text-base">{money(due)}</span>
+                                <span>
+                                    {overpaid ? "Paid is more than charged — check the figures"
+                                        : due > 0 ? "Customer still owes" : "Fully paid"}
+                                </span>
+                                {!overpaid && <span className="font-mono text-base">{money(due)}</span>}
                             </div>
                         </section>
 
@@ -219,12 +234,27 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                                     <Input className={field} type="date" value={form.jobDate}
                                         max={new Date().toISOString().slice(0, 10)}
                                         onChange={(e) => set("jobDate", e.target.value)} />
+                                    {/*
+                                      * The date is repeated in words because a native date
+                                      * input renders in the browser's own locale, and a US
+                                      * locale shows 12 July as 07/12/2026 — which reads as 7
+                                      * December here. Somebody entering sixty bills would put
+                                      * months in the wrong place and never notice. The month
+                                      * name cannot be misread.
+                                      */}
+                                    {form.jobDate && (
+                                        <p className="text-[11px] font-semibold text-slate-600">
+                                            {new Date(form.jobDate + "T00:00:00").toLocaleDateString("en-GB", {
+                                                day: "numeric", month: "long", year: "numeric",
+                                            })}
+                                        </p>
+                                    )}
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-xs">Warranty months <span className="font-normal text-slate-400">(optional)</span></Label>
                                     <Input className={field} type="number" inputMode="numeric" min="0"
                                         value={form.warrantyMonths}
-                                        onChange={(e) => set("warrantyMonths", e.target.value)} placeholder="6" />
+                                        onChange={(e) => set("warrantyMonths", e.target.value)} placeholder="e.g. 6" />
                                 </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-xs">Technician <span className="font-normal text-slate-400">(optional)</span></Label>
@@ -236,7 +266,7 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                                 <Label className="text-xs">Note <span className="font-normal text-slate-400">(optional)</span></Label>
                                 <Input className={field} value={form.note}
                                     onChange={(e) => set("note", e.target.value)}
-                                    placeholder="From the paper bill dated 12 July" />
+                                    placeholder="e.g. from the paper bill dated 12 July" />
                             </div>
                         </section>
 
