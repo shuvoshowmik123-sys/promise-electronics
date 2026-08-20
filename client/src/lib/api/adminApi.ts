@@ -1988,3 +1988,41 @@ export const catalogImportApi = {
             body: JSON.stringify(payload),
         }),
 };
+
+/**
+ * Profit for a period, and which items earned it.
+ *
+ * Every response carries `coveragePercent` — how much of the period's revenue
+ * the profit figure can actually account for. Stock whose cost was never
+ * recorded is excluded rather than valued at zero, so the screen must show
+ * coverage beside the number or the reader will take a partial figure for a
+ * complete one.
+ */
+export const profitReportApi = {
+    summary: (from?: string, to?: string) => {
+        const params = new URLSearchParams();
+        if (from) params.append("from", from);
+        if (to) params.append("to", to);
+        const query = params.toString();
+        return fetchApi<{
+            from: string; to: string;
+            revenue: number; costedRevenue: number; cost: number;
+            profit: number; marginPercent: number;
+            unknownCostLines: number; unknownCostRevenue: number;
+            coveragePercent: number; transactions: number;
+        }>(`/reports/profit${query ? `?${query}` : ""}`);
+    },
+    items: (from?: string, to?: string, limit = 20) => {
+        const params = new URLSearchParams();
+        if (from) params.append("from", from);
+        if (to) params.append("to", to);
+        params.append("limit", String(limit));
+        return fetchApi<{
+            items: Array<{
+                itemId: string; name: string; quantitySold: number;
+                revenue: number; cost: number | null;
+                profit: number | null; marginPercent: number | null;
+            }>;
+        }>(`/reports/profit/items?${params.toString()}`);
+    },
+};
