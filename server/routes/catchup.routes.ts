@@ -59,6 +59,21 @@ const catchupSchema = z.object({
     note: z.string().max(500).optional(),
 
     /**
+     * Who the customer is, which the first version never asked.
+     *
+     * The shop already distinguishes these — corporate_clients carries
+     * client_class (b2b_normal | b2b_corporate) and client_type (corporate |
+     * limited_company) — and a limited company is different again because
+     * several people handle its account. A business entered as loose text is
+     * just a name: it never reaches corporate billing, and the bills it belongs
+     * on will not know it exists.
+     */
+    customerType: z.enum(["individual", "b2b_normal", "b2b_corporate", "limited_company"])
+        .optional().default("individual"),
+    /** Required for any business type — the real client, not a typed name. */
+    corporateClientId: z.string().max(64).optional(),
+
+    /**
      * Set only after the person has been shown the duplicate warning and said
      * it really is a second job. Never sent on a first attempt.
      */
@@ -98,6 +113,18 @@ router.post(
             }
             if (input.amountPaid > input.amountCharged) {
                 return res.status(400).json({ error: "Paid cannot be more than charged." });
+            }
+
+            /**
+             * A business job with no client attached would be invisible to
+             * corporate billing forever, and nothing later would reveal that it
+             * was meant to belong to somebody.
+             */
+            const isBusiness = input.customerType !== "individual";
+            if (isBusiness && !input.corporateClientId) {
+                return res.status(400).json({
+                    error: "Choose the company from the list — a typed name will not reach corporate billing.",
+                });
             }
 
             /**
@@ -154,6 +181,7 @@ router.post(
                     estimated_cost, payment_status, billing_status,
                     warranty_notes, notes,
                     created_by_user_id, created_by_name,
+                    corporate_client_id, job_type,
                     entered_as_catchup, catchup_entered_by, catchup_entered_at,
                     catchup_note, catchup_amount_due
                 ) VALUES (
@@ -164,6 +192,7 @@ router.post(
                     ${input.amountCharged}, ${paymentStatus}, 'delivered',
                     ${warrantyNote}, ${input.note ?? null},
                     ${actor?.id ?? null}, ${actorName},
+                    ${input.corporateClientId ?? null}, ${isBusiness ? "corporate" : "standard"},
                     true, ${actor?.id ?? null}, now(),
                     ${input.note ?? null}, ${due > 0 ? due : null}
                 )
@@ -270,3 +299,84 @@ router.get(
 );
 
 export default router;
+
+/**
+ * Customers this shop already knows, for the picker.
+ *
+ * Typing a name and phone again for every set was the slowest part of
+ * entering a paper pile — one customer usually has several televisions on it.
+ * Searches everything already recorded rather than a separate customer table,
+ * because a name typed on a catch-up entry an hour ago is exactly the one that
+ * needs offering back.
+ */
+router.get(
+    "/api/admin/catch-up-job/customers",
+    requireAdminAuth,
+    requireSuperAdmin,
+    async (req: Request, res: Response) => {
+        try {
+            const q = String(req.query.q ?? "").trim();
+            if (q.length < 2) return res.json({ customers: [] });
+            const like = `%${q}%`;
+
+            const result = await db.execute(sql`
+                SELECT DISTINCT ON (customer_phone)
+                       customer, customer_phone, customer_address, corporate_client_id
+                FROM job_tickets
+                WHERE customer IS NOT NULL AND customer_phone IS NOT NULL
+                  AND (customer ILIKE ${like} OR customer_phone ILIKE ${like})
+                ORDER BY customer_phone, created_at DESC
+                LIMIT 8
+            `);
+
+            const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows ?? [];
+            res.json({
+                customers: rows.map((r) => ({
+                    name: r.customer as string,
+                    phone: r.customer_phone as string,
+                    address: (r.customer_address as string) ?? null,
+                    corporateClientId: (r.corporate_client_id as string) ?? null,
+                })),
+            });
+        } catch (error) {
+            logRouteError("GET /api/admin/catch-up-job/customers", req, error);
+            res.status(500).json({ error: "Could not search customers." });
+        }
+    },
+);
+
+/**
+ * The corporate clients a business job can belong to.
+ *
+ * A company entered as loose text is just a name: it never reaches corporate
+ * billing, and the bills it should appear on will not know it exists. For a
+ * business customer the real client has to be chosen, not typed.
+ */
+router.get(
+    "/api/admin/catch-up-job/corporate-clients",
+    requireAdminAuth,
+    requireSuperAdmin,
+    async (req: Request, res: Response) => {
+        try {
+            const result = await db.execute(sql`
+                SELECT id, company_name, short_code, client_class, client_type
+                FROM corporate_clients
+                ORDER BY company_name ASC
+                LIMIT 200
+            `);
+            const rows = (result as unknown as { rows: Array<Record<string, unknown>> }).rows ?? [];
+            res.json({
+                clients: rows.map((r) => ({
+                    id: r.id as string,
+                    companyName: r.company_name as string,
+                    shortCode: (r.short_code as string) ?? null,
+                    clientClass: r.client_class as string,
+                    clientType: r.client_type as string,
+                })),
+            });
+        } catch (error) {
+            logRouteError("GET /api/admin/catch-up-job/corporate-clients", req, error);
+            res.status(500).json({ error: "Could not load corporate clients." });
+        }
+    },
+);

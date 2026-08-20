@@ -1,21 +1,25 @@
 /**
  * The side door — one screen for work that already happened.
  *
- * The normal intake is six steps in a fixed order, which is right for real new
- * work and unusable for a repair that finished three weeks ago. This is one
- * form and one save, so a shelf full of televisions the system knows nothing
- * about can actually be entered from the paper they came in on.
+ * Built customer-first, because that is the shape of the paper. A pile of old
+ * bills is four or five customers with several televisions each, not eight
+ * unrelated jobs, and the first version made you retype the customer for every
+ * set. Pick the person once, then add their sets as rows.
  *
- * Two things are deliberate and visible on screen rather than buried: the price
- * box accepts whatever was really charged, because the same panel goes out at
- * 26,000 or 35,000 depending on what else the set needed; and every entry is
- * stamped permanently as typed-in-later, which is said plainly at the top
- * rather than hidden in a database column.
+ * The running totals matter as much as the form. QA's complaint after entering
+ * eight bills was not that typing was slow — it took a minute — but that
+ * afterwards they still could not answer "how much is owed to me", so the whole
+ * reason for typing never arrived. The pile total is now on screen and grows as
+ * you work.
+ *
+ * Styling follows this app's mobile conventions rather than the shared
+ * component defaults: rounded-xl and h-12 throughout, because the base Input
+ * ships as rounded-md h-9 and looks sharp and cramped beside these screens.
  */
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { AlertCircle, Check, Loader2, ScrollText } from "lucide-react";
+import { AlertCircle, Building2, Check, Loader2, Plus, ScrollText, Trash2, User } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,297 +29,431 @@ import { BentoCard, containerVariants, itemVariants } from "../shared";
 import { fetchApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
+/** The app's mobile shape — not the component default. */
+const FIELD = "h-12 rounded-xl bg-white";
+
+type CustomerType = "individual" | "b2b_normal" | "b2b_corporate" | "limited_company";
+
+const TYPES: Array<{ key: CustomerType; label: string; hint: string }> = [
+    { key: "individual", label: "Person", hint: "A walk-in customer" },
+    { key: "b2b_normal", label: "Business", hint: "A shop or dealer" },
+    { key: "b2b_corporate", label: "Corporate", hint: "A company account" },
+    { key: "limited_company", label: "Corporate Ltd", hint: "Several people handle it" },
+];
+
+interface KnownCustomer { name: string; phone: string; address: string | null; corporateClientId: string | null }
+interface CorporateClient { id: string; companyName: string; shortCode: string | null }
 interface CatchUpEntry {
-    id: string;
-    customer: string;
-    customer_phone: string;
-    device: string;
-    estimated_cost: number;
-    payment_status: string;
-    catchup_amount_due: number | null;
-    created_at: string;
-    created_by_name: string;
+    id: string; customer: string; device: string;
+    estimated_cost: number; catchup_amount_due: number | null;
+    created_at: string; warranty_notes: string | null;
 }
 
-const EMPTY = {
-    customerName: "", customerPhone: "", customerAddress: "",
-    device: "", modelNumber: "", screenSize: "",
-    workDone: "",
-    amountCharged: "", amountPaid: "",
-    jobDate: new Date().toISOString().slice(0, 10),
-    warrantyMonths: "", technicianName: "", note: "",
-};
+interface SetRow {
+    key: string;
+    device: string; modelNumber: string; screenSize: string; workDone: string;
+    amountCharged: string; amountPaid: string; jobDate: string; warrantyMonths: string;
+    saved?: string;
+}
+
+const today = () => new Date().toISOString().slice(0, 10);
+const blankRow = (): SetRow => ({
+    key: Math.random().toString(36).slice(2),
+    device: "", modelNumber: "", screenSize: "", workDone: "",
+    amountCharged: "", amountPaid: "", jobDate: today(), warrantyMonths: "",
+});
 
 export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () => string }) {
-    const [form, setForm] = useState({ ...EMPTY });
     const queryClient = useQueryClient();
-    const set = (k: keyof typeof EMPTY, v: string) => {
-        setForm((f) => ({ ...f, [k]: v }));
-        // Changing anything means this is no longer the bill that was queried.
-        setConfirmDuplicate(false);
-    };
+    const money = (n: number) => `${getCurrencySymbol()} ${n.toLocaleString()}`;
+
+    const [name, setName] = useState("");
+    const [phone, setPhone] = useState("");
+    const [address, setAddress] = useState("");
+    const [type, setType] = useState<CustomerType>("individual");
+    const [corporateClientId, setCorporateClientId] = useState("");
+    /** Locked once a known customer is chosen; Change unlocks it. */
+    const [locked, setLocked] = useState(false);
+    const [search, setSearch] = useState("");
+    const [rows, setRows] = useState<SetRow[]>([blankRow()]);
+    /** Grows across every save this sitting — the number the owner came for. */
+    const [pileOwed, setPileOwed] = useState(0);
+    const [pileCount, setPileCount] = useState(0);
+
+    const isBusiness = type !== "individual";
+    const searchRef = useRef<HTMLDivElement>(null);
+
+    const { data: matches } = useQuery({
+        queryKey: ["catchup-customers", search],
+        queryFn: () => fetchApi<{ customers: KnownCustomer[] }>(
+            `/admin/catch-up-job/customers?q=${encodeURIComponent(search)}`),
+        enabled: search.trim().length >= 2 && !locked,
+    });
+
+    const { data: corporates } = useQuery({
+        queryKey: ["catchup-corporates"],
+        queryFn: () => fetchApi<{ clients: CorporateClient[] }>("/admin/catch-up-job/corporate-clients"),
+        enabled: isBusiness,
+    });
 
     const { data: recent } = useQuery({
         queryKey: ["catch-up-entries"],
         queryFn: () => fetchApi<{ entries: CatchUpEntry[]; count: number }>("/admin/catch-up-job?limit=20"),
     });
 
-    const charged = Number(form.amountCharged) || 0;
-    const paid = Number(form.amountPaid) || 0;
-    const due = Math.max(0, charged - paid);
-    /** The server refuses this, so the screen must not let it be sent. */
-    const overpaid = paid > charged;
+    const pickCustomer = (c: KnownCustomer) => {
+        setName(c.name); setPhone(c.phone); setAddress(c.address ?? "");
+        if (c.corporateClientId) { setCorporateClientId(c.corporateClientId); setType("b2b_corporate"); }
+        setLocked(true);
+        setSearch("");
+    };
 
-    /** Set only after the server has warned about a duplicate and the person agreed. */
-    const [confirmDuplicate, setConfirmDuplicate] = useState(false);
+    const setRow = (key: string, patch: Partial<SetRow>) =>
+        setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+
+    const rowDue = (r: SetRow) => Math.max(0, (Number(r.amountCharged) || 0) - (Number(r.amountPaid) || 0));
+    const rowOverpaid = (r: SetRow) => (Number(r.amountPaid) || 0) > (Number(r.amountCharged) || 0);
+    const rowReady = (r: SetRow) =>
+        !r.saved && !!r.device.trim() && !!r.workDone.trim() && r.amountCharged !== "" && !rowOverpaid(r);
+
+    const pending = rows.filter(rowReady);
+    const customerOwed = useMemo(
+        () => rows.filter((r) => !r.saved).reduce((s, r) => s + rowDue(r), 0),
+        [rows],
+    );
+    const customerReady = !!name.trim() && !!phone.trim() && (!isBusiness || !!corporateClientId);
 
     const save = useMutation({
-        mutationFn: () => fetchApi<{ jobId: string; message: string }>("/admin/catch-up-job", {
-            method: "POST",
-            body: JSON.stringify({
-                customerName: form.customerName.trim(),
-                customerPhone: form.customerPhone.trim(),
-                customerAddress: form.customerAddress.trim() || undefined,
-                device: form.device.trim(),
-                modelNumber: form.modelNumber.trim() || undefined,
-                screenSize: form.screenSize.trim() || undefined,
-                workDone: form.workDone.trim(),
-                amountCharged: charged,
-                amountPaid: paid,
-                jobDate: form.jobDate,
-                warrantyMonths: form.warrantyMonths ? Number(form.warrantyMonths) : undefined,
-                technicianName: form.technicianName.trim() || undefined,
-                note: form.note.trim() || undefined,
-                allowDuplicate: confirmDuplicate || undefined,
-            }),
-        }),
-        onSuccess: (r) => {
-            toast.success(r.message);
-            // Only the customer is cleared: entering a paper of forty repairs for
-            // one corporate client means re-typing their details forty times
-            // otherwise.
-            setForm((f) => ({
-                ...EMPTY,
-                customerName: f.customerName,
-                customerPhone: f.customerPhone,
-                customerAddress: f.customerAddress,
-                jobDate: f.jobDate,
-            }));
-            setConfirmDuplicate(false);
-            queryClient.invalidateQueries({ queryKey: ["catch-up-entries"] });
-            queryClient.invalidateQueries({ queryKey: ["jobs"] });
-            queryClient.invalidateQueries({ queryKey: ["due-records"] });
-        },
-        onError: (e: Error) => {
+        mutationFn: async () => {
+            let owed = 0;
+            let count = 0;
             /**
-             * A refused duplicate is not an error to shrug at — it is a
-             * question. The button becomes "Yes, save it anyway" so the answer
-             * is a deliberate second press rather than a retry that looks
-             * identical to the first.
+             * One request per set rather than one batch: a single bad row must
+             * not lose the other five, and each job is stamped and audited on
+             * its own.
              */
-            if (/already entered/i.test(e.message)) {
-                setConfirmDuplicate(true);
-                toast.warning("You have already entered this bill. Press again only if it really is a second job.");
-                return;
+            for (const r of pending) {
+                const res = await fetchApi<{ jobId: string }>("/admin/catch-up-job", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        customerName: name.trim(), customerPhone: phone.trim(),
+                        customerAddress: address.trim() || undefined,
+                        customerType: type,
+                        corporateClientId: isBusiness ? corporateClientId : undefined,
+                        device: r.device.trim(),
+                        modelNumber: r.modelNumber.trim() || undefined,
+                        screenSize: r.screenSize.trim() || undefined,
+                        workDone: r.workDone.trim(),
+                        amountCharged: Number(r.amountCharged) || 0,
+                        amountPaid: Number(r.amountPaid) || 0,
+                        jobDate: r.jobDate,
+                        warrantyMonths: r.warrantyMonths ? Number(r.warrantyMonths) : undefined,
+                    }),
+                });
+                setRow(r.key, { saved: res.jobId });
+                owed += rowDue(r);
+                count += 1;
             }
-            toast.error(e.message || "Could not save this entry");
+            return { count, owed };
         },
+        onSuccess: ({ count, owed }) => {
+            toast.success(`${count} ${count === 1 ? "job" : "jobs"} recorded`);
+            setPileOwed((p) => p + owed);
+            setPileCount((c) => c + count);
+            setRows((rs) => [...rs.filter((r) => r.saved), blankRow()]);
+            queryClient.invalidateQueries({ queryKey: ["catch-up-entries"] });
+            queryClient.invalidateQueries({ queryKey: ["due-records"] });
+            queryClient.invalidateQueries({ queryKey: ["jobs"] });
+        },
+        onError: (e: Error) => toast.error(e.message || "Could not save"),
     });
 
-    const ready = form.customerName.trim() && form.customerPhone.trim()
-        && form.device.trim() && form.workDone.trim() && charged >= 0
-        && form.amountCharged !== "" && !overpaid;
-    const money = (n: number) => `${getCurrencySymbol()} ${n.toLocaleString()}`;
+    const nextCustomer = () => {
+        setName(""); setPhone(""); setAddress(""); setCorporateClientId("");
+        setType("individual"); setLocked(false); setSearch("");
+        setRows([blankRow()]);
+    };
 
-    /** Every field is h-12 — a thumb needs 44px and these get typed on a phone. */
-    const field = "h-12 bg-white";
+    // No Escape key on a phone, so an outside tap closes the suggestions.
+    useEffect(() => {
+        const away = (e: MouseEvent) => {
+            if (searchRef.current && !searchRef.current.contains(e.target as Node)) setSearch("");
+        };
+        document.addEventListener("mousedown", away);
+        return () => document.removeEventListener("mousedown", away);
+    }, []);
 
     return (
-        <motion.div variants={containerVariants} initial="hidden" animate="visible" className="space-y-4">
+        <motion.div
+            variants={containerVariants} initial="hidden" animate="visible"
+            /*
+             * Deep bottom padding so the last field is never trapped under the
+             * mobile dock or a raised keyboard — that is exactly where the Save
+             * button and the final row would otherwise sit.
+             */
+            className="space-y-4 pb-[calc(9rem+env(safe-area-inset-bottom))] md:pb-4"
+        >
             <motion.div variants={itemVariants}>
                 <div className="flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
                     <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
                     <div className="text-sm text-amber-900">
                         <span className="font-semibold">For work that already happened.</span>{" "}
                         <span className="text-amber-800/90">
-                            Use this for repairs finished before the system, or already delivered. Every entry
-                            is permanently marked as typed in later, with your name and the time — so these can
-                            always be told apart from live records. New work must go through the normal intake.
+                            Every entry is permanently marked as typed in later, with your name and the time.
+                            New work must go through the normal intake.
                         </span>
                     </div>
                 </div>
             </motion.div>
 
+            {pileCount > 0 && (
+                <motion.div variants={itemVariants}>
+                    <div className="flex items-center justify-between rounded-2xl bg-slate-900 px-5 py-4 text-white">
+                        <div>
+                            <div className="text-[11px] uppercase tracking-wider text-white/60">Entered tonight</div>
+                            <div className="text-sm font-semibold">{pileCount} {pileCount === 1 ? "job" : "jobs"}</div>
+                        </div>
+                        <div className="text-right">
+                            <div className="text-[11px] uppercase tracking-wider text-white/60">Still owed</div>
+                            <div className="font-mono text-2xl font-black">{money(pileOwed)}</div>
+                        </div>
+                    </div>
+                </motion.div>
+            )}
+
             <motion.div variants={itemVariants}>
                 <BentoCard className="bg-white" disableHover>
-                    <div className="space-y-5">
-                        <section className="space-y-3">
-                            <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Customer</h3>
+                    <h3 className="mb-3 text-sm font-black uppercase tracking-wide text-slate-500">Customer</h3>
+
+                    {locked ? (
+                        <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                            <div className="min-w-0">
+                                <div className="truncate font-bold text-slate-900">{name}</div>
+                                <div className="text-xs text-slate-500">{phone}{address ? ` · ${address}` : ""}</div>
+                            </div>
+                            {/*
+                             * Locked rather than merely filled: these details came from a
+                             * record that already exists, so nudging them while typing the
+                             * fifth set would quietly create a second version of the same
+                             * person.
+                             */}
+                            <Button variant="ghost" className="h-11 shrink-0 rounded-xl"
+                                onClick={() => setLocked(false)}>Change</Button>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            <div className="relative" ref={searchRef}>
+                                <Label className="text-xs">Name</Label>
+                                <Input className={cn(FIELD, "mt-1.5")} value={name}
+                                    placeholder="e.g. Rahim Uddin"
+                                    onChange={(e) => { setName(e.target.value); setSearch(e.target.value); }} />
+                                {!!matches?.customers.length && (
+                                    <div className="absolute z-30 mt-1 w-full overflow-hidden rounded-xl border border-slate-200 bg-white shadow-lg">
+                                        {matches.customers.map((c) => (
+                                            <button key={c.phone} type="button"
+                                                className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-slate-50"
+                                                onClick={() => pickCustomer(c)}>
+                                                {c.corporateClientId
+                                                    ? <Building2 className="h-4 w-4 shrink-0 text-indigo-500" />
+                                                    : <User className="h-4 w-4 shrink-0 text-slate-400" />}
+                                                <span className="min-w-0">
+                                                    <span className="block truncate text-sm font-semibold text-slate-800">{c.name}</span>
+                                                    <span className="block text-xs text-slate-500">{c.phone}</span>
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs">Name</Label>
-                                    <Input className={field} value={form.customerName}
-                                        onChange={(e) => set("customerName", e.target.value)} placeholder="e.g. Rahim Uddin" />
-                                </div>
                                 <div className="space-y-1.5">
                                     <Label className="text-xs">Phone</Label>
-                                    <Input className={field} inputMode="tel" value={form.customerPhone}
-                                        onChange={(e) => set("customerPhone", e.target.value)} placeholder="e.g. 01711223344" />
-                                </div>
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label className="text-xs">Address <span className="font-normal text-slate-400">(optional)</span></Label>
-                                <Input className={field} value={form.customerAddress}
-                                    onChange={(e) => set("customerAddress", e.target.value)} />
-                            </div>
-                        </section>
-
-                        <section className="space-y-3">
-                            <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">The set</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div className="space-y-1.5 sm:col-span-1">
-                                    <Label className="text-xs">Brand / device</Label>
-                                    <Input className={field} value={form.device}
-                                        onChange={(e) => set("device", e.target.value)} placeholder="e.g. Sony TV" />
+                                    <Input className={FIELD} inputMode="tel" value={phone}
+                                        placeholder="e.g. 01711223344"
+                                        onChange={(e) => setPhone(e.target.value)} />
                                 </div>
                                 <div className="space-y-1.5">
-                                    <Label className="text-xs">Model <span className="font-normal text-slate-400">(optional)</span></Label>
-                                    <Input className={field} value={form.modelNumber}
-                                        onChange={(e) => set("modelNumber", e.target.value)} />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs">Size <span className="font-normal text-slate-400">(optional)</span></Label>
-                                    <Input className={field} value={form.screenSize}
-                                        onChange={(e) => set("screenSize", e.target.value)} placeholder="e.g. 55" />
+                                    <Label className="text-xs">Address <span className="font-normal text-slate-400">(optional)</span></Label>
+                                    <Input className={FIELD} value={address}
+                                        onChange={(e) => setAddress(e.target.value)} />
                                 </div>
                             </div>
-                            <div className="space-y-1.5">
-                                <Label className="text-xs">What was done</Label>
-                                <Textarea className="min-h-[88px] bg-white" value={form.workDone}
-                                    onChange={(e) => set("workDone", e.target.value)}
-                                    placeholder="e.g. Panel replaced, 55 inch. New LVDS cable fitted." />
-                                <p className="text-[11px] text-slate-400">Write it as you would on the paper bill.</p>
-                            </div>
-                        </section>
-
-                        <section className="space-y-3">
-                            <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Money</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs">Charged</Label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-semibold text-slate-500">৳</span>
-                                        <Input className={cn(field, "pl-8 text-lg font-mono")} type="number" inputMode="decimal"
-                                            min="0" value={form.amountCharged}
-                                            onChange={(e) => set("amountCharged", e.target.value)} placeholder="e.g. 26000" />
-                                    </div>
-                                    {/*
-                                      * No catalogue check. The same 55-inch panel leaves at
-                                      * 26,000, 28,000 or 35,000 depending on what else the set
-                                      * needed, and a system that cannot hold the real number
-                                      * just gets worked around.
-                                      */}
-                                    <p className="text-[11px] text-slate-400">Whatever you actually charged.</p>
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs">Paid so far</Label>
-                                    <div className="relative">
-                                        <span className="absolute left-3 top-1/2 -translate-y-1/2 font-semibold text-slate-500">৳</span>
-                                        <Input className={cn(field, "pl-8 text-lg font-mono")} type="number" inputMode="decimal"
-                                            min="0" value={form.amountPaid}
-                                            onChange={(e) => set("amountPaid", e.target.value)} placeholder="0" />
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/*
-                              * Paid above charged is refused by the server, and the screen
-                              * used to answer "Fully paid ৳0" and leave the button live — so
-                              * the only way to discover the mistake was to press save and
-                              * read an error. The screen now says the same thing the server
-                              * would.
-                              */}
-                            <div className={cn(
-                                "flex items-center justify-between rounded-xl px-4 py-3 text-sm font-semibold",
-                                overpaid ? "bg-amber-50 text-amber-900"
-                                    : due > 0 ? "bg-rose-50 text-rose-800"
-                                    : "bg-emerald-50 text-emerald-800",
-                            )}>
-                                <span>
-                                    {overpaid ? "Paid is more than charged — check the figures"
-                                        : due > 0 ? "Customer still owes" : "Fully paid"}
-                                </span>
-                                {!overpaid && <span className="font-mono text-base">{money(due)}</span>}
-                            </div>
-                        </section>
-
-                        <section className="space-y-3">
-                            <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">When and who</h3>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs">Date of the work</Label>
-                                    <Input className={field} type="date" value={form.jobDate}
-                                        max={new Date().toISOString().slice(0, 10)}
-                                        onChange={(e) => set("jobDate", e.target.value)} />
-                                    {/*
-                                      * The date is repeated in words because a native date
-                                      * input renders in the browser's own locale, and a US
-                                      * locale shows 12 July as 07/12/2026 — which reads as 7
-                                      * December here. Somebody entering sixty bills would put
-                                      * months in the wrong place and never notice. The month
-                                      * name cannot be misread.
-                                      */}
-                                    {form.jobDate && (
-                                        <p className="text-[11px] font-semibold text-slate-600">
-                                            {new Date(form.jobDate + "T00:00:00").toLocaleDateString("en-GB", {
-                                                day: "numeric", month: "long", year: "numeric",
-                                            })}
-                                        </p>
-                                    )}
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs">Warranty months <span className="font-normal text-slate-400">(optional)</span></Label>
-                                    <Input className={field} type="number" inputMode="numeric" min="0"
-                                        value={form.warrantyMonths}
-                                        onChange={(e) => set("warrantyMonths", e.target.value)} placeholder="e.g. 6" />
-                                </div>
-                                <div className="space-y-1.5">
-                                    <Label className="text-xs">Technician <span className="font-normal text-slate-400">(optional)</span></Label>
-                                    <Input className={field} value={form.technicianName}
-                                        onChange={(e) => set("technicianName", e.target.value)} />
-                                </div>
-                            </div>
-                            <div className="space-y-1.5">
-                                <Label className="text-xs">Note <span className="font-normal text-slate-400">(optional)</span></Label>
-                                <Input className={field} value={form.note}
-                                    onChange={(e) => set("note", e.target.value)}
-                                    placeholder="e.g. from the paper bill dated 12 July" />
-                            </div>
-                        </section>
-
-                        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                            <Button variant="ghost" className="h-12 rounded-xl"
-                                onClick={() => setForm({ ...EMPTY })}>Clear</Button>
-                            <Button className={cn("h-12 rounded-xl px-8",
-                                confirmDuplicate ? "bg-amber-600 hover:bg-amber-700" : "bg-slate-900 hover:bg-slate-800")}
-                                disabled={!ready || save.isPending}
-                                onClick={() => save.mutate()}>
-                                {save.isPending
-                                    ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>
-                                    : confirmDuplicate
-                                        ? <><AlertCircle className="mr-2 h-4 w-4" /> Yes, save it anyway</>
-                                        : <><Check className="mr-2 h-4 w-4" /> Record this job</>}
-                            </Button>
                         </div>
+                    )}
+
+                    <div className="mt-4 space-y-2">
+                        <Label className="text-xs">Who are they?</Label>
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                            {TYPES.map((t) => (
+                                <button key={t.key} type="button" onClick={() => setType(t.key)}
+                                    className={cn(
+                                        "rounded-xl border px-3 py-3 text-left transition-all",
+                                        type === t.key
+                                            ? "border-slate-900 bg-slate-900 text-white"
+                                            : "border-slate-200 bg-white text-slate-700 hover:border-slate-300",
+                                    )}>
+                                    <div className="text-sm font-bold">{t.label}</div>
+                                    <div className={cn("text-[10px] leading-tight",
+                                        type === t.key ? "text-white/60" : "text-slate-400")}>{t.hint}</div>
+                                </button>
+                            ))}
+                        </div>
+
+                        {isBusiness && (
+                            <div className="space-y-1.5 pt-1">
+                                <Label className="text-xs">Which company?</Label>
+                                {/*
+                                 * A typed company name never reaches corporate billing —
+                                 * the bills it belongs on would not know it exists. So the
+                                 * real client is chosen, not written.
+                                 */}
+                                <select
+                                    className={cn(FIELD, "w-full border border-slate-200 px-3 text-sm")}
+                                    value={corporateClientId}
+                                    onChange={(e) => setCorporateClientId(e.target.value)}>
+                                    <option value="">Choose from the list…</option>
+                                    {corporates?.clients.map((c) => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.companyName}{c.shortCode ? ` (${c.shortCode})` : ""}
+                                        </option>
+                                    ))}
+                                </select>
+                                {!corporateClientId && (
+                                    <p className="text-[11px] text-amber-600">
+                                        Needed — otherwise this job will never appear on their bills.
+                                    </p>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </BentoCard>
             </motion.div>
 
-            {/*
-              * A shortcut nobody can review is a hole, not a shortcut. This list
-              * is the review, and it is on the same screen so it cannot be
-              * forgotten about.
-              */}
+            <motion.div variants={itemVariants}>
+                <BentoCard className="bg-white" disableHover>
+                    <div className="mb-3 flex items-center justify-between">
+                        <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Their sets</h3>
+                        {customerOwed > 0 && (
+                            <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700">
+                                owes {money(customerOwed)}
+                            </span>
+                        )}
+                    </div>
+
+                    <div className="space-y-3">
+                        {rows.map((r, i) => (
+                            <div key={r.key} className={cn(
+                                "rounded-2xl border p-4",
+                                r.saved ? "border-emerald-100 bg-emerald-50/50" : "border-slate-200 bg-slate-50/40",
+                            )}>
+                                <div className="mb-3 flex items-center justify-between">
+                                    <span className="text-xs font-bold text-slate-400">SET {i + 1}</span>
+                                    {r.saved ? (
+                                        <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
+                                            <Check className="h-3 w-3" /> saved
+                                        </span>
+                                    ) : rows.length > 1 ? (
+                                        <button type="button" className="text-slate-300 hover:text-rose-500"
+                                            onClick={() => setRows((rs) => rs.filter((x) => x.key !== r.key))}>
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    ) : null}
+                                </div>
+
+                                {r.saved ? (
+                                    <div className="text-sm text-slate-600">
+                                        {r.device} · {r.workDone.slice(0, 60)} · {money(Number(r.amountCharged) || 0)}
+                                    </div>
+                                ) : (
+                                    <div className="space-y-3">
+                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                            <Input className={FIELD} value={r.device} placeholder="e.g. Sony TV"
+                                                onChange={(e) => setRow(r.key, { device: e.target.value })} />
+                                            <Input className={FIELD} value={r.modelNumber} placeholder="Model (optional)"
+                                                onChange={(e) => setRow(r.key, { modelNumber: e.target.value })} />
+                                            <Input className={FIELD} value={r.screenSize} placeholder="Size e.g. 55"
+                                                onChange={(e) => setRow(r.key, { screenSize: e.target.value })} />
+                                        </div>
+
+                                        <Textarea className="min-h-[72px] rounded-xl bg-white" value={r.workDone}
+                                            placeholder="e.g. Panel replaced, 55 inch. New LVDS cable fitted."
+                                            onChange={(e) => setRow(r.key, { workDone: e.target.value })} />
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 font-semibold text-slate-500">৳</span>
+                                                <Input className={cn(FIELD, "pl-8 font-mono")} type="number" inputMode="decimal"
+                                                    min="0" value={r.amountCharged} placeholder="Charged"
+                                                    onChange={(e) => setRow(r.key, { amountCharged: e.target.value })} />
+                                            </div>
+                                            <div className="relative">
+                                                <span className="absolute left-3 top-1/2 -translate-y-1/2 font-semibold text-slate-500">৳</span>
+                                                <Input className={cn(FIELD, "pl-8 font-mono")} type="number" inputMode="decimal"
+                                                    min="0" value={r.amountPaid} placeholder="Paid"
+                                                    onChange={(e) => setRow(r.key, { amountPaid: e.target.value })} />
+                                            </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-3">
+                                            <div>
+                                                <Input className={FIELD} type="date" value={r.jobDate} max={today()}
+                                                    onChange={(e) => setRow(r.key, { jobDate: e.target.value })} />
+                                                {/*
+                                                 * Repeated in words: a native date input renders in
+                                                 * the browser's locale, so 12 July shows as
+                                                 * 07/12/2026 under a US one — read here as 7
+                                                 * December. A month name cannot be misread.
+                                                 */}
+                                                {r.jobDate && (
+                                                    <p className="mt-1 text-[11px] font-semibold text-slate-600">
+                                                        {new Date(r.jobDate + "T00:00:00").toLocaleDateString("en-GB",
+                                                            { day: "numeric", month: "long", year: "numeric" })}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <Input className={FIELD} type="number" inputMode="numeric" min="0"
+                                                value={r.warrantyMonths} placeholder="Warranty months"
+                                                onChange={(e) => setRow(r.key, { warrantyMonths: e.target.value })} />
+                                        </div>
+
+                                        {rowOverpaid(r) ? (
+                                            <div className="rounded-xl bg-amber-50 px-4 py-2.5 text-sm font-semibold text-amber-900">
+                                                Paid is more than charged — check the figures
+                                            </div>
+                                        ) : rowDue(r) > 0 ? (
+                                            <div className="flex items-center justify-between rounded-xl bg-rose-50 px-4 py-2.5 text-sm font-semibold text-rose-800">
+                                                <span>Still owes</span>
+                                                <span className="font-mono">{money(rowDue(r))}</span>
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    <Button variant="outline" className="mt-3 h-12 w-full rounded-xl border-dashed"
+                        onClick={() => setRows((rs) => [...rs, blankRow()])}>
+                        <Plus className="mr-2 h-4 w-4" /> Add another set
+                    </Button>
+
+                    <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                        <Button variant="ghost" className="h-12 rounded-xl" onClick={nextCustomer}>
+                            Next customer
+                        </Button>
+                        <Button className="h-12 rounded-xl px-8 bg-slate-900 hover:bg-slate-800"
+                            disabled={!customerReady || !pending.length || save.isPending}
+                            onClick={() => save.mutate()}>
+                            {save.isPending
+                                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>
+                                : <><Check className="mr-2 h-4 w-4" /> Save {pending.length || ""} {pending.length === 1 ? "job" : "jobs"}</>}
+                        </Button>
+                    </div>
+                </BentoCard>
+            </motion.div>
+
+            {/* A shortcut nobody can review is a hole, not a shortcut. */}
             <motion.div variants={itemVariants}>
                 <BentoCard className="bg-white" disableHover>
                     <div className="mb-3 flex items-center gap-2">
@@ -323,7 +461,6 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                         <h3 className="text-sm font-black text-slate-900">Recently entered this way</h3>
                         <span className="text-[11px] text-slate-400">{recent?.count ?? 0}</span>
                     </div>
-
                     {!recent?.entries.length ? (
                         <p className="py-6 text-center text-sm text-slate-400">Nothing entered yet.</p>
                     ) : (
@@ -333,7 +470,9 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                                     <div className="min-w-0">
                                         <div className="truncate text-sm font-bold text-slate-800">{e.customer} · {e.device}</div>
                                         <div className="text-[11px] text-slate-500">
-                                            {new Date(e.created_at).toLocaleDateString()} · entered by {e.created_by_name}
+                                            {new Date(e.created_at).toLocaleDateString("en-GB",
+                                                { day: "numeric", month: "short", year: "numeric" })}
+                                            {e.warranty_notes ? ` · ${e.warranty_notes}` : ""}
                                         </div>
                                     </div>
                                     <div className="shrink-0 text-right">
