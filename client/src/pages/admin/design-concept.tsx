@@ -388,7 +388,15 @@ export default function DesignConcept() {
     const mobileInputDirectionRef = useRef<AdminMobileChromeDirection>(null);
     const mobileInputDirectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    const { isEnabled, isLoading: modulesLoading } = useModules();
+    const { modules, isEnabled, isLoading: modulesLoading } = useModules();
+
+    /**
+     * The tab this session has settled on, used to tell arriving somewhere
+     * forbidden apart from losing access to where you already were. Starts
+     * null so a first load straight onto a forbidden tab counts as arriving
+     * and gets the explanation rather than a silent bounce.
+     */
+    const arrivedAtTabRef = useRef<string | null>(null);
     const { logout, user, hasPermission, permissions, status } = useAdminAuth();
     const [moreOpen, setMoreOpen] = useState(false);
     const { isOnline, getTabTier } = useOffline();
@@ -624,10 +632,31 @@ export default function DesignConcept() {
         });
     }, [activeTab]);
 
-    // Revocation while inside a newly forbidden tab → navigate to first authorized tab.
-    // Also prune visited disabled tabs so their feature trees unmount (no hidden 403 fetches).
+    /**
+     * Moves somebody out of a tab whose access they have just lost — and only
+     * then.
+     *
+     * Two different things used to land here and both were wrong. Asking for a
+     * tab you cannot open dumped you on an unrelated one with nothing said,
+     * which sent three QA rounds chasing a routing bug that did not exist; the
+     * codebase already has an Access Restricted panel for exactly this, and
+     * this effect was navigating away before it could render. Meanwhile
+     * switching a module off while somebody was sitting in it did nothing at
+     * all, because isTabEnabled reads module state and no module state was in
+     * the dependency list, so the effect never re-ran.
+     *
+     * Arriving somewhere forbidden now shows the explanation. Losing access to
+     * where you already are still moves you, which is the case this was
+     * written for.
+     */
     useEffect(() => {
         if (status !== "authenticated") return;
+
+        /**
+         * Modules answer 'disabled' until they load. Acting on that would
+         * bounce people off a perfectly valid tab whenever the fetch was slow.
+         */
+        if (modulesLoading) return;
 
         setVisitedTabs((tabs) => {
             const next = tabs.filter((id) => id === activeTab || isTabEnabled(id) || id === "account");
@@ -635,7 +664,20 @@ export default function DesignConcept() {
         });
 
         if (activeTab === "account" || activeTab === "menu") return;
-        if (isTabEnabled(activeTab)) return;
+        if (isTabEnabled(activeTab)) {
+            arrivedAtTabRef.current = activeTab;
+            return;
+        }
+
+        /**
+         * Arrived here rather than lost access here. The render path shows
+         * Access Restricted, which names the tab and says why — far more use
+         * than being moved somewhere unexplained.
+         */
+        if (arrivedAtTabRef.current !== activeTab) {
+            arrivedAtTabRef.current = activeTab;
+            return;
+        }
 
         // Prefer Shift only when check-in is effective; never Attendance without report capability.
         const candidates: string[] = [];
@@ -652,7 +694,7 @@ export default function DesignConcept() {
         }
         // permissions object identity changes after force_refresh_user / refreshUser
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [permissions, activeTab, status, user?.role, user?.permissions, navigateAdminTab]);
+    }, [permissions, activeTab, status, user?.role, user?.permissions, navigateAdminTab, modules, modulesLoading]);
 
     useEffect(() => {
         if (activeTab !== "b2b" && selectedCorporateClientId) {

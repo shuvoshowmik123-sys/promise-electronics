@@ -2,6 +2,27 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
+    {
+        /**
+         * Nothing here is source.
+         *
+         * The config had no ignores at all, which was survivable while the only
+         * generated directories were untracked — CI checks out the repo and
+         * builds afterwards, so it never saw them. `android/` breaks that: the
+         * Capacitor project is committed, and its bundled JavaScript would put
+         * a few hundred lint errors into a pipeline that has to stay
+         * meaningful.
+         */
+        ignores: [
+            'android/**',
+            'dist/**',
+            'coverage/**',
+            // Runner scripts and screenshots from the QA cycles. Untracked, so
+            // CI never sees them; listed to keep local runs readable.
+            'mobile-qa/**',
+            'qa-*/**',
+        ],
+    },
     eslint.configs.recommended,
     ...tseslint.configs.recommended,
     {

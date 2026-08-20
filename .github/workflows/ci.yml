@@ -26,19 +26,21 @@ jobs:
       # Ensures the database types are generated before typechecking
       run: npm run db:push || true
 
+    # Tests run FIRST, ahead of lint.
+    #
+    # They were added after it, which made the step useless in practice: lint
+    # currently reports 4,825 errors across 539 tracked files — debt that
+    # predates this pipeline — so the job died before a single test executed.
+    # Ordering them first means the check that says whether the software works
+    # always reports, and lint still fails the build afterwards.
+    - name: Run Tests
+      run: npm test -- --run
+
     - name: Run ESLint
       run: npm run lint
       
     - name: Run TypeScript Compiler Check
       run: npm run check
-
-    # The suite was never run by CI — 1,333 tests that only executed when
-    # somebody typed `npm test` locally. So a fixed bug could return and the
-    # pipeline would still go green, which is the failure mode CI exists to
-    # prevent. Placed before the build: a build that succeeds on broken logic
-    # looks like progress.
-    - name: Run Tests
-      run: npm test -- --run
 
     - name: Build Application
       run: npm run build
