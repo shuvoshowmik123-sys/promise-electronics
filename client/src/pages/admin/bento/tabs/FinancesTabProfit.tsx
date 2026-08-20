@@ -40,7 +40,7 @@ export function ProfitTab({ getCurrencySymbol }: { getCurrencySymbol: () => stri
     const range = useMemo(() => windowFor(days), [days]);
     const money = (n: number) => `${getCurrencySymbol()} ${Math.abs(n).toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 
-    const { data: summary, isLoading } = useQuery({
+    const { data: summary, isLoading, isError } = useQuery({
         queryKey: ["profit-summary", range.from, range.to],
         queryFn: () => profitReportApi.summary(range.from, range.to),
     });
@@ -79,6 +79,22 @@ export function ProfitTab({ getCurrencySymbol }: { getCurrencySymbol: () => stri
             {isLoading ? (
                 <div className="flex items-center justify-center py-16 text-slate-400">
                     <Loader2 className="h-5 w-5 animate-spin" />
+                </div>
+            ) : isError ? (
+                /*
+                 * A failed request must say so rather than falling back to
+                 * zeros. QA saw ৳0 across every card while the endpoint was
+                 * answering 500, and the page looked entirely coherent — a
+                 * quiet month rather than a broken report. Zero is a real
+                 * number here, so it can never double as an error state.
+                 */
+                <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-rose-100 bg-rose-50/60 py-12 text-center">
+                    <AlertCircle className="h-6 w-6 text-rose-500" />
+                    <p className="text-sm font-semibold text-rose-900">Could not calculate profit</p>
+                    <p className="max-w-xs text-xs text-rose-700/80">
+                        The figures below would be wrong, so nothing is shown. Try another period, or
+                        tell whoever looks after the system.
+                    </p>
                 </div>
             ) : (
                 <>

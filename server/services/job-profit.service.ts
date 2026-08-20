@@ -68,10 +68,24 @@ export async function getJobCosts(jobIds: string[]): Promise<Map<string, JobCost
      * Parts bought from a vendor for the job. Returned purchases are excluded —
      * the money came back, so it was never a cost.
      */
+    /**
+     * An explicit parameterised IN list, not `= ANY($1)`.
+     *
+     * The array form looked cleaner and did not work: the driver received the
+     * ids as a single value, and Postgres answered "op ANY/ALL (array) requires
+     * array on right side" for every period that had any sales at all. QA found
+     * it — the unit tests could not, because they replace db.execute entirely
+     * and so never send a query anywhere.
+     *
+     * sql.join emits one placeholder per id, so the values are still bound
+     * rather than interpolated.
+     */
+    const idList = sql.join(jobIds.map((id) => sql`${id}`), sql`, `);
+
     const purchases = await db.execute(sql`
         SELECT job_ticket_id, SUM(cost_price * quantity) AS total, COUNT(*) AS lines
         FROM local_purchases
-        WHERE job_ticket_id = ANY(${jobIds})
+        WHERE job_ticket_id IN (${idList})
           AND status <> 'Returned'
         GROUP BY job_ticket_id
     `);
@@ -139,14 +153,42 @@ export interface RepairTotals {
  * shelf, so the cost stays.
  */
 export async function summariseRepairs(
-    transactions: Array<{ linkedJobs: string | null; total: number; refundedAmount: number }>,
+    transactions: Array<{
+        linkedJobs: string | null;
+        total: number;
+        refundedAmount: number;
+        discount?: number;
+        /** The sale's recorded pre-tax figure — the truth about what it charged. */
+        subtotal?: number;
+        /** Retail lines on the same sale, so the repair's share can be worked out. */
+        cartGross?: number;
+    }>,
 ): Promise<RepairTotals> {
     const billed = new Map<string, number>();
 
     for (const txn of transactions) {
-        const total = Number(txn.total || 0);
+        /**
+         * Discount and refund are both money the shop did not keep, and both
+         * are stored once for the whole sale. A repair billed at 3,500 with a
+         * 500 discount earned 3,000, and counting the full 3,500 overstated
+         * repair revenue by every discount ever given.
+         */
         const refunded = Number(txn.refundedAmount || 0);
-        const kept = total > 0 ? Math.max(0, 1 - Math.min(1, refunded / total)) : 1;
+        const discount = Number(txn.discount || 0);
+        const subtotal = Number(txn.subtotal ?? txn.total ?? 0);
+        const netRevenue = Math.max(0, subtotal - discount - refunded);
+
+        const jobGross = parseLinkedJobs(txn.linkedJobs)
+            .reduce((sum, j) => sum + Number(j.billedAmount ?? 0), 0);
+        const gross = jobGross + Number(txn.cartGross ?? 0);
+
+        /**
+         * Scaled to what the sale recorded rather than what its lines add up
+         * to. One real sale carried a repair as both a cart line and a linked
+         * job, so the lines exceeded the subtotal and the repair was counted
+         * twice. The sale knows what it charged.
+         */
+        const kept = gross > 0 ? netRevenue / gross : 0;
 
         for (const line of parseLinkedJobs(txn.linkedJobs)) {
             if (!line.jobId) continue;

@@ -19,7 +19,7 @@ import {
     sumMargins,
     type MarginResult,
 } from "../../shared/inventory-costing.js";
-import { summariseRepairs, type RepairTotals } from "./job-profit.service.js";
+import { parseLinkedJobs, summariseRepairs, type RepairTotals } from "./job-profit.service.js";
 
 export interface ProfitSummary {
     from: string;
@@ -92,7 +92,7 @@ function parseCart(raw: string | null): CartLine[] {
  */
 async function loadPeriod(from: Date, to: Date) {
     const txns = await db.execute(sql`
-        SELECT id, items, linked_jobs, discount, refunded_amount, total, created_at
+        SELECT id, items, linked_jobs, subtotal, tax, discount, refunded_amount, total, created_at
         FROM pos_transactions
         WHERE created_at >= ${from} AND created_at < ${to}
           AND payment_status <> 'Cancelled'
@@ -125,12 +125,33 @@ export async function getProfitSummary(from: Date, to: Date): Promise<ProfitSumm
         const refunded = Number(txn.refunded_amount ?? 0);
 
         /**
-         * A refund is spread across the sale's lines in proportion to what each
-         * contributed, because the stored refund is a single amount with no line
-         * breakdown. Proportional is the only defensible split without inventing
-         * detail the data does not have.
+         * Revenue comes from the sale's own recorded figures, not from adding
+         * its lines up.
+         *
+         * Rebuilding it from lines was wrong twice over. It ignored the
+         * discount, and it trusted the lines to reconcile — which they do not:
+         * across 28 real sales the lines summed to 97,500 against a recorded
+         * subtotal of 92,000, because one transaction carried a repair as both
+         * a cart line and a linked job and so counted it twice. The sale knows
+         * what it charged; the lines are only evidence of what it cost.
+         *
+         * So each line is scaled to fit what the sale actually earned. Tax is
+         * excluded deliberately — VAT collected is not the shop's money, and
+         * counting it as revenue would inflate every margin.
          */
-        const refundRatio = total > 0 ? Math.min(1, refunded / total) : 0;
+        const subtotal = Number(txn.subtotal ?? 0);
+        const discount = Number(txn.discount ?? 0);
+        const netRevenue = Math.max(0, subtotal - discount - refunded);
+
+        const lineGross = lines.reduce(
+            (sum, l) => sum + Number(l.quantity ?? 0) * Number(l.price ?? 0), 0,
+        );
+        const jobGross = parseLinkedJobs(txn.linked_jobs as string | null)
+            .reduce((sum, j) => sum + Number(j.billedAmount ?? 0), 0);
+        const gross = lineGross + jobGross;
+
+        // Retail's share of the sale, before scaling — a sale can be both.
+        const scale = gross > 0 ? netRevenue / gross : 0;
 
         for (const line of lines) {
             const itemId = line.id ? String(line.id) : null;
@@ -142,7 +163,10 @@ export async function getProfitSummary(from: Date, to: Date): Promise<ProfitSumm
                 unitPrice,
                 quantity,
                 avgCostPrice: known?.avgCostPrice ?? null,
-                discount: quantity * unitPrice * refundRatio,
+                // Scaling by discount is how computeLineMargin expresses "less
+                // than list was collected"; the amount here is whatever this
+                // line did not earn once the sale's real figures are applied.
+                discount: quantity * unitPrice * (1 - scale),
             }));
         }
     }
@@ -158,6 +182,10 @@ export async function getProfitSummary(from: Date, to: Date): Promise<ProfitSumm
         linkedJobs: (r.linked_jobs as string | null) ?? null,
         total: Number(r.total ?? 0),
         refundedAmount: Number(r.refunded_amount ?? 0),
+        discount: Number(r.discount ?? 0),
+        subtotal: Number(r.subtotal ?? 0),
+        cartGross: parseCart(r.items as string | null)
+            .reduce((sum, l) => sum + Number(l.quantity ?? 0) * Number(l.price ?? 0), 0),
     })));
 
     const revenue = round2(totals.revenue + repairs.revenue);

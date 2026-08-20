@@ -15,17 +15,35 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const execute = vi.fn();
 vi.mock("../server/db.js", () => ({ db: { execute: (q: unknown) => execute(q) } }));
 
-/** A sale as pos_transactions stores it — items are a JSON string. */
+/**
+ * A sale as pos_transactions stores it — items are a JSON string.
+ *
+ * `subtotal` is set on every fixture because the real column is NOT NULL and
+ * the report treats it as the truth about what was charged. The first version
+ * of these fixtures omitted it, which is precisely why they could not catch the
+ * revenue being rebuilt from line items instead: with no subtotal to disagree
+ * with, the lines were never contradicted.
+ */
 function txn(over: Record<string, unknown> = {}) {
-    return {
+    const items = JSON.stringify([{ id: "item-a", name: "Backlight", quantity: 1, price: 900 }]);
+    const base = {
         id: "t-1",
-        items: JSON.stringify([{ id: "item-a", name: "Backlight", quantity: 1, price: 900 }]),
+        items,
+        linked_jobs: null as string | null,
+        subtotal: 900,
+        tax: 0,
         discount: 0,
         refunded_amount: 0,
         total: 900,
         created_at: "2026-08-20T10:00:00Z",
-        ...over,
     };
+    const merged = { ...base, ...over };
+    /**
+     * Keep subtotal consistent with total unless a test sets it deliberately,
+     * so a fixture cannot quietly describe a sale that never existed.
+     */
+    if (!("subtotal" in over) && "total" in over) merged.subtotal = Number(over.total);
+    return merged;
 }
 
 /**
@@ -300,5 +318,74 @@ describe("which items earn the most", () => {
         expect(rows[0].quantitySold).toBe(3);
         expect(rows[0].revenue).toBe(2700);
         expect(rows[0].profit).toBe(1275);
+    });
+});
+
+describe("revenue comes from the sale, not from adding its lines up", () => {
+    it("subtracts a discount", async () => {
+        /**
+         * The discount column was read and never applied, so revenue was
+         * overstated by every discount ever given — and profit inherited the
+         * whole error, since revenue is what cost is subtracted from.
+         */
+        givenPeriod(
+            [txn({ subtotal: 900, discount: 100, total: 800 })],
+            [{ id: "item-a", name: "Backlight", avg_cost_price: 475 }],
+        );
+
+        const s = await summary();
+
+        expect(s.revenue).toBe(800);
+        expect(s.profit).toBe(325);
+    });
+
+    it("excludes tax, because collected VAT is not the shop's money", async () => {
+        givenPeriod(
+            [txn({ subtotal: 900, tax: 45, total: 945 })],
+            [{ id: "item-a", name: "Backlight", avg_cost_price: 475 }],
+        );
+
+        expect((await summary()).revenue).toBe(900);
+    });
+
+    it("does not double-count a repair billed as both a line and a linked job", async () => {
+        /**
+         * A real sale in the live data did exactly this: its lines summed to
+         * more than its own subtotal, and the repair was counted twice. Across
+         * 28 sales it inflated the period by 5,500. The sale knows what it
+         * charged; the lines are only evidence of what it cost.
+         */
+        givenPeriod(
+            [txn({
+                subtotal: 900,
+                total: 900,
+                items: JSON.stringify([{ id: "item-a", name: "Repair", quantity: 1, price: 900 }]),
+                linked_jobs: JSON.stringify([{ jobId: "job-1", billedAmount: 900 }]),
+            })],
+            [{ id: "item-a", name: "Repair", avg_cost_price: null }],
+        );
+
+        const s = await summary();
+
+        // 900 charged, not 1,800.
+        expect(s.revenue).toBe(900);
+    });
+
+    it("splits a sale that is genuinely part retail and part repair", async () => {
+        givenPeriod(
+            [txn({
+                subtotal: 3000,
+                total: 3000,
+                items: JSON.stringify([{ id: "item-a", name: "Backlight", quantity: 1, price: 1000 }]),
+                linked_jobs: JSON.stringify([{ jobId: "job-1", billedAmount: 2000 }]),
+            })],
+            [{ id: "item-a", name: "Backlight", avg_cost_price: 475 }],
+        );
+
+        const s = await summary();
+
+        expect(s.revenue).toBe(3000);
+        expect(s.retail.revenue).toBe(1000);
+        expect(s.repairs.revenue).toBe(2000);
     });
 });
