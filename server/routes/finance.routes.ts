@@ -16,6 +16,29 @@ import { EXPENSE_CATEGORY_IDS, normaliseLegacyCategory, reversalNeedsReason } fr
 import { financeService } from '../services/finance.service.js';
 import { db } from '../db.js';
 import { notifyCustomerUpdate } from './middleware/sse-broker.js';
+import { getItemProfit, getProfitSummary } from '../services/profit-report.service.js';
+import { logRouteError } from '../utils/route-error.js';
+
+/**
+ * The window a report covers, defaulting to the last 30 days.
+ *
+ * `to` is exclusive and pushed to the end of the given day, because a person
+ * asking for 1–31 August means the whole of the 31st. Treating it as midnight
+ * would silently drop a day's sales from every month-end report.
+ */
+function parseReportWindow(query: Record<string, unknown>): { from: Date; to: Date } {
+    const rawFrom = typeof query.from === 'string' ? new Date(query.from) : null;
+    const rawTo = typeof query.to === 'string' ? new Date(query.to) : null;
+
+    const to = rawTo && !isNaN(rawTo.getTime())
+        ? new Date(rawTo.getFullYear(), rawTo.getMonth(), rawTo.getDate() + 1)
+        : new Date();
+    const from = rawFrom && !isNaN(rawFrom.getTime())
+        ? rawFrom
+        : new Date(to.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    return { from, to };
+}
 
 const router = Router();
 
@@ -758,3 +781,46 @@ router.post('/api/admin/finance/legacy-dues/bulk', requireAdminAuth, requireGran
 });
 
 export default router;
+
+/**
+ * Profit for a period, and what earned it.
+ *
+ * Deliberately behind `finance`, the same permission as every other money
+ * report: cost prices reveal supplier terms and margin, which is not something
+ * every person who can ring up a sale should see.
+ *
+ * Both endpoints return how much of the period they could account for. Profit
+ * calculated over stock whose cost was never recorded is not profit, and the
+ * screen has to be able to say "this covers 62% of what you sold" rather than
+ * presenting a confident number built on a third of the data.
+ */
+router.get(
+    '/api/reports/profit',
+    requireAdminAuth,
+    requirePermission('finance'),
+    async (req: Request, res: Response) => {
+        try {
+            const { from, to } = parseReportWindow(req.query);
+            res.json(await getProfitSummary(from, to));
+        } catch (error) {
+            logRouteError('GET /api/reports/profit', req, error);
+            res.status(500).json({ error: 'Could not calculate profit.' });
+        }
+    },
+);
+
+router.get(
+    '/api/reports/profit/items',
+    requireAdminAuth,
+    requirePermission('finance'),
+    async (req: Request, res: Response) => {
+        try {
+            const { from, to } = parseReportWindow(req.query);
+            const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 20));
+            res.json({ items: await getItemProfit(from, to, limit) });
+        } catch (error) {
+            logRouteError('GET /api/reports/profit/items', req, error);
+            res.status(500).json({ error: 'Could not calculate item profit.' });
+        }
+    },
+);
