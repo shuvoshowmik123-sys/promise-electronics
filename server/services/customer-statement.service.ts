@@ -22,6 +22,19 @@ import { db } from "../db.js";
 
 export interface StatementLine {
     date: string;
+    /**
+     * The date already written out, in Dhaka.
+     *
+     * due_records.paid_at is `timestamp without time zone`, so an instant does
+     * not survive the round trip: a payment taken at 03:58 on the 22nd came
+     * back as the 21st. Formatting in the browser then applied a second shift
+     * on top, giving a different answer depending on who opened the screen.
+     *
+     * The server writes the words once, from the shop's own timezone, and the
+     * browser prints them. A statement whose dates move with the reader is
+     * worthless in exactly the argument it exists to settle.
+     */
+    dateLabel: string;
     /** What the line is for, in words a customer would recognise. */
     description: string;
     /** Money the customer was billed. */
@@ -59,6 +72,10 @@ const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
  * payment taken on the 22nd would be read down the phone as the 21st.
  */
 const DAY = { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Dhaka" } as const;
+const SHORT_DAY = { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Dhaka" } as const;
+
+/** The date as the shop would say it, decided once, on the server. */
+const label = (iso: string) => new Date(iso).toLocaleDateString("en-GB", SHORT_DAY);
 const spokenDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", DAY);
 
 /**
@@ -72,7 +89,22 @@ export async function getRetailStatement(phone: string): Promise<CustomerStateme
     const dues = await db.execute(sql`
         SELECT id, customer, customer_phone, device_name, invoice, note,
                amount, COALESCE(paid_amount, 0) AS paid_amount,
-               created_at, paid_at, source
+               created_at, paid_at, source,
+               /*
+                * Formatted by PostgreSQL, not by JavaScript.
+                *
+                * These columns are timestamp-without-time-zone holding a UTC
+                * wall clock, and node-pg reads them back as if they were the
+                * server's local time — six hours adrift in Dhaka. A payment
+                * taken at 03:58 on the 22nd came back as the 21st, and no amount
+                * of formatting afterwards could recover the lost information.
+                *
+                * Labelling the value as UTC and converting to Dhaka inside the
+                * query keeps the whole thing in one timezone-aware system. No
+                * Date object is created, so nothing can shift it again.
+                */
+               to_char(created_at AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Dhaka', 'FMDD Mon YYYY') AS created_label,
+               to_char(COALESCE(paid_at, created_at) AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Dhaka', 'FMDD Mon YYYY') AS paid_label
         FROM due_records
         WHERE customer_phone = ${phone}
         ORDER BY created_at ASC
@@ -112,7 +144,7 @@ export async function getRetailStatement(phone: string): Promise<CustomerStateme
         loggedByDue.set(key, (loggedByDue.get(key) ?? 0) + Number(p.amount ?? 0));
     }
 
-    type Draft = Omit<StatementLine, "balance">;
+    type Draft = Omit<StatementLine, "balance" | "dateLabel"> & { dateLabel?: string };
     const drafts: Draft[] = [];
 
     for (const d of dueRows) {
@@ -123,6 +155,7 @@ export async function getRetailStatement(phone: string): Promise<CustomerStateme
 
         drafts.push({
             date: new Date(d.created_at as string).toISOString(),
+            dateLabel: String(d.created_label ?? ""),
             description: (d.device_name as string) || (d.note as string) || "Repair",
             charged: round2(amount),
             paid: 0,
@@ -141,6 +174,7 @@ export async function getRetailStatement(phone: string): Promise<CustomerStateme
         if (unlogged > 0.009) {
             drafts.push({
                 date: new Date((d.paid_at as string) || (d.created_at as string)).toISOString(),
+                dateLabel: String(d.paid_label ?? d.created_label ?? ""),
                 description: "Payment received",
                 charged: 0,
                 paid: unlogged,
@@ -186,7 +220,7 @@ export async function getRetailStatement(phone: string): Promise<CustomerStateme
         balance = round2(balance + d.charged - d.paid);
         totalCharged = round2(totalCharged + d.charged);
         totalPaid = round2(totalPaid + d.paid);
-        return { ...d, balance };
+        return { ...d, balance, dateLabel: d.dateLabel || label(d.date) };
     });
 
     /**
@@ -263,7 +297,7 @@ export async function getCorporateStatement(clientId: string): Promise<CustomerS
         ORDER BY d.created_at ASC
     `);
 
-    type Draft = Omit<StatementLine, "balance">;
+    type Draft = Omit<StatementLine, "balance" | "dateLabel">;
     const drafts: Draft[] = [];
 
     for (const d of rowsOf(catchupDues)) {
@@ -314,7 +348,7 @@ export async function getCorporateStatement(clientId: string): Promise<CustomerS
         balance = round2(balance + d.charged - d.paid);
         totalCharged = round2(totalCharged + d.charged);
         totalPaid = round2(totalPaid + d.paid);
-        return { ...d, balance };
+        return { ...d, balance, dateLabel: label(d.date) };
     });
 
     const name = String(c.company_name ?? "Company");

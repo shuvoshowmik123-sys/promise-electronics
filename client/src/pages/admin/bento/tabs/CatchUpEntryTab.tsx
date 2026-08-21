@@ -30,6 +30,7 @@ import { MobileScrollContent, MobileTabLayout } from "../shared/MobileAdminPrimi
 import { CustomerDebtGrid, type DebtorTile } from "@/components/admin/CustomerDebtCard";
 import { CustomerStatementSheet } from "@/components/admin/CustomerStatementSheet";
 import { fetchApi } from "@/lib/api";
+import { useKeyboardAwareScroll } from "@/hooks/useKeyboardAwareScroll";
 import { cn } from "@/lib/utils";
 
 /** The app's mobile shape — not the component default. */
@@ -105,6 +106,12 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
     const [pileCount, setPileCount] = useState(0);
     /** Tapping a tile opens the same statement Finance opens. */
     const [openDebtor, setOpenDebtor] = useState<DebtorTile | null>(null);
+
+    /**
+     * Six of eleven fields sat under a 336px keyboard with the page refusing to
+     * move. This lifts whichever one is focused above it.
+     */
+    useKeyboardAwareScroll();
 
     const isBusiness = type !== "individual";
     const searchRef = useRef<HTMLDivElement>(null);
@@ -621,7 +628,17 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                         <Plus className="mr-2 h-4 w-4" /> Add another TV
                     </Button>
 
-                    <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                    {/*
+                      * Sticky on a phone.
+                      *
+                      * With a keyboard up, Save sat below every field and the
+                      * only way to reach it was to scroll past the form into the
+                      * customer tiles — losing your place and the field you were
+                      * in. It rides the bottom of the scroller now, so the thing
+                      * that commits the work is never further away than the
+                      * thing being typed.
+                      */}
+                    <div className="sticky bottom-0 z-20 mt-4 flex flex-col-reverse gap-2 border-t border-slate-100 bg-white/95 pt-3 pb-1 backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:pt-0 sm:flex-row sm:justify-end">
                         <Button variant="ghost" className="h-12 rounded-xl" onClick={nextCustomer}>
                             Next customer
                         </Button>

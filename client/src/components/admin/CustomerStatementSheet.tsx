@@ -30,6 +30,8 @@ interface StatementLine {
     balance: number;
     reference: string | null;
     fromPaper?: boolean;
+    /** Already written out in Dhaka by the server — print it, do not reformat. */
+    dateLabel: string;
 }
 
 interface CustomerStatement {
@@ -132,7 +134,7 @@ export function CustomerStatementSheet({
             cleared = 0;
         }
         const items = unpaid.slice(-5).map((l) =>
-            `${day(l.date)} — ${l.description}: ${currency} ${l.charged.toLocaleString()}`).join("\n");
+            `${l.dateLabel} — ${l.description}: ${currency} ${l.charged.toLocaleString()}`).join("\n");
         return [
             `Assalamu alaikum ${data.name},`,
             "",
@@ -303,7 +305,7 @@ export function CustomerStatementSheet({
                                     <div key={`${l.date}-${i}`}
                                         className="flex items-center gap-3 rounded-xl border border-slate-100 bg-white p-3">
                                         <div className="w-16 shrink-0">
-                                            <div className="text-[11px] font-bold text-slate-700">{day(l.date)}</div>
+                                            <div className="text-[11px] font-bold text-slate-700">{l.dateLabel}</div>
                                         </div>
                                         <div className="min-w-0 flex-1">
                                             <div className="truncate text-sm font-semibold text-slate-800">
