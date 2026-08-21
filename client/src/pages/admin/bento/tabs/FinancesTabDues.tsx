@@ -20,6 +20,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { dueRecordsApi, fetchApi } from "@/lib/api";
 import { Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious } from "@/components/ui/pagination";
 import { toast } from "sonner";
+import { CustomerDebtGrid, type DebtorTile } from "@/components/admin/CustomerDebtCard";
+import { CustomerStatementSheet } from "@/components/admin/CustomerStatementSheet";
 
 export function DuesTab({
     getCurrencySymbol,
@@ -35,6 +37,27 @@ export function DuesTab({
     initialSearchQuery?: string;
 }) {
     const queryClient = useQueryClient();
+
+    /**
+     * The people behind the rows.
+     *
+     * This screen has always been a list of due RECORDS, and a manager comes
+     * here holding a phone, asking about one customer. A person with five
+     * unpaid jobs was five rows to find and add up by eye, and companies were
+     * not here at all — their debt sits in unpaid corporate bills on a
+     * different screen, so no total on this page was ever the real total.
+     *
+     * The tiles and the headline go above the list rather than replacing it:
+     * the row view is still how a single record gets edited or settled.
+     */
+    const [openDebtor, setOpenDebtor] = useState<DebtorTile | null>(null);
+    const { data: receivables } = useQuery({
+        queryKey: ["receivables"],
+        queryFn: () => fetchApi<{
+            totalOwed: number; debtorCount: number;
+            retailOwed: number; corporateOwed: number; debtors: DebtorTile[];
+        }>("/admin/receivables"),
+    });
     const [search, setSearch] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const [statusFilter, setStatusFilter] = useState("all");
@@ -245,6 +268,33 @@ export function DuesTab({
 
     return (
         <div className="space-y-2 md:space-y-6 pb-4 md:pb-0">
+            {/* Everybody who owes, retail and corporate, before the row list. */}
+            <div className="rounded-2xl bg-slate-900 p-5 text-white">
+                <div className="text-[11px] uppercase tracking-wider text-white/60">Still to collect — everyone</div>
+                <div className="mt-1 font-mono text-3xl font-black md:text-4xl">
+                    {getCurrencySymbol()} {(receivables?.totalOwed ?? 0).toLocaleString()}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-white/70">
+                    <span>{receivables?.debtorCount ?? 0} customers</span>
+                    <span>People {getCurrencySymbol()} {(receivables?.retailOwed ?? 0).toLocaleString()}</span>
+                    <span>Companies {getCurrencySymbol()} {(receivables?.corporateOwed ?? 0).toLocaleString()}</span>
+                </div>
+            </div>
+
+            {!!receivables?.debtors.length && (
+                <div className="rounded-2xl border border-slate-100 bg-white p-4">
+                    <div className="mb-3 flex items-baseline justify-between">
+                        <h3 className="text-sm font-black text-slate-900">Who owes the most</h3>
+                        <span className="text-[11px] text-slate-400">tap for their statement</span>
+                    </div>
+                    <CustomerDebtGrid
+                        debtors={receivables.debtors.slice(0, 12)}
+                        currency={getCurrencySymbol()}
+                        onOpen={setOpenDebtor}
+                    />
+                </div>
+            )}
+
             {/* Header Stats - Bento Style */}
             <motion.div
                 className="hidden md:block"
@@ -804,6 +854,12 @@ export function DuesTab({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <CustomerStatementSheet
+                debtor={openDebtor}
+                onClose={() => setOpenDebtor(null)}
+                currency={getCurrencySymbol()}
+            />
         </div>
     );
 }

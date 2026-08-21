@@ -47,7 +47,7 @@ const TYPES: Array<{ key: CustomerType; label: string; hint: string }> = [
 interface KnownCustomer { name: string; phone: string; address: string | null; corporateClientId: string | null }
 interface CorporateClient { id: string; companyName: string; shortCode: string | null }
 interface CatchUpEntry {
-    id: string; customer: string; device: string;
+    id: string; customer: string; customer_phone: string | null; device: string;
     estimated_cost: number; catchup_amount_due: number | null;
     created_at: string; warranty_notes: string | null;
 }
@@ -131,7 +131,16 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
     const enteredCustomers = useMemo<DebtorTile[]>(() => {
         const byPerson = new Map<string, DebtorTile & { at: number }>();
         for (const e of recent?.entries ?? []) {
-            const key = e.customer || "Unknown";
+            /**
+             * Keyed by phone, not by name.
+             *
+             * The tile's id is what the statement is fetched with, and the
+             * statement reads due_records by phone number. Keying by name meant
+             * every tile asked for a customer whose phone was a person's name,
+             * so the sheet opened empty every time. It also merges two people
+             * who happen to share a name, which the phone does not.
+             */
+            const key = e.customer_phone || e.customer || "Unknown";
             const at = new Date(e.created_at).getTime();
             const existing = byPerson.get(key);
             if (existing) {
@@ -140,7 +149,9 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                 existing.at = Math.max(existing.at, at);
             } else {
                 byPerson.set(key, {
-                    kind: "retail", id: key, name: key, phone: null,
+                    kind: "retail", id: key,
+                    name: e.customer || "Unknown",
+                    phone: e.customer_phone ?? null,
                     clientClass: null, clientType: null,
                     owed: Number(e.catchup_amount_due || 0),
                     openCount: 1, at,
