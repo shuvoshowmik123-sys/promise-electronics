@@ -66,18 +66,46 @@ export async function getReceivables(): Promise<Receivables> {
      * customer rows after a merge that never happened. The phone is what the
      * shop would dial to chase the money.
      */
+    /**
+     * Catch-up entries for a company still write a retail-shaped due row —
+     * customer name and phone — because that is the ledger the money lives in.
+     * Left alone they surface here as a Person, so a company appeared under a
+     * human icon on the very screen built to tell the two apart.
+     *
+     * The due row carries the job id in `invoice`, so the job can say which
+     * company it belonged to. Those are excluded from the retail grouping and
+     * folded into the corporate side below.
+     */
     const retail = await db.execute(sql`
         SELECT
-            COALESCE(NULLIF(customer_phone, ''), customer) AS grouping_key,
-            MAX(customer)        AS name,
-            MAX(customer_phone)  AS phone,
-            SUM(amount - COALESCE(paid_amount, 0)) AS owed,
-            COUNT(*)             AS open_count,
-            MAX(created_at)      AS last_activity
-        FROM due_records
-        WHERE status <> 'Paid'
-          AND (amount - COALESCE(paid_amount, 0)) > 0.009
+            COALESCE(NULLIF(d.customer_phone, ''), d.customer) AS grouping_key,
+            MAX(d.customer)        AS name,
+            MAX(d.customer_phone)  AS phone,
+            SUM(d.amount - COALESCE(d.paid_amount, 0)) AS owed,
+            COUNT(*)               AS open_count,
+            MAX(d.created_at)      AS last_activity
+        FROM due_records d
+        LEFT JOIN job_tickets j ON j.id = d.invoice
+        WHERE d.status <> 'Paid'
+          AND (d.amount - COALESCE(d.paid_amount, 0)) > 0.009
+          AND j.corporate_client_id IS NULL
         GROUP BY grouping_key
+    `);
+
+    /** Company debt that arrived through the catch-up door rather than a bill. */
+    const corporateDues = await db.execute(sql`
+        SELECT
+            c.id AS id, c.company_name AS name,
+            c.client_class AS client_class, c.client_type AS client_type,
+            SUM(d.amount - COALESCE(d.paid_amount, 0)) AS owed,
+            COUNT(*) AS open_count,
+            MAX(d.created_at) AS last_activity
+        FROM due_records d
+        JOIN job_tickets j ON j.id = d.invoice
+        JOIN corporate_clients c ON c.id = j.corporate_client_id
+        WHERE d.status <> 'Paid'
+          AND (d.amount - COALESCE(d.paid_amount, 0)) > 0.009
+        GROUP BY c.id, c.company_name, c.client_class, c.client_type
     `);
 
     /**
@@ -118,8 +146,17 @@ export async function getReceivables(): Promise<Receivables> {
         });
     }
 
-    for (const r of rowsOf(corporate)) {
-        debtors.push({
+    /** A company can owe on both a bill and a catch-up row; that is one debtor. */
+    const byCompany = new Map<string, Debtor>();
+    for (const r of [...rowsOf(corporate), ...rowsOf(corporateDues)]) {
+        const id = String(r.id ?? "");
+        const existing = byCompany.get(id);
+        if (existing) {
+            existing.owed = round2(existing.owed + Number(r.owed ?? 0));
+            existing.openCount += Number(r.open_count ?? 0);
+            continue;
+        }
+        byCompany.set(id, {
             kind: "corporate",
             id: String(r.id ?? ""),
             name: String(r.name ?? "Unknown company"),
@@ -131,6 +168,8 @@ export async function getReceivables(): Promise<Receivables> {
             lastActivity: r.last_activity ? new Date(r.last_activity as string).toISOString() : null,
         });
     }
+
+    debtors.push(...Array.from(byCompany.values()));
 
     debtors.sort((a, b) => b.owed - a.owed);
 

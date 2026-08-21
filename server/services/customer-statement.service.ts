@@ -184,6 +184,7 @@ export async function getCorporateStatement(clientId: string): Promise<CustomerS
     const c = rowsOf(client)[0];
     if (!c) return null;
 
+
     const bills = await db.execute(sql`
         SELECT id, bill_number, grand_total, COALESCE(paid_amount, 0) AS paid_amount,
                created_at, payment_status
@@ -193,8 +194,47 @@ export async function getCorporateStatement(clientId: string): Promise<CustomerS
         ORDER BY created_at ASC
     `);
 
+    /**
+     * A company's debt does not only arrive as a bill.
+     *
+     * Work typed in through the catch-up door writes a due record instead, so a
+     * statement built from bills alone showed a company owing nothing while the
+     * tile beside it said otherwise — the two numbers a manager would have had
+     * to choose between mid-conversation.
+     */
+    const catchupDues = await db.execute(sql`
+        SELECT d.invoice, d.device_name, d.note, d.amount,
+               COALESCE(d.paid_amount, 0) AS paid_amount, d.created_at
+        FROM due_records d
+        JOIN job_tickets j ON j.id = d.invoice
+        WHERE j.corporate_client_id = ${clientId}
+        ORDER BY d.created_at ASC
+    `);
+
     type Draft = Omit<StatementLine, "balance">;
     const drafts: Draft[] = [];
+
+    for (const d of rowsOf(catchupDues)) {
+        drafts.push({
+            date: new Date(d.created_at as string).toISOString(),
+            description: (d.device_name as string) || (d.note as string) || "Repair",
+            charged: round2(Number(d.amount ?? 0)),
+            paid: 0,
+            reference: (d.invoice as string) ?? null,
+            fromPaper: true,
+        });
+        const paid = Number(d.paid_amount ?? 0);
+        if (paid > 0.009) {
+            drafts.push({
+                date: new Date(d.created_at as string).toISOString(),
+                description: "Payment received",
+                charged: 0,
+                paid: round2(paid),
+                reference: (d.invoice as string) ?? null,
+            });
+        }
+    }
+
     for (const b of rowsOf(bills)) {
         drafts.push({
             date: new Date(b.created_at as string).toISOString(),

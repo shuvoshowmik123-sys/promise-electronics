@@ -272,7 +272,13 @@ export function DuesTab({
             <div className="rounded-2xl bg-slate-900 p-5 text-white">
                 <div className="text-[11px] uppercase tracking-wider text-white/60">Still to collect — everyone</div>
                 <div className="mt-1 font-mono text-3xl font-black md:text-4xl">
-                    {getCurrencySymbol()} {(receivables?.totalOwed ?? 0).toLocaleString()}
+                    {/*
+                      * A dash until the figure arrives, never a zero. The first
+                      * paint used to read "৳ 0 — 0 customers", which is a
+                      * complete sentence meaning nobody owes anything, and it
+                      * was on screen long enough to be believed.
+                      */}
+                    {receivables ? `${getCurrencySymbol()} ${receivables.totalOwed.toLocaleString()}` : "—"}
                 </div>
                 <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-white/70">
                     <span>{receivables?.debtorCount ?? 0} customers</span>

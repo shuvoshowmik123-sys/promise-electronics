@@ -444,7 +444,21 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                                 <select
                                     className={cn(FIELD, "w-full border border-slate-200 px-3 text-sm")}
                                     value={corporateClientId}
-                                    onChange={(e) => setCorporateClientId(e.target.value)}>
+                                    onChange={(e) => {
+                                        /**
+                                         * Choosing the company IS choosing the customer.
+                                         *
+                                         * The name box and this list were independent, so a
+                                         * job could be typed as "QA19 Corp Ltd" while pointing
+                                         * at 1000FIX — and it was. The tile then showed one
+                                         * name and its statement opened the other company's
+                                         * bills, which a manager would have read out loud.
+                                         * One customer cannot have two names.
+                                         */
+                                        setCorporateClientId(e.target.value);
+                                        const picked = corporates?.clients.find((c) => c.id === e.target.value);
+                                        if (picked) { setName(picked.companyName); setLocked(true); }
+                                    }}>
                                     <option value="">Choose from the list…</option>
                                     {corporates?.clients.map((c) => (
                                         <option key={c.id} value={c.id}>
