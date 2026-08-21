@@ -26,6 +26,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { BentoCard, containerVariants, itemVariants } from "../shared";
+import { MobileScrollContent, MobileTabLayout } from "../shared/MobileAdminPrimitives";
 import { fetchApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -219,14 +220,30 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
     }, []);
 
     return (
+        /*
+         * MobileAdminPrimitives states the rule outright: every mobile admin
+         * tab must use these wrappers, and MobileScrollContent is "the only
+         * scrolling surface on mobile". This tab did not use them, and the
+         * shell hands each tab a fixed-height box — so the form simply
+         * overflowed it. On a phone the page stuck after "Who are they" and the
+         * sets below could not be reached except by tabbing into a field, which
+         * then would not scroll back. Nothing was wrong with the form; there
+         * was no scroller.
+         *
+         * Both wrappers are neutralised at md and above so the desktop layout,
+         * which scrolls in the page itself, does not gain a second scrollbar.
+         */
+        <MobileTabLayout className="md:block md:h-auto md:overflow-visible">
+        <MobileScrollContent className="px-0 md:flex-none md:min-h-0 md:overflow-visible md:px-0 md:pb-4">
         <motion.div
             variants={containerVariants} initial="hidden" animate="visible"
             /*
-             * Deep bottom padding so the last field is never trapped under the
-             * mobile dock or a raised keyboard — that is exactly where the Save
-             * button and the final row would otherwise sit.
+             * Bottom clearance comes from the shell's own CSS variable inside
+             * MobileScrollContent, which knows the dock height. A hardcoded
+             * padding here fought it and still left the Save button under the
+             * dock at some scroll positions.
              */
-            className="space-y-4 pb-[calc(9rem+env(safe-area-inset-bottom))] md:pb-4"
+            className="space-y-4"
         >
             <motion.div variants={itemVariants}>
                 <div className="flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50/70 p-4">
@@ -530,5 +547,7 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                 </BentoCard>
             </motion.div>
         </motion.div>
+        </MobileScrollContent>
+        </MobileTabLayout>
     );
 }
