@@ -48,6 +48,7 @@ interface KnownCustomer { name: string; phone: string; address: string | null; c
 interface CorporateClient { id: string; companyName: string; shortCode: string | null }
 interface CatchUpEntry {
     id: string; customer: string; customer_phone: string | null; device: string;
+    catchup_entered_at: string | null; corporate_client_id: string | null;
     estimated_cost: number; catchup_amount_due: number | null;
     created_at: string; warranty_notes: string | null;
 }
@@ -111,6 +112,20 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
         enabled: isBusiness,
     });
 
+    /**
+     * The same source Finance reads.
+     *
+     * Tiles used to sum catchup_amount_due over the last 20 entries, which gave
+     * a different number from Finance for the same person — Catch-Up said Rahim
+     * owed 81,000, Finance said 77,000 — and a manager cannot know which to read
+     * out. It also missed anything older than twenty rows. Whose tiles appear
+     * still comes from the catch-up list; what they OWE comes from here.
+     */
+    const { data: receivables } = useQuery({
+        queryKey: ["receivables"],
+        queryFn: () => fetchApi<{ debtors: DebtorTile[] }>("/admin/receivables"),
+    });
+
     const { data: recent } = useQuery({
         queryKey: ["catch-up-entries"],
         queryFn: () => fetchApi<{ entries: CatchUpEntry[]; count: number }>("/admin/catch-up-job?limit=20"),
@@ -129,37 +144,54 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
      * who owes most, because there the useful thing is who to phone.
      */
     const enteredCustomers = useMemo<DebtorTile[]>(() => {
+        const owedByKey = new Map((receivables?.debtors ?? []).map((d) => [d.id, d]));
         const byPerson = new Map<string, DebtorTile & { at: number }>();
         for (const e of recent?.entries ?? []) {
             /**
-             * Keyed by phone, not by name.
+             * Companies key on their client id, people on their phone.
              *
-             * The tile's id is what the statement is fetched with, and the
-             * statement reads due_records by phone number. Keying by name meant
-             * every tile asked for a customer whose phone was a person's name,
-             * so the sheet opened empty every time. It also merges two people
-             * who happen to share a name, which the phone does not.
+             * The tile's id is what the statement is fetched with, and the two
+             * statements read different tables — a company's bills, a person's
+             * due records. A company keyed by phone asked the retail endpoint
+             * for a customer that does not exist there and came back with the
+             * wrong history under a "Person" label.
              */
-            const key = e.customer_phone || e.customer || "Unknown";
-            const at = new Date(e.created_at).getTime();
+            const isCompany = !!e.corporate_client_id;
+            const key = isCompany
+                ? e.corporate_client_id!
+                : (e.customer_phone || e.customer || "Unknown");
+
+            /**
+             * Ordered by when it was TYPED, not by the date on the paper.
+             *
+             * created_at is the job's own date — 12 July for a July bill — so
+             * entering something new for an old customer left their tile behind
+             * anybody whose paper happened to be more recent. "I just did this"
+             * is what should move a tile, and that is catchup_entered_at.
+             */
+            const at = new Date(e.catchup_entered_at || e.created_at).getTime();
+
             const existing = byPerson.get(key);
             if (existing) {
-                existing.owed += Number(e.catchup_amount_due || 0);
                 existing.openCount += 1;
                 existing.at = Math.max(existing.at, at);
             } else {
+                const live = owedByKey.get(key);
                 byPerson.set(key, {
-                    kind: "retail", id: key,
-                    name: e.customer || "Unknown",
-                    phone: e.customer_phone ?? null,
-                    clientClass: null, clientType: null,
-                    owed: Number(e.catchup_amount_due || 0),
+                    kind: isCompany ? "corporate" : "retail",
+                    id: key,
+                    name: live?.name || e.customer || "Unknown",
+                    phone: isCompany ? null : (e.customer_phone ?? null),
+                    clientClass: live?.clientClass ?? null,
+                    clientType: live?.clientType ?? null,
+                    // Finance's figure, so the two screens cannot disagree.
+                    owed: live?.owed ?? 0,
                     openCount: 1, at,
                 });
             }
         }
         return Array.from(byPerson.values()).sort((a, b) => b.at - a.at);
-    }, [recent]);
+    }, [recent, receivables]);
 
     const pickCustomer = (c: KnownCustomer) => {
         setName(c.name); setPhone(c.phone); setAddress(c.address ?? "");

@@ -11,6 +11,7 @@
  * out. The dated rows underneath are the proof, in the order things happened,
  * which is the order a customer disputes them in.
  */
+import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { AlertCircle, Loader2, Phone, X } from "lucide-react";
 import { fetchApi } from "@/lib/api";
@@ -59,7 +60,16 @@ export function CustomerStatementSheet({
     if (!debtor) return null;
     const money = (n: number) => `${currency} ${n.toLocaleString()}`;
 
-    return (
+    /**
+     * Rendered into document.body, not where it is written.
+     *
+     * position:fixed is measured against the nearest ancestor that has a
+     * transform — and this sheet is written inside MobileScrollContent, under a
+     * motion.div that animates one. On desktop that put the overlay at y:-885,
+     * entirely above the viewport: the tap worked, the request returned data,
+     * and the screen appeared to do nothing at all.
+     */
+    return createPortal(
         <div className="fixed inset-0 z-[100] flex items-end justify-center sm:items-center">
             <div className="absolute inset-0 bg-black/50" onClick={onClose} />
 
@@ -183,6 +193,7 @@ export function CustomerStatementSheet({
                     </>
                 )}
             </div>
-        </div>
+        </div>,
+        document.body,
     );
 }

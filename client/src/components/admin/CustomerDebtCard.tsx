@@ -132,7 +132,9 @@ export function CustomerDebtGrid({
         return <p className="py-8 text-center text-sm text-slate-400">{emptyText}</p>;
     }
     return (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+        // Two on a phone, three above it, and no more: four across made the
+        // tiles small enough that the amount stopped being the thing you see.
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
             {debtors.map((d) => (
                 <CustomerDebtCard key={`${d.kind}-${d.id}`} debtor={d} onOpen={onOpen} currency={currency} />
             ))}

@@ -150,12 +150,24 @@ export async function getRetailStatement(phone: string): Promise<CustomerStateme
         return { ...d, balance };
     });
 
+    /**
+     * The address is not on a due record — it is on the jobs behind it. Left
+     * null the customer looked addressless on screen, which is the one detail a
+     * manager needs when the next step is sending a driver.
+     */
+    const addr = await db.execute(sql`
+        SELECT customer_address FROM job_tickets
+        WHERE customer_phone = ${phone} AND customer_address IS NOT NULL
+          AND customer_address <> ''
+        ORDER BY created_at DESC LIMIT 1
+    `);
+
     const name = String(dueRows[0].customer ?? "Customer");
     return {
         kind: "retail",
         name,
         phone,
-        address: null,
+        address: (rowsOf(addr)[0]?.customer_address as string) ?? null,
         totalCharged,
         totalPaid,
         balance,

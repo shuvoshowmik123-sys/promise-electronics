@@ -283,7 +283,8 @@ router.get(
             const result = await db.execute(sql`
                 SELECT id, customer, customer_phone, device, issue,
                        estimated_cost, payment_status, catchup_amount_due,
-                       created_at, catchup_entered_at, created_by_name, warranty_notes
+                       created_at, catchup_entered_at, created_by_name, warranty_notes,
+                       corporate_client_id
                 FROM job_tickets
                 WHERE entered_as_catchup = true
                 ORDER BY catchup_entered_at DESC
