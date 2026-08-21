@@ -89,6 +89,18 @@ export async function getReceivables(): Promise<Receivables> {
         WHERE d.status <> 'Paid'
           AND (d.amount - COALESCE(d.paid_amount, 0)) > 0.009
           AND j.corporate_client_id IS NULL
+          /*
+           * A due whose invoice is a corporate BILL number is that bill, not a
+           * second debt. Counted here as well it appeared twice: once as a
+           * company under its own name, and once as a "Person" carrying the
+           * same money — QA found Audit Corp Enterprise listed both ways, and
+           * its 7,500 was in the headline total twice over.
+           *
+           * The bill is the authority; this row is a shadow of it.
+           */
+          AND NOT EXISTS (
+              SELECT 1 FROM corporate_bills cb WHERE cb.bill_number = d.invoice
+          )
         GROUP BY grouping_key
     `);
 

@@ -73,8 +73,25 @@ export async function getRetailStatement(phone: string): Promise<CustomerStateme
         WHERE customer_phone = ${phone}
         ORDER BY created_at ASC
     `);
+    /**
+     * Jobs that were paid in full leave no due record at all, so a customer's
+     * settled work simply did not appear — a manager could show what is still
+     * owed but not "you paid that one in full on 10 May", which is half of what
+     * a customer disputes. Read separately and merged in.
+     */
+    const paidJobs = await db.execute(sql`
+        SELECT id, device, issue, estimated_cost, created_at, entered_as_catchup
+        FROM job_tickets
+        WHERE customer_phone = ${phone}
+          AND payment_status = 'paid'
+          AND COALESCE(estimated_cost, 0) > 0
+          AND id NOT IN (SELECT invoice FROM due_records WHERE invoice IS NOT NULL)
+        ORDER BY created_at ASC
+    `);
+
     const dueRows = rowsOf(dues);
-    if (!dueRows.length) return null;
+    const paidRows = rowsOf(paidJobs);
+    if (!dueRows.length && !paidRows.length) return null;
 
     const payments = await db.execute(sql`
         SELECT amount, method, created_at, verified_at, due_record_id
@@ -128,6 +145,24 @@ export async function getRetailStatement(phone: string): Promise<CustomerStateme
         }
     }
 
+    for (const j of paidRows) {
+        const amount = round2(Number(j.estimated_cost ?? 0));
+        const when = new Date(j.created_at as string).toISOString();
+        drafts.push({
+            date: when,
+            description: (j.device as string) || (j.issue as string) || "Repair",
+            charged: amount, paid: 0,
+            reference: j.id as string,
+            fromPaper: !!j.entered_as_catchup,
+        });
+        drafts.push({
+            date: when,
+            description: "Paid in full",
+            charged: 0, paid: amount,
+            reference: j.id as string,
+        });
+    }
+
     for (const p of paymentRows) {
         drafts.push({
             date: new Date((p.verified_at as string) || (p.created_at as string)).toISOString(),
@@ -162,7 +197,7 @@ export async function getRetailStatement(phone: string): Promise<CustomerStateme
         ORDER BY created_at DESC LIMIT 1
     `);
 
-    const name = String(dueRows[0].customer ?? "Customer");
+    const name = String(dueRows[0]?.customer ?? "Customer");
     return {
         kind: "retail",
         name,

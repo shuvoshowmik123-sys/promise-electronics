@@ -60,7 +60,17 @@ interface SetRow {
     saved?: string;
 }
 
-const today = () => new Date().toISOString().slice(0, 10);
+/**
+ * Today where the shop is, not in UTC.
+ *
+ * toISOString() is UTC, and Dhaka is six hours ahead — so from midnight until
+ * six in the morning the form offered yesterday's date, and somebody entering a
+ * pile before opening would stamp every bill a day early without noticing.
+ */
+const today = () => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 const blankRow = (): SetRow => ({
     key: Math.random().toString(36).slice(2),
     device: "", modelNumber: "", screenSize: "", workDone: "",
