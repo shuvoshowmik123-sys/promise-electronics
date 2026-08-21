@@ -233,8 +233,24 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                 limit: pageSize,
                 search: debouncedJobSearch.trim() || undefined,
                 status: jobStatusFilter !== "all" ? jobStatusFilter : undefined,
+                /**
+                 * A search looks everywhere, whatever group is selected.
+                 *
+                 * The list opens on New, and finished work — including every
+                 * catch-up entry, which is created Delivered — sits outside it.
+                 * So typing a customer's name returned "No jobs found here" for
+                 * a job that plainly existed, four QA rounds running, and the
+                 * honest reading was that it had never saved.
+                 *
+                 * Nobody types a name meaning "only if it is still open". The
+                 * group is a browsing filter; a search is a question about
+                 * everything.
+                 */
                 statuses:
-                    jobStatusFilter === "all" && jobGroupFilter !== "all" && selectedJobGroupForQuery
+                    !debouncedJobSearch.trim()
+                    && jobStatusFilter === "all"
+                    && jobGroupFilter !== "all"
+                    && selectedJobGroupForQuery
                         ? selectedJobGroupForQuery.statuses
                         : undefined,
                 priority: jobPriorityFilter !== "all" ? jobPriorityFilter : undefined,

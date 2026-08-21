@@ -11,9 +11,13 @@
  * out. The dated rows underneath are the proof, in the order things happened,
  * which is the order a customer disputes them in.
  */
+import { useState } from "react";
 import { createPortal } from "react-dom";
-import { useQuery } from "@tanstack/react-query";
-import { AlertCircle, Loader2, Phone, X } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AlertCircle, Banknote, Check, Loader2, Phone, X } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { fetchApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { DebtorTile } from "./CustomerDebtCard";
@@ -50,11 +54,39 @@ export function CustomerStatementSheet({
     onClose: () => void;
     currency?: string;
 }) {
+    const queryClient = useQueryClient();
+    /**
+     * Taking money lives here, on the statement, rather than in a separate row
+     * further down the page. QA-23 named that split as the reason this was not
+     * "one place": the manager reads the statement to the customer, the customer
+     * hands over cash, and the button to record it was somewhere else entirely.
+     */
+    const [collecting, setCollecting] = useState(false);
+    const [amount, setAmount] = useState("");
+
     const { data, isLoading, isError } = useQuery({
         queryKey: ["statement", debtor?.kind, debtor?.id],
         queryFn: () => fetchApi<CustomerStatement>(
             `/admin/receivables/${debtor!.kind}/${encodeURIComponent(debtor!.id)}/statement`),
         enabled: !!debtor,
+    });
+
+    const takePayment = useMutation({
+        mutationFn: () => fetchApi<{ remaining: number }>(
+            `/admin/receivables/${debtor!.kind}/${encodeURIComponent(debtor!.id)}/payment`,
+            { method: "POST", body: JSON.stringify({ amount: Number(amount) }) }),
+        onSuccess: (r) => {
+            toast.success(r.remaining > 0
+                ? `Recorded. ${currency} ${r.remaining.toLocaleString()} still owed.`
+                : "Recorded. Nothing left owing.");
+            setCollecting(false); setAmount("");
+            // Every surface that quotes this customer has just gone stale.
+            queryClient.invalidateQueries({ queryKey: ["statement"] });
+            queryClient.invalidateQueries({ queryKey: ["receivables"] });
+            queryClient.invalidateQueries({ queryKey: ["dueRecords"] });
+            queryClient.invalidateQueries({ queryKey: ["catch-up-entries"] });
+        },
+        onError: (e: Error) => toast.error(e.message || "Could not record the payment"),
     });
 
     if (!debtor) return null;
@@ -138,6 +170,55 @@ export function CustomerStatementSheet({
                                 </span>
                             </div>
                         </div>
+
+                        {data.kind === "retail" && data.balance > 0.009 && (
+                            <div className="mx-4 -mt-2 mb-2">
+                                {collecting ? (
+                                    <div className="flex items-center gap-2">
+                                        <div className="relative flex-1">
+                                            <span className="absolute left-3 top-1/2 -translate-y-1/2 font-semibold text-slate-500">
+                                                {currency}
+                                            </span>
+                                            <Input
+                                                autoFocus type="number" inputMode="decimal" min="0"
+                                                className="h-12 rounded-xl bg-white pl-8 font-mono"
+                                                placeholder={String(data.balance)}
+                                                value={amount}
+                                                onChange={(e) => setAmount(e.target.value)} />
+                                        </div>
+                                        <Button className="h-12 rounded-xl bg-emerald-600 px-5 hover:bg-emerald-700"
+                                            disabled={!Number(amount) || takePayment.isPending}
+                                            onClick={() => takePayment.mutate()}>
+                                            {takePayment.isPending
+                                                ? <Loader2 className="h-4 w-4 animate-spin" />
+                                                : <Check className="h-4 w-4" />}
+                                        </Button>
+                                        <Button variant="ghost" className="h-12 rounded-xl"
+                                            onClick={() => { setCollecting(false); setAmount(""); }}>
+                                            Cancel
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <Button variant="outline"
+                                        className="h-12 w-full rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                                        onClick={() => { setCollecting(true); setAmount(String(data.balance)); }}>
+                                        <Banknote className="mr-2 h-4 w-4" />
+                                        Take a payment
+                                    </Button>
+                                )}
+                                {/*
+                                  * Oldest first, and said out loud: a part payment
+                                  * clears the bill the customer has owed longest
+                                  * rather than spreading a little across everything
+                                  * and closing nothing.
+                                  */}
+                                {collecting && (
+                                    <p className="mt-1.5 text-[11px] text-slate-500">
+                                        Goes against the oldest bill first.
+                                    </p>
+                                )}
+                            </div>
+                        )}
 
                         <div className="flex-1 overflow-y-auto px-4 pb-8">
                             <div className="mb-2 flex items-center justify-between px-1">

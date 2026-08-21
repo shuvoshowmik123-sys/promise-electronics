@@ -312,11 +312,19 @@ export function DuesTab({
                     <BentoCard className="h-[140px] bg-gradient-to-br from-orange-500 to-red-600" variant="vibrant">
                         <div className="flex items-center justify-between h-full text-white">
                             <div>
-                                <h2 className="text-sm opacity-80 uppercase tracking-wider mb-2">Outstanding Payments</h2>
+                                {/*
+                                  * Says what it counts, because it does not count
+                                  * everything. This card totals due RECORDS only,
+                                  * while the bar above covers companies too — and
+                                  * the two sitting unlabelled on one page gave a
+                                  * manager 259,985 and 265,685 for the same
+                                  * question, with nothing saying why they differ.
+                                  */}
+                                <h2 className="text-sm opacity-80 uppercase tracking-wider mb-2">Due records only</h2>
                                 <div className="text-4xl font-bold">
                                     {isSummaryLoading ? <Loader2 className="w-6 h-6 animate-spin" /> : `${getCurrencySymbol()}${Number(summary.totalDueAmount).toLocaleString()}`}
                                 </div>
-                                <p className="text-xs opacity-80 mt-2">Total amount pending collection</p>
+                                <p className="text-xs opacity-80 mt-2">People and companies together are in the black bar above</p>
                             </div>
                             <div className="text-right">
                                 <div className="bg-white/20 backdrop-blur-sm px-3 py-1.5 rounded-lg inline-block">

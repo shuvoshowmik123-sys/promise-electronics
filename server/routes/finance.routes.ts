@@ -6,7 +6,7 @@
 
 import { Router, Request, Response } from 'express';
 import { randomUUID } from 'crypto';
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { storage } from '../storage.js';
 import { financeRepo, notificationRepo, posRepo, serviceRequestRepo, userRepo } from '../repositories/index.js';
 import { insertManualPaymentSchema, insertPettyCashRecordSchema, manualPayments } from '../../shared/schema.js';
@@ -877,6 +877,101 @@ router.get(
         } catch (error) {
             logRouteError('GET /api/admin/receivables/:kind/:id/statement', req, error);
             res.status(500).json({ error: 'Could not build the statement.' });
+        }
+    },
+);
+
+/**
+ * Take a payment against everything one customer owes, from their statement.
+ *
+ * Collecting money used to live in a different list from the customer: you
+ * found the person on a tile, then hunted a row further down the page to press
+ * Settle. QA-23 called that out as the reason the feature was not "one place" —
+ * a manager reads the statement, the customer hands over cash, and the button
+ * to record it was somewhere else entirely.
+ *
+ * Applied oldest debt first. That is how a shop settles up, and it means a
+ * part payment clears the bill the customer has owed longest rather than
+ * spreading a little across everything and closing nothing.
+ */
+router.post(
+    '/api/admin/receivables/:kind/:id/payment',
+    requireAdminAuth,
+    requirePermission('process_payment'),
+    async (req: Request, res: Response) => {
+        try {
+            const amount = Number(req.body?.amount);
+            if (!Number.isFinite(amount) || amount <= 0) {
+                return res.status(400).json({ error: 'Enter how much was paid.' });
+            }
+            if (String(req.params.kind) !== 'retail') {
+                return res.status(400).json({
+                    error: 'Company payments are recorded against their bill.',
+                });
+            }
+
+            const phone = decodeURIComponent(req.params.id);
+            const open = await db.execute(sql`
+                SELECT id, amount, COALESCE(paid_amount, 0) AS paid_amount
+                FROM due_records
+                WHERE customer_phone = ${phone} AND status <> 'Paid'
+                  AND (amount - COALESCE(paid_amount, 0)) > 0.009
+                ORDER BY created_at ASC
+            `);
+            const rows = (open as unknown as { rows: Array<Record<string, unknown>> }).rows ?? [];
+            if (!rows.length) return res.status(400).json({ error: 'Nothing is owed.' });
+
+            const outstanding = rows.reduce(
+                (s, r) => s + (Number(r.amount ?? 0) - Number(r.paid_amount ?? 0)), 0);
+            if (amount > outstanding + 0.009) {
+                return res.status(400).json({
+                    error: `That is more than the ${outstanding.toLocaleString()} owed.`,
+                });
+            }
+
+            let left = amount;
+            const settled: string[] = [];
+            for (const r of rows) {
+                if (left <= 0.009) break;
+                const owed = Number(r.amount ?? 0) - Number(r.paid_amount ?? 0);
+                const take = Math.min(owed, left);
+                const nowPaid = Math.round((Number(r.paid_amount ?? 0) + take) * 100) / 100;
+
+                /**
+                 * Through the repository, not raw SQL, so the catch-up job is
+                 * settled alongside its due. Writing the row directly here would
+                 * leave the job saying unpaid — the exact drift this feature was
+                 * just fixed for.
+                 */
+                await financeRepo.updateDueRecord(String(r.id), {
+                    paidAmount: nowPaid,
+                    status: nowPaid + 0.009 >= Number(r.amount ?? 0) ? 'Paid' : 'Pending',
+                    paidAt: new Date(),
+                } as never);
+
+                settled.push(String(r.id));
+                left = Math.round((left - take) * 100) / 100;
+            }
+
+            await auditLogger.log({
+                userId: (req as any).session?.adminUserId || 'system',
+                action: 'DUE_PAYMENT_RECORDED',
+                entity: 'DueRecord',
+                entityId: settled[0] ?? phone,
+                details: `Recorded ${amount} against ${phone}, applied to ${settled.length} record(s) oldest first`,
+                severity: 'warning',
+                req,
+            }).catch(() => {});
+
+            res.json({
+                ok: true,
+                applied: amount,
+                remaining: Math.round((outstanding - amount) * 100) / 100,
+                recordsTouched: settled.length,
+            });
+        } catch (error) {
+            logRouteError('POST /api/admin/receivables/:kind/:id/payment', req, error);
+            res.status(500).json({ error: 'Could not record the payment.' });
         }
     },
 );

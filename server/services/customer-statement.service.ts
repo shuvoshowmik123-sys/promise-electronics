@@ -197,7 +197,20 @@ export async function getRetailStatement(phone: string): Promise<CustomerStateme
         ORDER BY created_at DESC LIMIT 1
     `);
 
-    const name = String(dueRows[0]?.customer ?? "Customer");
+    /**
+     * A customer with nothing owing has no due rows, so the name has to come
+     * from their jobs instead. Falling back to the literal word "Customer" put
+     * a heading on the statement that was not anybody's name — the one thing on
+     * screen a manager would read out first.
+     */
+    const nameRow = await db.execute(sql`
+        SELECT customer FROM job_tickets
+        WHERE customer_phone = ${phone} AND customer IS NOT NULL AND customer <> ''
+        ORDER BY created_at DESC LIMIT 1
+    `);
+    const name = String(
+        dueRows[0]?.customer ?? rowsOf(nameRow)[0]?.customer ?? "Customer",
+    );
     return {
         kind: "retail",
         name,

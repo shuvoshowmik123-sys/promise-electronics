@@ -296,6 +296,17 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
     });
 
     const nextCustomer = () => {
+        /**
+         * Asks before throwing away typing.
+         *
+         * This clears the customer and every unsaved set. Sitting next to Save
+         * with no confirmation, one mistaken tap lost a bill somebody had just
+         * read off paper — and there is no undo, because none of it existed
+         * anywhere yet.
+         */
+        const unsaved = rows.some((r) => !r.saved && (r.device.trim() || r.workDone.trim() || r.amountCharged));
+        if (unsaved && !window.confirm("Clear this customer and the sets you have not saved?")) return;
+
         setName(""); setPhone(""); setAddress(""); setCorporateClientId("");
         setType("individual"); setLocked(false); setSearch("");
         setRows([blankRow()]);
@@ -426,7 +437,7 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                     )}
 
                     <div className="mt-4 space-y-2">
-                        <Label className="text-xs">Who are they?</Label>
+                        <Label className="text-xs">Is this a person or a company?</Label>
                         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                             {TYPES.map((t) => (
                                 <button key={t.key} type="button" onClick={() => setType(t.key)}
@@ -490,7 +501,7 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
             <motion.div variants={itemVariants}>
                 <BentoCard className="bg-white" disableHover>
                     <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">Their sets</h3>
+                        <h3 className="text-sm font-black uppercase tracking-wide text-slate-500">What you repaired</h3>
                         {customerOwed > 0 && (
                             <span className="rounded-full bg-rose-50 px-3 py-1 text-xs font-bold text-rose-700">
                                 owes {money(customerOwed)}
@@ -505,7 +516,7 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                                 r.saved ? "border-emerald-100 bg-emerald-50/50" : "border-slate-200 bg-slate-50/40",
                             )}>
                                 <div className="mb-3 flex items-center justify-between">
-                                    <span className="text-xs font-bold text-slate-400">SET {i + 1}</span>
+                                    <span className="text-xs font-bold text-slate-400">TV {i + 1}</span>
                                     {r.saved ? (
                                         <span className="flex items-center gap-1 text-xs font-bold text-emerald-600">
                                             <Check className="h-3 w-3" /> saved
@@ -541,13 +552,13 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                                             <div className="relative">
                                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 font-semibold text-slate-500">৳</span>
                                                 <Input className={cn(FIELD, "pl-8 font-mono")} type="number" inputMode="decimal"
-                                                    min="0" value={r.amountCharged} placeholder="Charged"
+                                                    min="0" value={r.amountCharged} placeholder="Total bill"
                                                     onChange={(e) => setRow(r.key, { amountCharged: e.target.value })} />
                                             </div>
                                             <div className="relative">
                                                 <span className="absolute left-3 top-1/2 -translate-y-1/2 font-semibold text-slate-500">৳</span>
                                                 <Input className={cn(FIELD, "pl-8 font-mono")} type="number" inputMode="decimal"
-                                                    min="0" value={r.amountPaid} placeholder="Paid"
+                                                    min="0" value={r.amountPaid} placeholder="Paid already"
                                                     onChange={(e) => setRow(r.key, { amountPaid: e.target.value })} />
                                             </div>
                                         </div>
@@ -592,7 +603,7 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
 
                     <Button variant="outline" className="mt-3 h-12 w-full rounded-xl border-dashed"
                         onClick={() => setRows((rs) => [...rs, blankRow()])}>
-                        <Plus className="mr-2 h-4 w-4" /> Add another set
+                        <Plus className="mr-2 h-4 w-4" /> Add another TV
                     </Button>
 
                     <div className="mt-4 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
