@@ -76,6 +76,16 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
     const [locked, setLocked] = useState(false);
     const [search, setSearch] = useState("");
     const [rows, setRows] = useState<SetRow[]>([blankRow()]);
+    /**
+     * Rows the server has flagged as looking like a bill already entered.
+     *
+     * Lost in the customer-first rewrite and caught by QA: the refusal arrived
+     * as a red toast with no way to proceed, so a genuine second identical
+     * repair could not be recorded at all. Keyed by row so one flagged set does
+     * not force the others through unchecked.
+     */
+    const [duplicateRows, setDuplicateRows] = useState<Set<string>>(new Set());
+
     /** Grows across every save this sitting — the number the owner came for. */
     const [pileOwed, setPileOwed] = useState(0);
     const [pileCount, setPileCount] = useState(0);
@@ -108,8 +118,16 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
         setSearch("");
     };
 
-    const setRow = (key: string, patch: Partial<SetRow>) =>
+    const setRow = (key: string, patch: Partial<SetRow>) => {
         setRows((rs) => rs.map((r) => (r.key === key ? { ...r, ...patch } : r)));
+        // A changed row is no longer the bill the server matched against.
+        if (!("saved" in patch)) {
+            setDuplicateRows((d) => {
+                if (!d.has(key)) return d;
+                const next = new Set(d); next.delete(key); return next;
+            });
+        }
+    };
 
     const rowDue = (r: SetRow) => Math.max(0, (Number(r.amountCharged) || 0) - (Number(r.amountPaid) || 0));
     const rowOverpaid = (r: SetRow) => (Number(r.amountPaid) || 0) > (Number(r.amountCharged) || 0);
@@ -127,6 +145,7 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
         mutationFn: async () => {
             let owed = 0;
             let count = 0;
+            let flagged = 0;
             /**
              * One request per set rather than one batch: a single bad row must
              * not lose the other five, and each job is stamped and audited on
@@ -148,15 +167,31 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                         amountPaid: Number(r.amountPaid) || 0,
                         jobDate: r.jobDate,
                         warrantyMonths: r.warrantyMonths ? Number(r.warrantyMonths) : undefined,
+                        allowDuplicate: duplicateRows.has(r.key) || undefined,
                     }),
+                }).catch((err: Error) => {
+                    if (/already entered/i.test(err.message)) {
+                        setDuplicateRows((d) => new Set(d).add(r.key));
+                        flagged += 1;
+                        return null;
+                    }
+                    throw err;
                 });
+                if (!res) continue;
                 setRow(r.key, { saved: res.jobId });
                 owed += rowDue(r);
                 count += 1;
             }
-            return { count, owed };
+            return { count, owed, flagged };
         },
-        onSuccess: ({ count, owed }) => {
+        onSuccess: ({ count, owed, flagged }) => {
+            if (flagged) {
+                toast.warning(
+                    `${flagged} ${flagged === 1 ? "set looks" : "sets look"} like a bill you already entered. ` +
+                    "Press Save again only if it really is a second job.",
+                );
+            }
+            if (!count) return;
             toast.success(`${count} ${count === 1 ? "job" : "jobs"} recorded`);
             setPileOwed((p) => p + owed);
             setPileCount((c) => c + count);
@@ -442,12 +477,17 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                         <Button variant="ghost" className="h-12 rounded-xl" onClick={nextCustomer}>
                             Next customer
                         </Button>
-                        <Button className="h-12 rounded-xl px-8 bg-slate-900 hover:bg-slate-800"
+                        <Button className={cn("h-12 rounded-xl px-8",
+                            pending.some((r) => duplicateRows.has(r.key))
+                                ? "bg-amber-600 hover:bg-amber-700"
+                                : "bg-slate-900 hover:bg-slate-800")}
                             disabled={!customerReady || !pending.length || save.isPending}
                             onClick={() => save.mutate()}>
                             {save.isPending
                                 ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>
-                                : <><Check className="mr-2 h-4 w-4" /> Save {pending.length || ""} {pending.length === 1 ? "job" : "jobs"}</>}
+                                : pending.some((r) => duplicateRows.has(r.key))
+                                    ? <><AlertCircle className="mr-2 h-4 w-4" /> Yes, save it anyway</>
+                                    : <><Check className="mr-2 h-4 w-4" /> Save {pending.length || ""} {pending.length === 1 ? "job" : "jobs"}</>}
                         </Button>
                     </div>
                 </BentoCard>
