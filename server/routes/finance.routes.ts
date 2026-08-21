@@ -847,3 +847,36 @@ router.get(
         }
     },
 );
+
+/**
+ * One customer's dated statement — the answer to "we do not owe that".
+ *
+ * `kind` decides where the money is read from: a walk-in customer's history is
+ * in due_records keyed by phone, a company's is its issued bills.
+ */
+router.get(
+    '/api/admin/receivables/:kind/:id/statement',
+    requireAdminAuth,
+    requirePermission('finance'),
+    async (req: Request, res: Response) => {
+        try {
+            const { getRetailStatement, getCorporateStatement } =
+                await import('../services/customer-statement.service.js');
+
+            const kind = String(req.params.kind);
+            if (kind !== 'retail' && kind !== 'corporate') {
+                return res.status(400).json({ error: 'Unknown customer type.' });
+            }
+
+            const statement = kind === 'retail'
+                ? await getRetailStatement(decodeURIComponent(req.params.id))
+                : await getCorporateStatement(req.params.id);
+
+            if (!statement) return res.status(404).json({ error: 'No billing history for this customer.' });
+            res.json(statement);
+        } catch (error) {
+            logRouteError('GET /api/admin/receivables/:kind/:id/statement', req, error);
+            res.status(500).json({ error: 'Could not build the statement.' });
+        }
+    },
+);

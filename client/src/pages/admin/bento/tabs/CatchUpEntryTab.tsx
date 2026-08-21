@@ -28,6 +28,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { BentoCard, containerVariants, itemVariants } from "../shared";
 import { MobileScrollContent, MobileTabLayout } from "../shared/MobileAdminPrimitives";
 import { CustomerDebtGrid, type DebtorTile } from "@/components/admin/CustomerDebtCard";
+import { CustomerStatementSheet } from "@/components/admin/CustomerStatementSheet";
 import { fetchApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -91,6 +92,8 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
     /** Grows across every save this sitting — the number the owner came for. */
     const [pileOwed, setPileOwed] = useState(0);
     const [pileCount, setPileCount] = useState(0);
+    /** Tapping a tile opens the same statement Finance opens. */
+    const [openDebtor, setOpenDebtor] = useState<DebtorTile | null>(null);
 
     const isBusiness = type !== "individual";
     const searchRef = useRef<HTMLDivElement>(null);
@@ -562,11 +565,17 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                     <CustomerDebtGrid
                         debtors={enteredCustomers}
                         currency={getCurrencySymbol()}
+                        onOpen={setOpenDebtor}
                         emptyText="Nothing entered yet."
                     />
                 </BentoCard>
             </motion.div>
         </motion.div>
+        <CustomerStatementSheet
+            debtor={openDebtor}
+            onClose={() => setOpenDebtor(null)}
+            currency={getCurrencySymbol()}
+        />
         </MobileScrollContent>
         </MobileTabLayout>
     );

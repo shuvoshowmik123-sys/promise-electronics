@@ -18,6 +18,7 @@ import { AlertCircle, Loader2, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { BentoCard, containerVariants, itemVariants } from "../shared";
 import { CustomerDebtGrid, type DebtorTile } from "@/components/admin/CustomerDebtCard";
+import { CustomerStatementSheet } from "@/components/admin/CustomerStatementSheet";
 import { fetchApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -37,13 +38,10 @@ const FILTERS: Array<{ key: Filter; label: string }> = [
     { key: "corporate", label: "Companies" },
 ];
 
-export function ReceivablesTab({
-    getCurrencySymbol, onOpenDebtor,
-}: {
-    getCurrencySymbol: () => string;
-    onOpenDebtor?: (d: DebtorTile) => void;
-}) {
+export function ReceivablesTab({ getCurrencySymbol }: { getCurrencySymbol: () => string }) {
     const [filter, setFilter] = useState<Filter>("all");
+    /** The tile that was tapped; its statement opens over the grid. */
+    const [open, setOpen] = useState<DebtorTile | null>(null);
     const [q, setQ] = useState("");
     const currency = getCurrencySymbol();
     const money = (n: number) => `${currency} ${n.toLocaleString()}`;
@@ -148,12 +146,14 @@ export function ReceivablesTab({
                         <CustomerDebtGrid
                             debtors={shown}
                             currency={currency}
-                            onOpen={onOpenDebtor}
+                            onOpen={setOpen}
                             emptyText={q ? "Nobody matches that." : "Nobody owes anything."}
                         />
                     )}
                 </BentoCard>
             </motion.div>
+
+            <CustomerStatementSheet debtor={open} onClose={() => setOpen(null)} currency={currency} />
         </motion.div>
     );
 }
