@@ -524,6 +524,38 @@ export async function updateDueRecord(id: string, updates: Partial<InsertDueReco
         .set(updates)
         .where(eq(schema.dueRecords.id, id))
         .returning();
+
+    /**
+     * Settle the job the due came from, not just the due.
+     *
+     * A catch-up entry writes two records for one repair: the job, and the due
+     * carrying what is owed on it. Nothing wrote back, so taking a payment in
+     * Finance left the job still saying unpaid and still holding its original
+     * outstanding figure, permanently. The Jobs screen and the dues screen
+     * would disagree about the same repair and neither would look wrong.
+     *
+     * The due carries the job id in `invoice`, which is the link that makes the
+     * repair one thing again. Only catch-up jobs are touched — a POS sale's job
+     * is settled by the till, and reaching in from here as well would fight it.
+     */
+    if (updated) {
+        const outstanding = Math.max(0,
+            Number(updated.amount ?? 0) - Number(updated.paidAmount ?? 0));
+        const paymentStatus = outstanding <= 0.009
+            ? "paid"
+            : Number(updated.paidAmount ?? 0) > 0 ? "partial" : "unpaid";
+
+        // Best effort: the payment is already recorded, and a failed mirror
+        // must not undo money that was genuinely taken.
+        await db.execute(sql`
+            UPDATE job_tickets
+            SET payment_status = ${paymentStatus},
+                catchup_amount_due = ${outstanding > 0.009 ? outstanding : null}
+            WHERE id = ${updated.invoice} AND entered_as_catchup = true
+        `).catch((error) => {
+            console.error("[finance] could not settle the catch-up job for due", id, error);
+        });
+    }
     return updated;
 }
 
