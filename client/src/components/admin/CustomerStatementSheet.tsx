@@ -14,7 +14,7 @@
 import { useState } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { AlertCircle, Banknote, Check, Loader2, Phone, X } from "lucide-react";
+import { AlertCircle, Banknote, Check, Loader2, MessageCircle, Phone, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -91,6 +91,41 @@ export function CustomerStatementSheet({
 
     if (!debtor) return null;
     const money = (n: number) => `${currency} ${n.toLocaleString()}`;
+
+    /**
+     * A reminder the customer can actually read, built from the same lines the
+     * manager is looking at.
+     *
+     * Deliberately WhatsApp rather than an emailed invoice: this shop reaches
+     * its customers on a phone, and an invoice nobody opens collects nothing.
+     * The unpaid items are listed with dates, because a reminder that just says
+     * a total invites the same argument the statement exists to end.
+     */
+    const reminderText = () => {
+        if (!data) return "";
+        const unpaid = data.lines.filter((l) => l.charged > 0);
+        const items = unpaid.slice(-5).map((l) =>
+            `${day(l.date)} — ${l.description}: ${currency} ${l.charged.toLocaleString()}`).join("\n");
+        return [
+            `Assalamu alaikum ${data.name},`,
+            "",
+            "This is Promise Electronics. Our records show:",
+            items,
+            "",
+            `Paid so far: ${currency} ${data.totalPaid.toLocaleString()}`,
+            `Still due: ${currency} ${data.balance.toLocaleString()}`,
+            "",
+            "Please let us know if anything looks wrong. Thank you.",
+        ].join("\n");
+    };
+
+    const sendReminder = () => {
+        const digits = (data?.phone ?? debtor.phone ?? "").replace(/\D/g, "");
+        // Bangladesh numbers are stored as 01XXXXXXXXX; WhatsApp wants 8801…
+        const intl = digits.startsWith("0") ? `88${digits}` : digits;
+        const text = encodeURIComponent(reminderText());
+        window.open(intl ? `https://wa.me/${intl}?text=${text}` : `https://wa.me/?text=${text}`, "_blank");
+    };
 
     /**
      * Rendered into document.body, not where it is written.
@@ -199,12 +234,20 @@ export function CustomerStatementSheet({
                                         </Button>
                                     </div>
                                 ) : (
-                                    <Button variant="outline"
-                                        className="h-12 w-full rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50"
-                                        onClick={() => { setCollecting(true); setAmount(String(data.balance)); }}>
-                                        <Banknote className="mr-2 h-4 w-4" />
-                                        Take a payment
-                                    </Button>
+                                    <div className="flex gap-2">
+                                        <Button variant="outline"
+                                            className="h-12 flex-1 rounded-xl border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+                                            onClick={() => { setCollecting(true); setAmount(String(data.balance)); }}>
+                                            <Banknote className="mr-2 h-4 w-4" />
+                                            Take a payment
+                                        </Button>
+                                        <Button variant="outline"
+                                            className="h-12 rounded-xl border-slate-200 px-4 text-slate-700 hover:bg-slate-50"
+                                            onClick={sendReminder}>
+                                            <MessageCircle className="mr-2 h-4 w-4" />
+                                            Remind
+                                        </Button>
+                                    </div>
                                 )}
                                 {/*
                                   * Oldest first, and said out loud: a part payment

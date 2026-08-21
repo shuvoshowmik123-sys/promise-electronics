@@ -34,6 +34,14 @@ export interface Debtor {
     openCount: number;
     /** Newest unpaid item, so a list can be ordered by what moved recently. */
     lastActivity: string | null;
+    /**
+     * How long the OLDEST unpaid item has been waiting, in days.
+     *
+     * The figure a debt list is really missing. 5,000 owed for three days and
+     * 5,000 owed for three months are different problems and look identical
+     * without this — the second is the one that needs a phone call today.
+     */
+    oldestUnpaidDays: number;
 }
 
 export interface Receivables {
@@ -49,6 +57,14 @@ function rowsOf(result: unknown): Array<Record<string, unknown>> {
 }
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
+
+/** Whole days since a date, never negative. */
+function daysSince(value: unknown): number {
+    if (!value) return 0;
+    const then = new Date(value as string).getTime();
+    if (isNaN(then)) return 0;
+    return Math.max(0, Math.floor((Date.now() - then) / 86_400_000));
+}
 
 /**
  * Every debtor, largest debt first.
@@ -83,7 +99,8 @@ export async function getReceivables(): Promise<Receivables> {
             MAX(d.customer_phone)  AS phone,
             SUM(d.amount - COALESCE(d.paid_amount, 0)) AS owed,
             COUNT(*)               AS open_count,
-            MAX(d.created_at)      AS last_activity
+            MAX(d.created_at)      AS last_activity,
+            MIN(d.created_at)      AS oldest_unpaid
         FROM due_records d
         LEFT JOIN job_tickets j ON j.id = d.invoice
         WHERE d.status <> 'Paid'
@@ -111,7 +128,8 @@ export async function getReceivables(): Promise<Receivables> {
             c.client_class AS client_class, c.client_type AS client_type,
             SUM(d.amount - COALESCE(d.paid_amount, 0)) AS owed,
             COUNT(*) AS open_count,
-            MAX(d.created_at) AS last_activity
+            MAX(d.created_at) AS last_activity,
+            MIN(d.created_at) AS oldest_unpaid
         FROM due_records d
         JOIN job_tickets j ON j.id = d.invoice
         JOIN corporate_clients c ON c.id = j.corporate_client_id
@@ -133,7 +151,8 @@ export async function getReceivables(): Promise<Receivables> {
             c.client_type        AS client_type,
             SUM(b.grand_total - COALESCE(b.paid_amount, 0)) AS owed,
             COUNT(*)             AS open_count,
-            MAX(b.created_at)    AS last_activity
+            MAX(b.created_at)    AS last_activity,
+            MIN(b.created_at)    AS oldest_unpaid
         FROM corporate_bills b
         JOIN corporate_clients c ON c.id = b.corporate_client_id
         WHERE COALESCE(b.payment_status, 'unpaid') <> 'paid'
@@ -155,6 +174,7 @@ export async function getReceivables(): Promise<Receivables> {
             owed: round2(Number(r.owed ?? 0)),
             openCount: Number(r.open_count ?? 0),
             lastActivity: r.last_activity ? new Date(r.last_activity as string).toISOString() : null,
+            oldestUnpaidDays: daysSince(r.oldest_unpaid),
         });
     }
 
@@ -166,6 +186,9 @@ export async function getReceivables(): Promise<Receivables> {
         if (existing) {
             existing.owed = round2(existing.owed + Number(r.owed ?? 0));
             existing.openCount += Number(r.open_count ?? 0);
+            // The longest wait across both sources, not whichever arrived last.
+            existing.oldestUnpaidDays = Math.max(
+                existing.oldestUnpaidDays, daysSince(r.oldest_unpaid));
             continue;
         }
         byCompany.set(id, {
@@ -178,6 +201,7 @@ export async function getReceivables(): Promise<Receivables> {
             owed: round2(Number(r.owed ?? 0)),
             openCount: Number(r.open_count ?? 0),
             lastActivity: r.last_activity ? new Date(r.last_activity as string).toISOString() : null,
+            oldestUnpaidDays: daysSince(r.oldest_unpaid),
         });
     }
 

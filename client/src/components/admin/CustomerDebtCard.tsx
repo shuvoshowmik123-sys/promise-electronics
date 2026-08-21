@@ -26,7 +26,55 @@ export interface DebtorTile {
     owed: number;
     openCount: number;
     lastActivity?: string | null;
+    /** Days the oldest unpaid item has been waiting. */
+    oldestUnpaidDays?: number;
 }
+
+/**
+ * How old a debt is, in the terms a shop thinks in.
+ *
+ * Amount alone told a manager nothing about urgency: 5,000 owed since Tuesday
+ * and 5,000 owed since March looked identical, and the second is the one that
+ * needs a call today. Colour carries the age so a tile says which without being
+ * opened.
+ *
+ * The bands are the shop's own rhythm, not arbitrary: a fortnight is normal
+ * credit, a month is late, past two months somebody has stopped answering.
+ */
+export type DebtAge = "fresh" | "due" | "late" | "stale";
+
+export function debtAge(days: number | undefined): DebtAge {
+    const d = days ?? 0;
+    if (d >= 60) return "stale";
+    if (d >= 30) return "late";
+    if (d >= 14) return "due";
+    return "fresh";
+}
+
+const AGE_STYLE: Record<DebtAge, { tile: string; text: string; chip: string; label: (d: number) => string }> = {
+    fresh: {
+        tile: "border-slate-200 bg-white hover:border-slate-300",
+        text: "text-slate-900", chip: "bg-slate-100 text-slate-500",
+        label: (d) => (d <= 1 ? "today" : `${d} days`),
+    },
+    due: {
+        tile: "border-amber-200 bg-amber-50/60 hover:border-amber-300",
+        text: "text-amber-800", chip: "bg-amber-100 text-amber-700",
+        label: (d) => `${d} days`,
+    },
+    late: {
+        tile: "border-rose-200 bg-rose-50/70 hover:border-rose-300",
+        text: "text-rose-800", chip: "bg-rose-100 text-rose-700",
+        label: (d) => `${d} days late`,
+    },
+    stale: {
+        // Deliberately the loudest thing on the screen. Two months of silence
+        // is not a slow payer, it is a debt somebody has stopped chasing.
+        tile: "border-rose-400 bg-rose-100/80 hover:border-rose-500",
+        text: "text-rose-900", chip: "bg-rose-600 text-white",
+        label: (d) => `${Math.floor(d / 30)} months`,
+    },
+};
 
 /** Two letters, so a tile reads as a person even before the name is scanned. */
 function initials(name: string): string {
@@ -53,6 +101,8 @@ export function CustomerDebtCard({
 }) {
     const owes = debtor.owed > 0.009;
     const isCompany = debtor.kind === "corporate";
+    const age = debtAge(debtor.oldestUnpaidDays);
+    const style = AGE_STYLE[age];
 
     return (
         <button
@@ -63,9 +113,7 @@ export function CustomerDebtCard({
                 // far faster than rows of text, and two or three fit a phone.
                 "group flex aspect-square w-full flex-col justify-between rounded-2xl border p-4 text-left",
                 "transition-all active:scale-[0.98]",
-                owes
-                    ? "border-rose-100 bg-rose-50/50 hover:border-rose-200"
-                    : "border-slate-100 bg-white hover:border-slate-200",
+                owes ? style.tile : "border-emerald-100 bg-emerald-50/40 hover:border-emerald-200",
             )}
         >
             <div className="flex items-start justify-between gap-2">
@@ -91,11 +139,20 @@ export function CustomerDebtCard({
             <div>
                 {owes ? (
                     <>
-                        <div className="font-mono text-lg font-black leading-none text-rose-700">
+                        <div className={cn("font-mono text-lg font-black leading-none", style.text)}>
                             {currency} {debtor.owed.toLocaleString()}
                         </div>
-                        <div className="mt-1 text-[10px] font-bold uppercase tracking-wider text-rose-500">
-                            owes · {debtor.openCount} open
+                        <div className="mt-1 flex items-center gap-1">
+                            {/*
+                              * The age chip, not just the amount. It is what turns
+                              * a list of numbers into a list of decisions.
+                              */}
+                            <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-bold", style.chip)}>
+                                {style.label(debtor.oldestUnpaidDays ?? 0)}
+                            </span>
+                            <span className="text-[10px] font-semibold text-slate-400">
+                                {debtor.openCount} open
+                            </span>
                         </div>
                     </>
                 ) : (

@@ -30,16 +30,25 @@ interface Receivables {
     debtors: DebtorTile[];
 }
 
-type Filter = "all" | "retail" | "corporate";
+type Filter = "all" | "retail" | "corporate" | "late";
+type SortKey = "owed" | "age";
 
 const FILTERS: Array<{ key: Filter; label: string }> = [
     { key: "all", label: "Everyone" },
+    // First, because it is the list a manager actually works from.
+    { key: "late", label: "Late" },
     { key: "retail", label: "People" },
     { key: "corporate", label: "Companies" },
 ];
 
 export function ReceivablesTab({ getCurrencySymbol }: { getCurrencySymbol: () => string }) {
     const [filter, setFilter] = useState<Filter>("all");
+    /**
+     * Biggest or oldest. Both are real ways to work a debt list — chase the
+     * money first, or chase the person who has gone quiet first — and which one
+     * matters changes with the day.
+     */
+    const [sortBy, setSortBy] = useState<SortKey>("owed");
     /** The tile that was tapped; its statement opens over the grid. */
     const [open, setOpen] = useState<DebtorTile | null>(null);
     const [q, setQ] = useState("");
@@ -53,14 +62,25 @@ export function ReceivablesTab({ getCurrencySymbol }: { getCurrencySymbol: () =>
 
     const shown = useMemo(() => {
         let list = data?.debtors ?? [];
-        if (filter !== "all") list = list.filter((d) => d.kind === filter);
+        if (filter === "late") list = list.filter((d) => (d.oldestUnpaidDays ?? 0) >= 30);
+        else if (filter !== "all") list = list.filter((d) => d.kind === filter);
         const needle = q.trim().toLowerCase();
         if (needle) {
             list = list.filter((d) =>
                 d.name.toLowerCase().includes(needle) || (d.phone ?? "").includes(needle));
         }
-        return list;
-    }, [data, filter, q]);
+        return [...list].sort((a, b) => sortBy === "age"
+            ? (b.oldestUnpaidDays ?? 0) - (a.oldestUnpaidDays ?? 0)
+            : b.owed - a.owed);
+    }, [data, filter, q, sortBy]);
+
+    /** What is owed by anybody who has been waiting a month or more. */
+    const lateOwed = useMemo(
+        () => Math.round((data?.debtors ?? [])
+            .filter((d) => (d.oldestUnpaidDays ?? 0) >= 30)
+            .reduce((s, d) => s + d.owed, 0) * 100) / 100,
+        [data],
+    );
 
     /** What the visible tiles add up to — a filtered view must total itself. */
     const shownOwed = useMemo(
@@ -98,6 +118,16 @@ export function ReceivablesTab({ getCurrencySymbol }: { getCurrencySymbol: () =>
                         <span>People {money(data?.retailOwed ?? 0)}</span>
                         <span>Companies {money(data?.corporateOwed ?? 0)}</span>
                     </div>
+                    {/*
+                      * Overdue money called out on the headline, because it is
+                      * the part of the total that is actually at risk — the rest
+                      * is simply money not collected yet.
+                      */}
+                    {lateOwed > 0 && (
+                        <div className="mt-3 rounded-xl bg-rose-500/20 px-3 py-2 text-sm font-semibold text-rose-100">
+                            {money(lateOwed)} waiting a month or more
+                        </div>
+                    )}
                 </div>
             </motion.div>
 
@@ -127,7 +157,16 @@ export function ReceivablesTab({ getCurrencySymbol }: { getCurrencySymbol: () =>
             <motion.div variants={itemVariants}>
                 <BentoCard className="bg-white" disableHover>
                     <div className="mb-3 flex items-baseline justify-between">
-                        <h3 className="text-sm font-black text-slate-900">Who owes the most</h3>
+                        <div className="flex items-center gap-2">
+                        <h3 className="text-sm font-black text-slate-900">
+                            {sortBy === "age" ? "Waiting longest" : "Who owes the most"}
+                        </h3>
+                        <button type="button"
+                            onClick={() => setSortBy(sortBy === "owed" ? "age" : "owed")}
+                            className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-bold text-slate-600 hover:bg-slate-200">
+                            {sortBy === "owed" ? "sort by age" : "sort by amount"}
+                        </button>
+                    </div>
                         {/*
                          * A filtered view must total itself, or the headline above
                          * silently describes a different set of people than the
