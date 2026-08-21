@@ -27,6 +27,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { BentoCard, containerVariants, itemVariants } from "../shared";
 import { MobileScrollContent, MobileTabLayout } from "../shared/MobileAdminPrimitives";
+import { CustomerDebtGrid, type DebtorTile } from "@/components/admin/CustomerDebtCard";
 import { fetchApi } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -111,6 +112,40 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
         queryKey: ["catch-up-entries"],
         queryFn: () => fetchApi<{ entries: CatchUpEntry[]; count: number }>("/admin/catch-up-job?limit=20"),
     });
+
+    /**
+     * One tile per customer, not one row per job.
+     *
+     * The list was every job typed in, newest first, which answered "did I
+     * enter that?" and nothing else. What somebody actually wants after an
+     * hour of typing is who they have covered and who still owes — and with
+     * two televisions each, a job list buries that under twice the rows.
+     *
+     * Ordered by most recently touched rather than by debt: on this screen the
+     * useful thing is what you just worked on. Finance sorts the same tiles by
+     * who owes most, because there the useful thing is who to phone.
+     */
+    const enteredCustomers = useMemo<DebtorTile[]>(() => {
+        const byPerson = new Map<string, DebtorTile & { at: number }>();
+        for (const e of recent?.entries ?? []) {
+            const key = e.customer || "Unknown";
+            const at = new Date(e.created_at).getTime();
+            const existing = byPerson.get(key);
+            if (existing) {
+                existing.owed += Number(e.catchup_amount_due || 0);
+                existing.openCount += 1;
+                existing.at = Math.max(existing.at, at);
+            } else {
+                byPerson.set(key, {
+                    kind: "retail", id: key, name: key, phone: null,
+                    clientClass: null, clientType: null,
+                    owed: Number(e.catchup_amount_due || 0),
+                    openCount: 1, at,
+                });
+            }
+        }
+        return Array.from(byPerson.values()).sort((a, b) => b.at - a.at);
+    }, [recent]);
 
     const pickCustomer = (c: KnownCustomer) => {
         setName(c.name); setPhone(c.phone); setAddress(c.address ?? "");
@@ -518,32 +553,17 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                         <h3 className="text-sm font-black text-slate-900">Recently entered this way</h3>
                         <span className="text-[11px] text-slate-400">{recent?.count ?? 0}</span>
                     </div>
-                    {!recent?.entries.length ? (
-                        <p className="py-6 text-center text-sm text-slate-400">Nothing entered yet.</p>
-                    ) : (
-                        <div className="space-y-2">
-                            {recent.entries.map((e) => (
-                                <div key={e.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/60 p-3">
-                                    <div className="min-w-0">
-                                        <div className="truncate text-sm font-bold text-slate-800">{e.customer} · {e.device}</div>
-                                        <div className="text-[11px] text-slate-500">
-                                            {new Date(e.created_at).toLocaleDateString("en-GB",
-                                                { day: "numeric", month: "short", year: "numeric" })}
-                                            {e.warranty_notes ? ` · ${e.warranty_notes}` : ""}
-                                        </div>
-                                    </div>
-                                    <div className="shrink-0 text-right">
-                                        <div className="text-sm font-black text-slate-800">{money(Number(e.estimated_cost || 0))}</div>
-                                        {Number(e.catchup_amount_due || 0) > 0 && (
-                                            <div className="text-[10px] font-bold text-rose-600">
-                                                owes {money(Number(e.catchup_amount_due))}
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
+                    {/*
+                      * Tiles, not rows: with two televisions each, a job list
+                      * buries who still owes under twice the lines. Same tile
+                      * as Finance uses, so the same person looks like the same
+                      * record on both screens.
+                      */}
+                    <CustomerDebtGrid
+                        debtors={enteredCustomers}
+                        currency={getCurrencySymbol()}
+                        emptyText="Nothing entered yet."
+                    />
                 </BentoCard>
             </motion.div>
         </motion.div>

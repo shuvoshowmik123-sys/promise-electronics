@@ -824,3 +824,26 @@ router.get(
         }
     },
 );
+
+/**
+ * Everybody who owes the shop money — retail and corporate together.
+ *
+ * The question a manager is actually asked is "how much is still out there",
+ * and until now it could only be answered for half the shop at a time: walk-in
+ * debt lives in due_records, company debt in the unpaid remainder of corporate
+ * bills, and the two were on different screens using different words.
+ */
+router.get(
+    '/api/admin/receivables',
+    requireAdminAuth,
+    requirePermission('finance'),
+    async (req: Request, res: Response) => {
+        try {
+            const { getReceivables } = await import('../services/receivables.service.js');
+            res.json(await getReceivables());
+        } catch (error) {
+            logRouteError('GET /api/admin/receivables', req, error);
+            res.status(500).json({ error: 'Could not total what is owed.' });
+        }
+    },
+);

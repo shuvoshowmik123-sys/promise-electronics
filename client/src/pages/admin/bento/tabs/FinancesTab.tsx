@@ -13,6 +13,7 @@ import { useMemo, useState, useEffect, useRef, lazy, Suspense } from "react";
 // instead of bundling all ~3400 LOC of sub-tabs into the Finance chunk eagerly.
 const SalesTab = lazy(() => import("./FinancesTabSales").then(m => ({ default: m.SalesTab })));
 const ProfitTab = lazy(() => import("./FinancesTabProfit").then(m => ({ default: m.ProfitTab })));
+const ReceivablesTab = lazy(() => import("./FinancesTabReceivables").then(m => ({ default: m.ReceivablesTab })));
 const PendingCostsView = lazy(() => import("./FinancesTabPendingCosts").then(m => ({ default: m.PendingCostsView })));
 const PettyCashTab = lazy(() => import("./FinancesTabPettyCash").then(m => ({ default: m.PettyCashTab })));
 const DuesTab = lazy(() => import("./FinancesTabDues").then(m => ({ default: m.DuesTab })));
@@ -41,7 +42,7 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
         if (t === "drawer") return "drawer";
         return "overview";
     };
-    const [activeFinanceTab, setActiveFinanceTab] = useState<"overview" | "money-in" | "money-out" | "drawer" | "profit">(mapLegacy(defaultTab));
+    const [activeFinanceTab, setActiveFinanceTab] = useState<"overview" | "money-in" | "money-out" | "drawer" | "profit" | "owed">(mapLegacy(defaultTab));
     const [moneyInView, setMoneyInView] = useState<"payments" | "sales" | "dues">(
         defaultTab === "sales" ? "sales" : defaultTab === "dues" ? "dues" : "payments"
     );
@@ -331,6 +332,7 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
                         { value: "money-out", label: "Money Out", icon: <TrendingDown className="h-4 w-4" /> },
                         { value: "drawer", label: "Drawer", icon: <Wallet className="h-4 w-4" /> },
                         { value: "profit", label: "Profit", icon: <TrendingUp className="h-4 w-4" /> },
+                        { value: "owed", label: "Owed", icon: <AlertCircle className="h-4 w-4" /> },
                     ]}
                     tone={activeFinanceTab === "money-in" ? "emerald" : activeFinanceTab === "money-out" ? "rose" : activeFinanceTab === "drawer" ? "blue" : "slate"}
                 />
@@ -490,6 +492,13 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
                             <TrendingUp className="h-4 w-4 mr-2" />
                             Profit
                         </TabsTrigger>
+                        <TabsTrigger
+                            value="owed"
+                            className="rounded-full px-5 py-2 text-sm font-semibold transition-all data-[state=active]:bg-white data-[state=active]:text-rose-700 data-[state=active]:shadow-sm"
+                        >
+                            <AlertCircle className="h-4 w-4 mr-2" />
+                            Owed
+                        </TabsTrigger>
                     </TabsList>
 
                     {/* OVERVIEW — what needs you, at a glance */}
@@ -639,6 +648,11 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
                     {/* PROFIT — what was earned, and what it can account for */}
                     <TabsContent value="profit" className="border-0 p-0 outline-none space-y-2 md:mt-6 md:space-y-6">
                         <ProfitTab getCurrencySymbol={getCurrencySymbol} />
+                    </TabsContent>
+
+                    {/* OWED — every debtor, retail and corporate, in one total */}
+                    <TabsContent value="owed" className="border-0 p-0 outline-none space-y-2 md:mt-6 md:space-y-6">
+                        <ReceivablesTab getCurrencySymbol={getCurrencySymbol} />
                     </TabsContent>
                 </Tabs>
                 </Suspense>
