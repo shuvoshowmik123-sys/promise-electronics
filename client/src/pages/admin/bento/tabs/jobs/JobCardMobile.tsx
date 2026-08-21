@@ -107,6 +107,21 @@ export function JobCardMobile({
                             #<HighlightMatch text={getSafeJobDisplayRef(j)} query={searchQuery} />
                         </span>
                         <ClientClassBadge clientClass={j.clientClass} size="xs" />
+                        {/*
+                          * Typed in from paper, not recorded as it happened.
+                          *
+                          * Outside the catch-up screen these jobs were
+                          * indistinguishable from live ones, so a cashier
+                          * tomorrow morning would have no way of knowing the
+                          * money and the dates came off a bill somebody
+                          * transcribed. The database has always marked them;
+                          * nothing showed it.
+                          */}
+                        {(job as any).enteredAsCatchup && (
+                            <Badge className="text-[9px] px-1.5 py-0 h-4 font-bold uppercase tracking-wider border-0 bg-amber-100 text-amber-800">
+                                from paper
+                            </Badge>
+                        )}
                     </div>
                     <div className="flex flex-col items-end gap-1 shrink-0">
                         {isHotPriority && (

@@ -181,6 +181,12 @@ export function JobTicketList({
                                         <div className="flex items-center gap-1.5 flex-wrap">
                                             <span className="font-mono text-sm font-bold text-blue-700 bg-blue-50/80 px-2 py-0.5 rounded border border-blue-100/50 w-fit">#{getSafeJobDisplayRef(job)}</span>
                                             <ClientClassBadge clientClass={(job as any).clientClass} size="xs" />
+                                            {/* Typed in from paper — see JobCardMobile for why this matters. */}
+                                            {(job as any).enteredAsCatchup && (
+                                                <Badge className="text-[9px] border-0 bg-amber-100 text-amber-800 font-bold uppercase tracking-wider">
+                                                    from paper
+                                                </Badge>
+                                            )}
                                             {isB2b && batchId && (
                                                 <Badge variant="outline" className="text-[9px] border-sky-200 text-sky-800">batch unit</Badge>
                                             )}
