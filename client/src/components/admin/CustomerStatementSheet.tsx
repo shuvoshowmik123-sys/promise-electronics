@@ -44,8 +44,19 @@ interface CustomerStatement {
     spokenSummary: string;
 }
 
+/**
+ * Dates in the shop's own timezone, never the viewer's machine.
+ *
+ * A payment taken on the 22nd in Dhaka read as the 21st to a browser running
+ * on UTC, and a statement whose dates shift with whoever opens it is worthless
+ * in exactly the argument it exists to settle. The shop is in Dhaka; the dates
+ * are Dhaka's.
+ */
+const SHOP_TZ = "Asia/Dhaka";
 const day = (iso: string) =>
-    new Date(iso).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    new Date(iso).toLocaleDateString("en-GB", {
+        day: "numeric", month: "short", year: "numeric", timeZone: SHOP_TZ,
+    });
 
 export function CustomerStatementSheet({
     debtor, onClose, currency = "৳",
@@ -103,7 +114,23 @@ export function CustomerStatementSheet({
      */
     const reminderText = () => {
         if (!data) return "";
-        const unpaid = data.lines.filter((l) => l.charged > 0);
+        /**
+         * Only what is still outstanding.
+         *
+         * Every charge was being listed, settled ones included, so a customer
+         * who had paid in January was reminded of it in August — the fastest
+         * way to lose the argument the statement exists to win. Walk the lines
+         * in order and keep only the charges the running balance never came
+         * back down from.
+         */
+        const unpaid: typeof data.lines = [];
+        let cleared = data.totalPaid;
+        for (const l of data.lines) {
+            if (l.charged <= 0) continue;
+            if (cleared >= l.charged - 0.009) { cleared -= l.charged; continue; }
+            unpaid.push(cleared > 0.009 ? { ...l, charged: l.charged - cleared } : l);
+            cleared = 0;
+        }
         const items = unpaid.slice(-5).map((l) =>
             `${day(l.date)} — ${l.description}: ${currency} ${l.charged.toLocaleString()}`).join("\n");
         return [

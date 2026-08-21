@@ -196,6 +196,13 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                     clientType: live?.clientType ?? null,
                     // Finance's figure, so the two screens cannot disagree.
                     owed: live?.owed ?? 0,
+                    /**
+                     * Carried across too. Without it every tile here defaulted
+                     * to zero days and printed "today", so a debt Finance
+                     * showed as seven months old looked brand new on the screen
+                     * somebody was actually working from.
+                     */
+                    oldestUnpaidDays: live?.oldestUnpaidDays ?? 0,
                     openCount: 1, at,
                 });
             }
@@ -336,7 +343,15 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
          * which scrolls in the page itself, does not gain a second scrollbar.
          */
         <MobileTabLayout className="md:block md:h-auto md:overflow-visible">
-        <MobileScrollContent className="px-0 md:flex-none md:min-h-0 md:overflow-visible md:px-0 md:pb-4">
+        {/*
+          * Extra bottom clearance beyond the shell's own variable.
+          *
+          * The dock still sat on the first TV card three rounds running. The
+          * shell's clearance is sized for a list, and this is a form: the last
+          * thing on screen is a control somebody has to reach, not a row they
+          * only need to read.
+          */}
+        <MobileScrollContent className="px-0 pb-[calc(11rem+env(safe-area-inset-bottom))] md:flex-none md:min-h-0 md:overflow-visible md:px-0 md:pb-4">
         <motion.div
             variants={containerVariants} initial="hidden" animate="visible"
             /*

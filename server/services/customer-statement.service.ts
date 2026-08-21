@@ -54,7 +54,11 @@ function rowsOf(result: unknown): Array<Record<string, unknown>> {
 
 const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
-const DAY = { day: "numeric", month: "long", year: "numeric" } as const;
+/**
+ * Dhaka, not the server's clock. Render on Render and the server is UTC, so a
+ * payment taken on the 22nd would be read down the phone as the 21st.
+ */
+const DAY = { day: "numeric", month: "long", year: "numeric", timeZone: "Asia/Dhaka" } as const;
 const spokenDate = (iso: string) => new Date(iso).toLocaleDateString("en-GB", DAY);
 
 /**

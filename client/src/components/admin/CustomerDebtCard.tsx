@@ -111,7 +111,16 @@ export function CustomerDebtCard({
             className={cn(
                 // aspect-square is the whole point: a grid of equal tiles scans
                 // far faster than rows of text, and two or three fit a phone.
+                /*
+                 * Square on a phone, capped in height above it.
+                 *
+                 * aspect-square across a 1440px grid made each tile some 450px
+                 * tall, which pushed the amount and the age chip — the two
+                 * things the tile exists to show — below the first screen. The
+                 * shape is what makes a grid scannable; the height is not.
+                 */
                 "group flex aspect-square w-full flex-col justify-between rounded-2xl border p-4 text-left",
+                "sm:aspect-auto sm:h-[168px]",
                 "transition-all active:scale-[0.98]",
                 owes ? style.tile : "border-emerald-100 bg-emerald-50/40 hover:border-emerald-200",
             )}
