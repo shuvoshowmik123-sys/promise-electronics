@@ -135,6 +135,25 @@ export async function getReceivables(): Promise<Receivables> {
         JOIN corporate_clients c ON c.id = j.corporate_client_id
         WHERE d.status <> 'Paid'
           AND (d.amount - COALESCE(d.paid_amount, 0)) > 0.009
+          /*
+           * Once the job is on an active bill, the bill is the debt.
+           *
+           * A corporate catch-up entry raises a due against the job, and the
+           * company's bills are summed separately below. Billing that same job
+           * therefore counted the money twice: a 10,000 panel entered from
+           * paper and then billed left the company owing 20,000, measured
+           * end to end. Same shape as the retail shadow rows excluded above —
+           * a job, a due and a bill all describing one debt.
+           *
+           * Tied to the bill still being active, matching the bills query's own
+           * filter. If a bill is superseded or voided the due is counted again,
+           * because then nothing else is counting it.
+           */
+          AND NOT EXISTS (
+              SELECT 1 FROM corporate_bills cb
+              WHERE cb.id = j.corporate_bill_id
+                AND COALESCE(cb.bill_status, 'active') = 'active'
+          )
         GROUP BY c.id, c.company_name, c.client_class, c.client_type
     `);
 
