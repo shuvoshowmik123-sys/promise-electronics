@@ -84,6 +84,9 @@ interface JobLite {
     billingStatus: string | null;
     corporateBillId: string | null;
     corporateClientId: string | null;
+    /** Set on rows entered from paper, which may arrive already part-paid. */
+    enteredAsCatchup?: boolean | null;
+    catchupAmountDue?: number | null;
 }
 
 interface NormalizedLine {
@@ -279,6 +282,8 @@ export class CorporateLtdBillingRepository {
                 charges: schema.jobTickets.charges,
                 billingStatus: schema.jobTickets.billingStatus,
                 corporateBillId: schema.jobTickets.corporateBillId,
+                enteredAsCatchup: schema.jobTickets.enteredAsCatchup,
+                catchupAmountDue: schema.jobTickets.catchupAmountDue,
             })
                 .from(schema.jobTickets)
                 .where(inArray(schema.jobTickets.id, uniqueIds))
@@ -315,6 +320,31 @@ export class CorporateLtdBillingRepository {
             const subtotal = normalized.reduce((acc, l) => acc + l.amount, 0);
             const grandTotal = subtotal;
 
+            /**
+             * Money already taken at the counter is not owed again.
+             *
+             * A job entered from paper can arrive part-paid or fully paid, and
+             * the bill is raised for the full charge. Opening it at paid_amount
+             * zero rebilled that cash: three sets charged 37,000 with 11,000
+             * already collected pushed the company from 77,000 to 88,000 the
+             * moment the bill was issued.
+             *
+             * Only catch-up rows are read this way. On an ordinary corporate job
+             * `catchup_amount_due` is null because nothing was ever collected at
+             * intake, and treating null as "paid in full" would open every one
+             * of those bills already settled.
+             */
+            const prepaid = lockedRows.reduce((acc, j) => {
+                if (!j.enteredAsCatchup) return acc;
+                const charged = Number(j.estimatedCost ?? 0);
+                const stillDue = Number(j.catchupAmountDue ?? 0);
+                return acc + Math.max(0, charged - stillDue);
+            }, 0);
+            const openingPaid = Math.min(Math.round(prepaid * 100) / 100, grandTotal);
+            const openingStatus = openingPaid >= grandTotal - 0.009
+                ? "paid"
+                : openingPaid > 0.009 ? "partial" : "unpaid";
+
             const [bill] = await tx.insert(schema.corporateBills).values({
                 id: billId,
                 billNumber,
@@ -333,7 +363,8 @@ export class CorporateLtdBillingRepository {
                 discount: 0,
                 vatAmount: 0,
                 grandTotal,
-                paymentStatus: "unpaid",
+                paidAmount: openingPaid,
+                paymentStatus: openingStatus,
                 dueDate: new Date(Date.now() + 30 * 86400000),
                 itemizedMode: true,
                 layoutSnapshot,
@@ -411,7 +442,28 @@ export class CorporateLtdBillingRepository {
             FROM corporate_ltd_receipts WHERE bill_id = ${billId}
         `);
         const receiptRow = ((receiptsRes as any).rows ?? receiptsRes)[0] ?? { total_received: 0 };
-        const totalReceived = Number(receiptRow.total_received) || 0;
+        /**
+         * Cash taken at the counter counts as received against this bill.
+         *
+         * Left out, a bill raised over part-paid catch-up jobs could be paid a
+         * second time for money the shop already held: 37,000 of sets carrying
+         * 11,000 of intake cash would still accept a 37,000 receipt.
+         *
+         * Derived rather than stored, so no column and no migration. Only
+         * catch-up rows are read — on an ordinary corporate job
+         * `catchup_amount_due` is null because nothing was collected at intake.
+         */
+        const openingRes = await tx.execute(sql`
+            SELECT COALESCE(SUM(estimated_cost - COALESCE(catchup_amount_due, 0)), 0)::float8 AS opening
+            FROM job_tickets
+            WHERE corporate_bill_id = ${billId} AND entered_as_catchup = true
+        `);
+        const openingRow = ((openingRes as any).rows ?? openingRes)[0] ?? { opening: 0 };
+        const openingCredit = Math.max(0, Number(openingRow.opening) || 0);
+        const totalReceived = Math.min(
+            totalBilled,
+            (Number(receiptRow.total_received) || 0) + openingCredit,
+        );
         const totalDue = Math.max(0, totalBilled - totalReceived);
         return { totalBilled, totalReceived, totalDue };
     }
@@ -591,6 +643,31 @@ export class CorporateLtdBillingRepository {
                 }).returning();
                 allocRows.push(row as CorporateLtdReceiptAllocation);
             }
+
+            /**
+             * The bill is what the debt is read from, so the receipt has to
+             * reach it.
+             *
+             * Receipts were written to corporate_ltd_receipts and nowhere else,
+             * leaving corporate_bills.paid_amount at zero. Receivables and the
+             * statements both read that column, so a Corporate Ltd bill paid in
+             * full still showed the company owing every taka: QA-35 settled
+             * 37,000 across two receipts and the bill stayed 0/unpaid.
+             *
+             * Fifth time this shape has appeared — a job, a due, a bill and now
+             * a receipt describing one payment, with one of them left behind.
+             */
+            const after = await this.computeBillBalanceInTx(tx, input.billId);
+            await tx.execute(sql`
+                UPDATE corporate_bills
+                SET paid_amount = ${after.totalReceived},
+                    payment_status = ${
+                        after.totalDue <= 0.009
+                            ? "paid"
+                            : after.totalReceived > 0.009 ? "partial" : "unpaid"
+                    }
+                WHERE id = ${input.billId}
+            `);
 
             return { receipt: receipt as CorporateLtdReceipt, allocations: allocRows };
         });

@@ -294,6 +294,20 @@ export async function getCorporateStatement(clientId: string): Promise<CustomerS
         FROM due_records d
         JOIN job_tickets j ON j.id = d.invoice
         WHERE j.corporate_client_id = ${clientId}
+          /*
+           * Once the job is on an active bill it is already on this statement
+           * as a bill line. Listed again as its own due, the same repair was
+           * read out to the client twice and the running balance counted it
+           * twice — the argument this statement exists to end.
+           *
+           * Same rule the receivables total applies. A superseded or voided
+           * bill hands the line back, because then nothing else carries it.
+           */
+          AND NOT EXISTS (
+              SELECT 1 FROM corporate_bills cb
+              WHERE cb.id = j.corporate_bill_id
+                AND COALESCE(cb.bill_status, 'active') = 'active'
+          )
         ORDER BY d.created_at ASC
     `);
 
