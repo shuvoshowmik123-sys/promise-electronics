@@ -555,6 +555,30 @@ export async function updateDueRecord(id: string, updates: Partial<InsertDueReco
         `).catch((error) => {
             console.error("[finance] could not settle the catch-up job for due", id, error);
         });
+
+        /**
+         * A due raised against a corporate bill IS that bill, and settling one
+         * has to settle the other.
+         *
+         * QA-30 settled QA5831-BILL-0001 from the dues list: the due went to
+         * Paid with 5,000 recorded, and the bill it shadows still read unpaid
+         * with paid_amount 0. The company had handed over the money and its
+         * account still said it owed — and the receivables total agreed with the
+         * account, because the bill is the authority there.
+         *
+         * Same shape as the catch-up job mirror above, for the same reason: two
+         * records describing one debt drift apart the moment only one is
+         * written. Best effort for the same reason too — the payment is already
+         * recorded and a failed mirror must not undo money that was taken.
+         */
+        await db.execute(sql`
+            UPDATE corporate_bills
+            SET paid_amount = ${Number(updated.paidAmount ?? 0)},
+                payment_status = ${paymentStatus}
+            WHERE bill_number = ${updated.invoice}
+        `).catch((error) => {
+            console.error("[finance] could not settle the corporate bill for due", id, error);
+        });
     }
     return updated;
 }
