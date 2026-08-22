@@ -24,6 +24,7 @@ import { db } from "../db.js";
 import { requireAdminAuth, requireSuperAdmin } from "./middleware/auth.js";
 import { auditLogger } from "../utils/auditLogger.js";
 import { logRouteError } from "../utils/route-error.js";
+import { getAttendanceDateDhaka } from "../services/attendance-day.service.js";
 
 const router = Router();
 
@@ -107,8 +108,20 @@ router.post(
             /**
              * A future date would be a live job pretending to be history, which
              * is the one thing this door must not create.
+             *
+             * Compared as Dhaka calendar days, not as instants. "2026-08-23"
+             * parses to UTC midnight, and Dhaka runs six hours ahead of UTC, so
+             * comparing it against Date.now() put today's own date in the future
+             * every night between midnight and 6am — precisely the hours a
+             * manager sits down with the day's paper slips. QA-33 hit this: the
+             * form sent today's date, took a silent 400, and the run recorded it
+             * as a successful save.
              */
-            if (jobDate.getTime() > Date.now()) {
+            const todayDhaka = getAttendanceDateDhaka();
+            const jobDay = /^\d{4}-\d{2}-\d{2}/.test(input.jobDate)
+                ? input.jobDate.slice(0, 10)
+                : getAttendanceDateDhaka(jobDate);
+            if (jobDay > todayDhaka) {
                 return res.status(400).json({ error: "This is for work already done — the date cannot be in the future." });
             }
             if (input.amountPaid > input.amountCharged) {

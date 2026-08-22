@@ -331,7 +331,19 @@ router.get("/clients/:id/batches", requireAdminAuth, corpRead, async (req, res) 
                 pendingItems: Math.max(batchJobs.length - cleared, 0),
                 extensionPendingCount: pendingExtensions,
                 isDueSoon: batch.targetClearDate ? new Date(batch.targetClearDate).getTime() - Date.now() <= 48 * 60 * 60 * 1000 : false,
-                isOverdue: batch.targetClearDate ? new Date(batch.targetClearDate) < new Date() && cleared < batchJobs.length : false,
+                /**
+                 * Overdue is a calendar question, so it is asked in Dhaka days.
+                 *
+                 * A target date parses to UTC midnight, and Dhaka runs six hours
+                 * ahead, so comparing instants marked a batch overdue from 6am on
+                 * its own due date — a full day early, while the shop still had
+                 * the whole day to clear it. Same root cause as the catch-up
+                 * future-date check.
+                 */
+                isOverdue: batch.targetClearDate
+                    ? getAttendanceDateDhaka(new Date(batch.targetClearDate)) < getAttendanceDateDhaka()
+                        && cleared < batchJobs.length
+                    : false,
             };
         });
 
@@ -1607,6 +1619,7 @@ const quoteLogSchema = z.object({
 });
 
 import { quoteLogs } from "../../shared/schema.js";
+import { getAttendanceDateDhaka } from "../services/attendance-day.service.js";
 
 router.post("/quote-logs", requireAdminAuth, corpManageClients, async (req: any, res) => {
     try {
