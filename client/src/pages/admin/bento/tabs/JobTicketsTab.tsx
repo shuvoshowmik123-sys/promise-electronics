@@ -261,6 +261,20 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
         placeholderData: (prev) => prev,
     });
 
+    const { data: jobStatusCounts } = useQuery({
+        queryKey: ["jobStatusCounts", jobFetchType, debouncedJobSearch, jobPriorityFilter, jobTechnicianFilter],
+        queryFn: () =>
+            jobTicketsApi.getStatusCounts({
+                type: jobFetchType,
+                search: debouncedJobSearch.trim() || undefined,
+                priority: jobPriorityFilter,
+                technician: jobTechnicianFilter,
+            }),
+        enabled: canAccessJobs,
+        retry: false,
+        placeholderData: (prev) => prev,
+    });
+
     // Settings list is a separate privilege — do not 403 corp-ops / view-only Jobs users.
     const canFetchSettings =
         isSuperAdmin ||
@@ -550,17 +564,29 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
             .slice(0, 6);
     }, [jobSearchQuery, jobTickets, currentTech]);
 
-    // Group badges: active group uses server total; others are page-local only.
+    /**
+     * Group badges, counted by the server across the whole lane.
+     *
+     * They used to be counted from the rows already on screen: only the open
+     * group had a real number, and every other chip counted statuses within
+     * the current page of twenty. A list opened on New therefore showed
+     * "Delivered 0" no matter how much finished work existed, and "All"
+     * repeated the New total. QA-31 read that as catch-up jobs missing from
+     * Jobs — the jobs were there, the chips were not counting them.
+     *
+     * The counts follow the search, so they answer "where did my matches go"
+     * rather than describing a list you are not looking at.
+     */
     const groupCounts = useMemo(() => {
+        const byStatus = jobStatusCounts?.byStatus ?? {};
         return JOB_GROUPS.reduce<Record<JobGroupKey, number>>((acc, group) => {
-            if (group.key === jobGroupFilter) {
-                acc[group.key] = jobPagination.total;
-            } else {
-                acc[group.key] = jobTickets.filter((job) => group.statuses.includes(job.status || "")).length;
-            }
+            acc[group.key] = group.statuses.reduce((n, status) => n + (byStatus[status] ?? 0), 0);
             return acc;
-        }, { new: 0, repairing: 0, "waiting-parts": 0, decision: 0, ready: 0, delivered: 0, all: jobPagination.total });
-    }, [jobTickets, jobGroupFilter, jobPagination.total]);
+        }, {
+            new: 0, repairing: 0, "waiting-parts": 0, decision: 0, ready: 0, delivered: 0,
+            all: jobStatusCounts?.total ?? jobPagination.total,
+        });
+    }, [jobStatusCounts, jobPagination.total]);
 
     const paginatedJobs = filteredJobs; // current server page
     const totalJobPages = Math.max(1, jobPagination.pages || 1);

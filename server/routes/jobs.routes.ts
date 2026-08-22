@@ -219,6 +219,37 @@ router.get('/api/job-tickets', requireAdminAuth, requireGranularPermission('jobs
  * GET /api/job-tickets/next-number — preview of the next JOB-YYYY-NNNN display value.
  * Preview only: not reserved, not write authority. Real ID is allocated at insert.
  */
+/**
+ * GET /api/job-tickets/status-counts - Real counts behind the group chips.
+ *
+ * Registered ahead of /:id so "status-counts" is never read as a job id.
+ */
+router.get('/api/job-tickets/status-counts', requireAdminAuth, requireGranularPermission('jobs.view'), async (req: Request, res: Response) => {
+    try {
+        const typeRaw = String(req.query.type ?? "walk-in");
+        const type = (typeRaw === "all" || typeRaw === "corporate" || typeRaw === "walk-in"
+            ? typeRaw
+            : "walk-in") as "all" | "walk-in" | "corporate";
+        const search = typeof req.query.search === "string" ? req.query.search : undefined;
+        const priority = typeof req.query.priority === "string" ? req.query.priority : undefined;
+        const technician = typeof req.query.technician === "string" ? req.query.technician : undefined;
+
+        const user = (req as any).user;
+        const result = await jobRepo.getJobStatusCounts({
+            type,
+            search,
+            priority,
+            technician,
+            technicianScope: user?.role === 'Technician' && !techCanViewAllJobs(user)
+                ? { userId: user.id, technicianName: user.name }
+                : undefined,
+        });
+        res.json(result);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch job status counts' });
+    }
+});
+
 router.get('/api/job-tickets/next-number', requireAdminAuth, requireGranularPermission('jobs.create'), async (req: Request, res: Response) => {
     try {
         const nextNumber = await jobRepo.getNextJobNumber();

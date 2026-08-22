@@ -226,6 +226,16 @@ export const jobTicketsApi = {
             `/job-tickets?${qs.toString()}`,
         );
     },
+    getStatusCounts: (params: { type?: string; search?: string; priority?: string; technician?: string } = {}) => {
+        const qs = new URLSearchParams();
+        qs.set("type", params.type || "walk-in");
+        if (params.search?.trim()) qs.set("search", params.search.trim());
+        if (params.priority?.trim() && params.priority !== "all") qs.set("priority", params.priority.trim());
+        if (params.technician?.trim() && params.technician !== "all") qs.set("technician", params.technician.trim());
+        return fetchApi<{ byStatus: Record<string, number>; total: number }>(
+            `/job-tickets/status-counts?${qs.toString()}`,
+        );
+    },
     getReadyForBilling: () => fetchApi<JobTicket[]>("/job-tickets/ready-for-billing"),
     getPendingRollbacks: () => fetchApi<RollbackRequest[]>("/job-tickets/pending-rollbacks"),
     getOne: (id: string) => fetchApi<JobTicket>(`/job-tickets/${id}`),

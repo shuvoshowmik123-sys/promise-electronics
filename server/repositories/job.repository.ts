@@ -124,24 +124,26 @@ function walkInLaneSql() {
     )!;
 }
 
-export async function listJobTicketsPaginated(
-    query: JobTicketListQuery = {},
-): Promise<PaginationResult<JobTicket>> {
-    const page = Number.isFinite(query.page) && (query.page as number) > 0 ? Math.floor(query.page as number) : 1;
-    const rawLimit = Number.isFinite(query.limit) && (query.limit as number) > 0 ? Math.floor(query.limit as number) : 50;
-    const limit = Math.min(JOB_LIST_MAX_LIMIT, Math.max(1, rawLimit));
-    const offset = (page - 1) * limit;
-
+/**
+ * Everything that narrows a job list except the status itself.
+ *
+ * Shared so the group counts are drawn through exactly the same lane, search
+ * and technician rules as the list they label. `includeStatuses` is the one
+ * difference: the counts query groups BY status, so it must not filter ON it.
+ */
+function buildJobConditions(query: JobTicketListQuery, includeStatuses: boolean) {
     const conditions = [];
     const lane = query.type ?? "walk-in";
     if (lane === "corporate") conditions.push(corporateLaneSql());
     else if (lane === "walk-in") conditions.push(walkInLaneSql());
 
-    if (query.statuses && query.statuses.length > 0) {
-        const cleaned = query.statuses.map((s) => s.trim()).filter(Boolean).slice(0, 24);
-        if (cleaned.length > 0) conditions.push(inArray(schema.jobTickets.status, cleaned));
-    } else if (query.status?.trim()) {
-        conditions.push(eq(schema.jobTickets.status, query.status.trim()));
+    if (includeStatuses) {
+        if (query.statuses && query.statuses.length > 0) {
+            const cleaned = query.statuses.map((s) => s.trim()).filter(Boolean).slice(0, 24);
+            if (cleaned.length > 0) conditions.push(inArray(schema.jobTickets.status, cleaned));
+        } else if (query.status?.trim()) {
+            conditions.push(eq(schema.jobTickets.status, query.status.trim()));
+        }
     }
 
     if (query.technicianScope?.userId) {
@@ -192,7 +194,48 @@ export async function listJobTicketsPaginated(
         }
     }
 
-    const where = conditions.length > 0 ? and(...conditions) : undefined;
+    return conditions.length > 0 ? and(...conditions) : undefined;
+}
+
+/**
+ * How many jobs sit in each status, for the group chips above the list.
+ *
+ * The chips used to count the rows already on screen. Only the open group had
+ * a real number behind it; every other chip counted matching statuses within
+ * the current page of twenty, so a list opened on New showed "Delivered 0"
+ * however much finished work existed, and "All" repeated the New total. QA-31
+ * read that as catch-up jobs missing from Jobs entirely — the jobs were there,
+ * the chips were not counting them.
+ */
+export async function getJobStatusCounts(
+    query: JobTicketListQuery = {},
+): Promise<{ byStatus: Record<string, number>; total: number }> {
+    const where = buildJobConditions(query, false);
+    const rows = await db
+        .select({ status: schema.jobTickets.status, count: sql<number>`count(*)::int` })
+        .from(schema.jobTickets)
+        .where(where)
+        .groupBy(schema.jobTickets.status);
+
+    const byStatus: Record<string, number> = {};
+    let total = 0;
+    for (const row of rows) {
+        const n = Number(row.count ?? 0);
+        if (row.status) byStatus[row.status] = n;
+        total += n;
+    }
+    return { byStatus, total };
+}
+
+export async function listJobTicketsPaginated(
+    query: JobTicketListQuery = {},
+): Promise<PaginationResult<JobTicket>> {
+    const page = Number.isFinite(query.page) && (query.page as number) > 0 ? Math.floor(query.page as number) : 1;
+    const rawLimit = Number.isFinite(query.limit) && (query.limit as number) > 0 ? Math.floor(query.limit as number) : 50;
+    const limit = Math.min(JOB_LIST_MAX_LIMIT, Math.max(1, rawLimit));
+    const offset = (page - 1) * limit;
+
+    const where = buildJobConditions(query, true);
     const sortKey = query.sort && JOB_SORT_ALLOWLIST[query.sort] ? query.sort : "createdAt";
     const sortCol = JOB_SORT_ALLOWLIST[sortKey];
     const orderDesc = (query.order ?? "desc") !== "asc";
