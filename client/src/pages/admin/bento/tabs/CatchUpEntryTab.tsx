@@ -641,10 +641,28 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                     <div
                         /* Measured by the keyboard hook so a lifted field clears it. */
                         data-keyboard-safe-bottom
-                        className="sticky bottom-0 z-20 mt-4 flex flex-col-reverse gap-2 border-t border-slate-100 bg-white/95 pt-3 pb-1 backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:pt-0 sm:flex-row sm:justify-end"
+                        /*
+                         * One row, and clear of the dock.
+                         *
+                         * Stacked, these two buttons were 121px tall — nearly a
+                         * quarter of what is left of a phone screen once a
+                         * keyboard is up, and all of it competing with the field
+                         * being typed into. Side by side they are about half
+                         * that.
+                         *
+                         * And measured at rest, the bar sat 753–874 while the
+                         * dock floats 786–842: Save was underneath it, so
+                         * tapping the button that commits the work opened Shift
+                         * instead. Offset by the dock's height so it rides above
+                         * it rather than behind it. I dismissed this overlap in
+                         * the previous round on the grounds that nothing
+                         * interactive was blocked; the measurement says
+                         * otherwise.
+                         */
+                        className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom)+0.5rem)] z-20 mt-4 flex flex-row gap-2 border-t border-slate-100 bg-white/95 px-1 pt-3 pb-3 backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:pt-0 sm:pb-0 sm:justify-end"
                     >
-                        <Button variant="ghost" className="h-12 rounded-xl" onClick={nextCustomer}>
-                            Next customer
+                        <Button variant="ghost" className="h-12 shrink-0 rounded-xl px-4" onClick={nextCustomer}>
+                            Next
                         </Button>
                         <Button className={cn("h-12 rounded-xl px-8",
                             pending.some((r) => duplicateRows.has(r.key))

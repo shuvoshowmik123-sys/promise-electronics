@@ -21,22 +21,27 @@ import { useEffect } from "react";
 const BREATHING_ROOM = 16;
 
 /**
- * Anything pinned to the bottom of the scroller eats the space a lifted field
- * was aimed at.
+ * Where the usable area really ends.
  *
- * The first version reserved 16px and lifted fields to the bottom of the visual
- * viewport — straight underneath the sticky Save bar, which is about 72px tall.
- * Six hidden fields became eleven visible ones sitting behind a button. Marked
- * elements are measured at the moment of the lift rather than assumed, because
- * the bar changes height between one and two rows of buttons.
+ * Two earlier attempts got this wrong the same way. The first aimed fields at
+ * the bottom of the visual viewport, straight under the sticky Save bar. The
+ * second subtracted that bar's HEIGHT, assuming it sits flush with the bottom —
+ * it does not. It is sticky, so it comes to rest wherever the scroll position
+ * puts it: measured at 203 in a 516 viewport while its own height was 73, and a
+ * field lifted to 222 still finished 19px behind it.
+ *
+ * So use where the thing actually is, not how big it is. The top of the highest
+ * pinned element is the real floor, whatever put it there.
  */
-function bottomFurnitureHeight(): number {
-    let tallest = 0;
+function usableBottom(vvBottom: number): number {
+    let floor = vvBottom;
     for (const el of Array.from(document.querySelectorAll<HTMLElement>("[data-keyboard-safe-bottom]"))) {
         const box = el.getBoundingClientRect();
-        if (box.height > tallest) tallest = box.height;
+        // Ignore anything already scrolled clear of the visible area.
+        if (box.height === 0 || box.top >= vvBottom) continue;
+        if (box.top < floor) floor = box.top;
     }
-    return tallest;
+    return floor;
 }
 
 export function useKeyboardAwareScroll(enabled = true) {
@@ -60,7 +65,7 @@ export function useKeyboardAwareScroll(enabled = true) {
                 const typing = el.matches("input, textarea, select, [contenteditable=true]");
                 if (!typing) return;
 
-                const visibleBottom = vv.height + vv.offsetTop - bottomFurnitureHeight();
+                const visibleBottom = usableBottom(vv.height + vv.offsetTop);
                 const box = el.getBoundingClientRect();
                 const overlap = box.bottom + BREATHING_ROOM - visibleBottom;
                 if (overlap <= 0 && box.top >= 0) return;
