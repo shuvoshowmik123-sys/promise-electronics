@@ -17,6 +17,7 @@
  * ships as rounded-md h-9 and looks sharp and cramped beside these screens.
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { AlertCircle, Building2, Check, Loader2, Plus, ScrollText, Trash2, User } from "lucide-react";
@@ -628,39 +629,8 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                         <Plus className="mr-2 h-4 w-4" /> Add another TV
                     </Button>
 
-                    {/*
-                      * Sticky on a phone.
-                      *
-                      * With a keyboard up, Save sat below every field and the
-                      * only way to reach it was to scroll past the form into the
-                      * customer tiles — losing your place and the field you were
-                      * in. It rides the bottom of the scroller now, so the thing
-                      * that commits the work is never further away than the
-                      * thing being typed.
-                      */}
-                    <div
-                        /* Measured by the keyboard hook so a lifted field clears it. */
-                        data-keyboard-safe-bottom
-                        /*
-                         * One row, and clear of the dock.
-                         *
-                         * Stacked, these two buttons were 121px tall — nearly a
-                         * quarter of what is left of a phone screen once a
-                         * keyboard is up, and all of it competing with the field
-                         * being typed into. Side by side they are about half
-                         * that.
-                         *
-                         * And measured at rest, the bar sat 753–874 while the
-                         * dock floats 786–842: Save was underneath it, so
-                         * tapping the button that commits the work opened Shift
-                         * instead. Offset by the dock's height so it rides above
-                         * it rather than behind it. I dismissed this overlap in
-                         * the previous round on the grounds that nothing
-                         * interactive was blocked; the measurement says
-                         * otherwise.
-                         */
-                        className="sticky bottom-[calc(3.5rem+env(safe-area-inset-bottom)+0.5rem)] z-20 mt-4 flex flex-row gap-2 border-t border-slate-100 bg-white/95 px-1 pt-3 pb-3 backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:pt-0 sm:pb-0 sm:justify-end"
-                    >
+                    {/* Desktop: the row simply sits at the end of the card. */}
+                    <div className="mt-4 hidden gap-2 sm:flex sm:justify-end">
                         <Button variant="ghost" className="h-12 shrink-0 rounded-xl px-4" onClick={nextCustomer}>
                             Next
                         </Button>
@@ -708,6 +678,43 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
             onClose={() => setOpenDebtor(null)}
             currency={getCurrencySymbol()}
         />
+        {/*
+          * Mobile: fixed, portalled to the body, above the dock.
+          *
+          * Sticky did not work and could not: the bar lives inside a parent
+          * with z-10, so its own z-20 is scoped to that context and a
+          * root-level dock wins however high the number goes. Worse, it was
+          * never actually stuck — it sat in normal flow at 754, which simply
+          * happens to fall inside the dock's 786–842 band, so raising the
+          * sticky offset moved nothing at all. Taps on Save opened Shift.
+          *
+          * A portal leaves the stacking context entirely, which is the same
+          * fix the statement sheet needed for the same reason.
+          */}
+        {createPortal(
+            <div
+                data-keyboard-safe-bottom
+                className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-[60] flex gap-2 border-t border-slate-200 bg-white/95 px-3 py-3 backdrop-blur sm:hidden"
+            >
+                        <Button variant="ghost" className="h-12 shrink-0 rounded-xl px-4" onClick={nextCustomer}>
+                            Next
+                        </Button>
+                        <Button className={cn("h-12 rounded-xl px-8",
+                            pending.some((r) => duplicateRows.has(r.key))
+                                ? "bg-amber-600 hover:bg-amber-700"
+                                : "bg-slate-900 hover:bg-slate-800")}
+                            disabled={!customerReady || !pending.length || save.isPending}
+                            onClick={() => save.mutate()}>
+                            {save.isPending
+                                ? <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Saving…</>
+                                : pending.some((r) => duplicateRows.has(r.key))
+                                    ? <><AlertCircle className="mr-2 h-4 w-4" /> Yes, save it anyway</>
+                                    : <><Check className="mr-2 h-4 w-4" /> Save {pending.length || ""} {pending.length === 1 ? "job" : "jobs"}</>}
+                        </Button>
+            </div>,
+            document.body,
+        )}
+
         </MobileScrollContent>
         </MobileTabLayout>
     );
