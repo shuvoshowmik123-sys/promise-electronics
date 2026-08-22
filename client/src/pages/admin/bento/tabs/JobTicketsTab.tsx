@@ -568,6 +568,17 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
     const effectiveViewMode = isMobile && viewMode === "kanban" ? "grid" : viewMode;
     const hasActiveFilters = jobGroupFilter !== "new" || jobStatusFilter !== "all" || jobPriorityFilter !== "all" || jobTechnicianFilter !== "all";
 
+    /**
+     * The empty state needs a wider test than the Filters badge does.
+     *
+     * A search that matches nothing leaves the list empty with every filter
+     * still at its default, so "Clear Filters" never appeared and the only way
+     * out was to delete the text by hand. The badge on the Filters button is
+     * deliberately left alone: a search is not one of the things that popover
+     * controls, and lighting it up would point at the wrong control.
+     */
+    const hasAnythingToClear = hasActiveFilters || jobSearchQuery.trim().length > 0;
+
     const clearFilters = () => {
         setJobSearchQuery("");
         setJobGroupFilter("new");
@@ -1237,7 +1248,7 @@ export default function JobTicketsTab({ initialSearchQuery, initialJobId, onSear
                                     <Search className="w-8 h-8 text-slate-300" />
                                 </div>
                                 <p className="text-lg font-medium text-slate-600">No jobs found here</p>
-                                {hasActiveFilters && <Button variant="link" onClick={clearFilters}>Clear Filters</Button>}
+                                {hasAnythingToClear && <Button variant="link" onClick={clearFilters}>Clear Filters</Button>}
                             </div>
                         ) : effectiveViewMode === "grid" ? (
                             <JobTicketGrid
