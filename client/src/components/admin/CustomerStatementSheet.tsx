@@ -97,6 +97,11 @@ export function CustomerStatementSheet({
             queryClient.invalidateQueries({ queryKey: ["statement"] });
             queryClient.invalidateQueries({ queryKey: ["receivables"] });
             queryClient.invalidateQueries({ queryKey: ["dueRecords"] });
+            // The table's key is "dueRecords-paginated", which "dueRecords" does
+            // not match — React Query compares array elements, not substrings.
+            queryClient.invalidateQueries({ queryKey: ["dueRecords-paginated"] });
+            queryClient.invalidateQueries({ queryKey: ["dueRecords-summary"] });
+            queryClient.invalidateQueries({ queryKey: ["due-summary-global"] });
             queryClient.invalidateQueries({ queryKey: ["catch-up-entries"] });
         },
         onError: (e: Error) => toast.error(e.message || "Could not record the payment"),

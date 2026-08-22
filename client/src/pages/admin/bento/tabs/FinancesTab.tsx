@@ -173,6 +173,21 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
         mutationFn: dueRecordsApi.create,
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["dueRecords"] });
+            /**
+             * Every key the dues screens actually read.
+             *
+             * The table reads ["dueRecords-paginated", page, …] and the tiles read
+             * ["receivables"], but only ["dueRecords"] was invalidated — and React
+             * Query matches array ELEMENTS, so "dueRecords-paginated" is a
+             * different string, not a child of "dueRecords". Nothing refetched.
+             * QA settled an invoice, the database wrote Paid, and the row on
+             * screen still offered Settle: the one way to make a cashier take the
+             * same money twice.
+             */
+            queryClient.invalidateQueries({ queryKey: ["dueRecords-paginated"] });
+            queryClient.invalidateQueries({ queryKey: ["dueRecords-summary"] });
+            queryClient.invalidateQueries({ queryKey: ["receivables"] });
+            queryClient.invalidateQueries({ queryKey: ["statement"] });
             queryClient.invalidateQueries({ queryKey: ["due-summary-global"] });
             toast.success("Due record created successfully");
         },
@@ -186,6 +201,21 @@ export default function FinancesTab({ defaultTab, initialSearchQuery, initialRec
             dueRecordsApi.update(id, data),
         onSuccess: () => {
             queryClient.invalidateQueries({ queryKey: ["dueRecords"] });
+            /**
+             * Every key the dues screens actually read.
+             *
+             * The table reads ["dueRecords-paginated", page, …] and the tiles read
+             * ["receivables"], but only ["dueRecords"] was invalidated — and React
+             * Query matches array ELEMENTS, so "dueRecords-paginated" is a
+             * different string, not a child of "dueRecords". Nothing refetched.
+             * QA settled an invoice, the database wrote Paid, and the row on
+             * screen still offered Settle: the one way to make a cashier take the
+             * same money twice.
+             */
+            queryClient.invalidateQueries({ queryKey: ["dueRecords-paginated"] });
+            queryClient.invalidateQueries({ queryKey: ["dueRecords-summary"] });
+            queryClient.invalidateQueries({ queryKey: ["receivables"] });
+            queryClient.invalidateQueries({ queryKey: ["statement"] });
             queryClient.invalidateQueries({ queryKey: ["due-summary-global"] });
             queryClient.invalidateQueries({ queryKey: ["pos-transactions"] }); // Payment might update sales
             toast.success("Payment recorded successfully");
