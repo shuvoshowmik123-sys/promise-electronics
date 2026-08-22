@@ -638,7 +638,11 @@ export function CatchUpEntryTab({ getCurrencySymbol }: { getCurrencySymbol: () =
                       * that commits the work is never further away than the
                       * thing being typed.
                       */}
-                    <div className="sticky bottom-0 z-20 mt-4 flex flex-col-reverse gap-2 border-t border-slate-100 bg-white/95 pt-3 pb-1 backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:pt-0 sm:flex-row sm:justify-end">
+                    <div
+                        /* Measured by the keyboard hook so a lifted field clears it. */
+                        data-keyboard-safe-bottom
+                        className="sticky bottom-0 z-20 mt-4 flex flex-col-reverse gap-2 border-t border-slate-100 bg-white/95 pt-3 pb-1 backdrop-blur sm:static sm:border-0 sm:bg-transparent sm:pt-0 sm:flex-row sm:justify-end"
+                    >
                         <Button variant="ghost" className="h-12 rounded-xl" onClick={nextCustomer}>
                             Next customer
                         </Button>

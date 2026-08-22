@@ -17,8 +17,27 @@
  */
 import { useEffect } from "react";
 
-/** Space kept between the field and the top of the keyboard. */
+/** Space kept between the field and whatever is below it. */
 const BREATHING_ROOM = 16;
+
+/**
+ * Anything pinned to the bottom of the scroller eats the space a lifted field
+ * was aimed at.
+ *
+ * The first version reserved 16px and lifted fields to the bottom of the visual
+ * viewport — straight underneath the sticky Save bar, which is about 72px tall.
+ * Six hidden fields became eleven visible ones sitting behind a button. Marked
+ * elements are measured at the moment of the lift rather than assumed, because
+ * the bar changes height between one and two rows of buttons.
+ */
+function bottomFurnitureHeight(): number {
+    let tallest = 0;
+    for (const el of Array.from(document.querySelectorAll<HTMLElement>("[data-keyboard-safe-bottom]"))) {
+        const box = el.getBoundingClientRect();
+        if (box.height > tallest) tallest = box.height;
+    }
+    return tallest;
+}
 
 export function useKeyboardAwareScroll(enabled = true) {
     useEffect(() => {
@@ -41,7 +60,7 @@ export function useKeyboardAwareScroll(enabled = true) {
                 const typing = el.matches("input, textarea, select, [contenteditable=true]");
                 if (!typing) return;
 
-                const visibleBottom = vv.height + vv.offsetTop;
+                const visibleBottom = vv.height + vv.offsetTop - bottomFurnitureHeight();
                 const box = el.getBoundingClientRect();
                 const overlap = box.bottom + BREATHING_ROOM - visibleBottom;
                 if (overlap <= 0 && box.top >= 0) return;
