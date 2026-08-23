@@ -489,15 +489,24 @@ export default function DesignConcept() {
         'system-health': ['settings', 'systemHealth'], // settings.manage = only granular key for system health
         'audit-logs': ['settings', 'auditLogs'],       // settings.manage = only granular key for audit logs
         /*
-         * Its own permission, not settings.
+         * Its own permission, and named as the module rather than a legacy key.
          *
-         * 'catchUpEntry' never matched anything — it appeared once in the whole
-         * codebase and was always false — so this gate collapsed to "anyone with
-         * settings". Those users saw the tab, filled the form and were refused
-         * at save with a 403, because the route was Super Admin only. The screen
-         * promised what the server would not give.
+         * This gate was ['settings', 'catchUpEntry']. 'catchUpEntry' matched
+         * nothing — one dead reference in the whole codebase — so it collapsed
+         * to "anyone with settings": those users saw the tab, filled the form,
+         * and were refused at save by a Super-Admin-only route.
+         *
+         * Naming the new permission fixed the first half and broke the second.
+         * This context's hasPermission does not consult LEGACY_TO_GRANULAR — it
+         * tests the exact key, then any key beginning "<name>.". So
+         * 'catchUpEntry' still reached neither 'catchup.enter' nor anything
+         * else, and the tab stayed hidden from the very people it had just been
+         * granted to. QA-38 saw that and read it as a screenshot timing problem.
+         *
+         * 'catchup' matches through the prefix rule, the way 'jobs' reaches
+         * jobs.view.
          */
-        'catch-up': 'catchUpEntry',
+        'catch-up': 'catchup',
         'brain': ['aiBrain', 'brain'], // aiBrain.* = catalog module; brain = legacy key name
     };
 
