@@ -21,7 +21,7 @@ import { z } from "zod";
 import { nanoid } from "nanoid";
 import { sql } from "drizzle-orm";
 import { db } from "../db.js";
-import { requireAdminAuth, requireSuperAdmin } from "./middleware/auth.js";
+import { requireAdminAuth, requireGranularPermission } from "./middleware/auth.js";
 import { auditLogger } from "../utils/auditLogger.js";
 import { logRouteError } from "../utils/route-error.js";
 import { getAttendanceDateDhaka } from "../services/attendance-day.service.js";
@@ -89,7 +89,7 @@ const catchupSchema = z.object({
 router.post(
     "/api/admin/catch-up-job",
     requireAdminAuth,
-    requireSuperAdmin,
+    requireGranularPermission("catchup.enter"),
     async (req: Request, res: Response) => {
         try {
             const parsed = catchupSchema.safeParse(req.body);
@@ -289,7 +289,7 @@ router.post(
 router.get(
     "/api/admin/catch-up-job",
     requireAdminAuth,
-    requireSuperAdmin,
+    requireGranularPermission("catchup.enter"),
     async (req: Request, res: Response) => {
         try {
             const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
@@ -326,7 +326,7 @@ export default router;
 router.get(
     "/api/admin/catch-up-job/customers",
     requireAdminAuth,
-    requireSuperAdmin,
+    requireGranularPermission("catchup.enter"),
     async (req: Request, res: Response) => {
         try {
             const q = String(req.query.q ?? "").trim();
@@ -369,7 +369,7 @@ router.get(
 router.get(
     "/api/admin/catch-up-job/corporate-clients",
     requireAdminAuth,
-    requireSuperAdmin,
+    requireGranularPermission("catchup.enter"),
     async (req: Request, res: Response) => {
         try {
             const result = await db.execute(sql`

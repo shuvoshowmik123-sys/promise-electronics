@@ -279,6 +279,7 @@ export type UserPermissions = {
   purchasing?: boolean;       // Purchasing
   wastage?: boolean;          // Wastage Management
   auditLogs?: boolean;        // Audit Logs
+  catchUpEntry?: boolean;     // Catch-Up Entry (past jobs from paper)
   brain?: boolean;            // System Brain / AI Analytics
 
   // Granular-module parent keys (used by hasPermission prefix fallback)

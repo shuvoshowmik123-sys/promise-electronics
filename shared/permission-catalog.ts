@@ -160,6 +160,13 @@ export const PERMISSION_CATALOG: PermissionDef[] = [
   // ── Settings ──
   { key: "settings.manage", label: "Manage system settings", module: "settings", action: "manage", risk: "critical", description: "Change shop configuration, modules, and system behavior.", consequence: "System-wide impact; can break workflows.", suggestedRoles: ["Super Admin"], coverageCritical: false },
 
+  // ── Catch-Up Entry ──
+  // Writes a finished job and its debt against any past date, with none of the
+  // intake checks the normal flow applies. Granting it is handing someone the
+  // ability to create money owed, so it stands alone rather than riding on
+  // settings.manage.
+  { key: "catchup.enter", label: "Enter past jobs from paper", module: "catchUpEntry", action: "enter", risk: "critical", description: "Record work already completed, with its own date and amount, through the Catch-Up Entry screen.", consequence: "Creates a job and a customer debt for any past date. Wrong entries become real money owed.", suggestedRoles: ["Super Admin"], coverageCritical: true },
+
   // ── Attendance ──
   { key: "attendance.view", label: "View attendance", module: "attendance", action: "view", risk: "low", description: "See staff attendance records.", consequence: "Read-only HR data.", suggestedRoles: ["Manager", "Super Admin"], coverageCritical: false },
   { key: "attendance.checkIn", label: "Check in/out", module: "attendance", action: "checkIn", risk: "low", description: "Record own check-in and check-out.", consequence: "Self-service; own record only.", suggestedRoles: ["Driver", "Technician", "Cashier", "Manager", "Super Admin"], coverageCritical: false },
@@ -229,6 +236,7 @@ export const LEGACY_TO_GRANULAR: Record<string, string[]> = {
   notifications: ["notifications.view"],
   systemHealth: ["settings.manage"],
   auditLogs: ["settings.manage"],
+  catchUpEntry: ["catchup.enter"],
 
   canCreate: [],
   canEdit: [],
@@ -396,6 +404,7 @@ export const ADVANCED_CORPORATE_KEYS = [
 ] as const;
 
 export const COVERAGE_CRITICAL_PERMISSIONS = [
+  "catchup.enter",
   "serviceRequests.reply",
   "serviceRequests.quote",
   "serviceRequests.edit",

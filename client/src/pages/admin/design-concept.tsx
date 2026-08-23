@@ -488,8 +488,16 @@ export default function DesignConcept() {
         'quality': 'quality',
         'system-health': ['settings', 'systemHealth'], // settings.manage = only granular key for system health
         'audit-logs': ['settings', 'auditLogs'],       // settings.manage = only granular key for audit logs
-        // Can write any amount against any past date — Super Admin only, like resets.
-        'catch-up': ['settings', 'catchUpEntry'],
+        /*
+         * Its own permission, not settings.
+         *
+         * 'catchUpEntry' never matched anything — it appeared once in the whole
+         * codebase and was always false — so this gate collapsed to "anyone with
+         * settings". Those users saw the tab, filled the form and were refused
+         * at save with a 403, because the route was Super Admin only. The screen
+         * promised what the server would not give.
+         */
+        'catch-up': 'catchUpEntry',
         'brain': ['aiBrain', 'brain'], // aiBrain.* = catalog module; brain = legacy key name
     };
 
