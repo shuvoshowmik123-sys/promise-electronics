@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { RecordCleanupOverlay } from "@/components/admin/RecordCleanupOverlay";
 import { Trash2, ShieldAlert, Search, Loader2, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -36,6 +37,7 @@ function splitList(raw: string): string[] {
 }
 
 export default function QaCleanupSection() {
+    const [sweepOpen, setSweepOpen] = useState(false);
     const [phonesRaw, setPhonesRaw] = useState("");
     const [ticketsRaw, setTicketsRaw] = useState("");
     const [preview, setPreview] = useState<Preview | null>(null);
@@ -98,6 +100,33 @@ export default function QaCleanupSection() {
                     </p>
                 </div>
             </div>
+
+            {/*
+              * The sweep is the way in now; the fields below remain for the case
+              * it was built for — one known phone number, deleted precisely.
+              */}
+            <div className="border-b border-amber-100 bg-white p-4">
+                <button
+                    type="button"
+                    onClick={() => setSweepOpen(true)}
+                    className="flex w-full items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-left transition-colors hover:bg-slate-100"
+                >
+                    <span className="min-w-0">
+                        <span className="block text-sm font-black text-slate-900">
+                            Sweep the whole system
+                        </span>
+                        <span className="block text-xs text-slate-500">
+                            Every type at once — jobs, requests, products, bills. Select and
+                            delete together. Recoverable for 24 hours.
+                        </span>
+                    </span>
+                    <span className="shrink-0 rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white">
+                        Open
+                    </span>
+                </button>
+            </div>
+
+            <RecordCleanupOverlay open={sweepOpen} onClose={() => setSweepOpen(false)} />
 
             <div className="space-y-4 p-4">
                 <div className="grid gap-3 sm:grid-cols-2">

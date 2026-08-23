@@ -1721,6 +1721,42 @@ export interface PreviewResponse {
     summary: string;
 }
 
+export type BinType = { key: string; label: string; count: number };
+export type BinCandidate = {
+    id: string; title: string; subtitle: string | null; amount: number | null;
+    date: string | null; reason: string; blocked: boolean;
+    blockedReason: string | null; linkedCount: number;
+};
+export type BinEntry = {
+    id: string; entityType: string; entityId: string; label: string;
+    summary: Record<string, unknown>; rowCount: number; deletedAt: string;
+    deletedByName: string | null; purgeAfter: string; hoursLeft: number;
+};
+
+export const recordBinApi = {
+    getTypes: () => fetchApi<{ retentionHours: number; types: BinType[] }>("/admin/record-bin/types"),
+    getCandidates: (type: string) =>
+        fetchApi<{ candidates: BinCandidate[] }>(`/admin/record-bin/candidates/${type}`),
+    remove: (type: string, ids: string[]) =>
+        fetchApi<{ deleted: string[]; refused: Array<{ id: string; reason: string }>; linkedRowsRemoved: number }>(
+            "/admin/record-bin/delete",
+            { method: "POST", body: JSON.stringify({ type, ids, confirm: "DELETE" }) },
+        ),
+    getBin: () => fetchApi<{ entries: BinEntry[]; retentionHours: number }>("/admin/record-bin"),
+    getEntry: (id: string) =>
+        fetchApi<{ entry: BinEntry; tables: Array<{ table: string; rows: Array<Record<string, unknown>> }> }>(
+            `/admin/record-bin/entry/${id}`,
+        ),
+    restore: (binIds: string[]) =>
+        fetchApi<{ restored: string[]; refused: Array<{ binId: string; reason: string }>; rowsRestored: number }>(
+            "/admin/record-bin/restore",
+            { method: "POST", body: JSON.stringify({ binIds }) },
+        ),
+    purge: (binIds: string[]) =>
+        fetchApi<{ purged: number }>("/admin/record-bin/purge",
+            { method: "POST", body: JSON.stringify({ binIds }) }),
+};
+
 export const permissionsApi = {
     getCatalog: () => fetchApi<{ catalog: any[]; modules: any[]; presets: Record<string, string[]>; packs: Record<string, any>; coverageCritical: string[]; deprecated: string[] }>("/admin/permissions/catalog"),
     getUserProfile: (userId: string) => fetchApi<PermissionProfileResponse>(`/admin/users/${userId}/permission-profile`),
