@@ -1472,6 +1472,40 @@ router.patch('/api/job-tickets/:id', requireAdminAuth, requireGranularPermission
             throw guardErr;
         }
 
+        /**
+         * A job sitting on an active bill cannot have its charge changed.
+         *
+         * Issued bills are immutable snapshots — there is deliberately no
+         * endpoint to edit one. The job was not held to the same rule, so the
+         * two drifted apart in silence: QA-36 billed 15,000, edited the job to
+         * 25,000, got a 200, and left the client holding paper that no longer
+         * matched the record. Nothing on any screen said which was real.
+         *
+         * Refused rather than cascaded, because a bill already sent to a client
+         * is not ours to rewrite. Correct it by superseding the bill, which is
+         * what /scatter exists for.
+         */
+        if (existingForAccess && Object.prototype.hasOwnProperty.call(updateData, "estimatedCost")) {
+            const billedRes = await db.execute(sql`
+                SELECT b.bill_number
+                FROM job_tickets j
+                JOIN corporate_bills b ON b.id = j.corporate_bill_id
+                WHERE j.id = ${resolvedId}
+                  AND COALESCE(b.bill_status, 'active') = 'active'
+                LIMIT 1
+            `);
+            const billed = ((billedRes as unknown as { rows: Array<{ bill_number: string }> }).rows ?? [])[0];
+            const changed = Number(updateData.estimatedCost ?? 0)
+                !== Number((existingForAccess as { estimatedCost?: number | null }).estimatedCost ?? 0);
+            if (billed && changed) {
+                return res.status(409).json({
+                    error: `This job is on bill ${billed.bill_number}. Change the bill instead — the client is holding that paper.`,
+                    code: "JOB_ON_ACTIVE_BILL",
+                    billNumber: billed.bill_number,
+                });
+            }
+        }
+
         // --- PHASE 1.2: Enforce Strict Linear Progression ---
         // Strip out status updates from generic patch. State must be advanced via /advance-status
         if (updateData.status) {
@@ -1636,6 +1670,37 @@ router.patch('/api/job-tickets/:id', requireAdminAuth, requireGranularPermission
                 .catch(err => console.error('[Push] Failed to lookup customer:', err));
         }
 
+        /**
+         * Correcting the charge has to reach the money, not just the job.
+         *
+         * A catch-up entry writes a due beside the job. Editing the job's
+         * amount moved one and left the other: QA-36 corrected 6,000 to 9,500
+         * and the customer still owed 6,000, because receivables and the
+         * statements read due_records. A typo fixed on the job went on billing
+         * the old figure.
+         *
+         * Paid stays where it is — money already taken does not change because
+         * the charge was corrected — so the outstanding amount moves by the
+         * difference.
+         */
+        if (Object.prototype.hasOwnProperty.call(updateData, "estimatedCost")) {
+            const newAmount = Number(updateData.estimatedCost ?? 0);
+            await db.execute(sql`
+                UPDATE due_records
+                SET amount = ${newAmount},
+                    status = CASE WHEN ${newAmount} - COALESCE(paid_amount, 0) <= 0.009
+                                  THEN 'Paid' ELSE status END
+                WHERE invoice = ${resolvedId} AND source = 'catch_up'
+            `).catch((err: unknown) => console.error('[JobPatch] due mirror failed:', err));
+            await db.execute(sql`
+                UPDATE job_tickets
+                SET catchup_amount_due = NULLIF(GREATEST(${newAmount} - COALESCE(
+                        (SELECT paid_amount FROM due_records
+                         WHERE invoice = ${resolvedId} AND source = 'catch_up' LIMIT 1), 0), 0), 0)
+                WHERE id = ${resolvedId} AND entered_as_catchup = true
+            `).catch((err: unknown) => console.error('[JobPatch] catchup mirror failed:', err));
+        }
+
         res.json(job);
     } catch (error: any) {
         console.error('Failed to update job ticket:', error.message, error);
@@ -1661,10 +1726,39 @@ router.delete('/api/job-tickets/:id', requireAdminAuth, requireGranularPermissio
             }
             throw err;
         }
+        /**
+         * A debt must not outlive the job it describes.
+         *
+         * Deleting a catch-up job left its due behind: QA-36 found five orphans
+         * carrying 30,000 between them, every one pointing at a job id that no
+         * longer exists. Those figures still counted in the totals and still
+         * named a customer, so the shop would have chased people over work it
+         * had no record of.
+         *
+         * A due that has taken money is not deleted — that payment happened and
+         * deleting the row would lose it. The job is kept too, so the two stay
+         * together and somebody can decide what the money was for.
+         */
+        const paidRes = await db.execute(sql`
+            SELECT COALESCE(SUM(COALESCE(paid_amount, 0)), 0)::float8 AS paid
+            FROM due_records WHERE invoice = ${jobId} AND source = 'catch_up'
+        `);
+        const alreadyPaid = Number(((paidRes as unknown as { rows: Array<{ paid: number }> }).rows ?? [{ paid: 0 }])[0]?.paid ?? 0);
+        if (alreadyPaid > 0.009) {
+            return res.status(409).json({
+                error: `This job has ${alreadyPaid} already paid against it. Settle or correct the due before deleting.`,
+                code: "JOB_HAS_PAYMENTS",
+            });
+        }
+
         const success = await jobRepo.deleteJobTicket(jobId);
         if (!success) {
             return res.status(404).json({ error: 'Job ticket not found' });
         }
+
+        await db.execute(sql`
+            DELETE FROM due_records WHERE invoice = ${jobId} AND source = 'catch_up'
+        `).catch((err: unknown) => console.error('[JobDelete] due cleanup failed:', err));
 
         publishJobTicketEvent({
             action: 'deleted',
