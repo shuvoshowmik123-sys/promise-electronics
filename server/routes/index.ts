@@ -79,6 +79,7 @@ import partRequestRoutes from './part-requests.routes.js'; // demand capture: wh
 import staffResetRoutes from './staff-reset.routes.js'; // password reset links for staff
 import staffDeviceRoutes from './staff-device.routes.js'; // token login for the native app
 import catchupRoutes from './catchup.routes.js'; // one-stop entry for work done before the system
+import recordBinRoutes from './record-bin.routes.js'; // bulk test-record removal, with a 24h bin behind it
 import systemIncidentsRoutes from './system-incidents.routes.js';
 import serviceFeedbackRoutes from './service-feedback.routes.js';
 import externalIntakePartiesRoutes from './external-intake-parties.routes.js';
@@ -357,6 +358,7 @@ export async function registerRoutes(
     app.use(staffResetRoutes);
     app.use(staffDeviceRoutes);
     app.use(catchupRoutes);
+    app.use(recordBinRoutes);
     routeLog('[Routes] ✓ Service areas routes registered');
 
     routeLog('[Routes] All route modules registered successfully!');

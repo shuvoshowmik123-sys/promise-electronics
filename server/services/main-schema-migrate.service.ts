@@ -71,7 +71,7 @@ const ADVISORY_LOCK_KEY = "promise_main_schema_migrate";
 const LOCK_WAIT_BUDGET_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_WAIT_MS || "60000", 10);
 const LOCK_POLL_INTERVAL_MS = parseInt(process.env.MAIN_MIGRATION_LOCK_POLL_MS || "1000", 10);
 
-export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_21_catchup_entry";
+export const REQUIRED_MAIN_SCHEMA_VERSION = "2026_08_24_record_bin";
 
 export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
   {
@@ -2537,6 +2537,54 @@ export const MAIN_SCHEMA_MIGRATIONS: MainSchemaMigration[] = [
       // Every report of "which records were typed in later" filters on this.
       await client.query(`CREATE INDEX IF NOT EXISTS idx_job_tickets_catchup
         ON job_tickets (entered_as_catchup, created_at DESC)`);
+    },
+  },
+  {
+    id: "2026_08_24_record_bin",
+    description:
+      "deleted_record_bin — a recycle bin for removed test records, held 24 hours",
+    up: async (client) => {
+      /**
+       * A holding table, not a deleted_at column on every table.
+       *
+       * The obvious way to make deletion reversible is to mark rows dead and
+       * filter them out everywhere. That would mean every query in the system,
+       * across the thirty-odd tables involved, remembering to exclude them. Miss
+       * one and a deleted job is back in the dues, the bills, or the profit —
+       * which is the exact class of fault this codebase keeps producing when two
+       * records describe the same thing and one is left behind.
+       *
+       * So deletion stays a real deletion. Before the rows go, the whole cascade
+       * — the job and its due, its journey, its stock movements — is serialised
+       * into one entry here. Restore replays it. Nothing else in the system
+       * learns a new rule, and no live query changes.
+       *
+       * `payload` holds the rows themselves, ordered parent-first so a restore
+       * can walk it forwards. `summary` holds what the bin lists without having
+       * to open the payload.
+       */
+      await client.query(`CREATE TABLE IF NOT EXISTS deleted_record_bin (
+        id TEXT PRIMARY KEY,
+        entity_type TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        label TEXT,
+        summary JSONB NOT NULL DEFAULT '{}'::jsonb,
+        payload JSONB NOT NULL,
+        row_count INTEGER NOT NULL DEFAULT 0,
+        deleted_by TEXT,
+        deleted_by_name TEXT,
+        deleted_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+        purge_after TIMESTAMPTZ NOT NULL,
+        restored_at TIMESTAMPTZ,
+        restored_by TEXT
+      )`);
+
+      // The bin is read by "what is still restorable", so that is what is indexed.
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_record_bin_live
+        ON deleted_record_bin (purge_after DESC)
+        WHERE restored_at IS NULL`);
+      await client.query(`CREATE INDEX IF NOT EXISTS idx_record_bin_entity
+        ON deleted_record_bin (entity_type, deleted_at DESC)`);
     },
   },
 ];
