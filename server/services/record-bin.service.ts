@@ -60,7 +60,24 @@ type EntityDef = {
     idColumn: string;
     /** Columns used to describe the row in the list and the bin. */
     display: { title: string; subtitle?: string; amount?: string; date: string };
-    /** How a row is recognised as test data when nobody marked it. */
+    /**
+     * How a row is recognised as test data when nobody marked it.
+     *
+     * "QA" is matched case-sensitively at the start of a word. Plain `%qa%`
+     * catches ordinary Bangladeshi names — Qazi, Waqar, Shafqat — and offering a
+     * real customer up for deletion is a worse failure than missing a test
+     * record. QA-39 created "Qazi Rahman" and "Waqar Ahmed" and both appeared in
+     * the list.
+     *
+     * Case is the discriminator that works. Test data writes QA in capitals;
+     * names write Qa. A word-boundary match was tried first and was worse: it
+     * cleared the names but also lost twelve real QALTD24-BILL rows, because
+     * there QA is followed by a letter. Case-sensitive keeps those and still
+     * drops the names — jobs 379 to 375, bills unchanged at 41.
+     *
+     * "test" stays a loose substring, because it turns up mid-word in real test
+     * data — CHAIN-TEST, CorpDueTest — and no customer is called that.
+     */
     detect: string;
     children: ChildLink[];
     blockers: Blocker[];
@@ -79,7 +96,7 @@ export const ENTITY_DEFS: Record<string, EntityDef> = {
         table: "job_tickets",
         idColumn: "id",
         display: { title: "customer", subtitle: "device", amount: "estimated_cost", date: "created_at" },
-        detect: "(customer ILIKE '%qa%' OR customer ILIKE '%test%' OR device ILIKE '%test%')",
+        detect: "(customer ~ '(^|[^A-Za-z])QA' OR customer ILIKE '%test%' OR device ILIKE '%test%')",
         children: [
             { table: "due_records", column: "invoice" },
             { table: "customer_repair_journeys", column: "job_ticket_id" },
@@ -119,7 +136,7 @@ export const ENTITY_DEFS: Record<string, EntityDef> = {
         table: "service_requests",
         idColumn: "id",
         display: { title: "customer_name", subtitle: "brand", date: "created_at" },
-        detect: "(customer_name ILIKE '%qa%' OR customer_name ILIKE '%test%')",
+        detect: "(customer_name ~ '(^|[^A-Za-z])QA' OR customer_name ILIKE '%test%')",
         children: [
             { table: "service_request_events", column: "service_request_id" },
             { table: "service_request_call_attempts", column: "service_request_id" },
@@ -142,7 +159,7 @@ export const ENTITY_DEFS: Record<string, EntityDef> = {
         table: "inventory_items",
         idColumn: "id",
         display: { title: "name", amount: "avg_cost_price", date: "created_at" },
-        detect: "(name ILIKE '%qa%' OR name ILIKE '%test%')",
+        detect: "(name ~ '(^|[^A-Za-z])QA' OR name ILIKE '%test%')",
         children: [],
         blockers: [
             { table: "purchase_order_items", column: "inventory_item_id", reason: "it is on a purchase order" },
@@ -156,7 +173,7 @@ export const ENTITY_DEFS: Record<string, EntityDef> = {
         table: "corporate_bills",
         idColumn: "id",
         display: { title: "bill_number", amount: "grand_total", date: "created_at" },
-        detect: "(bill_number ILIKE '%qa%' OR bill_number ILIKE '%test%')",
+        detect: "(bill_number ~ '(^|[^A-Za-z])QA' OR bill_number ILIKE '%test%')",
         children: [
             { table: "bill_line_items", column: "bill_id" },
             { table: "corporate_bill_due_links", column: "bill_id" },
@@ -172,7 +189,7 @@ export const ENTITY_DEFS: Record<string, EntityDef> = {
         table: "pickup_schedules",
         idColumn: "id",
         display: { title: "pickup_address", subtitle: "status", date: "created_at" },
-        detect: "(pickup_address ILIKE '%qa%' OR pickup_address ILIKE '%test%' OR service_request_id IN (SELECT id FROM service_requests WHERE customer_name ILIKE '%qa%' OR customer_name ILIKE '%test%'))",
+        detect: "(pickup_address ~ '(^|[^A-Za-z])QA' OR pickup_address ILIKE '%test%' OR service_request_id IN (SELECT id FROM service_requests WHERE customer_name ~ '(^|[^A-Za-z])QA' OR customer_name ILIKE '%test%'))",
         children: [{ table: "logistics_tasks", column: "pickup_schedule_id" }],
         blockers: [],
     },
@@ -182,16 +199,22 @@ export const ENTITY_DEFS: Record<string, EntityDef> = {
         table: "part_requests",
         idColumn: "id",
         display: { title: "customer_name", subtitle: "part_name", date: "created_at" },
-        detect: "(customer_name ILIKE '%qa%' OR customer_name ILIKE '%test%' OR part_name ILIKE '%test%')",
+        detect: "(customer_name ~ '(^|[^A-Za-z])QA' OR customer_name ILIKE '%test%' OR part_name ILIKE '%test%')",
         children: [],
         blockers: [],
     },
 };
 
+const TABLE_CACHE = new Map<string, boolean>();
+const LINK_CACHE = new Map<string, boolean>();
+
 /** Tables that may not exist in every deployment are skipped, not fatal. */
 async function tableExists(name: string): Promise<boolean> {
+    if (TABLE_CACHE.has(name)) return TABLE_CACHE.get(name)!;
     const res = await db.execute(sql`SELECT to_regclass(${"public." + name}) AS reg`);
-    return Boolean(rowsOf(res)[0]?.reg);
+    const exists = Boolean(rowsOf(res)[0]?.reg);
+    TABLE_CACHE.set(name, exists);
+    return exists;
 }
 
 /**
@@ -203,12 +226,19 @@ async function tableExists(name: string): Promise<boolean> {
  * that lets a paid job be deleted. Silence is the dangerous outcome there.
  */
 async function linkExists(table: string, column: string): Promise<boolean> {
-    if (!(await tableExists(table))) return false;
+    const key = `${table}.${column}`;
+    if (LINK_CACHE.has(key)) return LINK_CACHE.get(key)!;
+    if (!(await tableExists(table))) {
+        LINK_CACHE.set(key, false);
+        return false;
+    }
     const res = await db.execute(sql`
         SELECT 1 FROM information_schema.columns
         WHERE table_schema = 'public' AND table_name = ${table} AND column_name = ${column}
     `);
-    return rowsOf(res).length > 0;
+    const exists = rowsOf(res).length > 0;
+    LINK_CACHE.set(key, exists);
+    return exists;
 }
 
 function rowsOf(result: unknown): Array<Record<string, unknown>> {
