@@ -222,6 +222,68 @@ export const ENTITY_DEFS: Record<string, EntityDef> = {
         blockers: [],
     },
 
+    /**
+     * The account a test customer can actually log in with.
+     *
+     * Scoped to role = 'Customer' in the pattern itself, not just in a check
+     * afterwards, so a staff account named "QA Admin" can never appear in this
+     * list however it is queried. Deleting the shop's own Super Admin because it
+     * had QA in the name is the one mistake this screen must never make.
+     *
+     * Refused while the person still has work in the system. The alternative is
+     * a cascade that reaches from an account into jobs and money, and "remove
+     * their jobs first" is both safer and something the screen can now say.
+     */
+    customerAccount: {
+        label: "Customer logins",
+        table: "users",
+        idColumn: "id",
+        display: { title: "name", subtitle: "phone", date: "joined_at" },
+        detect: "(role = 'Customer' AND (name ~ '(^|[^A-Za-z])QA' OR name ILIKE '%test%' OR COALESCE(username, '') ~ '(^|[^A-Za-z])QA' OR COALESCE(username, '') ILIKE '%test%'))",
+        children: [
+            { table: "trusted_corporate_devices", column: "user_id" },
+            { table: "corporate_password_reset_requests", column: "user_id" },
+            { table: "ai_query_log", column: "user_id", detach: true },
+        ],
+        blockers: [
+            { table: "service_requests", column: "customer_id", reason: "they still have service requests - remove those first" },
+            { table: "orders", column: "customer_id", reason: "they have orders" },
+            { table: "quotations", column: "customer_id", reason: "they have quotations" },
+            { table: "custody_handover_codes", column: "customer_id", reason: "they hold a handover code" },
+            { table: "custody_handover_codes", column: "custodian_user_id", reason: "they are named on a handover" },
+        ],
+    },
+
+    /**
+     * The customer record, which is not the same thing as the login.
+     *
+     * A walk-in has one of these and no account at all, so both have to be
+     * removable separately or the residue stays behind in whichever one was not
+     * covered.
+     */
+    customer: {
+        label: "Customer records",
+        table: "customers",
+        idColumn: "id",
+        display: { title: "name", subtitle: "primary_phone", date: "created_at" },
+        detect: "(name ~ '(^|[^A-Za-z])QA' OR name ILIKE '%test%')",
+        children: [
+            { table: "customer_addresses", column: "customer_id" },
+            { table: "customer_reviews", column: "customer_id" },
+            { table: "service_feedback_opportunities", column: "customer_id" },
+            { table: "customers", column: "referrer_id", detach: true },
+        ],
+        blockers: [
+            { table: "service_requests", column: "customer_id", reason: "they still have service requests - remove those first" },
+            { table: "orders", column: "customer_id", reason: "they have orders" },
+            { table: "quotations", column: "customer_id", reason: "they have quotations" },
+            { table: "customer_repair_journeys", column: "customer_id", reason: "they have a repair history - remove those jobs first" },
+            { table: "job_batches", column: "customer_id", reason: "they are on a job batch" },
+            { table: "logistics_tasks", column: "customer_id", reason: "they have a pickup or delivery" },
+            { table: "custody_handover_codes", column: "customer_id", reason: "they hold a handover code" },
+        ],
+    },
+
     call: {
         label: "Part requests",
         table: "part_requests",
