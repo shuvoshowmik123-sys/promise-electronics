@@ -23,7 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-    Trash2, RotateCcw, X, Lock, AlertTriangle, Loader2, Clock, Eye, ChevronLeft,
+    Trash2, RotateCcw, X, Lock, AlertTriangle, Loader2, Clock, Eye, ChevronLeft, Search,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -52,6 +52,8 @@ export function RecordCleanupOverlay({ open, onClose }: { open: boolean; onClose
     const [pickedBin, setPickedBin] = useState<Set<string>>(new Set());
     const [confirmWord, setConfirmWord] = useState("");
     const [viewing, setViewing] = useState<string | null>(null);
+    const [search, setSearch] = useState("");
+    const [showAll, setShowAll] = useState(false);
 
     // Escape closes, as it does everywhere else on desktop.
     useEffect(() => {
@@ -75,9 +77,16 @@ export function RecordCleanupOverlay({ open, onClose }: { open: boolean; onClose
         enabled: open,
     });
 
+    // Debounced so typing a name does not fire a query per keystroke.
+    const [debounced, setDebounced] = useState("");
+    useEffect(() => {
+        const t = window.setTimeout(() => setDebounced(search), 300);
+        return () => window.clearTimeout(t);
+    }, [search]);
+
     const { data: candidateData, isLoading: loadingCandidates } = useQuery({
-        queryKey: ["recordBinCandidates", activeType],
-        queryFn: () => recordBinApi.getCandidates(activeType),
+        queryKey: ["recordBinCandidates", activeType, debounced, showAll],
+        queryFn: () => recordBinApi.getCandidates(activeType, { search: debounced, showAll }),
         enabled: open && tab === "find",
     });
 
@@ -97,10 +106,11 @@ export function RecordCleanupOverlay({ open, onClose }: { open: boolean; onClose
     const deletable = useMemo(() => candidates.filter((c) => !c.blocked), [candidates]);
     const blockedCount = candidates.length - deletable.length;
     const entries = binData?.entries ?? [];
+    const activeTypeError = (types?.types ?? []).find((t) => t.key === activeType)?.error ?? null;
 
     // Switching type starts a fresh selection: carrying ticks across lists you
     // can no longer see is how the wrong thing gets deleted.
-    useEffect(() => { setPicked(new Set()); setConfirmWord(""); }, [activeType]);
+    useEffect(() => { setPicked(new Set()); setConfirmWord(""); }, [activeType, debounced, showAll]);
 
     const linkedTotal = useMemo(
         () => candidates.filter((c) => picked.has(c.id)).reduce((sum, c) => sum + c.linkedCount, 0),
@@ -223,13 +233,56 @@ export function RecordCleanupOverlay({ open, onClose }: { open: boolean; onClose
                                         )}
                                     >
                                         <span className="whitespace-nowrap">{t.label}</span>
-                                        <span className="font-mono text-xs opacity-70">{t.count}</span>
+                                        <span className="font-mono text-xs opacity-70">
+                                            {t.error ? "!" : showAll || debounced ? t.total : t.count}
+                                        </span>
                                     </button>
                                 ))}
                             </div>
                         </nav>
 
                         <div className="flex min-h-0 flex-1 flex-col">
+                            {/*
+                              * The keyword is a first guess, not the only door.
+                              *
+                              * Records made before anyone thought to name them "QA"
+                              * are invisible to the pattern, and on a real shop's
+                              * data that is most of them. Someone who knows the
+                              * record exists has to be able to go and get it.
+                              */}
+                            <div className="flex flex-col gap-2 border-b border-slate-100 px-4 py-2.5 sm:flex-row sm:items-center sm:px-5">
+                                <div className="relative flex-1">
+                                    <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={15} />
+                                    <Input
+                                        value={search}
+                                        onChange={(e) => setSearch(e.target.value)}
+                                        placeholder="Search by name, phone or id..."
+                                        className="h-10 pl-9"
+                                    />
+                                </div>
+                                <label className="flex shrink-0 cursor-pointer items-center gap-2 text-xs font-semibold text-slate-600">
+                                    <input
+                                        type="checkbox"
+                                        className="h-4 w-4 rounded border-slate-300"
+                                        checked={showAll}
+                                        onChange={(e) => { setShowAll(e.target.checked); setSearch(""); }}
+                                    />
+                                    Show every record
+                                </label>
+                            </div>
+
+                            {(showAll || debounced) && (
+                                <p className="border-b border-amber-100 bg-amber-50 px-4 py-2 text-[11px] font-semibold text-amber-800 sm:px-5">
+                                    Showing real records too &mdash; these are not matched as test data. Read each one before you tick it.
+                                </p>
+                            )}
+
+                            {activeTypeError && (
+                                <p className="border-b border-red-100 bg-red-50 px-4 py-2 text-[11px] font-semibold text-red-700 sm:px-5">
+                                    This type could not be read here: {activeTypeError}
+                                </p>
+                            )}
+
                             <div className="flex items-center justify-between gap-3 border-b border-slate-100 px-4 py-2.5 sm:px-5">
                                 <label className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-700">
                                     <input
@@ -257,7 +310,21 @@ export function RecordCleanupOverlay({ open, onClose }: { open: boolean; onClose
                                 ) : candidates.length === 0 ? (
                                     <div className="flex h-40 flex-col items-center justify-center gap-2 text-slate-400">
                                         <Trash2 className="h-8 w-8" />
-                                        <p className="text-sm font-medium">Nothing here looks like test data.</p>
+                                        <p className="text-sm font-medium">
+                                            {debounced
+                                                ? "Nothing matched that search."
+                                                : showAll
+                                                    ? "There are no records of this type."
+                                                    : "Nothing here is named like test data."}
+                                        </p>
+                                        {!showAll && !debounced && (
+                                            <button
+                                                onClick={() => setShowAll(true)}
+                                                className="text-xs font-bold text-blue-600 underline"
+                                            >
+                                                Show every record instead
+                                            </button>
+                                        )}
                                     </div>
                                 ) : (
                                     <ul className="space-y-1.5 sm:space-y-0.5">
@@ -366,8 +433,15 @@ function CandidateRow({
                         </p>
                     ) : (
                         <p className="mt-1 flex items-center gap-2 text-[11px] text-slate-400">
-                            <span className="rounded bg-slate-100 px-1.5 py-0.5 font-semibold text-slate-500">
-                                name looks like test
+                            <span className={cn(
+                                "rounded px-1.5 py-0.5 font-semibold",
+                                candidate.reason === "name_match"
+                                    ? "bg-slate-100 text-slate-500"
+                                    : "bg-amber-100 text-amber-700",
+                            )}>
+                                {candidate.reason === "name_match"
+                                    ? "name looks like test"
+                                    : "not matched as test - your judgement"}
                             </span>
                             {candidate.linkedCount > 0 && <span>+{candidate.linkedCount} linked</span>}
                         </p>

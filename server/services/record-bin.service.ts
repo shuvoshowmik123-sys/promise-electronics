@@ -280,11 +280,50 @@ export type Candidate = {
  * must never do is decide on its own, which is why nothing here deletes and the
  * blocked rows come back marked rather than hidden.
  */
-export async function listCandidates(entityType: string, limit = 500): Promise<Candidate[]> {
+export async function listCandidates(
+    entityType: string,
+    options: { search?: string; showAll?: boolean; limit?: number } = {},
+): Promise<Candidate[]> {
     const def = ENTITY_DEFS[entityType];
     if (!def) throw new Error(`Unknown record type: ${entityType}`);
+    const limit = options.limit ?? 500;
 
     const d = def.display;
+    const search = options.search?.trim();
+
+    /**
+     * Three ways in, because the keyword alone was not enough.
+     *
+     * Test records made before anyone thought to name them "QA" are invisible to
+     * the pattern, and on a real shop's data that is most of them. Someone who
+     * knows the record exists has to be able to go and find it, so a search
+     * looks at everything and "show all" lists everything.
+     *
+     * The keyword stays the default. It is a good first guess and it keeps the
+     * common case to two taps; it just cannot be the only door.
+     */
+    let where = sql`${raw(def.detect)}`;
+    if (search) {
+        /**
+         * Strip LIKE wildcards, then refuse what is left if it is empty.
+         *
+         * A search of "%" stripped to nothing and became `%%`, which matches
+         * every row in the table — someone typing a stray character got the
+         * whole shop offered up for deletion. A search that reduces to nothing
+         * returns nothing.
+         */
+        const stripped = search.replace(/[%_\\]/g, "");
+        if (stripped.length === 0) return [];
+        const needle = `%${stripped}%`;
+        const cols = [d.title, d.subtitle, def.idColumn].filter(Boolean) as string[];
+        where = sql.join(
+            cols.map((c) => sql`${raw(c)}::text ILIKE ${needle}`),
+            sql` OR `,
+        );
+    } else if (options.showAll) {
+        where = sql`TRUE`;
+    }
+
     const res = await db.execute(sql`
         SELECT ${raw(def.idColumn)} AS id,
                ${raw(d.title)} AS title,
@@ -292,7 +331,7 @@ export async function listCandidates(entityType: string, limit = 500): Promise<C
                ${raw(d.amount ?? "NULL")} AS amount,
                ${raw(d.date)} AS date
         FROM ${raw(def.table)}
-        WHERE ${raw(def.detect)}
+        WHERE ${where}
         ORDER BY ${raw(d.date)} DESC
         LIMIT ${limit}
     `);
@@ -312,7 +351,7 @@ export async function listCandidates(entityType: string, limit = 500): Promise<C
             subtitle: r.subtitle == null ? null : String(r.subtitle),
             amount: r.amount == null ? null : Number(r.amount),
             date: r.date == null ? null : new Date(r.date as string).toISOString(),
-            reason: "name_match",
+            reason: search ? "search" : options.showAll ? "listed" : "name_match",
             blocked: blockedReason !== null,
             blockedReason,
             linkedCount: linked.get(id) ?? 0,
@@ -678,20 +717,43 @@ export async function purgeNow(binIds: string[]): Promise<number> {
 }
 
 /** Counts for the type rail, so the page opens with numbers already on it. */
-export async function candidateCounts(): Promise<Record<string, number>> {
-    const counts: Record<string, number> = {};
+export type TypeCount = { count: number; total: number; error: string | null };
+
+/**
+ * Counts for the type rail: how many the keyword matched, and how many exist.
+ *
+ * Both numbers, because they answer different questions. Zero matches out of
+ * four hundred jobs means the keyword is not finding this shop's test records;
+ * zero out of zero means there is nothing there.
+ *
+ * A failure is reported rather than swallowed. This used to return 0 for a type
+ * whose table or column differs in that deployment, which looks exactly like
+ * "nothing matched" — so on production the whole rail read empty and there was
+ * no way to tell a broken type from an empty one.
+ */
+export async function candidateCounts(): Promise<Record<string, TypeCount>> {
+    const counts: Record<string, TypeCount> = {};
     for (const [key, def] of Object.entries(ENTITY_DEFS)) {
-        // A type whose table or column differs in this deployment reports zero
-        // rather than blanking the whole rail.
         try {
-            if (!(await tableExists(def.table))) { counts[key] = 0; continue; }
+            if (!(await tableExists(def.table))) {
+                counts[key] = { count: 0, total: 0, error: `no ${def.table} table here` };
+                continue;
+            }
             const res = await db.execute(sql`
-                SELECT COUNT(*)::int AS n FROM ${raw(def.table)} WHERE ${raw(def.detect)}
+                SELECT COUNT(*) FILTER (WHERE ${raw(def.detect)})::int AS n,
+                       COUNT(*)::int AS total
+                FROM ${raw(def.table)}
             `);
-            counts[key] = Number(rowsOf(res)[0]?.n ?? 0);
+            const row = rowsOf(res)[0];
+            counts[key] = {
+                count: Number(row?.n ?? 0),
+                total: Number(row?.total ?? 0),
+                error: null,
+            };
         } catch (error) {
-            console.error(`[RecordBin] count failed for ${key}:`, (error as Error).message);
-            counts[key] = 0;
+            const message = (error as Error).message;
+            console.error(`[RecordBin] count failed for ${key}:`, message);
+            counts[key] = { count: 0, total: 0, error: message };
         }
     }
     return counts;

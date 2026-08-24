@@ -1721,7 +1721,7 @@ export interface PreviewResponse {
     summary: string;
 }
 
-export type BinType = { key: string; label: string; count: number };
+export type BinType = { key: string; label: string; count: number; total: number; error: string | null };
 export type BinCandidate = {
     id: string; title: string; subtitle: string | null; amount: number | null;
     date: string | null; reason: string; blocked: boolean;
@@ -1735,8 +1735,15 @@ export type BinEntry = {
 
 export const recordBinApi = {
     getTypes: () => fetchApi<{ retentionHours: number; types: BinType[] }>("/admin/record-bin/types"),
-    getCandidates: (type: string) =>
-        fetchApi<{ candidates: BinCandidate[] }>(`/admin/record-bin/candidates/${type}`),
+    getCandidates: (type: string, opts: { search?: string; showAll?: boolean } = {}) => {
+        const qs = new URLSearchParams();
+        if (opts.search?.trim()) qs.set("search", opts.search.trim());
+        if (opts.showAll) qs.set("all", "1");
+        const tail = qs.toString();
+        return fetchApi<{ candidates: BinCandidate[] }>(
+            `/admin/record-bin/candidates/${type}${tail ? `?${tail}` : ""}`,
+        );
+    },
     remove: (type: string, ids: string[]) =>
         fetchApi<{ deleted: string[]; refused: Array<{ id: string; reason: string }>; linkedRowsRemoved: number }>(
             "/admin/record-bin/delete",

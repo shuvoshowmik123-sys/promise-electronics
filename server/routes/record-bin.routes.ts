@@ -46,7 +46,9 @@ router.get(
                 types: Object.entries(ENTITY_DEFS).map(([key, def]) => ({
                     key,
                     label: def.label,
-                    count: counts[key] ?? 0,
+                    count: counts[key]?.count ?? 0,
+                    total: counts[key]?.total ?? 0,
+                    error: counts[key]?.error ?? null,
                 })),
             });
         } catch (error) {
@@ -66,7 +68,9 @@ router.get(
             if (!ENTITY_DEFS[req.params.type]) {
                 return res.status(400).json({ error: "Unknown record type." });
             }
-            res.json({ candidates: await listCandidates(req.params.type) });
+            const search = typeof req.query.search === "string" ? req.query.search : undefined;
+            const showAll = req.query.all === "1" || req.query.all === "true";
+            res.json({ candidates: await listCandidates(req.params.type, { search, showAll }) });
         } catch (error) {
             console.error("[RecordBin] candidates failed:", (error as Error).message);
             res.status(500).json({ error: "Could not read those records." });
