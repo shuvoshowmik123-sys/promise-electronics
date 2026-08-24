@@ -37,6 +37,16 @@ type ChildLink = {
     /** Column on the child holding the parent's id. */
     column: string;
     /**
+     * Rows that point at THIS child and must go before it can.
+     *
+     * A grandchild, in other words. custody_handover_codes references
+     * logistics_tasks and notifications by their own ids, so deleting a job's
+     * logistics tasks failed on a foreign key that had nothing to do with the
+     * job. Keyed by the child's ids, not the parent's, because that is the
+     * link that exists.
+     */
+    dependents?: Array<{ table: string; column: string }>;
+    /**
      * Detach instead of delete.
      *
      * A serial number is a physical item that outlives the job it was fitted
@@ -100,7 +110,10 @@ export const ENTITY_DEFS: Record<string, EntityDef> = {
         children: [
             { table: "due_records", column: "invoice" },
             { table: "customer_repair_journeys", column: "job_ticket_id" },
-            { table: "logistics_tasks", column: "job_ticket_id" },
+            {
+                table: "logistics_tasks", column: "job_ticket_id",
+                dependents: [{ table: "custody_handover_codes", column: "logistics_task_id" }],
+            },
             { table: "job_stock_deductions", column: "job_ticket_id" },
             { table: "job_final_test_runs", column: "job_id" },
             { table: "local_purchases", column: "job_ticket_id" },
@@ -114,7 +127,10 @@ export const ENTITY_DEFS: Record<string, EntityDef> = {
             { table: "job_extension_requests", column: "job_id" },
             { table: "commission_assignments", column: "job_id" },
             { table: "rollback_requests", column: "job_ticket_id" },
-            { table: "notifications", column: "job_id" },
+            {
+                table: "notifications", column: "job_id",
+                dependents: [{ table: "custody_handover_codes", column: "notification_id" }],
+            },
             { table: "reminders", column: "job_id", detach: true },
             { table: "inventory_serials", column: "job_ticket_id", detach: true },
             { table: "service_requests", column: "converted_job_id", detach: true },
@@ -140,10 +156,22 @@ export const ENTITY_DEFS: Record<string, EntityDef> = {
         children: [
             { table: "service_request_events", column: "service_request_id" },
             { table: "service_request_call_attempts", column: "service_request_id" },
-            { table: "custody_handover_codes", column: "service_request_id" },
             { table: "retail_quote_admin_acceptances", column: "service_request_id" },
             { table: "pickup_schedules", column: "service_request_id" },
-            { table: "logistics_tasks", column: "service_request_id" },
+            {
+                table: "logistics_tasks", column: "service_request_id",
+                dependents: [{ table: "custody_handover_codes", column: "logistics_task_id" }],
+            },
+            /**
+             * After logistics_tasks, not before it.
+             *
+             * A handover code carries logistics_task_id, so this list is also the
+             * order a restore replays in: listed first, the code went back before
+             * the task it points at and the insert failed on the same foreign key
+             * that broke the delete. Deletion walks the list backwards and is
+             * satisfied either way; restore is not.
+             */
+            { table: "custody_handover_codes", column: "service_request_id" },
             { table: "customer_repair_journeys", column: "service_request_id" },
             { table: "service_feedback_opportunities", column: "service_request_id" },
             { table: "payment_blacklist", column: "service_request_id" },
@@ -474,9 +502,15 @@ async function deleteOne(
          * Restore walks this list forwards, so whatever a row depends on has to
          * appear before it.
          */
-        const payload: Array<{ table: string; rows: Array<Record<string, unknown>>; detach?: boolean; column?: string }> = [
-            { table: def.table, rows: [parent] },
-        ];
+        type Part = {
+            table: string;
+            rows: Array<Record<string, unknown>>;
+            detach?: boolean;
+            column?: string;
+            /** Present when the part is keyed by its own parent row's ids, not the entity's. */
+            keyIds?: string[];
+        };
+        const payload: Part[] = [{ table: def.table, rows: [parent] }];
         let linkedRows = 0;
 
         for (const child of def.children) {
@@ -491,20 +525,39 @@ async function deleteOne(
             if (rows.length === 0) continue;
             payload.push({ table: child.table, rows, detach: child.detach, column: child.column });
             linkedRows += rows.length;
+
+            /**
+             * Captured straight after the child it hangs off, which is what makes
+             * the ordering work at both ends: deletion walks this list backwards
+             * so a grandchild goes before its parent, and restore walks it
+             * forwards so the parent is back before the grandchild needs it.
+             */
+            const childIds = rows.map((r) => String(r.id)).filter(Boolean);
+            if (childIds.length === 0) continue;
+            for (const dep of child.dependents ?? []) {
+                if (!(await linkExists(dep.table, dep.column))) continue;
+                const depRes = await tx.execute(sql`
+                    SELECT * FROM ${raw(dep.table)} WHERE ${raw(dep.column)} IN (${inList(childIds)})
+                `);
+                const depRows = rowsOf(depRes);
+                if (depRows.length === 0) continue;
+                payload.push({ table: dep.table, rows: depRows, column: dep.column, keyIds: childIds });
+                linkedRows += depRows.length;
+            }
         }
 
         // Children go first so nothing is left pointing at a row that has gone.
         for (let i = payload.length - 1; i >= 1; i--) {
             const part = payload[i];
+            const match = part.keyIds
+                ? sql`${raw(part.column!)} IN (${inList(part.keyIds)})`
+                : sql`${raw(part.column!)} = ${id}`;
             if (part.detach) {
                 await tx.execute(sql`
-                    UPDATE ${raw(part.table)} SET ${raw(part.column!)} = NULL
-                    WHERE ${raw(part.column!)} = ${id}
+                    UPDATE ${raw(part.table)} SET ${raw(part.column!)} = NULL WHERE ${match}
                 `);
             } else {
-                await tx.execute(sql`
-                    DELETE FROM ${raw(part.table)} WHERE ${raw(part.column!)} = ${id}
-                `);
+                await tx.execute(sql`DELETE FROM ${raw(part.table)} WHERE ${match}`);
             }
         }
         await tx.execute(sql`DELETE FROM ${raw(def.table)} WHERE ${raw(def.idColumn)} = ${id}`);
@@ -645,42 +698,73 @@ export async function restoreRecords(binIds: string[]): Promise<RestoreOutcome> 
                     table: string; rows: Array<Record<string, unknown>>; detach?: boolean;
                 }>;
 
-                let count = 0;
+                /**
+                 * Insert in passes, retrying what fails, until nothing more goes in.
+                 *
+                 * The obvious approach is to replay the payload in order and trust
+                 * that order. It is not trustworthy: a handover code carries a
+                 * logistics_task_id, and if the code was captured before the task
+                 * the insert fails on a foreign key. Fixing the declaration order
+                 * fixes new deletions and does nothing for the entries already
+                 * sitting in the bin, whose payloads are frozen as they were
+                 * written.
+                 *
+                 * So the order is not relied upon. Each row is tried inside its own
+                 * savepoint; whatever fails is kept for the next pass, and the row
+                 * it was waiting for has usually gone in by then. It stops when a
+                 * whole pass achieves nothing, and reports the reason from that
+                 * pass rather than a generic failure.
+                 *
+                 * Savepoints matter here: in Postgres a failed statement poisons the
+                 * whole transaction, so without one the first retry would find the
+                 * transaction already aborted.
+                 */
+                type Pending = { table: string; row: Record<string, unknown> };
+                const pending: Pending[] = [];
                 for (const part of payload) {
                     if (part.detach) continue; // never re-pointed; see the note above
-                    for (const row of part.rows) {
-                        const cols = Object.keys(row);
+                    for (const row of part.rows) pending.push({ table: part.table, row });
+                }
+
+                let count = 0;
+                let remaining = pending;
+                let lastError: string | null = null;
+
+                while (remaining.length > 0) {
+                    const failed: Pending[] = [];
+                    for (const item of remaining) {
+                        const cols = Object.keys(item.row);
                         if (cols.length === 0) continue;
-                        /**
-                         * sql.identifier for the names, placeholders for the values.
-                         *
-                         * Building the column list as raw text produced an INSERT the
-                         * server rejected outright, and a hand-quoted identifier is one
-                         * stray character away from being an injection point even when
-                         * the names come from our own payload.
-                         *
-                         * Objects and arrays are stringified on the way in: a jsonb
-                         * column handed a JavaScript array becomes a Postgres array
-                         * literal and the insert fails on a type it never expected.
-                         */
-                        const colSql = sql.join(cols.map((c) => sql.identifier(c)), sql`, `);
-                        const values = sql.join(
-                            cols.map((c) => {
-                                const v = row[c];
-                                if (v !== null && typeof v === "object" && !(v instanceof Date)) {
-                                    return sql`${JSON.stringify(v)}`;
-                                }
-                                return sql`${v ?? null}`;
-                            }),
-                            sql`, `,
-                        );
-                        await tx.execute(sql`
-                            INSERT INTO ${sql.identifier(part.table)} (${colSql})
-                            VALUES (${values})
-                            ON CONFLICT DO NOTHING
-                        `);
-                        count++;
+                        try {
+                            await tx.transaction(async (sp) => {
+                                const colSql = sql.join(cols.map((c) => sql.identifier(c)), sql`, `);
+                                const values = sql.join(
+                                    cols.map((c) => {
+                                        const v = item.row[c];
+                                        if (v !== null && typeof v === "object" && !(v instanceof Date)) {
+                                            return sql`${JSON.stringify(v)}`;
+                                        }
+                                        return sql`${v ?? null}`;
+                                    }),
+                                    sql`, `,
+                                );
+                                await sp.execute(sql`
+                                    INSERT INTO ${sql.identifier(item.table)} (${colSql})
+                                    VALUES (${values})
+                                    ON CONFLICT DO NOTHING
+                                `);
+                            });
+                            count++;
+                        } catch (error) {
+                            lastError = (error as Error).message;
+                            failed.push(item);
+                        }
                     }
+                    // A pass that placed nothing will never place anything.
+                    if (failed.length === remaining.length) {
+                        throw new Error(lastError ?? "those rows could not be put back");
+                    }
+                    remaining = failed;
                 }
 
                 await tx.execute(sql`
