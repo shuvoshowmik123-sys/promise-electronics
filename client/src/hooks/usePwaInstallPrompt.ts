@@ -9,12 +9,25 @@ type Portal = "customer" | "admin" | "corporate";
 
 const DISMISS_DAYS = 7;
 
-function getDismissKey(portal: Portal): string {
-  return `pwa-install-dismissed-${portal}`;
+/**
+ * Scoped to the person, not just the browser.
+ *
+ * The key was per portal, so the first staff member to dismiss it silenced it
+ * for everyone who used that phone afterwards — and "shown once at first login"
+ * has to mean each person's first login, not the device's. A shared counter
+ * phone is the normal case here, not the exception.
+ *
+ * Falls back to the portal-only key when nobody is signed in yet, which keeps
+ * the pre-login behaviour and the old key working for anyone mid-window.
+ */
+function getDismissKey(portal: Portal, scopeId?: string): string {
+  return scopeId
+    ? `pwa-install-dismissed-${portal}:${scopeId}`
+    : `pwa-install-dismissed-${portal}`;
 }
 
-function isRecentlyDismissed(portal: Portal): boolean {
-  const val = localStorage.getItem(getDismissKey(portal))
+function isRecentlyDismissed(portal: Portal, scopeId?: string): boolean {
+  const val = localStorage.getItem(getDismissKey(portal, scopeId))
     || (portal === "customer" ? localStorage.getItem("pwa-install-dismissed") : null);
   if (!val) return false;
   const days = (Date.now() - parseInt(val)) / (1000 * 60 * 60 * 24);
@@ -32,7 +45,7 @@ function isIOSDevice(): boolean {
   return /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
 }
 
-export function usePwaInstallPrompt(portal: Portal) {
+export function usePwaInstallPrompt(portal: Portal, scopeId?: string) {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [canShow, setCanShow] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
@@ -54,15 +67,31 @@ export function usePwaInstallPrompt(portal: Portal) {
    */
   const [dismissed, setDismissed] = useState<boolean>(() => {
     try {
-      return isRecentlyDismissed(portal);
+      return isRecentlyDismissed(portal, scopeId);
     } catch {
       return false;
     }
   });
 
+  /**
+   * Re-read when the person changes.
+   *
+   * The initial value is computed once, and on first render nobody is signed in
+   * yet — so without this the answer for "has this user dismissed it" would stay
+   * whatever it was for "has anyone". Someone signing in would inherit a
+   * colleague's dismissal, or their own would fail to apply.
+   */
+  useEffect(() => {
+    try {
+      setDismissed(isRecentlyDismissed(portal, scopeId));
+    } catch {
+      setDismissed(false);
+    }
+  }, [portal, scopeId]);
+
   useEffect(() => {
     if (isStandalone()) return;
-    if (isRecentlyDismissed(portal)) return;
+    if (isRecentlyDismissed(portal, scopeId)) return;
 
     const ios = isIOSDevice();
     setIsIOS(ios);
@@ -80,7 +109,7 @@ export function usePwaInstallPrompt(portal: Portal) {
 
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
-  }, [portal]);
+  }, [portal, scopeId]);
 
   const install = useCallback(async () => {
     if (!deferredPrompt) return false;
@@ -98,13 +127,13 @@ export function usePwaInstallPrompt(portal: Portal) {
     setCanShow(false);
     setDismissed(true);
     try {
-      localStorage.setItem(getDismissKey(portal), Date.now().toString());
+      localStorage.setItem(getDismissKey(portal, scopeId), Date.now().toString());
     } catch {
       // Private mode or blocked storage: the banner still goes for this
       // session, it simply returns on the next visit. Better than throwing out
       // of a click handler and leaving it on screen.
     }
-  }, [portal]);
+  }, [portal, scopeId]);
 
   return { canShow, isIOS, install, dismiss, dismissed, hasNativePrompt: !!deferredPrompt };
 }

@@ -20,8 +20,10 @@ const ROLE_COPY: Record<string, { body: string }> = {
 };
 
 export function AdminPwaInstallPrompt() {
-  const { canShow, isIOS, install, dismiss, dismissed, hasNativePrompt } = usePwaInstallPrompt("admin");
   const { user } = useAdminAuth();
+  // Scoped to this staff member, so each person is offered the app once on their
+  // own first login rather than once per phone.
+  const { canShow, isIOS, install, dismiss, dismissed, hasNativePrompt } = usePwaInstallPrompt("admin", user?.id);
 
   /**
    * Step aside whenever a working surface is open.
