@@ -52,8 +52,17 @@ export async function resolveStaffApkUrl(): Promise<string | null> {
  * than appearing to do nothing.
  */
 export async function openStaffApkDownload(): Promise<"apk" | "releases"> {
-    const url = await resolveStaffApkUrl();
-    const target = url ?? RELEASES_PAGE;
+    /**
+     * Our own domain first.
+     *
+     * /app/download streams the same file from this server, so the phone gets
+     * one short same-origin URL instead of a cross-origin redirect to an
+     * eight-hundred-character signed link. That redirect is what download
+     * managers were choking on — every byte arriving and the transfer never
+     * completing. GitHub stays the fallback in case the server route is
+     * unavailable.
+     */
+    const target = "/app/download";
 
     /**
      * Hand the file to the browser rather than navigating this window to it.
@@ -84,5 +93,5 @@ export async function openStaffApkDownload(): Promise<"apk" | "releases"> {
     // to navigating this window is worse than nothing only inside a PWA, and
     // there the new context is what was blocked — so tell the caller instead of
     // silently doing the thing that hangs.
-    return url ? "apk" : "releases";
+    return "apk";
 }
