@@ -167,6 +167,18 @@ export async function createApp(): Promise<Express> {
      *    cross-site and will need "none" again. No native project exists in the
      *    repo today (no android/ or ios/ directory), so "lax" is safe now and
      *    one env var restores the old behaviour without a code change.
+     *
+     *    THAT CONDITION HAS NOW BEEN MET. The staff app ships from android/ and
+     *    its WebView reports https://localhost, so its requests to
+     *    promiseelectronics.com are cross-site and "lax" withholds the session
+     *    cookie from them: the app logs in, the response sets the cookie, and
+     *    the very next request arrives anonymous.
+     *
+     *    Left as "lax" by default on purpose. Flipping it here would opt every
+     *    browser session into the third-party-cookie restrictions for the sake
+     *    of a client most users do not run. Set SESSION_COOKIE_SAMESITE=none in
+     *    the deployment instead — the switch this comment was written for — and
+     *    note the app cannot hold a session until that is done.
      */
     const sessionSameSite =
         (process.env.SESSION_COOKIE_SAMESITE as "lax" | "none" | "strict" | undefined) ??

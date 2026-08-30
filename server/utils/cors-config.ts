@@ -19,6 +19,28 @@ const DEV_LOCAL_ORIGINS = [
     "http://localhost",
 ];
 
+/**
+ * The installed staff app, which is not a website and has no domain.
+ *
+ * A Capacitor WebView serves the bundled files from its own scheme and reports
+ * that as the Origin: "https://localhost" on Android, because capacitor.config
+ * sets androidScheme to https, and "capacitor://localhost" on iOS. Neither is
+ * a real host and neither can be reached from the internet.
+ *
+ * These were only ever in the development list, so the released app was refused
+ * by CORS on every single request and showed "failed to fetch" with the web
+ * version working perfectly beside it. The app is a production client and has
+ * to be allowed in production.
+ *
+ * Narrower than it looks: an attacker cannot serve a page from these origins
+ * without already running code on the device, and every state-changing request
+ * still needs the CSRF token.
+ */
+const NATIVE_APP_ORIGINS = [
+    "https://localhost",
+    "capacitor://localhost",
+];
+
 function parseList(env: string | undefined): string[] {
     return (env ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 }
@@ -30,10 +52,10 @@ export function getAllowedOrigins(): string[] {
     const extras = parseList(process.env.EXTRA_ALLOWED_ORIGINS);
 
     if (isProd) {
-        return [...PROD_CANONICAL_ORIGINS, ...fromEnv, ...extras];
+        return [...PROD_CANONICAL_ORIGINS, ...NATIVE_APP_ORIGINS, ...fromEnv, ...extras];
     }
 
-    return [...DEV_LOCAL_ORIGINS, ...fromEnv, ...extras, ...PROD_CANONICAL_ORIGINS];
+    return [...DEV_LOCAL_ORIGINS, ...NATIVE_APP_ORIGINS, ...fromEnv, ...extras, ...PROD_CANONICAL_ORIGINS];
 }
 
 export function isOriginAllowed(origin: string | undefined, allowed: string[]): boolean {

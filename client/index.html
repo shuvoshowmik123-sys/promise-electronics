@@ -16,7 +16,20 @@
   -->
   <meta name="google-site-verification" content="UfRTsy_B2Kb2_H6yeW4Kx4WgaYkAS-P3rG8jEJqTwfA" />
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, interactive-widget=resizes-content" />
+  <!--
+    viewport-fit=cover is what makes env(safe-area-inset-*) return real numbers.
+
+    Without it every inset is 0, so `body { padding-top: env(safe-area-inset-top) }`
+    in index.css did nothing and the admin header sat under the clock in the
+    staff app. Android 15 and up draw edge to edge whether an app asks to or
+    not, so the page has to account for the status bar itself; this is the
+    switch that lets it.
+
+    Self-adjusting rather than a fixed number: where the WebView does not extend
+    under the status bar the inset is 0 and nothing moves, so older phones and
+    the desktop browser are unaffected.
+  -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, interactive-widget=resizes-content, viewport-fit=cover" />
 
   <!-- Primary Meta Tags -->
   <title>Promise Electronics Customer Portal | TV Repair Service in Dhaka</title>

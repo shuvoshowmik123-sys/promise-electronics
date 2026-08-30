@@ -9,10 +9,31 @@
         <item name="colorAccent">@color/colorAccent</item>
     </style>
 
-    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.DayNight.NoActionBar">
+    <!--
+      Light, not DayNight, and with a real window background.
+
+      This was Theme.AppCompat.DayNight.NoActionBar with android:background set
+      to @null. On a phone in dark mode that turned the window dark, and since
+      the app targets SDK 36 the system draws edge to edge — the WebView extends
+      under the status bar, and with no window background there was nothing but
+      the dark theme behind it. That is the black band across the top.
+
+      Two things fix it and both are needed. The theme is pinned to Light so the
+      window does not follow the phone into dark mode, because the admin panel
+      is a white interface either way. And the window is painted white, so the
+      strip behind the status bar is white before the web layer has drawn
+      anything.
+
+      windowLightStatusBar means DARK icons, for use ON a light bar. statusBarColor
+      is set for phones below SDK 35; above that the system ignores it and the
+      window background is what shows, which is why both are here.
+    -->
+    <style name="AppTheme.NoActionBar" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="windowActionBar">false</item>
         <item name="windowNoTitle">true</item>
-        <item name="android:background">@null</item>
+        <item name="android:windowBackground">@android:color/white</item>
+        <item name="android:statusBarColor">@android:color/white</item>
+        <item name="android:windowLightStatusBar">true</item>
     </style>
 
 
