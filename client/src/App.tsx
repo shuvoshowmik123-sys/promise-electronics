@@ -132,14 +132,21 @@ function App() {
     if (Capacitor.isNativePlatform()) {
       SplashScreen.hide();
 
-      // Initialize Google Auth
-      GoogleAuth.initialize({
-        clientId: import.meta.env.VITE_GOOGLE_CLIENT_ID || '',
-        scopes: ['profile', 'email'],
-        grantOfflineAccess: true,
-      });
-
-      // Initialize OTA Updates (non-blocking, fire-and-forget)
+      /**
+       * Tell the updater we booted before doing anything else.
+       *
+       * capacitor-updater treats an app that never reports ready as a failed
+       * update and reloads it. Anything above this line that throws therefore
+       * does not just fail — it restarts the app, hits the same line, and
+       * restarts again. The first release did exactly that: GoogleAuth was
+       * initialised first, with an empty clientId because VITE_GOOGLE_CLIENT_ID
+       * was not set at build time, and threw before the ready signal was ever
+       * sent. The app relaunched forever and the screen never appeared.
+       *
+       * So this goes first, and everything optional goes after it and is
+       * wrapped. One unconfigured plugin should cost its own feature, not the
+       * whole app.
+       */
       initOTAUpdates()
         .then(() => checkForUpdates())
         .then((update) => {
@@ -148,6 +155,22 @@ function App() {
         .catch((err) => {
           console.warn('[App] OTA initialization skipped:', err?.message || err);
         });
+
+      // Optional: only works once VITE_GOOGLE_CLIENT_ID is set at build time.
+      try {
+        const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
+        if (googleClientId) {
+          GoogleAuth.initialize({
+            clientId: googleClientId,
+            scopes: ['profile', 'email'],
+            grantOfflineAccess: true,
+          });
+        } else {
+          console.warn('[App] Google sign-in not configured; skipping.');
+        }
+      } catch (err) {
+        console.warn('[App] Google sign-in unavailable:', (err as Error)?.message || err);
+      }
 
       // Configure Status Bar
       const configureStatusBar = async () => {
