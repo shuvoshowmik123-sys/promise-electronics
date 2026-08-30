@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import oklabFunction from "@csstools/postcss-oklab-function";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 import { metaImagesPlugin } from "./vite-plugin-meta-images";
@@ -23,7 +24,31 @@ export default defineConfig({
   },
   css: {
     postcss: {
-      plugins: [],
+      /**
+       * An rgb() fallback for every oklch() colour.
+       *
+       * Tailwind v4 writes its palette in oklch, and oklch() needs Chrome or
+       * Android WebView 111. Below that the declaration is invalid and gets
+       * dropped, so `background-color: var(--color-blue-600)` resolves to
+       * nothing rather than to a wrong colour.
+       *
+       * The staff app's Sign In button was an invisible white rectangle on a
+       * white card because of this: it kept its size, rounding and shadow and
+       * lost only the fill and the white-on-white label. It still submitted when
+       * tapped, which is what made it look like a rendering fault rather than a
+       * CSS one. The emulator that found it runs WebView 110.0.5481 — one short.
+       *
+       * Real phones update WebView through Play and are far past 111. Staff
+       * handsets are not most phones: budget devices, devices without Play
+       * services, and devices with updates turned off all sit below it, and the
+       * failure is silent everywhere it happens.
+       *
+       * It has to live here rather than in postcss.config.js: this inline
+       * config replaces that file completely, so anything added there is
+       * ignored. `preserve` keeps the oklch line after the fallback, so modern
+       * browsers still get the wider gamut.
+       */
+      plugins: [oklabFunction({ preserve: true })],
     },
   },
   root: path.resolve(import.meta.dirname, "client"),

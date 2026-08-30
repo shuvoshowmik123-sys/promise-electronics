@@ -172,6 +172,7 @@
   "devDependencies": {
     "@axe-core/playwright": "^4.11.3",
     "@capacitor/cli": "^8.5.0",
+    "@csstools/postcss-oklab-function": "^5.0.9",
     "@eslint/js": "^10.0.1",
     "@modelcontextprotocol/sdk": "1.30.0",
     "@playwright/mcp": "^0.0.75",
