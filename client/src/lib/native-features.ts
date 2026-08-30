@@ -112,18 +112,49 @@ export async function initPushNotifications(): Promise<string | null> {
         const permission = await PushNotifications.requestPermissions();
 
         if (permission.receive === 'granted') {
-            // Register for push notifications
-            await PushNotifications.register();
-
-            // Listen for registration token
+            /**
+             * Listen first, then register.
+             *
+             * register() is what makes the token arrive, and the token arrives
+             * as an event. Calling it before the listener existed meant the
+             * event fired into nothing whenever the token came back quickly —
+             * logcat said it plainly: "Notifying listeners for event
+             * registration" followed by "No listeners found for event
+             * registration". The promise then waited for an event that had
+             * already been and gone, so the app held no token and the server
+             * was never told where to send anything.
+             *
+             * Bounded, too. Without a timeout a device that never answers —
+             * Play Services missing, no network on first run — leaves this
+             * pending for the life of the session, and every caller awaiting it
+             * hangs with it.
+             */
             return new Promise((resolve) => {
+                let settled = false;
+                const finish = (value: string | null) => {
+                    if (settled) return;
+                    settled = true;
+                    resolve(value);
+                };
+
                 PushNotifications.addListener('registration', (token) => {
-                    resolve(token.value);
+                    console.log('[Push] token received');
+                    finish(token.value);
                 });
 
                 PushNotifications.addListener('registrationError', (error) => {
                     console.error('Push registration error:', error);
-                    resolve(null);
+                    finish(null);
+                });
+
+                setTimeout(() => {
+                    if (!settled) console.warn('[Push] no token after 30s; carrying on without one');
+                    finish(null);
+                }, 30_000);
+
+                PushNotifications.register().catch((err) => {
+                    console.error('Push register() failed:', err);
+                    finish(null);
                 });
             });
         }

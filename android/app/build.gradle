@@ -1,5 +1,30 @@
 apply plugin: 'com.android.application'
 
+/**
+ * Release signing, read from a file that is not in this repository.
+ *
+ * The keystore and its password live outside the project and are gitignored.
+ * Losing them is not recoverable: Android identifies an app by its signature,
+ * so a build signed with a different key cannot install over an existing one
+ * and every staff phone would need the app removed and set up again.
+ *
+ * A missing file is not an error. Debug builds carry on as before, which keeps
+ * a fresh clone able to build something without hunting for secrets first.
+ */
+def keystorePropertiesFile = rootProject.file('keystore.properties')
+def keystoreProperties = new Properties()
+def hasSigningConfig = false
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    hasSigningConfig = true
+} else {
+    def envKeystore = System.getenv("PROMISE_KEYSTORE_PROPERTIES")
+    if (envKeystore != null && file(envKeystore).exists()) {
+        keystoreProperties.load(new FileInputStream(file(envKeystore)))
+        hasSigningConfig = true
+    }
+}
+
 android {
     namespace = "com.promiseelectronics.staff"
     compileSdk = rootProject.ext.compileSdkVersion
@@ -16,10 +41,37 @@ android {
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    signingConfigs {
+        if (hasSigningConfig) {
+            release {
+                storeFile file(keystoreProperties['storeFile'])
+                storePassword keystoreProperties['storePassword']
+                keyAlias keystoreProperties['keyAlias']
+                keyPassword keystoreProperties['keyPassword']
+            }
+        }
+    }
+
     buildTypes {
         release {
-            minifyEnabled false
-            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            /**
+             * Shrink and obfuscate.
+             *
+             * This app is handed out as a file rather than through Play, so the
+             * APK is opened by anyone who receives it. Minifying strips the
+             * unused code and renames what is left, which cuts the download and
+             * makes the bundle less readable at a glance.
+             *
+             * shrinkResources needs minifyEnabled and removes drawables and
+             * layouts nothing references — most of the saving on a Capacitor
+             * app, where the plugins bring resources the shop never uses.
+             */
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            if (hasSigningConfig) {
+                signingConfig signingConfigs.release
+            }
         }
     }
 }
