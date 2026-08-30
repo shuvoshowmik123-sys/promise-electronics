@@ -89,9 +89,26 @@ export function usePwaInstallPrompt(portal: Portal, scopeId?: string) {
     }
   }, [portal, scopeId]);
 
+  /**
+   * Listen from the first render, and decide whether to show separately.
+   *
+   * This used to bail out here when the banner had been dismissed, which looks
+   * like an optimisation and is a trap. beforeinstallprompt fires once, early,
+   * and is the only chance to capture it. On the first render nobody is signed
+   * in yet, so the dismissal check read the browser-wide key — set by anyone who
+   * had ever dismissed it — bailed out, and never registered the listener. By
+   * the time the signed-in user's id arrived and this re-ran, the event had
+   * already been and gone, so hasNativePrompt stayed false and the banner could
+   * never appear again for anybody on that browser.
+   *
+   * Whether to show it is the component's decision and is made from `dismissed`.
+   * Capturing the event is not the same question and must not be gated on it.
+   *
+   * Runs once on mount: nothing inside depends on the portal or the user, and
+   * re-running it risks missing the event a second time.
+   */
   useEffect(() => {
     if (isStandalone()) return;
-    if (isRecentlyDismissed(portal, scopeId)) return;
 
     const ios = isIOSDevice();
     setIsIOS(ios);
@@ -109,7 +126,7 @@ export function usePwaInstallPrompt(portal: Portal, scopeId?: string) {
 
     window.addEventListener("beforeinstallprompt", handler);
     return () => window.removeEventListener("beforeinstallprompt", handler);
-  }, [portal, scopeId]);
+  }, []);
 
   const install = useCallback(async () => {
     if (!deferredPrompt) return false;
