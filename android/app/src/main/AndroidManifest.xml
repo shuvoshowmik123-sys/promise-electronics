@@ -38,4 +38,39 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      Only INTERNET was declared, which is why the app asked for nothing on
+      first run and no notification ever arrived.
+
+      From Android 13, POST_NOTIFICATIONS is a runtime permission, and a
+      request for a permission the manifest does not declare does not prompt —
+      it returns immediately as denied. So requestPermissions() looked like it
+      worked, no dialog appeared, and push was silently impossible. Declaring
+      it is what makes the phone actually ask.
+    -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Push wakes the device to show an alert and buzzes on arrival. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!--
+      Photographing a set at intake, and choosing an existing photo.
+      maxSdkVersion on the storage read: from Android 13 the photo picker
+      grants access per image and the broad permission is refused anyway.
+    -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
+
+    <!-- Fingerprint unlock, offered by the biometric plugin. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+
+    <!--
+      The camera is used when present, not required to exist. Without this,
+      Play and some vendor stores hide the app from tablets that have no
+      camera, and a manager's tablet is exactly where this gets used.
+    -->
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>
