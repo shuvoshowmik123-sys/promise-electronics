@@ -32,8 +32,18 @@ android {
         applicationId "com.promiseelectronics.staff"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        /**
+         * versionCode is what Android compares; versionName is what people read.
+         *
+         * The code must go up on every build handed out or the phone treats the
+         * new APK as the same app and can refuse to install it over the old one.
+         * The name is the number staff will quote back when reporting a problem,
+         * so it matches the release tag exactly.
+         *
+         * 2 / 1.0.1 — notification permission declared and actually requested.
+         */
+        versionCode 2
+        versionName "1.0.1"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
