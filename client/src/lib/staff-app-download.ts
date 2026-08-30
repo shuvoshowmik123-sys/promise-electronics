@@ -55,14 +55,18 @@ export async function openStaffApkDownload(): Promise<"apk" | "releases"> {
     /**
      * Our own domain first.
      *
-     * /app/download streams the same file from this server, so the phone gets
-     * one short same-origin URL instead of a cross-origin redirect to an
+     * /api/app/download streams the same file from this server, so the phone
+     * gets one short same-origin URL instead of a cross-origin redirect to an
      * eight-hundred-character signed link. That redirect is what download
      * managers were choking on — every byte arriving and the transfer never
-     * completing. GitHub stays the fallback in case the server route is
-     * unavailable.
+     * completing.
+     *
+     * Under /api on purpose. The frontend is served by Vercel and only /api/* is
+     * forwarded to the server; anything else is answered with index.html, so the
+     * first attempt at /app/download returned the React app and showed its own
+     * "page not found" instead of a file.
      */
-    const target = "/app/download";
+    const target = "/api/app/download";
 
     /**
      * Hand the file to the browser rather than navigating this window to it.

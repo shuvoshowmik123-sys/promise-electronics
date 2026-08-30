@@ -1,24 +1,28 @@
 /**
  * Serves the staff Android app from this domain.
  *
- * The download used to send the phone to GitHub, which redirects to a signed
- * URL on release-assets.githubusercontent.com that is roughly eight hundred
- * characters long and carries an expiring token. Every byte arrived and the
- * download then sat on "finishing" and never completed — on a phone with the
- * PWA uninstalled, so the earlier explanation did not cover it.
+ * Two things this exists to avoid, both of which broke a real download.
  *
- * What is left when the file, the archive and the origin server have all been
- * checked and are correct is the path between them. A cross-origin redirect to
- * a huge signed URL is exactly the shape that Android download managers handle
- * badly, and the vendor ROMs common here are stricter still.
+ * **The redirect.** github.com/.../releases/download sends the phone on to
+ * release-assets.githubusercontent.com with a signed URL around eight hundred
+ * characters long carrying an expiring token, cross-origin from the page that
+ * started it. Every byte arrived and the transfer then sat on "finishing" and
+ * never completed. That is the shape Android download managers handle worst,
+ * and the vendor ROMs common on the phones this ships to are stricter again.
  *
- * So the redirect is removed. This route streams the APK from one short,
- * same-origin address with a plain filename, a known length, and no token:
+ * **The API.** The first version of this route asked GitHub which asset was
+ * newest on every cold cache. That works from a laptop and fails on Render,
+ * where the unauthenticated limit of sixty calls an hour is shared across every
+ * customer on the same outbound address — so the lookup returned nothing and
+ * the route answered 503 while the identical code worked locally.
  *
- *     https://promiseelectronics.com/app/download
+ * So the request path now contains neither. The URL is resolved from a fixed
+ * name that GitHub redirects for free, the answer is cached for six hours, and
+ * a stale answer is always preferred to no answer.
  *
- * GitHub stays the source of truth — nothing is committed to this repository
- * and publishing a release is still all it takes to ship a new build.
+ * Mounted under /api because that is the only prefix the Vercel frontend
+ * forwards to this server. A route outside it is answered by the SPA, which is
+ * why /app/download returned the app's own "page not found" rather than a file.
  */
 
 import { Router, type Request, type Response } from "express";
@@ -26,69 +30,101 @@ import { Router, type Request, type Response } from "express";
 const router = Router();
 
 const REPO = "shuvoshowmik123-sys/promise-electronics";
-const LATEST_API = `https://api.github.com/repos/${REPO}/releases/latest`;
-
-type CachedAsset = { url: string; name: string; size: number; tag: string; at: number };
-let cached: CachedAsset | null = null;
 
 /**
- * Ten minutes.
+ * The asset name to publish releases under.
  *
- * Long enough that a shop handing the app to six people costs one API call,
- * short enough that a release published now is offered within the hour rather
- * than after a restart.
+ * GitHub resolves /releases/latest/download/<name> to the newest release
+ * carrying that exact name, with no API call and no rate limit. Keeping the
+ * name fixed is what makes this route free and reliable; the version belongs in
+ * the tag, which is where people look for it anyway.
  */
-const CACHE_MS = 10 * 60 * 1000;
+const STABLE_ASSET = "PromiseStaff.apk";
+const STABLE_URL = `https://github.com/${REPO}/releases/latest/download/${STABLE_ASSET}`;
+const LATEST_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 
-async function resolveLatestApk(): Promise<CachedAsset | null> {
+type Resolved = { url: string; name: string; at: number };
+let cached: Resolved | null = null;
+
+/** Six hours. A release published today is offered the same day; nothing is asked hourly. */
+const CACHE_MS = 6 * 60 * 60 * 1000;
+
+async function head(url: string): Promise<boolean> {
+    try {
+        const res = await fetch(url, { method: "HEAD", redirect: "follow" });
+        return res.ok;
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Where the newest APK is, in order of how much can go wrong.
+ *
+ * An explicit override first, then the free fixed-name redirect, then the API
+ * as a last resort for releases published under some other name. A previous
+ * good answer outlives all three: an out-of-date link still installs, an error
+ * page installs nothing.
+ */
+async function resolveApk(): Promise<Resolved | null> {
     if (cached && Date.now() - cached.at < CACHE_MS) return cached;
+
+    const override = process.env.STAFF_APK_URL?.trim();
+    if (override) {
+        cached = { url: override, name: STABLE_ASSET, at: Date.now() };
+        return cached;
+    }
+
+    if (await head(STABLE_URL)) {
+        cached = { url: STABLE_URL, name: STABLE_ASSET, at: Date.now() };
+        return cached;
+    }
+
     try {
         const res = await fetch(LATEST_API, {
             headers: { Accept: "application/vnd.github+json", "User-Agent": "promise-staff-app" },
         });
-        if (!res.ok) return cached; // stale beats nothing
-        const data = (await res.json()) as {
-            tag_name?: string;
-            assets?: Array<{ name?: string; size?: number; browser_download_url?: string }>;
-        };
-        const apk = (data.assets ?? []).find(
-            (a) => typeof a.name === "string" && a.name.toLowerCase().endsWith(".apk"),
-        );
-        if (!apk?.browser_download_url) return cached;
-        cached = {
-            url: apk.browser_download_url,
-            name: apk.name ?? "PromiseStaff.apk",
-            size: apk.size ?? 0,
-            tag: data.tag_name ?? "",
-            at: Date.now(),
-        };
-        return cached;
+        if (res.ok) {
+            const data = (await res.json()) as {
+                assets?: Array<{ name?: string; browser_download_url?: string }>;
+            };
+            const apk = (data.assets ?? []).find(
+                (a) => typeof a.name === "string" && a.name.toLowerCase().endsWith(".apk"),
+            );
+            if (apk?.browser_download_url) {
+                cached = { url: apk.browser_download_url, name: apk.name ?? STABLE_ASSET, at: Date.now() };
+                return cached;
+            }
+        }
     } catch {
-        return cached;
+        /* fall through to whatever was cached */
     }
+
+    return cached;
 }
 
-/** What is currently on offer, for the screen that shows the button. */
+/** What is on offer, for the screen showing the button. */
 router.get("/api/app/latest", async (_req: Request, res: Response) => {
-    const asset = await resolveLatestApk();
-    if (!asset) return res.status(503).json({ error: "Could not reach the release just now." });
-    res.json({
-        version: asset.tag,
-        filename: asset.name,
-        sizeBytes: asset.size,
-        downloadUrl: "/app/download",
-    });
+    const asset = await resolveApk();
+    if (!asset) {
+        return res.status(503).json({
+            error: "The app is not available for download just now.",
+            hint: `Publish a release with an asset named ${STABLE_ASSET}.`,
+        });
+    }
+    res.json({ filename: asset.name, downloadUrl: "/api/app/download" });
 });
 
 /**
  * The file itself.
  *
- * Streamed rather than redirected, which is the whole point: the phone sees one
- * short URL on a domain it already trusts, a Content-Length it can rely on, and
- * a filename it does not have to parse out of a query string.
+ * Streamed rather than redirected, which is the point: the phone sees one short
+ * same-origin URL on a domain it already trusts, a Content-Length it can rely
+ * on to know when it is finished, and a filename it does not have to parse out
+ * of a query string.
  */
-router.get("/app/download", async (_req: Request, res: Response) => {
-    const asset = await resolveLatestApk();
+router.get("/api/app/download", async (_req: Request, res: Response) => {
+    const asset = await resolveApk();
     if (!asset) {
         return res.status(503).send("The app is not available for download just now.");
     }
@@ -104,18 +140,16 @@ router.get("/app/download", async (_req: Request, res: Response) => {
 
         res.setHeader("Content-Type", "application/vnd.android.package-archive");
         res.setHeader("Content-Disposition", `attachment; filename="${asset.name}"`);
-        // A known length is what lets the phone show real progress and know when
-        // it is finished. Without it the download manager has to guess.
+        // A known length is what lets the phone show real progress and, more to
+        // the point, know that it has finished.
         const len = upstream.headers.get("content-length");
         if (len) res.setHeader("Content-Length", len);
-        // An APK is immutable once published, but a new release must not be
-        // shadowed by a cached copy of the old one.
         res.setHeader("Cache-Control", "public, max-age=300");
         res.setHeader("X-Content-Type-Options", "nosniff");
 
+        // Chunked rather than buffered: several staff installing at once should
+        // not hold ten megabytes in memory per request.
         const reader = upstream.body.getReader();
-        // Streamed in chunks rather than buffered: a ten megabyte APK held whole
-        // in memory for every staff member installing at once is avoidable.
         for (;;) {
             const { done, value } = await reader.read();
             if (done) break;
