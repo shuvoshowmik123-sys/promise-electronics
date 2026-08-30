@@ -7,20 +7,23 @@
  * "Later" months ago, and for reading the link out to someone standing
  * elsewhere.
  */
-import { Smartphone, Download, ExternalLink, ShieldCheck } from "lucide-react";
+import { useState } from "react";
+import { Smartphone, Download, ExternalLink, ShieldCheck, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-/**
- * GitHub resolves "releases/latest/download" when the request is made, so this
- * link never needs updating: publishing a release with an asset of this name is
- * enough and every phone that follows it gets the newest build.
- */
-const STAFF_APK_URL =
-  "https://github.com/shuvoshowmik123-sys/promise-electronics/releases/latest/download/PromiseStaff.apk";
-const RELEASES_PAGE =
-  "https://github.com/shuvoshowmik123-sys/promise-electronics/releases/latest";
+import { openStaffApkDownload, RELEASES_PAGE } from "@/lib/staff-app-download";
 
 export function StaffAppDownloadCard() {
+  const [finding, setFinding] = useState(false);
+
+  const handleDownload = async () => {
+    setFinding(true);
+    try {
+      await openStaffApkDownload();
+    } finally {
+      setFinding(false);
+    }
+  };
+
   return (
     <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
       <div className="flex items-center gap-3 border-b border-slate-100 bg-slate-900 p-4 text-white">
@@ -37,11 +40,16 @@ export function StaffAppDownloadCard() {
 
       <div className="space-y-4 p-4">
         <div className="flex flex-col gap-2 sm:flex-row">
-          <Button asChild className="h-11 flex-1 bg-slate-900 hover:bg-slate-800 sm:h-10">
-            <a href={STAFF_APK_URL}>
-              <Download className="mr-2 h-4 w-4" />
-              Download the app
-            </a>
+          <Button
+            className="h-11 flex-1 bg-slate-900 hover:bg-slate-800 sm:h-10"
+            disabled={finding}
+            onClick={handleDownload}
+          >
+            {finding ? (
+              <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Finding latest…</>
+            ) : (
+              <><Download className="mr-2 h-4 w-4" /> Download the app</>
+            )}
           </Button>
           <Button asChild variant="outline" className="h-11 flex-1 sm:h-10 sm:flex-none">
             <a href={RELEASES_PAGE} target="_blank" rel="noreferrer">

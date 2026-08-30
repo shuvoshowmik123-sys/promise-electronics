@@ -3,17 +3,8 @@ import { X, Download, Monitor, Smartphone } from "lucide-react";
 import { Capacitor } from "@capacitor/core";
 import { Button } from "@/components/ui/button";
 import { usePwaInstallPrompt } from "@/hooks/usePwaInstallPrompt";
+import { openStaffApkDownload } from "@/lib/staff-app-download";
 import { useAdminAuth } from "@/contexts/AdminAuthContext";
-
-/**
- * The signed staff app, from the repository's latest release.
- *
- * "releases/latest/download" is resolved by GitHub at request time, so this
- * link never has to be updated: publishing a new release with an asset of this
- * name is enough, and every phone that follows the link gets the new build.
- */
-const STAFF_APK_URL =
-  "https://github.com/shuvoshowmik123-sys/promise-electronics/releases/latest/download/PromiseStaff.apk";
 
 /** Android in a browser — not the installed app, and not an iPhone. */
 function isAndroidBrowser(): boolean {
@@ -81,10 +72,11 @@ export function AdminPwaInstallPrompt() {
 
   const handleInstall = async () => {
     if (offerApk) {
-      // Straight to the file. Android then asks its own install question, which
-      // is the point at which "unknown sources" is granted, once, by the person
-      // holding the phone.
-      window.location.href = STAFF_APK_URL;
+      // The asset is looked up rather than assumed — see staff-app-download.ts;
+      // a fixed filename broke on the first release. Android then asks its own
+      // install question, which is where "unknown sources" is granted once by
+      // the person holding the phone.
+      await openStaffApkDownload();
       dismiss();
       return;
     }
