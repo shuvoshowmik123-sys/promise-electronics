@@ -46,8 +46,19 @@ const LATEST_API = `https://api.github.com/repos/${REPO}/releases/latest`;
 type Resolved = { url: string; name: string; at: number };
 let cached: Resolved | null = null;
 
-/** Six hours. A release published today is offered the same day; nothing is asked hourly. */
-const CACHE_MS = 6 * 60 * 60 * 1000;
+/**
+ * Fifteen minutes.
+ *
+ * Six hours was the first guess and it was wrong in the way that matters: a
+ * release published now was still not being offered, and the only remedy was
+ * restarting the server. Someone who has just published a build expects to be
+ * able to install it, and being told to wait is indistinguishable from the
+ * feature being broken — which is exactly how it was reported.
+ *
+ * The lookup is two plain HTML requests against endpoints with no rate limit,
+ * so four an hour costs nothing worth saving.
+ */
+const CACHE_MS = 15 * 60 * 1000;
 
 /**
  * Find the newest .apk without touching the API.
